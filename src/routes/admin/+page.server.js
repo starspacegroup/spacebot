@@ -1,5 +1,11 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
 import { fail } from "@sveltejs/kit";
+import {
+	EVENT_CATEGORIES,
+	EVENT_TYPES,
+	getLogs,
+	getLogStats,
+} from "$lib/db/logger.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -60,6 +66,10 @@ export async function load({ cookies, platform, parent }) {
 			},
 			commands: [],
 			user: null,
+			recentLogs: [],
+			logStats: null,
+			eventCategories: EVENT_CATEGORIES,
+			eventTypes: EVENT_TYPES,
 		};
 	}
 
@@ -75,6 +85,30 @@ export async function load({ cookies, platform, parent }) {
 
 	// User has admin access if they're a superadmin OR have at least one admin guild
 	const isAdmin = isSuperAdmin || guildsWithBot.length > 0;
+
+	// Fetch recent logs for the selected guild
+	const selectedGuildId = parentData.selectedGuildId;
+	let recentLogs = [];
+	let logStats = null;
+
+	if (selectedGuildId) {
+		const db = platform?.env?.spacebot_logs;
+		if (db) {
+			try {
+				// Get the 10 most recent logs for the widget
+				const logsResult = await getLogs(db, selectedGuildId, {
+					limit: 10,
+					offset: 0,
+				});
+				recentLogs = logsResult.logs || [];
+
+				// Get stats for the dashboard
+				logStats = await getLogStats(db, selectedGuildId);
+			} catch (error) {
+				console.error("Failed to fetch logs for dashboard:", error);
+			}
+		}
+	}
 
 	return {
 		isAdmin,
@@ -95,6 +129,10 @@ export async function load({ cookies, platform, parent }) {
 			username: username || "Unknown",
 			avatar,
 		},
+		recentLogs,
+		logStats,
+		eventCategories: EVENT_CATEGORIES,
+		eventTypes: EVENT_TYPES,
 		// Note: adminGuilds and selectedGuildId come from the layout
 	};
 }
