@@ -1,0 +1,26 @@
+{
+	"name": "spacebot",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"preview": "vite preview",
+		"prepare": "svelte-kit sync || echo ''"
+	},
+	"devDependencies": {
+		"@sveltejs/adapter-auto": "^7.0.0",
+		"@sveltejs/adapter-cloudflare": "^7.2.6",
+		"@sveltejs/kit": "^2.49.1",
+		"@sveltejs/vite-plugin-svelte": "^6.2.1",
+		"svelte": "^5.45.6",
+		"vite": "^7.2.6"
+	},
+	"dependencies": {
+		"@discordjs/rest": "^2.6.0",
+		"discord-api-types": "^0.38.37",
+		"discord-interactions": "^4.4.0",
+		"discord.js": "^14.25.1"
+	}
+}
