@@ -4,7 +4,8 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "wrangler pages dev .svelte-kit/cloudflare --port 4269 --compatibility-date=2024-01-26 --persist-to .wrangler/state",
+		"dev": "vite dev",
+		"dev:wrangler": "wrangler pages dev .svelte-kit/cloudflare --port 4269 --compatibility-date=2024-01-26 --persist-to .wrangler/state",
 		"dev:tunnel": "cloudflared tunnel run spacebot",
 		"dev:gateway": "node src/lib/discord/gateway.js",
 		"build": "vite build",
@@ -16,6 +17,7 @@
 		"db:migrate:local": "wrangler d1 execute spacebot-logs --local --file=./migrations/0001_create_event_logs.sql"
 	},
 	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.21.2",
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.6",
 		"@sveltejs/kit": "^2.49.1",

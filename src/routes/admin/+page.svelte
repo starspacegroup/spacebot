@@ -26,20 +26,8 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="user-info">
-			<p>Logged in as: <strong>{data.user?.username || 'Unknown'}</strong></p>
-			{#if data.isSuperAdmin}
-				<span class="badge badge-superadmin">Superadmin</span>
-			{:else}
-				<span class="badge badge-admin">Server Admin</span>
-			{/if}
-			<form method="POST" action="?/logout" use:enhance>
-				<button type="submit" class="btn btn-small">Logout</button>
-			</form>
-		</div>
-		
 		<div class="section server-selector">
-			<h2>Select Server</h2>
+			<h2>Server</h2>
 			{#if data.isSuperAdmin}
 				<p class="superadmin-note">As superadmin, you can view all servers where the bot is installed.</p>
 			{/if}
@@ -243,20 +231,6 @@
 		background: rgba(237, 66, 69, 0.15);
 		color: var(--color-danger);
 		border: 1px solid var(--color-danger);
-	}
-	
-	.user-info {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		margin-bottom: 2rem;
-		padding: 1rem;
-		background: var(--color-surface-elevated);
-		border-radius: var(--radius-md);
-	}
-	
-	.user-info p {
-		margin: 0;
 	}
 	
 	.access-denied {
