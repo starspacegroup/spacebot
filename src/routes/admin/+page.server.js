@@ -1,5 +1,5 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -226,9 +226,56 @@ export async function load({ cookies, platform, url }) {
 	// User has admin access if they're a superadmin OR have at least one admin guild
 	const isAdmin = isSuperAdmin || adminGuilds.length > 0;
 
-	// Get selected guild from URL or default to first
-	const selectedGuildId = url.searchParams.get("guild") ||
-		(adminGuilds.length > 0 ? adminGuilds[0].id : null);
+	// Get selected guild from URL, cookie, or default to first
+	const urlGuildId = url.searchParams.get("guild");
+	const lastViewedGuildId = cookies.get("last_viewed_guild");
+
+	// Filter guilds where bot is actually installed
+	const guildsWithBot = adminGuilds.filter((g) => !g.botNotIn);
+
+	console.log(
+		"[Admin] urlGuildId:",
+		urlGuildId,
+		"lastViewedGuildId:",
+		lastViewedGuildId,
+		"adminGuilds.length:",
+		adminGuilds.length,
+		"guildsWithBot.length:",
+		guildsWithBot.length,
+	);
+
+	// If no guild in URL, redirect to include guild in URL for proper URL bar display
+	if (!urlGuildId && (guildsWithBot.length > 0 || adminGuilds.length > 0)) {
+		// Prefer last viewed guild if it's valid AND bot is in it, otherwise first guild with bot, then first guild
+		let targetGuildId;
+		if (
+			lastViewedGuildId && guildsWithBot.some((g) => g.id === lastViewedGuildId)
+		) {
+			targetGuildId = lastViewedGuildId;
+		} else if (guildsWithBot.length > 0) {
+			targetGuildId = guildsWithBot[0].id;
+		} else if (adminGuilds.length > 0) {
+			targetGuildId = adminGuilds[0].id;
+		}
+		if (targetGuildId) {
+			console.log("[Admin] Redirecting to guild:", targetGuildId);
+			throw redirect(302, `/admin?guild=${targetGuildId}`);
+		}
+	}
+
+	// Selected guild is from URL (we always have it in URL after redirect above)
+	const selectedGuildId = urlGuildId;
+
+	// Store the selected guild in a cookie for next visit (only if bot is in it)
+	if (selectedGuildId && guildsWithBot.some((g) => g.id === selectedGuildId)) {
+		cookies.set("last_viewed_guild", selectedGuildId, {
+			path: "/",
+			httpOnly: false,
+			secure: false, // Allow on localhost
+			sameSite: "lax",
+			maxAge: 60 * 60 * 24 * 365, // 1 year
+		});
+	}
 
 	return {
 		isAdmin,

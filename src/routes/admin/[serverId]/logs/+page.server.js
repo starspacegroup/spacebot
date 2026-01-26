@@ -94,6 +94,15 @@ export async function load({ params, cookies, platform }) {
     throw redirect(302, "/admin");
   }
 
+  // Store this server as the last viewed guild
+  cookies.set("last_viewed_guild", serverId, {
+    path: "/",
+    httpOnly: false,
+    secure: false, // Allow on localhost
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+  });
+
   // Fetch guild info from bot
   const guildInfo = await fetchGuildInfo(serverId, botToken);
 

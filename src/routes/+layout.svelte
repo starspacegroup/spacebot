@@ -3,6 +3,8 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import UserMenu from '$lib/components/UserMenu.svelte';
+	import ServerSelector from '$lib/components/ServerSelector.svelte';
+	import { page } from '$app/stores';
 
 	let { children, data } = $props();
 </script>
@@ -15,6 +17,12 @@
 	<header class="app-header">
 		<a href="/" class="logo">SpaceBot</a>
 		<nav class="nav">
+			{#if $page.url.pathname.startsWith('/admin')}
+				<ServerSelector 
+					guilds={data.adminGuilds || []} 
+					selectedGuildId={data.selectedGuildId}
+				/>
+			{/if}
 			{#if data.isLoggedIn && data.user}
 				<UserMenu user={data.user} />
 			{:else}
@@ -40,22 +48,38 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 1rem 2rem;
+		padding: 0.75rem 1rem;
 		background: var(--color-surface);
 		border-bottom: 1px solid var(--color-border);
+		gap: 0.5rem;
 	}
 	
 	.logo {
-		font-size: 1.25rem;
+		font-size: 1.125rem;
 		font-weight: 700;
 		color: var(--color-primary);
 		text-decoration: none;
+		flex-shrink: 0;
 	}
 	
 	.nav {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.5rem;
+	}
+	
+	@media (min-width: 640px) {
+		.app-header {
+			padding: 0.75rem 1.5rem;
+		}
+		
+		.logo {
+			font-size: 1.25rem;
+		}
+		
+		.nav {
+			gap: 0.75rem;
+		}
 	}
 	
 	.nav-btn {
