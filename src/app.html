@@ -1,8 +1,27 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<script>
+			// Prevent FOUC by setting theme before any rendering
+			(function () {
+				const stored = localStorage.getItem("theme");
+				let theme;
+				if (stored === "light" || stored === "dark") {
+					theme = stored;
+				} else {
+					// Default to system preference
+					theme =
+						window.matchMedia("(prefers-color-scheme: dark)").matches
+							? "dark"
+							: "light";
+				}
+				document.documentElement.dataset.theme = theme;
+				document.documentElement.style.colorScheme = theme;
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

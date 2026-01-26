@@ -23,11 +23,6 @@
 			</div>
 		</div>
 	</div>
-	
-	<div class="actions">
-		<a href="/login" class="btn">Login</a>
-		<a href="/admin" class="btn btn-secondary">Admin</a>
-	</div>
 </div>
 
 <style>
@@ -40,7 +35,7 @@
 	h1 {
 		font-size: 2.5rem;
 		margin-bottom: 1rem;
-		color: #5865F2;
+		color: var(--color-primary);
 	}
 	
 	.stats {
@@ -55,50 +50,22 @@
 	}
 	
 	.stat-card {
-		background: #f0f0f0;
-		border-radius: 8px;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
 		padding: 1.5rem;
 		text-align: center;
 	}
 	
 	.stat-card h3 {
 		margin: 0 0 0.5rem 0;
-		color: #333;
+		color: var(--color-text-muted);
 	}
 	
 	.stat-value {
 		font-size: 2rem;
 		font-weight: bold;
-		color: #5865F2;
+		color: var(--color-primary);
 		margin: 0;
-	}
-	
-	.actions {
-		margin-top: 2rem;
-		display: flex;
-		gap: 1rem;
-	}
-	
-	.btn {
-		padding: 0.75rem 1.5rem;
-		border-radius: 4px;
-		text-decoration: none;
-		background: #5865F2;
-		color: white;
-		font-weight: 500;
-		transition: background 0.2s;
-	}
-	
-	.btn:hover {
-		background: #4752C4;
-	}
-	
-	.btn-secondary {
-		background: #57F287;
-		color: #000;
-	}
-	
-	.btn-secondary:hover {
-		background: #3BA55D;
 	}
 </style>

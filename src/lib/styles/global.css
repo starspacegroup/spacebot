@@ -1,0 +1,168 @@
+/* Global CSS Variables for theming */
+
+:root {
+	/* Discord brand colors */
+	--discord-blurple: #5865F2;
+	--discord-blurple-dark: #4752C4;
+	--discord-green: #57F287;
+	--discord-green-dark: #3BA55D;
+	--discord-yellow: #FEE75C;
+	--discord-red: #ED4245;
+	
+	/* Light theme (default) */
+	--color-primary: var(--discord-blurple);
+	--color-primary-hover: var(--discord-blurple-dark);
+	--color-primary-soft: rgba(88, 101, 242, 0.1);
+	
+	--color-success: var(--discord-green);
+	--color-success-hover: var(--discord-green-dark);
+	
+	--color-warning: #F59E0B;
+	--color-warning-hover: #D97706;
+	
+	--color-danger: var(--discord-red);
+	--color-danger-hover: #DC2626;
+	
+	--color-background: #ffffff;
+	--color-surface: #f9f9f9;
+	--color-surface-elevated: #f0f0f0;
+	--color-surface-hover: #e5e5e5;
+	
+	--color-text: #1a1a1a;
+	--color-text-muted: #666666;
+	--color-text-light: #888888;
+	
+	--color-border: #e0e0e0;
+	--color-border-light: #f0f0f0;
+	
+	/* Shadows */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+	
+	/* Transitions */
+	--transition-fast: 0.15s ease;
+	--transition-normal: 0.2s ease;
+	
+	/* Border radius */
+	--radius-sm: 4px;
+	--radius-md: 8px;
+	--radius-lg: 12px;
+	--radius-full: 9999px;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+	--color-primary: #7289da;
+	--color-primary-hover: #5865F2;
+	--color-primary-soft: rgba(114, 137, 218, 0.15);
+	
+	--color-success: #57F287;
+	--color-success-hover: #43b581;
+	
+	--color-warning: #F59E0B;
+	--color-warning-hover: #FCD34D;
+	
+	--color-danger: #f04747;
+	--color-danger-hover: #ED4245;
+	
+	--color-background: #1a1a1d;
+	--color-surface: #2a2a2e;
+	--color-surface-elevated: #36363c;
+	--color-surface-hover: #404046;
+	
+	--color-text: #f5f5f5;
+	--color-text-muted: #a0a0a0;
+	--color-text-light: #888888;
+	
+	--color-border: #404046;
+	--color-border-light: #36363c;
+	
+	/* Shadows - more subtle in dark mode */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3);
+	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4);
+}
+
+/* Global resets and defaults */
+*, *::before, *::after {
+	box-sizing: border-box;
+}
+
+html {
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+	background-color: var(--color-background);
+	color: var(--color-text);
+	transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+/* Selection colors */
+::selection {
+	background: var(--color-primary-soft);
+	color: var(--color-primary);
+}
+
+/* Focus visible outlines */
+:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--color-border);
+	border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--color-text-muted);
+}
+
+/* Link defaults */
+a {
+	color: var(--color-primary);
+	text-decoration: none;
+	transition: color var(--transition-fast);
+}
+
+a:hover {
+	color: var(--color-primary-hover);
+}
+
+/* Code styling */
+code {
+	font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+	background: var(--color-surface-elevated);
+	padding: 0.125rem 0.375rem;
+	border-radius: var(--radius-sm);
+	font-size: 0.875em;
+}
+
+pre {
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-md);
+	padding: 1rem;
+	overflow-x: auto;
+}
+
+pre code {
+	background: transparent;
+	padding: 0;
+}

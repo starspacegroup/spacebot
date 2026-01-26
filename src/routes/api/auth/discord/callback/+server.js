@@ -104,6 +104,37 @@ export async function GET({ url, cookies, platform }) {
 			maxAge: 60 * 60 * 24 * 7, // 7 days
 		});
 
+		// Store avatar hash for profile image
+		if (userData.avatar) {
+			cookies.set("discord_avatar", userData.avatar, {
+				path: "/",
+				httpOnly: true,
+				secure: true,
+				sameSite: "lax",
+				maxAge: 60 * 60 * 24 * 7,
+			});
+		}
+
+		// Store global display name if available
+		if (userData.global_name) {
+			cookies.set("discord_global_name", userData.global_name, {
+				path: "/",
+				httpOnly: true,
+				secure: true,
+				sameSite: "lax",
+				maxAge: 60 * 60 * 24 * 7,
+			});
+		}
+
+		// Store discriminator for default avatar calculation
+		cookies.set("discord_discriminator", userData.discriminator || "0", {
+			path: "/",
+			httpOnly: true,
+			secure: true,
+			sameSite: "lax",
+			maxAge: 60 * 60 * 24 * 7,
+		});
+
 		// Handle bot installation flow
 		if (flowData.flow === "install" && tokenData.guild) {
 			// The token response includes guild info when bot scope is used
