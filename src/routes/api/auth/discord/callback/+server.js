@@ -87,6 +87,25 @@ export async function GET({ url, cookies, platform }) {
 
 		const userData = await userResponse.json();
 
+		// Store full user object for pages that need it
+		cookies.set(
+			"discord_user",
+			JSON.stringify({
+				id: userData.id,
+				username: userData.username,
+				avatar: userData.avatar,
+				global_name: userData.global_name,
+				discriminator: userData.discriminator,
+			}),
+			{
+				path: "/",
+				httpOnly: true,
+				secure: true,
+				sameSite: "lax",
+				maxAge: 60 * 60 * 24 * 7, // 7 days
+			},
+		);
+
 		// Store user session
 		cookies.set("discord_user_id", userData.id, {
 			path: "/",

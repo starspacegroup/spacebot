@@ -4,12 +4,16 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "wrangler pages dev .svelte-kit/cloudflare --port 4269 --compatibility-date=2024-01-26 --persist-to .wrangler/state",
 		"dev:tunnel": "cloudflared tunnel run spacebot",
+		"dev:gateway": "node src/lib/discord/gateway.js",
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
-		"register-commands": "node scripts/register-commands.js"
+		"register-commands": "node scripts/register-commands.js",
+		"db:create": "wrangler d1 create spacebot-logs",
+		"db:migrate": "wrangler d1 execute spacebot-logs --file=./migrations/0001_create_event_logs.sql",
+		"db:migrate:local": "wrangler d1 execute spacebot-logs --local --file=./migrations/0001_create_event_logs.sql"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
@@ -23,6 +27,7 @@
 		"@discordjs/rest": "^2.6.0",
 		"discord-api-types": "^0.38.37",
 		"discord-interactions": "^4.4.0",
-		"discord.js": "^14.25.1"
+		"discord.js": "^14.25.1",
+		"dotenv": "^17.2.3"
 	}
 }

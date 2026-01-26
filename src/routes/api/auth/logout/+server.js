@@ -3,6 +3,7 @@ import { redirect } from "@sveltejs/kit";
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ cookies }) {
   // Clear all auth-related cookies
+  cookies.delete("discord_user", { path: "/" });
   cookies.delete("discord_user_id", { path: "/" });
   cookies.delete("discord_username", { path: "/" });
   cookies.delete("discord_avatar", { path: "/" });

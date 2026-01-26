@@ -187,6 +187,22 @@
 					<p class="no-servers">Select a server above to configure it.</p>
 				{/if}
 			</div>
+			
+			<div class="section">
+				<h2>📊 Event Logs</h2>
+				<p>View all server activity including member joins/leaves, messages, voice activity, moderation actions, and more.</p>
+				{#if data.selectedGuildId}
+					{@const selectedGuild = data.adminGuilds?.find(g => g.id === data.selectedGuildId)}
+					{#if selectedGuild?.botNotIn}
+						<p class="warning-text">⚠️ Bot must be installed in this server to view logs.</p>
+						<a href="/api/auth/discord?flow=install" class="btn">Add Bot to Server</a>
+					{:else}
+						<a href="/admin/{data.selectedGuildId}/logs" class="btn btn-logs">📜 View Server Logs</a>
+					{/if}
+				{:else}
+					<p class="no-servers">Select a server above to view logs.</p>
+				{/if}
+			</div>
 		</div>
 	{/if}
 </div>
@@ -379,6 +395,19 @@
 	
 	.btn-danger:hover:not(:disabled) {
 		background: var(--color-danger-hover);
+	}
+	
+	.btn-logs {
+		background: linear-gradient(135deg, #5865F2, #7289DA);
+	}
+	
+	.btn-logs:hover:not(:disabled) {
+		background: linear-gradient(135deg, #4752C4, #5865F2);
+	}
+	
+	.warning-text {
+		color: #fab116;
+		margin-bottom: 1rem;
 	}
 	
 	.server-selector {
