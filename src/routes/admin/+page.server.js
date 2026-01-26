@@ -1,7 +1,12 @@
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ locals }) {
+export async function load({ locals, cookies }) {
 	// TODO: Implement actual authentication check
-	const isAdmin = false; // This should check if the user is authenticated and is an admin
+	// Check if user is logged in via cookie
+	const userId = cookies.get('discord_user_id');
+	
+	// TODO: Check if user ID is in ADMIN_USER_IDS environment variable
+	// For now, return false to maintain security until auth is fully implemented
+	const isAdmin = false;
 	
 	return {
 		isAdmin,

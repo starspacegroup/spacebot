@@ -21,7 +21,13 @@ export async function POST({ request, platform }) {
 		return json({ error: 'Invalid request signature' }, { status: 401 });
 	}
 	
-	const body = JSON.parse(rawBody);
+	let body;
+	try {
+		body = JSON.parse(rawBody);
+	} catch (error) {
+		console.error('Failed to parse request body:', error);
+		return json({ error: 'Invalid JSON' }, { status: 400 });
+	}
 	
 	// Handle Discord interaction types
 	// Type 1: PING - Discord sends this to verify the endpoint
