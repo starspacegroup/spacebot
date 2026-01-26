@@ -305,6 +305,7 @@ function setupEventHandlers(client, logFn) {
           selfVideo: newState.selfVideo,
         },
       });
+      return; // Don't check for state changes on initial join
     }
 
     // User left a voice channel
@@ -317,7 +318,15 @@ function setupEventHandlers(client, logFn) {
         actor_name: member.user.tag,
         channel_id: oldState.channel.id,
         channel_name: oldState.channel.name,
+        details: {
+          // Include final state when leaving
+          wasMuted: oldState.selfMute,
+          wasDeafened: oldState.selfDeaf,
+          wasStreaming: oldState.streaming,
+          hadVideo: oldState.selfVideo,
+        },
       });
+      return;
     }
 
     // User moved between voice channels
@@ -338,6 +347,152 @@ function setupEventHandlers(client, logFn) {
           fromChannelName: oldState.channel.name,
         },
       });
+    }
+
+    // ===== VOICE STATE CHANGES (while in a channel) =====
+    const channel = newState.channel || oldState.channel;
+    if (!channel) return;
+
+    // Camera toggled (selfVideo)
+    if (oldState.selfVideo !== newState.selfVideo) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.selfVideo ? "VOICE_VIDEO_START" : "VOICE_VIDEO_STOP",
+        event_category: "voice",
+        actor_id: member.user.id,
+        actor_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          videoEnabled: newState.selfVideo,
+        },
+      });
+    }
+
+    // Screen share / streaming toggled
+    if (oldState.streaming !== newState.streaming) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.streaming ? "VOICE_STREAM_START" : "VOICE_STREAM_STOP",
+        event_category: "voice",
+        actor_id: member.user.id,
+        actor_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          streaming: newState.streaming,
+        },
+      });
+    }
+
+    // Self mute toggled
+    if (oldState.selfMute !== newState.selfMute) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.selfMute ? "VOICE_SELF_MUTE" : "VOICE_SELF_UNMUTE",
+        event_category: "voice",
+        actor_id: member.user.id,
+        actor_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          selfMute: newState.selfMute,
+        },
+      });
+    }
+
+    // Self deafen toggled
+    if (oldState.selfDeaf !== newState.selfDeaf) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.selfDeaf ? "VOICE_SELF_DEAFEN" : "VOICE_SELF_UNDEAFEN",
+        event_category: "voice",
+        actor_id: member.user.id,
+        actor_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          selfDeaf: newState.selfDeaf,
+        },
+      });
+    }
+
+    // Server mute toggled (by admin/moderator)
+    if (oldState.serverMute !== newState.serverMute) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.serverMute ? "VOICE_SERVER_MUTE" : "VOICE_SERVER_UNMUTE",
+        event_category: "voice",
+        target_id: member.user.id,
+        target_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          serverMute: newState.serverMute,
+        },
+      });
+    }
+
+    // Server deafen toggled (by admin/moderator)
+    if (oldState.serverDeaf !== newState.serverDeaf) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.serverDeaf ? "VOICE_SERVER_DEAFEN" : "VOICE_SERVER_UNDEAFEN",
+        event_category: "voice",
+        target_id: member.user.id,
+        target_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          serverDeaf: newState.serverDeaf,
+        },
+      });
+    }
+
+    // Stage channel: suppress toggled (speaker permission)
+    if (oldState.suppress !== newState.suppress) {
+      await logFn({
+        guild_id: guildId,
+        event_type: newState.suppress ? "VOICE_STAGE_SUPPRESS" : "VOICE_STAGE_UNSUPPRESS",
+        event_category: "voice",
+        target_id: member.user.id,
+        target_name: member.user.tag,
+        channel_id: channel.id,
+        channel_name: channel.name,
+        details: {
+          suppress: newState.suppress,
+          // When unsuppressed, user becomes a speaker in Stage
+          isSpeaker: !newState.suppress,
+        },
+      });
+    }
+
+    // Stage channel: request to speak
+    if (oldState.requestToSpeakTimestamp !== newState.requestToSpeakTimestamp) {
+      if (newState.requestToSpeakTimestamp) {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_STAGE_REQUEST_TO_SPEAK",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          channel_id: channel.id,
+          channel_name: channel.name,
+          details: {
+            requestedAt: newState.requestToSpeakTimestamp.toISOString(),
+          },
+        });
+      } else {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_STAGE_REQUEST_CANCELLED",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          channel_id: channel.id,
+          channel_name: channel.name,
+        });
+      }
     }
   });
 
@@ -637,7 +792,314 @@ function setupEventHandlers(client, logFn) {
           customId: interaction.customId,
         },
       });
+    } else if (interaction.isStringSelectMenu() || interaction.isUserSelectMenu() || interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isMentionableSelectMenu()) {
+      await logFn({
+        guild_id: interaction.guild.id,
+        event_type: "SELECT_MENU_USE",
+        event_category: "interaction",
+        actor_id: interaction.user.id,
+        actor_name: interaction.user.tag,
+        channel_id: interaction.channel?.id,
+        channel_name: interaction.channel?.name,
+        details: {
+          customId: interaction.customId,
+          values: interaction.values,
+        },
+      });
+    } else if (interaction.isUserContextMenuCommand() || interaction.isMessageContextMenuCommand()) {
+      await logFn({
+        guild_id: interaction.guild.id,
+        event_type: "CONTEXT_MENU_USE",
+        event_category: "interaction",
+        actor_id: interaction.user.id,
+        actor_name: interaction.user.tag,
+        channel_id: interaction.channel?.id,
+        channel_name: interaction.channel?.name,
+        details: {
+          commandName: interaction.commandName,
+          targetType: interaction.isUserContextMenuCommand() ? "user" : "message",
+          targetId: interaction.targetId,
+        },
+      });
+    } else if (interaction.isAutocomplete()) {
+      await logFn({
+        guild_id: interaction.guild.id,
+        event_type: "AUTOCOMPLETE_USE",
+        event_category: "interaction",
+        actor_id: interaction.user.id,
+        actor_name: interaction.user.tag,
+        channel_id: interaction.channel?.id,
+        channel_name: interaction.channel?.name,
+        details: {
+          commandName: interaction.commandName,
+          focusedOption: interaction.options.getFocused(true),
+        },
+      });
     }
+  });
+
+  // ===== STICKER EVENTS =====
+
+  client.on(Events.GuildStickerCreate, async (sticker) => {
+    await logFn({
+      guild_id: sticker.guild.id,
+      event_type: "STICKER_CREATE",
+      event_category: "sticker",
+      actor_id: sticker.user?.id,
+      actor_name: sticker.user?.tag,
+      details: {
+        stickerId: sticker.id,
+        stickerName: sticker.name,
+        description: sticker.description,
+        format: sticker.format,
+        tags: sticker.tags,
+      },
+    });
+  });
+
+  client.on(Events.GuildStickerDelete, async (sticker) => {
+    await logFn({
+      guild_id: sticker.guild.id,
+      event_type: "STICKER_DELETE",
+      event_category: "sticker",
+      details: {
+        stickerId: sticker.id,
+        stickerName: sticker.name,
+      },
+    });
+  });
+
+  client.on(Events.GuildStickerUpdate, async (oldSticker, newSticker) => {
+    const changes = {};
+    if (oldSticker.name !== newSticker.name) {
+      changes.name = { old: oldSticker.name, new: newSticker.name };
+    }
+    if (oldSticker.description !== newSticker.description) {
+      changes.description = { old: oldSticker.description, new: newSticker.description };
+    }
+
+    if (Object.keys(changes).length > 0) {
+      await logFn({
+        guild_id: newSticker.guild.id,
+        event_type: "STICKER_UPDATE",
+        event_category: "sticker",
+        details: {
+          stickerId: newSticker.id,
+          stickerName: newSticker.name,
+          changes: changes,
+        },
+      });
+    }
+  });
+
+  // ===== SCHEDULED EVENT EVENTS =====
+
+  client.on(Events.GuildScheduledEventCreate, async (event) => {
+    await logFn({
+      guild_id: event.guild.id,
+      event_type: "SCHEDULED_EVENT_CREATE",
+      event_category: "scheduled_event",
+      actor_id: event.creatorId,
+      actor_name: event.creator?.tag,
+      channel_id: event.channelId,
+      details: {
+        eventId: event.id,
+        eventName: event.name,
+        description: event.description,
+        scheduledStartTime: event.scheduledStartAt?.toISOString(),
+        scheduledEndTime: event.scheduledEndAt?.toISOString(),
+        status: event.status,
+        entityType: event.entityType,
+        location: event.entityMetadata?.location,
+      },
+    });
+  });
+
+  client.on(Events.GuildScheduledEventDelete, async (event) => {
+    await logFn({
+      guild_id: event.guild.id,
+      event_type: "SCHEDULED_EVENT_DELETE",
+      event_category: "scheduled_event",
+      details: {
+        eventId: event.id,
+        eventName: event.name,
+      },
+    });
+  });
+
+  client.on(Events.GuildScheduledEventUpdate, async (oldEvent, newEvent) => {
+    const changes = {};
+    if (oldEvent?.name !== newEvent.name) {
+      changes.name = { old: oldEvent?.name, new: newEvent.name };
+    }
+    if (oldEvent?.status !== newEvent.status) {
+      changes.status = { old: oldEvent?.status, new: newEvent.status };
+    }
+    if (oldEvent?.scheduledStartAt?.getTime() !== newEvent.scheduledStartAt?.getTime()) {
+      changes.scheduledStartTime = { 
+        old: oldEvent?.scheduledStartAt?.toISOString(), 
+        new: newEvent.scheduledStartAt?.toISOString() 
+      };
+    }
+
+    await logFn({
+      guild_id: newEvent.guild.id,
+      event_type: "SCHEDULED_EVENT_UPDATE",
+      event_category: "scheduled_event",
+      details: {
+        eventId: newEvent.id,
+        eventName: newEvent.name,
+        changes: changes,
+      },
+    });
+  });
+
+  client.on(Events.GuildScheduledEventUserAdd, async (event, user) => {
+    await logFn({
+      guild_id: event.guild.id,
+      event_type: "SCHEDULED_EVENT_USER_ADD",
+      event_category: "scheduled_event",
+      actor_id: user.id,
+      actor_name: user.tag,
+      details: {
+        eventId: event.id,
+        eventName: event.name,
+      },
+    });
+  });
+
+  client.on(Events.GuildScheduledEventUserRemove, async (event, user) => {
+    await logFn({
+      guild_id: event.guild.id,
+      event_type: "SCHEDULED_EVENT_USER_REMOVE",
+      event_category: "scheduled_event",
+      actor_id: user.id,
+      actor_name: user.tag,
+      details: {
+        eventId: event.id,
+        eventName: event.name,
+      },
+    });
+  });
+
+  // ===== AUTOMOD EVENTS =====
+
+  client.on(Events.AutoModerationRuleCreate, async (rule) => {
+    await logFn({
+      guild_id: rule.guild.id,
+      event_type: "AUTOMOD_RULE_CREATE",
+      event_category: "automod",
+      actor_id: rule.creatorId,
+      details: {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        eventType: rule.eventType,
+        triggerType: rule.triggerType,
+        enabled: rule.enabled,
+      },
+    });
+  });
+
+  client.on(Events.AutoModerationRuleDelete, async (rule) => {
+    await logFn({
+      guild_id: rule.guild.id,
+      event_type: "AUTOMOD_RULE_DELETE",
+      event_category: "automod",
+      details: {
+        ruleId: rule.id,
+        ruleName: rule.name,
+      },
+    });
+  });
+
+  client.on(Events.AutoModerationRuleUpdate, async (oldRule, newRule) => {
+    const changes = {};
+    if (oldRule?.name !== newRule.name) {
+      changes.name = { old: oldRule?.name, new: newRule.name };
+    }
+    if (oldRule?.enabled !== newRule.enabled) {
+      changes.enabled = { old: oldRule?.enabled, new: newRule.enabled };
+    }
+
+    await logFn({
+      guild_id: newRule.guild.id,
+      event_type: "AUTOMOD_RULE_UPDATE",
+      event_category: "automod",
+      details: {
+        ruleId: newRule.id,
+        ruleName: newRule.name,
+        changes: changes,
+      },
+    });
+  });
+
+  client.on(Events.AutoModerationActionExecution, async (execution) => {
+    await logFn({
+      guild_id: execution.guild.id,
+      event_type: "AUTOMOD_ACTION_EXECUTE",
+      event_category: "automod",
+      target_id: execution.userId,
+      channel_id: execution.channelId,
+      details: {
+        ruleId: execution.ruleId,
+        ruleTriggerType: execution.ruleTriggerType,
+        action: execution.action,
+        matchedKeyword: execution.matchedKeyword,
+        matchedContent: execution.matchedContent,
+        alertSystemMessageId: execution.alertSystemMessageId,
+      },
+    });
+  });
+
+  // ===== CHANNEL PINS EVENTS =====
+
+  client.on(Events.ChannelPinsUpdate, async (channel, date) => {
+    if (!channel.guild) return;
+
+    await logFn({
+      guild_id: channel.guild.id,
+      event_type: "CHANNEL_PINS_UPDATE",
+      event_category: "channel",
+      channel_id: channel.id,
+      channel_name: channel.name,
+      details: {
+        lastPinAt: date?.toISOString(),
+      },
+    });
+  });
+
+  // ===== ADDITIONAL REACTION EVENTS =====
+
+  client.on(Events.MessageReactionRemoveAll, async (message, reactions) => {
+    if (!message.guild) return;
+
+    await logFn({
+      guild_id: message.guild.id,
+      event_type: "REACTION_REMOVE_ALL",
+      event_category: "reaction",
+      channel_id: message.channel.id,
+      channel_name: message.channel.name,
+      details: {
+        messageId: message.id,
+      },
+    });
+  });
+
+  client.on(Events.MessageReactionRemoveEmoji, async (reaction) => {
+    if (!reaction.message.guild) return;
+
+    await logFn({
+      guild_id: reaction.message.guild.id,
+      event_type: "REACTION_REMOVE_EMOJI",
+      event_category: "reaction",
+      channel_id: reaction.message.channel.id,
+      channel_name: reaction.message.channel.name,
+      details: {
+        messageId: reaction.message.id,
+        emoji: reaction.emoji.name,
+        emojiId: reaction.emoji.id,
+      },
+    });
   });
 
   // ===== CLIENT EVENTS =====
