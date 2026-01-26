@@ -7,21 +7,23 @@ export async function load({ cookies, platform }) {
     return {
       isLoggedIn: false,
       isAdmin: false,
+      isSuperAdmin: false,
       user: null,
     };
   }
 
-  // Get ADMIN_USER_IDS from environment
+  // Get ADMIN_USER_IDS from environment (these are superadmins with full access)
   const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
     process.env.ADMIN_USER_IDS || "";
 
-  // Parse comma-separated list of admin IDs
-  const adminIdList = adminUserIds.split(",").map((id) => id.trim()).filter(
-    Boolean,
-  );
+  // Parse comma-separated list of superadmin IDs
+  const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
+    .filter(
+      Boolean,
+    );
 
-  // Check if current user is an admin
-  const isAdmin = adminIdList.includes(userId);
+  // Check if current user is a superadmin (defined in ADMIN_USER_IDS)
+  const isSuperAdmin = superAdminIdList.includes(userId);
 
   // Get user info from cookies
   const user = {
@@ -32,9 +34,13 @@ export async function load({ cookies, platform }) {
     discriminator: cookies.get("discord_discriminator") || "0",
   };
 
+  // Note: isAdmin will be determined per-page based on guild permissions
+  // For layout purposes, we consider superadmins as always having admin access
+  // Regular users will have their admin status determined by the admin page
   return {
     isLoggedIn: true,
-    isAdmin,
+    isAdmin: isSuperAdmin, // For backward compatibility in layout/nav
+    isSuperAdmin,
     user,
   };
 }

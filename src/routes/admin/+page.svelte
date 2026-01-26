@@ -17,15 +17,77 @@
 	{#if !data.isAdmin}
 		<div class="access-denied">
 			<h2>Access Denied</h2>
-			<p>You must be logged in as an administrator to access this page.</p>
-			<a href="/login" class="btn">Go to Login</a>
+			<p>You need to be an administrator of a server where the bot is installed to access this page.</p>
+			{#if data.user}
+				<p class="access-hint">If you're a server admin, make sure the bot is added to your server first.</p>
+				<a href="/api/auth/discord?flow=install" class="btn">Add Bot to a Server</a>
+			{:else}
+				<a href="/login" class="btn">Go to Login</a>
+			{/if}
 		</div>
 	{:else}
 		<div class="user-info">
 			<p>Logged in as: <strong>{data.user?.username || 'Unknown'}</strong></p>
+			{#if data.isSuperAdmin}
+				<span class="badge badge-superadmin">Superadmin</span>
+			{:else}
+				<span class="badge badge-admin">Server Admin</span>
+			{/if}
 			<form method="POST" action="?/logout" use:enhance>
 				<button type="submit" class="btn btn-small">Logout</button>
 			</form>
+		</div>
+		
+		<div class="section server-selector">
+			<h2>Select Server</h2>
+			{#if data.isSuperAdmin}
+				<p class="superadmin-note">As superadmin, you can view all servers where the bot is installed.</p>
+			{/if}
+			{#if data.adminGuilds && data.adminGuilds.length > 0}
+				<div class="server-dropdown-wrapper">
+					<select 
+						class="server-dropdown"
+						value={data.selectedGuildId}
+						onchange={(e) => {
+							const guildId = e.target.value;
+							if (guildId) {
+								window.location.href = `/admin?guild=${guildId}`;
+							}
+						}}
+					>
+						{#each data.adminGuilds as guild}
+							<option value={guild.id}>
+								{guild.name}{guild.owner ? ' (Owner)' : ''}{guild.botNotIn ? ' (Bot not installed)' : ''}
+							</option>
+						{/each}
+					</select>
+					{#if data.selectedGuildId}
+						{@const selectedGuild = data.adminGuilds.find(g => g.id === data.selectedGuildId)}
+						{#if selectedGuild}
+							<div class="selected-server-info">
+								{#if selectedGuild.icon}
+									<img 
+										src="https://cdn.discordapp.com/icons/{selectedGuild.id}/{selectedGuild.icon}.png" 
+										alt="{selectedGuild.name} icon"
+										class="server-icon"
+									/>
+								{:else}
+									<div class="server-icon-placeholder">
+										{selectedGuild.name.charAt(0).toUpperCase()}
+									</div>
+								{/if}
+								<span class="server-name">{selectedGuild.name}</span>
+								{#if selectedGuild.botNotIn}
+									<span class="badge badge-warning">Bot not installed</span>
+								{/if}
+							</div>
+						{/if}
+					{/if}
+				</div>
+			{:else}
+				<p class="no-servers">No servers found where you have admin permissions.</p>
+				<a href="/api/auth/discord?flow=install" class="btn">Add Bot to a Server</a>
+			{/if}
 		</div>
 		
 		<div class="admin-content">
@@ -73,8 +135,9 @@
 				</div>
 			</div>
 			
+			{#if data.isSuperAdmin}
 			<div class="section">
-				<h2>Bot Management</h2>
+				<h2>Bot Management <span class="badge badge-superadmin">Superadmin Only</span></h2>
 				<div class="actions">
 					<form method="POST" action="?/refreshCommands" use:enhance={() => {
 						loading = 'refreshCommands';
@@ -113,11 +176,16 @@
 					</form>
 				</div>
 			</div>
+			{/if}
 			
 			<div class="section">
-				<h2>Configuration</h2>
-				<p>Configure bot settings, commands, and permissions here.</p>
-				<a href="/admin/config" class="btn">Edit Configuration</a>
+				<h2>Server Configuration</h2>
+				<p>Configure bot settings and permissions for the selected server.</p>
+				{#if data.selectedGuildId}
+					<a href="/admin/config?guild={data.selectedGuildId}" class="btn">Edit Server Config</a>
+				{:else}
+					<p class="no-servers">Select a server above to configure it.</p>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -311,5 +379,114 @@
 	
 	.btn-danger:hover:not(:disabled) {
 		background: var(--color-danger-hover);
+	}
+	
+	.server-selector {
+		margin-bottom: 2rem;
+	}
+	
+	.server-dropdown-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
+	.server-dropdown {
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		font-size: 1rem;
+		min-width: 250px;
+		cursor: pointer;
+	}
+	
+	.server-dropdown:focus {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.25);
+	}
+	
+	.selected-server-info {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 1rem;
+		background: var(--color-surface-elevated);
+		border-radius: var(--radius-md);
+	}
+	
+	.server-icon {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		object-fit: cover;
+	}
+	
+	.server-icon-placeholder {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background: var(--color-primary);
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-weight: bold;
+		font-size: 1rem;
+	}
+	
+	.server-name {
+		font-weight: 500;
+		color: var(--color-text);
+	}
+	
+	.no-servers {
+		color: var(--color-text-muted);
+		margin-bottom: 1rem;
+	}
+	
+	/* Badge styles */
+	.badge {
+		display: inline-block;
+		padding: 0.25rem 0.75rem;
+		border-radius: var(--radius-sm);
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	
+	.badge-superadmin {
+		background: linear-gradient(135deg, #7c3aed, #c026d3);
+		color: white;
+	}
+	
+	.badge-admin {
+		background: rgba(88, 101, 242, 0.15);
+		color: var(--color-primary);
+		border: 1px solid var(--color-primary);
+	}
+	
+	.badge-warning {
+		background: rgba(250, 177, 22, 0.15);
+		color: #fab116;
+		border: 1px solid #fab116;
+		margin-left: 0.5rem;
+	}
+	
+	.superadmin-note {
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+		margin-bottom: 1rem;
+		font-style: italic;
+	}
+	
+	.access-hint {
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+		margin-bottom: 1.5rem;
 	}
 </style>

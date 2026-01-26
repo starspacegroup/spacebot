@@ -135,6 +135,25 @@ export async function GET({ url, cookies, platform }) {
 			maxAge: 60 * 60 * 24 * 7,
 		});
 
+		// Store access token for API calls (needed for fetching guilds)
+		cookies.set("discord_access_token", tokenData.access_token, {
+			path: "/",
+			httpOnly: true,
+			secure: true,
+			sameSite: "lax",
+			maxAge: tokenData.expires_in || 604800,
+		});
+
+		if (tokenData.refresh_token) {
+			cookies.set("discord_refresh_token", tokenData.refresh_token, {
+				path: "/",
+				httpOnly: true,
+				secure: true,
+				sameSite: "lax",
+				maxAge: 60 * 60 * 24 * 30, // 30 days
+			});
+		}
+
 		// Handle bot installation flow
 		if (flowData.flow === "install" && tokenData.guild) {
 			// The token response includes guild info when bot scope is used
@@ -149,27 +168,6 @@ export async function GET({ url, cookies, platform }) {
 			console.log("Bot installed to guild:", guildInfo);
 
 			// TODO: Store guild installation info in database or KV storage
-			// For now, we could store in a cookie or just redirect with success
-
-			// Store tokens for this guild (for later API calls)
-			// In production, store these securely in KV or database
-			cookies.set("discord_access_token", tokenData.access_token, {
-				path: "/",
-				httpOnly: true,
-				secure: true,
-				sameSite: "lax",
-				maxAge: tokenData.expires_in || 604800,
-			});
-
-			if (tokenData.refresh_token) {
-				cookies.set("discord_refresh_token", tokenData.refresh_token, {
-					path: "/",
-					httpOnly: true,
-					secure: true,
-					sameSite: "lax",
-					maxAge: 60 * 60 * 24 * 30, // 30 days
-				});
-			}
 
 			// Redirect to admin with success message
 			throw redirect(302, `/admin?installed=${tokenData.guild.id}`);
