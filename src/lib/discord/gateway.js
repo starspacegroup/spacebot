@@ -31,7 +31,9 @@ async function logEventViaAPI(event) {
     console.log(`[DEBUG] Response status: ${response.status}`);
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(`Failed to log event via API: ${response.status} - ${errorBody}`);
+      console.error(
+        `Failed to log event via API: ${response.status} - ${errorBody}`,
+      );
     } else {
       console.log(`[DEBUG] Event logged successfully`);
     }
@@ -196,8 +198,11 @@ function setupEventHandlers(client, logFn) {
   // ===== MESSAGE EVENTS =====
 
   client.on(Events.MessageCreate, async (message) => {
-    console.log(`[DEBUG] MessageCreate received from ${message.author?.tag} in ${message.guild?.name || "DM"}`);
-    if (message.author.bot) return;
+    console.log(
+      `[DEBUG] MessageCreate received from ${message.author?.tag} in ${
+        message.guild?.name || "DM"
+      }`,
+    );
     if (!message.guild) return;
 
     console.log(`[DEBUG] Logging message event for guild ${message.guild.id}`);
@@ -217,26 +222,27 @@ function setupEventHandlers(client, logFn) {
         hasEmbeds: message.embeds.length > 0,
         isReply: !!message.reference,
         mentionCount: message.mentions.users.size,
+        isBot: message.author.bot || false,
       },
     });
   });
 
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild) return;
-    if (newMessage.author?.bot) return;
 
-    await logFn({
-      guild_id: newMessage.guild.id,
+   await logFn({
+      guild_id: nwMessage.guild.id,
       event_type: "MESSAGE_UPDATE",
       event_category: "message",
-      actor_id: newMessage.author?.id,
-      actor_name: newMessage.author?.tag,
+      actor_id: newMessage.autho?.id,
+      actor_name: newMessage.author?.tg,
       channel_id: newMessage.channel.id,
-      channel_name: newMessage.channel.name,
+      channel_name: newMessage.channel.nme,
       details: {
-        messageId: newMessage.id,
-        oldContentLength: oldMessage.content?.length,
+        messageI: newMessage.id,
+        oldContentLength: oldMessge.content?.length,
         newContentLength: newMessage.content?.length,
+        isBot: newMessage.author?.bot || false,
       },
     });
   });
@@ -315,7 +321,10 @@ function setupEventHandlers(client, logFn) {
     }
 
     // User moved between voice channels
-    if (oldState.channel && newState.channel && oldState.channel.id !== newState.channel.id) {
+    if (
+      oldState.channel && newState.channel &&
+      oldState.channel.id !== newState.channel.id
+    ) {
       await logFn({
         guild_id: guildId,
         event_type: "VOICE_MOVE",
@@ -675,23 +684,3 @@ async function startBot() {
 startBot();
 
 export { createClient, setupEventHandlers };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
