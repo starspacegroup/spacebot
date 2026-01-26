@@ -1,122 +1,8 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
-import { fail, redirect } from "@sveltejs/kit";
+import { fail } from "@sveltejs/kit";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
-
-// Discord permission flags
-const ADMINISTRATOR = 0x8;
-const MANAGE_GUILD = 0x20;
-
-/**
- * Fetch user's guilds from Discord API
- * @param {string} accessToken - Discord OAuth2 access token
- * @returns {Promise<Array>} - Array of guilds
- */
-async function fetchUserGuilds(accessToken) {
-	if (!accessToken) return [];
-
-	try {
-		const response = await fetch("https://discord.com/api/users/@me/guilds", {
-			headers: {
-				Authorization: `Bearer ${accessToken}`,
-			},
-		});
-
-		if (!response.ok) {
-			console.error("Failed to fetch guilds:", response.status);
-			return [];
-		}
-
-		return await response.json();
-	} catch (error) {
-		console.error("Error fetching guilds:", error);
-		return [];
-	}
-}
-
-/**
- * Filter guilds where user has admin permissions
- * @param {Array} guilds - Array of Discord guilds
- * @returns {Array} - Filtered array of admin guilds
- */
-function filterAdminGuilds(guilds) {
-	return guilds.filter((guild) => {
-		const permissions = BigInt(guild.permissions);
-		// User has admin or manage guild permissions, or is owner
-		return guild.owner ||
-			(permissions & BigInt(ADMINISTRATOR)) !== 0n ||
-			(permissions & BigInt(MANAGE_GUILD)) !== 0n;
-	}).map((guild) => ({
-		id: guild.id,
-		name: guild.name,
-		icon: guild.icon,
-		owner: guild.owner,
-	}));
-}
-
-/**
- * Fetch guilds where the bot is a member (returns Set of IDs)
- * @param {string} botToken - Discord bot token
- * @returns {Promise<Set<string>>} - Set of guild IDs where bot is a member
- */
-async function fetchBotGuilds(botToken) {
-	if (!botToken) return new Set();
-
-	try {
-		const response = await fetch("https://discord.com/api/users/@me/guilds", {
-			headers: {
-				Authorization: `Bot ${botToken}`,
-			},
-		});
-
-		if (!response.ok) {
-			console.error("Failed to fetch bot guilds:", response.status);
-			return new Set();
-		}
-
-		const guilds = await response.json();
-		return new Set(guilds.map((g) => g.id));
-	} catch (error) {
-		console.error("Error fetching bot guilds:", error);
-		return new Set();
-	}
-}
-
-/**
- * Fetch guilds where the bot is a member with full details
- * Used by superadmins to see all bot guilds
- * @param {string} botToken - Discord bot token
- * @returns {Promise<Array>} - Array of guild objects with details
- */
-async function fetchBotGuildsWithDetails(botToken) {
-	if (!botToken) return [];
-
-	try {
-		const response = await fetch("https://discord.com/api/users/@me/guilds", {
-			headers: {
-				Authorization: `Bot ${botToken}`,
-			},
-		});
-
-		if (!response.ok) {
-			console.error("Failed to fetch bot guilds:", response.status);
-			return [];
-		}
-
-		const guilds = await response.json();
-		return guilds.map((guild) => ({
-			id: guild.id,
-			name: guild.name,
-			icon: guild.icon,
-			owner: false, // Bot is never the owner
-			memberCount: guild.approximate_member_count || null,
-		}));
-	} catch (error) {
-		console.error("Error fetching bot guilds:", error);
-		return [];
-	}
-}
 
 /**
  * Format uptime into a human-readable string
@@ -146,19 +32,19 @@ function checkIsSuperAdmin(userId, platform) {
 		process.env.ADMIN_USER_IDS || "";
 
 	const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
-		.filter(
-			Boolean,
-		);
+		.filter(Boolean);
 
 	return superAdminIdList.includes(userId);
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, url }) {
+export async function load({ cookies, platform, parent }) {
+	// Get parent layout data (includes adminGuilds, selectedGuildId, user, etc.)
+	const parentData = await parent();
+
 	// Check if user is logged in via cookie
 	const userId = cookies.get("discord_user_id");
 	const username = cookies.get("discord_username");
-	const accessToken = cookies.get("discord_access_token");
 	const avatar = cookies.get("discord_avatar");
 
 	if (!userId) {
@@ -174,8 +60,6 @@ export async function load({ cookies, platform, url }) {
 			},
 			commands: [],
 			user: null,
-			adminGuilds: [],
-			selectedGuildId: null,
 		};
 	}
 
@@ -185,97 +69,12 @@ export async function load({ cookies, platform, url }) {
 	// Calculate uptime
 	const uptime = formatUptime(Date.now() - SERVER_START_TIME);
 
-	// Get bot token to fetch bot's guilds
-	const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-		process.env.DISCORD_BOT_TOKEN;
-
-	// Fetch user's guilds and bot's guilds in parallel
-	const [allUserGuilds, botGuildIds] = await Promise.all([
-		fetchUserGuilds(accessToken),
-		fetchBotGuilds(botToken),
-	]);
-
-	let adminGuilds;
-
-	if (isSuperAdmin) {
-		// Superadmin sees ALL guilds where the bot is a member
-		// We need to fetch all bot guilds with details
-		const allBotGuilds = await fetchBotGuildsWithDetails(botToken);
-
-		// For superadmin, show all bot guilds plus any user admin guilds
-		// (in case there are guilds user admins but bot isn't in yet)
-		const userAdminGuilds = filterAdminGuilds(allUserGuilds);
-		const userAdminGuildIds = new Set(userAdminGuilds.map((g) => g.id));
-
-		// Combine: all bot guilds, plus user's admin guilds that bot isn't in
-		const combinedGuilds = [...allBotGuilds];
-		userAdminGuilds.forEach((guild) => {
-			if (!botGuildIds.has(guild.id)) {
-				combinedGuilds.push({ ...guild, botNotIn: true });
-			}
-		});
-
-		adminGuilds = combinedGuilds;
-	} else {
-		// Regular users: only guilds where they have admin permissions AND bot is present
-		adminGuilds = filterAdminGuilds(allUserGuilds).filter(
-			(guild) => botGuildIds.has(guild.id),
-		);
-	}
+	// Use adminGuilds from parent layout
+	const adminGuilds = parentData.adminGuilds || [];
+	const guildsWithBot = adminGuilds.filter((g) => g.botIsInServer !== false);
 
 	// User has admin access if they're a superadmin OR have at least one admin guild
-	const isAdmin = isSuperAdmin || adminGuilds.length > 0;
-
-	// Get selected guild from URL, cookie, or default to first
-	const urlGuildId = url.searchParams.get("guild");
-	const lastViewedGuildId = cookies.get("last_viewed_guild");
-
-	// Filter guilds where bot is actually installed
-	const guildsWithBot = adminGuilds.filter((g) => !g.botNotIn);
-
-	console.log(
-		"[Admin] urlGuildId:",
-		urlGuildId,
-		"lastViewedGuildId:",
-		lastViewedGuildId,
-		"adminGuilds.length:",
-		adminGuilds.length,
-		"guildsWithBot.length:",
-		guildsWithBot.length,
-	);
-
-	// If no guild in URL, redirect to include guild in URL for proper URL bar display
-	if (!urlGuildId && (guildsWithBot.length > 0 || adminGuilds.length > 0)) {
-		// Prefer last viewed guild if it's valid AND bot is in it, otherwise first guild with bot, then first guild
-		let targetGuildId;
-		if (
-			lastViewedGuildId && guildsWithBot.some((g) => g.id === lastViewedGuildId)
-		) {
-			targetGuildId = lastViewedGuildId;
-		} else if (guildsWithBot.length > 0) {
-			targetGuildId = guildsWithBot[0].id;
-		} else if (adminGuilds.length > 0) {
-			targetGuildId = adminGuilds[0].id;
-		}
-		if (targetGuildId) {
-			console.log("[Admin] Redirecting to guild:", targetGuildId);
-			throw redirect(302, `/admin?guild=${targetGuildId}`);
-		}
-	}
-
-	// Selected guild is from URL (we always have it in URL after redirect above)
-	const selectedGuildId = urlGuildId;
-
-	// Store the selected guild in a cookie for next visit (only if bot is in it)
-	if (selectedGuildId && guildsWithBot.some((g) => g.id === selectedGuildId)) {
-		cookies.set("last_viewed_guild", selectedGuildId, {
-			path: "/",
-			httpOnly: false,
-			secure: false, // Allow on localhost
-			sameSite: "lax",
-			maxAge: 60 * 60 * 24 * 365, // 1 year
-		});
-	}
+	const isAdmin = isSuperAdmin || guildsWithBot.length > 0;
 
 	return {
 		isAdmin,
@@ -283,7 +82,7 @@ export async function load({ cookies, platform, url }) {
 		uptime,
 		latency: Math.floor(Math.random() * 50) + 10, // Simulated latency
 		stats: {
-			servers: adminGuilds.length,
+			servers: guildsWithBot.length,
 			users: 0,
 			commandsUsed: 0,
 		},
@@ -296,8 +95,7 @@ export async function load({ cookies, platform, url }) {
 			username: username || "Unknown",
 			avatar,
 		},
-		adminGuilds,
-		selectedGuildId,
+		// Note: adminGuilds and selectedGuildId come from the layout
 	};
 }
 

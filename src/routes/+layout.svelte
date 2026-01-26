@@ -7,6 +7,10 @@
 	import { page } from '$app/stores';
 
 	let { children, data } = $props();
+	
+	// Use $page.data for the most up-to-date merged data from layout + page
+	const adminGuilds = $derived($page.data.adminGuilds || []);
+	const selectedGuildId = $derived($page.data.selectedGuildId || $page.url.searchParams.get('guild'));
 </script>
 
 <svelte:head>
@@ -19,8 +23,8 @@
 		<nav class="nav">
 			{#if $page.url.pathname.startsWith('/admin')}
 				<ServerSelector 
-					guilds={data.adminGuilds || []} 
-					selectedGuildId={data.selectedGuildId}
+					guilds={adminGuilds} 
+					selectedGuildId={selectedGuildId}
 				/>
 			{/if}
 			{#if data.isLoggedIn && data.user}

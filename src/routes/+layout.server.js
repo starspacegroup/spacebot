@@ -1,3 +1,4 @@
+import { redirect } from "@sveltejs/kit";
 import "dotenv/config";
 
 console.log(
@@ -96,18 +97,21 @@ export async function load({ cookies, platform, url }) {
         if (!addedGuildIds.has(guild.id)) {
           // Guild not already added from bot guilds
           if (botGuildIds.has(guild.id)) {
-            // Bot IS in this guild, add it without botNotIn flag
-            adminGuilds.push({ ...guild });
+            // Bot IS in this guild
+            adminGuilds.push({ ...guild, botIsInServer: true });
           } else {
             // Bot is NOT in this guild
-            adminGuilds.push({ ...guild, botNotIn: true });
+            adminGuilds.push({ ...guild, botIsInServer: false });
           }
         }
       });
 
       console.log(
         "[Layout] SUPERADMIN - Final combined guilds:",
-        adminGuilds.map((g) => ({ name: g.name, botNotIn: g.botNotIn })),
+        adminGuilds.map((g) => ({
+          name: g.name,
+          botIsInServer: g.botIsInServer,
+        })),
       );
     } else {
       // Regular users: only guilds where they have admin permissions AND bot is present
@@ -117,9 +121,10 @@ export async function load({ cookies, platform, url }) {
         userAdminGuilds.map((g) => g.name),
       );
       console.log("[Layout] Bot guild IDs:", [...botGuildIds]);
-      adminGuilds = userAdminGuilds.filter(
-        (guild) => botGuildIds.has(guild.id),
-      );
+      // Filter to only guilds where bot is present AND mark them as botIsInServer: true
+      adminGuilds = userAdminGuilds
+        .filter((guild) => botGuildIds.has(guild.id))
+        .map((guild) => ({ ...guild, botIsInServer: true }));
       console.log(
         "[Layout] Intersection (admin guilds with bot):",
         adminGuilds.map((g) => g.name),
@@ -142,7 +147,7 @@ export async function load({ cookies, platform, url }) {
     const lastViewedGuildId = cookies.get("last_viewed_guild");
 
     // Filter guilds where bot is actually installed (for default selection)
-    const guildsWithBot = adminGuilds.filter((g) => !g.botNotIn);
+    const guildsWithBot = adminGuilds.filter((g) => g.botIsInServer !== false);
 
     console.log(
       "[Layout] selectedFromUrl:",
@@ -169,16 +174,49 @@ export async function load({ cookies, platform, url }) {
       selectedGuildId = adminGuilds[0].id;
     }
 
+    // If we're on an admin page that accepts guild param and no guild in URL, redirect to include it
+    // This ensures the URL is always in sync with the selected guild
+    const isAdminPageWithGuildParam = url.pathname === "/admin" ||
+      (url.pathname.startsWith("/admin/") &&
+        !url.pathname.match(/^\/admin\/\d+/));
+
+    if (!selectedFromUrl && selectedGuildId && isAdminPageWithGuildParam) {
+      console.log(
+        "[Layout] Redirecting to include guild in URL:",
+        selectedGuildId,
+      );
+      throw redirect(302, `${url.pathname}?guild=${selectedGuildId}`);
+    }
+
+    // Store the selected guild in a cookie for next visit (only if bot is in it)
+    if (
+      selectedGuildId && guildsWithBot.some((g) => g.id === selectedGuildId)
+    ) {
+      cookies.set("last_viewed_guild", selectedGuildId, {
+        path: "/",
+        httpOnly: false,
+        secure: false, // Allow on localhost
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24 * 365, // 1 year
+      });
+    }
+
     console.log(
       "[Layout] Final adminGuilds:",
       adminGuilds.length,
+      "guildsWithBot:",
+      guildsWithBot.map((g) => ({
+        id: g.id,
+        name: g.name,
+        botIsInServer: g.botIsInServer,
+      })),
       "selectedGuildId:",
       selectedGuildId,
       "guilds:",
       adminGuilds.map((g) => ({
         id: g.id,
         name: g.name,
-        botNotIn: g.botNotIn,
+        botIsInServer: g.botIsInServer,
       })),
     );
   }
@@ -266,6 +304,7 @@ async function fetchBotGuildsWithDetails(botToken) {
       name: guild.name,
       icon: guild.icon,
       owner: false,
+      botIsInServer: true,
     }));
   } catch (error) {
     console.error("Error fetching bot guilds:", error);

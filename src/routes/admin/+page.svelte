@@ -76,7 +76,7 @@
 				<p>View all server activity including member joins/leaves, messages, voice activity, moderation actions, and more.</p>
 				{#if data.selectedGuildId}
 					{@const selectedGuild = data.adminGuilds?.find(g => g.id === data.selectedGuildId)}
-					{#if selectedGuild?.botNotIn}
+					{#if selectedGuild?.botIsInServer === false}
 						<p class="warning-text">⚠️ Bot must be installed in this server to view logs.</p>
 						<a href="/api/auth/discord?flow=install" class="btn">Add Bot to Server</a>
 					{:else}

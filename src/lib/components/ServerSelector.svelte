@@ -2,8 +2,14 @@
 	let { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
 	
+	// Debug logging
+	$effect(() => {
+		console.log('[ServerSelector] guilds:', guilds.length, guilds);
+		console.log('[ServerSelector] selectedGuildId:', selectedGuildId);
+	});
+	
 	// Filter to only show servers where the bot is installed
-	const availableGuilds = $derived(guilds.filter(g => !g.botNotIn));
+	const availableGuilds = $derived(guilds.filter(g => g.botIsInServer !== false));
 	
 	const selectedGuild = $derived(availableGuilds.find(g => g.id === selectedGuildId));
 	
