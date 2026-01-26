@@ -15,7 +15,8 @@ A Discord bot built with SvelteKit, hosted on Cloudflare Pages+Workers.
 ### Prerequisites
 
 - Node.js 18+ installed
-- A Discord Application ([create one here](https://discord.com/developers/applications))
+- A Discord Application
+  ([create one here](https://discord.com/developers/applications))
 - A Cloudflare account ([sign up here](https://dash.cloudflare.com/sign-up))
 
 ### Local Development
@@ -32,18 +33,20 @@ A Discord bot built with SvelteKit, hosted on Cloudflare Pages+Workers.
    ```
 
 3. **Set up environment variables**
-   
+
    Copy `.env.example` to `.env` and fill in your Discord credentials:
    ```bash
    cp .env.example .env
    ```
 
-   Get your Discord credentials from the [Discord Developer Portal](https://discord.com/developers/applications):
+   Get your Discord credentials from the
+   [Discord Developer Portal](https://discord.com/developers/applications):
    - `DISCORD_PUBLIC_KEY`: Found in your app's "General Information"
    - `DISCORD_CLIENT_ID`: Your application's Client ID
    - `DISCORD_CLIENT_SECRET`: Found under OAuth2 settings
    - `DISCORD_BOT_TOKEN`: Found under "Bot" settings
-   - `ADMIN_USER_IDS`: Your Discord user ID (right-click your name with Developer Mode enabled)
+   - `ADMIN_USER_IDS`: Your Discord user ID (right-click your name with
+     Developer Mode enabled)
 
 4. **Register Discord commands**
    ```bash
@@ -70,13 +73,44 @@ A Discord bot built with SvelteKit, hosted on Cloudflare Pages+Workers.
    - Select bot permissions as needed
    - Use the generated URL to invite the bot to your server
 
+### OAuth2 Code Grant Flow
+
+SpaceBot supports the full OAuth2 Code Grant flow for bot installation. This is
+required when your application needs multiple scopes and you want to ensure the
+bot doesn't join before your application is granted a token.
+
+**Why use OAuth2 Code Grant for bots?**
+
+- Ensures your application receives an access token before the bot joins the
+  server
+- Allows you to store refresh tokens for later API calls on behalf of the user
+- Provides user identity along with bot installation in a single flow
+
+**Available OAuth2 flows:**
+
+1. **Login only** (`/api/auth/discord`):
+   - Scopes: `identify guilds`
+   - Just authenticates the user without adding a bot
+
+2. **Bot installation** (`/api/auth/discord?flow=install`):
+   - Scopes: `identify guilds bot applications.commands`
+   - Authenticates user AND adds bot to selected server
+   - Returns access token, refresh token, and guild info
+
+**Query parameters for install flow:**
+
+- `flow=install` - Required for bot installation
+- `guild_id=<id>` - Pre-select a specific guild
+- `permissions=<bitfield>` - Custom permission bitfield (default: Administrator)
+
 ### Setting up Interactions Endpoint
 
 Once deployed to Cloudflare Pages:
 
 1. Get your Cloudflare Pages URL (e.g., `https://spacebot.pages.dev`)
 2. Go to Discord Developer Portal → Your Application → "General Information"
-3. Set "Interactions Endpoint URL" to: `https://your-domain.pages.dev/api/discord/interactions`
+3. Set "Interactions Endpoint URL" to:
+   `https://your-domain.pages.dev/api/discord/interactions`
 4. Discord will send a test request to verify the endpoint
 
 ## Deployment to Cloudflare Pages
@@ -100,8 +134,9 @@ Once deployed to Cloudflare Pages:
      - **Root directory**: `/` (leave empty if at root)
 
 3. **Set Environment Variables**
-   
-   In Cloudflare Pages dashboard, go to Settings → Environment Variables and add:
+
+   In Cloudflare Pages dashboard, go to Settings → Environment Variables and
+   add:
    - `DISCORD_PUBLIC_KEY`
    - `DISCORD_CLIENT_ID`
    - `DISCORD_CLIENT_SECRET`
@@ -171,13 +206,13 @@ spacebot/
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DISCORD_PUBLIC_KEY` | Your Discord app's public key | Yes |
-| `DISCORD_CLIENT_ID` | Your Discord app's client ID | Yes |
-| `DISCORD_CLIENT_SECRET` | Your Discord OAuth client secret | Yes |
-| `DISCORD_BOT_TOKEN` | Your Discord bot token | Yes |
-| `ADMIN_USER_IDS` | Comma-separated Discord user IDs with admin access | No |
+| Variable                | Description                                        | Required |
+| ----------------------- | -------------------------------------------------- | -------- |
+| `DISCORD_PUBLIC_KEY`    | Your Discord app's public key                      | Yes      |
+| `DISCORD_CLIENT_ID`     | Your Discord app's client ID                       | Yes      |
+| `DISCORD_CLIENT_SECRET` | Your Discord OAuth client secret                   | Yes      |
+| `DISCORD_BOT_TOKEN`     | Your Discord bot token                             | Yes      |
+| `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with admin access | No       |
 
 ## Security Notes
 

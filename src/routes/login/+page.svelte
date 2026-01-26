@@ -1,10 +1,28 @@
 <script>
 	let { data } = $props();
+	
+	// Get error from URL if present
+	const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+	const error = urlParams?.get('error');
+	
+	const errorMessages = {
+		'no_code': 'Authorization was cancelled or failed.',
+		'invalid_state': 'Session expired. Please try again.',
+		'config': 'Server configuration error. Please contact support.',
+		'auth_failed': 'Authentication failed. Please try again.',
+		'access_denied': 'You denied the authorization request.'
+	};
 </script>
 
 <div class="login-container">
 	<h1>Login</h1>
 	<p>Sign in with Discord to access your dashboard</p>
+	
+	{#if error}
+		<div class="error-banner">
+			{errorMessages[error] || 'An error occurred. Please try again.'}
+		</div>
+	{/if}
 	
 	<div class="login-card">
 		<a href="/api/auth/discord" class="discord-btn">
@@ -23,6 +41,25 @@
 			<li>Configure commands and permissions</li>
 		</ul>
 	</div>
+	
+	{#if data.isLoggedIn && data.isAdmin}
+		<div class="install-card">
+			<h2>Add Bot to Server</h2>
+			<p class="install-info">
+				Need to add SpaceBot to your server? Use the OAuth2 Code Grant flow 
+				to ensure proper authorization before the bot joins.
+			</p>
+			<a href="/api/auth/discord?flow=install" class="install-btn">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+					<path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+				</svg>
+				Add to Server
+			</a>
+			<p class="install-note">
+				This will request bot permissions and log you in simultaneously.
+			</p>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -37,6 +74,15 @@
 		font-size: 2.5rem;
 		margin-bottom: 0.5rem;
 		color: #5865F2;
+	}
+	
+	.error-banner {
+		background: #FEE2E2;
+		border: 1px solid #FCA5A5;
+		color: #DC2626;
+		padding: 1rem;
+		border-radius: 8px;
+		margin: 1rem 0;
 	}
 	
 	.login-card {
@@ -78,5 +124,48 @@
 	
 	li {
 		margin: 0.5rem 0;
+	}
+	
+	.install-card {
+		background: #EEF2FF;
+		border: 1px solid #C7D2FE;
+		border-radius: 12px;
+		padding: 2rem;
+		margin-top: 2rem;
+	}
+	
+	.install-card h2 {
+		font-size: 1.25rem;
+		color: #4338CA;
+		margin: 0 0 0.5rem 0;
+	}
+	
+	.install-info {
+		color: #6366F1;
+		font-size: 0.9rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	.install-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1.5rem;
+		background: #4F46E5;
+		color: white;
+		text-decoration: none;
+		border-radius: 8px;
+		font-weight: 600;
+		transition: background 0.2s;
+	}
+	
+	.install-btn:hover {
+		background: #4338CA;
+	}
+	
+	.install-note {
+		margin-top: 1rem;
+		color: #6B7280;
+		font-size: 0.8rem;
 	}
 </style>

@@ -1,9 +1,18 @@
 <script>
-	let { data } = $props();
+	import { enhance } from '$app/forms';
+	
+	let { data, form } = $props();
+	let loading = $state(null);
 </script>
 
 <div class="admin-container">
 	<h1>Admin Dashboard</h1>
+	
+	{#if form?.message}
+		<div class="alert {form.success ? 'alert-success' : 'alert-error'}">
+			{form.message}
+		</div>
+	{/if}
 	
 	{#if !data.isAdmin}
 		<div class="access-denied">
@@ -12,6 +21,13 @@
 			<a href="/login" class="btn">Go to Login</a>
 		</div>
 	{:else}
+		<div class="user-info">
+			<p>Logged in as: <strong>{data.user?.username || 'Unknown'}</strong></p>
+			<form method="POST" action="?/logout" use:enhance>
+				<button type="submit" class="btn btn-small">Logout</button>
+			</form>
+		</div>
+		
 		<div class="admin-content">
 			<div class="section">
 				<h2>Bot Status</h2>
@@ -41,18 +57,67 @@
 			</div>
 			
 			<div class="section">
+				<h2>Registered Commands</h2>
+				<div class="commands-list">
+					{#if data.commands && data.commands.length > 0}
+						<ul>
+							{#each data.commands as command}
+								<li>
+									<code>/{command.name}</code> - {command.description}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p>No commands registered.</p>
+					{/if}
+				</div>
+			</div>
+			
+			<div class="section">
 				<h2>Bot Management</h2>
 				<div class="actions">
-					<button class="btn">Refresh Commands</button>
-					<button class="btn btn-warning">Clear Cache</button>
-					<button class="btn btn-danger">Restart Bot</button>
+					<form method="POST" action="?/refreshCommands" use:enhance={() => {
+						loading = 'refreshCommands';
+						return async ({ update }) => {
+							await update();
+							loading = null;
+						};
+					}}>
+						<button type="submit" class="btn" disabled={loading === 'refreshCommands'}>
+							{loading === 'refreshCommands' ? 'Registering...' : 'Refresh Commands'}
+						</button>
+					</form>
+					
+					<form method="POST" action="?/clearCache" use:enhance={() => {
+						loading = 'clearCache';
+						return async ({ update }) => {
+							await update();
+							loading = null;
+						};
+					}}>
+						<button type="submit" class="btn btn-warning" disabled={loading === 'clearCache'}>
+							{loading === 'clearCache' ? 'Clearing...' : 'Clear Cache'}
+						</button>
+					</form>
+					
+					<form method="POST" action="?/restartBot" use:enhance={() => {
+						loading = 'restartBot';
+						return async ({ update }) => {
+							await update();
+							loading = null;
+						};
+					}}>
+						<button type="submit" class="btn btn-danger" disabled={loading === 'restartBot'}>
+							{loading === 'restartBot' ? 'Restarting...' : 'Restart Bot'}
+						</button>
+					</form>
 				</div>
 			</div>
 			
 			<div class="section">
 				<h2>Configuration</h2>
 				<p>Configure bot settings, commands, and permissions here.</p>
-				<button class="btn">Edit Configuration</button>
+				<a href="/admin/config" class="btn">Edit Configuration</a>
 			</div>
 		</div>
 	{/if}
@@ -75,6 +140,39 @@
 		font-size: 1.75rem;
 		margin-bottom: 1rem;
 		color: #333;
+	}
+	
+	.alert {
+		padding: 1rem;
+		border-radius: 8px;
+		margin-bottom: 1.5rem;
+		font-weight: 500;
+	}
+	
+	.alert-success {
+		background: #D4EDDA;
+		color: #155724;
+		border: 1px solid #C3E6CB;
+	}
+	
+	.alert-error {
+		background: #F8D7DA;
+		color: #721C24;
+		border: 1px solid #F5C6CB;
+	}
+	
+	.user-info {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 2rem;
+		padding: 1rem;
+		background: #f0f0f0;
+		border-radius: 8px;
+	}
+	
+	.user-info p {
+		margin: 0;
 	}
 	
 	.access-denied {
@@ -135,6 +233,39 @@
 		flex-wrap: wrap;
 	}
 	
+	.actions form {
+		display: inline-block;
+	}
+	
+	.commands-list {
+		background: white;
+		padding: 1rem;
+		border-radius: 8px;
+	}
+	
+	.commands-list ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	
+	.commands-list li {
+		padding: 0.5rem 0;
+		border-bottom: 1px solid #eee;
+	}
+	
+	.commands-list li:last-child {
+		border-bottom: none;
+	}
+	
+	.commands-list code {
+		background: #e8e8e8;
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		font-weight: bold;
+		color: #5865F2;
+	}
+	
 	.btn {
 		padding: 0.75rem 1.5rem;
 		border-radius: 4px;
@@ -144,11 +275,22 @@
 		color: white;
 		font-weight: 500;
 		cursor: pointer;
-		transition: background 0.2s;
+		transition: background 0.2s, opacity 0.2s;
+		display: inline-block;
 	}
 	
-	.btn:hover {
+	.btn:hover:not(:disabled) {
 		background: #4752C4;
+	}
+	
+	.btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	
+	.btn-small {
+		padding: 0.5rem 1rem;
+		font-size: 0.875rem;
 	}
 	
 	.btn-warning {
@@ -156,7 +298,7 @@
 		color: #000;
 	}
 	
-	.btn-warning:hover {
+	.btn-warning:hover:not(:disabled) {
 		background: #F0D948;
 	}
 	
@@ -164,7 +306,7 @@
 		background: #ED4245;
 	}
 	
-	.btn-danger:hover {
+	.btn-danger:hover:not(:disabled) {
 		background: #C33537;
 	}
 </style>

@@ -5,9 +5,11 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
+		"dev:tunnel": "cloudflared tunnel run spacebot",
 		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''"
+		"prepare": "svelte-kit sync || echo ''",
+		"register-commands": "node scripts/register-commands.js"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",

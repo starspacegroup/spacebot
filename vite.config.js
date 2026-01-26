@@ -5,5 +5,6 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		port: 4269,
+		allowedHosts: ["spacebot-dev.starspace.group"],
 	},
 });
