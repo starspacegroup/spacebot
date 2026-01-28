@@ -45,6 +45,19 @@
 				Sign in with Discord
 			</a>
 			
+			{#if data.devAuthEnabled}
+				<div class="dev-separator">
+					<span>or</span>
+				</div>
+				<a href="/dev-login" class="dev-btn">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+						<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+					</svg>
+					Dev Login (Bypass OAuth)
+				</a>
+				<p class="dev-note">⚠️ Development mode only</p>
+			{/if}
+			
 			<p class="info">
 				After signing in, you'll be able to:
 			</p>
@@ -222,5 +235,54 @@
 		margin-top: 1rem;
 		color: var(--color-text-muted);
 		font-size: 0.8rem;
+	}
+	
+	/* Dev auth bypass styles */
+	.dev-separator {
+		display: flex;
+		align-items: center;
+		margin: 1.5rem 0;
+		color: var(--color-text-muted);
+		font-size: 0.85rem;
+	}
+	
+	.dev-separator::before,
+	.dev-separator::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: var(--color-border);
+	}
+	
+	.dev-separator span {
+		padding: 0 1rem;
+	}
+	
+	.dev-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem 2rem;
+		background: var(--color-warning, #f0b232);
+		color: #1a1a1a;
+		text-decoration: none;
+		border-radius: var(--radius-md);
+		font-weight: 600;
+		font-size: 1.1rem;
+		transition: background var(--transition-fast), transform var(--transition-fast);
+		border: 2px dashed rgba(0, 0, 0, 0.3);
+	}
+	
+	.dev-btn:hover {
+		background: #e6a52e;
+		color: #1a1a1a;
+		transform: scale(1.02);
+	}
+	
+	.dev-note {
+		margin-top: 0.75rem;
+		color: var(--color-warning, #f0b232);
+		font-size: 0.8rem;
+		font-weight: 500;
 	}
 </style>

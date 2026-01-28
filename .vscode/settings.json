@@ -1,0 +1,7 @@
+{
+  "github.copilot.chat.codeGeneration.instructions": [
+    {
+      "text": "Never try to start, restart, or run development servers. Always assume the server is already running. Do not execute commands like 'npm run dev', 'npm start', or any server startup commands."
+    }
+  ]
+}

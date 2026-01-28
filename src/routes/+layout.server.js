@@ -6,6 +6,10 @@ console.log(
   !!process.env.DISCORD_BOT_TOKEN,
 );
 
+// Check if dev auth bypass is enabled
+const isDev = process.env.NODE_ENV !== "production";
+const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
+
 /** @type {import('./$types').LayoutServerLoad} */
 export async function load({ cookies, platform, url }) {
   // Check if user is logged in via cookie
@@ -35,6 +39,15 @@ export async function load({ cookies, platform, url }) {
   // Check if current user is a superadmin (defined in ADMIN_USER_IDS)
   const isSuperAdmin = superAdminIdList.includes(userId);
 
+  console.log(
+    "[Layout] userId:",
+    userId,
+    "superAdminIdList:",
+    superAdminIdList,
+    "isSuperAdmin:",
+    isSuperAdmin,
+  );
+
   // Get user info from cookies
   const user = {
     id: userId,
@@ -52,6 +65,35 @@ export async function load({ cookies, platform, url }) {
   console.log("[Layout] isAdminPage:", isAdminPage, "pathname:", url.pathname);
 
   if (isAdminPage) {
+    // Check if we're using dev auth bypass with a mock guild
+    const devGuildId = platform?.env?.DISCORD_GUILD_ID ||
+      process.env.DISCORD_GUILD_ID;
+    const isDevMockToken =
+      cookies.get("discord_access_token") === "dev_mock_token";
+
+    if (devAuthEnabled && isDevMockToken && devGuildId) {
+      // In dev mode with bypass, use the DISCORD_GUILD_ID as a mock server
+      console.log("[Layout] DEV MODE - Using mock guild:", devGuildId);
+      adminGuilds = [{
+        id: devGuildId,
+        name: "Dev Test Server",
+        icon: null,
+        owner: true,
+        permissions: "2147483647", // All permissions
+        botIsInServer: true,
+      }];
+      selectedGuildId = devGuildId;
+
+      return {
+        isLoggedIn: true,
+        isAdmin: true,
+        isSuperAdmin: true,
+        user,
+        adminGuilds,
+        selectedGuildId,
+      };
+    }
+
     const accessToken = cookies.get("discord_access_token");
     const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;

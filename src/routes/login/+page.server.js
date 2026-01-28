@@ -1,6 +1,12 @@
+import "dotenv/config";
+
 /** @type {import('./$types').PageServerLoad} */
-export async function load() {
-  // Login state is now provided by the root layout.server.js
-  // This file can be used for login-page-specific data if needed
-  return {};
+export async function load({ locals }) {
+  // Check if dev auth bypass is enabled
+  const isDev = process.env.NODE_ENV !== "production";
+  const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
+
+  return {
+    devAuthEnabled,
+  };
 }
