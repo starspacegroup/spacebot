@@ -19,8 +19,7 @@
 		multiple = false, // Enable multi-select
 		placeholder = 'Search channels...',
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
-		showAllOption = false, // Show "All Channels" option at top (multi-select only)
-		allOptionLabel = 'All Text Channels' // Label for the "all" option
+		showAllOption = false // Show "Any" option at top (multi-select only)
 	} = $props();
 	
 	let channels = $state([]);
@@ -118,7 +117,7 @@
 	const selectedChannelNames = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
 		return selectedIds.map(id => {
-			if (id === ALL_CHANNELS) return `✱ ${allOptionLabel}`;
+			if (id === ALL_CHANNELS) return '✱ Any';
 			const ch = flatChannels.find(c => c.id === id);
 			return ch ? `#${ch.name}` : id;
 		});
@@ -246,7 +245,9 @@
 				{#each selectedChannelNames as channelName, i}
 					<span class="channel-tag">
 						{channelName}
-						<button type="button" class="tag-remove" onclick={() => removeChannel(selectedIds[i])}>×</button>
+						{#if selectedIds[i] !== ALL_CHANNELS}
+							<button type="button" class="tag-remove" onclick={() => removeChannel(selectedIds[i])}>×</button>
+						{/if}
 					</span>
 				{/each}
 				<input
@@ -308,7 +309,7 @@
 				{@const allChannels = filteredChannels.flatMap(g => g.channels || [])}
 				
 			{#if showAllOption && multiple && !searchQuery}
-					<!-- All option -->
+					<!-- Any option -->
 					<button
 						type="button"
 						class="channel-option all-channels-option"
@@ -317,7 +318,7 @@
 					>
 						<span class="checkbox">{isAllSelected ? '☑' : '☐'}</span>
 						<span class="channel-icon">✱</span>
-						<span class="channel-name">{allOptionLabel}</span>
+						<span class="channel-name">Any</span>
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}

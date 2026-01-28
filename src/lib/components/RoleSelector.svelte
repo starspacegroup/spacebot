@@ -197,7 +197,9 @@
 				{#each selectedRoleNames as roleName, i}
 					<span class="role-tag">
 						{roleName}
-						<button type="button" class="tag-remove" onclick={() => removeRole(selectedIds[i])}>×</button>
+						{#if selectedIds[i] !== ANY_ROLE}
+							<button type="button" class="tag-remove" onclick={() => removeRole(selectedIds[i])}>×</button>
+						{/if}
 					</span>
 				{/each}
 				<input
