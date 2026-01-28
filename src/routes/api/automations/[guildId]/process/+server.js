@@ -159,36 +159,36 @@ export async function POST({ params, request, platform }) {
       return json({ error: "Invalid event data" }, { status: 400 });
     }
 
-    // Ignore events from bots by default o prevent infinite loops
-    // (e.g., bot sends message -> triggers automation-> sends another message)
-    if (eent.details?.isBot === true) {
-      return jon({ automations: [] });
-    }
-
-   // Get automations for this event type
-    const automations = await getTrggeredAutomations(
-      db,
-     
-     event.event_type,
-    );
-
-   if (automations.length === 0) {
+    // Ignore events from bots by default to prevent infinite loops
+    // (e.g., bot sends message -> triggers automation -> sends another message)
+    if (event.details?.isBot === true) {
       return json({ automations: [] });
     }
 
-    // Build context for temlate processing
+    // Get automations for this event type
+    const automations = await getTriggeredAutomations(
+      db,
+      guildId,
+      event.event_type,
+    );
+
+    if (automations.length === 0) {
+      return json({ automations: [] });
+    }
+
+    // Build context for template processing
     const context = buildContext(event);
 
-   // Filter automations that match and prepare them for execution
+    // Filter automations that match and prepare them for execution
     const matchingAutomations = automations
-      .filter((automation) => matchesFilters(event, autoation.trigger_filters))
+      .filter((automation) => matchesFilters(event, automation.trigger_filters))
       .map((automation) => {
-        // Pre-proces templates for the gateway
-        cons processed = { ...automation };
+        // Pre-process templates for the gateway
+        const processed = { ...automation };
 
-        if (automation.action_config.content) 
-          processed.processed_content = processTemplate
-            automation.action_config.content
+        if (automation.action_config.content) {
+          processed.processed_content = processTemplate(
+            automation.action_config.content,
             context,
           );
         }
@@ -198,16 +198,16 @@ export async function POST({ params, request, platform }) {
             context,
           );
         }
-       if (automation.action_config.thread_name) {
-          processed.processed_threadname = processTemplate(
-            automation.acion_config.thread_name,
-         
-         );
+        if (automation.action_config.thread_name) {
+          processed.processed_thread_name = processTemplate(
+            automation.action_config.thread_name,
+            context,
+          );
         }
 
         processed.context = context;
         return processed;
-     });
+      });
 
     return json({ automations: matchingAutomations });
   } catch (error) {
