@@ -30,18 +30,18 @@ export async function load({ cookies, platform, parent, params }) {
   }
 
   try {
-    const result = await getAutomation(
+    const automation = await getAutomation(
       db,
       automationId,
       parentData.selectedGuildId,
     );
 
-    if (!result.success || !result.automation) {
+    if (!automation) {
       throw error(404, "Automation not found");
     }
 
     return {
-      automation: result.automation,
+      automation,
       // Meta info for the UI
       actionTypes: ACTION_TYPES,
       filterTypes: FILTER_TYPES,
