@@ -291,6 +291,14 @@
 							</div>
 							<span class="quick-link-arrow">→</span>
 						</a>
+						<a href="/admin/{data.selectedGuildId}/commands" class="quick-link-card">
+							<div class="quick-link-icon">💬</div>
+							<div class="quick-link-info">
+								<span class="quick-link-title">Slash Commands</span>
+								<span class="quick-link-desc">Create custom slash commands</span>
+							</div>
+							<span class="quick-link-arrow">→</span>
+						</a>
 					</div>
 				</section>
 			{/if}
