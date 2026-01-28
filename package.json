@@ -13,8 +13,8 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"register-commands": "node scripts/register-commands.js",
 		"db:create": "wrangler d1 create spacebot-logs",
-		"db:migrate": "wrangler d1 execute spacebot-logs --file=./migrations/0001_create_event_logs.sql",
-		"db:migrate:local": "wrangler d1 execute spacebot-logs --local --file=./migrations/0001_create_event_logs.sql"
+		"db:migrate": "node scripts/migrate.js",
+		"db:migrate:local": "node scripts/migrate.js --local"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.21.2",

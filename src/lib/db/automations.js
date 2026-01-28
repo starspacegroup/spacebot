@@ -1,0 +1,586 @@
+/**
+ * Automation database functions
+ * Handles CRUD operations for automations and execution logging
+ */
+
+/**
+ * @typedef {Object} Automation
+ * @property {number} id
+ * @property {string} guild_id
+ * @property {string} name
+ * @property {string} description
+ * @property {boolean} enabled
+ * @property {string} trigger_event - Event type that triggers this automation
+ * @property {Object} trigger_filters - Conditions that must be met
+ * @property {string} action_type - Action to perform
+ * @property {Object} action_config - Action-specific configuration
+ * @property {string} created_by
+ * @property {string} created_at
+ * @property {string} updated_at
+ * @property {string} last_triggered_at
+ * @property {number} trigger_count
+ */
+
+/**
+ * Action types and their configurations
+ */
+export const ACTION_TYPES = {
+  DELETE_MESSAGES: {
+    name: "Delete Messages",
+    description: "Delete messages from a user in a channel",
+    icon: "🗑️",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Channel" },
+      limit: {
+        type: "number",
+        default: 100,
+        max: 1000,
+        label: "Max messages to delete",
+      },
+    },
+  },
+  SEND_MESSAGE: {
+    name: "Send Message",
+    description: "Send a message to a channel",
+    icon: "💬",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Channel" },
+      content: {
+        type: "text",
+        required: true,
+        label: "Message content",
+        supportsVariables: true,
+      },
+      embed: { type: "boolean", default: false, label: "Send as embed" },
+    },
+  },
+  ADD_ROLE: {
+    name: "Add Role",
+    description: "Add a role to the user",
+    icon: "🏷️",
+    configSchema: {
+      role_id: { type: "role", required: true, label: "Role" },
+    },
+  },
+  REMOVE_ROLE: {
+    name: "Remove Role",
+    description: "Remove a role from the user",
+    icon: "🏷️",
+    configSchema: {
+      role_id: { type: "role", required: true, label: "Role" },
+    },
+  },
+  KICK_MEMBER: {
+    name: "Kick Member",
+    description: "Kick the member from the server",
+    icon: "👢",
+    configSchema: {
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
+  BAN_MEMBER: {
+    name: "Ban Member",
+    description: "Ban the member from the server",
+    icon: "🔨",
+    configSchema: {
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+      delete_days: {
+        type: "number",
+        default: 0,
+        max: 7,
+        label: "Delete message history (days)",
+      },
+    },
+  },
+  TIMEOUT_MEMBER: {
+    name: "Timeout Member",
+    description: "Timeout the member",
+    icon: "⏰",
+    configSchema: {
+      duration_minutes: {
+        type: "number",
+        required: true,
+        default: 60,
+        label: "Duration (minutes)",
+      },
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
+  LOG_TO_CHANNEL: {
+    name: "Log to Channel",
+    description: "Send a log message to a channel with event details",
+    icon: "📋",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Log channel" },
+      content: {
+        type: "text",
+        label: "Custom message",
+        supportsVariables: true,
+      },
+      include_details: {
+        type: "boolean",
+        default: true,
+        label: "Include event details",
+      },
+    },
+  },
+  CREATE_THREAD: {
+    name: "Create Thread",
+    description: "Create a thread in a channel",
+    icon: "🧵",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Channel" },
+      thread_name: {
+        type: "text",
+        required: true,
+        label: "Thread name",
+        supportsVariables: true,
+      },
+      auto_archive_duration: {
+        type: "select",
+        options: [60, 1440, 4320, 10080],
+        default: 1440,
+        label: "Auto-archive after (minutes)",
+      },
+    },
+  },
+};
+
+/**
+ * Filter types that can be applied to triggers
+ */
+export const FILTER_TYPES = {
+  channel_id: {
+    type: "channel",
+    label: "In Channel",
+    description: "Only trigger in this channel",
+  },
+  not_channel_id: {
+    type: "channel",
+    label: "Not In Channel",
+    description: "Don't trigger in this channel",
+  },
+  actor_has_role: {
+    type: "role",
+    label: "Actor Has Role",
+    description: "Actor must have this role",
+  },
+  actor_missing_role: {
+    type: "role",
+    label: "Actor Missing Role",
+    description: "Actor must NOT have this role",
+  },
+  target_has_role: {
+    type: "role",
+    label: "Target Has Role",
+    description: "Target must have this role",
+  },
+  content_contains: {
+    type: "text",
+    label: "Content Contains",
+    description: "Message content must contain text",
+  },
+  content_regex: {
+    type: "text",
+    label: "Content Matches Regex",
+    description: "Message content matches pattern",
+  },
+  is_bot: { type: "boolean", label: "Is Bot", description: "Actor is a bot" },
+  is_not_bot: {
+    type: "boolean",
+    label: "Is Not Bot",
+    description: "Actor is not a bot",
+  },
+  min_account_age_days: {
+    type: "number",
+    label: "Min Account Age (days)",
+    description: "Account must be at least X days old",
+  },
+  max_account_age_days: {
+    type: "number",
+    label: "Max Account Age (days)",
+    description: "Account must be less than X days old",
+  },
+};
+
+/**
+ * Template variables available for use in automation messages
+ */
+export const TEMPLATE_VARIABLES = {
+  "user.id": "Actor's Discord ID",
+  "user.name": "Actor's username",
+  "user.mention": "Mention the actor",
+  "user.tag": "Actor's tag (username#0000)",
+  "target.id": "Target's Discord ID",
+  "target.name": "Target's username",
+  "target.mention": "Mention the target",
+  "channel.id": "Channel ID",
+  "channel.name": "Channel name",
+  "channel.mention": "Mention the channel",
+  "guild.id": "Server ID",
+  "guild.name": "Server name",
+  "trigger.event": "Event type that triggered",
+  "trigger.category": "Event category",
+  "trigger.time": "When the event occurred",
+};
+
+/**
+ * Create a new automation
+ * @param {D1Database} db
+ * @param {Partial<Automation>} automation
+ * @returns {Promise<{success: boolean, id?: number, error?: string}>}
+ */
+export async function createAutomation(db, automation) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  try {
+    const result = await db.prepare(`
+      INSERT INTO automations (
+        guild_id, name, description, enabled,
+        trigger_event, trigger_filters,
+        action_type, action_config,
+        created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      automation.guild_id,
+      automation.name,
+      automation.description || null,
+      automation.enabled !== false ? 1 : 0,
+      automation.trigger_event,
+      automation.trigger_filters
+        ? JSON.stringify(automation.trigger_filters)
+        : null,
+      automation.action_type,
+      JSON.stringify(automation.action_config),
+      automation.created_by || null,
+    ).run();
+
+    return { success: true, id: result.meta?.last_row_id };
+  } catch (error) {
+    console.error("Failed to create automation:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Update an existing automation
+ * @param {D1Database} db
+ * @param {number} id
+ * @param {Partial<Automation>} updates
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function updateAutomation(db, id, updates) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  try {
+    const fields = [];
+    const values = [];
+
+    if (updates.name !== undefined) {
+      fields.push("name = ?");
+      values.push(updates.name);
+    }
+    if (updates.description !== undefined) {
+      fields.push("description = ?");
+      values.push(updates.description);
+    }
+    if (updates.enabled !== undefined) {
+      fields.push("enabled = ?");
+      values.push(updates.enabled ? 1 : 0);
+    }
+    if (updates.trigger_event !== undefined) {
+      fields.push("trigger_event = ?");
+      values.push(updates.trigger_event);
+    }
+    if (updates.trigger_filters !== undefined) {
+      fields.push("trigger_filters = ?");
+      values.push(
+        updates.trigger_filters
+          ? JSON.stringify(updates.trigger_filters)
+          : null,
+      );
+    }
+    if (updates.action_type !== undefined) {
+      fields.push("action_type = ?");
+      values.push(updates.action_type);
+    }
+    if (updates.action_config !== undefined) {
+      fields.push("action_config = ?");
+      values.push(JSON.stringify(updates.action_config));
+    }
+
+    fields.push("updated_at = CURRENT_TIMESTAMP");
+    values.push(id);
+
+    await db.prepare(`
+      UPDATE automations SET ${fields.join(", ")} WHERE id = ?
+    `).bind(...values).run();
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update automation:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Delete an automation
+ * @param {D1Database} db
+ * @param {number} id
+ * @param {string} guildId - Ensure deletion is for correct guild
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteAutomation(db, id, guildId) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  try {
+    await db.prepare(`
+      DELETE FROM automations WHERE id = ? AND guild_id = ?
+    `).bind(id, guildId).run();
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to delete automation:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Get a single automation by ID
+ * @param {D1Database} db
+ * @param {number} id
+ * @param {string} guildId
+ * @returns {Promise<Automation|null>}
+ */
+export async function getAutomation(db, id, guildId) {
+  if (!db) return null;
+
+  try {
+    const result = await db.prepare(`
+      SELECT * FROM automations WHERE id = ? AND guild_id = ?
+    `).bind(id, guildId).first();
+
+    if (!result) return null;
+
+    return {
+      ...result,
+      enabled: !!result.enabled,
+      trigger_filters: result.trigger_filters
+        ? JSON.parse(result.trigger_filters)
+        : null,
+      action_config: result.action_config
+        ? JSON.parse(result.action_config)
+        : {},
+    };
+  } catch (error) {
+    console.error("Failed to get automation:", error);
+    return null;
+  }
+}
+
+/**
+ * Get all automations for a guild
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {Object} options
+ * @returns {Promise<{automations: Automation[], total: number}>}
+ */
+export async function getAutomations(db, guildId, options = {}) {
+  if (!db) {
+    return { automations: [], total: 0 };
+  }
+
+  const { limit = 50, offset = 0, eventType, enabled } = options;
+
+  try {
+    let whereClause = "WHERE guild_id = ?";
+    const params = [guildId];
+
+    if (eventType) {
+      whereClause += " AND trigger_event = ?";
+      params.push(eventType);
+    }
+
+    if (enabled !== undefined) {
+      whereClause += " AND enabled = ?";
+      params.push(enabled ? 1 : 0);
+    }
+
+    const countResult = await db.prepare(`
+      SELECT COUNT(*) as total FROM automations ${whereClause}
+    `).bind(...params).first();
+
+    const results = await db.prepare(`
+      SELECT * FROM automations ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all();
+
+    return {
+      automations: (results.results || []).map((a) => ({
+        ...a,
+        enabled: !!a.enabled,
+        trigger_filters: a.trigger_filters
+          ? JSON.parse(a.trigger_filters)
+          : null,
+        action_config: a.action_config ? JSON.parse(a.action_config) : {},
+      })),
+      total: countResult?.total || 0,
+    };
+  } catch (error) {
+    console.error("Failed to get automations:", error);
+    return { automations: [], total: 0 };
+  }
+}
+
+/**
+ * Get automations that should trigger for a specific event
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {string} eventType
+ * @returns {Promise<Automation[]>}
+ */
+export async function getTriggeredAutomations(db, guildId, eventType) {
+  if (!db) return [];
+
+  try {
+    const results = await db.prepare(`
+      SELECT * FROM automations 
+      WHERE guild_id = ? AND trigger_event = ? AND enabled = 1
+    `).bind(guildId, eventType).all();
+
+    return (results.results || []).map((a) => ({
+      ...a,
+      enabled: !!a.enabled,
+      trigger_filters: a.trigger_filters ? JSON.parse(a.trigger_filters) : null,
+      action_config: a.action_config ? JSON.parse(a.action_config) : {},
+    }));
+  } catch (error) {
+    console.error("Failed to get triggered automations:", error);
+    return [];
+  }
+}
+
+/**
+ * Log automation execution
+ * @param {D1Database} db
+ * @param {Object} log
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function logAutomationExecution(db, log) {
+  if (!db) return { success: false };
+
+  try {
+    await db.prepare(`
+      INSERT INTO automation_logs (
+        automation_id, guild_id, trigger_event,
+        trigger_data, action_result, success, error_message, execution_time_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      log.automation_id,
+      log.guild_id,
+      log.trigger_event,
+      log.trigger_data ? JSON.stringify(log.trigger_data) : null,
+      log.action_result ? JSON.stringify(log.action_result) : null,
+      log.success ? 1 : 0,
+      log.error_message || null,
+      log.execution_time_ms || null,
+    ).run();
+
+    // Update automation trigger stats
+    await db.prepare(`
+      UPDATE automations 
+      SET trigger_count = trigger_count + 1, last_triggered_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(log.automation_id).run();
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to log automation execution:", error);
+    return { success: false };
+  }
+}
+
+/**
+ * Get automation execution logs
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {Object} options
+ * @returns {Promise<{logs: Array, total: number}>}
+ */
+export async function getAutomationLogs(db, guildId, options = {}) {
+  if (!db) return { logs: [], total: 0 };
+
+  const { limit = 50, offset = 0, automationId, success } = options;
+
+  try {
+    let whereClause = "WHERE al.guild_id = ?";
+    const params = [guildId];
+
+    if (automationId) {
+      whereClause += " AND al.automation_id = ?";
+      params.push(automationId);
+    }
+
+    if (success !== undefined) {
+      whereClause += " AND al.success = ?";
+      params.push(success ? 1 : 0);
+    }
+
+    const countResult = await db.prepare(`
+      SELECT COUNT(*) as total FROM automation_logs al ${whereClause}
+    `).bind(...params).first();
+
+    const results = await db.prepare(`
+      SELECT al.*, a.name as automation_name 
+      FROM automation_logs al
+      LEFT JOIN automations a ON al.automation_id = a.id
+      ${whereClause}
+      ORDER BY al.created_at DESC
+      LIMIT ? OFFSET ?
+    `).bind(...params, limit, offset).all();
+
+    return {
+      logs: (results.results || []).map((log) => ({
+        ...log,
+        success: !!log.success,
+        trigger_data: log.trigger_data ? JSON.parse(log.trigger_data) : null,
+        action_result: log.action_result ? JSON.parse(log.action_result) : null,
+      })),
+      total: countResult?.total || 0,
+    };
+  } catch (error) {
+    console.error("Failed to get automation logs:", error);
+    return { logs: [], total: 0 };
+  }
+}
+
+/**
+ * Toggle automation enabled state
+ * @param {D1Database} db
+ * @param {number} id
+ * @param {string} guildId
+ * @param {boolean} enabled
+ * @returns {Promise<{success: boolean}>}
+ */
+export async function toggleAutomation(db, id, guildId, enabled) {
+  if (!db) return { success: false };
+
+  try {
+    await db.prepare(`
+      UPDATE automations SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND guild_id = ?
+    `).bind(enabled ? 1 : 0, id, guildId).run();
+
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to toggle automation:", error);
+    return { success: false };
+  }
+}

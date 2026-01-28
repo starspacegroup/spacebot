@@ -92,7 +92,7 @@ export async function load({ cookies, platform, parent }) {
 	let logStats = null;
 
 	if (selectedGuildId) {
-		const db = platform?.env?.spacebot_logs;
+		const db = platform?.env?.DB;
 		if (db) {
 			try {
 				// Get the 10 most recent logs for the widget

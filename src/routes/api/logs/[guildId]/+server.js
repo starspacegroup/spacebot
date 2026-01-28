@@ -117,7 +117,7 @@ export async function GET({ params, url, cookies, platform }) {
   const search = url.searchParams.get("search");
   const includeStats = url.searchParams.get("stats") === "true";
 
-  const db = platform?.env?.spacebot_logs;
+  const db = platform?.env?.DB;
 
   console.log(
     "[DEBUG] platform.env keys:",

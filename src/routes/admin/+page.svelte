@@ -265,6 +265,37 @@
 			</div>
 		</section>
 		
+		<!-- Quick Links Section -->
+		{#if data.selectedGuildId}
+			{@const selectedGuild = data.adminGuilds?.find(g => g.id === data.selectedGuildId)}
+			{#if selectedGuild?.botIsInServer !== false}
+				<section class="quick-links-section">
+					<h2>
+						<span class="section-icon">🔧</span>
+						Server Management
+					</h2>
+					<div class="quick-links-grid">
+						<a href="/admin/{data.selectedGuildId}/logs" class="quick-link-card">
+							<div class="quick-link-icon">📊</div>
+							<div class="quick-link-info">
+								<span class="quick-link-title">Event Logs</span>
+								<span class="quick-link-desc">View all server activity logs</span>
+							</div>
+							<span class="quick-link-arrow">→</span>
+						</a>
+						<a href="/admin/{data.selectedGuildId}/automations" class="quick-link-card">
+							<div class="quick-link-icon">⚡</div>
+							<div class="quick-link-info">
+								<span class="quick-link-title">Automations</span>
+								<span class="quick-link-desc">Set up automatic actions on events</span>
+							</div>
+							<span class="quick-link-arrow">→</span>
+						</a>
+					</div>
+				</section>
+			{/if}
+		{/if}
+		
 		<!-- Bot Commands Section -->
 		<section class="commands-section">
 			<div class="section-header">
@@ -885,6 +916,99 @@
 		.stats-section {
 			margin-bottom: 2rem;
 		}
+	}
+	
+	/* Quick Links Section */
+	.quick-links-section {
+		margin-bottom: 1.5rem;
+	}
+	
+	@media (min-width: 640px) {
+		.quick-links-section {
+			margin-bottom: 2rem;
+		}
+	}
+	
+	.quick-links-section h2 {
+		font-size: 1.1rem;
+		font-weight: 600;
+		margin: 0 0 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--color-text);
+	}
+	
+	.quick-links-grid {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+	}
+	
+	@media (min-width: 640px) {
+		.quick-links-grid {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 1rem;
+		}
+	}
+	
+	.quick-link-card {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 1rem 1.25rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		text-decoration: none;
+		color: inherit;
+		transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+	}
+	
+	.quick-link-card:hover {
+		transform: translateY(-2px);
+		box-shadow: var(--shadow-md);
+		border-color: var(--color-primary);
+	}
+	
+	.quick-link-icon {
+		font-size: 1.5rem;
+		width: 3rem;
+		height: 3rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(88, 101, 242, 0.15);
+		border-radius: var(--radius-md);
+		flex-shrink: 0;
+	}
+	
+	.quick-link-info {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	
+	.quick-link-title {
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	
+	.quick-link-desc {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+	
+	.quick-link-arrow {
+		font-size: 1.25rem;
+		color: var(--color-text-muted);
+		transition: transform var(--transition-fast), color var(--transition-fast);
+	}
+	
+	.quick-link-card:hover .quick-link-arrow {
+		transform: translateX(4px);
+		color: var(--color-primary);
 	}
 	
 	.stats-grid {

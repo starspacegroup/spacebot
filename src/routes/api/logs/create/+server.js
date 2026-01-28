@@ -37,7 +37,7 @@ export async function POST({ request, platform }) {
       return json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const db = platform?.env?.spacebot_logs;
+    const db = platform?.env?.DB;
     console.log("[DEBUG] DB binding exists:", !!db);
 
     if (!db) {

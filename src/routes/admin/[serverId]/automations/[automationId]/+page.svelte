@@ -1,0 +1,655 @@
+<script>
+	import { enhance } from '$app/forms';
+	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
+	
+	let { data, form } = $props();
+	
+	// Initialize with empty strings, will be updated by $effect
+	let selectedEventType = $state('');
+	let selectedActionType = $state('');
+	let showDeleteConfirm = $state(false);
+	
+	// Update state when data changes (runs on mount and data updates)
+	$effect(() => {
+		if (data.automation) {
+			selectedEventType = data.automation.trigger_event;
+			selectedActionType = data.automation.action_type;
+		}
+	});
+	
+	// Get parent data for guild info
+	const selectedGuildId = $derived(data.selectedGuildId);
+	const automation = $derived(data.automation);
+	
+	// Get category info
+	function getCategoryInfo(category) {
+		return data.eventCategories[category] || { name: category, icon: '📌', color: '#888' };
+	}
+	
+	// Group events by category for dropdown
+	function getEventsByCategory() {
+		const grouped = {};
+		for (const [eventType, info] of Object.entries(data.eventTypes)) {
+			const category = info.category;
+			if (!grouped[category]) {
+				grouped[category] = [];
+			}
+			grouped[category].push({ type: eventType, ...info });
+		}
+		return grouped;
+	}
+	
+	// Get action config schema
+	function getActionConfigSchema(actionType) {
+		return data.actionTypes[actionType]?.configSchema || {};
+	}
+</script>
+
+<svelte:head>
+	<title>Edit {automation.name} | SpaceBot Admin</title>
+</svelte:head>
+
+<div class="automation-form-page">
+	<header class="page-header">
+		<a href="/admin/{selectedGuildId}/automations" class="back-link">
+			← Back to Automations
+		</a>
+		<h1>
+			<span class="header-icon">✏️</span>
+			Edit Automation
+		</h1>
+		<p class="header-subtitle">Modify "{automation.name}"</p>
+	</header>
+	
+	{#if form?.error}
+		<div class="error-banner">
+			<span>⚠️</span>
+			<span>{form.error}</span>
+		</div>
+	{/if}
+	
+	<form method="POST" action="?/update" use:enhance class="automation-form">
+		<input type="hidden" name="guild_id" value={selectedGuildId}>
+		
+		<!-- Basic Info Section -->
+		<section class="form-section">
+			<h2>📝 Basic Info</h2>
+			
+			<div class="form-group">
+				<label for="name">Automation Name <span class="required">*</span></label>
+				<input 
+					type="text" 
+					id="name" 
+					name="name" 
+					required 
+					placeholder="e.g., Welcome Message"
+					value={automation.name}
+				/>
+			</div>
+			
+			<div class="form-group">
+				<label for="description">Description</label>
+				<textarea 
+					id="description" 
+					name="description" 
+					placeholder="What does this automation do?"
+					rows="2"
+				>{automation.description || ''}</textarea>
+			</div>
+		</section>
+		
+		<!-- Trigger Section -->
+		<section class="form-section">
+			<h2>📥 Trigger (When)</h2>
+			<p class="section-description">Choose what event will trigger this automation</p>
+			
+			<div class="form-group">
+				<label for="trigger_event">Event Type <span class="required">*</span></label>
+				<select id="trigger_event" name="trigger_event" required bind:value={selectedEventType}>
+					{#each Object.entries(getEventsByCategory()) as [category, events]}
+						{@const catInfo = getCategoryInfo(category)}
+						<optgroup label="{catInfo.icon} {catInfo.name}">
+							{#each events as event}
+								<option value={event.type}>{event.type.replace(/_/g, ' ')} - {event.description}</option>
+							{/each}
+						</optgroup>
+					{/each}
+				</select>
+			</div>
+			
+			{#if automation.trigger_filters && Object.keys(automation.trigger_filters).length > 0}
+				<div class="current-filters">
+					<span class="filters-label">Current Filters:</span>
+					{#each Object.entries(automation.trigger_filters) as [key, value]}
+						<span class="filter-tag">{key}: {value}</span>
+					{/each}
+				</div>
+			{/if}
+			
+			<div class="filters-grid">
+				<p class="filters-hint">Update or add filters to narrow down when this automation triggers</p>
+				{#each Object.entries(data.filterTypes) as [filterKey, filterInfo]}
+					<div class="form-group">
+						<label for="filter_{filterKey}">{filterInfo.label}</label>
+						<input 
+							type={filterInfo.type === 'number' ? 'number' : 'text'} 
+							id="filter_{filterKey}" 
+							name="filter.{filterKey}" 
+							placeholder={filterInfo.description}
+							value={automation.trigger_filters?.[filterKey] || ''}
+						/>
+					</div>
+				{/each}
+			</div>
+		</section>
+		
+		<!-- Action Section -->
+		<section class="form-section">
+			<h2>📤 Action (Then)</h2>
+			<p class="section-description">Choose what happens when the trigger fires</p>
+			
+			<div class="form-group">
+				<label for="action_type">Action Type <span class="required">*</span></label>
+				<select id="action_type" name="action_type" required bind:value={selectedActionType}>
+					{#each Object.entries(data.actionTypes) as [actionType, info]}
+						<option value={actionType}>{info.icon} {info.name} - {info.description}</option>
+					{/each}
+				</select>
+			</div>
+			
+			{#if selectedActionType}
+				{@const schema = getActionConfigSchema(selectedActionType)}
+				<div class="action-config">
+					<h3>Configure Action</h3>
+					{#each Object.entries(schema) as [configKey, config]}
+						<div class="form-group">
+							<label for="config_{configKey}">
+								{config.label}
+								{#if config.required}<span class="required">*</span>{/if}
+							</label>
+							{#if config.type === 'text'}
+								<textarea 
+									id="config_{configKey}" 
+									name="action_config.{configKey}"
+									required={config.required}
+									placeholder={config.supportsVariables ? 'Supports variables like {user.mention}' : ''}
+									rows="3"
+								>{automation.action_config?.[configKey] || ''}</textarea>
+								{#if config.supportsVariables}
+									<div class="variables-help">
+										<span class="variables-label">Available variables:</span>
+										<div class="variables-list">
+											{#each Object.entries(data.templateVariables) as [varName, desc]}
+												<code title={desc}>{`{${varName}}`}</code>
+											{/each}
+										</div>
+									</div>
+								{/if}
+							{:else if config.type === 'number'}
+								<input 
+									type="number" 
+									id="config_{configKey}" 
+									name="action_config.{configKey}"
+									value={automation.action_config?.[configKey] || config.default || ''}
+									min="0"
+									max={config.max || 999999}
+									required={config.required}
+								/>
+							{:else if config.type === 'boolean'}
+								<label class="checkbox-label">
+									<input 
+										type="checkbox" 
+										name="action_config.{configKey}"
+										value="true"
+										checked={automation.action_config?.[configKey] === 'true' || automation.action_config?.[configKey] === true}
+									/>
+									<span>Enable</span>
+								</label>
+							{:else if config.type === 'channel'}
+								<ChannelSelector
+									guildId={selectedGuildId}
+									name="action_config.{configKey}"
+									value={automation.action_config?.[configKey] || ''}
+									required={config.required}
+									placeholder="Search for a channel..."
+									typeFilter="sendable"
+								/>
+							{:else if config.type === 'role'}
+								<input 
+									type="text" 
+									id="config_{configKey}" 
+									name="action_config.{configKey}"
+									placeholder="Enter role ID"
+									value={automation.action_config?.[configKey] || ''}
+									required={config.required}
+								/>
+								<p class="field-hint">Right-click on the role in Discord and select "Copy ID"</p>
+							{:else if config.type === 'select'}
+								<select 
+									id="config_{configKey}" 
+									name="action_config.{configKey}"
+									required={config.required}
+								>
+									{#each config.options as opt}
+										<option value={opt} selected={opt === (automation.action_config?.[configKey] || config.default)}>{opt}</option>
+									{/each}
+								</select>
+							{:else}
+								<input 
+									type="text" 
+									id="config_{configKey}" 
+									name="action_config.{configKey}"
+									value={automation.action_config?.[configKey] || ''}
+									required={config.required}
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</section>
+		
+		<!-- Form Actions -->
+		<div class="form-actions">
+			<button 
+				type="button" 
+				class="btn btn-danger" 
+				onclick={() => showDeleteConfirm = true}
+			>
+				<span>🗑️</span>
+				Delete
+			</button>
+			<div class="form-actions-right">
+				<a href="/admin/{selectedGuildId}/automations" class="btn btn-secondary">
+					Cancel
+				</a>
+				<button type="submit" class="btn btn-primary">
+					<span>✓</span>
+					Save Changes
+				</button>
+			</div>
+		</div>
+	</form>
+	
+	<!-- Delete Confirmation -->
+	{#if showDeleteConfirm}
+		<div 
+			class="confirm-overlay" 
+			onclick={() => showDeleteConfirm = false}
+			onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
+			role="presentation"
+		>
+			<div 
+				class="confirm-dialog" 
+				role="alertdialog" 
+				aria-modal="true" 
+				aria-labelledby="delete-dialog-title"
+				tabindex="-1"
+				onclick={(e) => e.stopPropagation()}
+				onkeydown={(e) => e.stopPropagation()}
+			>
+				<h3 id="delete-dialog-title">🗑️ Delete Automation</h3>
+				<p>Are you sure you want to delete <strong>"{automation.name}"</strong>? This action cannot be undone.</p>
+				<div class="confirm-actions">
+					<button class="btn btn-secondary" onclick={() => showDeleteConfirm = false}>
+						Cancel
+					</button>
+					<form method="POST" action="?/delete" use:enhance>
+						<input type="hidden" name="guild_id" value={selectedGuildId}>
+						<button type="submit" class="btn btn-danger">
+							Delete Automation
+						</button>
+					</form>
+				</div>
+			</div>
+		</div>
+	{/if}
+</div>
+
+<style>
+	.automation-form-page {
+		padding: 1.5rem;
+		max-width: 800px;
+		margin: 0 auto;
+	}
+	
+	.back-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		color: var(--text-muted);
+		text-decoration: none;
+		font-size: 0.875rem;
+		margin-bottom: 1rem;
+		transition: color 0.2s;
+	}
+	
+	.back-link:hover {
+		color: var(--text-primary);
+	}
+	
+	.page-header {
+		margin-bottom: 2rem;
+	}
+	
+	.page-header h1 {
+		font-size: 1.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0;
+	}
+	
+	.header-icon {
+		font-size: 1.5rem;
+	}
+	
+	.header-subtitle {
+		color: var(--text-muted);
+		margin: 0.5rem 0 0;
+	}
+	
+	.error-banner {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem;
+		background: rgba(237, 66, 69, 0.15);
+		border: 1px solid #ED4245;
+		border-radius: 8px;
+		color: #ED4245;
+		margin-bottom: 1.5rem;
+	}
+	
+	.automation-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+	
+	.form-section {
+		background: var(--bg-secondary, #2f3136);
+		border-radius: 12px;
+		padding: 1.5rem;
+	}
+	
+	.form-section h2 {
+		margin: 0 0 0.5rem;
+		font-size: 1.125rem;
+	}
+	
+	.section-description {
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		margin: 0 0 1.25rem;
+	}
+	
+	.form-group {
+		margin-bottom: 1rem;
+	}
+	
+	.form-group:last-child {
+		margin-bottom: 0;
+	}
+	
+	.form-group label {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-weight: 500;
+		font-size: 0.875rem;
+	}
+	
+	.form-group input,
+	.form-group select,
+	.form-group textarea {
+		width: 100%;
+		padding: 0.75rem 1rem;
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+		color: var(--text-primary, #fff);
+		font-size: 1rem;
+	}
+	
+	.form-group textarea {
+		resize: vertical;
+		min-height: 60px;
+	}
+	
+	.form-group input:focus,
+	.form-group select:focus,
+	.form-group textarea:focus {
+		outline: none;
+		border-color: var(--accent-color, #5865F2);
+	}
+	
+	.required {
+		color: #ED4245;
+	}
+	
+	.current-filters {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		margin-bottom: 1rem;
+		font-size: 0.875rem;
+	}
+	
+	.filters-label {
+		color: var(--text-muted);
+	}
+	
+	.filter-tag {
+		padding: 0.25rem 0.5rem;
+		background: var(--bg-primary, #202225);
+		border-radius: 4px;
+		font-family: monospace;
+		font-size: 0.75rem;
+	}
+	
+	.filters-grid {
+		padding: 1rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+	}
+	
+	.filters-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin: 0 0 1rem;
+	}
+	
+	.action-config {
+		margin-top: 1.25rem;
+		padding: 1.25rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+	}
+	
+	.action-config h3 {
+		margin: 0 0 1rem;
+		font-size: 0.875rem;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	
+	.variables-help {
+		margin-top: 0.5rem;
+		font-size: 0.75rem;
+	}
+	
+	.variables-label {
+		color: var(--text-muted);
+		display: block;
+		margin-bottom: 0.375rem;
+	}
+	
+	.variables-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+	
+	.variables-list code {
+		background: var(--bg-primary, #202225);
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		cursor: help;
+	}
+	
+	.field-hint {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin: 0.375rem 0 0;
+	}
+	
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+	}
+	
+	.checkbox-label input {
+		width: auto;
+	}
+	
+	.form-actions {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+		padding-top: 1rem;
+	}
+	
+	.form-actions-right {
+		display: flex;
+		gap: 0.75rem;
+	}
+	
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1.25rem;
+		border: none;
+		border-radius: 8px;
+		font-size: 1rem;
+		font-weight: 500;
+		cursor: pointer;
+		text-decoration: none;
+		transition: all 0.2s;
+	}
+	
+	.btn-primary {
+		background: var(--accent-color, #5865F2);
+		color: white;
+	}
+	
+	.btn-primary:hover {
+		background: var(--accent-hover, #4752C4);
+	}
+	
+	.btn-secondary {
+		background: var(--bg-secondary, #2f3136);
+		color: var(--text-primary, #fff);
+		border: 1px solid var(--border-color, #40444b);
+	}
+	
+	.btn-secondary:hover {
+		background: var(--bg-tertiary, #36393f);
+	}
+	
+	.btn-danger {
+		background: #ED4245;
+		color: white;
+	}
+	
+	.btn-danger:hover {
+		background: #c93b3e;
+	}
+	
+	/* Confirm Dialog */
+	.confirm-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.75);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 1rem;
+	}
+	
+	.confirm-dialog {
+		background: var(--bg-secondary, #2f3136);
+		border-radius: 12px;
+		padding: 1.5rem;
+		max-width: 400px;
+		width: 100%;
+	}
+	
+	.confirm-dialog h3 {
+		margin: 0 0 0.75rem;
+	}
+	
+	.confirm-dialog p {
+		color: var(--text-muted);
+		margin: 0 0 1.5rem;
+	}
+	
+	.confirm-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.75rem;
+	}
+	
+	.confirm-actions form {
+		margin: 0;
+	}
+	
+	/* Mobile Responsive */
+	@media (max-width: 640px) {
+		.automation-form-page {
+			padding: 1rem;
+		}
+		
+		.form-section {
+			padding: 1rem;
+		}
+		
+		.form-actions {
+			flex-direction: column-reverse;
+		}
+		
+		.form-actions .btn-danger {
+			width: 100%;
+			justify-content: center;
+		}
+		
+		.form-actions-right {
+			width: 100%;
+			flex-direction: column;
+		}
+		
+		.form-actions-right .btn {
+			width: 100%;
+			justify-content: center;
+		}
+		
+		.confirm-actions {
+			flex-direction: column;
+		}
+		
+		.confirm-actions .btn {
+			width: 100%;
+			justify-content: center;
+		}
+	}
+</style>

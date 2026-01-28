@@ -1,6 +1,7 @@
 /**
  * Discord Gateway Bot Service
  * Captures all Discord events and logs them to the database
+ * Processes automations when events are triggered
  *
  * This runs as a separate process alongside the SvelteKit app
  * Start with: node src/lib/discord/gateway.js
@@ -12,8 +13,12 @@ import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
 
+// Store reference to the client for automation execution
+let discordClient = null;
+
 /**
- * Log event via API (for when running as separate process)
+ * Log event via API and process automations
+ * @param {Object} event - The event data to log
  */
 async function logEventViaAPI(event) {
   const url = `${API_BASE}/api/logs/create`;
@@ -39,6 +44,330 @@ async function logEventViaAPI(event) {
     }
   } catch (error) {
     console.error("Error logging event:", error.message);
+  }
+
+  // Process automations for this event
+  await processEventAutomations(event);
+}
+
+/**
+ * Process automations for an event via API
+ * The API handles database access and returns actions to execute
+ * @param {Object} event - The event data
+ */
+async function processEventAutomations(event) {
+  if (!discordClient) return;
+
+  try {
+    const url = `${API_BASE}/api/automations/${event.guild_id}/process`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      },
+      body: JSON.stringify({ event }),
+    });
+
+    if (!response.ok) {
+      if (response.status !== 404) {
+        console.error(`[Automation] API error: ${response.status}`);
+      }
+      return;
+    }
+
+    const { automations } = await response.json();
+    
+    if (!automations || automations.length === 0) {
+      return;
+    }
+
+    console.log(`[Automation] Processing ${automations.length} automations for ${event.event_type}`);
+
+    for (const automation of automations) {
+      try {
+        await executeAutomationAction(automation, event);
+        
+        // Report success back to API
+        await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+          },
+          body: JSON.stringify({
+            automation_id: automation.id,
+            trigger_event: event.event_type,
+            trigger_data: event,
+            success: true,
+            action_result: { executed: true },
+          }),
+        });
+        
+        console.log(`[Automation] ${automation.name} executed successfully`);
+      } catch (error) {
+        console.error(`[Automation] ${automation.name} failed:`, error.message);
+        
+        // Report failure back to API
+        await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+          },
+          body: JSON.stringify({
+            automation_id: automation.id,
+            trigger_event: event.event_type,
+            trigger_data: event,
+            success: false,
+            error_message: error.message,
+          }),
+        });
+      }
+    }
+  } catch (error) {
+    console.error("[Automation] Processing error:", error.message);
+  }
+}
+
+/**
+ * Execute an automation action using the Discord client
+ * @param {Object} automation - The automation configuration
+ * @param {Object} event - The triggering event
+ */
+async function executeAutomationAction(automation, event) {
+  const { action_type, action_config, context } = automation;
+  const client = discordClient;
+
+  if (!client) {
+    throw new Error("Discord client not available");
+  }
+
+  switch (action_type) {
+    case "DELETE_MESSAGES": {
+      const channelId = action_config.channel_id;
+      const limit = action_config.limit || 100;
+      const userId = event.actor_id;
+
+      if (!channelId || !userId) {
+        throw new Error("Missing channel or user ID");
+      }
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      // Fetch messages and filter by user
+      const messages = await channel.messages.fetch({ limit: 100 });
+      const userMessages = messages.filter(m => m.author.id === userId);
+      const toDelete = Array.from(userMessages.values()).slice(0, limit);
+
+      // Try bulk delete for recent messages
+      const recentMessages = toDelete.filter(m => 
+        Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+      );
+
+      if (recentMessages.length > 1) {
+        await channel.bulkDelete(recentMessages);
+      } else if (recentMessages.length === 1) {
+        await recentMessages[0].delete();
+      }
+
+      // Delete older messages individually
+      const oldMessages = toDelete.filter(m => 
+        Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+      );
+
+      for (const msg of oldMessages) {
+        await msg.delete().catch(() => {});
+        await new Promise(r => setTimeout(r, 500));
+      }
+      break;
+    }
+
+    case "SEND_MESSAGE": {
+      const channelId = action_config.channel_id;
+      const content = automation.processed_content || action_config.content;
+
+      if (!channelId || !content) throw new Error("Missing channel or content");
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      if (action_config.embed) {
+        await channel.send({
+          embeds: [{
+            description: content,
+            color: 0x5865F2,
+            timestamp: new Date().toISOString(),
+          }]
+        });
+      } else {
+        await channel.send(content);
+      }
+      break;
+    }
+
+    case "ADD_ROLE": {
+      const roleId = action_config.role_id;
+      const userId = event.actor_id || event.target_id;
+
+      if (!roleId || !userId) throw new Error("Missing role or user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      await member.roles.add(roleId);
+      break;
+    }
+
+    case "REMOVE_ROLE": {
+      const roleId = action_config.role_id;
+      const userId = event.actor_id || event.target_id;
+
+      if (!roleId || !userId) throw new Error("Missing role or user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      await member.roles.remove(roleId);
+      break;
+    }
+
+    case "KICK_MEMBER": {
+      const userId = event.actor_id || event.target_id;
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      await member.kick(reason);
+      break;
+    }
+
+    case "BAN_MEMBER": {
+      const userId = event.actor_id || event.target_id;
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+      const deleteDays = action_config.delete_days || 0;
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      await guild.members.ban(userId, { 
+        reason, 
+        deleteMessageSeconds: deleteDays * 24 * 60 * 60 
+      });
+      break;
+    }
+
+    case "TIMEOUT_MEMBER": {
+      const userId = event.actor_id || event.target_id;
+      const duration = (action_config.duration_minutes || 60) * 60 * 1000;
+      const reason = automation.processed_reason || action_config.reason || "Automated timeout";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      await member.timeout(duration, reason);
+      break;
+    }
+
+    case "LOG_TO_CHANNEL": {
+      const channelId = action_config.channel_id;
+      const customContent = automation.processed_content;
+
+      if (!channelId) throw new Error("Missing channel ID");
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      const embed = {
+        title: `🤖 Automation: ${automation.name}`,
+        description: customContent || `Triggered by **${event.event_type}**`,
+        color: 0x5865F2,
+        fields: [],
+        timestamp: new Date().toISOString(),
+        footer: { text: `Automation ID: ${automation.id}` }
+      };
+
+      if (event.actor_id) {
+        embed.fields.push({ 
+          name: "Actor", 
+          value: `<@${event.actor_id}> (${event.actor_name || "Unknown"})`, 
+          inline: true 
+        });
+      }
+
+      if (event.target_id) {
+        embed.fields.push({ 
+          name: "Target", 
+          value: `<@${event.target_id}> (${event.target_name || "Unknown"})`, 
+          inline: true 
+        });
+      }
+
+      if (event.channel_id) {
+        embed.fields.push({ 
+          name: "Channel", 
+          value: `<#${event.channel_id}>`, 
+          inline: true 
+        });
+      }
+
+      if (action_config.include_details && event.details) {
+        const detailsStr = Object.entries(event.details)
+          .filter(([_, v]) => v !== null && v !== undefined)
+          .map(([k, v]) => `**${k}:** ${typeof v === "object" ? JSON.stringify(v) : v}`)
+          .join("\n");
+
+        if (detailsStr) {
+          embed.fields.push({ 
+            name: "Details", 
+            value: detailsStr.substring(0, 1024) 
+          });
+        }
+      }
+
+      await channel.send({ embeds: [embed] });
+      break;
+    }
+
+    case "CREATE_THREAD": {
+      const channelId = action_config.channel_id;
+      const threadName = automation.processed_thread_name || action_config.thread_name;
+      const autoArchive = action_config.auto_archive_duration || 1440;
+
+      if (!channelId || !threadName) throw new Error("Missing channel or thread name");
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      await channel.threads.create({
+        name: threadName.substring(0, 100),
+        autoArchiveDuration: autoArchive,
+      });
+      break;
+    }
+
+    default:
+      throw new Error(`Unknown action type: ${action_type}`);
   }
 }
 
@@ -1130,8 +1459,10 @@ async function startBot() {
   }
 
   console.log("🚀 Starting Discord Gateway Bot...");
+  console.log("🤖 Automation engine enabled");
 
   const client = createClient();
+  discordClient = client; // Store reference for automation execution
   setupEventHandlers(client, logEventViaAPI);
 
   try {

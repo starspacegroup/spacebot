@@ -3,9 +3,9 @@ compatibility_date = "2024-01-26"
 compatibility_flags = ["nodejs_compat"]
 pages_build_output_dir = ".svelte-kit/cloudflare"
 
-# D1 Database binding for event logs
+# D1 Database binding for event logs and automations
 [[d1_databases]]
-binding = "spacebot_logs"
+binding = "DB"
 database_name = "spacebot-logs"
 database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 
