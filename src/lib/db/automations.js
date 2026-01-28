@@ -152,12 +152,12 @@ export const ACTION_TYPES = {
 export const FILTER_TYPES = {
   channel_id: {
     type: "channel",
-    label: "In Channel",
+    label: "In Channel(s)",
     description: "Only trigger in this channel",
   },
   not_channel_id: {
     type: "channel",
-    label: "Not In Channel",
+    label: "Not In Channel(s)",
     description: "Don't trigger in this channel",
   },
   actor_has_role: {
@@ -185,11 +185,16 @@ export const FILTER_TYPES = {
     label: "Content Matches Regex",
     description: "Message content matches pattern",
   },
-  is_bot: { type: "boolean", label: "Is Bot", description: "Actor is a bot" },
-  is_not_bot: {
-    type: "boolean",
-    label: "Is Not Bot",
-    description: "Actor is not a bot",
+  bot_filter: {
+    type: "select",
+    label: "Bot Filter",
+    description: "Filter by bot status",
+    options: [
+      { value: "any", label: "Any (Bots & Humans)" },
+      { value: "only_bots", label: "Only Bots" },
+      { value: "only_humans", label: "Only Humans" },
+    ],
+    default: "any",
   },
   min_account_age_days: {
     type: "number",

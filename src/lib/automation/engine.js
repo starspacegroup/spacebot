@@ -45,23 +45,52 @@ export function matchesFilters(event, filters, context = {}) {
   for (const [filterType, filterValue] of Object.entries(filters)) {
     switch (filterType) {
       case "channel_id":
-        if (event.channel_id !== filterValue) return false;
+        // "ALL" means match any channel, comma-separated list for multiple channels
+        if (filterValue !== "ALL") {
+          const allowedChannels = filterValue.split(",").map((id) => id.trim());
+          if (!allowedChannels.includes(event.channel_id)) return false;
+        }
         break;
 
       case "not_channel_id":
-        if (event.channel_id === filterValue) return false;
+        // "ALL" for not_channel_id doesn't make sense, skip if set to ALL
+        if (filterValue !== "ALL") {
+          const blockedChannels = filterValue.split(",").map((id) => id.trim());
+          if (blockedChannels.includes(event.channel_id)) return false;
+        }
         break;
 
       case "actor_has_role":
-        if (!context.actorRoles?.includes(filterValue)) return false;
+        // "ALL" means match any role (no filter), comma-separated list for multiple roles
+        if (filterValue !== "ALL") {
+          const requiredRoles = filterValue.split(",").map((id) => id.trim());
+          // Actor must have at least one of the specified roles
+          if (
+            !requiredRoles.some((role) => context.actorRoles?.includes(role))
+          ) return false;
+        }
         break;
 
       case "actor_missing_role":
-        if (context.actorRoles?.includes(filterValue)) return false;
+        // "ALL" for actor_missing_role doesn't make sense, skip if set to ALL
+        if (filterValue !== "ALL") {
+          const blockedRoles = filterValue.split(",").map((id) => id.trim());
+          // Actor must not have any of the specified roles
+          if (blockedRoles.some((role) => context.actorRoles?.includes(role))) {
+            return false;
+          }
+        }
         break;
 
       case "target_has_role":
-        if (!context.targetRoles?.includes(filterValue)) return false;
+        // "ALL" means match any role (no filter), comma-separated list for multiple roles
+        if (filterValue !== "ALL") {
+          const requiredRoles = filterValue.split(",").map((id) => id.trim());
+          // Target must have at least one of the specified roles
+          if (
+            !requiredRoles.some((role) => context.targetRoles?.includes(role))
+          ) return false;
+        }
         break;
 
       case "content_contains":
@@ -81,12 +110,14 @@ export function matchesFilters(event, filters, context = {}) {
         }
         break;
 
-      case "is_bot":
-        if (event.details?.isBot !== filterValue) return false;
-        break;
-
-      case "is_not_bot":
-        if (event.details?.isBot === true) return false;
+      case "bot_filter":
+        // "any" means no filter, "only_bots" means only bots, "only_humans" means only humans
+        if (filterValue === "only_bots") {
+          if (event.details?.isBot !== true) return false;
+        } else if (filterValue === "only_humans") {
+          if (event.details?.isBot === true) return false;
+        }
+        // "any" or any other value means no filter
         break;
 
       case "min_account_age_days":

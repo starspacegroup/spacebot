@@ -1,28 +1,27 @@
 <script>
 	/**
-	 * Channel Selector Component
-	 * A searchable dropdown for selecting Discord channels
+	 * Role Selector Component
+	 * A searchable dropdown for selecting Discord roles
 	 * Supports both single and multi-select modes
 	 * 
-	 * Can either fetch channels itself (if guildId provided) or use pre-loaded channels
+	 * Can either fetch roles itself (if guildId provided) or use pre-loaded roles
 	 */
 	
-	// Special value for "All Channels"
-	const ALL_CHANNELS = 'ALL';
+	// Special value for "Any Role"
+	const ANY_ROLE = 'ALL';
 	
 	let { 
 		guildId = null,
-		channels: preloadedChannels = null, // Pre-loaded channels to avoid multiple fetches
+		roles: preloadedRoles = null, // Pre-loaded roles to avoid multiple fetches
 		value = $bindable(''),
-		name = 'channel',
+		name = 'role',
 		required = false,
 		multiple = false, // Enable multi-select
-		placeholder = 'Search channels...',
-		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
-		showAllOption = false // Show "All Channels" option at top (multi-select only)
+		placeholder = 'Search roles...',
+		showAnyOption = false // Show "Any" option at top (multi-select only)
 	} = $props();
 	
-	let channels = $state([]);
+	let roles = $state([]);
 	let loading = $state(false);
 	let error = $state(null);
 	let searchQuery = $state('');
@@ -41,131 +40,96 @@
 		return [value];
 	});
 	
-	// Check if "All Channels" is selected
-	const isAllSelected = $derived(selectedIds.includes(ALL_CHANNELS));
+	// Check if "Any" is selected
+	const isAnySelected = $derived(selectedIds.includes(ANY_ROLE));
 	
-	// Use preloaded channels if provided, otherwise fetch
+	// Use preloaded roles if provided, otherwise fetch
 	$effect(() => {
-		if (preloadedChannels) {
-			channels = preloadedChannels;
+		if (preloadedRoles) {
+			roles = preloadedRoles;
 		} else if (guildId) {
-			fetchChannels();
+			fetchRoles();
 		} else {
-			channels = [];
+			roles = [];
 		}
 	});
 	
-	async function fetchChannels() {
+	async function fetchRoles() {
 		loading = true;
 		error = null;
 		
 		try {
-			const params = new URLSearchParams();
-			if (typeFilter) params.set('type', typeFilter);
-			
-			const response = await fetch(`/api/discord/guilds/${guildId}/channels?${params}`);
+			const response = await fetch(`/api/discord/guilds/${guildId}/roles`);
 			
 			if (!response.ok) {
-				throw new Error('Failed to fetch channels');
+				throw new Error('Failed to fetch roles');
 			}
 			
 			const data = await response.json();
-			channels = data.channels || [];
+			roles = data.roles || [];
 		} catch (err) {
-			console.error('Error fetching channels:', err);
+			console.error('Error fetching roles:', err);
 			error = err.message;
-			channels = [];
+			roles = [];
 		} finally {
 			loading = false;
 		}
 	}
 	
-	// Flatten channels for searching
-	const flatChannels = $derived.by(() => {
-		const flat = [];
-		for (const group of channels) {
-			if (group.channels) {
-				for (const ch of group.channels) {
-					flat.push({
-						...ch,
-						categoryName: group.categoryName
-					});
-				}
-			}
-		}
-		return flat;
-	});
-	
-	// Filter channels by search query
-	const filteredChannels = $derived.by(() => {
-		if (!searchQuery.trim()) return channels;
+	// Filter roles by search query
+	const filteredRoles = $derived.by(() => {
+		if (!searchQuery.trim()) return roles;
 		
 		const query = searchQuery.toLowerCase();
-		
-		return channels
-			.map(group => ({
-				...group,
-				channels: (group.channels || []).filter(ch => 
-					ch.name.toLowerCase().includes(query) ||
-					group.categoryName.toLowerCase().includes(query)
-				)
-			}))
-			.filter(group => group.channels.length > 0);
+		return roles.filter(role => role.name.toLowerCase().includes(query));
 	});
 	
-	// Get selected channel names for display
-	const selectedChannelNames = $derived.by(() => {
+	// Get selected role names for display
+	const selectedRoleNames = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
 		return selectedIds.map(id => {
-			if (id === ALL_CHANNELS) return '✱ Any';
-			const ch = flatChannels.find(c => c.id === id);
-			return ch ? `#${ch.name}` : id;
+			if (id === ANY_ROLE) return '✱ Any';
+			const role = roles.find(r => r.id === id);
+			return role ? `@${role.name}` : id;
 		});
 	});
 	
-	// Channel type icons
-	function getChannelIcon(type) {
-		switch (type) {
-			case 'text': return '#';
-			case 'voice': return '🔊';
-			case 'announcement': return '📢';
-			case 'forum': return '💬';
-			case 'stage': return '🎭';
-			default: return '#';
-		}
+	// Get role color for display
+	function getRoleColor(role) {
+		return role.color || 'var(--text-muted, #72767d)';
 	}
 	
-	function isSelected(channelId) {
-		return selectedIds.includes(channelId);
+	function isSelected(roleId) {
+		return selectedIds.includes(roleId);
 	}
 	
-	function selectAll() {
-		value = ALL_CHANNELS;
+	function selectAny() {
+		value = ANY_ROLE;
 		searchQuery = '';
 	}
 	
-	function toggleChannel(channel) {
+	function toggleRole(role) {
 		if (multiple) {
-			if (isSelected(channel.id)) {
+			if (isSelected(role.id)) {
 				// Remove from selection
-				const newIds = selectedIds.filter(id => id !== channel.id);
+				const newIds = selectedIds.filter(id => id !== role.id);
 				value = newIds.join(',');
 			} else {
-				// Add to selection - remove ALL if present since we're picking specific channels
-				const newIds = selectedIds.filter(id => id !== ALL_CHANNELS);
-				value = [...newIds, channel.id].join(',');
+				// Add to selection - remove ANY if present since we're picking specific roles
+				const newIds = selectedIds.filter(id => id !== ANY_ROLE);
+				value = [...newIds, role.id].join(',');
 			}
 		} else {
 			// Single select - just set the value and close
-			value = channel.id;
+			value = role.id;
 			searchQuery = '';
 			isOpen = false;
 			highlightedIndex = -1;
 		}
 	}
 	
-	function removeChannel(channelId) {
-		const newIds = selectedIds.filter(id => id !== channelId);
+	function removeRole(roleId) {
+		const newIds = selectedIds.filter(id => id !== roleId);
 		value = newIds.join(',');
 	}
 	
@@ -190,12 +154,10 @@
 	}
 	
 	function handleKeydown(e) {
-		const allChannels = filteredChannels.flatMap(g => g.channels || []);
-		
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault();
-				highlightedIndex = Math.min(highlightedIndex + 1, allChannels.length - 1);
+				highlightedIndex = Math.min(highlightedIndex + 1, filteredRoles.length - 1);
 				break;
 			case 'ArrowUp':
 				e.preventDefault();
@@ -203,8 +165,8 @@
 				break;
 			case 'Enter':
 				e.preventDefault();
-				if (highlightedIndex >= 0 && allChannels[highlightedIndex]) {
-					toggleChannel(allChannels[highlightedIndex]);
+				if (highlightedIndex >= 0 && filteredRoles[highlightedIndex]) {
+					toggleRole(filteredRoles[highlightedIndex]);
 				}
 				break;
 			case 'Escape':
@@ -224,7 +186,7 @@
 
 <svelte:window onclick={handleClickOutside} />
 
-<div class="channel-selector" class:multi={multiple}>
+<div class="role-selector" class:multi={multiple}>
 	<!-- Hidden input for form submission -->
 	<input type="hidden" {name} bind:value {required} />
 	
@@ -232,10 +194,10 @@
 		{#if multiple && selectedIds.length > 0}
 			<!-- Multi-select: show tags -->
 			<div class="selected-tags">
-				{#each selectedChannelNames as channelName, i}
-					<span class="channel-tag">
-						{channelName}
-						<button type="button" class="tag-remove" onclick={() => removeChannel(selectedIds[i])}>×</button>
+				{#each selectedRoleNames as roleName, i}
+					<span class="role-tag">
+						{roleName}
+						<button type="button" class="tag-remove" onclick={() => removeRole(selectedIds[i])}>×</button>
 					</span>
 				{/each}
 				<input
@@ -251,9 +213,9 @@
 				/>
 			</div>
 		{:else if !multiple && value && !isOpen}
-			<!-- Single select: show selected channel -->
-			<div class="selected-channel">
-				<span class="channel-display">{selectedChannelNames[0] || value}</span>
+			<!-- Single select: show selected role -->
+			<div class="selected-role">
+				<span class="role-display">{selectedRoleNames[0] || value}</span>
 				<button type="button" class="clear-btn" onclick={clearSelection} title="Clear selection">
 					×
 				</button>
@@ -283,55 +245,47 @@
 			{#if error}
 				<div class="dropdown-error">
 					<span>⚠️ {error}</span>
-					<button type="button" class="retry-btn" onclick={fetchChannels}>Retry</button>
+					<button type="button" class="retry-btn" onclick={fetchRoles}>Retry</button>
 				</div>
-			{:else if filteredChannels.length === 0}
+			{:else if filteredRoles.length === 0 && !showAnyOption}
 				<div class="dropdown-empty">
-					{#if channels.length === 0}
-						No channels available
+					{#if roles.length === 0}
+						No roles available
 					{:else}
-						No channels match "{searchQuery}"
+						No roles match "{searchQuery}"
 					{/if}
 				</div>
 			{:else}
-				{@const allChannels = filteredChannels.flatMap(g => g.channels || [])}
-				
-			{#if showAllOption && multiple && !searchQuery}
+				{#if showAnyOption && multiple && !searchQuery}
 					<!-- Any option -->
 					<button
 						type="button"
-						class="channel-option all-channels-option"
-						class:selected={isAllSelected}
-						onclick={selectAll}
+						class="role-option any-option"
+						class:selected={isAnySelected}
+						onclick={selectAny}
 					>
-						<span class="checkbox">{isAllSelected ? '☑' : '☐'}</span>
-						<span class="channel-icon">✱</span>
-						<span class="channel-name">Any</span>
+						<span class="checkbox">{isAnySelected ? '☑' : '☐'}</span>
+						<span class="role-icon">✱</span>
+						<span class="role-name">Any</span>
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}
 				
-				{#each filteredChannels as group}
-					<div class="channel-group">
-						<div class="group-header">{group.categoryName}</div>
-						{#each group.channels || [] as channel}
-							{@const globalIndex = allChannels.indexOf(channel)}
-							<button
-								type="button"
-								class="channel-option"
-								class:selected={isSelected(channel.id)}
-								class:highlighted={highlightedIndex === globalIndex}
-								onclick={() => toggleChannel(channel)}
-								onmouseenter={() => highlightedIndex = globalIndex}
-							>
-								{#if multiple}
-									<span class="checkbox">{isSelected(channel.id) ? '☑' : '☐'}</span>
-								{/if}
-								<span class="channel-icon">{getChannelIcon(channel.type)}</span>
-								<span class="channel-name">{channel.name}</span>
-							</button>
-						{/each}
-					</div>
+				{#each filteredRoles as role, index}
+					<button
+						type="button"
+						class="role-option"
+						class:selected={isSelected(role.id)}
+						class:highlighted={highlightedIndex === index}
+						onclick={() => toggleRole(role)}
+						onmouseenter={() => highlightedIndex = index}
+					>
+						{#if multiple}
+							<span class="checkbox">{isSelected(role.id) ? '☑' : '☐'}</span>
+						{/if}
+						<span class="role-color" style="background-color: {getRoleColor(role)}"></span>
+						<span class="role-name">@{role.name}</span>
+					</button>
 				{/each}
 			{/if}
 		</div>
@@ -339,7 +293,7 @@
 </div>
 
 <style>
-	.channel-selector {
+	.role-selector {
 		position: relative;
 		width: 100%;
 	}
@@ -400,7 +354,7 @@
 		border-color: var(--accent-color, #5865F2);
 	}
 	
-	.channel-tag {
+	.role-tag {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
@@ -427,25 +381,24 @@
 		color: white;
 	}
 	
-	.selected-channel {
+	.selected-role {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		width: 100%;
-		padding: 0.625rem 0.875rem;
+		padding: 0.5rem 0.75rem;
 		background: var(--bg-tertiary, #36393f);
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
-		color: var(--text-primary, #fff);
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
 	
-	.selected-channel:hover {
+	.selected-role:hover {
 		border-color: var(--accent-color, #5865F2);
 	}
 	
-	.channel-display {
+	.role-display {
 		color: var(--accent-color, #5865F2);
 		font-weight: 500;
 	}
@@ -519,24 +472,7 @@
 		background: var(--bg-tertiary, #40444b);
 	}
 	
-	.channel-group {
-		padding: 0.25rem 0;
-	}
-	
-	.channel-group:not(:last-child) {
-		border-bottom: 1px solid var(--border-color, #40444b);
-	}
-	
-	.group-header {
-		padding: 0.5rem 0.75rem 0.25rem;
-		font-size: 0.7rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		color: var(--text-muted, #72767d);
-		letter-spacing: 0.02em;
-	}
-	
-	.channel-option {
+	.role-option {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -551,18 +487,18 @@
 		transition: background 0.1s;
 	}
 	
-	.channel-option:hover,
-	.channel-option.highlighted {
+	.role-option:hover,
+	.role-option.highlighted {
 		background: var(--bg-tertiary, #36393f);
 	}
 	
-	.channel-option.selected {
+	.role-option.selected {
 		background: var(--accent-color, #5865F2);
 		color: white;
 	}
 	
-	.channel-option.selected:hover,
-	.channel-option.selected.highlighted {
+	.role-option.selected:hover,
+	.role-option.selected.highlighted {
 		background: var(--accent-hover, #4752C4);
 	}
 	
@@ -571,18 +507,25 @@
 		min-width: 1.25rem;
 	}
 	
-	.channel-icon {
+	.role-icon {
 		font-size: 1rem;
-		color: var(--text-muted, #72767d);
+		color: var(--accent-color, #5865F2);
 		min-width: 1.25rem;
 		text-align: center;
 	}
 	
-	.channel-option.selected .channel-icon {
+	.role-option.selected .role-icon {
 		color: inherit;
 	}
 	
-	.channel-name {
+	.role-color {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+	
+	.role-name {
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -595,15 +538,15 @@
 		margin: 0.25rem 0;
 	}
 	
-	.all-channels-option {
+	.any-option {
 		font-weight: 500;
 	}
 	
-	.all-channels-option .channel-icon {
+	.any-option .role-icon {
 		color: var(--accent-color, #5865F2);
 	}
 	
-	.all-channels-option.selected .channel-icon {
+	.any-option.selected .role-icon {
 		color: inherit;
 	}
 </style>

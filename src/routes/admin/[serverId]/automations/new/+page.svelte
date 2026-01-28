@@ -1,12 +1,65 @@
 <script>
 	import { enhance } from '$app/forms';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
+	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	
 	let { data, form } = $props();
 	
 	let selectedEventType = $state('');
 	let selectedActionType = $state('');
 	let showFilters = $state(false);
+	
+	// Shared channel data - fetched once for all ChannelSelectors
+	let sharedChannels = $state(null);
+	let channelsLoading = $state(false);
+	
+	// Shared role data - fetched once for all RoleSelectors
+	let sharedRoles = $state(null);
+	let rolesLoading = $state(false);
+	
+	// Fetch channels once when guild changes
+	$effect(() => {
+		if (data.selectedGuildId && !sharedChannels && !channelsLoading) {
+			fetchChannels();
+		}
+	});
+	
+	// Fetch roles once when guild changes
+	$effect(() => {
+		if (data.selectedGuildId && !sharedRoles && !rolesLoading) {
+			fetchRoles();
+		}
+	});
+	
+	async function fetchChannels() {
+		channelsLoading = true;
+		try {
+			const response = await fetch(`/api/discord/guilds/${data.selectedGuildId}/channels?type=sendable`);
+			if (response.ok) {
+				const result = await response.json();
+				sharedChannels = result.channels || [];
+			}
+		} catch (err) {
+			console.error('Error fetching channels:', err);
+		} finally {
+			channelsLoading = false;
+		}
+	}
+	
+	async function fetchRoles() {
+		rolesLoading = true;
+		try {
+			const response = await fetch(`/api/discord/guilds/${data.selectedGuildId}/roles`);
+			if (response.ok) {
+				const result = await response.json();
+				sharedRoles = result.roles || [];
+			}
+		} catch (err) {
+			console.error('Error fetching roles:', err);
+		} finally {
+			rolesLoading = false;
+		}
+	}
 	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
@@ -120,12 +173,41 @@
 					{#each Object.entries(data.filterTypes) as [filterKey, filterInfo]}
 						<div class="form-group">
 							<label for="filter_{filterKey}">{filterInfo.label}</label>
-							<input 
-								type={filterInfo.type === 'number' ? 'number' : 'text'} 
-								id="filter_{filterKey}" 
-								name="filter.{filterKey}" 
-								placeholder={filterInfo.description}
-							/>
+							{#if filterInfo.type === 'channel'}
+								<ChannelSelector
+									channels={sharedChannels}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									multiple={true}
+									showAllOption={filterKey === 'channel_id'}
+									value={filterKey === 'channel_id' ? 'ALL' : ''}
+								/>
+							{:else if filterInfo.type === 'role'}
+								<RoleSelector
+									roles={sharedRoles}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									multiple={true}
+									showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
+									value={filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : ''}
+								/>
+							{:else if filterInfo.type === 'select'}
+								<select
+									id="filter_{filterKey}"
+									name="filter.{filterKey}"
+								>
+									{#each filterInfo.options as option}
+										<option value={option.value} selected={option.value === filterInfo.default}>{option.label}</option>
+									{/each}
+								</select>
+							{:else}
+								<input 
+									type={filterInfo.type === 'number' ? 'number' : 'text'} 
+									id="filter_{filterKey}" 
+									name="filter.{filterKey}" 
+									placeholder={filterInfo.description}
+								/>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -197,11 +279,10 @@
 								</label>
 							{:else if config.type === 'channel'}
 								<ChannelSelector
-									guildId={selectedGuildId}
+									channels={sharedChannels}
 									name="action_config.{configKey}"
 									required={config.required}
 									placeholder="Search for a channel..."
-									typeFilter="sendable"
 								/>
 							{:else if config.type === 'role'}
 								<input 
