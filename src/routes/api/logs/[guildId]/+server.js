@@ -6,6 +6,10 @@ import {
   getLogStats,
 } from "$lib/db/logger.js";
 
+// Check if dev auth bypass is enabled
+const isDev = process.env.NODE_ENV !== "production";
+const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
+
 // Discord permission flags
 const ADMINISTRATOR = 0x8;
 const MANAGE_GUILD = 0x20;
@@ -94,13 +98,29 @@ export async function GET({ params, url, cookies, platform }) {
   const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
     process.env.ADMIN_USER_IDS;
 
-  // Verify access
-  const { hasAccess, reason } = await verifyGuildAccess(
-    guildId,
-    accessToken,
-    botToken,
-    adminUserIds,
-  );
+  // Check for dev auth bypass
+  const isDevMockToken = accessToken === "dev_mock_token";
+  const devGuildId = platform?.env?.DISCORD_GUILD_ID ||
+    process.env.DISCORD_GUILD_ID;
+
+  let hasAccess = false;
+  let reason = null;
+
+  if (devAuthEnabled && isDevMockToken) {
+    // In dev mode with bypass, grant access if it's the dev guild or user is admin
+    hasAccess = guildId === devGuildId || !!adminUserIds;
+    console.log("[DEV] Bypassing guild access check, hasAccess:", hasAccess);
+  } else {
+    // Verify access via Discord API
+    const accessResult = await verifyGuildAccess(
+      guildId,
+      accessToken,
+      botToken,
+      adminUserIds,
+    );
+    hasAccess = accessResult.hasAccess;
+    reason = accessResult.reason;
+  }
 
   if (!hasAccess) {
     return json({ error: reason || "Access denied" }, { status: 403 });

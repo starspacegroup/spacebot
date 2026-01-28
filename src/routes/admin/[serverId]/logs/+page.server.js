@@ -51,29 +51,37 @@ async function fetchGuildInfo(guildId, botToken) {
   }
 }
 
-export async function load({ params, cookies, platform }) {
+export async function load({ params, cookies, platform, parent }) {
   const { serverId } = params;
 
-  // Get user info from cookie
-  const userInfoCookie = cookies.get("discord_user");
+  // Get parent layout data (includes user info, admin guilds, etc.)
+  const parentData = await parent();
   const accessToken = cookies.get("discord_access_token");
 
-  if (!userInfoCookie || !accessToken) {
+  // Check if user is logged in
+  if (!parentData.isLoggedIn || !parentData.user) {
     throw redirect(302, "/login");
   }
 
-  const user = JSON.parse(userInfoCookie);
+  const user = parentData.user;
   const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
     process.env.DISCORD_BOT_TOKEN;
   const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
     process.env.ADMIN_USER_IDS || "";
 
-  // Check if superadmin
-  const superAdminIds = adminUserIds.split(",").map((id) => id.trim());
-  const isSuperAdmin = superAdminIds.includes(user.id);
+  // Check if superadmin (from parent or recalculated)
+  const isSuperAdmin = parentData.isSuperAdmin;
 
-  // Fetch user's guilds
-  const userGuilds = await fetchUserGuilds(accessToken);
+  // Check if using dev auth bypass with mock token
+  const isDevMockToken = accessToken === "dev_mock_token";
+
+  // For dev mode, use guilds from parent data; otherwise fetch from Discord API
+  let userGuilds = [];
+  if (isDevMockToken && parentData.adminGuilds) {
+    userGuilds = parentData.adminGuilds;
+  } else {
+    userGuilds = await fetchUserGuilds(accessToken);
+  }
 
   // Find the requested guild
   const userGuild = userGuilds.find((g) => g.id === serverId);
