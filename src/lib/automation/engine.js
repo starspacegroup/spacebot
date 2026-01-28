@@ -190,6 +190,136 @@ export async function executeAction(automation, event, context, discord) {
 
   try {
     switch (action_type) {
+      case "DELETE_USER_MESSAGES": {
+        // Enhanced version that supports multiple channels
+        const channelIds = action_config.channel_ids || "ALL";
+        const maxAgeDays = action_config.max_age_days
+          ? parseInt(action_config.max_age_days)
+          : null;
+        const maxMessages = action_config.max_messages
+          ? parseInt(action_config.max_messages)
+          : null;
+        const skipPinned = action_config.skip_pinned !== false &&
+          action_config.skip_pinned !== "false";
+        const userId = event.actor_id;
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        let channelsToProcess = [];
+
+        // Handle "ALL" option or empty - get all text channels in the guild
+        if (!channelIds || channelIds === "ALL") {
+          const allChannels = await guild.channels.fetch();
+          channelsToProcess = allChannels
+            .filter((c) => c.isTextBased() && !c.isVoiceBased())
+            .map((c) => c.id);
+        } else {
+          // Parse comma-separated channel IDs
+          channelsToProcess = channelIds.split(",").map((id) => id.trim());
+        }
+
+        // Calculate cutoff date if max_age_days is specified
+        const cutoffTime = maxAgeDays
+          ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
+          : null;
+
+        let totalDeleted = 0;
+        const results = {};
+
+        for (const channelId of channelsToProcess) {
+          // Stop if we've hit the max messages limit
+          if (maxMessages && totalDeleted >= maxMessages) break;
+
+          const channel = await discord.channels.fetch(channelId).catch(() =>
+            null
+          );
+          if (!channel || !channel.messages) {
+            results[channelId] = {
+              error: "Channel not found or not text-based",
+            };
+            continue;
+          }
+
+          try {
+            // Fetch messages and filter by user
+            const messages = await channel.messages.fetch({ limit: 100 });
+            let userMessages = messages.filter((m) => m.author.id === userId);
+
+            // Filter by age if specified
+            if (cutoffTime) {
+              userMessages = userMessages.filter((m) =>
+                m.createdTimestamp >= cutoffTime
+              );
+            }
+
+            // Skip pinned messages if configured
+            if (skipPinned) {
+              userMessages = userMessages.filter((m) => !m.pinned);
+            }
+
+            // Limit to remaining quota if max_messages is set
+            const remainingQuota = maxMessages
+              ? maxMessages - totalDeleted
+              : Infinity;
+            const toDelete = Array.from(userMessages.values()).slice(
+              0,
+              remainingQuota,
+            );
+
+            if (toDelete.length === 0) {
+              results[channelId] = { deleted: 0 };
+              continue;
+            }
+
+            let deleted = 0;
+
+            // Try bulk delete for messages < 14 days old
+            const recentMessages = toDelete.filter((m) =>
+              Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+            );
+
+            if (recentMessages.length > 1) {
+              await channel.bulkDelete(recentMessages).catch(console.error);
+              deleted += recentMessages.length;
+            } else if (recentMessages.length === 1) {
+              await recentMessages[0].delete().catch(() => {});
+              deleted++;
+            }
+
+            // Delete older messages individually
+            const oldMessages = toDelete.filter((m) =>
+              Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+            );
+
+            for (const msg of oldMessages) {
+              await msg.delete().catch(() => {});
+              deleted++;
+              // Rate limit protection
+              await new Promise((r) => setTimeout(r, 500));
+            }
+
+            results[channelId] = { deleted };
+            totalDeleted += deleted;
+          } catch (err) {
+            results[channelId] = { error: err.message || "Failed to delete" };
+          }
+        }
+
+        return {
+          success: true,
+          result: { totalDeleted, channelResults: results },
+        };
+      }
+
       case "DELETE_MESSAGES": {
         const channelId = action_config.channel_id;
         const limit = action_config.limit || 100;

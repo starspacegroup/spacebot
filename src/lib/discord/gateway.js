@@ -77,17 +77,19 @@ async function processEventAutomations(event) {
     }
 
     const { automations } = await response.json();
-    
+
     if (!automations || automations.length === 0) {
       return;
     }
 
-    console.log(`[Automation] Processing ${automations.length} automations for ${event.event_type}`);
+    console.log(
+      `[Automation] Processing ${automations.length} automations for ${event.event_type}`,
+    );
 
     for (const automation of automations) {
       try {
         await executeAutomationAction(automation, event);
-        
+
         // Report success back to API
         await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
           method: "POST",
@@ -103,11 +105,11 @@ async function processEventAutomations(event) {
             action_result: { executed: true },
           }),
         });
-        
+
         console.log(`[Automation] ${automation.name} executed successfully`);
       } catch (error) {
         console.error(`[Automation] ${automation.name} failed:`, error.message);
-        
+
         // Report failure back to API
         await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
           method: "POST",
@@ -144,6 +146,125 @@ async function executeAutomationAction(automation, event) {
   }
 
   switch (action_type) {
+    case "DELETE_USER_MESSAGES": {
+      // Enhanced version that supports multiple channels
+      const channelIds = action_config.channel_ids || "ALL";
+      const maxAgeDays = action_config.max_age_days
+        ? parseInt(action_config.max_age_days)
+        : null;
+      const maxMessages = action_config.max_messages
+        ? parseInt(action_config.max_messages)
+        : null;
+      const skipPinned = action_config.skip_pinned !== false &&
+        action_config.skip_pinned !== "false";
+      const userId = event.actor_id;
+
+      if (!userId) {
+        throw new Error("Missing user ID");
+      }
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      let channelsToProcess = [];
+
+      // Handle "ALL" option or empty - get all text channels in the guild
+      if (!channelIds || channelIds === "ALL") {
+        const allChannels = await guild.channels.fetch();
+        channelsToProcess = allChannels
+          .filter((c) => c.isTextBased() && !c.isVoiceBased())
+          .map((c) => c.id);
+      } else {
+        // Parse comma-separated channel IDs
+        channelsToProcess = channelIds.split(",").map((id) => id.trim());
+      }
+
+      // Calculate cutoff date if max_age_days is specified
+      const cutoffTime = maxAgeDays
+        ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
+        : null;
+
+      console.log(
+        `[Automation] Deleting messages from ${userId} in ${channelsToProcess.length} channel(s)` +
+          (maxAgeDays ? ` (last ${maxAgeDays} days)` : "") +
+          (maxMessages ? ` (max ${maxMessages})` : ""),
+      );
+
+      let totalDeleted = 0;
+
+      for (const channelId of channelsToProcess) {
+        // Stop if we've hit the max messages limit
+        if (maxMessages && totalDeleted >= maxMessages) break;
+
+        const channel = await client.channels.fetch(channelId).catch(() =>
+          null
+        );
+        if (!channel || !channel.messages) continue;
+
+        try {
+          const messages = await channel.messages.fetch({ limit: 100 });
+          let userMessages = messages.filter((m) => m.author.id === userId);
+
+          // Filter by age if specified
+          if (cutoffTime) {
+            userMessages = userMessages.filter((m) =>
+              m.createdTimestamp >= cutoffTime
+            );
+          }
+
+          // Skip pinned messages if configured
+          if (skipPinned) {
+            userMessages = userMessages.filter((m) => !m.pinned);
+          }
+
+          // Limit to remaining quota if max_messages is set
+          const remainingQuota = maxMessages
+            ? maxMessages - totalDeleted
+            : Infinity;
+          const toDelete = Array.from(userMessages.values()).slice(
+            0,
+            remainingQuota,
+          );
+
+          if (toDelete.length === 0) continue;
+
+          // Try bulk delete for recent messages
+          const recentMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+          );
+
+          if (recentMessages.length > 1) {
+            await channel.bulkDelete(recentMessages);
+          } else if (recentMessages.length === 1) {
+            await recentMessages[0].delete();
+          }
+
+          // Delete older messages individually
+          const oldMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+          );
+
+          for (const msg of oldMessages) {
+            await msg.delete().catch(() => {});
+            await new Promise((r) => setTimeout(r, 500));
+          }
+
+          totalDeleted += toDelete.length;
+          console.log(
+            `[Automation] Deleted ${toDelete.length} messages in #${channel.name}`,
+          );
+        } catch (err) {
+          console.error(
+            `[Automation] Error deleting in ${channelId}:`,
+            err.message,
+          );
+        }
+      }
+
+      console.log(`[Automation] Total deleted: ${totalDeleted} messages`);
+      break;
+    }
+
     case "DELETE_MESSAGES": {
       const channelId = action_config.channel_id;
       const limit = action_config.limit || 100;
@@ -158,11 +279,11 @@ async function executeAutomationAction(automation, event) {
 
       // Fetch messages and filter by user
       const messages = await channel.messages.fetch({ limit: 100 });
-      const userMessages = messages.filter(m => m.author.id === userId);
+      const userMessages = messages.filter((m) => m.author.id === userId);
       const toDelete = Array.from(userMessages.values()).slice(0, limit);
 
       // Try bulk delete for recent messages
-      const recentMessages = toDelete.filter(m => 
+      const recentMessages = toDelete.filter((m) =>
         Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
       );
 
@@ -173,13 +294,13 @@ async function executeAutomationAction(automation, event) {
       }
 
       // Delete older messages individually
-      const oldMessages = toDelete.filter(m => 
+      const oldMessages = toDelete.filter((m) =>
         Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
       );
 
       for (const msg of oldMessages) {
         await msg.delete().catch(() => {});
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 500));
       }
       break;
     }
@@ -199,7 +320,7 @@ async function executeAutomationAction(automation, event) {
             description: content,
             color: 0x5865F2,
             timestamp: new Date().toISOString(),
-          }]
+          }],
         });
       } else {
         await channel.send(content);
@@ -241,7 +362,8 @@ async function executeAutomationAction(automation, event) {
 
     case "KICK_MEMBER": {
       const userId = event.actor_id || event.target_id;
-      const reason = automation.processed_reason || action_config.reason || "Automated action";
+      const reason = automation.processed_reason || action_config.reason ||
+        "Automated action";
 
       if (!userId) throw new Error("Missing user ID");
 
@@ -257,7 +379,8 @@ async function executeAutomationAction(automation, event) {
 
     case "BAN_MEMBER": {
       const userId = event.actor_id || event.target_id;
-      const reason = automation.processed_reason || action_config.reason || "Automated action";
+      const reason = automation.processed_reason || action_config.reason ||
+        "Automated action";
       const deleteDays = action_config.delete_days || 0;
 
       if (!userId) throw new Error("Missing user ID");
@@ -265,9 +388,9 @@ async function executeAutomationAction(automation, event) {
       const guild = await client.guilds.fetch(event.guild_id);
       if (!guild) throw new Error("Guild not found");
 
-      await guild.members.ban(userId, { 
-        reason, 
-        deleteMessageSeconds: deleteDays * 24 * 60 * 60 
+      await guild.members.ban(userId, {
+        reason,
+        deleteMessageSeconds: deleteDays * 24 * 60 * 60,
       });
       break;
     }
@@ -275,7 +398,8 @@ async function executeAutomationAction(automation, event) {
     case "TIMEOUT_MEMBER": {
       const userId = event.actor_id || event.target_id;
       const duration = (action_config.duration_minutes || 60) * 60 * 1000;
-      const reason = automation.processed_reason || action_config.reason || "Automated timeout";
+      const reason = automation.processed_reason || action_config.reason ||
+        "Automated timeout";
 
       if (!userId) throw new Error("Missing user ID");
 
@@ -304,43 +428,45 @@ async function executeAutomationAction(automation, event) {
         color: 0x5865F2,
         fields: [],
         timestamp: new Date().toISOString(),
-        footer: { text: `Automation ID: ${automation.id}` }
+        footer: { text: `Automation ID: ${automation.id}` },
       };
 
       if (event.actor_id) {
-        embed.fields.push({ 
-          name: "Actor", 
-          value: `<@${event.actor_id}> (${event.actor_name || "Unknown"})`, 
-          inline: true 
+        embed.fields.push({
+          name: "Actor",
+          value: `<@${event.actor_id}> (${event.actor_name || "Unknown"})`,
+          inline: true,
         });
       }
 
       if (event.target_id) {
-        embed.fields.push({ 
-          name: "Target", 
-          value: `<@${event.target_id}> (${event.target_name || "Unknown"})`, 
-          inline: true 
+        embed.fields.push({
+          name: "Target",
+          value: `<@${event.target_id}> (${event.target_name || "Unknown"})`,
+          inline: true,
         });
       }
 
       if (event.channel_id) {
-        embed.fields.push({ 
-          name: "Channel", 
-          value: `<#${event.channel_id}>`, 
-          inline: true 
+        embed.fields.push({
+          name: "Channel",
+          value: `<#${event.channel_id}>`,
+          inline: true,
         });
       }
 
       if (action_config.include_details && event.details) {
         const detailsStr = Object.entries(event.details)
           .filter(([_, v]) => v !== null && v !== undefined)
-          .map(([k, v]) => `**${k}:** ${typeof v === "object" ? JSON.stringify(v) : v}`)
+          .map(([k, v]) =>
+            `**${k}:** ${typeof v === "object" ? JSON.stringify(v) : v}`
+          )
           .join("\n");
 
         if (detailsStr) {
-          embed.fields.push({ 
-            name: "Details", 
-            value: detailsStr.substring(0, 1024) 
+          embed.fields.push({
+            name: "Details",
+            value: detailsStr.substring(0, 1024),
           });
         }
       }
@@ -351,10 +477,13 @@ async function executeAutomationAction(automation, event) {
 
     case "CREATE_THREAD": {
       const channelId = action_config.channel_id;
-      const threadName = automation.processed_thread_name || action_config.thread_name;
+      const threadName = automation.processed_thread_name ||
+        action_config.thread_name;
       const autoArchive = action_config.auto_archive_duration || 1440;
 
-      if (!channelId || !threadName) throw new Error("Missing channel or thread name");
+      if (!channelId || !threadName) {
+        throw new Error("Missing channel or thread name");
+      }
 
       const channel = await client.channels.fetch(channelId);
       if (!channel) throw new Error("Channel not found");
@@ -559,7 +688,7 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild) return;
 
-   await logFn({
+    await logFn({
       guild_id: nwMessage.guild.id,
       event_type: "MESSAGE_UPDATE",
       event_category: "message",
@@ -686,7 +815,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.selfVideo !== newState.selfVideo) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.selfVideo ? "VOICE_VIDEO_START" : "VOICE_VIDEO_STOP",
+        event_type: newState.selfVideo
+          ? "VOICE_VIDEO_START"
+          : "VOICE_VIDEO_STOP",
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
@@ -702,7 +833,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.streaming !== newState.streaming) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.streaming ? "VOICE_STREAM_START" : "VOICE_STREAM_STOP",
+        event_type: newState.streaming
+          ? "VOICE_STREAM_START"
+          : "VOICE_STREAM_STOP",
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
@@ -734,7 +867,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.selfDeaf !== newState.selfDeaf) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.selfDeaf ? "VOICE_SELF_DEAFEN" : "VOICE_SELF_UNDEAFEN",
+        event_type: newState.selfDeaf
+          ? "VOICE_SELF_DEAFEN"
+          : "VOICE_SELF_UNDEAFEN",
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
@@ -750,7 +885,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.serverMute !== newState.serverMute) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.serverMute ? "VOICE_SERVER_MUTE" : "VOICE_SERVER_UNMUTE",
+        event_type: newState.serverMute
+          ? "VOICE_SERVER_MUTE"
+          : "VOICE_SERVER_UNMUTE",
         event_category: "voice",
         target_id: member.user.id,
         target_name: member.user.tag,
@@ -766,7 +903,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.serverDeaf !== newState.serverDeaf) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.serverDeaf ? "VOICE_SERVER_DEAFEN" : "VOICE_SERVER_UNDEAFEN",
+        event_type: newState.serverDeaf
+          ? "VOICE_SERVER_DEAFEN"
+          : "VOICE_SERVER_UNDEAFEN",
         event_category: "voice",
         target_id: member.user.id,
         target_name: member.user.tag,
@@ -782,7 +921,9 @@ function setupEventHandlers(client, logFn) {
     if (oldState.suppress !== newState.suppress) {
       await logFn({
         guild_id: guildId,
-        event_type: newState.suppress ? "VOICE_STAGE_SUPPRESS" : "VOICE_STAGE_UNSUPPRESS",
+        event_type: newState.suppress
+          ? "VOICE_STAGE_SUPPRESS"
+          : "VOICE_STAGE_UNSUPPRESS",
         event_category: "voice",
         target_id: member.user.id,
         target_name: member.user.tag,
@@ -1121,7 +1262,11 @@ function setupEventHandlers(client, logFn) {
           customId: interaction.customId,
         },
       });
-    } else if (interaction.isStringSelectMenu() || interaction.isUserSelectMenu() || interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() || interaction.isMentionableSelectMenu()) {
+    } else if (
+      interaction.isStringSelectMenu() || interaction.isUserSelectMenu() ||
+      interaction.isRoleSelectMenu() || interaction.isChannelSelectMenu() ||
+      interaction.isMentionableSelectMenu()
+    ) {
       await logFn({
         guild_id: interaction.guild.id,
         event_type: "SELECT_MENU_USE",
@@ -1135,7 +1280,10 @@ function setupEventHandlers(client, logFn) {
           values: interaction.values,
         },
       });
-    } else if (interaction.isUserContextMenuCommand() || interaction.isMessageContextMenuCommand()) {
+    } else if (
+      interaction.isUserContextMenuCommand() ||
+      interaction.isMessageContextMenuCommand()
+    ) {
       await logFn({
         guild_id: interaction.guild.id,
         event_type: "CONTEXT_MENU_USE",
@@ -1146,7 +1294,9 @@ function setupEventHandlers(client, logFn) {
         channel_name: interaction.channel?.name,
         details: {
           commandName: interaction.commandName,
-          targetType: interaction.isUserContextMenuCommand() ? "user" : "message",
+          targetType: interaction.isUserContextMenuCommand()
+            ? "user"
+            : "message",
           targetId: interaction.targetId,
         },
       });
@@ -1204,7 +1354,10 @@ function setupEventHandlers(client, logFn) {
       changes.name = { old: oldSticker.name, new: newSticker.name };
     }
     if (oldSticker.description !== newSticker.description) {
-      changes.description = { old: oldSticker.description, new: newSticker.description };
+      changes.description = {
+        old: oldSticker.description,
+        new: newSticker.description,
+      };
     }
 
     if (Object.keys(changes).length > 0) {
@@ -1264,10 +1417,13 @@ function setupEventHandlers(client, logFn) {
     if (oldEvent?.status !== newEvent.status) {
       changes.status = { old: oldEvent?.status, new: newEvent.status };
     }
-    if (oldEvent?.scheduledStartAt?.getTime() !== newEvent.scheduledStartAt?.getTime()) {
-      changes.scheduledStartTime = { 
-        old: oldEvent?.scheduledStartAt?.toISOString(), 
-        new: newEvent.scheduledStartAt?.toISOString() 
+    if (
+      oldEvent?.scheduledStartAt?.getTime() !==
+        newEvent.scheduledStartAt?.getTime()
+    ) {
+      changes.scheduledStartTime = {
+        old: oldEvent?.scheduledStartAt?.toISOString(),
+        new: newEvent.scheduledStartAt?.toISOString(),
       };
     }
 

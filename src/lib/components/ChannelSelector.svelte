@@ -19,7 +19,8 @@
 		multiple = false, // Enable multi-select
 		placeholder = 'Search channels...',
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
-		showAllOption = false // Show "All Channels" option at top (multi-select only)
+		showAllOption = false, // Show "All Channels" option at top (multi-select only)
+		allOptionLabel = 'All Text Channels' // Label for the "all" option
 	} = $props();
 	
 	let channels = $state([]);
@@ -117,7 +118,7 @@
 	const selectedChannelNames = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
 		return selectedIds.map(id => {
-			if (id === ALL_CHANNELS) return '✱ Any';
+			if (id === ALL_CHANNELS) return `✱ ${allOptionLabel}`;
 			const ch = flatChannels.find(c => c.id === id);
 			return ch ? `#${ch.name}` : id;
 		});
@@ -149,7 +150,12 @@
 			if (isSelected(channel.id)) {
 				// Remove from selection
 				const newIds = selectedIds.filter(id => id !== channel.id);
-				value = newIds.join(',');
+				// If nothing left and showAllOption is enabled, default to ALL
+				if (newIds.length === 0 && showAllOption) {
+					value = ALL_CHANNELS;
+				} else {
+					value = newIds.join(',');
+				}
 			} else {
 				// Add to selection - remove ALL if present since we're picking specific channels
 				const newIds = selectedIds.filter(id => id !== ALL_CHANNELS);
@@ -166,7 +172,12 @@
 	
 	function removeChannel(channelId) {
 		const newIds = selectedIds.filter(id => id !== channelId);
-		value = newIds.join(',');
+		// If nothing left and showAllOption is enabled, default to ALL
+		if (newIds.length === 0 && showAllOption) {
+			value = ALL_CHANNELS;
+		} else {
+			value = newIds.join(',');
+		}
 	}
 	
 	function clearSelection() {
@@ -297,7 +308,7 @@
 				{@const allChannels = filteredChannels.flatMap(g => g.channels || [])}
 				
 			{#if showAllOption && multiple && !searchQuery}
-					<!-- Any option -->
+					<!-- All option -->
 					<button
 						type="button"
 						class="channel-option all-channels-option"
@@ -306,7 +317,7 @@
 					>
 						<span class="checkbox">{isAllSelected ? '☑' : '☐'}</span>
 						<span class="channel-icon">✱</span>
-						<span class="channel-name">Any</span>
+						<span class="channel-name">{allOptionLabel}</span>
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}

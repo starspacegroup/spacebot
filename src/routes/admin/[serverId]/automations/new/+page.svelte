@@ -302,10 +302,11 @@
 									type="number" 
 									id="config_{configKey}" 
 									name="action_config.{configKey}"
-									value={config.default || ''}
+									value={config.default ?? ''}
 									min="0"
 									max={config.max || 999999}
 									required={config.required}
+									placeholder={config.placeholder || ''}
 								/>
 							{:else if config.type === 'boolean'}
 								<label class="checkbox-label">
@@ -317,6 +318,20 @@
 									/>
 									<span>Enable</span>
 								</label>
+							{:else if config.type === 'channel_multi'}
+								<ChannelSelector
+									channels={sharedChannels}
+									name="action_config.{configKey}"
+									required={config.required}
+									placeholder="Select channel(s)..."
+									multiple={true}
+									showAllOption={config.showAllOption}
+									allOptionLabel={config.allOptionLabel || 'All Text Channels'}
+									value={config.default || ''}
+								/>
+								{#if config.description}
+									<p class="field-hint">{config.description}</p>
+								{/if}
 							{:else if config.type === 'channel'}
 								<ChannelSelector
 									channels={sharedChannels}

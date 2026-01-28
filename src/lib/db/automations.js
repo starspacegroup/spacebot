@@ -25,6 +25,39 @@
  * Action types and their configurations
  */
 export const ACTION_TYPES = {
+  DELETE_USER_MESSAGES: {
+    name: "Delete User's Messages",
+    description: "Delete messages from trigger user",
+    icon: "🗑️",
+    configSchema: {
+      channel_ids: {
+        type: "channel_multi",
+        required: false,
+        label: "Channel(s)",
+        showAllOption: true,
+        default: "ALL",
+      },
+      max_age_days: {
+        type: "number",
+        required: false,
+        label: "Delete messages from last X days",
+        description: "Leave empty to delete all messages regardless of age",
+        placeholder: "∞ (all time)",
+      },
+      max_messages: {
+        type: "number",
+        required: false,
+        label: "Max messages to delete",
+        description: "Leave empty for no limit",
+        placeholder: "∞",
+      },
+      skip_pinned: {
+        type: "boolean",
+        default: true,
+        label: "Skip pinned messages",
+      },
+    },
+  },
   DELETE_MESSAGES: {
     name: "Delete Messages",
     description: "Delete messages from a user in a channel",
