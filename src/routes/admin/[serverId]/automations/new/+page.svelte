@@ -86,6 +86,44 @@
 	function getActionConfigSchema(actionType) {
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
+	
+	// Check if a filter applies to the selected event type
+	function filterAppliesToEvent(filterInfo, eventType) {
+		if (!filterInfo.applicableEvents || !eventType) {
+			return true;
+		}
+		
+		for (const pattern of filterInfo.applicableEvents) {
+			if (pattern === '*') {
+				return true;
+			}
+			// Check if it's a prefix match (ends with _) or exact match
+			if (pattern.endsWith('_')) {
+				if (eventType.startsWith(pattern)) {
+					return true;
+				}
+			} else if (eventType === pattern) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	// Get filters applicable to the current event type
+	const applicableFilters = $derived.by(() => {
+		if (!selectedEventType) return {};
+		const result = {};
+		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
+			if (filterAppliesToEvent(filterInfo, selectedEventType)) {
+				result[filterKey] = filterInfo;
+			}
+		}
+		return result;
+	});
+	
+	// Check if there are any applicable filters
+	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0);
 </script>
 
 <svelte:head>
@@ -161,45 +199,46 @@
 				</select>
 			</div>
 			
-			<div class="filters-toggle">
-				<button type="button" class="btn btn-secondary btn-sm" onclick={() => showFilters = !showFilters}>
-					{showFilters ? '➖ Hide Filters' : '➕ Add Filters'}
-				</button>
-				<span class="toggle-hint">Filters narrow down when this automation triggers</span>
-			</div>
-			
-			{#if showFilters}
-				<div class="filters-grid">
-					{#each Object.entries(data.filterTypes) as [filterKey, filterInfo]}
-						<div class="form-group">
-							<label for="filter_{filterKey}">{filterInfo.label}</label>
-							{#if filterInfo.type === 'channel'}
-								<ChannelSelector
-									channels={sharedChannels}
-									name="filter.{filterKey}"
-									placeholder={filterInfo.description}
-									multiple={true}
-									showAllOption={filterKey === 'channel_id'}
-									value={filterKey === 'channel_id' ? 'ALL' : ''}
-								/>
-							{:else if filterInfo.type === 'role'}
-								<RoleSelector
-									roles={sharedRoles}
-									name="filter.{filterKey}"
-									placeholder={filterInfo.description}
-									multiple={true}
-									showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
-									value={filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : ''}
-								/>
-							{:else if filterInfo.type === 'select'}
-								<select
-									id="filter_{filterKey}"
-									name="filter.{filterKey}"
-								>
-									{#each filterInfo.options as option}
-										<option value={option.value} selected={option.value === filterInfo.default}>{option.label}</option>
-									{/each}
-								</select>
+			{#if selectedEventType && hasApplicableFilters}
+				<div class="filters-toggle">
+					<button type="button" class="btn btn-secondary btn-sm" onclick={() => showFilters = !showFilters}>
+						{showFilters ? '➖ Hide Filters' : '➕ Add Filters'}
+					</button>
+					<span class="toggle-hint">Filters narrow down when this automation triggers</span>
+				</div>
+				
+				{#if showFilters}
+					<div class="filters-grid">
+						{#each Object.entries(applicableFilters) as [filterKey, filterInfo]}
+							<div class="form-group">
+								<label for="filter_{filterKey}">{filterInfo.label}</label>
+								{#if filterInfo.type === 'channel'}
+									<ChannelSelector
+										channels={sharedChannels}
+										name="filter.{filterKey}"
+										placeholder={filterInfo.description}
+										multiple={true}
+										showAllOption={filterKey === 'channel_id'}
+										value={filterKey === 'channel_id' ? 'ALL' : ''}
+									/>
+								{:else if filterInfo.type === 'role'}
+									<RoleSelector
+										roles={sharedRoles}
+										name="filter.{filterKey}"
+										placeholder={filterInfo.description}
+										multiple={true}
+										showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
+										value={filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : ''}
+									/>
+								{:else if filterInfo.type === 'select'}
+									<select
+										id="filter_{filterKey}"
+										name="filter.{filterKey}"
+									>
+										{#each filterInfo.options as option}
+											<option value={option.value} selected={option.value === filterInfo.default}>{option.label}</option>
+										{/each}
+									</select>
 							{:else}
 								<input 
 									type={filterInfo.type === 'number' ? 'number' : 'text'} 
@@ -211,6 +250,7 @@
 						</div>
 					{/each}
 				</div>
+				{/if}
 			{/if}
 		</section>
 		

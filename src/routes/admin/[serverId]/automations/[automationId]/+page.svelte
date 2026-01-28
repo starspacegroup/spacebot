@@ -96,6 +96,44 @@
 	function getActionConfigSchema(actionType) {
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
+	
+	// Check if a filter applies to the selected event type
+	function filterAppliesToEvent(filterInfo, eventType) {
+		if (!filterInfo.applicableEvents || !eventType) {
+			return true;
+		}
+		
+		for (const pattern of filterInfo.applicableEvents) {
+			if (pattern === '*') {
+				return true;
+			}
+			// Check if it's a prefix match (ends with _) or exact match
+			if (pattern.endsWith('_')) {
+				if (eventType.startsWith(pattern)) {
+					return true;
+				}
+			} else if (eventType === pattern) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	// Get filters applicable to the current event type
+	const applicableFilters = $derived.by(() => {
+		if (!selectedEventType) return {};
+		const result = {};
+		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
+			if (filterAppliesToEvent(filterInfo, selectedEventType)) {
+				result[filterKey] = filterInfo;
+			}
+		}
+		return result;
+	});
+	
+	// Check if there are any applicable filters
+	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0);
 </script>
 
 <svelte:head>
@@ -179,50 +217,52 @@
 				</div>
 			{/if}
 			
-			<div class="filters-grid">
-				<p class="filters-hint">Update or add filters to narrow down when this automation triggers</p>
-				{#each Object.entries(data.filterTypes) as [filterKey, filterInfo]}
-					<div class="form-group">
-						<label for="filter_{filterKey}">{filterInfo.label}</label>
-						{#if filterInfo.type === 'channel'}
-							<ChannelSelector
-								channels={sharedChannels}
-								name="filter.{filterKey}"
-								placeholder={filterInfo.description}
-								value={automation.trigger_filters?.[filterKey] || (filterKey === 'channel_id' ? 'ALL' : '')}
-								multiple={true}
-								showAllOption={filterKey === 'channel_id'}
-							/>
-						{:else if filterInfo.type === 'role'}
-							<RoleSelector
-								roles={sharedRoles}
-								name="filter.{filterKey}"
-								placeholder={filterInfo.description}
-								value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : '')}
-								multiple={true}
-								showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
-							/>
-						{:else if filterInfo.type === 'select'}
-							<select
-								id="filter_{filterKey}"
-								name="filter.{filterKey}"
-							>
-								{#each filterInfo.options as option}
-									<option value={option.value} selected={option.value === (automation.trigger_filters?.[filterKey] || filterInfo.default)}>{option.label}</option>
-								{/each}
-							</select>
-						{:else}
-							<input 
-								type={filterInfo.type === 'number' ? 'number' : 'text'} 
-								id="filter_{filterKey}" 
-								name="filter.{filterKey}" 
-								placeholder={filterInfo.description}
-								value={automation.trigger_filters?.[filterKey] || ''}
-							/>
-						{/if}
-					</div>
-				{/each}
-			</div>
+			{#if hasApplicableFilters}
+				<div class="filters-grid">
+					<p class="filters-hint">Update or add filters to narrow down when this automation triggers</p>
+					{#each Object.entries(applicableFilters) as [filterKey, filterInfo]}
+						<div class="form-group">
+							<label for="filter_{filterKey}">{filterInfo.label}</label>
+							{#if filterInfo.type === 'channel'}
+								<ChannelSelector
+									channels={sharedChannels}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									value={automation.trigger_filters?.[filterKey] || (filterKey === 'channel_id' ? 'ALL' : '')}
+									multiple={true}
+									showAllOption={filterKey === 'channel_id'}
+								/>
+							{:else if filterInfo.type === 'role'}
+								<RoleSelector
+									roles={sharedRoles}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : '')}
+									multiple={true}
+									showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
+								/>
+							{:else if filterInfo.type === 'select'}
+								<select
+									id="filter_{filterKey}"
+									name="filter.{filterKey}"
+								>
+									{#each filterInfo.options as option}
+										<option value={option.value} selected={option.value === (automation.trigger_filters?.[filterKey] || filterInfo.default)}>{option.label}</option>
+									{/each}
+								</select>
+							{:else}
+								<input 
+									type={filterInfo.type === 'number' ? 'number' : 'text'} 
+									id="filter_{filterKey}" 
+									name="filter.{filterKey}" 
+									placeholder={filterInfo.description}
+									value={automation.trigger_filters?.[filterKey] || ''}
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/if}
 		</section>
 		
 		<!-- Action Section -->

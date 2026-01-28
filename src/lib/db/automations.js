@@ -148,42 +148,70 @@ export const ACTION_TYPES = {
 
 /**
  * Filter types that can be applied to triggers
+ * Each filter has an applicableEvents array to define which event types it applies to
+ * Use "*" to apply to all events, or specify event type prefixes/exact matches
  */
 export const FILTER_TYPES = {
   channel_id: {
     type: "channel",
     label: "In Channel(s)",
     description: "Only trigger in this channel",
+    applicableEvents: [
+      "MESSAGE_",
+      "VOICE_",
+      "THREAD_",
+      "REACTION_",
+      "CHANNEL_PINS_UPDATE",
+    ],
   },
   not_channel_id: {
     type: "channel",
     label: "Not In Channel(s)",
     description: "Don't trigger in this channel",
+    applicableEvents: [
+      "MESSAGE_",
+      "VOICE_",
+      "THREAD_",
+      "REACTION_",
+      "CHANNEL_PINS_UPDATE",
+    ],
   },
   actor_has_role: {
     type: "role",
     label: "Actor Has Role",
     description: "Actor must have this role",
+    applicableEvents: ["*"], // All events have an actor
   },
   actor_missing_role: {
     type: "role",
     label: "Actor Missing Role",
     description: "Actor must NOT have this role",
+    applicableEvents: ["*"], // All events have an actor
   },
   target_has_role: {
     type: "role",
     label: "Target Has Role",
     description: "Target must have this role",
+    applicableEvents: [
+      "MEMBER_BAN",
+      "MEMBER_UNBAN",
+      "MEMBER_KICK",
+      "MEMBER_TIMEOUT",
+      "MEMBER_ROLE_ADD",
+      "MEMBER_ROLE_REMOVE",
+    ],
   },
   content_contains: {
     type: "text",
     label: "Content Contains",
     description: "Message content must contain text",
+    applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE"],
   },
   content_regex: {
     type: "text",
     label: "Content Matches Regex",
     description: "Message content matches pattern",
+    applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE"],
   },
   bot_filter: {
     type: "select",
@@ -195,18 +223,64 @@ export const FILTER_TYPES = {
       { value: "only_humans", label: "Only Humans" },
     ],
     default: "any",
+    applicableEvents: ["MESSAGE_", "MEMBER_JOIN", "MEMBER_LEAVE", "REACTION_"],
   },
   min_account_age_days: {
     type: "number",
     label: "Min Account Age (days)",
     description: "Account must be at least X days old",
+    applicableEvents: ["MEMBER_JOIN"],
   },
   max_account_age_days: {
     type: "number",
     label: "Max Account Age (days)",
     description: "Account must be less than X days old",
+    applicableEvents: ["MEMBER_JOIN"],
   },
 };
+
+/**
+ * Check if a filter applies to a given event type
+ * @param {Object} filterInfo - The filter configuration object
+ * @param {string} eventType - The event type to check
+ * @returns {boolean} - Whether the filter applies to the event type
+ */
+export function filterAppliesToEvent(filterInfo, eventType) {
+  if (!filterInfo.applicableEvents || !eventType) {
+    return true; // If no restrictions, apply to all
+  }
+
+  for (const pattern of filterInfo.applicableEvents) {
+    if (pattern === "*") {
+      return true;
+    }
+    // Check if it's a prefix match (ends with _) or exact match
+    if (pattern.endsWith("_")) {
+      if (eventType.startsWith(pattern)) {
+        return true;
+      }
+    } else if (eventType === pattern) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Get filters applicable to a specific event type
+ * @param {string} eventType - The event type
+ * @returns {Object} - Filtered FILTER_TYPES object
+ */
+export function getFiltersForEvent(eventType) {
+  const applicableFilters = {};
+  for (const [filterKey, filterInfo] of Object.entries(FILTER_TYPES)) {
+    if (filterAppliesToEvent(filterInfo, eventType)) {
+      applicableFilters[filterKey] = filterInfo;
+    }
+  }
+  return applicableFilters;
+}
 
 /**
  * Template variables available for use in automation messages
