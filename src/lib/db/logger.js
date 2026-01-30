@@ -286,6 +286,38 @@ export async function updateGuildSettings(db, guildId, settings) {
 }
 
 /**
+ * Get a single log entry by ID
+ * @param {D1Database} db - D1 database binding
+ * @param {number} logId - Log entry ID
+ * @param {string} guildId - Guild ID (for security verification)
+ * @returns {Promise<Object|null>} - Log entry or null if not found
+ */
+export async function getLogById(db, logId, guildId) {
+  if (!db) {
+    return null;
+  }
+
+  try {
+    const result = await db.prepare(`
+			SELECT * FROM event_logs 
+			WHERE id = ? AND guild_id = ?
+		`).bind(logId, guildId).first();
+
+    if (!result) {
+      return null;
+    }
+
+    return {
+      ...result,
+      details: result.details ? JSON.parse(result.details) : null,
+    };
+  } catch (error) {
+    console.error("Failed to fetch log by ID:", error);
+    return null;
+  }
+}
+
+/**
  * Delete old logs (retention policy)
  * @param {D1Database} db - D1 database binding
  * @param {number} daysToKeep - Number of days to retain logs

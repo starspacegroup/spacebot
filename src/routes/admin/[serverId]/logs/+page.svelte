@@ -372,20 +372,19 @@
 								</td>
 								<td class="details-cell">
 									{#if log.details}
-										<button 
+										<a 
+											href="/admin/{data.serverId}/logs/{log.id}"
 											class="details-btn"
-											onclick={(e) => {
-												const details = e.target.nextElementSibling;
-												details.classList.toggle('show');
-											}}
 										>
 											View Details
-										</button>
-										<div class="details-popup">
-											<pre>{JSON.stringify(log.details, null, 2)}</pre>
-										</div>
+										</a>
 									{:else}
-										<span class="na">—</span>
+										<a 
+											href="/admin/{data.serverId}/logs/{log.id}"
+											class="details-btn secondary"
+										>
+											View
+										</a>
 									{/if}
 								</td>
 							</tr>
@@ -681,6 +680,7 @@
 	}
 	
 	.details-btn {
+		display: inline-block;
 		padding: 0.25rem 0.5rem;
 		font-size: 0.75rem;
 		background: var(--bg-secondary, #333);
@@ -688,39 +688,26 @@
 		color: var(--text-primary, #fff);
 		border-radius: 4px;
 		cursor: pointer;
+		text-decoration: none;
+		text-align: center;
 	}
 	
 	.details-btn:hover {
 		background: var(--bg-tertiary, #444);
 	}
 	
-	.details-popup {
-		display: none;
-		position: absolute;
-		background: var(--bg-secondary, #222);
-		border: 1px solid var(--border-color, #444);
-		border-radius: 8px;
-		padding: 1rem;
-		max-width: 400px;
-		max-height: 300px;
-		overflow: auto;
-		z-index: 100;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+	.details-btn.secondary {
+		background: transparent;
+		color: var(--text-secondary, #888);
 	}
 	
-	.details-popup.show {
-		display: block;
-	}
-	
-	.details-popup pre {
-		margin: 0;
-		font-size: 0.75rem;
-		white-space: pre-wrap;
-		word-break: break-all;
+	.details-btn.secondary:hover {
+		color: var(--text-primary, #fff);
+		background: var(--bg-secondary, #333);
 	}
 	
 	.details-cell {
-		position: relative;
+		white-space: nowrap;
 	}
 	
 	/* Empty State */
