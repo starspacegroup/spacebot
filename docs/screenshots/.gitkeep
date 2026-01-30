@@ -1,0 +1,20 @@
+# Screenshots Directory
+
+This directory contains screenshots for the README documentation.
+
+## Required Screenshots
+
+Add the following screenshots to complete the documentation:
+
+1. `dashboard.png` - Main server selection dashboard
+2. `server-dashboard.png` - Individual server dashboard with stats
+3. `automations.png` - Automations list page
+4. `commands.png` - Custom commands list
+5. `logs.png` - Event logs view
+
+## Recommended Dimensions
+
+- Width: 1200-1400px
+- Use a clean browser window (no bookmarks bar)
+- Use dark mode for consistency
+- Capture meaningful data (not empty states)
