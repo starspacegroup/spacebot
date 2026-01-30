@@ -5,7 +5,7 @@ A powerful, self-hosted Discord bot platform built with **SvelteKit 2**
 build event-driven automations, and monitor all Discord activity through a
 beautiful admin dashboard.
 
-![SpaceBot Dashboard](docs/screenshots/dashboard.png)
+![SpaceBot Dashboard](docs/screenshots/server-admin.png)
 
 ## ✨ Features
 
