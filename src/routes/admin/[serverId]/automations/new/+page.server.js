@@ -47,7 +47,13 @@ export const actions = {
     // Parse form data
     const name = formData.get("name");
     const description = formData.get("description");
+    
+    // Support both single trigger_event (legacy) and multiple trigger_events
+    const triggerEvents = formData.getAll("trigger_events[]");
     const triggerEvent = formData.get("trigger_event");
+    const allTriggers = triggerEvents.length > 0 
+      ? triggerEvents.filter(Boolean)
+      : (triggerEvent ? [triggerEvent] : []);
 
     // Parse stacked actions
     const actionTypes = formData.getAll("action_type[]");
@@ -78,10 +84,10 @@ export const actions = {
       }
     }
 
-    if (!name || !triggerEvent || actions.length === 0) {
+    if (!name || allTriggers.length === 0 || actions.length === 0) {
       return fail(400, {
-        error: "Name, trigger event, and at least one action are required",
-        values: { name, description, triggerEvent, actions },
+        error: "Name, at least one trigger event, and at least one action are required",
+        values: { name, description, triggerEvents: allTriggers, actions },
       });
     }
 
@@ -94,7 +100,7 @@ export const actions = {
         name,
         description: description || null,
         enabled: true,
-        trigger_event: triggerEvent,
+        trigger_events: allTriggers,
         trigger_filters: Object.keys(triggerFilters).length > 0
           ? triggerFilters
           : null,

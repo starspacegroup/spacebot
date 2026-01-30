@@ -24,10 +24,24 @@
 		return [];
 	}
 	
-	// Initialize with empty strings, will be updated by $effect
-	let selectedEventType = $state('');
+	// Initialize from existing automation data - support multiple triggers
+	function parseExistingTriggers() {
+		// Handle new array format
+		if (data.automation.trigger_events && Array.isArray(data.automation.trigger_events)) {
+			return [...data.automation.trigger_events];
+		}
+		// Legacy format: single trigger_event
+		if (data.automation.trigger_event) {
+			return [data.automation.trigger_event];
+		}
+		return [];
+	}
+	
+	// Initialize with empty values, will be updated by $effect
+	let selectedEventTypes = $state(parseExistingTriggers());
 	let actions = $state(parseExistingActions());
 	let showDeleteConfirm = $state(false);
+	let showTriggerPicker = $state(false);
 	
 	// Shared channel data - fetched once for all ChannelSelectors
 	let sharedChannels = $state(null);
@@ -84,7 +98,7 @@
 	// Update state when data changes (runs on mount and data updates)
 	$effect(() => {
 		if (data.automation) {
-			selectedEventType = data.automation.trigger_event;
+			selectedEventTypes = parseExistingTriggers();
 		}
 	});
 	
@@ -171,12 +185,32 @@
 		return false;
 	}
 	
-	// Get filters applicable to the current event type
+	// Check if a filter applies to any of the selected event types
+	function filterAppliesToAnyEvent(filterInfo) {
+		if (selectedEventTypes.length === 0) return false;
+		return selectedEventTypes.some(eventType => filterAppliesToEvent(filterInfo, eventType));
+	}
+	
+	// Toggle event type selection
+	function toggleEventType(eventType) {
+		if (selectedEventTypes.includes(eventType)) {
+			selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
+		} else {
+			selectedEventTypes = [...selectedEventTypes, eventType];
+		}
+	}
+	
+	// Remove a trigger from the list
+	function removeTrigger(eventType) {
+		selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
+	}
+	
+	// Get filters applicable to the current event types
 	const applicableFilters = $derived.by(() => {
-		if (!selectedEventType) return {};
+		if (selectedEventTypes.length === 0) return {};
 		const result = {};
 		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
-			if (filterAppliesToEvent(filterInfo, selectedEventType)) {
+			if (filterAppliesToAnyEvent(filterInfo)) {
 				result[filterKey] = filterInfo;
 			}
 		}
@@ -242,22 +276,76 @@
 		
 		<!-- Trigger Section -->
 		<section class="form-section">
-			<h2>📥 Trigger (When)</h2>
-			<p class="section-description">Choose what event will trigger this automation</p>
-			
-			<div class="form-group">
-				<label for="trigger_event">Event Type <span class="required">*</span></label>
-				<select id="trigger_event" name="trigger_event" required bind:value={selectedEventType}>
-					{#each Object.entries(getEventsByCategory()) as [category, events]}
-						{@const catInfo = getCategoryInfo(category)}
-						<optgroup label="{catInfo.icon} {catInfo.name}">
-							{#each events as event}
-								<option value={event.type}>{event.type.replace(/_/g, ' ')} - {event.description}</option>
-							{/each}
-						</optgroup>
-					{/each}
-				</select>
+			<div class="section-header-row">
+				<div>
+					<h2>📥 Triggers (When)</h2>
+					<p class="section-description">Choose what events will trigger this automation</p>
+				</div>
+				<button type="button" class="btn btn-secondary btn-sm" onclick={() => showTriggerPicker = !showTriggerPicker}>
+					<span>+</span> Add Trigger
+				</button>
 			</div>
+			
+			<!-- Hidden inputs to pass selected triggers to form -->
+			{#each selectedEventTypes as eventType}
+				<input type="hidden" name="trigger_events[]" value={eventType} />
+			{/each}
+			
+			{#if selectedEventTypes.length === 0}
+				<div class="empty-triggers">
+					<p>No triggers configured. Click "Add Trigger" to get started.</p>
+				</div>
+			{:else}
+				<div class="triggers-list">
+					{#each selectedEventTypes as eventType, index}
+						{@const eventInfo = data.eventTypes[eventType]}
+						{@const catInfo = getCategoryInfo(eventInfo?.category)}
+						<div class="trigger-item">
+							<div class="trigger-info">
+								<span class="trigger-icon" style="color: {catInfo.color}">{catInfo.icon}</span>
+								<span class="trigger-name">{eventType.replace(/_/g, ' ')}</span>
+								<span class="trigger-description">{eventInfo?.description || ''}</span>
+							</div>
+							<button type="button" class="btn-icon btn-danger" onclick={() => removeTrigger(eventType)} title="Remove trigger">
+								×
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
+			
+			{#if showTriggerPicker}
+				<div class="trigger-picker">
+					<div class="trigger-picker-header">
+						<h4>Select Event Types</h4>
+						<button type="button" class="btn-icon" onclick={() => showTriggerPicker = false} title="Close">×</button>
+					</div>
+					<div class="trigger-categories">
+						{#each Object.entries(getEventsByCategory()) as [category, events]}
+							{@const catInfo = getCategoryInfo(category)}
+							<div class="trigger-category">
+								<h5 class="category-header">
+									<span style="color: {catInfo.color}">{catInfo.icon}</span>
+									{catInfo.name}
+								</h5>
+								<div class="trigger-options">
+									{#each events as event}
+										<label class="trigger-option" class:selected={selectedEventTypes.includes(event.type)}>
+											<input 
+												type="checkbox" 
+												checked={selectedEventTypes.includes(event.type)}
+												onchange={() => toggleEventType(event.type)}
+											/>
+											<span class="trigger-option-name">{event.type.replace(/_/g, ' ')}</span>
+											<span class="trigger-option-desc">{event.description}</span>
+										</label>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			
 			{#if automation.trigger_filters && Object.keys(automation.trigger_filters).length > 0}
 				<div class="current-filters">
@@ -691,6 +779,152 @@
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		margin: 0 0 1rem;
+	}
+	
+	/* Multi-trigger styles */
+	.empty-triggers {
+		padding: 2rem;
+		text-align: center;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		color: var(--text-muted);
+	}
+	
+	.empty-triggers p {
+		margin: 0;
+	}
+	
+	.triggers-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.trigger-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.75rem 1rem;
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+	}
+	
+	.trigger-info {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.trigger-icon {
+		font-size: 1.25rem;
+		flex-shrink: 0;
+	}
+	
+	.trigger-name {
+		font-weight: 500;
+		white-space: nowrap;
+	}
+	
+	.trigger-description {
+		color: var(--text-muted);
+		font-size: 0.875rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	
+	.trigger-picker {
+		margin-top: 1rem;
+		padding: 1rem;
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+	}
+	
+	.trigger-picker-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--border-color, #40444b);
+	}
+	
+	.trigger-picker-header h4 {
+		margin: 0;
+		font-size: 1rem;
+	}
+	
+	.trigger-categories {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		max-height: 400px;
+		overflow-y: auto;
+	}
+	
+	.trigger-category {
+		padding: 0.75rem;
+		background: var(--bg-secondary, #2f3136);
+		border-radius: 8px;
+	}
+	
+	.category-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0 0 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+	
+	.trigger-options {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+	
+	.trigger-option {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 6px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.trigger-option:hover {
+		background: var(--bg-primary, #202225);
+	}
+	
+	.trigger-option.selected {
+		background: rgba(88, 101, 242, 0.2);
+		border: 1px solid var(--accent-color, #5865F2);
+	}
+	
+	.trigger-option input[type="checkbox"] {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+	}
+	
+	.trigger-option-name {
+		font-weight: 500;
+		font-size: 0.875rem;
+		white-space: nowrap;
+	}
+	
+	.trigger-option-desc {
+		color: var(--text-muted);
+		font-size: 0.75rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	
 	.action-config {

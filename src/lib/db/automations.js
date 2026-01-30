@@ -10,7 +10,8 @@
  * @property {string} name
  * @property {string} description
  * @property {boolean} enabled
- * @property {string} trigger_event - Event type that triggers this automation
+ * @property {string} trigger_event - Legacy: single event type (deprecated, use trigger_events)
+ * @property {string[]} trigger_events - Array of event types that trigger this automation
  * @property {Object} trigger_filters - Conditions that must be met
  * @property {string} action_type - Action to perform
  * @property {Object} action_config - Action-specific configuration
@@ -427,19 +428,26 @@ export async function createAutomation(db, automation) {
   }
 
   try {
+    // Support both single trigger_event and multiple trigger_events
+    const triggerEvents = automation.trigger_events ||
+      (automation.trigger_event ? [automation.trigger_event] : []);
+    // For backwards compatibility, store first event in trigger_event
+    const primaryTrigger = triggerEvents[0] || null;
+
     const result = await db.prepare(`
       INSERT INTO automations (
         guild_id, name, description, enabled,
-        trigger_event, trigger_filters,
+        trigger_event, trigger_events, trigger_filters,
         action_type, action_config,
         created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       automation.guild_id,
       automation.name,
       automation.description || null,
       automation.enabled !== false ? 1 : 0,
-      automation.trigger_event,
+      primaryTrigger,
+      JSON.stringify(triggerEvents),
       automation.trigger_filters
         ? JSON.stringify(automation.trigger_filters)
         : null,
@@ -483,9 +491,22 @@ export async function updateAutomation(db, id, updates) {
       fields.push("enabled = ?");
       values.push(updates.enabled ? 1 : 0);
     }
-    if (updates.trigger_event !== undefined) {
+    if (updates.trigger_events !== undefined) {
+      // Handle multiple triggers
+      const triggerEvents = Array.isArray(updates.trigger_events)
+        ? updates.trigger_events
+        : [updates.trigger_events];
+      fields.push("trigger_events = ?");
+      values.push(JSON.stringify(triggerEvents));
+      // Also update legacy trigger_event field for backwards compatibility
+      fields.push("trigger_event = ?");
+      values.push(triggerEvents[0] || null);
+    } else if (updates.trigger_event !== undefined) {
+      // Legacy single trigger update - also update trigger_events
       fields.push("trigger_event = ?");
       values.push(updates.trigger_event);
+      fields.push("trigger_events = ?");
+      values.push(JSON.stringify([updates.trigger_event]));
     }
     if (updates.trigger_filters !== undefined) {
       fields.push("trigger_filters = ?");
@@ -575,6 +596,15 @@ export async function getAutomation(db, id, guildId) {
         : {},
     };
 
+    // Parse trigger_events array, falling back to single trigger_event
+    if (result.trigger_events) {
+      parsed.trigger_events = JSON.parse(result.trigger_events);
+    } else if (result.trigger_event) {
+      parsed.trigger_events = [result.trigger_event];
+    } else {
+      parsed.trigger_events = [];
+    }
+
     // Parse actions array if present, or construct from legacy single action
     if (parsed.action_config?.actions) {
       parsed.actions = parsed.action_config.actions;
@@ -637,14 +667,25 @@ export async function getAutomations(db, guildId, options = {}) {
     `).bind(...params, limit, offset).all();
 
     return {
-      automations: (results.results || []).map((a) => ({
-        ...a,
-        enabled: !!a.enabled,
-        trigger_filters: a.trigger_filters
-          ? JSON.parse(a.trigger_filters)
-          : null,
-        action_config: a.action_config ? JSON.parse(a.action_config) : {},
-      })),
+      automations: (results.results || []).map((a) => {
+        const parsed = {
+          ...a,
+          enabled: !!a.enabled,
+          trigger_filters: a.trigger_filters
+            ? JSON.parse(a.trigger_filters)
+            : null,
+          action_config: a.action_config ? JSON.parse(a.action_config) : {},
+        };
+        // Parse trigger_events array, falling back to single trigger_event
+        if (a.trigger_events) {
+          parsed.trigger_events = JSON.parse(a.trigger_events);
+        } else if (a.trigger_event) {
+          parsed.trigger_events = [a.trigger_event];
+        } else {
+          parsed.trigger_events = [];
+        }
+        return parsed;
+      }),
       total: countResult?.total || 0,
     };
   } catch (error) {
@@ -664,17 +705,37 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
   if (!db) return [];
 
   try {
+    // Query automations where eventType is in the trigger_events array
+    // Also check legacy trigger_event for backwards compatibility
     const results = await db.prepare(`
       SELECT * FROM automations 
-      WHERE guild_id = ? AND trigger_event = ? AND enabled = 1
-    `).bind(guildId, eventType).all();
+      WHERE guild_id = ? AND enabled = 1
+        AND (
+          trigger_event = ?
+          OR EXISTS (
+            SELECT 1 FROM json_each(trigger_events) 
+            WHERE json_each.value = ?
+          )
+        )
+    `).bind(guildId, eventType, eventType).all();
 
-    return (results.results || []).map((a) => ({
-      ...a,
-      enabled: !!a.enabled,
-      trigger_filters: a.trigger_filters ? JSON.parse(a.trigger_filters) : null,
-      action_config: a.action_config ? JSON.parse(a.action_config) : {},
-    }));
+    return (results.results || []).map((a) => {
+      const parsed = {
+        ...a,
+        enabled: !!a.enabled,
+        trigger_filters: a.trigger_filters ? JSON.parse(a.trigger_filters) : null,
+        action_config: a.action_config ? JSON.parse(a.action_config) : {},
+      };
+      // Parse trigger_events array
+      if (a.trigger_events) {
+        parsed.trigger_events = JSON.parse(a.trigger_events);
+      } else if (a.trigger_event) {
+        parsed.trigger_events = [a.trigger_event];
+      } else {
+        parsed.trigger_events = [];
+      }
+      return parsed;
+    });
   } catch (error) {
     console.error("Failed to get triggered automations:", error);
     return [];

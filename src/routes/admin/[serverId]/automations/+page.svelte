@@ -127,14 +127,30 @@
 		{:else}
 			<div class="automation-grid">
 				{#each data.automations as automation}
-					{@const category = getEventCategory(automation.trigger_event)}
+					{@const triggers = automation.trigger_events || (automation.trigger_event ? [automation.trigger_event] : [])}
+					{@const primaryTrigger = triggers[0] || automation.trigger_event}
+					{@const category = getEventCategory(primaryTrigger)}
 					{@const categoryInfo = getCategoryInfo(category)}
 					{@const actionInfo = getActionInfo(automation.action_type)}
 					<div class="automation-card {automation.enabled ? '' : 'disabled'}">
 						<div class="automation-header">
-							<div class="automation-trigger" style="--category-color: {categoryInfo.color}">
-								<span class="trigger-icon">{categoryInfo.icon}</span>
-								<span class="trigger-event">{automation.trigger_event.replace(/_/g, ' ')}</span>
+							<div class="automation-triggers">
+								{#if triggers.length <= 2}
+									{#each triggers as trigger}
+										{@const triggerCategory = getEventCategory(trigger)}
+										{@const triggerCategoryInfo = getCategoryInfo(triggerCategory)}
+										<div class="automation-trigger" style="--category-color: {triggerCategoryInfo.color}">
+											<span class="trigger-icon">{triggerCategoryInfo.icon}</span>
+											<span class="trigger-event">{trigger.replace(/_/g, ' ')}</span>
+										</div>
+									{/each}
+								{:else}
+									<div class="automation-trigger" style="--category-color: {categoryInfo.color}">
+										<span class="trigger-icon">{categoryInfo.icon}</span>
+										<span class="trigger-event">{primaryTrigger.replace(/_/g, ' ')}</span>
+									</div>
+									<div class="trigger-count">+{triggers.length - 1} more</div>
+								{/if}
 							</div>
 							<form method="POST" action="?/toggle" use:enhance>
 								<input type="hidden" name="id" value={automation.id}>
@@ -372,6 +388,15 @@
 		border-bottom: 1px solid var(--border-color, #40444b);
 	}
 	
+	.automation-triggers {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		align-items: center;
+		flex: 1;
+		min-width: 0;
+	}
+	
 	.automation-trigger {
 		display: flex;
 		align-items: center;
@@ -384,6 +409,14 @@
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 		color: var(--category-color);
+	}
+	
+	.trigger-count {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		padding: 0.25rem 0.5rem;
+		background: var(--bg-primary, #202225);
+		border-radius: 4px;
 	}
 	
 	.trigger-icon {

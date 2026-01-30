@@ -78,11 +78,19 @@ export const actions = {
     const updates = {};
     const name = formData.get("name");
     const description = formData.get("description");
+    
+    // Support both single trigger_event (legacy) and multiple trigger_events
+    const triggerEvents = formData.getAll("trigger_events[]");
     const triggerEvent = formData.get("trigger_event");
+    const allTriggers = triggerEvents.length > 0 
+      ? triggerEvents.filter(Boolean)
+      : (triggerEvent ? [triggerEvent] : null);
 
     if (name) updates.name = name;
     if (description !== null) updates.description = description;
-    if (triggerEvent) updates.trigger_event = triggerEvent;
+    if (allTriggers && allTriggers.length > 0) {
+      updates.trigger_events = allTriggers;
+    }
 
     // Parse stacked actions (new format: action_type[] and action_config.{index}.{key})
     const actionTypes = formData.getAll("action_type[]");
