@@ -158,6 +158,31 @@ export function matchesFilters(event, filters, context = {}) {
         // "any" or any other value means no filter
         break;
 
+      case "actor_id":
+        // Filter by specific user/bot IDs (comma-separated)
+        if (filterValue !== "ALL") {
+          const allowedActors = filterValue.split(",").map((id) => id.trim());
+          if (!allowedActors.includes(event.actor_id)) return false;
+        }
+        break;
+
+      case "not_actor_id":
+        // Exclude specific user/bot IDs (comma-separated)
+        if (filterValue !== "ALL") {
+          const blockedActors = filterValue.split(",").map((id) => id.trim());
+          if (blockedActors.includes(event.actor_id)) return false;
+        }
+        break;
+
+      case "embed_contains":
+        // Check if any embed contains the specified text
+        if (
+          !event.details?.embedTexts?.some((text) =>
+            text.toLowerCase().includes(filterValue.toLowerCase())
+          )
+        ) return false;
+        break;
+
       case "min_account_age_days":
         if (
           context.accountAgeDays !== undefined &&

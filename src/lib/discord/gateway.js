@@ -664,22 +664,53 @@ function setupEventHandlers(client, logFn) {
     if (!message.guild) return;
 
     console.log(`[DEBUG] Logging message event for guild ${message.guild.id}`);
+
+    // Extract mentioned users (useful for detecting who triggered bot responses like Disboard bumps)
+    const mentionedUsers = message.mentions.users.map((u) => ({
+      id: u.id,
+      tag: u.tag,
+      bot: u.bot,
+    }));
+
+    // Extract text from embeds for filtering
+    const embedTexts = message.embeds.map((embed) => {
+      const parts = [];
+      if (embed.title) parts.push(embed.title);
+      if (embed.description) parts.push(embed.description);
+      if (embed.footer?.text) parts.push(embed.footer.text);
+      embed.fields?.forEach((f) => {
+        parts.push(f.name);
+        parts.push(f.value);
+      });
+      return parts.join(" ");
+    });
+
+    // First mentioned non-bot user (often the command invoker for bot responses)
+    const firstMentionedHuman = mentionedUsers.find((u) => !u.bot);
+
     await logFn({
       guild_id: message.guild.id,
       event_type: "MESSAGE_CREATE",
       event_category: "message",
       actor_id: message.author.id,
       actor_name: message.author.tag,
+      // Target is the first mentioned human (useful for bot response automations)
+      target_id: firstMentionedHuman?.id || null,
+      target_name: firstMentionedHuman?.tag || null,
       channel_id: message.channel.id,
       channel_name: message.channel.name,
       details: {
         messageId: message.id,
+        content: message.content?.substring(0, 500) || "",
         contentLength: message.content?.length || 0,
         hasAttachments: message.attachments.size > 0,
         attachmentCount: message.attachments.size,
         hasEmbeds: message.embeds.length > 0,
+        embedCount: message.embeds.length,
+        embedTexts: embedTexts,
         isReply: !!message.reference,
         mentionCount: message.mentions.users.size,
+        mentionedUsers: mentionedUsers,
         isBot: message.author.bot || false,
       },
     });
