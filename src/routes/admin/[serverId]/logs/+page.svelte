@@ -1,5 +1,6 @@
 <script>
 	import { onMount } from 'svelte';
+	import { log } from '$lib/log.js';
 	
 	let { data } = $props();
 	
@@ -36,7 +37,7 @@
 	let refreshInterval = $state(null);
 	
 	async function fetchLogs(append = false) {
-		console.log('[DEBUG] fetchLogs called, append:', append);
+		log.debug('[DEBUG] fetchLogs called, append:', append);
 		if (!append) {
 			loading = true;
 			offset = 0;
@@ -57,7 +58,7 @@
 			if (endDate) params.set('endDate', endDate);
 			
 			const url = `/api/logs/${data.serverId}?${params}`;
-			console.log('[DEBUG] Fetching from:', url);
+			log.debug('[DEBUG] Fetching from:', url);
 			const response = await fetch(url);
 			
 			if (!response.ok) {
@@ -65,7 +66,7 @@
 			}
 			
 			const result = await response.json();
-			console.log('[DEBUG] API response:', result);
+			log.debug('[DEBUG] API response:', result);
 			
 			if (append) {
 				logs = [...logs, ...result.logs];
@@ -186,7 +187,7 @@
 	}
 	
 	onMount(() => {
-		console.log('[DEBUG] onMount - botInGuild:', data.botInGuild, 'serverId:', data.serverId);
+		log.debug('[DEBUG] onMount - botInGuild:', data.botInGuild, 'serverId:', data.serverId);
 		if (data.botInGuild) {
 			fetchLogs();
 			if (autoRefresh) {

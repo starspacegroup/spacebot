@@ -15,6 +15,7 @@ import {
   MessageType,
   Partials,
 } from "discord.js";
+import { log } from "../log.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
@@ -62,7 +63,7 @@ function resolveNumberValue(configValue, event, defaultValue = null) {
  */
 async function logEventViaAPI(event) {
   const url = `${API_BASE}/api/logs/create`;
-  console.log(`[DEBUG] Posting to ${url}`);
+  log.debug(`[DEBUG] Posting to ${url}`);
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -73,17 +74,17 @@ async function logEventViaAPI(event) {
       body: JSON.stringify(event),
     });
 
-    console.log(`[DEBUG] Response status: ${response.status}`);
+    log.debug(`[DEBUG] Response status: ${response.status}`);
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error(
+      log.error(
         `Failed to log event via API: ${response.status} - ${errorBody}`,
       );
     } else {
-      console.log(`[DEBUG] Event logged successfully`);
+      log.debug(`[DEBUG] Event logged successfully`);
     }
   } catch (error) {
-    console.error("Error logging event:", error.message);
+    log.error("Error logging event:", error.message);
   }
 
   // Process automations for this event
@@ -100,6 +101,8 @@ async function processEventAutomations(event) {
 
   try {
     const url = `${API_BASE}/api/automations/${event.guild_id}/process`;
+    log.debug(`[Automation] Calling ${url} for event ${event.event_type}`);
+    
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -109,26 +112,63 @@ async function processEventAutomations(event) {
       body: JSON.stringify({ event }),
     });
 
+    log.debug(`[Automation] API response status: ${response.status}`);
+
     if (!response.ok) {
       if (response.status !== 404) {
-        console.error(`[Automation] API error: ${response.status}`);
+        const errorText = await response.text();
+        log.error(`[Automation] API error: ${response.status} - ${errorText}`);
       }
       return;
     }
 
-    const { automations } = await response.json();
+    const data = await response.json();
+    const { automations } = data;
+    
+    log.debug(`[Automation] Received ${automations?.length || 0} automations`);
 
     if (!automations || automations.length === 0) {
       return;
     }
 
-    console.log(
+    log.debug(
       `[Automation] Processing ${automations.length} automations for ${event.event_type}`,
     );
 
     for (const automation of automations) {
+      // Debug: log what we received
+      log.debug(`[Automation] ${automation.name} action_type: ${automation.action_type}`);
+      log.debug(`[Automation] ${automation.name} has actions: ${!!automation.action_config?.actions}`);
+      if (automation.action_config?.actions) {
+        log.debug(`[Automation] ${automation.name} actions count: ${automation.action_config.actions.length}`);
+        for (const action of automation.action_config.actions) {
+          log.debug(`[Automation] - Action: ${action.type}, content: ${action.config?.content}`);
+        }
+      }
+      
       try {
-        await executeAutomationAction(automation, event);
+        // Check if this automation has stacked actions
+        if (
+          automation.action_config?.actions &&
+          Array.isArray(automation.action_config.actions)
+        ) {
+          // Execute each stacked action in sequence
+          for (const action of automation.action_config.actions) {
+            const actionAutomation = {
+              ...automation,
+              action_type: action.type,
+              action_config: action.config || {},
+              // Templates are already processed in the API response
+              processed_content: action.config?.content,
+              processed_reason: action.config?.reason,
+              processed_thread_name: action.config?.thread_name,
+            };
+            await executeAutomationAction(actionAutomation, event);
+          }
+        } else {
+          // Legacy single action format
+          await executeAutomationAction(automation, event);
+        }
 
         // Report success back to API
         await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
@@ -146,9 +186,9 @@ async function processEventAutomations(event) {
           }),
         });
 
-        console.log(`[Automation] ${automation.name} executed successfully`);
+        log.info(`[Automation] ${automation.name} executed successfully`);
       } catch (error) {
-        console.error(`[Automation] ${automation.name} failed:`, error.message);
+        log.error(`[Automation] ${automation.name} failed:`, error.message);
 
         // Report failure back to API
         await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
@@ -168,7 +208,7 @@ async function processEventAutomations(event) {
       }
     }
   } catch (error) {
-    console.error("[Automation] Processing error:", error.message);
+    log.error("[Automation] Processing error:", error.message);
   }
 }
 
@@ -228,7 +268,7 @@ async function executeAutomationAction(automation, event) {
         ? Date.now() - (maxAgeDays * 24 * 60 * 60 * 1000)
         : null;
 
-      console.log(
+      log.info(
         `[Automation] Deleting messages from ${userId} in ${channelsToProcess.length} channel(s)` +
           (maxAgeDays ? ` (last ${maxAgeDays} days)` : "") +
           (maxMessages ? ` (max ${maxMessages})` : ""),
@@ -294,18 +334,18 @@ async function executeAutomationAction(automation, event) {
           }
 
           totalDeleted += toDelete.length;
-          console.log(
+          log.info(
             `[Automation] Deleted ${toDelete.length} messages in #${channel.name}`,
           );
         } catch (err) {
-          console.error(
+          log.error(
             `[Automation] Error deleting in ${channelId}:`,
             err.message,
           );
         }
       }
 
-      console.log(`[Automation] Total deleted: ${totalDeleted} messages`);
+      log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
       break;
     }
 
@@ -353,7 +393,10 @@ async function executeAutomationAction(automation, event) {
       const channelId = action_config.channel_id;
       const content = automation.processed_content || action_config.content;
 
-      if (!channelId || !content) throw new Error("Missing channel or content");
+      log.debug(`[SEND_MESSAGE] channelId: ${channelId}, content: ${content}`);
+      log.debug(`[SEND_MESSAGE] action_config:`, JSON.stringify(action_config));
+
+      if (!channelId || !content) throw new Error(`Missing channel or content - channelId: ${channelId}, content: ${content}`);
 
       const channel = await client.channels.fetch(channelId);
       if (!channel) throw new Error("Channel not found");
@@ -705,15 +748,15 @@ function setupEventHandlers(client, logFn) {
   // ===== MESSAGE EVENTS =====
 
   client.on(Events.MessageCreate, async (message) => {
-    console.log(
+    log.debug(
       `[DEBUG] MessageCreate received from ${message.author?.tag} in ${
         message.guild?.name || "DM"
       }`,
     );
     if (!message.guild) return;
 
-    console.log(`[DEBUG] Logging message event for guild ${message.guild.id}`);
-    console.log(
+    log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);
+    log.debug(
       `[DEBUG] Message type: ${message.type}, author: ${message.author?.tag}, has interaction: ${!!message
         .interaction}, has interactionMetadata: ${!!message
         .interactionMetadata}`,
@@ -729,7 +772,7 @@ function setupEventHandlers(client, logFn) {
       // In discord.js v14.14+, message.interaction is deprecated in favor of message.interactionMetadata
       // We check both for backwards compatibility
       const interaction = message.interaction || message.interactionMetadata;
-      console.log(`[DEBUG] Slash command detected! interaction:`, interaction);
+      log.debug(`[DEBUG] Slash command detected! interaction:`, interaction);
 
       if (interaction) {
         // Handle both old (interaction.user) and new (interactionMetadata.user) structures
@@ -739,7 +782,7 @@ function setupEventHandlers(client, logFn) {
         const cmdName = interaction.commandName || interaction.name ||
           "unknown";
 
-        console.log(
+        log.debug(
           `[DEBUG] Logging SLASH_COMMAND_USE: ${cmdName} by ${userName}`,
         );
 
@@ -1723,16 +1766,16 @@ function setupEventHandlers(client, logFn) {
   // ===== CLIENT EVENTS =====
 
   client.on(Events.ClientReady, (c) => {
-    console.log(`✅ Discord Gateway Bot is online as ${c.user.tag}`);
-    console.log(`📊 Watching ${c.guilds.cache.size} guilds`);
+    log.info(`✅ Discord Gateway Bot is online as ${c.user.tag}`);
+    log.info(`📊 Watching ${c.guilds.cache.size} guilds`);
   });
 
   client.on(Events.Error, (error) => {
-    console.error("Discord client error:", error);
+    log.error("Discord client error:", error);
   });
 
   client.on(Events.Warn, (warning) => {
-    console.warn("Discord client warning:", warning);
+    log.warn("Discord client warning:", warning);
   });
 }
 
@@ -1743,12 +1786,12 @@ async function startBot() {
   const token = process.env.DISCORD_BOT_TOKEN;
 
   if (!token) {
-    console.error("❌ DISCORD_BOT_TOKEN environment variable is required");
+    log.error("❌ DISCORD_BOT_TOKEN environment variable is required");
     process.exit(1);
   }
 
-  console.log("🚀 Starting Discord Gateway Bot...");
-  console.log("🤖 Automation engine enabled");
+  log.info("🚀 Starting Discord Gateway Bot...");
+  log.info("🤖 Automation engine enabled");
 
   const client = createClient();
   discordClient = client; // Store reference for automation execution
@@ -1757,7 +1800,7 @@ async function startBot() {
   try {
     await client.login(token);
   } catch (error) {
-    console.error("❌ Failed to login:", error);
+    log.error("❌ Failed to login:", error);
     process.exit(1);
   }
 }

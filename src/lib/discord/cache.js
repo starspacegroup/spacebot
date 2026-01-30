@@ -3,6 +3,8 @@
  * Caches channels and roles per guild with 15-minute expiration
  */
 
+import { log } from "$lib/log.js";
+
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 /**
@@ -109,34 +111,34 @@ export function invalidateRoles(guildId) {
  * @returns {Promise<any[]>}
  */
 export async function fetchChannelsWithCache(guildId, typeFilter = "sendable") {
-  console.log("[Cache] fetchChannelsWithCache called for guild:", guildId);
+  log.debug("[Cache] fetchChannelsWithCache called for guild:", guildId);
 
   // Check cache first
   const cached = getCachedChannels(guildId);
   if (cached !== null) {
-    console.log("[Cache] Returning cached channels:", cached.length);
+    log.debug("[Cache] Returning cached channels:", cached.length);
     return cached;
   }
 
   // Fetch from API
-  console.log("[Cache] Cache miss, fetching from API...");
+  log.debug("[Cache] Cache miss, fetching from API...");
   try {
     const url = `/api/discord/guilds/${guildId}/channels?type=${typeFilter}`;
-    console.log("[Cache] Fetching:", url);
+    log.debug("[Cache] Fetching:", url);
     const response = await fetch(url);
-    console.log("[Cache] Response status:", response.status, response.ok);
+    log.debug("[Cache] Response status:", response.status, response.ok);
     if (response.ok) {
       const result = await response.json();
-      console.log("[Cache] API result:", result);
+      log.debug("[Cache] API result:", result);
       const channels = result.channels || [];
       setCachedChannels(guildId, channels);
       return channels;
     } else {
       const errorText = await response.text();
-      console.error("[Cache] API error response:", errorText);
+      log.error("[Cache] API error response:", errorText);
     }
   } catch (err) {
-    console.error("[Cache] Error fetching channels:", err);
+    log.error("[Cache] Error fetching channels:", err);
   }
 
   return [];
@@ -148,17 +150,17 @@ export async function fetchChannelsWithCache(guildId, typeFilter = "sendable") {
  * @returns {Promise<any[]>}
  */
 export async function fetchRolesWithCache(guildId) {
-  console.log("[Cache] fetchRolesWithCache called for guild:", guildId);
+  log.debug("[Cache] fetchRolesWithCache called for guild:", guildId);
 
   // Check cache first
   const cached = getCachedRoles(guildId);
   if (cached !== null) {
-    console.log("[Cache] Returning cached roles:", cached.length);
+    log.debug("[Cache] Returning cached roles:", cached.length);
     return cached;
   }
 
   // Fetch from API
-  console.log("[Cache] Cache miss, fetching roles from API...");
+  log.debug("[Cache] Cache miss, fetching roles from API...");
   try {
     const response = await fetch(`/api/discord/guilds/${guildId}/roles`);
     if (response.ok) {
@@ -168,7 +170,7 @@ export async function fetchRolesWithCache(guildId) {
       return roles;
     }
   } catch (err) {
-    console.error("[Cache] Error fetching roles:", err);
+    log.error("[Cache] Error fetching roles:", err);
   }
 
   return [];

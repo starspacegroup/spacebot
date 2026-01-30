@@ -1,4 +1,6 @@
 <script>
+	import { log } from '$lib/log.js';
+	
 	/**
 	 * Role Selector Component
 	 * A searchable dropdown for selecting Discord roles
@@ -75,7 +77,7 @@
 			const data = await response.json();
 			roles = data.roles || [];
 		} catch (err) {
-			console.error('Error fetching roles:', err);
+			log.error('Error fetching roles:', err);
 			error = err.message;
 			roles = [];
 		} finally {

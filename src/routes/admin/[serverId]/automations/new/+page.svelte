@@ -3,6 +3,7 @@
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
+	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
 	
@@ -22,9 +23,9 @@
 	// Fetch channels once when guild changes
 	$effect(() => {
 		const guildId = data.selectedGuildId;
-		console.log('[ChannelLoad] Effect check - guildId:', guildId, 'sharedChannels:', sharedChannels, 'channelsLoading:', channelsLoading);
+		log.debug('[ChannelLoad] Effect check - guildId:', guildId, 'sharedChannels:', sharedChannels, 'channelsLoading:', channelsLoading);
 		if (guildId && sharedChannels === null && !channelsLoading) {
-			console.log('[ChannelLoad] Loading channels for guild:', guildId);
+			log.debug('[ChannelLoad] Loading channels for guild:', guildId);
 			loadChannels();
 		}
 	});
@@ -32,21 +33,21 @@
 	// Fetch roles once when guild changes
 	$effect(() => {
 		const guildId = data.selectedGuildId;
-		console.log('[RoleLoad] Effect check - guildId:', guildId, 'sharedRoles:', sharedRoles, 'rolesLoading:', rolesLoading);
+		log.debug('[RoleLoad] Effect check - guildId:', guildId, 'sharedRoles:', sharedRoles, 'rolesLoading:', rolesLoading);
 		if (guildId && sharedRoles === null && !rolesLoading) {
-			console.log('[RoleLoad] Loading roles for guild:', guildId);
+			log.debug('[RoleLoad] Loading roles for guild:', guildId);
 			loadRoles();
 		}
 	});
 	
 	async function loadChannels() {
 		channelsLoading = true;
-		console.log('[ChannelLoad] Starting fetch for guild:', data.selectedGuildId);
+		log.debug('[ChannelLoad] Starting fetch for guild:', data.selectedGuildId);
 		try {
 			sharedChannels = await fetchChannelsWithCache(data.selectedGuildId);
-			console.log('[ChannelLoad] Loaded channels:', sharedChannels?.length, sharedChannels);
+			log.debug('[ChannelLoad] Loaded channels:', sharedChannels?.length, sharedChannels);
 		} catch (err) {
-			console.error('Error loading channels:', err);
+			log.error('Error loading channels:', err);
 			sharedChannels = [];
 		} finally {
 			channelsLoading = false;
@@ -55,12 +56,12 @@
 	
 	async function loadRoles() {
 		rolesLoading = true;
-		console.log('[RoleLoad] Starting fetch for guild:', data.selectedGuildId);
+		log.debug('[RoleLoad] Starting fetch for guild:', data.selectedGuildId);
 		try {
 			sharedRoles = await fetchRolesWithCache(data.selectedGuildId);
-			console.log('[RoleLoad] Loaded roles:', sharedRoles?.length, sharedRoles);
+			log.debug('[RoleLoad] Loaded roles:', sharedRoles?.length, sharedRoles);
 		} catch (err) {
-			console.error('Error loading roles:', err);
+			log.error('Error loading roles:', err);
 			sharedRoles = [];
 		} finally {
 			rolesLoading = false;

@@ -5,6 +5,7 @@
  */
 
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from "./automations.js";
+import { log } from "$lib/log.js";
 
 // Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
 export { ACTION_TYPES, COMMAND_USER_SOURCES };
@@ -158,7 +159,7 @@ export async function createCommand(db, command) {
 
     return { success: true, id: result.meta?.last_row_id };
   } catch (error) {
-    console.error("Failed to create command:", error);
+    log.error("Failed to create command:", error);
     if (error.message?.includes("UNIQUE constraint")) {
       return {
         success: false,
@@ -271,7 +272,7 @@ export async function updateCommand(db, id, updates) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to update command:", error);
+    log.error("Failed to update command:", error);
     if (error.message?.includes("UNIQUE constraint")) {
       return {
         success: false,
@@ -304,7 +305,7 @@ export async function deleteCommand(db, id, guildId) {
 
     return { success: true, command };
   } catch (error) {
-    console.error("Failed to delete command:", error);
+    log.error("Failed to delete command:", error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -328,7 +329,7 @@ export async function getCommand(db, id, guildId) {
 
     return parseCommand(result);
   } catch (error) {
-    console.error("Failed to get command:", error);
+    log.error("Failed to get command:", error);
     return null;
   }
 }
@@ -352,7 +353,7 @@ export async function getCommandByName(db, name, guildId) {
 
     return parseCommand(result);
   } catch (error) {
-    console.error("Failed to get command by name:", error);
+    log.error("Failed to get command by name:", error);
     return null;
   }
 }
@@ -386,7 +387,7 @@ export async function getGuildCommands(db, guildId, options = {}) {
 
     return results.map(parseCommand);
   } catch (error) {
-    console.error("Failed to get guild commands:", error);
+    log.error("Failed to get guild commands:", error);
     return [];
   }
 }
@@ -409,7 +410,7 @@ export async function getUnregisteredCommands(db, guildId) {
 
     return results.map(parseCommand);
   } catch (error) {
-    console.error("Failed to get unregistered commands:", error);
+    log.error("Failed to get unregistered commands:", error);
     return [];
   }
 }
@@ -430,7 +431,7 @@ export async function markCommandRegistered(db, id, discordCommandId) {
       WHERE id = ?
     `).bind(discordCommandId, id).run();
   } catch (error) {
-    console.error("Failed to mark command registered:", error);
+    log.error("Failed to mark command registered:", error);
   }
 }
 
@@ -449,7 +450,7 @@ export async function recordCommandUse(db, commandId) {
       WHERE id = ?
     `).bind(commandId).run();
   } catch (error) {
-    console.error("Failed to record command use:", error);
+    log.error("Failed to record command use:", error);
   }
 }
 
@@ -480,7 +481,7 @@ export async function logCommandExecution(db, log) {
       log.execution_time_ms || null,
     ).run();
   } catch (error) {
-    console.error("Failed to log command execution:", error);
+    log.error("Failed to log command execution:", error);
   }
 }
 
@@ -524,7 +525,7 @@ export async function getCommandLogs(db, guildId, options = {}) {
       action_result: log.action_result ? JSON.parse(log.action_result) : null,
     }));
   } catch (error) {
-    console.error("Failed to get command logs:", error);
+    log.error("Failed to get command logs:", error);
     return [];
   }
 }

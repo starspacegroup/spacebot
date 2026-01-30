@@ -1,11 +1,13 @@
 <script>
+	import { log } from '$lib/log.js';
+	
 	let { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
 	
 	// Debug logging
 	$effect(() => {
-		console.log('[ServerSelector] guilds:', guilds.length, guilds);
-		console.log('[ServerSelector] selectedGuildId:', selectedGuildId);
+		log.debug('[ServerSelector] guilds:', guilds.length, guilds);
+		log.debug('[ServerSelector] selectedGuildId:', selectedGuildId);
 	});
 	
 	// Filter to only show servers where the bot is installed

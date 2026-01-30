@@ -7,6 +7,7 @@ import {
   getTriggeredAutomations,
   logAutomationExecution,
 } from "../db/automations.js";
+import { log } from "$lib/log.js";
 
 /**
  * Resolve the target user ID from action config
@@ -416,7 +417,7 @@ export async function executeAction(automation, event, context, discord) {
             );
 
             if (recentMessages.length > 1) {
-              await channel.bulkDelete(recentMessages).catch(console.error);
+              await channel.bulkDelete(recentMessages).catch((e) => log.error("[Automation] bulkDelete error:", e));
               deleted += recentMessages.length;
             } else if (recentMessages.length === 1) {
               await recentMessages[0].delete().catch(() => {});
@@ -519,7 +520,7 @@ export async function executeAction(automation, event, context, discord) {
             );
 
             if (recentMessages.length > 1) {
-              await channel.bulkDelete(recentMessages).catch(console.error);
+              await channel.bulkDelete(recentMessages).catch((e) => log.error("[Automation] bulkDelete error:", e));
               deleted += recentMessages.length;
             } else if (recentMessages.length === 1) {
               await recentMessages[0].delete().catch(() => {});
@@ -813,7 +814,7 @@ export async function executeAction(automation, event, context, discord) {
         return { success: false, error: `Unknown action type: ${action_type}` };
     }
   } catch (error) {
-    console.error(`Action execution error (${action_type}):`, error);
+    log.error(`Action execution error (${action_type}):`, error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -850,14 +851,14 @@ export async function processAutomations(
       return { executed: 0, errors: 0 };
     }
 
-    console.log(
+    log.debug(
       `[Automation] Found ${automations.length} automations for ${event.event_type}`,
     );
 
     for (const automation of automations) {
       // Check if event matches filters
       if (!matchesFilters(event, automation.trigger_filters, filterContext)) {
-        console.log(
+        log.debug(
           `[Automation] ${automation.name} - filters not matched, skipping`,
         );
         continue;
@@ -915,14 +916,14 @@ export async function processAutomations(
         if (!result.success) {
           allSuccess = false;
           if (!firstError) firstError = result.error;
-          console.error(
+          log.error(
             `[Automation] ${automation.name} - action ${
               i + 1
             }/${actionsToExecute.length} (${actionDef.action_type}) failed: ${result.error}`,
           );
           // Continue executing remaining actions even if one fails
         } else {
-          console.log(
+          log.debug(
             `[Automation] ${automation.name} - action ${
               i + 1
             }/${actionsToExecute.length} (${actionDef.action_type}) succeeded`,
@@ -944,24 +945,24 @@ export async function processAutomations(
 
       if (allSuccess) {
         executed++;
-        console.log(
+        log.info(
           `[Automation] ${automation.name} - all ${actionsToExecute.length} action(s) executed successfully`,
         );
       } else {
         errors++;
-        console.error(
+        log.error(
           `[Automation] ${automation.name} - completed with errors`,
         );
       }
     }
   } catch (error) {
-    console.error("[Automation] Processing error:", error);
+    log.error("[Automation] Processing error:", error);
     errors++;
   }
 
   const totalTime = Date.now() - startTime;
   if (executed > 0 || errors > 0) {
-    console.log(
+    log.info(
       `[Automation] Processed ${executed} automations with ${errors} errors in ${totalTime}ms`,
     );
   }

@@ -3,47 +3,10 @@
  * Handles storing and retrieving event logs from D1
  */
 
-import { env } from "$env/dynamic/private";
+import { log } from "$lib/log.js";
 
-/**
- * Log levels in order of verbosity (lower = less verbose)
- * @enum {number}
- */
-const LOG_LEVELS = {
-  error: 0,
-  warn: 1,
-  info: 2,
-  debug: 3,
-};
-
-/**
- * Get the current log level from environment
- * @returns {number} -1 if not set (no logging), otherwise the level value
- */
-function getLogLevel() {
-  if (!env.LOG_LEVEL) return -1;
-  const level = env.LOG_LEVEL.toLowerCase();
-  return LOG_LEVELS[level] ?? -1;
-}
-
-/**
- * Log helper functions that respect LOG_LEVEL
- * @type {{error: (...args: any[]) => void, warn: (...args: any[]) => void, info: (...args: any[]) => void, debug: (...args: any[]) => void}}
- */
-export const log = {
-  error: (...args) => {
-    if (getLogLevel() >= LOG_LEVELS.error) console.error(...args);
-  },
-  warn: (...args) => {
-    if (getLogLevel() >= LOG_LEVELS.warn) console.warn(...args);
-  },
-  info: (...args) => {
-    if (getLogLevel() >= LOG_LEVELS.info) console.info(...args);
-  },
-  debug: (...args) => {
-    if (getLogLevel() >= LOG_LEVELS.debug) console.debug(...args);
-  },
-};
+// Re-export the unified log utility for other modules
+export { log };
 
 /**
  * @typedef {Object} EventLog

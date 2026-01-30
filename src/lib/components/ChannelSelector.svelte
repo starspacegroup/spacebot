@@ -1,4 +1,6 @@
 <script>
+	import { log } from '$lib/log.js';
+	
 	/**
 	 * Channel Selector Component
 	 * A searchable dropdown for selecting Discord channels
@@ -86,7 +88,7 @@
 			const data = await response.json();
 			channels = data.channels || [];
 		} catch (err) {
-			console.error('Error fetching channels:', err);
+			log.error('Error fetching channels:', err);
 			error = err.message;
 			channels = [];
 		} finally {

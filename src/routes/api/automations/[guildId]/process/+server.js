@@ -41,23 +41,43 @@ function matchesFilters(event, filters, context = {}) {
   for (const [filterType, filterValue] of Object.entries(filters)) {
     switch (filterType) {
       case "channel_id":
-        if (event.channel_id !== filterValue) return false;
+        // "ALL" means match any channel, comma-separated list for multiple channels
+        if (filterValue !== "ALL") {
+          const allowedChannels = filterValue.split(",").map((id) => id.trim());
+          if (!allowedChannels.includes(event.channel_id)) return false;
+        }
         break;
 
       case "not_channel_id":
-        if (event.channel_id === filterValue) return false;
+        // "ALL" for not_channel_id doesn't make sense, skip if set to ALL
+        if (filterValue !== "ALL") {
+          const blockedChannels = filterValue.split(",").map((id) => id.trim());
+          if (blockedChannels.includes(event.channel_id)) return false;
+        }
         break;
 
       case "actor_has_role":
-        if (!context.actorRoles?.includes(filterValue)) return false;
+        // "ALL" means match any role (no filter)
+        if (filterValue !== "ALL") {
+          const requiredRoles = filterValue.split(",").map((id) => id.trim());
+          if (!requiredRoles.some((role) => context.actorRoles?.includes(role))) return false;
+        }
         break;
 
       case "actor_missing_role":
-        if (context.actorRoles?.includes(filterValue)) return false;
+        // "ALL" for actor_missing_role doesn't make sense, skip if set to ALL
+        if (filterValue !== "ALL") {
+          const blockedRoles = filterValue.split(",").map((id) => id.trim());
+          if (blockedRoles.some((role) => context.actorRoles?.includes(role))) return false;
+        }
         break;
 
       case "target_has_role":
-        if (!context.targetRoles?.includes(filterValue)) return false;
+        // "ALL" means match any role (no filter)
+        if (filterValue !== "ALL") {
+          const requiredRoles = filterValue.split(",").map((id) => id.trim());
+          if (!requiredRoles.some((role) => context.targetRoles?.includes(role))) return false;
+        }
         break;
 
       case "content_contains":
@@ -211,6 +231,7 @@ export async function POST({ params, request, platform }) {
         // Pre-process templates for the gateway
         const processed = { ...automation };
 
+        // Handle single action templates (legacy format)
         if (automation.action_config.content) {
           processed.processed_content = processTemplate(
             automation.action_config.content,
@@ -230,6 +251,32 @@ export async function POST({ params, request, platform }) {
           );
         }
 
+        // Handle stacked actions - process templates for each action
+        if (
+          automation.action_config.actions &&
+          Array.isArray(automation.action_config.actions)
+        ) {
+          processed.action_config = {
+            ...automation.action_config,
+            actions: automation.action_config.actions.map((action) => ({
+              ...action,
+              config: {
+                ...action.config,
+                // Process template variables in action config
+                content: action.config?.content
+                  ? processTemplate(action.config.content, context)
+                  : undefined,
+                reason: action.config?.reason
+                  ? processTemplate(action.config.reason, context)
+                  : undefined,
+                thread_name: action.config?.thread_name
+                  ? processTemplate(action.config.thread_name, context)
+                  : undefined,
+              },
+            })),
+          };
+        }
+
         processed.context = context;
         return processed;
       });
@@ -237,6 +284,16 @@ export async function POST({ params, request, platform }) {
     log.debug(
       `[Automation Process] Returning ${matchingAutomations.length} matching automations`,
     );
+    
+    // Debug: log the action config structure
+    for (const auto of matchingAutomations) {
+      log.debug(`[Automation Process] ${auto.name} action_type: ${auto.action_type}`);
+      log.debug(`[Automation Process] ${auto.name} has actions array: ${!!auto.action_config?.actions}`);
+      if (auto.action_config?.actions) {
+        log.debug(`[Automation Process] ${auto.name} actions:`, JSON.stringify(auto.action_config.actions, null, 2));
+      }
+    }
+    
     return json({ automations: matchingAutomations });
   } catch (error) {
     log.error("Automation processing error:", error);

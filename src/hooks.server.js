@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { redirect } from "@sveltejs/kit";
+import { log } from "$lib/log.js";
 
 /**
  * Dev Auth Bypass
@@ -16,8 +17,8 @@ import { redirect } from "@sveltejs/kit";
 const isDev = process.env.NODE_ENV !== "production";
 const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
 
-console.log("[DevAuth] isDev:", isDev, "devAuthEnabled:", devAuthEnabled);
-console.log("[DevAuth] ADMIN_USER_IDS:", process.env.ADMIN_USER_IDS);
+log.debug("[DevAuth] isDev:", isDev, "devAuthEnabled:", devAuthEnabled);
+log.debug("[DevAuth] ADMIN_USER_IDS:", process.env.ADMIN_USER_IDS);
 
 /**
  * Get dev user configuration from environment
@@ -28,7 +29,7 @@ function getDevUser() {
     (process.env.ADMIN_USER_IDS?.split(",")[0]?.trim()) ||
     "000000000000000000";
 
-  console.log("[DevAuth] Using dev user ID:", devUserId);
+  log.debug("[DevAuth] Using dev user ID:", devUserId);
 
   return {
     id: devUserId,
@@ -63,7 +64,7 @@ function setDevAuthCookies(cookies) {
   // Set a mock access token for API calls
   cookies.set("discord_access_token", "dev_mock_token", cookieOptions);
 
-  console.log(
+  log.debug(
     "[DevAuth] Set dev auth cookies for user:",
     devUser.username,
     `(${devUser.id})`,
@@ -94,7 +95,7 @@ export async function handle({ event, resolve }) {
       cookies.delete("discord_discriminator", cookieOptions);
       cookies.delete("discord_access_token", cookieOptions);
 
-      console.log("[DevAuth] Cleared dev auth cookies");
+      log.debug("[DevAuth] Cleared dev auth cookies");
       redirect(302, "/");
     }
 
