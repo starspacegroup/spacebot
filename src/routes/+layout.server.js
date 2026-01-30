@@ -1,7 +1,8 @@
 import { redirect } from "@sveltejs/kit";
 import "dotenv/config";
+import { log } from "$lib/db/logger.js";
 
-console.log(
+log.debug(
   "[Layout] Module loaded, BOT_TOKEN exists:",
   !!process.env.DISCORD_BOT_TOKEN,
 );
@@ -39,7 +40,7 @@ export async function load({ cookies, platform, url }) {
   // Check if current user is a superadmin (defined in ADMIN_USER_IDS)
   const isSuperAdmin = superAdminIdList.includes(userId);
 
-  console.log(
+  log.debug(
     "[Layout] userId:",
     userId,
     "superAdminIdList:",
@@ -62,7 +63,7 @@ export async function load({ cookies, platform, url }) {
   let adminGuilds = [];
   let selectedGuildId = null;
 
-  console.log("[Layout] isAdminPage:", isAdminPage, "pathname:", url.pathname);
+  log.debug("[Layout] isAdminPage:", isAdminPage, "pathname:", url.pathname);
 
   if (isAdminPage) {
     // Check if we're using dev auth bypass with a mock guild
@@ -73,7 +74,7 @@ export async function load({ cookies, platform, url }) {
 
     if (devAuthEnabled && isDevMockToken && devGuildId) {
       // In dev mode with bypass, use the DISCORD_GUILD_ID as a mock server
-      console.log("[Layout] DEV MODE - Using mock guild:", devGuildId);
+      log.debug("[Layout] DEV MODE - Using mock guild:", devGuildId);
       adminGuilds = [{
         id: devGuildId,
         name: "Dev Test Server",
@@ -98,7 +99,7 @@ export async function load({ cookies, platform, url }) {
     const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
-    console.log(
+    log.debug(
       "[Layout] Has accessToken:",
       !!accessToken,
       "Has botToken:",
@@ -109,7 +110,7 @@ export async function load({ cookies, platform, url }) {
     const allUserGuilds = await fetchUserGuilds(accessToken);
     const botGuildIds = await fetchBotGuilds(botToken);
 
-    console.log(
+    log.debug(
       "[Layout] User guilds:",
       allUserGuilds.length,
       "Bot guilds:",
@@ -121,11 +122,11 @@ export async function load({ cookies, platform, url }) {
       const allBotGuilds = await fetchBotGuildsWithDetails(botToken);
       const userAdminGuilds = filterAdminGuilds(allUserGuilds);
 
-      console.log(
+      log.debug(
         "[Layout] SUPERADMIN - Bot guilds:",
         allBotGuilds.map((g) => g.name),
       );
-      console.log(
+      log.debug(
         "[Layout] SUPERADMIN - User admin guilds:",
         userAdminGuilds.map((g) => g.name),
       );
@@ -148,7 +149,7 @@ export async function load({ cookies, platform, url }) {
         }
       });
 
-      console.log(
+      log.debug(
         "[Layout] SUPERADMIN - Final combined guilds:",
         adminGuilds.map((g) => ({
           name: g.name,
@@ -158,16 +159,16 @@ export async function load({ cookies, platform, url }) {
     } else {
       // Regular users: only guilds where they have admin permissions AND bot is present
       const userAdminGuilds = filterAdminGuilds(allUserGuilds);
-      console.log(
+      log.debug(
         "[Layout] User admin guilds:",
         userAdminGuilds.map((g) => g.name),
       );
-      console.log("[Layout] Bot guild IDs:", [...botGuildIds]);
+      log.debug("[Layout] Bot guild IDs:", [...botGuildIds]);
       // Filter to only guilds where bot is present AND mark them as botIsInServer: true
       adminGuilds = userAdminGuilds
         .filter((guild) => botGuildIds.has(guild.id))
         .map((guild) => ({ ...guild, botIsInServer: true }));
-      console.log(
+      log.debug(
         "[Layout] Intersection (admin guilds with bot):",
         adminGuilds.map((g) => g.name),
       );
@@ -191,7 +192,7 @@ export async function load({ cookies, platform, url }) {
     // Filter guilds where bot is actually installed (for default selection)
     const guildsWithBot = adminGuilds.filter((g) => g.botIsInServer !== false);
 
-    console.log(
+    log.debug(
       "[Layout] selectedFromUrl:",
       selectedFromUrl,
       "lastViewedGuildId:",
@@ -223,7 +224,7 @@ export async function load({ cookies, platform, url }) {
         !url.pathname.match(/^\/admin\/\d+/));
 
     if (!selectedFromUrl && selectedGuildId && isAdminPageWithGuildParam) {
-      console.log(
+      log.debug(
         "[Layout] Redirecting to include guild in URL:",
         selectedGuildId,
       );
@@ -243,7 +244,7 @@ export async function load({ cookies, platform, url }) {
       });
     }
 
-    console.log(
+    log.debug(
       "[Layout] Final adminGuilds:",
       adminGuilds.length,
       "guildsWithBot:",
@@ -278,7 +279,7 @@ export async function load({ cookies, platform, url }) {
  */
 async function fetchUserGuilds(accessToken) {
   if (!accessToken) {
-    console.log("[Layout] fetchUserGuilds: No access token");
+    log.debug("[Layout] fetchUserGuilds: No access token");
     return [];
   }
 
@@ -292,7 +293,7 @@ async function fetchUserGuilds(accessToken) {
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
-    console.error("Error fetching guilds:", error);
+    log.error("Error fetching guilds:", error);
     return [];
   }
 }
@@ -302,7 +303,7 @@ async function fetchUserGuilds(accessToken) {
  */
 async function fetchBotGuilds(botToken) {
   if (!botToken) {
-    console.log("[Layout] fetchBotGuilds: No bot token");
+    log.debug("[Layout] fetchBotGuilds: No bot token");
     return new Set();
   }
 
@@ -314,14 +315,14 @@ async function fetchBotGuilds(botToken) {
     });
 
     if (!response.ok) {
-      console.log("[Layout] fetchBotGuilds: Response not ok:", response.status);
+      log.debug("[Layout] fetchBotGuilds: Response not ok:", response.status);
       return new Set();
     }
     const guilds = await response.json();
-    console.log("[Layout] fetchBotGuilds: Got", guilds.length, "guilds");
+    log.debug("[Layout] fetchBotGuilds: Got", guilds.length, "guilds");
     return new Set(guilds.map((g) => g.id));
   } catch (error) {
-    console.error("Error fetching bot guilds:", error);
+    log.error("Error fetching bot guilds:", error);
     return new Set();
   }
 }
@@ -349,7 +350,7 @@ async function fetchBotGuildsWithDetails(botToken) {
       botIsInServer: true,
     }));
   } catch (error) {
-    console.error("Error fetching bot guilds:", error);
+    log.error("Error fetching bot guilds:", error);
     return [];
   }
 }
@@ -374,7 +375,7 @@ function filterAdminGuilds(guilds) {
     owner: guild.owner,
   }));
 
-  console.log(
+  log.debug(
     "[Layout] filterAdminGuilds: Filtered",
     guilds.length,
     "to",

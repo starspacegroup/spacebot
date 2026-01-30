@@ -4,6 +4,7 @@ import {
   EVENT_TYPES,
   getLogs,
   getLogStats,
+  log,
 } from "$lib/db/logger.js";
 
 // Check if dev auth bypass is enabled
@@ -76,7 +77,7 @@ async function verifyGuildAccess(guildId, accessToken, botToken, adminUserIds) {
 
     return { hasAccess: true };
   } catch (error) {
-    console.error("Error verifying guild access:", error);
+    log.error("Error verifying guild access:", error);
     return { hasAccess: false };
   }
 }
@@ -109,7 +110,7 @@ export async function GET({ params, url, cookies, platform }) {
   if (devAuthEnabled && isDevMockToken) {
     // In dev mode with bypass, grant access if it's the dev guild or user is admin
     hasAccess = guildId === devGuildId || !!adminUserIds;
-    console.log("[DEV] Bypassing guild access check, hasAccess:", hasAccess);
+    log.debug("[DEV] Bypassing guild access check, hasAccess:", hasAccess);
   } else {
     // Verify access via Discord API
     const accessResult = await verifyGuildAccess(
@@ -139,11 +140,11 @@ export async function GET({ params, url, cookies, platform }) {
 
   const db = platform?.env?.DB;
 
-  console.log(
+  log.debug(
     "[DEBUG] platform.env keys:",
     platform?.env ? Object.keys(platform.env) : "no platform.env",
   );
-  console.log("[DEBUG] db binding:", db ? "exists" : "null");
+  log.debug("[DEBUG] db binding:", db ? "exists" : "null");
 
   // Fetch logs
   const { logs, total } = await getLogs(db, guildId, {

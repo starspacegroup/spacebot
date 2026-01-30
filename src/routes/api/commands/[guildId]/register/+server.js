@@ -11,6 +11,7 @@ import {
   toDiscordCommand,
 } from "$lib/db/commands.js";
 import { commands as builtInCommands } from "$lib/discord/commands.js";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Verify user has admin access to the guild
@@ -49,7 +50,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Guild verification error:", error);
+    log.error("Guild verification error:", error);
     return { authorized: false, error: "Verification failed" };
   }
 }
@@ -119,7 +120,7 @@ export async function POST({ params, request, cookies, platform }) {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("Discord registration error:", error);
+      log.error("Discord registration error:", error);
       return json({
         error: "Failed to register commands with Discord",
         details: error,
@@ -148,7 +149,7 @@ export async function POST({ params, request, cookies, platform }) {
       })),
     });
   } catch (error) {
-    console.error("Register commands error:", error);
+    log.error("Register commands error:", error);
     return json({ error: "Failed to register commands" }, { status: 500 });
   }
 }
@@ -203,7 +204,7 @@ export async function GET({ params, cookies, platform }) {
       total: commands.length,
     });
   } catch (error) {
-    console.error("Fetch commands error:", error);
+    log.error("Fetch commands error:", error);
     return json({ error: "Failed to fetch commands" }, { status: 500 });
   }
 }

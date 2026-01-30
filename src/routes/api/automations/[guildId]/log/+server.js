@@ -5,6 +5,7 @@
 
 import { json } from "@sveltejs/kit";
 import { logAutomationExecution } from "$lib/db/automations.js";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Verify bot authorization
@@ -55,7 +56,7 @@ export async function POST({ params, request, platform }) {
 
     return json({ success: result.success });
   } catch (error) {
-    console.error("Automation log error:", error);
+    log.error("Automation log error:", error);
     return json({ error: "Logging failed" }, { status: 500 });
   }
 }

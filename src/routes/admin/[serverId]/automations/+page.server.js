@@ -11,7 +11,7 @@ import {
   toggleAutomation,
   updateAutomation,
 } from "$lib/db/automations.js";
-import { EVENT_CATEGORIES, EVENT_TYPES } from "$lib/db/logger.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, url }) {
@@ -51,7 +51,7 @@ export async function load({ cookies, platform, parent, url }) {
       const logsResult = await getAutomationLogs(db, guildId, { limit: 10 });
       recentLogs = logsResult.logs;
     } catch (error) {
-      console.error("Failed to fetch automations:", error);
+      log.error("Failed to fetch automations:", error);
     }
   }
 
@@ -152,7 +152,7 @@ export const actions = {
         id: result.id,
       };
     } catch (error) {
-      console.error("Create automation error:", error);
+      log.error("Create automation error:", error);
       return fail(500, { error: "Failed to create automation" });
     }
   },
@@ -216,7 +216,7 @@ export const actions = {
 
       return { success: true, message: "Automation updated successfully!" };
     } catch (error) {
-      console.error("Update automation error:", error);
+      log.error("Update automation error:", error);
       return fail(500, { error: "Failed to update automation" });
     }
   },
@@ -248,7 +248,7 @@ export const actions = {
         message: enabled ? "Automation enabled" : "Automation disabled",
       };
     } catch (error) {
-      console.error("Toggle automation error:", error);
+      log.error("Toggle automation error:", error);
       return fail(500, { error: "Failed to toggle automation" });
     }
   },
@@ -276,7 +276,7 @@ export const actions = {
 
       return { success: true, message: "Automation deleted successfully!" };
     } catch (error) {
-      console.error("Delete automation error:", error);
+      log.error("Delete automation error:", error);
       return fail(500, { error: "Failed to delete automation" });
     }
   },

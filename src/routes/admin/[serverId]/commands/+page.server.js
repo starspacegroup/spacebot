@@ -15,6 +15,7 @@ import {
   updateCommand,
 } from "$lib/db/commands.js";
 import { commands as builtInCommands } from "$lib/discord/commands.js";
+import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, url }) {
@@ -39,7 +40,7 @@ export async function load({ cookies, platform, parent, url }) {
       const logsResult = await getCommandLogs(db, guildId, { limit: 10 });
       recentLogs = logsResult;
     } catch (error) {
-      console.error("Failed to fetch commands:", error);
+      log.error("Failed to fetch commands:", error);
     }
   }
 
@@ -85,7 +86,7 @@ export const actions = {
         message: enabled ? "Command enabled" : "Command disabled",
       };
     } catch (error) {
-      console.error("Toggle command error:", error);
+      log.error("Toggle command error:", error);
       return fail(500, { error: "Failed to toggle command" });
     }
   },
@@ -134,13 +135,13 @@ export const actions = {
             );
           }
         } catch (error) {
-          console.error("Failed to unregister command from Discord:", error);
+          log.error("Failed to unregister command from Discord:", error);
         }
       }
 
       return { success: true, message: "Command deleted successfully!" };
     } catch (error) {
-      console.error("Delete command error:", error);
+      log.error("Delete command error:", error);
       return fail(500, { error: "Failed to delete command" });
     }
   },
@@ -200,7 +201,7 @@ export const actions = {
 
       if (!response.ok) {
         const error = await response.text();
-        console.error("Discord registration error:", error);
+        log.error("Discord registration error:", error);
         return fail(500, {
           error: "Failed to register commands with Discord",
         });
@@ -224,7 +225,7 @@ export const actions = {
           `Successfully registered ${registeredCommands.length} commands with Discord!`,
       };
     } catch (error) {
-      console.error("Register commands error:", error);
+      log.error("Register commands error:", error);
       return fail(500, { error: "Failed to register commands" });
     }
   },

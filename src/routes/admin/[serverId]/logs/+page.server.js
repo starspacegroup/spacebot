@@ -1,4 +1,5 @@
 import { redirect } from "@sveltejs/kit";
+import { log } from "$lib/db/logger.js";
 
 // Discord permission flags
 const ADMINISTRATOR = 0x8;
@@ -18,7 +19,7 @@ async function fetchUserGuilds(accessToken) {
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
-    console.error("Error fetching guilds:", error);
+    log.error("Error fetching guilds:", error);
     return [];
   }
 }
@@ -28,7 +29,7 @@ async function fetchUserGuilds(accessToken) {
  */
 async function fetchGuildInfo(guildId, botToken) {
   try {
-    console.log(
+    log.debug(
       "[DEBUG] fetchGuildInfo - guildId:",
       guildId,
       "botToken exists:",
@@ -38,15 +39,15 @@ async function fetchGuildInfo(guildId, botToken) {
       headers: { Authorization: `Bot ${botToken}` },
     });
 
-    console.log("[DEBUG] fetchGuildInfo response status:", response.status);
+    log.debug("[DEBUG] fetchGuildInfo response status:", response.status);
     if (!response.ok) {
       const text = await response.text();
-      console.log("[DEBUG] fetchGuildInfo error response:", text);
+      log.debug("[DEBUG] fetchGuildInfo error response:", text);
       return null;
     }
     return await response.json();
   } catch (error) {
-    console.error("Error fetching guild info:", error);
+    log.error("Error fetching guild info:", error);
     return null;
   }
 }

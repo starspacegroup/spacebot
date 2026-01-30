@@ -5,6 +5,7 @@ import {
 	EVENT_TYPES,
 	getLogs,
 	getLogStats,
+	log,
 } from "$lib/db/logger.js";
 
 // Track server start time for uptime calculation
@@ -105,7 +106,7 @@ export async function load({ cookies, platform, parent }) {
 				// Get stats for the dashboard
 				logStats = await getLogStats(db, selectedGuildId);
 			} catch (error) {
-				console.error("Failed to fetch logs for dashboard:", error);
+				log.error("Failed to fetch logs for dashboard:", error);
 			}
 		}
 	}
@@ -178,7 +179,7 @@ export const actions = {
 				action: "refreshCommands",
 			};
 		} catch (error) {
-			console.error("Failed to register commands:", error);
+			log.error("Failed to register commands:", error);
 			return fail(500, {
 				success: false,
 				message: `Failed to register commands: ${error.message}`,

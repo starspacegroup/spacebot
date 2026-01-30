@@ -4,6 +4,7 @@
  */
 
 import { json } from "@sveltejs/kit";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Discord channel types
@@ -29,12 +30,12 @@ const CHANNEL_TYPES = {
  * Channel types where bots can send text messages
  */
 const TEXT_SENDABLE_TYPES = [
-  "text",                  // Regular text channels
-  "announcement",          // Announcement/news channels
-  "voice",                 // Voice channels (have text chat)
-  "public_thread",         // Public threads
-  "private_thread",        // Private threads
-  "announcement_thread",   // Announcement threads
+  "text", // Regular text channels
+  "announcement", // Announcement/news channels
+  "voice", // Voice channels (have text chat)
+  "public_thread", // Public threads
+  "private_thread", // Private threads
+  "announcement_thread", // Announcement threads
 ];
 
 /**
@@ -50,7 +51,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
       "https://discord.com/api/v10/users/@me/guilds",
       {
         headers: { Authorization: `Bearer ${accessToken}` },
-      }
+      },
     );
 
     if (!response.ok) {
@@ -75,7 +76,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Error verifying guild admin:", error);
+    log.error("Error verifying guild admin:", error);
     return { authorized: false, error: "Failed to verify permissions" };
   }
 }
@@ -108,12 +109,12 @@ export async function GET({ params, cookies, platform, url }) {
         headers: {
           Authorization: `Bot ${botToken}`,
         },
-      }
+      },
     );
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("Discord API error:", error);
+      log.error("Discord API error:", error);
       return json({ error: "Failed to fetch channels" }, { status: 500 });
     }
 
@@ -187,7 +188,7 @@ export async function GET({ params, cookies, platform, url }) {
       total: filteredChannels.length,
     });
   } catch (error) {
-    console.error("Error fetching channels:", error);
+    log.error("Error fetching channels:", error);
     return json({ error: "Failed to fetch channels" }, { status: 500 });
   }
 }

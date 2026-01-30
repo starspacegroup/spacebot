@@ -8,6 +8,7 @@ import {
   OPTION_TYPES,
   RESPONSE_TYPES,
 } from "$lib/db/commands.js";
+import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent }) {
@@ -177,7 +178,7 @@ export const actions = {
       // Re-throw redirects
       if (error.status === 302) throw error;
 
-      console.error("Create command error:", error);
+      log.error("Create command error:", error);
       return fail(500, { error: "Failed to create command" });
     }
   },

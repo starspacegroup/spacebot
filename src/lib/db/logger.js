@@ -3,6 +3,48 @@
  * Handles storing and retrieving event logs from D1
  */
 
+import { env } from "$env/dynamic/private";
+
+/**
+ * Log levels in order of verbosity (lower = less verbose)
+ * @enum {number}
+ */
+const LOG_LEVELS = {
+  error: 0,
+  warn: 1,
+  info: 2,
+  debug: 3,
+};
+
+/**
+ * Get the current log level from environment
+ * @returns {number} -1 if not set (no logging), otherwise the level value
+ */
+function getLogLevel() {
+  if (!env.LOG_LEVEL) return -1;
+  const level = env.LOG_LEVEL.toLowerCase();
+  return LOG_LEVELS[level] ?? -1;
+}
+
+/**
+ * Log helper functions that respect LOG_LEVEL
+ * @type {{error: (...args: any[]) => void, warn: (...args: any[]) => void, info: (...args: any[]) => void, debug: (...args: any[]) => void}}
+ */
+export const log = {
+  error: (...args) => {
+    if (getLogLevel() >= LOG_LEVELS.error) console.error(...args);
+  },
+  warn: (...args) => {
+    if (getLogLevel() >= LOG_LEVELS.warn) console.warn(...args);
+  },
+  info: (...args) => {
+    if (getLogLevel() >= LOG_LEVELS.info) console.info(...args);
+  },
+  debug: (...args) => {
+    if (getLogLevel() >= LOG_LEVELS.debug) console.debug(...args);
+  },
+};
+
 /**
  * @typedef {Object} EventLog
  * @property {string} guild_id - The Discord guild ID
@@ -25,7 +67,7 @@
  */
 export async function logEvent(db, event) {
   if (!db) {
-    console.warn("Database not available, skipping event log");
+    log.warn("Database not available, skipping event log");
     return { success: false, error: "Database not available" };
   }
 
@@ -51,7 +93,7 @@ export async function logEvent(db, event) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to log event:", error);
+    log.error("Failed to log event:", error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -144,7 +186,7 @@ export async function getLogs(db, guildId, options = {}) {
       total: countResult?.total || 0,
     };
   } catch (error) {
-    console.error("Failed to fetch logs:", error);
+    log.error("Failed to fetch logs:", error);
     return { logs: [], total: 0 };
   }
 }
@@ -204,7 +246,7 @@ export async function getLogStats(db, guildId) {
       topEvents: topEventsResult.results || [],
     };
   } catch (error) {
-    console.error("Failed to fetch log stats:", error);
+    log.error("Failed to fetch log stats:", error);
     return {
       totalEvents: 0,
       byCategory: {},
@@ -241,7 +283,7 @@ export async function getGuildSettings(db, guildId) {
     }
     return null;
   } catch (error) {
-    console.error("Failed to get guild settings:", error);
+    log.error("Failed to get guild settings:", error);
     return null;
   }
 }
@@ -280,7 +322,7 @@ export async function updateGuildSettings(db, guildId, settings) {
 
     return true;
   } catch (error) {
-    console.error("Failed to update guild settings:", error);
+    log.error("Failed to update guild settings:", error);
     return false;
   }
 }
@@ -312,7 +354,7 @@ export async function getLogById(db, logId, guildId) {
       details: result.details ? JSON.parse(result.details) : null,
     };
   } catch (error) {
-    console.error("Failed to fetch log by ID:", error);
+    log.error("Failed to fetch log by ID:", error);
     return null;
   }
 }
@@ -334,7 +376,7 @@ export async function pruneOldLogs(db, daysToKeep = 30) {
 
     return result.meta?.changes || 0;
   } catch (error) {
-    console.error("Failed to prune old logs:", error);
+    log.error("Failed to prune old logs:", error);
     return 0;
   }
 }

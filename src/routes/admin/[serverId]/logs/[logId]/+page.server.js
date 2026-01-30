@@ -1,5 +1,10 @@
 import { error, redirect } from "@sveltejs/kit";
-import { EVENT_CATEGORIES, EVENT_TYPES, getLogById } from "$lib/db/logger.js";
+import {
+  EVENT_CATEGORIES,
+  EVENT_TYPES,
+  getLogById,
+  log,
+} from "$lib/db/logger.js";
 
 // Discord permission flags
 const ADMINISTRATOR = 0x8;
@@ -19,7 +24,7 @@ async function fetchUserGuilds(accessToken) {
     if (!response.ok) return [];
     return await response.json();
   } catch (err) {
-    console.error("Error fetching guilds:", err);
+    log.error("Error fetching guilds:", err);
     return [];
   }
 }
@@ -36,7 +41,7 @@ async function fetchGuildInfo(guildId, botToken) {
     if (!response.ok) return null;
     return await response.json();
   } catch (err) {
-    console.error("Error fetching guild info:", err);
+    log.error("Error fetching guild info:", err);
     return null;
   }
 }

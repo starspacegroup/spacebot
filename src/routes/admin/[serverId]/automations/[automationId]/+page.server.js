@@ -8,7 +8,7 @@ import {
   TEMPLATE_VARIABLES,
   updateAutomation,
 } from "$lib/db/automations.js";
-import { EVENT_CATEGORIES, EVENT_TYPES } from "$lib/db/logger.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
@@ -53,7 +53,7 @@ export async function load({ cookies, platform, parent, params }) {
     };
   } catch (err) {
     if (err.status) throw err;
-    console.error("Failed to load automation:", err);
+    log.error("Failed to load automation:", err);
     throw error(500, "Failed to load automation");
   }
 }
@@ -152,7 +152,7 @@ export const actions = {
       // Re-throw redirects
       if (error.status === 302) throw error;
 
-      console.error("Update automation error:", error);
+      log.error("Update automation error:", error);
       return fail(500, { error: "Failed to update automation" });
     }
   },
@@ -187,7 +187,7 @@ export const actions = {
       // Re-throw redirects
       if (error.status === 302) throw error;
 
-      console.error("Delete automation error:", error);
+      log.error("Delete automation error:", error);
       return fail(500, { error: "Failed to delete automation" });
     }
   },

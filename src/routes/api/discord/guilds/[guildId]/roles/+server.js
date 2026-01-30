@@ -4,6 +4,7 @@
  */
 
 import { json } from "@sveltejs/kit";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Verify user has admin access to the guild
@@ -43,7 +44,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Error verifying guild admin:", error);
+    log.error("Error verifying guild admin:", error);
     return { authorized: false, error: "Failed to verify permissions" };
   }
 }
@@ -78,7 +79,7 @@ export async function GET({ params, cookies, platform }) {
 
     if (!response.ok) {
       const error = await response.text();
-      console.error("Discord API error:", error);
+      log.error("Discord API error:", error);
       return json({ error: "Failed to fetch roles" }, { status: 500 });
     }
 
@@ -107,7 +108,7 @@ export async function GET({ params, cookies, platform }) {
       total: roles.length,
     });
   } catch (error) {
-    console.error("Error fetching roles:", error);
+    log.error("Error fetching roles:", error);
     return json({ error: "Failed to fetch roles" }, { status: 500 });
   }
 }

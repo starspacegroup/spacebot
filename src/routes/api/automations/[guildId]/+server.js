@@ -12,7 +12,7 @@ import {
   getAutomations,
   TEMPLATE_VARIABLES,
 } from "$lib/db/automations.js";
-import { EVENT_CATEGORIES, EVENT_TYPES } from "$lib/db/logger.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /**
  * Verify user has admin access to the guild
@@ -53,7 +53,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Guild verification error:", error);
+    log.error("Guild verification error:", error);
     return { authorized: false, error: "Verification failed" };
   }
 }
@@ -190,7 +190,7 @@ export async function POST({ params, request, cookies, platform }) {
 
     return json({ success: true, id: result.id }, { status: 201 });
   } catch (error) {
-    console.error("Create automation error:", error);
+    log.error("Create automation error:", error);
     return json({ error: "Failed to create automation" }, { status: 500 });
   }
 }

@@ -1,5 +1,10 @@
 import { json } from "@sveltejs/kit";
-import { EVENT_CATEGORIES, EVENT_TYPES, getLogById } from "$lib/db/logger.js";
+import {
+  EVENT_CATEGORIES,
+  EVENT_TYPES,
+  getLogById,
+  log,
+} from "$lib/db/logger.js";
 
 // Check if dev auth bypass is enabled
 const isDev = process.env.NODE_ENV !== "production";
@@ -55,7 +60,7 @@ async function verifyGuildAccess(guildId, accessToken, botToken, adminUserIds) {
 
     return { hasAccess: hasAdmin };
   } catch (error) {
-    console.error("Error verifying guild access:", error);
+    log.error("Error verifying guild access:", error);
     return { hasAccess: false };
   }
 }

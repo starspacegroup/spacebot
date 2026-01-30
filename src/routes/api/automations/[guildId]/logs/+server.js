@@ -5,6 +5,7 @@
 
 import { json } from "@sveltejs/kit";
 import { getAutomationLogs } from "$lib/db/automations.js";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Verify user has admin access to the guild
@@ -43,7 +44,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Guild verification error:", error);
+    log.error("Guild verification error:", error);
     return { authorized: false, error: "Verification failed" };
   }
 }

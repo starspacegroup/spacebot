@@ -10,6 +10,7 @@ import {
   RESPONSE_TYPES,
   updateCommand,
 } from "$lib/db/commands.js";
+import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
@@ -54,7 +55,7 @@ export async function load({ cookies, platform, parent, params }) {
     };
   } catch (err) {
     if (err.status) throw err;
-    console.error("Failed to load command:", err);
+    log.error("Failed to load command:", err);
     throw error(500, "Failed to load command");
   }
 }
@@ -194,7 +195,7 @@ export const actions = {
       // Re-throw redirects
       if (err.status === 302) throw err;
 
-      console.error("Update command error:", err);
+      log.error("Update command error:", err);
       return fail(500, { error: "Failed to update command" });
     }
   },
@@ -246,14 +247,14 @@ export const actions = {
             );
           }
         } catch (error) {
-          console.error("Failed to unregister command from Discord:", error);
+          log.error("Failed to unregister command from Discord:", error);
         }
       }
 
       throw redirect(302, `/admin/${params.serverId}/commands?deleted=true`);
     } catch (err) {
       if (err.status === 302) throw err;
-      console.error("Delete command error:", err);
+      log.error("Delete command error:", err);
       return fail(500, { error: "Failed to delete command" });
     }
   },

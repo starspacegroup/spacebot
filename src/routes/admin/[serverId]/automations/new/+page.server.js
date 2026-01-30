@@ -6,7 +6,7 @@ import {
   FILTER_TYPES,
   TEMPLATE_VARIABLES,
 } from "$lib/db/automations.js";
-import { EVENT_CATEGORIES, EVENT_TYPES } from "$lib/db/logger.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent }) {
@@ -120,7 +120,7 @@ export const actions = {
       // Re-throw redirects
       if (error.status === 302) throw error;
 
-      console.error("Create automation error:", error);
+      log.error("Create automation error:", error);
       return fail(500, { error: "Failed to create automation" });
     }
   },

@@ -1,3 +1,5 @@
+import { log } from "$lib/db/logger.js";
+
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ platform }) {
 	const BOT_TOKEN = platform?.env?.DISCORD_BOT_TOKEN ||
@@ -23,7 +25,7 @@ export async function load({ platform }) {
 
 		if (!response.ok) {
 			const errorText = await response.text();
-			console.error("Failed to fetch guilds:", response.status, errorText);
+			log.error("Failed to fetch guilds:", response.status, errorText);
 			return {
 				guilds: [],
 				error: "Failed to fetch servers",
@@ -50,7 +52,7 @@ export async function load({ platform }) {
 			error: null,
 		};
 	} catch (error) {
-		console.error("Error fetching guilds:", error);
+		log.error("Error fetching guilds:", error);
 		return {
 			guilds: [],
 			error: "Failed to connect to Discord",

@@ -12,6 +12,7 @@ import {
   getCommand,
   updateCommand,
 } from "$lib/db/commands.js";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Verify user has admin access to the guild
@@ -50,7 +51,7 @@ async function verifyGuildAdmin(guildId, accessToken) {
 
     return { authorized: false, error: "Insufficient permissions" };
   } catch (error) {
-    console.error("Guild verification error:", error);
+    log.error("Guild verification error:", error);
     return { authorized: false, error: "Verification failed" };
   }
 }
@@ -142,7 +143,7 @@ export async function PATCH({ params, request, cookies, platform }) {
 
     return json({ success: true });
   } catch (error) {
-    console.error("Update command error:", error);
+    log.error("Update command error:", error);
     return json({ error: "Failed to update command" }, { status: 500 });
   }
 }
@@ -197,7 +198,7 @@ export async function DELETE({ params, cookies, platform }) {
         );
       }
     } catch (error) {
-      console.error("Failed to unregister command from Discord:", error);
+      log.error("Failed to unregister command from Discord:", error);
       // Continue anyway - the command is deleted from our database
     }
   }

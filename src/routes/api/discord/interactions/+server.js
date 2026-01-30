@@ -12,6 +12,7 @@ import {
 	recordCommandUse,
 } from "$lib/db/commands.js";
 import { executeAction, processTemplate } from "$lib/automation/engine.js";
+import { log } from "$lib/db/logger.js";
 
 // Track bot start time for uptime calculation
 const BOT_START_TIME = Date.now();
@@ -81,25 +82,25 @@ async function verifyDiscordRequest(request, publicKey) {
 		const isValid = verifyKey(body, signature, timestamp, publicKey);
 		return { isValid, body };
 	} catch (error) {
-		console.error("Signature verification error:", error);
+		log.error("Signature verification error:", error);
 		return { isValid: false, body: null };
 	}
 }
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform }) {
-	console.log("=== Discord Interaction Request Received ===");
+	log.debug("=== Discord Interaction Request Received ===");
 
 	// Get the public key from environment
 	const PUBLIC_KEY = platform?.env?.DISCORD_PUBLIC_KEY ||
 		process.env.DISCORD_PUBLIC_KEY;
 
 	if (!PUBLIC_KEY) {
-		console.error("DISCORD_PUBLIC_KEY not configured");
+		log.error("DISCORD_PUBLIC_KEY not configured");
 		return json({ error: "Server configuration error" }, { status: 500 });
 	}
 
-	console.log("Public key loaded, length:", PUBLIC_KEY.length);
+	log.debug("Public key loaded, length:", PUBLIC_KEY.length);
 
 	// Verify the request is from Discord
 	const { isValid, body: rawBody } = await verifyDiscordRequest(
@@ -107,19 +108,19 @@ export async function POST({ request, platform }) {
 		PUBLIC_KEY,
 	);
 
-	console.log("Verification result:", isValid);
+	log.debug("Verification result:", isValid);
 
 	if (!isValid) {
-		console.error("Invalid request signature");
+		log.error("Invalid request signature");
 		return json({ error: "Invalid request signature" }, { status: 401 });
 	}
 
 	let body;
 	try {
 		body = JSON.parse(rawBody);
-		console.log("Parsed body type:", body.type);
+		log.debug("Parsed body type:", body.type);
 	} catch (error) {
-		console.error("Failed to parse request body:", error);
+		log.error("Failed to parse request body:", error);
 		return json({ error: "Invalid JSON" }, { status: 400 });
 	}
 
@@ -288,7 +289,7 @@ async function handleCustomCommand(command, interaction, db, platform) {
 	const startTime = Date.now();
 	const context = buildCommandContext(interaction);
 
-	console.log(`[Command] Executing custom command: ${command.name}`);
+	log.debug(`[Command] Executing custom command: ${command.name}`);
 
 	// Record usage
 	await recordCommandUse(db, command.id);
@@ -433,7 +434,7 @@ function createRESTClient(platform) {
 		process.env.DISCORD_BOT_TOKEN;
 
 	if (!token) {
-		console.warn("No bot token available for REST client");
+		log.warn("No bot token available for REST client");
 		return null;
 	}
 
@@ -504,7 +505,7 @@ function createRESTClient(platform) {
 										);
 										if (!res.ok) {
 											const error = await res.text();
-											console.error("Add role failed:", error);
+											log.error("Add role failed:", error);
 											throw new Error(`Failed to add role: ${res.status}`);
 										}
 									},
@@ -515,7 +516,7 @@ function createRESTClient(platform) {
 										);
 										if (!res.ok) {
 											const error = await res.text();
-											console.error("Remove role failed:", error);
+											log.error("Remove role failed:", error);
 											throw new Error(`Failed to remove role: ${res.status}`);
 										}
 									},
@@ -533,7 +534,7 @@ function createRESTClient(platform) {
 									);
 									if (!res.ok) {
 										const error = await res.text();
-										console.error("Kick failed:", error);
+										log.error("Kick failed:", error);
 										throw new Error(`Failed to kick member: ${res.status}`);
 									}
 								},
@@ -554,7 +555,7 @@ function createRESTClient(platform) {
 									);
 									if (!res.ok) {
 										const error = await res.text();
-										console.error("Timeout failed:", error);
+										log.error("Timeout failed:", error);
 										throw new Error(`Failed to timeout member: ${res.status}`);
 									}
 								},
@@ -576,7 +577,7 @@ function createRESTClient(platform) {
 							);
 							if (!res.ok) {
 								const error = await res.text();
-								console.error("Ban failed:", error);
+								log.error("Ban failed:", error);
 								throw new Error(`Failed to ban member: ${res.status}`);
 							}
 						},

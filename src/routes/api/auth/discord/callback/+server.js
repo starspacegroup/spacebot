@@ -1,4 +1,5 @@
 import { redirect } from "@sveltejs/kit";
+import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url, cookies, platform }) {
@@ -9,7 +10,7 @@ export async function GET({ url, cookies, platform }) {
 
 	// Handle user cancellation or errors from Discord
 	if (error) {
-		console.error("OAuth error from Discord:", error, errorDescription);
+		log.error("OAuth error from Discord:", error, errorDescription);
 		throw redirect(302, `/login?error=${error}`);
 	}
 
@@ -68,7 +69,7 @@ export async function GET({ url, cookies, platform }) {
 
 		if (!tokenResponse.ok) {
 			const errorData = await tokenResponse.text();
-			console.error("Token exchange failed:", errorData);
+			log.error("Token exchange failed:", errorData);
 			throw new Error("Failed to get token");
 		}
 
@@ -184,7 +185,7 @@ export async function GET({ url, cookies, platform }) {
 				installedBy: userData.id,
 			};
 
-			console.log("Bot installed to guild:", guildInfo);
+			log.debug("Bot installed to guild:", guildInfo);
 
 			// TODO: Store guild installation info in database or KV storage
 
@@ -199,7 +200,7 @@ export async function GET({ url, cookies, platform }) {
 		if (error?.status === 302) {
 			throw error; // Re-throw redirects
 		}
-		console.error("Auth error:", error);
+		log.error("Auth error:", error);
 		throw redirect(302, "/login?error=auth_failed");
 	}
 }
