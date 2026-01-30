@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
 	
 	let { data, form } = $props();
 	
@@ -43,53 +44,47 @@
 	let showDeleteConfirm = $state(false);
 	let showTriggerPicker = $state(false);
 	
-	// Shared channel data - fetched once for all ChannelSelectors
+	// Shared channel data - fetched once for all ChannelSelectors (with caching)
 	let sharedChannels = $state(null);
 	let channelsLoading = $state(false);
 	
-	// Shared role data - fetched once for all RoleSelectors
+	// Shared role data - fetched once for all RoleSelectors (with caching)
 	let sharedRoles = $state(null);
 	let rolesLoading = $state(false);
 	
 	// Fetch channels once when guild changes
 	$effect(() => {
-		if (data.selectedGuildId && !sharedChannels && !channelsLoading) {
-			fetchChannels();
+		if (data.selectedGuildId && sharedChannels === null && !channelsLoading) {
+			loadChannels();
 		}
 	});
 	
 	// Fetch roles once when guild changes
 	$effect(() => {
-		if (data.selectedGuildId && !sharedRoles && !rolesLoading) {
-			fetchRoles();
+		if (data.selectedGuildId && sharedRoles === null && !rolesLoading) {
+			loadRoles();
 		}
 	});
 	
-	async function fetchChannels() {
+	async function loadChannels() {
 		channelsLoading = true;
 		try {
-			const response = await fetch(`/api/discord/guilds/${data.selectedGuildId}/channels?type=sendable`);
-			if (response.ok) {
-				const result = await response.json();
-				sharedChannels = result.channels || [];
-			}
+			sharedChannels = await fetchChannelsWithCache(data.selectedGuildId);
 		} catch (err) {
-			console.error('Error fetching channels:', err);
+			console.error('Error loading channels:', err);
+			sharedChannels = [];
 		} finally {
 			channelsLoading = false;
 		}
 	}
 	
-	async function fetchRoles() {
+	async function loadRoles() {
 		rolesLoading = true;
 		try {
-			const response = await fetch(`/api/discord/guilds/${data.selectedGuildId}/roles`);
-			if (response.ok) {
-				const result = await response.json();
-				sharedRoles = result.roles || [];
-			}
+			sharedRoles = await fetchRolesWithCache(data.selectedGuildId);
 		} catch (err) {
-			console.error('Error fetching roles:', err);
+			console.error('Error loading roles:', err);
+			sharedRoles = [];
 		} finally {
 			rolesLoading = false;
 		}
@@ -529,9 +524,9 @@
 												<ChannelSelector
 													channels={sharedChannels}
 													name="action_config.{index}.{configKey}"
-													value={action.config[configKey] || ''}
 													required={config.required}
-													placeholder="Search for a channel..."
+													placeholder="Select a channel..."
+													bind:value={action.config[configKey]}
 												/>
 											{:else if config.type === 'role'}
 												<RoleSelector

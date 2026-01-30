@@ -27,6 +27,7 @@ export async function getUserGuilds(
   forceRefresh = false,
 ) {
   if (!accessToken) {
+    log.debug("[Guilds Cache] No accessToken provided");
     return [];
   }
 
@@ -34,9 +35,13 @@ export async function getUserGuilds(
   if (!forceRefresh) {
     const cached = getCachedGuilds(cookies, "user_guilds");
     if (cached) {
-      log.debug("[Guilds Cache] Using cached user guilds");
+      log.debug(
+        "[Guilds Cache] Using cached user guilds, count:",
+        cached.length,
+      );
       return cached;
     }
+    log.debug("[Guilds Cache] No valid cache for user_guilds");
   }
 
   // Fetch from Discord API
@@ -57,6 +62,11 @@ export async function getUserGuilds(
     }
 
     const guilds = await response.json();
+    log.debug(
+      "[Guilds Cache] Fetched",
+      guilds.length,
+      "guilds from Discord API",
+    );
 
     // Cache the result
     setCachedGuilds(cookies, "user_guilds", guilds);
@@ -192,14 +202,46 @@ export async function getBotGuildsWithDetails(
  */
 export async function verifyGuildAdmin(guildId, accessToken, cookies) {
   if (!accessToken || !guildId) {
+    log.debug("[verifyGuildAdmin] Missing accessToken or guildId");
     return { authorized: false, error: "Unauthorized" };
+  }
+
+  // Check for dev auth bypass - allow any request in dev mode with bypass enabled
+  const isDev = typeof process !== "undefined" &&
+    process.env?.NODE_ENV !== "production";
+  const devAuthEnabled = isDev && process.env?.DEV_AUTH_BYPASS === "true";
+
+  if (devAuthEnabled) {
+    log.debug(
+      "[verifyGuildAdmin] DEV MODE - bypassing auth check for guild:",
+      guildId,
+    );
+    // In dev mode with bypass enabled, allow access to any guild
+    return {
+      authorized: true,
+      guild: {
+        id: guildId,
+        name: "Dev Server",
+        permissions: "2147483647",
+      },
+    };
   }
 
   try {
     const guilds = await getUserGuilds(accessToken, cookies);
+    log.debug(
+      "[verifyGuildAdmin] getUserGuilds returned",
+      guilds.length,
+      "guilds, looking for",
+      guildId,
+    );
     const guild = guilds.find((g) => g.id === guildId);
 
     if (!guild) {
+      log.debug(
+        "[verifyGuildAdmin] Guild not found in user guilds. Available guild IDs:",
+        guilds.map((g) => g.id),
+      );
       return { authorized: false, error: "Guild not found" };
     }
 
@@ -362,10 +404,14 @@ function setCachedGuilds(cookies, key, data) {
     timestamp: Date.now(),
   });
 
+  // Only use secure cookies in production
+  const isProduction = typeof process !== "undefined" &&
+    process.env?.NODE_ENV === "production";
+
   cookies.set(`cached_${key}`, cacheValue, {
     path: "/",
     httpOnly: true,
-    secure: true,
+    secure: isProduction,
     sameSite: "lax",
     maxAge: CACHE_TTL,
   });

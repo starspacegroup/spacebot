@@ -12,7 +12,7 @@
 	
 	let { 
 		guildId = null,
-		channels: preloadedChannels = null, // Pre-loaded channels to avoid multiple fetches
+		channels: preloadedChannels = undefined, // Pre-loaded channels: undefined = not used, null = loading, array = loaded
 		value = $bindable(),
 		name = 'channel',
 		required = false,
@@ -39,6 +39,13 @@
 	let inputRef = $state(null);
 	let dropdownRef = $state(null);
 	
+	// Check if we're waiting for preloaded channels
+	// - undefined means preloadedChannels prop not used (fetch ourselves or use guildId)
+	// - null means preloadedChannels prop used but still loading
+	// - array means preloadedChannels loaded
+	const isWaitingForPreload = $derived(preloadedChannels === null);
+	const isLoading = $derived(loading || isWaitingForPreload);
+	
 	// Parse value to array for multi-select
 	const selectedIds = $derived.by(() => {
 		if (!value) return [];
@@ -51,14 +58,14 @@
 	// Check if "All Channels" is selected
 	const isAllSelected = $derived(selectedIds.includes(ALL_CHANNELS));
 	
-	// Use preloaded channels if provided, otherwise fetch
+	// Reactive channels: use preloaded if provided as array, otherwise local state
+	const effectiveChannels = $derived(Array.isArray(preloadedChannels) ? preloadedChannels : channels);
+	
+	// Fetch channels ourselves if no preloaded channels provided
 	$effect(() => {
-		if (preloadedChannels) {
-			channels = preloadedChannels;
-		} else if (guildId) {
+		if (preloadedChannels === undefined && guildId) {
+			// preloadedChannels not provided, fetch ourselves
 			fetchChannels();
-		} else {
-			channels = [];
 		}
 	});
 	
@@ -90,7 +97,7 @@
 	// Flatten channels for searching
 	const flatChannels = $derived.by(() => {
 		const flat = [];
-		for (const group of channels) {
+		for (const group of effectiveChannels) {
 			if (group.channels) {
 				for (const ch of group.channels) {
 					flat.push({
@@ -105,11 +112,11 @@
 	
 	// Filter channels by search query
 	const filteredChannels = $derived.by(() => {
-		if (!searchQuery.trim()) return channels;
+		if (!searchQuery.trim()) return effectiveChannels;
 		
 		const query = searchQuery.toLowerCase();
 		
-		return channels
+		return effectiveChannels
 			.map(group => ({
 				...group,
 				channels: (group.channels || []).filter(ch => 
@@ -292,12 +299,12 @@
 			/>
 		{/if}
 		
-		{#if loading}
+		{#if isLoading}
 			<span class="loading-indicator">⏳</span>
 		{/if}
 	</div>
 	
-	{#if isOpen && !loading}
+	{#if isOpen && !isLoading}
 		<div class="dropdown" bind:this={dropdownRef}>
 			{#if error}
 				<div class="dropdown-error">
@@ -306,7 +313,7 @@
 				</div>
 			{:else if filteredChannels.length === 0}
 				<div class="dropdown-empty">
-					{#if channels.length === 0}
+					{#if effectiveChannels.length === 0}
 						No channels available
 					{:else}
 						No channels match "{searchQuery}"

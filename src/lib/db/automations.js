@@ -441,6 +441,26 @@ export async function createAutomation(db, automation) {
     // For backwards compatibility, store first event in trigger_event
     const primaryTrigger = triggerEvents[0] || null;
 
+    // Clean action_config to avoid circular references
+    let cleanActionConfig = {};
+    if (automation.action_config) {
+      // Deep clone to strip any reactive wrappers
+      if (automation.action_config.actions) {
+        cleanActionConfig.actions = automation.action_config.actions.map(
+          (action) => ({
+            type: action.type,
+            config: { ...action.config },
+          })
+        );
+      }
+      // Copy other properties
+      for (const [key, value] of Object.entries(automation.action_config)) {
+        if (key !== "actions") {
+          cleanActionConfig[key] = value;
+        }
+      }
+    }
+
     const result = await db.prepare(`
       INSERT INTO automations (
         guild_id, name, description, enabled,
@@ -459,7 +479,7 @@ export async function createAutomation(db, automation) {
         ? JSON.stringify(automation.trigger_filters)
         : null,
       automation.action_type,
-      JSON.stringify(automation.action_config),
+      JSON.stringify(cleanActionConfig),
       automation.created_by || null,
     ).run();
 
@@ -530,9 +550,16 @@ export async function updateAutomation(db, id, updates) {
     if (updates.action_config !== undefined || updates.actions !== undefined) {
       fields.push("action_config = ?");
       // If we have a new actions array, store it in action_config
-      const actionConfig = updates.action_config || {};
+      // Create a clean copy to avoid circular references from reactive state
+      const actionConfig = updates.action_config
+        ? JSON.parse(JSON.stringify(updates.action_config))
+        : {};
       if (updates.actions !== undefined) {
-        actionConfig.actions = updates.actions;
+        // Deep clone actions to strip any reactive wrappers or circular refs
+        actionConfig.actions = updates.actions.map((action) => ({
+          type: action.type,
+          config: { ...action.config },
+        }));
       }
       values.push(JSON.stringify(actionConfig));
     }
