@@ -1,25 +1,140 @@
-# spacebot
+# SpaceBot 🚀
 
-A Discord bot built with SvelteKit, hosted on Cloudflare Pages+Workers.
+A powerful, self-hosted Discord bot platform built with **SvelteKit 2**
+(Svelte 5) and deployed on **Cloudflare Pages**. Create custom slash commands,
+build event-driven automations, and monitor all Discord activity through a
+beautiful admin dashboard.
 
-## Features
+![SpaceBot Dashboard](docs/screenshots/server-admin.png)
 
-- 🤖 **Discord Bot**: Responds to slash commands and menu interactions
-- 🌐 **Web Frontend**: Public stats page and admin dashboard
-- 🔐 **Discord OAuth**: User authentication via Discord
-- ⚡ **Cloudflare Pages**: Deployed on Cloudflare's edge network
-- 🎯 **Admin Panel**: Manage bot settings and view detailed statistics
+## ✨ Features
 
-## Getting Started
+### 🤖 Discord Bot
+
+- **Custom Slash Commands** — Create your own commands with parameters, choices,
+  and custom responses
+- **Event-Driven Automations** — Trigger actions automatically when Discord
+  events occur
+- **Full Gateway Support** — Real-time event capture via Discord.js gateway
+  connection
+- **Interactions Endpoint** — HTTP-based slash command handling via Cloudflare
+  Workers
+
+### 🌐 Web Dashboard
+
+- **Server Selection** — Manage all servers where you're an admin
+- **Event Logs** — View detailed logs of all Discord activity (members,
+  messages, voice, moderation, etc.)
+- **Automation Builder** — Visual interface to create event → action automations
+- **Command Builder** — Design custom slash commands with the automation action
+  system
+- **Dark/Light Theme** — Beautiful UI with theme toggle support
+
+### 🔐 Authentication & Security
+
+- **Discord OAuth2** — Secure login with Discord credentials
+- **Admin Access Control** — Only server admins can manage their servers
+- **Request Signature Verification** — All Discord interactions are
+  cryptographically verified
+
+### ⚡ Cloudflare-Native
+
+- **Cloudflare Pages** — Deployed on Cloudflare's global edge network
+- **D1 Database** — SQLite-based serverless database for logs and configurations
+- **Zero Cold Starts** — Fast response times worldwide
+
+## 📸 Screenshots
+
+<details>
+<summary>� Discord Login</summary>
+
+![Discord Login](docs/screenshots/login.png)
+
+Secure Discord OAuth2 authentication for accessing the admin dashboard.
+
+</details>
+
+<details>
+<summary>📊 Server Admin</summary>
+
+![Server Admin](docs/screenshots/server-admin.png)
+
+View event logs, statistics, and quick access to automations and commands.
+
+</details>
+
+<details>
+<summary>⚡ Automations</summary>
+
+![Automations List](docs/screenshots/automations.png)
+
+Create event-driven automations that trigger on Discord events like member
+joins, message creates, voice state changes, and more.
+
+</details>
+
+<details>
+<summary>🛠️ Automation Editor</summary>
+
+![Automation Editor](docs/screenshots/automation-editor.png)
+
+Visual interface for configuring triggers, conditions, and actions for your
+automations.
+
+</details>
+
+<details>
+<summary>🎮 Custom Commands</summary>
+
+![Commands](docs/screenshots/commands.png)
+
+Build custom slash commands with parameters and tie them to automation actions.
+
+</details>
+
+<details>
+<summary>✏️ Command Editor</summary>
+
+![Command Editor](docs/screenshots/command-editor.png)
+
+Design slash commands with options, parameters, and custom responses through an
+intuitive editor.
+
+</details>
+
+<details>
+<summary>📝 Event Logs</summary>
+
+![Event Logs](docs/screenshots/logs.png)
+
+Comprehensive logging of all Discord events with filtering and search.
+
+</details>
+
+## 🛠️ Tech Stack
+
+| Layer       | Technology                    |
+| ----------- | ----------------------------- |
+| Framework   | SvelteKit 2 (Svelte 5)        |
+| Runtime     | Cloudflare Pages/Workers      |
+| Database    | Cloudflare D1 (SQLite)        |
+| Bot Library | Discord.js 14                 |
+| Styling     | Custom CSS with CSS Variables |
+| Auth        | Discord OAuth2                |
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ installed
+- Node.js 18+
 - A Discord Application
   ([create one here](https://discord.com/developers/applications))
 - A Cloudflare account ([sign up here](https://dash.cloudflare.com/sign-up))
+- (Optional)
+  [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+  for local tunneling
 
-### Local Development
+### Installation
 
 1. **Clone the repository**
    ```bash
@@ -32,212 +147,235 @@ A Discord bot built with SvelteKit, hosted on Cloudflare Pages+Workers.
    npm install
    ```
 
-3. **Set up environment variables**
+3. **Configure environment variables**
 
    Copy `.env.example` to `.env` and fill in your Discord credentials:
    ```bash
    cp .env.example .env
    ```
 
-   Get your Discord credentials from the
-   [Discord Developer Portal](https://discord.com/developers/applications):
-   - `DISCORD_PUBLIC_KEY`: Found in your app's "General Information"
-   - `DISCORD_CLIENT_ID`: Your application's Client ID
-   - `DISCORD_CLIENT_SECRET`: Found under OAuth2 settings
-   - `DISCORD_BOT_TOKEN`: Found under "Bot" settings
-   - `ADMIN_USER_IDS`: Your Discord user ID (right-click your name with
-     Developer Mode enabled)
+   Required variables:
+   | Variable                | Description                                               |
+   | ----------------------- | --------------------------------------------------------- |
+   | `DISCORD_PUBLIC_KEY`    | Found in your app's "General Information"                 |
+   | `DISCORD_CLIENT_ID`     | Your application's Client ID                              |
+   | `DISCORD_CLIENT_SECRET` | Found under OAuth2 settings                               |
+   | `DISCORD_BOT_TOKEN`     | Found under "Bot" settings                                |
+   | `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with global admin access |
+   | `LOG_LEVEL`             | Logging verbosity: `error`, `warn`, `info`, `debug`       |
 
-4. **Register Discord commands**
+4. **Set up the database (local development)**
    ```bash
-   DISCORD_CLIENT_ID=xxx DISCORD_BOT_TOKEN=xxx node scripts/register-commands.js
+   npm run db:migrate:local
    ```
 
 5. **Run the development server**
    ```bash
    npm run dev
    ```
-
    The app will be available at `http://localhost:5173`
+
+6. **Start the Gateway bot** (in a separate terminal)
+   ```bash
+   npm run dev:gateway
+   ```
+   This captures Discord events and processes automations.
 
 ### Discord Bot Setup
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Select your application
-3. Go to "Bot" and enable the bot
-4. Under "Privileged Gateway Intents", enable:
-   - Server Members Intent (if needed)
-   - Message Content Intent (if needed)
-5. Go to "OAuth2" → "URL Generator"
-   - Select scopes: `bot`, `applications.commands`
-   - Select bot permissions as needed
-   - Use the generated URL to invite the bot to your server
-
-### OAuth2 Code Grant Flow
-
-SpaceBot supports the full OAuth2 Code Grant flow for bot installation. This is
-required when your application needs multiple scopes and you want to ensure the
-bot doesn't join before your application is granted a token.
-
-**Why use OAuth2 Code Grant for bots?**
-
-- Ensures your application receives an access token before the bot joins the
-  server
-- Allows you to store refresh tokens for later API calls on behalf of the user
-- Provides user identity along with bot installation in a single flow
-
-**Available OAuth2 flows:**
-
-1. **Login only** (`/api/auth/discord`):
-   - Scopes: `identify guilds`
-   - Just authenticates the user without adding a bot
-
-2. **Bot installation** (`/api/auth/discord?flow=install`):
-   - Scopes: `identify guilds bot applications.commands`
-   - Authenticates user AND adds bot to selected server
-   - Returns access token, refresh token, and guild info
-
-**Query parameters for install flow:**
-
-- `flow=install` - Required for bot installation
-- `guild_id=<id>` - Pre-select a specific guild
-- `permissions=<bitfield>` - Custom permission bitfield (default: Administrator)
+2. Select your application → **Bot**
+3. Enable **Privileged Gateway Intents**:
+   - ✅ Presence Intent
+   - ✅ Server Members Intent
+   - ✅ Message Content Intent
+4. Go to **OAuth2** → **URL Generator**
+   - Scopes: `bot`, `applications.commands`
+   - Permissions: Administrator (or customize as needed)
+5. Use the generated URL to invite the bot to your server
 
 ### Setting up Interactions Endpoint
 
-Once deployed to Cloudflare Pages:
+For production, configure Discord to send interactions to your Cloudflare Pages
+URL:
 
-1. Get your Cloudflare Pages URL (e.g., `https://spacebot.pages.dev`)
-2. Go to Discord Developer Portal → Your Application → "General Information"
-3. Set "Interactions Endpoint URL" to:
-   `https://your-domain.pages.dev/api/discord/interactions`
-4. Discord will send a test request to verify the endpoint
+1. Deploy to Cloudflare Pages (see [Deployment](#-deployment))
+2. Go to Discord Developer Portal → Your Application → **General Information**
+3. Set **Interactions Endpoint URL** to:
+   ```
+   https://your-domain.pages.dev/api/discord/interactions
+   ```
 
-## Deployment to Cloudflare Pages
+## 📦 Available npm Scripts
 
-### Option 1: Deploy via Cloudflare Dashboard (Recommended)
+| Script                      | Description                                      |
+| --------------------------- | ------------------------------------------------ |
+| `npm run dev`               | Start SvelteKit dev server                       |
+| `npm run dev:wrangler`      | Run with Wrangler (Cloudflare local environment) |
+| `npm run dev:gateway`       | Start Discord gateway bot                        |
+| `npm run dev:tunnel`        | Start cloudflared tunnel for local development   |
+| `npm run build`             | Build for production                             |
+| `npm run db:migrate`        | Run database migrations (production)             |
+| `npm run db:migrate:local`  | Run database migrations (local)                  |
+| `npm run register-commands` | Register slash commands with Discord             |
 
-1. **Push your code to GitHub**
+## 🔄 Automations
+
+SpaceBot's automation engine lets you create powerful event-driven workflows:
+
+### Supported Triggers
+
+- **Member Events** — Join, leave, ban, unban, kick, timeout
+- **Message Events** — Create, edit, delete, bulk delete
+- **Voice Events** — Join, leave, mute, deafen, stream, video
+- **Role Events** — Create, delete, update, member role add/remove
+- **Channel Events** — Create, delete, update
+- **Reaction Events** — Add, remove
+- **Interaction Events** — Slash commands, button clicks, modals
+- **And many more...**
+
+### Available Actions
+
+- 📨 **Send Message** — Send a message to a channel
+- 🗑️ **Delete Messages** — Delete messages from a user
+- 🏷️ **Add/Remove Role** — Modify member roles
+- 👢 **Kick Member** — Kick a member from the server
+- 🔨 **Ban Member** — Ban a member
+- ⏰ **Timeout Member** — Timeout a member
+- 📢 **Send DM** — Send a direct message to a user
+
+### Template Variables
+
+Use dynamic variables in your messages:
+
+```
+Welcome {user.mention} to {guild.name}!
+```
+
+Available: `{user.id}`, `{user.name}`, `{user.mention}`, `{channel.name}`,
+`{guild.name}`, `{option.<name>}`, and more.
+
+## 🎮 Custom Commands
+
+Create custom slash commands through the web dashboard:
+
+1. Navigate to **Admin** → **Your Server** → **Commands**
+2. Click **New Command**
+3. Configure:
+   - Command name and description
+   - Parameters (text, numbers, users, channels, roles, etc.)
+   - Response message or embed
+   - Optional: Tie to an automation action
+4. Click **Register with Discord** to sync
+
+## 📋 Event Logging
+
+SpaceBot captures and logs all Discord events:
+
+| Category       | Events                                     |
+| -------------- | ------------------------------------------ |
+| 👤 Member      | Join, leave, update, nickname changes      |
+| 💬 Message     | Create, edit, delete, bulk delete          |
+| 🎤 Voice       | Join, leave, mute, deafen, stream, video   |
+| 📁 Channel     | Create, delete, update                     |
+| 🏷️ Role        | Create, delete, update, member assignments |
+| 🔨 Moderation  | Ban, unban, kick, timeout                  |
+| ⚡ Interaction | Commands, buttons, modals, select menus    |
+| 📅 Events      | Scheduled event create, update, delete     |
+
+## 🌐 Deployment
+
+### Deploy to Cloudflare Pages (Recommended)
+
+1. **Push to GitHub**
    ```bash
-   git add .
-   git commit -m "Initial commit"
    git push origin main
    ```
 
 2. **Connect to Cloudflare Pages**
-   - Log in to [Cloudflare Dashboard](https://dash.cloudflare.com)
-   - Go to "Workers & Pages" → "Create application" → "Pages" → "Connect to Git"
-   - Select your GitHub repository
-   - Configure build settings:
+   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+   - **Workers & Pages** → **Create application** → **Pages** → **Connect to
+     Git**
+   - Select your repository
+   - Configure:
      - **Build command**: `npm run build`
-     - **Build output directory**: `.svelte-kit/cloudflare`
-     - **Root directory**: `/` (leave empty if at root)
+     - **Build output**: `.svelte-kit/cloudflare`
 
-3. **Set Environment Variables**
+3. **Add Environment Variables** In Cloudflare Pages Settings → Environment
+   Variables, add all required variables.
 
-   In Cloudflare Pages dashboard, go to Settings → Environment Variables and
-   add:
-   - `DISCORD_PUBLIC_KEY`
-   - `DISCORD_CLIENT_ID`
-   - `DISCORD_CLIENT_SECRET`
-   - `DISCORD_BOT_TOKEN`
-   - `ADMIN_USER_IDS`
+4. **Create D1 Database**
+   ```bash
+   wrangler d1 create spacebot-logs
+   ```
+   Update `wrangler.toml` with the database ID.
 
-4. **Deploy**
-   - Click "Save and Deploy"
-   - Cloudflare will automatically build and deploy your site
-   - Future pushes to main branch will auto-deploy
+5. **Run Migrations**
+   ```bash
+   npm run db:migrate
+   ```
 
-### Option 2: Deploy via Wrangler CLI
+6. **Deploy** Future pushes to `main` will auto-deploy.
 
-```bash
-# Install Wrangler
-npm install -g wrangler
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
-# Login to Cloudflare
-wrangler login
-
-# Deploy
-npm run build
-wrangler pages deploy .svelte-kit/cloudflare
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 spacebot/
 ├── src/
 │   ├── lib/
-│   │   └── discord/
-│   │       └── commands.js        # Discord command definitions
+│   │   ├── automation/       # Automation engine
+│   │   ├── components/       # Svelte components
+│   │   ├── db/               # Database functions
+│   │   │   ├── automations.js
+│   │   │   ├── commands.js
+│   │   │   └── logger.js
+│   │   └── discord/          # Discord integration
+│   │       ├── cache.js
+│   │       ├── commands.js
+│   │       ├── gateway.js    # Gateway bot service
+│   │       └── guilds.js
 │   ├── routes/
-│   │   ├── api/
-│   │   │   ├── auth/
-│   │   │   │   └── discord/       # Discord OAuth endpoints
-│   │   │   └── discord/
-│   │   │       └── interactions/  # Discord bot interaction handler
-│   │   ├── admin/                 # Admin dashboard
-│   │   ├── login/                 # Login page
-│   │   └── +page.svelte          # Public homepage
-│   └── app.html                   # HTML template
-├── scripts/
-│   └── register-commands.js       # Command registration script
-├── static/                        # Static assets
-├── .env.example                   # Environment variable template
-├── svelte.config.js              # SvelteKit config (Cloudflare adapter)
-├── package.json
-└── README.md
+│   │   ├── admin/            # Admin dashboard pages
+│   │   │   ├── [serverId]/   # Per-server management
+│   │   │   │   ├── automations/
+│   │   │   │   ├── commands/
+│   │   │   │   └── logs/
+│   │   ├── api/              # API endpoints
+│   │   │   ├── automations/
+│   │   │   ├── commands/
+│   │   │   ├── discord/
+│   │   │   └── logs/
+│   │   └── login/
+│   └── app.html
+├── migrations/               # D1 database migrations
+├── scripts/                  # Utility scripts
+├── static/                   # Static assets
+└── docs/
+    └── screenshots/          # Documentation images
 ```
 
-## Available Commands
+## 🔒 Security
 
-### Discord Bot Commands
+- ✅ Discord request signature verification
+- ✅ HTTP-only secure cookies
+- ✅ Admin permission checks
+- ✅ Environment variable secrets
+- ✅ HTTPS via Cloudflare
 
-- `/ping` - Check if the bot is responsive
-- `/stats` - View bot statistics
-- `/help` - Get help with bot commands
+## 🗺️ Roadmap
 
-### npm Scripts
+See [ROADMAP.md](ROADMAP.md) for planned features and enhancements.
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `node scripts/register-commands.js` - Register Discord commands
+## 📄 License
 
-## Environment Variables
+MIT
 
-| Variable                | Description                                        | Required |
-| ----------------------- | -------------------------------------------------- | -------- |
-| `DISCORD_PUBLIC_KEY`    | Your Discord app's public key                      | Yes      |
-| `DISCORD_CLIENT_ID`     | Your Discord app's client ID                       | Yes      |
-| `DISCORD_CLIENT_SECRET` | Your Discord OAuth client secret                   | Yes      |
-| `DISCORD_BOT_TOKEN`     | Your Discord bot token                             | Yes      |
-| `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with admin access | No       |
-
-## Security Notes
-
-- Never commit `.env` file to version control
-- Store all secrets in Cloudflare Pages environment variables
-- The Discord interactions endpoint verifies requests using your public key
-- OAuth tokens should be stored securely (use Cloudflare KV or D1)
-
-## Next Steps
-
-- [ ] Implement session storage with Cloudflare KV or D1
-- [ ] Add more Discord commands
-- [ ] Implement proper admin authentication
-- [ ] Add database for storing bot statistics
-- [ ] Implement rate limiting
-- [ ] Add monitoring and logging
-- [ ] Create automated tests
-
-## Resources
+## 🔗 Resources
 
 - [SvelteKit Documentation](https://kit.svelte.dev)
 - [Discord.js Guide](https://discordjs.guide)
 - [Cloudflare Pages Docs](https://developers.cloudflare.com/pages)
+- [Cloudflare D1 Docs](https://developers.cloudflare.com/d1)
 - [Discord Developer Portal](https://discord.com/developers/docs)
-
-## License
-
-MIT

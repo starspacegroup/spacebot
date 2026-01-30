@@ -92,7 +92,6 @@
 	{:else}
 		<!-- Main Dashboard -->
 		<header class="dashboard-header">
-			<a href="/admin" class="back-link">← All Servers</a>
 			<div class="header-content">
 				<div class="guild-header">
 					{#if data.guild?.icon}

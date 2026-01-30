@@ -3,6 +3,8 @@
  * Register these commands using the Discord API
  */
 
+import { log } from "$lib/log.js";
+
 export const commands = [
 	{
 		name: "ping",
@@ -53,10 +55,10 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 		}
 
 		const data = await response.json();
-		console.log("Successfully registered commands:", data);
+		log.info("Successfully registered commands:", data);
 		return data;
 	} catch (error) {
-		console.error("Error registering commands:", error);
+		log.error("Error registering commands:", error);
 		throw error;
 	}
 }

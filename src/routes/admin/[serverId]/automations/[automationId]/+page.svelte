@@ -3,6 +3,7 @@
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
+	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
 	
@@ -71,7 +72,7 @@
 		try {
 			sharedChannels = await fetchChannelsWithCache(data.selectedGuildId);
 		} catch (err) {
-			console.error('Error loading channels:', err);
+			log.error('Error loading channels:', err);
 			sharedChannels = [];
 		} finally {
 			channelsLoading = false;
@@ -83,7 +84,7 @@
 		try {
 			sharedRoles = await fetchRolesWithCache(data.selectedGuildId);
 		} catch (err) {
-			console.error('Error loading roles:', err);
+			log.error('Error loading roles:', err);
 			sharedRoles = [];
 		} finally {
 			rolesLoading = false;

@@ -3,6 +3,8 @@
  * Handles CRUD operations for automations and execution logging
  */
 
+import { log } from "$lib/log.js";
+
 /**
  * @typedef {Object} Automation
  * @property {number} id
@@ -488,7 +490,7 @@ export async function createAutomation(db, automation) {
 
     return { success: true, id: result.meta?.last_row_id };
   } catch (error) {
-    console.error("Failed to create automation:", error);
+    log.error("Failed to create automation:", error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -576,7 +578,7 @@ export async function updateAutomation(db, id, updates) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to update automation:", error);
+    log.error("Failed to update automation:", error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -600,7 +602,7 @@ export async function deleteAutomation(db, id, guildId) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to delete automation:", error);
+    log.error("Failed to delete automation:", error);
     return { success: false, error: error.message || String(error) };
   }
 }
@@ -660,7 +662,7 @@ export async function getAutomation(db, id, guildId) {
 
     return parsed;
   } catch (error) {
-    console.error("Failed to get automation:", error);
+    log.error("Failed to get automation:", error);
     return null;
   }
 }
@@ -726,7 +728,7 @@ export async function getAutomations(db, guildId, options = {}) {
       total: countResult?.total || 0,
     };
   } catch (error) {
-    console.error("Failed to get automations:", error);
+    log.error("Failed to get automations:", error);
     return { automations: [], total: 0 };
   }
 }
@@ -756,7 +758,7 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
         )
     `).bind(guildId, eventType, eventType).all();
 
-    console.log(
+    log.debug(
       `[DB] getTriggeredAutomations for ${eventType}: found ${
         results.results?.length || 0
       } automations`,
@@ -779,7 +781,7 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
       } else {
         parsed.trigger_events = [];
       }
-      console.log(
+      log.debug(
         `[DB] Automation "${a.name}" has triggers: ${
           JSON.stringify(parsed.trigger_events)
         }`,
@@ -787,7 +789,7 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
       return parsed;
     });
   } catch (error) {
-    console.error("Failed to get triggered automations:", error);
+    log.error("Failed to get triggered automations:", error);
     return [];
   }
 }
@@ -827,7 +829,7 @@ export async function logAutomationExecution(db, log) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to log automation execution:", error);
+    log.error("Failed to log automation execution:", error);
     return { success: false };
   }
 }
@@ -881,7 +883,7 @@ export async function getAutomationLogs(db, guildId, options = {}) {
       total: countResult?.total || 0,
     };
   } catch (error) {
-    console.error("Failed to get automation logs:", error);
+    log.error("Failed to get automation logs:", error);
     return { logs: [], total: 0 };
   }
 }
@@ -905,7 +907,7 @@ export async function toggleAutomation(db, id, guildId, enabled) {
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to toggle automation:", error);
+    log.error("Failed to toggle automation:", error);
     return { success: false };
   }
 }

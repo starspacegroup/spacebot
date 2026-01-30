@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
 	
@@ -40,7 +41,7 @@
 				sharedChannels = result.channels || [];
 			}
 		} catch (err) {
-			console.error('Error fetching channels:', err);
+			log.error('Error fetching channels:', err);
 		} finally {
 			channelsLoading = false;
 		}
@@ -55,7 +56,7 @@
 				sharedRoles = result.roles || [];
 			}
 		} catch (err) {
-			console.error('Error fetching roles:', err);
+			log.error('Error fetching roles:', err);
 		} finally {
 			rolesLoading = false;
 		}
