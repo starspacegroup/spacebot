@@ -4,7 +4,8 @@
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import UserSelector from '$lib/components/UserSelector.svelte';
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
-	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
+	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
+	import { fetchChannelsWithCache, fetchRolesWithCache, fetchEmojisWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
@@ -74,6 +75,10 @@
 	let sharedRoles = $state(null);
 	let rolesLoading = $state(false);
 	
+	// Shared emoji data - fetched once for all EmojiSelectors (with caching)
+	let sharedEmojis = $state(null);
+	let emojisLoading = $state(false);
+	
 	// Fetch channels once when guild changes
 	$effect(() => {
 		if (data.selectedGuildId && sharedChannels === null && !channelsLoading) {
@@ -85,6 +90,13 @@
 	$effect(() => {
 		if (data.selectedGuildId && sharedRoles === null && !rolesLoading) {
 			loadRoles();
+		}
+	});
+	
+	// Fetch emojis once when guild changes
+	$effect(() => {
+		if (data.selectedGuildId && sharedEmojis === null && !emojisLoading) {
+			loadEmojis();
 		}
 	});
 	
@@ -109,6 +121,18 @@
 			sharedRoles = [];
 		} finally {
 			rolesLoading = false;
+		}
+	}
+	
+	async function loadEmojis() {
+		emojisLoading = true;
+		try {
+			sharedEmojis = await fetchEmojisWithCache(data.selectedGuildId);
+		} catch (err) {
+			log.error('Error loading emojis:', err);
+			sharedEmojis = [];
+		} finally {
+			emojisLoading = false;
 		}
 	}
 	
@@ -646,6 +670,17 @@
 													{/each}
 												</select>
 												<p class="field-hint">Choose which user this action will target</p>
+											{:else if config.type === 'emoji'}
+												<EmojiSelector
+													emojis={sharedEmojis}
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													placeholder="Select an emoji..."
+													bind:value={action.config[configKey]}
+												/>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
 											{:else}
 												<input 
 													type="text" 

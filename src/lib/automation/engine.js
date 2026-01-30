@@ -841,6 +841,38 @@ export async function executeAction(automation, event, context, discord) {
         return { success: true, result: { threadId: thread.id } };
       }
 
+      case "ADD_REACTION": {
+        const emoji = action_config.emoji;
+        const messageId = event.details?.messageId;
+        const channelId = event.channel_id;
+
+        if (!emoji) {
+          return { success: false, error: "Missing emoji" };
+        }
+
+        if (!messageId) {
+          return { success: false, error: "No message ID available - this action requires a message event" };
+        }
+
+        if (!channelId) {
+          return { success: false, error: "No channel ID available" };
+        }
+
+        const channel = await discord.channels.fetch(channelId).catch(() => null);
+        if (!channel) {
+          return { success: false, error: "Channel not found" };
+        }
+
+        const message = await channel.messages.fetch(messageId).catch(() => null);
+        if (!message) {
+          return { success: false, error: "Message not found" };
+        }
+
+        // Handle custom emoji format (e.g., <:name:id> or just the emoji)
+        await message.react(emoji.trim());
+        return { success: true, result: { reacted: emoji, messageId } };
+      }
+
       default:
         return { success: false, error: `Unknown action type: ${action_type}` };
     }

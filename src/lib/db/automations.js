@@ -239,6 +239,20 @@ export const ACTION_TYPES = {
       },
     },
   },
+  ADD_REACTION: {
+    name: "Add Reaction",
+    description: "Add a reaction emoji to the triggering message",
+    icon: "👍",
+    configSchema: {
+      emoji: {
+        type: "emoji",
+        required: true,
+        label: "Emoji",
+        description: "The emoji to react with",
+      },
+    },
+    applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE"],
+  },
 };
 
 /**

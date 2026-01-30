@@ -19,6 +19,9 @@ const channelCache = new Map();
 /** @type {Map<string, CacheEntry>} */
 const roleCache = new Map();
 
+/** @type {Map<string, CacheEntry>} */
+const emojiCache = new Map();
+
 /**
  * Check if a cache entry is still valid
  * @param {CacheEntry | undefined} entry
@@ -86,6 +89,7 @@ export function setCachedRoles(guildId, roles) {
 export function clearGuildCache(guildId) {
   channelCache.delete(guildId);
   roleCache.delete(guildId);
+  emojiCache.delete(guildId);
 }
 
 /**
@@ -102,6 +106,39 @@ export function invalidateChannels(guildId) {
  */
 export function invalidateRoles(guildId) {
   roleCache.delete(guildId);
+}
+
+/**
+ * Force refresh emojis - clears cache and fetches fresh data
+ * @param {string} guildId
+ */
+export function invalidateEmojis(guildId) {
+  emojiCache.delete(guildId);
+}
+
+/**
+ * Get cached emojis for a guild
+ * @param {string} guildId
+ * @returns {any[] | null} - Cached emojis or null if not cached/expired
+ */
+export function getCachedEmojis(guildId) {
+  const entry = emojiCache.get(guildId);
+  if (isValid(entry)) {
+    return entry.data;
+  }
+  return null;
+}
+
+/**
+ * Set cached emojis for a guild
+ * @param {string} guildId
+ * @param {any[]} emojis
+ */
+export function setCachedEmojis(guildId, emojis) {
+  emojiCache.set(guildId, {
+    data: emojis,
+    timestamp: Date.now(),
+  });
 }
 
 /**
@@ -171,6 +208,38 @@ export async function fetchRolesWithCache(guildId) {
     }
   } catch (err) {
     log.error("[Cache] Error fetching roles:", err);
+  }
+
+  return [];
+}
+
+/**
+ * Fetch emojis with caching
+ * @param {string} guildId
+ * @returns {Promise<any[]>}
+ */
+export async function fetchEmojisWithCache(guildId) {
+  log.debug("[Cache] fetchEmojisWithCache called for guild:", guildId);
+
+  // Check cache first
+  const cached = getCachedEmojis(guildId);
+  if (cached !== null) {
+    log.debug("[Cache] Returning cached emojis:", cached.length);
+    return cached;
+  }
+
+  // Fetch from API
+  log.debug("[Cache] Cache miss, fetching emojis from API...");
+  try {
+    const response = await fetch(`/api/discord/guilds/${guildId}/emojis`);
+    if (response.ok) {
+      const result = await response.json();
+      const emojis = result.emojis || [];
+      setCachedEmojis(guildId, emojis);
+      return emojis;
+    }
+  } catch (err) {
+    log.error("[Cache] Error fetching emojis:", err);
   }
 
   return [];
