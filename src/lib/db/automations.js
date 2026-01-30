@@ -78,7 +78,14 @@ export const ACTION_TYPES = {
         label: "Target User",
         description: "Which user's messages to delete",
       },
-      channel_id: { type: "channel", required: true, label: "Channel" },
+      channel_ids: {
+        type: "channel_multi",
+        required: false,
+        label: "Channel(s)",
+        showAllOption: true,
+        allOptionLabel: "Any Channel",
+        default: "ALL",
+      },
       limit: {
         type: "number",
         default: 100,
