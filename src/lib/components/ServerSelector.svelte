@@ -22,7 +22,7 @@
 	}
 	
 	function selectGuild(guildId) {
-		window.location.href = `${basePath}?guild=${guildId}`;
+		window.location.href = `${basePath}/${guildId}`;
 	}
 	
 	function handleKeydown(event) {

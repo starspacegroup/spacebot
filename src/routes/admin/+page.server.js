@@ -1,33 +1,6 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
-import { fail } from "@sveltejs/kit";
-import {
-	EVENT_CATEGORIES,
-	EVENT_TYPES,
-	getLogs,
-	getLogStats,
-	log,
-} from "$lib/db/logger.js";
-
-// Track server start time for uptime calculation
-const SERVER_START_TIME = Date.now();
-
-/**
- * Format uptime into a human-readable string
- */
-function formatUptime(ms) {
-	const seconds = Math.floor(ms / 1000);
-	const minutes = Math.floor(seconds / 60);
-	const hours = Math.floor(minutes / 60);
-	const days = Math.floor(hours / 24);
-
-	if (days > 0) {
-		return `${days}d ${hours % 24}h ${minutes % 60}m`;
-	}
-	if (hours > 0) {
-		return `${hours}h ${minutes % 60}m`;
-	}
-	return `${minutes}m ${seconds % 60}s`;
-}
+import { fail, redirect } from "@sveltejs/kit";
+import { log } from "$lib/db/logger.js";
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -58,27 +31,12 @@ export async function load({ cookies, platform, parent }) {
 		return {
 			isAdmin: false,
 			isSuperAdmin: false,
-			uptime: "0h 0m",
-			latency: 0,
-			stats: {
-				servers: 0,
-				users: 0,
-				commandsUsed: 0,
-			},
-			commands: [],
 			user: null,
-			recentLogs: [],
-			logStats: null,
-			eventCategories: EVENT_CATEGORIES,
-			eventTypes: EVENT_TYPES,
 		};
 	}
 
 	// Check if current user is a superadmin (has access to everything)
 	const isSuperAdmin = checkIsSuperAdmin(userId, platform);
-
-	// Calculate uptime
-	const uptime = formatUptime(Date.now() - SERVER_START_TIME);
 
 	// Use adminGuilds from parent layout
 	const adminGuilds = parentData.adminGuilds || [];
@@ -87,54 +45,21 @@ export async function load({ cookies, platform, parent }) {
 	// User has admin access if they're a superadmin OR have at least one admin guild
 	const isAdmin = isSuperAdmin || guildsWithBot.length > 0;
 
-	// Fetch recent logs for the selected guild
-	const selectedGuildId = parentData.selectedGuildId;
-	let recentLogs = [];
-	let logStats = null;
-
-	if (selectedGuildId) {
-		const db = platform?.env?.DB;
-		if (db) {
-			try {
-				// Get the 5 most recent logs for the compact widget
-				const logsResult = await getLogs(db, selectedGuildId, {
-					limit: 5,
-					offset: 0,
-				});
-				recentLogs = logsResult.logs || [];
-
-				// Get stats for the dashboard
-				logStats = await getLogStats(db, selectedGuildId);
-			} catch (error) {
-				log.error("Failed to fetch logs for dashboard:", error);
-			}
-		}
+	// If user has a selected guild, redirect to that server's dashboard
+	// This handles the case where user lands on /admin but already has a server cookie
+	if (parentData.selectedGuildId) {
+		throw redirect(302, `/admin/${parentData.selectedGuildId}`);
 	}
 
 	return {
 		isAdmin,
 		isSuperAdmin,
-		uptime,
-		latency: Math.floor(Math.random() * 50) + 10, // Simulated latency
-		stats: {
-			servers: guildsWithBot.length,
-			users: 0,
-			commandsUsed: 0,
-		},
-		commands: commands.map((cmd) => ({
-			name: cmd.name,
-			description: cmd.description,
-		})),
 		user: {
 			id: userId,
 			username: username || "Unknown",
 			avatar,
 		},
-		recentLogs,
-		logStats,
-		eventCategories: EVENT_CATEGORIES,
-		eventTypes: EVENT_TYPES,
-		// Note: adminGuilds and selectedGuildId come from the layout
+		// Note: adminGuilds come from the layout
 	};
 }
 

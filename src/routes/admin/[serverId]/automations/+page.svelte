@@ -65,6 +65,8 @@
 		</div>
 	{/if}
 	
+	<a href="/admin/{selectedGuildId}" class="back-link">← Back to Dashboard</a>
+	
 	<header class="page-header">
 		<div class="header-content">
 			<h1>
@@ -238,6 +240,19 @@
 		padding: 2rem;
 		max-width: 1400px;
 		margin: 0 auto;
+	}
+	
+	.back-link {
+		display: inline-block;
+		color: var(--text-muted);
+		text-decoration: none;
+		font-size: 0.875rem;
+		margin-bottom: 1rem;
+		transition: color 0.2s;
+	}
+	
+	.back-link:hover {
+		color: var(--text-primary, #fff);
 	}
 	
 	.page-header {

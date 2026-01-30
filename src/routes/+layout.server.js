@@ -223,18 +223,13 @@ export async function load({ cookies, platform, url }) {
       selectedGuildId = adminGuilds[0].id;
     }
 
-    // If we're on an admin page that accepts guild param and no guild in URL, redirect to include it
-    // This ensures the URL is always in sync with the selected guild
-    const isAdminPageWithGuildParam = url.pathname === "/admin" ||
-      (url.pathname.startsWith("/admin/") &&
-        !url.pathname.match(/^\/admin\/\d+/));
-
-    if (!selectedFromUrl && selectedGuildId && isAdminPageWithGuildParam) {
+    // If we're on the base /admin page and no guild in URL, redirect to /admin/{selectedGuildId}
+    if (!selectedFromUrl && selectedGuildId && url.pathname === "/admin") {
       log.debug(
-        "[Layout] Redirecting to include guild in URL:",
+        "[Layout] Redirecting to server-specific admin URL:",
         selectedGuildId,
       );
-      throw redirect(302, `${url.pathname}?guild=${selectedGuildId}`);
+      throw redirect(302, `/admin/${selectedGuildId}`);
     }
 
     // Store the selected guild in a cookie for next visit (only if bot is in it)
