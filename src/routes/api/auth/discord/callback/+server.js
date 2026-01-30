@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
+import { invalidateGuildCache } from "$lib/discord/guilds.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url, cookies, platform }) {
@@ -186,6 +187,9 @@ export async function GET({ url, cookies, platform }) {
 			};
 
 			log.debug("Bot installed to guild:", guildInfo);
+
+			// Invalidate guild cache since bot membership changed
+			invalidateGuildCache(cookies);
 
 			// TODO: Store guild installation info in database or KV storage
 

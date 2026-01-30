@@ -1,6 +1,12 @@
 import { redirect } from "@sveltejs/kit";
 import "dotenv/config";
 import { log } from "$lib/db/logger.js";
+import {
+  filterAdminGuilds,
+  getBotGuildIds,
+  getBotGuildsWithDetails,
+  getUserGuilds,
+} from "$lib/discord/guilds.js";
 
 log.debug(
   "[Layout] Module loaded, BOT_TOKEN exists:",
@@ -106,9 +112,9 @@ export async function load({ cookies, platform, url }) {
       !!botToken,
     );
 
-    // Fetch user's guilds
-    const allUserGuilds = await fetchUserGuilds(accessToken);
-    const botGuildIds = await fetchBotGuilds(botToken);
+    // Fetch user's guilds (with caching)
+    const allUserGuilds = await getUserGuilds(accessToken, cookies);
+    const botGuildIds = await getBotGuildIds(botToken, cookies);
 
     log.debug(
       "[Layout] User guilds:",
@@ -119,7 +125,7 @@ export async function load({ cookies, platform, url }) {
 
     if (isSuperAdmin) {
       // Superadmin sees ALL guilds where the bot is a member plus their admin guilds
-      const allBotGuilds = await fetchBotGuildsWithDetails(botToken);
+      const allBotGuilds = await getBotGuildsWithDetails(botToken, cookies);
       const userAdminGuilds = filterAdminGuilds(allUserGuilds);
 
       log.debug(
@@ -272,115 +278,4 @@ export async function load({ cookies, platform, url }) {
     adminGuilds,
     selectedGuildId,
   };
-}
-
-/**
- * Fetch user's guilds from Discord API
- */
-async function fetchUserGuilds(accessToken) {
-  if (!accessToken) {
-    log.debug("[Layout] fetchUserGuilds: No access token");
-    return [];
-  }
-
-  try {
-    const response = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) return [];
-    return await response.json();
-  } catch (error) {
-    log.error("Error fetching guilds:", error);
-    return [];
-  }
-}
-
-/**
- * Fetch guilds where the bot is a member
- */
-async function fetchBotGuilds(botToken) {
-  if (!botToken) {
-    log.debug("[Layout] fetchBotGuilds: No bot token");
-    return new Set();
-  }
-
-  try {
-    const response = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: {
-        Authorization: `Bot ${botToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      log.debug("[Layout] fetchBotGuilds: Response not ok:", response.status);
-      return new Set();
-    }
-    const guilds = await response.json();
-    log.debug("[Layout] fetchBotGuilds: Got", guilds.length, "guilds");
-    return new Set(guilds.map((g) => g.id));
-  } catch (error) {
-    log.error("Error fetching bot guilds:", error);
-    return new Set();
-  }
-}
-
-/**
- * Fetch bot guilds with full details (for superadmins)
- */
-async function fetchBotGuildsWithDetails(botToken) {
-  if (!botToken) return [];
-
-  try {
-    const response = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: {
-        Authorization: `Bot ${botToken}`,
-      },
-    });
-
-    if (!response.ok) return [];
-    const guilds = await response.json();
-    return guilds.map((guild) => ({
-      id: guild.id,
-      name: guild.name,
-      icon: guild.icon,
-      owner: false,
-      botIsInServer: true,
-    }));
-  } catch (error) {
-    log.error("Error fetching bot guilds:", error);
-    return [];
-  }
-}
-
-/**
- * Filter guilds where user has admin permissions
- */
-function filterAdminGuilds(guilds) {
-  const ADMINISTRATOR = 0x8;
-  const MANAGE_GUILD = 0x20;
-
-  const filtered = guilds.filter((guild) => {
-    const permissions = BigInt(guild.permissions);
-    const isAdmin = guild.owner ||
-      (permissions & BigInt(ADMINISTRATOR)) !== 0n ||
-      (permissions & BigInt(MANAGE_GUILD)) !== 0n;
-    return isAdmin;
-  }).map((guild) => ({
-    id: guild.id,
-    name: guild.name,
-    icon: guild.icon,
-    owner: guild.owner,
-  }));
-
-  log.debug(
-    "[Layout] filterAdminGuilds: Filtered",
-    guilds.length,
-    "to",
-    filtered.length,
-    "admin guilds",
-  );
-  return filtered;
 }

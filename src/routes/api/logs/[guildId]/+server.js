@@ -6,81 +6,11 @@ import {
   getLogStats,
   log,
 } from "$lib/db/logger.js";
+import { verifyGuildAccess } from "$lib/discord/guilds.js";
 
 // Check if dev auth bypass is enabled
 const isDev = process.env.NODE_ENV !== "production";
 const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
-
-// Discord permission flags
-const ADMINISTRATOR = 0x8;
-const MANAGE_GUILD = 0x20;
-
-/**
- * Verify user has admin access to the guild
- */
-async function verifyGuildAccess(guildId, accessToken, botToken, adminUserIds) {
-  if (!accessToken) return { hasAccess: false };
-
-  try {
-    // Fetch user info
-    const userResponse = await fetch("https://discord.com/api/users/@me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!userResponse.ok) return { hasAccess: false };
-    const user = await userResponse.json();
-
-    // Check if superadmin
-    const superAdminIds = (adminUserIds || "").split(",").map((id) =>
-      id.trim()
-    );
-    if (superAdminIds.includes(user.id)) {
-      return { hasAccess: true, isSuperAdmin: true };
-    }
-
-    // Fetch user's guilds
-    const guildsResponse = await fetch(
-      "https://discord.com/api/users/@me/guilds",
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
-
-    if (!guildsResponse.ok) return { hasAccess: false };
-    const guilds = await guildsResponse.json();
-
-    // Find the requested guild
-    const guild = guilds.find((g) => g.id === guildId);
-    if (!guild) return { hasAccess: false };
-
-    // Check permissions
-    const permissions = BigInt(guild.permissions);
-    const hasAdmin = guild.owner ||
-      (permissions & BigInt(ADMINISTRATOR)) !== 0n ||
-      (permissions & BigInt(MANAGE_GUILD)) !== 0n;
-
-    if (!hasAdmin) return { hasAccess: false };
-
-    // Verify bot is in the guild
-    const botGuildsResponse = await fetch(
-      "https://discord.com/api/users/@me/guilds",
-      {
-        headers: { Authorization: `Bot ${botToken}` },
-      },
-    );
-
-    if (botGuildsResponse.ok) {
-      const botGuilds = await botGuildsResponse.json();
-      const botInGuild = botGuilds.some((g) => g.id === guildId);
-      if (!botInGuild) return { hasAccess: false, reason: "Bot not in guild" };
-    }
-
-    return { hasAccess: true };
-  } catch (error) {
-    log.error("Error verifying guild access:", error);
-    return { hasAccess: false };
-  }
-}
 
 /**
  * GET /api/logs/[guildId] - Fetch logs for a guild
@@ -112,12 +42,13 @@ export async function GET({ params, url, cookies, platform }) {
     hasAccess = guildId === devGuildId || !!adminUserIds;
     log.debug("[DEV] Bypassing guild access check, hasAccess:", hasAccess);
   } else {
-    // Verify access via Discord API
+    // Verify access via Discord API (with caching)
     const accessResult = await verifyGuildAccess(
       guildId,
       accessToken,
       botToken,
       adminUserIds,
+      cookies,
     );
     hasAccess = accessResult.hasAccess;
     reason = accessResult.reason;

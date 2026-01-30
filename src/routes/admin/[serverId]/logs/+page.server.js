@@ -1,28 +1,10 @@
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
+import { getUserGuilds } from "$lib/discord/guilds.js";
 
 // Discord permission flags
 const ADMINISTRATOR = 0x8;
 const MANAGE_GUILD = 0x20;
-
-/**
- * Fetch user's guilds from Discord API
- */
-async function fetchUserGuilds(accessToken) {
-  if (!accessToken) return [];
-
-  try {
-    const response = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-
-    if (!response.ok) return [];
-    return await response.json();
-  } catch (error) {
-    log.error("Error fetching guilds:", error);
-    return [];
-  }
-}
 
 /**
  * Fetch guild info from bot
@@ -76,12 +58,12 @@ export async function load({ params, cookies, platform, parent }) {
   // Check if using dev auth bypass with mock token
   const isDevMockToken = accessToken === "dev_mock_token";
 
-  // For dev mode, use guilds from parent data; otherwise fetch from Discord API
+  // For dev mode, use guilds from parent data; otherwise fetch from Discord API (with caching)
   let userGuilds = [];
   if (isDevMockToken && parentData.adminGuilds) {
     userGuilds = parentData.adminGuilds;
   } else {
-    userGuilds = await fetchUserGuilds(accessToken);
+    userGuilds = await getUserGuilds(accessToken, cookies);
   }
 
   // Find the requested guild

@@ -5,6 +5,7 @@
 
 import { json } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
+import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
 /**
  * Discord channel types
@@ -38,49 +39,6 @@ const TEXT_SENDABLE_TYPES = [
   "announcement_thread", // Announcement threads
 ];
 
-/**
- * Verify user has admin access to the guild
- */
-async function verifyGuildAdmin(guildId, accessToken) {
-  if (!accessToken || !guildId) {
-    return { authorized: false, error: "Unauthorized" };
-  }
-
-  try {
-    const response = await fetch(
-      "https://discord.com/api/v10/users/@me/guilds",
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
-
-    if (!response.ok) {
-      return { authorized: false, error: "Failed to verify permissions" };
-    }
-
-    const guilds = await response.json();
-    const guild = guilds.find((g) => g.id === guildId);
-
-    if (!guild) {
-      return { authorized: false, error: "Guild not found" };
-    }
-
-    // Check for admin or manage guild permission
-    const permissions = BigInt(guild.permissions);
-    const ADMINISTRATOR = BigInt(0x8);
-    const MANAGE_GUILD = BigInt(0x20);
-
-    if ((permissions & ADMINISTRATOR) || (permissions & MANAGE_GUILD)) {
-      return { authorized: true };
-    }
-
-    return { authorized: false, error: "Insufficient permissions" };
-  } catch (error) {
-    log.error("Error verifying guild admin:", error);
-    return { authorized: false, error: "Failed to verify permissions" };
-  }
-}
-
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, cookies, platform, url }) {
   const { guildId } = params;
@@ -89,7 +47,7 @@ export async function GET({ params, cookies, platform, url }) {
     process.env.DISCORD_BOT_TOKEN;
 
   // Verify user has access to this guild
-  const authCheck = await verifyGuildAdmin(guildId, accessToken);
+  const authCheck = await verifyGuildAdmin(guildId, accessToken, cookies);
   if (!authCheck.authorized) {
     return json({ error: authCheck.error }, { status: 403 });
   }
