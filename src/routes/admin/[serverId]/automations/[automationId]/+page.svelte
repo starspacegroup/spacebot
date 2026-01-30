@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import UserSelector from '$lib/components/UserSelector.svelte';
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
@@ -461,6 +462,15 @@
 									value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : '')}
 									multiple={true}
 									showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
+								/>
+							{:else if filterInfo.type === 'user'}
+								<UserSelector
+									guildId={data.selectedGuildId}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_id' ? 'ALL' : '')}
+									multiple={true}
+									showAnyOption={filterKey === 'actor_id'}
 								/>
 							{:else if filterInfo.type === 'select'}
 								<select

@@ -80,6 +80,22 @@ function matchesFilters(event, filters, context = {}) {
         }
         break;
 
+      case "actor_id":
+        // Filter by specific user IDs (comma-separated), "ALL" means match any user
+        if (filterValue !== "ALL") {
+          const allowedActors = filterValue.split(",").map((id) => id.trim());
+          if (!allowedActors.includes(event.actor_id)) return false;
+        }
+        break;
+
+      case "not_actor_id":
+        // Exclude specific user IDs (comma-separated)
+        if (filterValue !== "ALL") {
+          const blockedActors = filterValue.split(",").map((id) => id.trim());
+          if (blockedActors.includes(event.actor_id)) return false;
+        }
+        break;
+
       case "content_contains":
         if (
           !event.details?.content?.toLowerCase().includes(

@@ -296,6 +296,18 @@ export const FILTER_TYPES = {
       "MEMBER_ROLE_REMOVE",
     ],
   },
+  actor_id: {
+    type: "user",
+    label: "From User(s)",
+    description: "Only trigger for messages from specific users",
+    applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE"],
+  },
+  not_actor_id: {
+    type: "user",
+    label: "Not From User(s)",
+    description: "Don't trigger for messages from these users",
+    applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE", "MESSAGE_DELETE"],
+  },
   content_contains: {
     type: "text",
     label: "Content Contains",
