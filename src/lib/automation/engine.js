@@ -9,6 +9,44 @@ import {
 } from "../db/automations.js";
 
 /**
+ * Resolve the target user ID from action config
+ * @param {Object} action_config - The action configuration
+ * @param {Object} event - The event data (contains actor_id, target_id, and option values)
+ * @returns {string|null} - The resolved user ID or null
+ */
+export function resolveTargetUser(action_config, event) {
+  const targetUserSource = action_config.target_user;
+
+  // If no target_user config, fall back to legacy behavior (actor or target)
+  if (!targetUserSource) {
+    return event.actor_id || event.target_id;
+  }
+
+  switch (targetUserSource) {
+    case "actor":
+    case "invoker": // Command invoker maps to actor_id
+      return event.actor_id;
+    case "target":
+      return event.target_id;
+    default:
+      // Check if it's an option reference (option:<optionName>)
+      if (targetUserSource.startsWith("option:")) {
+        const optionName = targetUserSource.substring(7);
+        // Look for the option value in event.options or event.option_<name>
+        if (event.options?.[optionName]) {
+          return event.options[optionName];
+        }
+        // Also check flat properties (e.g., event.option_spammer)
+        if (event[`option_${optionName}`]) {
+          return event[`option_${optionName}`];
+        }
+      }
+      // Unknown source, fall back to actor
+      return event.actor_id;
+  }
+}
+
+/**
  * Process template variables in a string
  * @param {string} template - Template string with {variable} placeholders
  * @param {Object} context - Variable context
@@ -201,7 +239,7 @@ export async function executeAction(automation, event, context, discord) {
           : null;
         const skipPinned = action_config.skip_pinned !== false &&
           action_config.skip_pinned !== "false";
-        const userId = event.actor_id;
+        const userId = resolveTargetUser(action_config, event);
 
         if (!userId) {
           return { success: false, error: "Missing user ID" };
@@ -323,7 +361,7 @@ export async function executeAction(automation, event, context, discord) {
       case "DELETE_MESSAGES": {
         const channelId = action_config.channel_id;
         const limit = action_config.limit || 100;
-        const userId = event.actor_id;
+        const userId = resolveTargetUser(action_config, event);
 
         if (!channelId || !userId) {
           return { success: false, error: "Missing channel or user ID" };
@@ -400,7 +438,7 @@ export async function executeAction(automation, event, context, discord) {
 
       case "ADD_ROLE": {
         const roleId = action_config.role_id;
-        const userId = event.actor_id || event.target_id;
+        const userId = resolveTargetUser(action_config, event);
 
         if (!roleId || !userId) {
           return { success: false, error: "Missing role or user ID" };
@@ -424,7 +462,7 @@ export async function executeAction(automation, event, context, discord) {
 
       case "REMOVE_ROLE": {
         const roleId = action_config.role_id;
-        const userId = event.actor_id || event.target_id;
+        const userId = resolveTargetUser(action_config, event);
 
         if (!roleId || !userId) {
           return { success: false, error: "Missing role or user ID" };
@@ -447,7 +485,7 @@ export async function executeAction(automation, event, context, discord) {
       }
 
       case "KICK_MEMBER": {
-        const userId = event.actor_id || event.target_id;
+        const userId = resolveTargetUser(action_config, event);
         const reason = processTemplate(
           action_config.reason || "Automated action",
           context,
@@ -474,7 +512,7 @@ export async function executeAction(automation, event, context, discord) {
       }
 
       case "BAN_MEMBER": {
-        const userId = event.actor_id || event.target_id;
+        const userId = resolveTargetUser(action_config, event);
         const reason = processTemplate(
           action_config.reason || "Automated action",
           context,
@@ -500,7 +538,7 @@ export async function executeAction(automation, event, context, discord) {
       }
 
       case "TIMEOUT_MEMBER": {
-        const userId = event.actor_id || event.target_id;
+        const userId = resolveTargetUser(action_config, event);
         const duration = (action_config.duration_minutes || 60) * 60 * 1000;
         const reason = processTemplate(
           action_config.reason || "Automated timeout",
@@ -678,8 +716,69 @@ export async function processAutomations(
       const actionStart = Date.now();
       const context = buildContext(event, guildInfo);
 
-      // Execute the action
-      const result = await executeAction(automation, event, context, discord);
+      // Check if this automation has stacked actions
+      const actionsToExecute = [];
+      if (
+        automation.action_config?.actions &&
+        Array.isArray(automation.action_config.actions)
+      ) {
+        // New format: multiple stacked actions
+        for (const action of automation.action_config.actions) {
+          actionsToExecute.push({
+            action_type: action.type,
+            action_config: action.config || {},
+          });
+        }
+      } else {
+        // Legacy format: single action
+        actionsToExecute.push({
+          action_type: automation.action_type,
+          action_config: automation.action_config || {},
+        });
+      }
+
+      // Execute all actions in sequence
+      const actionResults = [];
+      let allSuccess = true;
+      let firstError = null;
+
+      for (let i = 0; i < actionsToExecute.length; i++) {
+        const actionDef = actionsToExecute[i];
+        const actionAutomation = {
+          ...automation,
+          action_type: actionDef.action_type,
+          action_config: actionDef.action_config,
+        };
+
+        const result = await executeAction(
+          actionAutomation,
+          event,
+          context,
+          discord,
+        );
+        actionResults.push({
+          actionIndex: i,
+          actionType: actionDef.action_type,
+          ...result,
+        });
+
+        if (!result.success) {
+          allSuccess = false;
+          if (!firstError) firstError = result.error;
+          console.error(
+            `[Automation] ${automation.name} - action ${
+              i + 1
+            }/${actionsToExecute.length} (${actionDef.action_type}) failed: ${result.error}`,
+          );
+          // Continue executing remaining actions even if one fails
+        } else {
+          console.log(
+            `[Automation] ${automation.name} - action ${
+              i + 1
+            }/${actionsToExecute.length} (${actionDef.action_type}) succeeded`,
+          );
+        }
+      }
 
       // Log the execution
       await logAutomationExecution(db, {
@@ -687,19 +786,21 @@ export async function processAutomations(
         guild_id: event.guild_id,
         trigger_event: event.event_type,
         trigger_data: event,
-        action_result: result.result,
-        success: result.success,
-        error_message: result.error,
+        action_result: actionResults,
+        success: allSuccess,
+        error_message: firstError,
         execution_time_ms: Date.now() - actionStart,
       });
 
-      if (result.success) {
+      if (allSuccess) {
         executed++;
-        console.log(`[Automation] ${automation.name} - executed successfully`);
+        console.log(
+          `[Automation] ${automation.name} - all ${actionsToExecute.length} action(s) executed successfully`,
+        );
       } else {
         errors++;
         console.error(
-          `[Automation] ${automation.name} - failed: ${result.error}`,
+          `[Automation] ${automation.name} - completed with errors`,
         );
       }
     }

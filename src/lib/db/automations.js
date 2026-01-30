@@ -27,9 +27,16 @@
 export const ACTION_TYPES = {
   DELETE_USER_MESSAGES: {
     name: "Delete User's Messages",
-    description: "Delete messages from trigger user",
+    description: "Delete messages from a user",
     icon: "🗑️",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user's messages to delete",
+      },
       channel_ids: {
         type: "channel_multi",
         required: false,
@@ -62,7 +69,14 @@ export const ACTION_TYPES = {
     name: "Delete Messages",
     description: "Delete messages from a user in a channel",
     icon: "🗑️",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user's messages to delete",
+      },
       channel_id: { type: "channel", required: true, label: "Channel" },
       limit: {
         type: "number",
@@ -89,33 +103,61 @@ export const ACTION_TYPES = {
   },
   ADD_ROLE: {
     name: "Add Role",
-    description: "Add a role to the user",
+    description: "Add a role to a user",
     icon: "🏷️",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to add the role to",
+      },
       role_id: { type: "role", required: true, label: "Role" },
     },
   },
   REMOVE_ROLE: {
     name: "Remove Role",
-    description: "Remove a role from the user",
+    description: "Remove a role from a user",
     icon: "🏷️",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to remove the role from",
+      },
       role_id: { type: "role", required: true, label: "Role" },
     },
   },
   KICK_MEMBER: {
     name: "Kick Member",
-    description: "Kick the member from the server",
+    description: "Kick a member from the server",
     icon: "👢",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to kick",
+      },
       reason: { type: "text", label: "Reason", supportsVariables: true },
     },
   },
   BAN_MEMBER: {
     name: "Ban Member",
-    description: "Ban the member from the server",
+    description: "Ban a member from the server",
     icon: "🔨",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to ban",
+      },
       reason: { type: "text", label: "Reason", supportsVariables: true },
       delete_days: {
         type: "number",
@@ -127,9 +169,16 @@ export const ACTION_TYPES = {
   },
   TIMEOUT_MEMBER: {
     name: "Timeout Member",
-    description: "Timeout the member",
+    description: "Timeout a member",
     icon: "⏰",
+    targetUser: true,
     configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to timeout",
+      },
       duration_minutes: {
         type: "number",
         required: true,
@@ -337,6 +386,36 @@ export const TEMPLATE_VARIABLES = {
 };
 
 /**
+ * User source options for automations
+ * These define which user to target in user-related actions
+ */
+export const AUTOMATION_USER_SOURCES = {
+  actor: {
+    value: "actor",
+    label: "Event Actor",
+    description: "The user who triggered the event",
+  },
+  target: {
+    value: "target",
+    label: "Event Target",
+    description: "The user who was the target of the event (if any)",
+  },
+};
+
+/**
+ * User source options for commands
+ * These define which user to target in user-related actions
+ * Dynamic options are added based on command options
+ */
+export const COMMAND_USER_SOURCES = {
+  invoker: {
+    value: "invoker",
+    label: "Command Invoker",
+    description: "The user who ran the command",
+  },
+};
+
+/**
  * Create a new automation
  * @param {D1Database} db
  * @param {Partial<Automation>} automation
@@ -420,9 +499,14 @@ export async function updateAutomation(db, id, updates) {
       fields.push("action_type = ?");
       values.push(updates.action_type);
     }
-    if (updates.action_config !== undefined) {
+    if (updates.action_config !== undefined || updates.actions !== undefined) {
       fields.push("action_config = ?");
-      values.push(JSON.stringify(updates.action_config));
+      // If we have a new actions array, store it in action_config
+      const actionConfig = updates.action_config || {};
+      if (updates.actions !== undefined) {
+        actionConfig.actions = updates.actions;
+      }
+      values.push(JSON.stringify(actionConfig));
     }
 
     fields.push("updated_at = CURRENT_TIMESTAMP");
@@ -480,7 +564,7 @@ export async function getAutomation(db, id, guildId) {
 
     if (!result) return null;
 
-    return {
+    const parsed = {
       ...result,
       enabled: !!result.enabled,
       trigger_filters: result.trigger_filters
@@ -490,6 +574,24 @@ export async function getAutomation(db, id, guildId) {
         ? JSON.parse(result.action_config)
         : {},
     };
+
+    // Parse actions array if present, or construct from legacy single action
+    if (parsed.action_config?.actions) {
+      parsed.actions = parsed.action_config.actions;
+    } else if (
+      parsed.action_type && parsed.action_type !== "NONE" &&
+      parsed.action_type !== "MULTIPLE"
+    ) {
+      // Legacy format: convert single action to array
+      parsed.actions = [{
+        type: parsed.action_type,
+        config: parsed.action_config || {},
+      }];
+    } else {
+      parsed.actions = [];
+    }
+
+    return parsed;
   } catch (error) {
     console.error("Failed to get automation:", error);
     return null;

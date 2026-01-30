@@ -8,10 +8,13 @@ import {
   getCommand,
   getCommandLogs,
   getGuildCommands,
+  markCommandRegistered,
   OPTION_TYPES,
   RESPONSE_TYPES,
+  toDiscordCommand,
   updateCommand,
 } from "$lib/db/commands.js";
+import { commands as builtInCommands } from "$lib/discord/commands.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, url }) {
@@ -165,25 +168,60 @@ export const actions = {
     }
 
     try {
-      // Fetch commands and register them
-      const response = await fetch(`/api/commands/${guildId}/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "sync" }),
+      // Get custom commands from database
+      const customCommands = await getGuildCommands(db, guildId, {
+        enabledOnly: true,
+      });
+
+      // Convert to Discord format and track DB IDs
+      const discordCommands = customCommands.map((cmd) => ({
+        ...toDiscordCommand(cmd),
+        _dbId: cmd.id,
+      }));
+
+      // Combine built-in and custom commands
+      const allCommands = [
+        ...builtInCommands,
+        ...discordCommands.map(({ _dbId, ...cmd }) => cmd),
+      ];
+
+      // Register all commands with Discord
+      const url =
+        `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
+
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bot ${botToken}`,
+        },
+        body: JSON.stringify(allCommands),
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.text();
+        console.error("Discord registration error:", error);
         return fail(500, {
-          error: error.error || "Failed to register commands",
+          error: "Failed to register commands with Discord",
         });
       }
 
-      const result = await response.json();
+      const registeredCommands = await response.json();
+
+      // Update database with Discord command IDs
+      for (const dbCommand of discordCommands) {
+        const registered = registeredCommands.find(
+          (rc) => rc.name === dbCommand.name,
+        );
+        if (registered) {
+          await markCommandRegistered(db, dbCommand._dbId, registered.id);
+        }
+      }
+
       return {
         success: true,
         message:
-          `Successfully registered ${result.registered} commands with Discord!`,
+          `Successfully registered ${registeredCommands.length} commands with Discord!`,
       };
     } catch (error) {
       console.error("Register commands error:", error);

@@ -6,7 +6,7 @@
 	let { data, form } = $props();
 	
 	let selectedEventType = $state('');
-	let selectedActionType = $state('');
+	let actions = $state([]);
 	let showFilters = $state(false);
 	
 	// Shared channel data - fetched once for all ChannelSelectors
@@ -87,6 +87,29 @@
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
 	
+	// Stacked actions management
+	function addAction() {
+		actions = [...actions, { type: '', config: {} }];
+	}
+	
+	function removeAction(index) {
+		actions = actions.filter((_, i) => i !== index);
+	}
+	
+	function moveActionUp(index) {
+		if (index <= 0) return;
+		const newActions = [...actions];
+		[newActions[index - 1], newActions[index]] = [newActions[index], newActions[index - 1]];
+		actions = newActions;
+	}
+	
+	function moveActionDown(index) {
+		if (index >= actions.length - 1) return;
+		const newActions = [...actions];
+		[newActions[index], newActions[index + 1]] = [newActions[index + 1], newActions[index]];
+		actions = newActions;
+	}
+	
 	// Check if a filter applies to the selected event type
 	function filterAppliesToEvent(filterInfo, eventType) {
 		if (!filterInfo.applicableEvents || !eventType) {
@@ -124,6 +147,14 @@
 	
 	// Check if there are any applicable filters
 	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0);
+	
+	// User sources for automation actions
+	const availableUserSources = $derived(() => {
+		return [
+			{ value: 'actor', label: '👤 Event Actor', description: 'The user who triggered the event' },
+			{ value: 'target', label: '🎯 Event Target', description: 'The user who was the target of the event (if any)' }
+		];
+	});
 </script>
 
 <svelte:head>
@@ -256,115 +287,171 @@
 		
 		<!-- Action Section -->
 		<section class="form-section">
-			<h2>📤 Action (Then)</h2>
-			<p class="section-description">Choose what happens when the trigger fires</p>
-			
-			<div class="form-group">
-				<label for="action_type">Action Type <span class="required">*</span></label>
-				<select id="action_type" name="action_type" required bind:value={selectedActionType}>
-					<option value="">Select an action...</option>
-					{#each Object.entries(data.actionTypes) as [actionType, info]}
-						<option value={actionType}>{info.icon} {info.name} - {info.description}</option>
-					{/each}
-				</select>
+			<div class="section-header-row">
+				<div>
+					<h2>📤 Actions (Then)</h2>
+					<p class="section-description">Configure actions to execute when the trigger fires (in order)</p>
+				</div>
+				<button type="button" class="btn btn-secondary btn-sm" onclick={addAction}>
+					<span>+</span> Add Action
+				</button>
 			</div>
 			
-			{#if selectedActionType}
-				{@const schema = getActionConfigSchema(selectedActionType)}
-				<div class="action-config">
-					<h3>Configure Action</h3>
-					{#each Object.entries(schema) as [configKey, config]}
-						<div class="form-group">
-							<label for="config_{configKey}">
-								{config.label}
-								{#if config.required}<span class="required">*</span>{/if}
-							</label>
-							{#if config.type === 'text'}
-								<textarea 
-									id="config_{configKey}" 
-									name="action_config.{configKey}"
-									required={config.required}
-									placeholder={config.supportsVariables ? 'Supports variables like {user.mention}' : ''}
-									rows="3"
-								></textarea>
-								{#if config.supportsVariables}
-									<div class="variables-help">
-										<span class="variables-label">Available variables:</span>
-										<div class="variables-list">
-											{#each Object.entries(data.templateVariables) as [varName, desc]}
-												<code title={desc}>{`{${varName}}`}</code>
-											{/each}
-										</div>
-									</div>
-								{/if}
-							{:else if config.type === 'number'}
-								<input 
-									type="number" 
-									id="config_{configKey}" 
-									name="action_config.{configKey}"
-									value={config.default ?? ''}
-									min="0"
-									max={config.max || 999999}
-									required={config.required}
-									placeholder={config.placeholder || ''}
-								/>
-							{:else if config.type === 'boolean'}
-								<label class="checkbox-label">
-									<input 
-										type="checkbox" 
-										name="action_config.{configKey}"
-										value="true"
-										checked={config.default}
-									/>
-									<span>Enable</span>
-								</label>
-							{:else if config.type === 'channel_multi'}
-								<ChannelSelector
-									channels={sharedChannels}
-									name="action_config.{configKey}"
-									required={config.required}
-									placeholder="Select channel(s)..."
-									multiple={true}
-									showAllOption={config.showAllOption}
-									allOptionLabel={config.allOptionLabel || 'All Text Channels'}
-									value={config.default || ''}
-								/>
-								{#if config.description}
-									<p class="field-hint">{config.description}</p>
-								{/if}
-							{:else if config.type === 'channel'}
-								<ChannelSelector
-									channels={sharedChannels}
-									name="action_config.{configKey}"
-									required={config.required}
-									placeholder="Search for a channel..."
-								/>
-							{:else if config.type === 'role'}
-								<input 
-									type="text" 
-									id="config_{configKey}" 
-									name="action_config.{configKey}"
-									placeholder="Enter role ID"
-									required={config.required}
-								/>
-								<p class="field-hint">Right-click on the role in Discord and select "Copy ID"</p>
-							{:else if config.type === 'select'}
-								<select 
-									id="config_{configKey}" 
-									name="action_config.{configKey}"
-									required={config.required}
-								>
-									{#each config.options as opt}
-										<option value={opt} selected={opt === config.default}>{opt}</option>
+			{#if actions.length === 0}
+				<div class="empty-actions">
+					<p>No actions configured. Click "Add Action" to get started.</p>
+				</div>
+			{:else}
+				<div class="actions-list">
+					{#each actions as action, index}
+						<div class="action-item">
+							<div class="action-header">
+								<span class="action-number">Action {index + 1}</span>
+								<div class="action-controls">
+									<button type="button" class="btn-icon" onclick={() => moveActionUp(index)} disabled={index === 0} title="Move up">
+										↑
+									</button>
+									<button type="button" class="btn-icon" onclick={() => moveActionDown(index)} disabled={index === actions.length - 1} title="Move down">
+										↓
+									</button>
+									<button type="button" class="btn-icon btn-danger" onclick={() => removeAction(index)} title="Remove action">
+										×
+									</button>
+								</div>
+							</div>
+							
+							<div class="form-group">
+								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
+								<select id="action_type_{index}" name="action_type[]" required bind:value={action.type}>
+									<option value="">Select an action...</option>
+									{#each Object.entries(data.actionTypes) as [actionType, info]}
+										<option value={actionType}>{info.icon} {info.name} - {info.description}</option>
 									{/each}
 								</select>
-							{:else}
-								<input 
-									type="text" 
-									id="config_{configKey}" 
-									name="action_config.{configKey}"
-									required={config.required}
-								/>
+							</div>
+							
+							{#if action.type}
+								{@const schema = getActionConfigSchema(action.type)}
+								<div class="action-config">
+									<h3>Configure Action</h3>
+									{#each Object.entries(schema) as [configKey, config]}
+										<div class="form-group">
+											<label for="config_{index}_{configKey}">
+												{config.label}
+												{#if config.required}<span class="required">*</span>{/if}
+											</label>
+											{#if config.type === 'text'}
+												<textarea 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													placeholder={config.supportsVariables ? 'Supports variables like {user.mention}' : ''}
+													rows="3"
+													bind:value={action.config[configKey]}
+												></textarea>
+												{#if config.supportsVariables}
+													<div class="variables-help">
+														<span class="variables-label">Available variables:</span>
+														<div class="variables-list">
+															{#each Object.entries(data.templateVariables) as [varName, desc]}
+																<code title={desc}>{`{${varName}}`}</code>
+															{/each}
+														</div>
+													</div>
+												{/if}
+											{:else if config.type === 'number'}
+												<input 
+													type="number" 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													min="0"
+													max={config.max || 999999}
+													required={config.required}
+													placeholder={config.placeholder || ''}
+													bind:value={action.config[configKey]}
+												/>
+											{:else if config.type === 'boolean'}
+												<label class="checkbox-label">
+													<input 
+														type="checkbox" 
+														name="action_config.{index}.{configKey}"
+														value="true"
+														bind:checked={action.config[configKey]}
+													/>
+													<span>Enable</span>
+												</label>
+											{:else if config.type === 'channel_multi'}
+												<ChannelSelector
+													channels={sharedChannels}
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													placeholder="Select channel(s)..."
+													multiple={true}
+													showAllOption={config.showAllOption}
+													allOptionLabel={config.allOptionLabel || 'All Text Channels'}
+													bind:value={action.config[configKey]}
+												/>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
+											{:else if config.type === 'channel'}
+												<ChannelSelector
+													channels={sharedChannels}
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													placeholder="Search for a channel..."
+													bind:value={action.config[configKey]}
+												/>
+											{:else if config.type === 'role'}
+												<input 
+													type="text" 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													placeholder="Enter role ID"
+													required={config.required}
+													bind:value={action.config[configKey]}
+												/>
+												<p class="field-hint">Right-click on the role in Discord and select "Copy ID"</p>
+											{:else if config.type === 'select'}
+												<select 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													bind:value={action.config[configKey]}
+												>
+													{#each config.options as opt}
+														<option value={opt}>{opt}</option>
+													{/each}
+												</select>
+											{:else if config.type === 'user_source'}
+												<select 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													bind:value={action.config[configKey]}
+												>
+													<option value="">Select a user...</option>
+													{#each availableUserSources() as source}
+														<option value={source.value} title={source.description}>
+															{source.label}
+														</option>
+													{/each}
+												</select>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
+											{:else}
+												<input 
+													type="text" 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													bind:value={action.config[configKey]}
+												/>
+											{/if}
+										</div>
+									{/each}
+								</div>
 							{/if}
 						</div>
 					{/each}
@@ -545,6 +632,99 @@
 		color: var(--text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+	
+	/* Stacked Actions Styles */
+	.section-header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+	
+	.section-header-row h2 {
+		margin: 0;
+	}
+	
+	.section-header-row .section-description {
+		margin: 0.25rem 0 0;
+	}
+	
+	.empty-actions {
+		padding: 2rem;
+		text-align: center;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		color: var(--text-muted);
+	}
+	
+	.empty-actions p {
+		margin: 0;
+	}
+	
+	.actions-list {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+	
+	.action-item {
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+		padding: 1rem;
+	}
+	
+	.action-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--border-color, #40444b);
+	}
+	
+	.action-number {
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+	
+	.action-controls {
+		display: flex;
+		gap: 0.375rem;
+	}
+	
+	.btn-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		background: var(--bg-secondary, #2f3136);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 1rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.btn-icon:hover:not(:disabled) {
+		background: var(--bg-primary, #202225);
+		color: var(--text-primary);
+	}
+	
+	.btn-icon:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	
+	.btn-icon.btn-danger:hover:not(:disabled) {
+		background: rgba(237, 66, 69, 0.2);
+		border-color: #ED4245;
+		color: #ED4245;
 	}
 	
 	.variables-help {

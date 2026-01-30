@@ -81,21 +81,25 @@
 				<span>📋</span>
 				{showLogs ? 'Hide Logs' : 'View Logs'}
 			</button>
-			{#if unregisteredCount > 0}
-				<form method="POST" action="?/register" use:enhance={() => {
-					registering = true;
-					return async ({ result, update }) => {
-						registering = false;
-						await update();
-					};
-				}}>
-					<input type="hidden" name="guild_id" value={selectedGuildId}>
-					<button type="submit" class="btn btn-warning" disabled={registering}>
-						<span>🔄</span>
-						{registering ? 'Registering...' : `Sync ${unregisteredCount} Command${unregisteredCount > 1 ? 's' : ''}`}
-					</button>
-				</form>
-			{/if}
+			<form method="POST" action="?/register" use:enhance={() => {
+				registering = true;
+				return async ({ result, update }) => {
+					registering = false;
+					await update();
+				};
+			}}>
+				<input type="hidden" name="guild_id" value={selectedGuildId}>
+				<button type="submit" class="btn {unregisteredCount > 0 ? 'btn-warning' : 'btn-secondary'}" disabled={registering}>
+					<span>🔄</span>
+					{#if registering}
+						Syncing...
+					{:else if unregisteredCount > 0}
+						Sync {unregisteredCount} Command{unregisteredCount > 1 ? 's' : ''}
+					{:else}
+						Sync Commands
+					{/if}
+				</button>
+			</form>
 			<a href="/admin/{selectedGuildId}/commands/new" class="btn btn-primary">
 				<span>➕</span>
 				Create Command

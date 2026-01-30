@@ -4,10 +4,10 @@
  * Shares action system with automations
  */
 
-import { ACTION_TYPES } from "./automations.js";
+import { ACTION_TYPES, COMMAND_USER_SOURCES } from "./automations.js";
 
-// Re-export ACTION_TYPES for use by commands
-export { ACTION_TYPES };
+// Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
+export { ACTION_TYPES, COMMAND_USER_SOURCES };
 
 /**
  * @typedef {Object} CommandOption
@@ -225,9 +225,15 @@ export async function updateCommand(db, id, updates) {
       fields.push("action_type = ?");
       values.push(updates.action_type);
     }
-    if (updates.action_config !== undefined) {
+    if (updates.action_config !== undefined || updates.actions !== undefined) {
       fields.push("action_config = ?");
-      values.push(JSON.stringify(updates.action_config));
+      // Store actions array in action_config wrapper object
+      // Don't merge with action_config to avoid circular references
+      const actionConfigToStore = {};
+      if (updates.actions !== undefined) {
+        actionConfigToStore.actions = updates.actions;
+      }
+      values.push(JSON.stringify(actionConfigToStore));
     }
     if (updates.response_type !== undefined) {
       fields.push("response_type = ?");
@@ -527,7 +533,7 @@ export async function getCommandLogs(db, guildId, options = {}) {
  * Parse command from database row
  */
 function parseCommand(row) {
-  return {
+  const parsed = {
     ...row,
     enabled: !!row.enabled,
     ephemeral: !!row.ephemeral,
@@ -537,6 +543,24 @@ function parseCommand(row) {
     action_config: row.action_config ? JSON.parse(row.action_config) : {},
     response_embed: row.response_embed ? JSON.parse(row.response_embed) : null,
   };
+
+  // Parse actions array if present, or construct from legacy single action
+  if (parsed.action_config?.actions) {
+    parsed.actions = parsed.action_config.actions;
+  } else if (
+    parsed.action_type && parsed.action_type !== "NONE" &&
+    parsed.action_type !== "MULTIPLE"
+  ) {
+    // Legacy format: convert single action to array
+    parsed.actions = [{
+      type: parsed.action_type,
+      config: parsed.action_config || {},
+    }];
+  } else {
+    parsed.actions = [];
+  }
+
+  return parsed;
 }
 
 /**

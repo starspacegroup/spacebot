@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 import {
   ACTION_TYPES,
+  AUTOMATION_USER_SOURCES,
   createAutomation,
   FILTER_TYPES,
   TEMPLATE_VARIABLES,
@@ -23,6 +24,7 @@ export async function load({ cookies, platform, parent }) {
     eventTypes: EVENT_TYPES,
     eventCategories: EVENT_CATEGORIES,
     templateVariables: TEMPLATE_VARIABLES,
+    userSources: AUTOMATION_USER_SOURCES,
   };
 }
 
@@ -46,16 +48,26 @@ export const actions = {
     const name = formData.get("name");
     const description = formData.get("description");
     const triggerEvent = formData.get("trigger_event");
-    const actionType = formData.get("action_type");
 
-    // Parse action config from form
-    const actionConfig = {};
-    for (const [key, value] of formData.entries()) {
-      if (key.startsWith("action_config.")) {
-        const configKey = key.replace("action_config.", "");
-        actionConfig[configKey] = value;
+    // Parse stacked actions
+    const actionTypes = formData.getAll("action_type[]");
+    const actions = [];
+
+    // Build actions array from form data
+    actionTypes.forEach((type, index) => {
+      if (!type) return;
+
+      const config = {};
+      for (const [key, value] of formData.entries()) {
+        const prefix = `action_config.${index}.`;
+        if (key.startsWith(prefix)) {
+          const configKey = key.slice(prefix.length);
+          config[configKey] = value;
+        }
       }
-    }
+
+      actions.push({ type, config });
+    });
 
     // Parse trigger filters
     const triggerFilters = {};
@@ -66,12 +78,15 @@ export const actions = {
       }
     }
 
-    if (!name || !triggerEvent || !actionType) {
+    if (!name || !triggerEvent || actions.length === 0) {
       return fail(400, {
-        error: "Name, trigger event, and action type are required",
-        values: { name, description, triggerEvent, actionType, actionConfig },
+        error: "Name, trigger event, and at least one action are required",
+        values: { name, description, triggerEvent, actions },
       });
     }
+
+    // For backwards compatibility, use the first action's type as the legacy action_type
+    const primaryAction = actions[0];
 
     try {
       const result = await createAutomation(db, {
@@ -83,8 +98,8 @@ export const actions = {
         trigger_filters: Object.keys(triggerFilters).length > 0
           ? triggerFilters
           : null,
-        action_type: actionType,
-        action_config: actionConfig,
+        action_type: primaryAction.type,
+        action_config: { ...primaryAction.config, actions },
         created_by: userId,
       });
 

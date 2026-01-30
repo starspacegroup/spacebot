@@ -324,20 +324,29 @@ async function handleCustomCommand(command, interaction, db, platform) {
 	// In the future, if command.defer is true, we should defer and execute async
 	let actionResult = { success: true };
 
-	if (command.action_type && command.action_type !== "NONE") {
+	// Check if command has actions to execute (either stacked or legacy)
+	const hasActions = (command.actions && command.actions.length > 0) ||
+		(command.action_type && command.action_type !== "NONE" &&
+			command.action_type !== "MULTIPLE");
+
+	if (hasActions) {
 		// Create a minimal event object for the action executor
 		const event = {
 			guild_id: interaction.guild_id,
 			channel_id: interaction.channel_id,
 			actor_id: context.user.id,
 			actor_name: context.user.name,
+			options: {}, // Store all option values by name
 		};
 
 		// Add option values to event for action processing
 		if (interaction.data?.options) {
 			for (const opt of interaction.data.options) {
-				// Map user/channel/role options to their respective IDs
-				if (opt.type === 6) { // USER
+				// Store all options by name for target_user resolution
+				event.options[opt.name] = opt.value;
+
+				// Legacy: Map first user option to target_id for backwards compatibility
+				if (opt.type === 6 && !event.target_id) { // USER
 					event.target_id = opt.value;
 				}
 			}
@@ -348,12 +357,39 @@ async function handleCustomCommand(command, interaction, db, platform) {
 		const discord = createRESTClient(platform);
 
 		if (discord) {
-			actionResult = await executeAction(
-				{ ...command, name: command.name },
-				event,
-				context,
-				discord,
-			);
+			// Get actions array - either from stacked format or construct from legacy
+			const actionsToExecute = command.actions && command.actions.length > 0
+				? command.actions
+				: [{ type: command.action_type, config: command.action_config || {} }];
+
+			// Execute each action in sequence
+			const results = [];
+			for (const action of actionsToExecute) {
+				const result = await executeAction(
+					{
+						name: command.name,
+						action_type: action.type,
+						action_config: action.config || {},
+					},
+					event,
+					context,
+					discord,
+				);
+				results.push(result);
+				// Stop on first failure
+				if (!result.success) {
+					actionResult = result;
+					break;
+				}
+			}
+
+			// If all succeeded, combine results
+			if (actionResult.success) {
+				actionResult = {
+					success: true,
+					result: results.map((r) => r.result),
+				};
+			}
 		}
 	}
 
@@ -462,20 +498,30 @@ function createRESTClient(platform) {
 								user: member.user,
 								roles: {
 									async add(roleId) {
-										await fetch(
+										const res = await fetch(
 											`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`,
 											{ method: "PUT", headers },
 										);
+										if (!res.ok) {
+											const error = await res.text();
+											console.error("Add role failed:", error);
+											throw new Error(`Failed to add role: ${res.status}`);
+										}
 									},
 									async remove(roleId) {
-										await fetch(
+										const res = await fetch(
 											`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`,
 											{ method: "DELETE", headers },
 										);
+										if (!res.ok) {
+											const error = await res.text();
+											console.error("Remove role failed:", error);
+											throw new Error(`Failed to remove role: ${res.status}`);
+										}
 									},
 								},
 								async kick(reason) {
-									await fetch(
+									const res = await fetch(
 										`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
 										{
 											method: "DELETE",
@@ -485,10 +531,15 @@ function createRESTClient(platform) {
 											},
 										},
 									);
+									if (!res.ok) {
+										const error = await res.text();
+										console.error("Kick failed:", error);
+										throw new Error(`Failed to kick member: ${res.status}`);
+									}
 								},
 								async timeout(duration, reason) {
 									const until = new Date(Date.now() + duration).toISOString();
-									await fetch(
+									const res = await fetch(
 										`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
 										{
 											method: "PATCH",
@@ -501,11 +552,16 @@ function createRESTClient(platform) {
 											}),
 										},
 									);
+									if (!res.ok) {
+										const error = await res.text();
+										console.error("Timeout failed:", error);
+										throw new Error(`Failed to timeout member: ${res.status}`);
+									}
 								},
 							};
 						},
 						async ban(userId, options = {}) {
-							await fetch(
+							const res = await fetch(
 								`https://discord.com/api/v10/guilds/${guildId}/bans/${userId}`,
 								{
 									method: "PUT",
@@ -518,6 +574,11 @@ function createRESTClient(platform) {
 									}),
 								},
 							);
+							if (!res.ok) {
+								const error = await res.text();
+								console.error("Ban failed:", error);
+								throw new Error(`Failed to ban member: ${res.status}`);
+							}
 						},
 					},
 				};

@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import {
   ACTION_TYPES,
   COMMAND_TEMPLATE_VARIABLES,
+  COMMAND_USER_SOURCES,
   COMMON_OPTION_TYPES,
   createCommand,
   OPTION_TYPES,
@@ -24,6 +25,7 @@ export async function load({ cookies, platform, parent }) {
     commonOptionTypes: COMMON_OPTION_TYPES,
     responseTypes: RESPONSE_TYPES,
     templateVariables: COMMAND_TEMPLATE_VARIABLES,
+    userSources: COMMAND_USER_SOURCES,
   };
 }
 
@@ -48,7 +50,6 @@ export const actions = {
     const description = formData.get("description");
     const ephemeral = formData.get("ephemeral") === "true";
     const defer = formData.get("defer") === "true";
-    const actionType = formData.get("action_type") || "NONE";
     const responseType = formData.get("response_type") || "message";
     const responseContent = formData.get("response_content");
 
@@ -58,25 +59,59 @@ export const actions = {
     const optionDescs = formData.getAll("option_description[]");
     const optionTypes = formData.getAll("option_type[]");
     const optionRequired = formData.getAll("option_required[]");
+    const optionDefaults = formData.getAll("option_default[]");
 
+    let defaultIndex = 0;
     for (let i = 0; i < optionNames.length; i++) {
       if (optionNames[i]) {
-        options.push({
+        const isRequired = optionRequired.includes(String(i));
+        const option = {
           name: optionNames[i].toLowerCase().replace(/\s+/g, "_"),
           description: optionDescs[i] || "No description",
           type: parseInt(optionTypes[i]) || 3,
-          required: optionRequired.includes(String(i)),
+          required: isRequired,
+        };
+        // Only non-required options have default values in the form
+        if (!isRequired && optionDefaults[defaultIndex]) {
+          option.default = optionDefaults[defaultIndex];
+        }
+        if (!isRequired) {
+          defaultIndex++;
+        }
+        options.push(option);
+      }
+    }
+
+    // Parse stacked actions (new format: action_type[] and action_config.{index}.{key})
+    const actionTypes = formData.getAll("action_type[]");
+    const actions = [];
+
+    for (let i = 0; i < actionTypes.length; i++) {
+      if (actionTypes[i]) {
+        const actionConfig = {};
+        for (const [key, value] of formData.entries()) {
+          const prefix = `action_config.${i}.`;
+          if (key.startsWith(prefix)) {
+            const configKey = key.replace(prefix, "");
+            actionConfig[configKey] = value;
+          }
+        }
+        actions.push({
+          type: actionTypes[i],
+          config: actionConfig,
         });
       }
     }
 
-    // Parse action config from form
-    const actionConfig = {};
-    for (const [key, value] of formData.entries()) {
-      if (key.startsWith("action_config.")) {
-        const configKey = key.replace("action_config.", "");
-        actionConfig[configKey] = value;
-      }
+    // Determine action_type and action_config for backwards compatibility
+    let actionType = "NONE";
+    // Store the actions array in action_config wrapper - don't spread config to avoid issues
+    let actionConfig = { actions };
+
+    if (actions.length === 1) {
+      actionType = actions[0].type;
+    } else if (actions.length > 1) {
+      actionType = "MULTIPLE";
     }
 
     // Parse response embed if needed
@@ -101,7 +136,7 @@ export const actions = {
     if (!name || !description) {
       return fail(400, {
         error: "Name and description are required",
-        values: { name, description, actionType },
+        values: { name, description },
       });
     }
 
@@ -111,7 +146,7 @@ export const actions = {
       return fail(400, {
         error:
           "Command name must be 1-32 characters, lowercase, alphanumeric or hyphens",
-        values: { name, description, actionType },
+        values: { name, description },
       });
     }
 

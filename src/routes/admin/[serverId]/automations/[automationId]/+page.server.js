@@ -1,6 +1,7 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 import {
   ACTION_TYPES,
+  AUTOMATION_USER_SOURCES,
   deleteAutomation,
   FILTER_TYPES,
   getAutomation,
@@ -48,6 +49,7 @@ export async function load({ cookies, platform, parent, params }) {
       eventTypes: EVENT_TYPES,
       eventCategories: EVENT_CATEGORIES,
       templateVariables: TEMPLATE_VARIABLES,
+      userSources: AUTOMATION_USER_SOURCES,
     };
   } catch (err) {
     if (err.status) throw err;
@@ -77,23 +79,44 @@ export const actions = {
     const name = formData.get("name");
     const description = formData.get("description");
     const triggerEvent = formData.get("trigger_event");
-    const actionType = formData.get("action_type");
 
     if (name) updates.name = name;
     if (description !== null) updates.description = description;
     if (triggerEvent) updates.trigger_event = triggerEvent;
-    if (actionType) updates.action_type = actionType;
 
-    // Parse action config
-    const actionConfig = {};
-    for (const [key, value] of formData.entries()) {
-      if (key.startsWith("action_config.")) {
-        const configKey = key.replace("action_config.", "");
-        actionConfig[configKey] = value;
+    // Parse stacked actions (new format: action_type[] and action_config.{index}.{key})
+    const actionTypes = formData.getAll("action_type[]");
+    const actions = [];
+
+    for (let i = 0; i < actionTypes.length; i++) {
+      if (actionTypes[i]) {
+        const actionConfig = {};
+        for (const [key, value] of formData.entries()) {
+          const prefix = `action_config.${i}.`;
+          if (key.startsWith(prefix)) {
+            const configKey = key.replace(prefix, "");
+            actionConfig[configKey] = value;
+          }
+        }
+        actions.push({
+          type: actionTypes[i],
+          config: actionConfig,
+        });
       }
     }
-    if (Object.keys(actionConfig).length > 0) {
-      updates.action_config = actionConfig;
+
+    // Store actions as the new format
+    updates.actions = actions;
+    // For backwards compatibility, also set legacy fields
+    if (actions.length === 1) {
+      updates.action_type = actions[0].type;
+      updates.action_config = actions[0].config;
+    } else if (actions.length === 0) {
+      updates.action_type = "NONE";
+      updates.action_config = {};
+    } else {
+      updates.action_type = "MULTIPLE";
+      updates.action_config = {};
     }
 
     // Parse trigger filters
