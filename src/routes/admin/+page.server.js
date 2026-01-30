@@ -96,9 +96,9 @@ export async function load({ cookies, platform, parent }) {
 		const db = platform?.env?.DB;
 		if (db) {
 			try {
-				// Get the 10 most recent logs for the widget
+				// Get the 5 most recent logs for the compact widget
 				const logsResult = await getLogs(db, selectedGuildId, {
-					limit: 10,
+					limit: 5,
 					offset: 0,
 				});
 				recentLogs = logsResult.logs || [];
