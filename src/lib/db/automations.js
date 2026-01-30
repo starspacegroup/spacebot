@@ -332,6 +332,39 @@ export const FILTER_TYPES = {
     description: "Account must be less than X days old",
     applicableEvents: ["MEMBER_JOIN"],
   },
+  // Bot command filters (for SLASH_COMMAND_USE events)
+  target_bot_id: {
+    type: "bot_selector",
+    label: "Target Bot",
+    description: "Filter by which bot responded to the command",
+    applicableEvents: ["SLASH_COMMAND_USE"],
+  },
+  command_name: {
+    type: "command_selector",
+    label: "Command Name",
+    description: "Filter by the specific command used",
+    applicableEvents: ["SLASH_COMMAND_USE"],
+    dependsOn: "target_bot_id", // Only show if target_bot_id is set
+  },
+  command_result: {
+    type: "select",
+    label: "Command Result",
+    description: "Filter by whether the command succeeded or failed",
+    options: [
+      { value: "any", label: "Any Result" },
+      { value: "success", label: "✅ Success Only" },
+      { value: "failure", label: "❌ Failure Only" },
+    ],
+    default: "any",
+    applicableEvents: ["SLASH_COMMAND_USE"],
+    dependsOn: "command_name", // Only show if command_name is set
+  },
+  embed_contains: {
+    type: "text",
+    label: "Embed Contains",
+    description: "Bot response embed must contain this text",
+    applicableEvents: ["SLASH_COMMAND_USE", "MESSAGE_CREATE"],
+  },
 };
 
 /**

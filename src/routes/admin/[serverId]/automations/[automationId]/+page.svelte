@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
 	
@@ -39,11 +40,30 @@
 		return [];
 	}
 	
+	// Parse existing bot command filters
+	function parseExistingBotFilters() {
+		const filters = data.automation.trigger_filters || {};
+		return {
+			botId: filters.target_bot_id || '',
+			commandName: filters.command_name || '',
+			commandResult: filters.command_result || 'any'
+		};
+	}
+	
 	// Initialize with empty values, will be updated by $effect
 	let selectedEventTypes = $state(parseExistingTriggers());
 	let actions = $state(parseExistingActions());
 	let showDeleteConfirm = $state(false);
 	let showTriggerPicker = $state(false);
+	
+	// Event type search
+	let eventSearchQuery = $state('');
+	
+	// Bot command filter state (initialized from existing data)
+	const existingBotFilters = parseExistingBotFilters();
+	let botFilterValue = $state(existingBotFilters.botId);
+	let commandFilterValue = $state(existingBotFilters.commandName);
+	let resultFilterValue = $state(existingBotFilters.commandResult);
 	
 	// Shared channel data - fetched once for all ChannelSelectors (with caching)
 	let sharedChannels = $state(null);
@@ -117,10 +137,20 @@
 		return data.eventCategories[category] || { name: category, icon: '📌', color: '#888' };
 	}
 	
-	// Group events by category for dropdown
-	function getEventsByCategory() {
+	// Group events by category for dropdown (with optional search filter)
+	function getEventsByCategory(searchQuery = '') {
 		const grouped = {};
+		const query = searchQuery.toLowerCase().trim();
+		
 		for (const [eventType, info] of Object.entries(data.eventTypes)) {
+			// Apply search filter
+			if (query) {
+				const matchesType = eventType.toLowerCase().includes(query);
+				const matchesDesc = info.description?.toLowerCase().includes(query);
+				const matchesCategory = info.category?.toLowerCase().includes(query);
+				if (!matchesType && !matchesDesc && !matchesCategory) continue;
+			}
+			
 			const category = info.category;
 			if (!grouped[category]) {
 				grouped[category] = [];
@@ -129,6 +159,10 @@
 		}
 		return grouped;
 	}
+	
+	// Filtered events based on search
+	const filteredEventsByCategory = $derived(getEventsByCategory(eventSearchQuery));
+	const hasFilteredResults = $derived(Object.keys(filteredEventsByCategory).length > 0);
 	
 	// Get action config schema
 	function getActionConfigSchema(actionType) {
@@ -212,11 +246,16 @@
 		selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
 	}
 	
-	// Get filters applicable to the current event types
+	// Check if SLASH_COMMAND_USE is selected (for special bot command filter UI)
+	const hasSlashCommandTrigger = $derived(selectedEventTypes.includes('SLASH_COMMAND_USE'));
+	
+	// Get filters applicable to the current event types (excluding bot-specific ones handled separately)
 	const applicableFilters = $derived.by(() => {
 		if (selectedEventTypes.length === 0) return {};
 		const result = {};
 		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
+			// Skip bot command filters - they're handled by BotCommandSelector
+			if (['target_bot_id', 'command_name', 'command_result'].includes(filterKey)) continue;
 			if (filterAppliesToAnyEvent(filterInfo)) {
 				result[filterKey] = filterInfo;
 			}
@@ -225,7 +264,7 @@
 	});
 	
 	// Check if there are any applicable filters
-	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0);
+	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0 || hasSlashCommandTrigger);
 </script>
 
 <svelte:head>
@@ -327,29 +366,47 @@
 						<h4>Select Event Types</h4>
 						<button type="button" class="btn-icon" onclick={() => showTriggerPicker = false} title="Close">×</button>
 					</div>
+					<div class="trigger-search">
+						<input 
+							type="text" 
+							placeholder="Search events... (e.g., bump, message, join)"
+							bind:value={eventSearchQuery}
+							class="search-input"
+						/>
+						{#if eventSearchQuery}
+							<button type="button" class="clear-search" onclick={() => eventSearchQuery = ''} title="Clear search">×</button>
+						{/if}
+					</div>
 					<div class="trigger-categories">
-						{#each Object.entries(getEventsByCategory()) as [category, events]}
-							{@const catInfo = getCategoryInfo(category)}
-							<div class="trigger-category">
-								<h5 class="category-header">
-									<span style="color: {catInfo.color}">{catInfo.icon}</span>
-									{catInfo.name}
-								</h5>
-								<div class="trigger-options">
-									{#each events as event}
-										<label class="trigger-option" class:selected={selectedEventTypes.includes(event.type)}>
-											<input 
-												type="checkbox" 
-												checked={selectedEventTypes.includes(event.type)}
-												onchange={() => toggleEventType(event.type)}
-											/>
-											<span class="trigger-option-name">{event.type.replace(/_/g, ' ')}</span>
-											<span class="trigger-option-desc">{event.description}</span>
-										</label>
-									{/each}
+						{#if hasFilteredResults}
+							{#each Object.entries(filteredEventsByCategory) as [category, events]}
+								{@const catInfo = getCategoryInfo(category)}
+								<div class="trigger-category">
+									<h5 class="category-header">
+										<span style="color: {catInfo.color}">{catInfo.icon}</span>
+										{catInfo.name}
+									</h5>
+									<div class="trigger-options">
+										{#each events as event}
+											<label class="trigger-option" class:selected={selectedEventTypes.includes(event.type)}>
+												<input 
+													type="checkbox" 
+													checked={selectedEventTypes.includes(event.type)}
+													onchange={() => toggleEventType(event.type)}
+												/>
+												<span class="trigger-option-name">{event.type.replace(/_/g, ' ')}</span>
+												<span class="trigger-option-desc">{event.description}</span>
+											</label>
+										{/each}
+									</div>
 								</div>
+							{/each}
+						{:else}
+							<div class="no-results">
+								<p>No events found matching "{eventSearchQuery}"</p>
+								<button type="button" class="btn btn-secondary btn-sm" onclick={() => eventSearchQuery = ''}>Clear search</button>
 							</div>
-						{/each}
+						{/if}
 					</div>
 				</div>
 			{/if}
@@ -358,12 +415,30 @@
 				<div class="current-filters">
 					<span class="filters-label">Current Filters:</span>
 					{#each Object.entries(automation.trigger_filters) as [key, value]}
-						<span class="filter-tag">{key}: {value}</span>
+						{#if !['target_bot_id', 'command_name', 'command_result'].includes(key)}
+							<span class="filter-tag">{key}: {value}</span>
+						{/if}
 					{/each}
 				</div>
 			{/if}
 			
 			{#if hasApplicableFilters}
+				<!-- Bot Command Filter (shown when SLASH_COMMAND_USE is selected) -->
+				{#if hasSlashCommandTrigger}
+					<div class="bot-command-filter-section">
+						<h4>🤖 Bot Command Filter</h4>
+						<p class="section-hint">Filter by which bot and command was used, with success/failure detection</p>
+						<BotCommandSelector
+							bind:botValue={botFilterValue}
+							bind:commandValue={commandFilterValue}
+							bind:resultValue={resultFilterValue}
+							botName="filter.target_bot_id"
+							commandName="filter.command_name"
+							resultName="filter.command_result"
+						/>
+					</div>
+				{/if}
+				
 				<div class="filters-grid">
 					<p class="filters-hint">Update or add filters to narrow down when this automation triggers</p>
 					{#each Object.entries(applicableFilters) as [filterKey, filterInfo]}
@@ -793,6 +868,27 @@
 		margin: 0 0 1rem;
 	}
 	
+	/* Bot Command Filter Section */
+	.bot-command-filter-section {
+		margin-bottom: 1rem;
+		padding: 1.25rem;
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+	}
+	
+	.bot-command-filter-section h4 {
+		margin: 0 0 0.25rem;
+		font-size: 1rem;
+		color: var(--text-primary);
+	}
+	
+	.bot-command-filter-section .section-hint {
+		margin: 0 0 1rem;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+	
 	/* Multi-trigger styles */
 	.empty-triggers {
 		padding: 2rem;
@@ -868,6 +964,62 @@
 	.trigger-picker-header h4 {
 		margin: 0;
 		font-size: 1rem;
+	}
+	
+	.trigger-search {
+		position: relative;
+		margin-bottom: 1rem;
+	}
+	
+	.trigger-search .search-input {
+		width: 100%;
+		padding: 0.625rem 2.5rem 0.625rem 1rem;
+		background: var(--bg-secondary, #2f3136);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 6px;
+		color: var(--text-primary, #fff);
+		font-size: 0.9rem;
+		transition: border-color 0.2s, box-shadow 0.2s;
+	}
+	
+	.trigger-search .search-input:focus {
+		outline: none;
+		border-color: var(--accent-color, #5865f2);
+		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.2);
+	}
+	
+	.trigger-search .search-input::placeholder {
+		color: var(--text-tertiary, #72767d);
+	}
+	
+	.clear-search {
+		position: absolute;
+		right: 0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
+		background: transparent;
+		border: none;
+		color: var(--text-muted, #72767d);
+		font-size: 1.25rem;
+		cursor: pointer;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		transition: color 0.2s, background 0.2s;
+	}
+	
+	.clear-search:hover {
+		color: var(--text-primary, #fff);
+		background: var(--bg-primary, #202225);
+	}
+	
+	.no-results {
+		padding: 2rem;
+		text-align: center;
+		color: var(--text-muted, #72767d);
+	}
+	
+	.no-results p {
+		margin: 0 0 1rem;
 	}
 	
 	.trigger-categories {

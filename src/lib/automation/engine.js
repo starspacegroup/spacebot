@@ -8,6 +8,7 @@ import {
   logAutomationExecution,
 } from "../db/automations.js";
 import { log } from "$lib/log.js";
+import { detectCommandResult, getBot } from "$lib/discord/bots.js";
 
 /**
  * Resolve the target user ID from action config
@@ -257,6 +258,36 @@ export function matchesFilters(event, filters, context = {}) {
           context.accountAgeDays !== undefined &&
           context.accountAgeDays > filterValue
         ) return false;
+        break;
+
+      case "target_bot_id":
+        // Filter by the bot that responded to the command
+        // For SLASH_COMMAND_USE, target_id is the bot that responded
+        if (filterValue && filterValue !== "ALL") {
+          if (event.target_id !== filterValue) return false;
+        }
+        break;
+
+      case "command_name":
+        // Filter by the specific command used
+        if (filterValue && filterValue !== "ALL" && filterValue !== "") {
+          const eventCommandName = event.details?.commandName?.toLowerCase();
+          if (eventCommandName !== filterValue.toLowerCase()) return false;
+        }
+        break;
+
+      case "command_result":
+        // Filter by command success/failure using bot registry patterns
+        if (filterValue && filterValue !== "any") {
+          const botId = event.target_id;
+          const commandName = event.details?.commandName;
+          
+          // Get the detected result from bot registry patterns
+          const detectedResult = detectCommandResult(botId, commandName, event.details || {});
+          
+          if (filterValue === "success" && detectedResult !== "success") return false;
+          if (filterValue === "failure" && detectedResult !== "failure") return false;
+        }
         break;
     }
   }

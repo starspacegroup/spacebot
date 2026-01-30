@@ -596,7 +596,8 @@ export const EVENT_TYPES = {
   },
   SLASH_COMMAND_USE: {
     category: "interaction",
-    description: "Slash command was used (any bot)",
+    description: "External bot slash command (e.g., /bump, /ban)",
+    hint: "Use Bot Command filters to detect specific bots and success/failure",
   },
   BUTTON_CLICK: { category: "interaction", description: "Button was clicked" },
   MODAL_SUBMIT: { category: "interaction", description: "Modal was submitted" },

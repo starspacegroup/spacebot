@@ -786,6 +786,27 @@ function setupEventHandlers(client, logFn) {
           `[DEBUG] Logging SLASH_COMMAND_USE: ${cmdName} by ${userName}`,
         );
 
+        // Extract embed texts for success/failure detection
+        const cmdEmbedTexts = message.embeds.map((embed) => {
+          const parts = [];
+          if (embed.title) parts.push(embed.title);
+          if (embed.description) parts.push(embed.description);
+          if (embed.footer?.text) parts.push(embed.footer.text);
+          embed.fields?.forEach((f) => {
+            parts.push(f.name);
+            parts.push(f.value);
+          });
+          return parts.join(" ");
+        });
+
+        // First mentioned non-bot user (often the command invoker mentioned in bot response)
+        const cmdMentionedUsers = message.mentions.users.map((u) => ({
+          id: u.id,
+          tag: u.tag,
+          bot: u.bot,
+        }));
+        const firstCmdMentionedHuman = cmdMentionedUsers.find((u) => !u.bot);
+
         await logFn({
           guild_id: message.guild.id,
           event_type: "SLASH_COMMAND_USE",
@@ -805,6 +826,14 @@ function setupEventHandlers(client, logFn) {
             botName: message.author.tag || message.author.username,
             messageId: message.id,
             isExternalBot: message.author.id !== message.client.user?.id,
+            // Include content and embeds for success/failure detection
+            content: message.content?.substring(0, 500) || "",
+            embedTexts: cmdEmbedTexts,
+            hasEmbeds: message.embeds.length > 0,
+            embedCount: message.embeds.length,
+            // Include mentioned user (useful for thanking bumpers, etc.)
+            mentionedUserId: firstCmdMentionedHuman?.id || null,
+            mentionedUserTag: firstCmdMentionedHuman?.tag || null,
           },
         });
       }
