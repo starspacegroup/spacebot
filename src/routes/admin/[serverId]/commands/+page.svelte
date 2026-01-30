@@ -1,11 +1,14 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import Toast from '$lib/components/Toast.svelte';
 	
 	let { data, form } = $props();
 	
 	let showLogs = $state(false);
 	let registering = $state(false);
+	let showToast = $state(true);
 	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
@@ -18,6 +21,18 @@
 		if (url.searchParams.has('deleted')) return 'Command deleted successfully!';
 		if (url.searchParams.has('registered')) return 'Commands registered with Discord!';
 		return null;
+	});
+	
+	// Clear URL params after showing toast to prevent re-triggering on refresh
+	$effect(() => {
+		if (successMessage()) {
+			const url = new URL(page.url);
+			url.searchParams.delete('created');
+			url.searchParams.delete('updated');
+			url.searchParams.delete('deleted');
+			url.searchParams.delete('registered');
+			goto(url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
 	});
 	
 	// Get action type info
@@ -61,11 +76,12 @@
 </svelte:head>
 
 <div class="commands-page">
-	{#if successMessage() || form?.message || form?.error}
-		<div class="toast {(successMessage() || form?.success) ? 'toast-success' : 'toast-error'}">
-			<span class="toast-icon">{(successMessage() || form?.success) ? '✓' : '✕'}</span>
-			<span>{successMessage() || form.message || form.error}</span>
-		</div>
+	{#if (successMessage() || form?.message || form?.error) && showToast}
+		<Toast 
+			message={successMessage() || form.message || form.error} 
+			success={!!(successMessage() || form?.success)} 
+			onDismiss={() => showToast = false} 
+		/>
 	{/if}
 	
 	<a href="/admin/{selectedGuildId}" class="back-link">← Back to Dashboard</a>
@@ -635,44 +651,7 @@
 		margin-top: 0.5rem;
 	}
 	
-	/* Toast */
-	.toast {
-		position: fixed;
-		bottom: 2rem;
-		right: 2rem;
-		padding: 1rem 1.5rem;
-		border-radius: 8px;
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		z-index: 1100;
-		animation: slideIn 0.3s ease;
-	}
-	
-	@keyframes slideIn {
-		from {
-			transform: translateX(100%);
-			opacity: 0;
-		}
-		to {
-			transform: translateX(0);
-			opacity: 1;
-		}
-	}
-	
-	.toast-success {
-		background: var(--color-success);
-		color: var(--color-text-inverse);
-	}
-	
-	.toast-error {
-		background: var(--color-danger);
-		color: var(--color-text-inverse);
-	}
-	
-	.toast-icon {
-		font-weight: bold;
-	}
+
 	
 	.empty-state {
 		text-align: center;

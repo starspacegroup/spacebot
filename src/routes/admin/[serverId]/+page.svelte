@@ -61,11 +61,8 @@
 </svelte:head>
 
 <div class="admin-dashboard">
-	{#if form?.message}
-		<div class="toast {form.success ? 'toast-success' : 'toast-error'}">
-			<span class="toast-icon">{form.success ? '✓' : '✕'}</span>
-			<span>{form.message}</span>
-		</div>
+	{#if form?.message && showToast}
+		<Toast message={form.message} success={form.success} onDismiss={() => showToast = false} />
 	{/if}
 	
 	{#if !data.isAdmin}
@@ -233,43 +230,7 @@
 		color: var(--color-text);
 	}
 	
-	/* Toast Notifications */
-	.toast {
-		position: fixed;
-		top: 1rem;
-		right: 1rem;
-		left: 1rem;
-		max-width: 400px;
-		margin-left: auto;
-		padding: 1rem 1.25rem;
-		border-radius: var(--radius-lg);
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		font-weight: 500;
-		z-index: 100;
-		animation: slideIn 0.3s ease;
-		box-shadow: var(--shadow-lg);
-	}
-	
-	@keyframes slideIn {
-		from { transform: translateY(-20px); opacity: 0; }
-		to { transform: translateY(0); opacity: 1; }
-	}
-	
-	.toast-success {
-		background: linear-gradient(135deg, var(--color-success), var(--color-success-hover));
-		color: var(--color-text-inverse);
-	}
-	
-	.toast-error {
-		background: linear-gradient(135deg, var(--color-danger), var(--color-danger-hover));
-		color: var(--color-text-inverse);
-	}
-	
-	.toast-icon {
-		font-size: 1.25rem;
-	}
+
 	
 	/* Access Denied */
 	.access-denied-container {
