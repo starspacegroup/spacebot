@@ -383,6 +383,12 @@ export const EVENT_CATEGORIES = {
     color: "#E91E63",
     icon: "❤️",
   },
+  event: {
+    name: "Scheduled Event",
+    description: "Scheduled event activity",
+    color: "#7289DA",
+    icon: "📅",
+  },
 };
 
 /**
@@ -417,15 +423,65 @@ export const EVENT_TYPES = {
     category: "voice",
     description: "Moved between voice channels",
   },
-  VOICE_MUTE: { category: "voice", description: "Voice mute state changed" },
-  VOICE_DEAFEN: {
+  // Self mute/unmute (user mutes themselves)
+  VOICE_SELF_MUTE: {
     category: "voice",
-    description: "Voice deafen state changed",
+    description: "User muted themselves",
   },
+  VOICE_SELF_UNMUTE: {
+    category: "voice",
+    description: "User unmuted themselves",
+  },
+  // Server mute/unmute (moderator action)
+  VOICE_SERVER_MUTE: {
+    category: "voice",
+    description: "User was server muted by moderator",
+  },
+  VOICE_SERVER_UNMUTE: {
+    category: "voice",
+    description: "User was server unmuted by moderator",
+  },
+  // Self deafen/undeafen
+  VOICE_SELF_DEAFEN: {
+    category: "voice",
+    description: "User deafened themselves",
+  },
+  VOICE_SELF_UNDEAFEN: {
+    category: "voice",
+    description: "User undeafened themselves",
+  },
+  // Server deafen/undeafen (moderator action)
+  VOICE_SERVER_DEAFEN: {
+    category: "voice",
+    description: "User was server deafened by moderator",
+  },
+  VOICE_SERVER_UNDEAFEN: {
+    category: "voice",
+    description: "User was server undeafened by moderator",
+  },
+  // Streaming
   VOICE_STREAM_START: { category: "voice", description: "Started streaming" },
-  VOICE_STREAM_END: { category: "voice", description: "Stopped streaming" },
+  VOICE_STREAM_STOP: { category: "voice", description: "Stopped streaming" },
+  // Video
   VOICE_VIDEO_START: { category: "voice", description: "Started video" },
-  VOICE_VIDEO_END: { category: "voice", description: "Stopped video" },
+  VOICE_VIDEO_STOP: { category: "voice", description: "Stopped video" },
+  // Stage channel events
+  VOICE_STAGE_SUPPRESS: {
+    category: "voice",
+    description: "User was suppressed in stage channel",
+  },
+  VOICE_STAGE_UNSUPPRESS: {
+    category: "voice",
+    description: "User was made speaker in stage channel",
+  },
+  VOICE_STAGE_REQUEST_TO_SPEAK: {
+    category: "voice",
+    description: "User requested to speak in stage channel",
+  },
+  VOICE_STAGE_REQUEST_CANCELLED: {
+    category: "voice",
+    description: "User cancelled request to speak in stage channel",
+  },
 
   // Channel events
   CHANNEL_CREATE: { category: "channel", description: "Channel was created" },
@@ -498,4 +554,38 @@ export const EVENT_TYPES = {
   },
   BUTTON_CLICK: { category: "interaction", description: "Button was clicked" },
   MODAL_SUBMIT: { category: "interaction", description: "Modal was submitted" },
+  SELECT_MENU_USE: {
+    category: "interaction",
+    description: "Select menu was used",
+  },
+  CONTEXT_MENU_USE: {
+    category: "interaction",
+    description: "Context menu command was used",
+  },
+  AUTOCOMPLETE_USE: {
+    category: "interaction",
+    description: "Autocomplete was triggered",
+  },
+
+  // Scheduled event events
+  SCHEDULED_EVENT_CREATE: {
+    category: "event",
+    description: "Scheduled event was created",
+  },
+  SCHEDULED_EVENT_DELETE: {
+    category: "event",
+    description: "Scheduled event was deleted",
+  },
+  SCHEDULED_EVENT_UPDATE: {
+    category: "event",
+    description: "Scheduled event was updated",
+  },
+  SCHEDULED_EVENT_USER_ADD: {
+    category: "event",
+    description: "User subscribed to scheduled event",
+  },
+  SCHEDULED_EVENT_USER_REMOVE: {
+    category: "event",
+    description: "User unsubscribed from scheduled event",
+  },
 };

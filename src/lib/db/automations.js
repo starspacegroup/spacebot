@@ -719,6 +719,12 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
         )
     `).bind(guildId, eventType, eventType).all();
 
+    console.log(
+      `[DB] getTriggeredAutomations for ${eventType}: found ${
+        results.results?.length || 0
+      } automations`,
+    );
+
     return (results.results || []).map((a) => {
       const parsed = {
         ...a,
@@ -736,6 +742,11 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
       } else {
         parsed.trigger_events = [];
       }
+      console.log(
+        `[DB] Automation "${a.name}" has triggers: ${
+          JSON.stringify(parsed.trigger_events)
+        }`,
+      );
       return parsed;
     });
   } catch (error) {

@@ -155,6 +155,10 @@ export async function POST({ params, request, platform }) {
   try {
     const { event } = await request.json();
 
+    console.log(
+      `[Automation Process] Received event: ${event?.event_type} for guild ${guildId}`,
+    );
+
     if (!event || !event.event_type) {
       return json({ error: "Invalid event data" }, { status: 400 });
     }
@@ -162,6 +166,9 @@ export async function POST({ params, request, platform }) {
     // Ignore events from bots by default to prevent infinite loops
     // (e.g., bot sends message -> triggers automation -> sends another message)
     if (event.details?.isBot === true) {
+      console.log(
+        `[Automation Process] Ignoring bot event: ${event.event_type}`,
+      );
       return json({ automations: [] });
     }
 
@@ -170,6 +177,10 @@ export async function POST({ params, request, platform }) {
       db,
       guildId,
       event.event_type,
+    );
+
+    console.log(
+      `[Automation Process] Found ${automations.length} automations for ${event.event_type}`,
     );
 
     if (automations.length === 0) {
@@ -181,7 +192,20 @@ export async function POST({ params, request, platform }) {
 
     // Filter automations that match and prepare them for execution
     const matchingAutomations = automations
-      .filter((automation) => matchesFilters(event, automation.trigger_filters))
+      .filter((automation) => {
+        const matches = matchesFilters(event, automation.trigger_filters);
+        console.log(
+          `[Automation Process] Automation "${automation.name}" filter match: ${matches}`,
+        );
+        if (!matches && automation.trigger_filters) {
+          console.log(
+            `[Automation Process] Filters: ${
+              JSON.stringify(automation.trigger_filters)
+            }`,
+          );
+        }
+        return matches;
+      })
       .map((automation) => {
         // Pre-process templates for the gateway
         const processed = { ...automation };
@@ -209,6 +233,9 @@ export async function POST({ params, request, platform }) {
         return processed;
       });
 
+    console.log(
+      `[Automation Process] Returning ${matchingAutomations.length} matching automations`,
+    );
     return json({ automations: matchingAutomations });
   } catch (error) {
     console.error("Automation processing error:", error);
