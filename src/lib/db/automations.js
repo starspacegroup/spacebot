@@ -114,8 +114,8 @@ export const ACTION_TYPES = {
     },
   },
   ADD_ROLE: {
-    name: "Add Role",
-    description: "Add a role to a user",
+    name: "Add Role(s)",
+    description: "Add one or more roles to a user",
     icon: "🏷️",
     targetUser: true,
     configSchema: {
@@ -123,14 +123,14 @@ export const ACTION_TYPES = {
         type: "user_source",
         required: true,
         label: "Target User",
-        description: "Which user to add the role to",
+        description: "Which user to add the role(s) to",
       },
-      role_id: { type: "role", required: true, label: "Role" },
+      role_ids: { type: "roles", required: true, label: "Role(s)", multiple: true },
     },
   },
   REMOVE_ROLE: {
-    name: "Remove Role",
-    description: "Remove a role from a user",
+    name: "Remove Role(s)",
+    description: "Remove one or more roles from a user",
     icon: "🏷️",
     targetUser: true,
     configSchema: {
@@ -138,9 +138,9 @@ export const ACTION_TYPES = {
         type: "user_source",
         required: true,
         label: "Target User",
-        description: "Which user to remove the role from",
+        description: "Which user to remove the role(s) from",
       },
-      role_id: { type: "role", required: true, label: "Role" },
+      role_ids: { type: "roles", required: true, label: "Role(s)", multiple: true },
     },
   },
   KICK_MEMBER: {

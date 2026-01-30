@@ -614,11 +614,14 @@ export async function executeAction(automation, event, context, discord) {
       }
 
       case "ADD_ROLE": {
-        const roleId = action_config.role_id;
+        // Support both legacy role_id (single) and new role_ids (comma-separated)
+        const roleIds = action_config.role_ids
+          ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
+          : action_config.role_id ? [action_config.role_id] : [];
         const userId = resolveTargetUser(action_config, event);
 
-        if (!roleId || !userId) {
-          return { success: false, error: "Missing role or user ID" };
+        if (roleIds.length === 0 || !userId) {
+          return { success: false, error: "Missing role(s) or user ID" };
         }
 
         const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
@@ -633,16 +636,22 @@ export async function executeAction(automation, event, context, discord) {
           return { success: false, error: "Member not found" };
         }
 
-        await member.roles.add(roleId);
-        return { success: true, result: { roleAdded: roleId } };
+        // Add all roles
+        for (const roleId of roleIds) {
+          await member.roles.add(roleId);
+        }
+        return { success: true, result: { rolesAdded: roleIds } };
       }
 
       case "REMOVE_ROLE": {
-        const roleId = action_config.role_id;
+        // Support both legacy role_id (single) and new role_ids (comma-separated)
+        const roleIds = action_config.role_ids
+          ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
+          : action_config.role_id ? [action_config.role_id] : [];
         const userId = resolveTargetUser(action_config, event);
 
-        if (!roleId || !userId) {
-          return { success: false, error: "Missing role or user ID" };
+        if (roleIds.length === 0 || !userId) {
+          return { success: false, error: "Missing role(s) or user ID" };
         }
 
         const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
@@ -657,8 +666,11 @@ export async function executeAction(automation, event, context, discord) {
           return { success: false, error: "Member not found" };
         }
 
-        await member.roles.remove(roleId);
-        return { success: true, result: { roleRemoved: roleId } };
+        // Remove all roles
+        for (const roleId of roleIds) {
+          await member.roles.remove(roleId);
+        }
+        return { success: true, result: { rolesRemoved: roleIds } };
       }
 
       case "KICK_MEMBER": {

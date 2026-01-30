@@ -579,16 +579,23 @@
 													placeholder="Select a channel..."
 													bind:value={action.config[configKey]}
 												/>
-											{:else if config.type === 'role'}
-												<input 
-													type="text" 
-													id="config_{index}_{configKey}" 
+											{:else if config.type === 'roles'}
+												<RoleSelector
+													roles={sharedRoles}
 													name="action_config.{index}.{configKey}"
-													placeholder="Enter role ID"
-													required={config.required}
 													bind:value={action.config[configKey]}
+													required={config.required}
+													multiple={true}
+													placeholder="Search and select role(s)..."
 												/>
-												<p class="field-hint">Right-click on the role in Discord and select "Copy ID"</p>
+											{:else if config.type === 'role'}
+												<RoleSelector
+													roles={sharedRoles}
+													name="action_config.{index}.{configKey}"
+													bind:value={action.config[configKey]}
+													required={config.required}
+													placeholder="Select a role..."
+												/>
 											{:else if config.type === 'select'}
 												<select 
 													id="config_{index}_{configKey}" 

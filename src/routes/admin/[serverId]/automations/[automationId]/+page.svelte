@@ -638,11 +638,20 @@
 													placeholder="Select a channel..."
 													bind:value={action.config[configKey]}
 												/>
+											{:else if config.type === 'roles'}
+												<RoleSelector
+													roles={sharedRoles}
+													name="action_config.{index}.{configKey}"
+													bind:value={action.config[configKey]}
+													required={config.required}
+													multiple={true}
+													placeholder="Search and select role(s)..."
+												/>
 											{:else if config.type === 'role'}
 												<RoleSelector
 													roles={sharedRoles}
 													name="action_config.{index}.{configKey}"
-													value={action.config[configKey] || ''}
+													bind:value={action.config[configKey]}
 													required={config.required}
 													placeholder="Select a role..."
 												/>
