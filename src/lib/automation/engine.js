@@ -47,6 +47,67 @@ export function resolveTargetUser(action_config, event) {
 }
 
 /**
+ * Resolve a number value from action config
+ * Supports static values or command option references (option:<optionName>)
+ * @param {string|number|Object} configValue - The config value (can be static, option ref string, or object with source)
+ * @param {Object} event - The event data (contains option values)
+ * @param {number|null} defaultValue - Default value if not resolvable
+ * @returns {number|null} - The resolved number or default
+ */
+export function resolveNumberValue(configValue, event, defaultValue = null) {
+  // If no config value, return default
+  if (configValue === undefined || configValue === null || configValue === "") {
+    return defaultValue;
+  }
+
+  // If it's already a number, return it
+  if (typeof configValue === "number") {
+    return configValue;
+  }
+
+  // If it's a string, check if it's an option reference or static value
+  if (typeof configValue === "string") {
+    // Check if it's an option reference (option:<optionName>)
+    if (configValue.startsWith("option:")) {
+      const optionName = configValue.substring(7);
+      // Look for the option value in event.options
+      if (event.options?.[optionName] !== undefined) {
+        const val = parseFloat(event.options[optionName]);
+        return isNaN(val) ? defaultValue : val;
+      }
+      // Also check flat properties (e.g., event.option_days)
+      if (event[`option_${optionName}`] !== undefined) {
+        const val = parseFloat(event[`option_${optionName}`]);
+        return isNaN(val) ? defaultValue : val;
+      }
+      // Option not found, return default
+      return defaultValue;
+    }
+
+    // Try to parse as static number
+    const parsed = parseFloat(configValue);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+
+  // If it's an object with source/value properties (for more complex configs)
+  if (typeof configValue === "object") {
+    if (configValue.source === "static") {
+      const val = parseFloat(configValue.value);
+      return isNaN(val) ? defaultValue : val;
+    }
+    if (configValue.source === "option" && configValue.optionName) {
+      return resolveNumberValue(
+        `option:${configValue.optionName}`,
+        event,
+        defaultValue,
+      );
+    }
+  }
+
+  return defaultValue;
+}
+
+/**
  * Process template variables in a string
  * @param {string} template - Template string with {variable} placeholders
  * @param {Object} context - Variable context
@@ -256,12 +317,16 @@ export async function executeAction(automation, event, context, discord) {
       case "DELETE_USER_MESSAGES": {
         // Enhanced version that supports multiple channels
         const channelIds = action_config.channel_ids || "ALL";
-        const maxAgeDays = action_config.max_age_days
-          ? parseInt(action_config.max_age_days)
-          : null;
-        const maxMessages = action_config.max_messages
-          ? parseInt(action_config.max_messages)
-          : null;
+        const maxAgeDays = resolveNumberValue(
+          action_config.max_age_days,
+          event,
+          null,
+        );
+        const maxMessages = resolveNumberValue(
+          action_config.max_messages,
+          event,
+          null,
+        );
         const skipPinned = action_config.skip_pinned !== false &&
           action_config.skip_pinned !== "false";
         const userId = resolveTargetUser(action_config, event);
@@ -619,7 +684,12 @@ export async function executeAction(automation, event, context, discord) {
 
       case "TIMEOUT_MEMBER": {
         const userId = resolveTargetUser(action_config, event);
-        const duration = (action_config.duration_minutes || 60) * 60 * 1000;
+        const durationMinutes = resolveNumberValue(
+          action_config.duration_minutes,
+          event,
+          60,
+        );
+        const duration = durationMinutes * 60 * 1000;
         const reason = processTemplate(
           action_config.reason || "Automated timeout",
           context,

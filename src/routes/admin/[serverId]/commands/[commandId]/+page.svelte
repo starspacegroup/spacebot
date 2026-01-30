@@ -157,6 +157,41 @@
 		}
 		return sources;
 	});
+	
+	// Computed number sources for actions (static value + any integer/number type options)
+	const availableNumberOptions = $derived(() => {
+		const sources = [];
+		// Add integer-type options (type 4 = INTEGER, type 10 = NUMBER)
+		for (const opt of options) {
+			if ((opt.type === 4 || opt.type === 10) && opt.name) {
+				const optName = opt.name.toLowerCase().replace(/\s+/g, '_');
+				sources.push({
+					value: `option:${optName}`,
+					label: opt.name,
+					description: opt.description || `Value from "${opt.name}" option`
+				});
+			}
+		}
+		return sources;
+	});
+	
+	// Helper to check if a number_source field is using an option reference
+	function isOptionReference(value) {
+		return typeof value === 'string' && value.startsWith('option:');
+	}
+	
+	// Helper to get numeric value from number_source field
+	function getStaticValue(value) {
+		if (isOptionReference(value)) return '';
+		if (value === undefined || value === null || value === '') return '';
+		return value;
+	}
+	
+	// Helper to get option reference from number_source field
+	function getOptionValue(value) {
+		if (isOptionReference(value)) return value;
+		return '';
+	}
 </script>
 
 <svelte:head>
@@ -464,6 +499,68 @@
 													max={config.max || 999999}
 													required={config.required}
 												/>
+											{:else if config.type === 'number_source'}
+												{@const hasNumberOptions = availableNumberOptions().length > 0}
+												{@const isUsingOption = isOptionReference(action.config[configKey])}
+												<div class="number-source-field">
+													<div class="number-source-toggle">
+														<label class="radio-label">
+															<input 
+																type="radio" 
+																name="number_source_type_{index}_{configKey}"
+																value="static"
+																checked={!isUsingOption}
+																onchange={() => action.config[configKey] = ''}
+															/>
+															<span>Static Value</span>
+														</label>
+														{#if hasNumberOptions}
+															<label class="radio-label">
+																<input 
+																	type="radio" 
+																	name="number_source_type_{index}_{configKey}"
+																	value="option"
+																	checked={isUsingOption}
+																	onchange={() => action.config[configKey] = availableNumberOptions()[0]?.value || ''}
+																/>
+																<span>From Command Option</span>
+															</label>
+														{/if}
+													</div>
+													{#if isUsingOption && hasNumberOptions}
+														<select 
+															id="config_{index}_{configKey}" 
+															name="action_config.{index}.{configKey}"
+															bind:value={action.config[configKey]}
+															required={config.required}
+														>
+															<option value="">Select an option...</option>
+															{#each availableNumberOptions() as opt}
+																<option value={opt.value} title={opt.description}>
+																	🔢 {opt.label}
+																</option>
+															{/each}
+														</select>
+													{:else}
+														<input 
+															type="number" 
+															id="config_{index}_{configKey}" 
+															name="action_config.{index}.{configKey}"
+															value={getStaticValue(action.config[configKey])}
+															oninput={(e) => action.config[configKey] = e.target.value}
+															min="0"
+															max={config.max || 999999}
+															placeholder={config.placeholder || ''}
+															required={config.required}
+														/>
+													{/if}
+													{#if !hasNumberOptions}
+														<p class="field-hint hint-info">💡 Add an Integer or Number type option above to use dynamic values</p>
+													{/if}
+												</div>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
 											{:else if config.type === 'boolean'}
 												<label class="checkbox-label">
 													<input 
@@ -753,6 +850,41 @@
 	.checkbox-label input[type="checkbox"] {
 		width: auto;
 		accent-color: var(--accent-color, #5865F2);
+	}
+	
+	/* Radio label */
+	.radio-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-weight: normal !important;
+	}
+	
+	.radio-label input[type="radio"] {
+		width: auto;
+		accent-color: var(--accent-color, #5865F2);
+	}
+	
+	/* Number source field */
+	.number-source-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.number-source-toggle {
+		display: flex;
+		gap: 1rem;
+		margin-bottom: 0.25rem;
+	}
+	
+	.hint-info {
+		color: var(--accent-color, #5865F2);
+	}
+	
+	.hint-warning {
+		color: #FEE75C;
 	}
 	
 	/* Options */

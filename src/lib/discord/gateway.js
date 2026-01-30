@@ -23,6 +23,40 @@ const API_BASE = process.env.API_BASE || "http://localhost:4269";
 let discordClient = null;
 
 /**
+ * Resolve a number value from action config
+ * Supports static values or command option references (option:<optionName>)
+ * @param {string|number} configValue - The config value (static or option ref)
+ * @param {Object} event - The event data (contains option values)
+ * @param {number|null} defaultValue - Default value if not resolvable
+ * @returns {number|null} - The resolved number or default
+ */
+function resolveNumberValue(configValue, event, defaultValue = null) {
+  if (configValue === undefined || configValue === null || configValue === "") {
+    return defaultValue;
+  }
+  if (typeof configValue === "number") {
+    return configValue;
+  }
+  if (typeof configValue === "string") {
+    if (configValue.startsWith("option:")) {
+      const optionName = configValue.substring(7);
+      if (event.options?.[optionName] !== undefined) {
+        const val = parseFloat(event.options[optionName]);
+        return isNaN(val) ? defaultValue : val;
+      }
+      if (event[`option_${optionName}`] !== undefined) {
+        const val = parseFloat(event[`option_${optionName}`]);
+        return isNaN(val) ? defaultValue : val;
+      }
+      return defaultValue;
+    }
+    const parsed = parseFloat(configValue);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  return defaultValue;
+}
+
+/**
  * Log event via API and process automations
  * @param {Object} event - The event data to log
  */
@@ -155,12 +189,16 @@ async function executeAutomationAction(automation, event) {
     case "DELETE_USER_MESSAGES": {
       // Enhanced version that supports multiple channels
       const channelIds = action_config.channel_ids || "ALL";
-      const maxAgeDays = action_config.max_age_days
-        ? parseInt(action_config.max_age_days)
-        : null;
-      const maxMessages = action_config.max_messages
-        ? parseInt(action_config.max_messages)
-        : null;
+      const maxAgeDays = resolveNumberValue(
+        action_config.max_age_days,
+        event,
+        null,
+      );
+      const maxMessages = resolveNumberValue(
+        action_config.max_messages,
+        event,
+        null,
+      );
       const skipPinned = action_config.skip_pinned !== false &&
         action_config.skip_pinned !== "false";
       const userId = event.actor_id;
@@ -403,7 +441,12 @@ async function executeAutomationAction(automation, event) {
 
     case "TIMEOUT_MEMBER": {
       const userId = event.actor_id || event.target_id;
-      const duration = (action_config.duration_minutes || 60) * 60 * 1000;
+      const durationMinutes = resolveNumberValue(
+        action_config.duration_minutes,
+        event,
+        60,
+      );
+      const duration = durationMinutes * 60 * 1000;
       const reason = automation.processed_reason || action_config.reason ||
         "Automated timeout";
 

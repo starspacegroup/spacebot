@@ -46,18 +46,20 @@ export const ACTION_TYPES = {
         default: "ALL",
       },
       max_age_days: {
-        type: "number",
+        type: "number_source",
         required: false,
         label: "Delete messages from last X days",
         description: "Leave empty to delete all messages regardless of age",
         placeholder: "∞ (all time)",
+        supportsOptionRef: true,
       },
       max_messages: {
-        type: "number",
+        type: "number_source",
         required: false,
         label: "Max messages to delete",
         description: "Leave empty for no limit",
         placeholder: "∞",
+        supportsOptionRef: true,
       },
       skip_pinned: {
         type: "boolean",
@@ -188,10 +190,11 @@ export const ACTION_TYPES = {
         description: "Which user to timeout",
       },
       duration_minutes: {
-        type: "number",
+        type: "number_source",
         required: true,
         default: 60,
         label: "Duration (minutes)",
+        supportsOptionRef: true,
       },
       reason: { type: "text", label: "Reason", supportsVariables: true },
     },
@@ -450,7 +453,7 @@ export async function createAutomation(db, automation) {
           (action) => ({
             type: action.type,
             config: { ...action.config },
-          })
+          }),
         );
       }
       // Copy other properties
