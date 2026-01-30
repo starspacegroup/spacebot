@@ -13,7 +13,7 @@
 	let { 
 		guildId = null,
 		channels: preloadedChannels = null, // Pre-loaded channels to avoid multiple fetches
-		value = $bindable(''),
+		value = $bindable(),
 		name = 'channel',
 		required = false,
 		multiple = false, // Enable multi-select
@@ -21,6 +21,13 @@
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
 		showAllOption = false // Show "Any" option at top (multi-select only)
 	} = $props();
+	
+	// Ensure value is never undefined internally
+	$effect(() => {
+		if (value === undefined) {
+			value = '';
+		}
+	});
 	
 	let channels = $state([]);
 	let loading = $state(false);

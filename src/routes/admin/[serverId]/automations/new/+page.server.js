@@ -47,11 +47,11 @@ export const actions = {
     // Parse form data
     const name = formData.get("name");
     const description = formData.get("description");
-    
+
     // Support both single trigger_event (legacy) and multiple trigger_events
     const triggerEvents = formData.getAll("trigger_events[]");
     const triggerEvent = formData.get("trigger_event");
-    const allTriggers = triggerEvents.length > 0 
+    const allTriggers = triggerEvents.length > 0
       ? triggerEvents.filter(Boolean)
       : (triggerEvent ? [triggerEvent] : []);
 
@@ -86,7 +86,8 @@ export const actions = {
 
     if (!name || allTriggers.length === 0 || actions.length === 0) {
       return fail(400, {
-        error: "Name, at least one trigger event, and at least one action are required",
+        error:
+          "Name, at least one trigger event, and at least one action are required",
         values: { name, description, triggerEvents: allTriggers, actions },
       });
     }

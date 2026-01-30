@@ -139,6 +139,17 @@
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
 	
+	// Initialize config values when action type changes to avoid undefined bind errors
+	function initializeActionConfig(actionIndex, actionType) {
+		const schema = getActionConfigSchema(actionType);
+		const action = actions[actionIndex];
+		for (const configKey of Object.keys(schema)) {
+			if (action.config[configKey] === undefined) {
+				action.config[configKey] = '';
+			}
+		}
+	}
+	
 	// Stacked actions management
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
@@ -406,24 +417,35 @@
 		
 		<!-- Action Section -->
 		<section class="form-section">
-			<h2>📤 Action (Then)</h2>
-			<p class="section-description">Stack multiple actions to execute in sequence when the trigger fires</p>
+			<div class="section-header-row">
+				<div>
+					<h2>📤 Actions (Then)</h2>
+					<p class="section-description">Configure actions to execute when the trigger fires (in order)</p>
+				</div>
+				<button type="button" class="btn btn-secondary btn-sm" onclick={addAction}>
+					<span>+</span> Add Action
+				</button>
+			</div>
 			
-			{#if actions.length > 0}
+			{#if actions.length === 0}
+				<div class="empty-actions">
+					<p>No actions configured. Click "Add Action" to get started.</p>
+				</div>
+			{:else}
 				<div class="actions-list">
 					{#each actions as action, index}
 						<div class="action-item">
 							<div class="action-header">
 								<span class="action-number">Action {index + 1}</span>
 								<div class="action-controls">
-									<button type="button" class="btn btn-sm btn-secondary" onclick={() => moveActionUp(index)} disabled={index === 0} title="Move up">
+									<button type="button" class="btn-icon" onclick={() => moveActionUp(index)} disabled={index === 0} title="Move up">
 										↑
 									</button>
-									<button type="button" class="btn btn-sm btn-secondary" onclick={() => moveActionDown(index)} disabled={index === actions.length - 1} title="Move down">
+									<button type="button" class="btn-icon" onclick={() => moveActionDown(index)} disabled={index === actions.length - 1} title="Move down">
 										↓
 									</button>
-									<button type="button" class="btn btn-sm btn-danger" onclick={() => removeAction(index)}>
-										🗑️
+									<button type="button" class="btn-icon btn-danger" onclick={() => removeAction(index)} title="Remove action">
+										×
 									</button>
 								</div>
 							</div>
@@ -431,7 +453,7 @@
 							<div class="form-group">
 								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
 								<input type="hidden" name="action_type[]" value={action.type}>
-								<select id="action_type_{index}" bind:value={action.type} required>
+								<select id="action_type_{index}" bind:value={action.type} onchange={() => initializeActionConfig(index, action.type)} required>
 									<option value="">Select an action...</option>
 									{#each Object.entries(data.actionTypes) as [actionType, info]}
 										<option value={actionType}>{info.icon} {info.name}</option>
@@ -442,6 +464,7 @@
 							{#if action.type}
 								{@const schema = getActionConfigSchema(action.type)}
 								<div class="action-config">
+									<h3>Configure Action</h3>
 									{#each Object.entries(schema) as [configKey, config]}
 										<div class="form-group">
 											<label for="config_{index}_{configKey}">
@@ -558,15 +581,8 @@
 						</div>
 					{/each}
 				</div>
-			{:else}
-				<p class="no-actions-message">No actions configured. Add at least one action below.</p>
 			{/if}
-			
-			<button type="button" class="btn btn-secondary" onclick={addAction}>
-				➕ Add Action
-			</button>
 		</section>
-		
 		<!-- Form Actions -->
 		<div class="form-actions">
 			<button 
@@ -927,6 +943,35 @@
 		white-space: nowrap;
 	}
 	
+	/* Stacked Actions Styles */
+	.section-header-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+	
+	.section-header-row h2 {
+		margin: 0;
+	}
+	
+	.section-header-row .section-description {
+		margin: 0.25rem 0 0;
+	}
+	
+	.empty-actions {
+		padding: 2rem;
+		text-align: center;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		color: var(--text-muted);
+	}
+	
+	.empty-actions p {
+		margin: 0;
+	}
+	
 	.action-config {
 		margin-top: 1.25rem;
 		padding: 1.25rem;
@@ -952,9 +997,9 @@
 	
 	.action-item {
 		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
 		padding: 1rem;
-		border-left: 3px solid var(--accent-color, #5865F2);
 	}
 	
 	.action-header {
@@ -962,12 +1007,13 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-bottom: 1rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--border-color, #40444b);
 	}
 	
 	.action-number {
 		font-weight: 600;
-		font-size: 0.875rem;
-		color: var(--accent-color, #5865F2);
+		color: var(--text-primary);
 	}
 	
 	.action-controls {
@@ -975,18 +1021,36 @@
 		gap: 0.375rem;
 	}
 	
-	.action-controls .btn:disabled {
-		opacity: 0.4;
+	.btn-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		background: var(--bg-secondary, #2f3136);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 4px;
+		color: var(--text-muted);
+		font-size: 1rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	
+	.btn-icon:hover:not(:disabled) {
+		background: var(--bg-primary, #202225);
+		color: var(--text-primary);
+	}
+	
+	.btn-icon:disabled {
+		opacity: 0.5;
 		cursor: not-allowed;
 	}
 	
-	.no-actions-message {
-		color: var(--text-muted);
-		font-size: 0.875rem;
-		padding: 1rem;
-		background: var(--bg-tertiary, #36393f);
-		border-radius: 8px;
-		margin-bottom: 1rem;
+	.btn-icon.btn-danger:hover:not(:disabled) {
+		background: rgba(237, 66, 69, 0.2);
+		border-color: #ED4245;
+		color: #ED4245;
 	}
 	
 	.variables-help {
@@ -1075,6 +1139,11 @@
 	
 	.btn-secondary:hover {
 		background: var(--bg-tertiary, #36393f);
+	}
+	
+	.btn-sm {
+		padding: 0.5rem 0.875rem;
+		font-size: 0.875rem;
 	}
 	
 	.btn-danger {

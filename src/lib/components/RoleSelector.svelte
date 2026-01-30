@@ -13,13 +13,20 @@
 	let { 
 		guildId = null,
 		roles: preloadedRoles = null, // Pre-loaded roles to avoid multiple fetches
-		value = $bindable(''),
+		value = $bindable(),
 		name = 'role',
 		required = false,
 		multiple = false, // Enable multi-select
 		placeholder = 'Search roles...',
 		showAnyOption = false // Show "Any" option at top (multi-select only)
 	} = $props();
+	
+	// Ensure value is never undefined internally
+	$effect(() => {
+		if (value === undefined) {
+			value = '';
+		}
+	});
 	
 	let roles = $state([]);
 	let loading = $state(false);

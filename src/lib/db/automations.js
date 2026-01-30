@@ -723,7 +723,9 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
       const parsed = {
         ...a,
         enabled: !!a.enabled,
-        trigger_filters: a.trigger_filters ? JSON.parse(a.trigger_filters) : null,
+        trigger_filters: a.trigger_filters
+          ? JSON.parse(a.trigger_filters)
+          : null,
         action_config: a.action_config ? JSON.parse(a.action_config) : {},
       };
       // Parse trigger_events array
