@@ -629,7 +629,11 @@ export const EVENT_TYPES = {
   // Interaction events
   COMMAND_USE: {
     category: "interaction",
-    description: "Slash command was used",
+    description: "Our bot's slash command was used",
+  },
+  SLASH_COMMAND_USE: {
+    category: "interaction",
+    description: "Slash command was used (any bot)",
   },
   BUTTON_CLICK: { category: "interaction", description: "Button was clicked" },
   MODAL_SUBMIT: { category: "interaction", description: "Modal was submitted" },

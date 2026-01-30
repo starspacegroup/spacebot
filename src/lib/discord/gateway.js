@@ -8,7 +8,13 @@
  */
 
 import "dotenv/config";
-import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
+import {
+  Client,
+  Events,
+  GatewayIntentBits,
+  MessageType,
+  Partials,
+} from "discord.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
@@ -664,6 +670,59 @@ function setupEventHandlers(client, logFn) {
     if (!message.guild) return;
 
     console.log(`[DEBUG] Logging message event for guild ${message.guild.id}`);
+    console.log(
+      `[DEBUG] Message type: ${message.type}, author: ${message.author?.tag}, has interaction: ${!!message
+        .interaction}, has interactionMetadata: ${!!message
+        .interactionMetadata}`,
+    );
+
+    // Detect slash command usage from ANY bot (including other bots)
+    // MessageType.ChatInputCommand (20) = slash commands
+    // MessageType.ContextMenuCommand (23) = context menu commands
+    if (
+      message.type === MessageType.ChatInputCommand ||
+      message.type === MessageType.ContextMenuCommand
+    ) {
+      // In discord.js v14.14+, message.interaction is deprecated in favor of message.interactionMetadata
+      // We check both for backwards compatibility
+      const interaction = message.interaction || message.interactionMetadata;
+      console.log(`[DEBUG] Slash command detected! interaction:`, interaction);
+
+      if (interaction) {
+        // Handle both old (interaction.user) and new (interactionMetadata.user) structures
+        const userId = interaction.user?.id || interaction.userId;
+        const userName = interaction.user?.tag || interaction.user?.username ||
+          "Unknown User";
+        const cmdName = interaction.commandName || interaction.name ||
+          "unknown";
+
+        console.log(
+          `[DEBUG] Logging SLASH_COMMAND_USE: ${cmdName} by ${userName}`,
+        );
+
+        await logFn({
+          guild_id: message.guild.id,
+          event_type: "SLASH_COMMAND_USE",
+          event_category: "interaction",
+          actor_id: userId,
+          actor_name: userName,
+          target_id: message.author.id, // The bot that responded
+          target_name: message.author.tag || message.author.username,
+          channel_id: message.channel.id,
+          channel_name: message.channel.name,
+          details: {
+            commandName: cmdName,
+            commandType: message.type === MessageType.ChatInputCommand
+              ? "slash"
+              : "context_menu",
+            botId: message.author.id,
+            botName: message.author.tag || message.author.username,
+            messageId: message.id,
+            isExternalBot: message.author.id !== message.client.user?.id,
+          },
+        });
+      }
+    }
 
     // Extract mentioned users (useful for detecting who triggered bot responses like Disboard bumps)
     const mentionedUsers = message.mentions.users.map((u) => ({
