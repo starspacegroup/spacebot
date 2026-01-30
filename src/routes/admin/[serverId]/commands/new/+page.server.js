@@ -6,6 +6,8 @@ import {
   COMMON_OPTION_TYPES,
   createCommand,
   OPTION_TYPES,
+  PERMISSION_FLAGS,
+  PERMISSION_PRESETS,
   RESPONSE_TYPES,
 } from "$lib/db/commands.js";
 import { log } from "$lib/db/logger.js";
@@ -27,6 +29,8 @@ export async function load({ cookies, platform, parent }) {
     responseTypes: RESPONSE_TYPES,
     templateVariables: COMMAND_TEMPLATE_VARIABLES,
     userSources: COMMAND_USER_SOURCES,
+    permissionFlags: PERMISSION_FLAGS,
+    permissionPresets: PERMISSION_PRESETS,
   };
 }
 
@@ -152,6 +156,9 @@ export const actions = {
     }
 
     try {
+      // Parse permissions
+      const defaultMemberPermissions = formData.get("default_member_permissions") || null;
+      
       const result = await createCommand(db, {
         guild_id: guildId,
         name: name.toLowerCase(),
@@ -165,6 +172,8 @@ export const actions = {
         response_type: responseType,
         response_content: responseContent || null,
         response_embed: responseEmbed,
+        default_member_permissions: defaultMemberPermissions,
+        dm_permission: false, // Guild commands typically don't work in DMs
         created_by: userId,
       });
 

@@ -10,6 +10,19 @@
 	let selectedResponseType = $state('message');
 	let options = $state([]);
 	
+	// Permission controls
+	let selectedPermissionPreset = $state('everyone');
+	let selectedCustomPermissions = $state([]);
+	
+	// Compute the permission value based on preset or custom selection
+	const computedPermissions = $derived(
+		selectedPermissionPreset === 'everyone'
+			? ''
+			: selectedPermissionPreset === 'custom'
+				? (selectedCustomPermissions.length === 0 ? '' : selectedCustomPermissions[0])
+				: (data.permissionPresets[selectedPermissionPreset]?.value || '')
+	);
+	
 	// Shared channel data - fetched once for all ChannelSelectors
 	let sharedChannels = $state(null);
 	let channelsLoading = $state(false);
@@ -657,6 +670,47 @@
 			</button>
 		</section>
 		
+		<!-- Permissions Section -->
+		<section class="form-section">
+			<h2>🔐 Permissions</h2>
+			<p class="section-description">Control who can see and use this command</p>
+			
+			<div class="form-group">
+				<label for="permission_preset">Permission Level</label>
+				<select id="permission_preset" name="permission_preset" bind:value={selectedPermissionPreset}>
+					{#each Object.entries(data.permissionPresets) as [key, preset]}
+						<option value={key}>{preset.label} - {preset.description}</option>
+					{/each}
+				</select>
+				<p class="field-hint">Discord will hide the command from users who don't have the required permissions</p>
+			</div>
+			
+			{#if selectedPermissionPreset === 'custom'}
+				<div class="custom-permissions">
+					<label>Required Permissions (user must have at least one):</label>
+					<div class="permissions-grid">
+						{#each Object.entries(data.permissionFlags) as [key, perm]}
+							<label class="permission-checkbox">
+								<input 
+									type="checkbox" 
+									name="custom_permission[]" 
+									value={perm.value}
+									bind:group={selectedCustomPermissions}
+								/>
+								<span class="permission-label">
+									<span class="permission-name">{perm.label}</span>
+									<span class="permission-desc">{perm.description}</span>
+								</span>
+							</label>
+						{/each}
+					</div>
+				</div>
+			{/if}
+			
+			<!-- Hidden field to pass the computed permission value -->
+			<input type="hidden" name="default_member_permissions" value={computedPermissions}>
+		</section>
+		
 		<!-- Form Actions -->
 		<div class="form-actions">
 			<a href="/admin/{selectedGuildId}/commands" class="btn btn-secondary">
@@ -1121,5 +1175,58 @@
 		.option-fields {
 			grid-template-columns: 1fr;
 		}
+	}
+	
+	/* Permission styles */
+	.custom-permissions {
+		margin-top: 1rem;
+	}
+	
+	.custom-permissions > label {
+		display: block;
+		margin-bottom: 0.75rem;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+	
+	.permissions-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 0.75rem;
+	}
+	
+	.permission-checkbox {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	
+	.permission-checkbox:hover {
+		background: var(--border-color, #40444b);
+	}
+	
+	.permission-checkbox input[type="checkbox"] {
+		margin-top: 0.25rem;
+	}
+	
+	.permission-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+	
+	.permission-name {
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+	
+	.permission-desc {
+		font-size: 0.75rem;
+		color: var(--text-muted);
 	}
 </style>

@@ -112,6 +112,90 @@ export const RESPONSE_TYPES = {
 };
 
 /**
+ * Discord permission flags for command restrictions
+ * These correspond to Discord's permission bitfield values
+ * @see https://discord.com/developers/docs/topics/permissions#permissions-bitwise-permission-flags
+ */
+export const PERMISSION_FLAGS = {
+  ADMINISTRATOR: {
+    value: "8",
+    label: "Administrator",
+    description: "Full server access",
+  },
+  MANAGE_GUILD: {
+    value: "32",
+    label: "Manage Server",
+    description: "Can change server settings",
+  },
+  MANAGE_ROLES: {
+    value: "268435456",
+    label: "Manage Roles",
+    description: "Can create and edit roles",
+  },
+  MANAGE_CHANNELS: {
+    value: "16",
+    label: "Manage Channels",
+    description: "Can create and edit channels",
+  },
+  KICK_MEMBERS: {
+    value: "2",
+    label: "Kick Members",
+    description: "Can kick members from the server",
+  },
+  BAN_MEMBERS: {
+    value: "4",
+    label: "Ban Members",
+    description: "Can ban members from the server",
+  },
+  MODERATE_MEMBERS: {
+    value: "1099511627776",
+    label: "Moderate Members",
+    description: "Can timeout members",
+  },
+  MANAGE_MESSAGES: {
+    value: "8192",
+    label: "Manage Messages",
+    description: "Can delete others' messages",
+  },
+  MENTION_EVERYONE: {
+    value: "131072",
+    label: "Mention Everyone",
+    description: "Can use @everyone and @here",
+  },
+};
+
+/**
+ * Permission presets for common use cases
+ */
+export const PERMISSION_PRESETS = {
+  everyone: {
+    value: null,
+    label: "Everyone",
+    description: "All members can use this command",
+  },
+  admin_only: {
+    value: "8",
+    label: "Administrators Only",
+    description: "Only server administrators",
+  },
+  moderators: {
+    value: "8192", // MANAGE_MESSAGES
+    label: "Moderators",
+    description: "Members who can manage messages",
+  },
+  managers: {
+    value: "32", // MANAGE_GUILD
+    label: "Server Managers",
+    description: "Members who can manage the server",
+  },
+  custom: {
+    value: "custom",
+    label: "Custom Permissions",
+    description: "Select specific permissions required",
+  },
+};
+
+/**
  * Create a new command
  * @param {D1Database} db
  * @param {Partial<Command>} command
@@ -139,8 +223,9 @@ export async function createCommand(db, command) {
         options, ephemeral, defer,
         action_type, action_config,
         response_type, response_content, response_embed,
+        default_member_permissions, dm_permission,
         created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       command.guild_id,
       command.name.toLowerCase(),
@@ -154,6 +239,8 @@ export async function createCommand(db, command) {
       command.response_type || "message",
       command.response_content || null,
       command.response_embed ? JSON.stringify(command.response_embed) : null,
+      command.default_member_permissions || null,
+      command.dm_permission !== undefined ? (command.dm_permission ? 1 : 0) : 0,
       command.created_by || null,
     ).run();
 
@@ -257,6 +344,16 @@ export async function updateCommand(db, id, updates) {
     if (updates.discord_command_id !== undefined) {
       fields.push("discord_command_id = ?");
       values.push(updates.discord_command_id);
+    }
+    if (updates.default_member_permissions !== undefined) {
+      fields.push("default_member_permissions = ?");
+      values.push(updates.default_member_permissions || null);
+      fields.push("registered = 0"); // Needs re-registration when permissions change
+    }
+    if (updates.dm_permission !== undefined) {
+      fields.push("dm_permission = ?");
+      values.push(updates.dm_permission ? 1 : 0);
+      fields.push("registered = 0");
     }
 
     if (fields.length === 0) {
@@ -540,6 +637,7 @@ function parseCommand(row) {
     ephemeral: !!row.ephemeral,
     defer: !!row.defer,
     registered: !!row.registered,
+    dm_permission: !!row.dm_permission,
     options: row.options ? JSON.parse(row.options) : [],
     action_config: row.action_config ? JSON.parse(row.action_config) : {},
     response_embed: row.response_embed ? JSON.parse(row.response_embed) : null,
@@ -585,6 +683,14 @@ export function toDiscordCommand(command) {
       choices: opt.choices || undefined,
     }));
   }
+
+  // Add permission restrictions if set
+  if (command.default_member_permissions !== null && command.default_member_permissions !== undefined) {
+    discordCommand.default_member_permissions = command.default_member_permissions;
+  }
+
+  // DM permission (false by default for guild commands)
+  discordCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
 
   return discordCommand;
 }

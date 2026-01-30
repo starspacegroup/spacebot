@@ -7,6 +7,8 @@ import {
   deleteCommand,
   getCommand,
   OPTION_TYPES,
+  PERMISSION_FLAGS,
+  PERMISSION_PRESETS,
   RESPONSE_TYPES,
   updateCommand,
 } from "$lib/db/commands.js";
@@ -52,6 +54,8 @@ export async function load({ cookies, platform, parent, params }) {
       responseTypes: RESPONSE_TYPES,
       templateVariables: COMMAND_TEMPLATE_VARIABLES,
       userSources: COMMAND_USER_SOURCES,
+      permissionFlags: PERMISSION_FLAGS,
+      permissionPresets: PERMISSION_PRESETS,
     };
   } catch (err) {
     if (err.status) throw err;
@@ -181,6 +185,11 @@ export const actions = {
         updates.response_embed = null;
       }
     }
+
+    // Parse permissions
+    const defaultMemberPermissions = formData.get("default_member_permissions") || null;
+    updates.default_member_permissions = defaultMemberPermissions;
+    updates.dm_permission = false; // Guild commands typically don't work in DMs
 
     try {
       const result = await updateCommand(db, parseInt(id), updates);
