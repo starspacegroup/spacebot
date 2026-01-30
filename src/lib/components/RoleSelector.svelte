@@ -462,7 +462,7 @@
 	}
 	
 	.dropdown-error {
-		color: #ED4245;
+		color: var(--color-danger);
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;

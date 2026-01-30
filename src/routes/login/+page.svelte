@@ -104,7 +104,7 @@
 	}
 	
 	.error-banner {
-		background: rgba(237, 66, 69, 0.1);
+		background: var(--color-danger-soft);
 		border: 1px solid var(--color-danger);
 		color: var(--color-danger);
 		padding: 1rem;
@@ -129,7 +129,7 @@
 	}
 	
 	.logged-in-card .check-icon {
-		color: var(--color-success, #43b581);
+		color: var(--color-success);
 		margin-bottom: 1rem;
 	}
 	
@@ -263,25 +263,25 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 1rem 2rem;
-		background: var(--color-warning, #f0b232);
-		color: #1a1a1a;
+		background: var(--color-warning);
+		color: var(--color-text-inverse);
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		font-weight: 600;
 		font-size: 1.1rem;
 		transition: background var(--transition-fast), transform var(--transition-fast);
-		border: 2px dashed rgba(0, 0, 0, 0.3);
+		border: 2px dashed var(--color-warning-hover);
 	}
 	
 	.dev-btn:hover {
-		background: #e6a52e;
-		color: #1a1a1a;
+		background: var(--color-warning-hover);
+		color: var(--color-text-inverse);
 		transform: scale(1.02);
 	}
 	
 	.dev-note {
 		margin-top: 0.75rem;
-		color: var(--color-warning, #f0b232);
+		color: var(--color-warning);
 		font-size: 0.8rem;
 		font-weight: 500;
 	}

@@ -320,12 +320,12 @@
 	}
 	
 	.btn-danger {
-		background: #ED4245;
-		color: white;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
-	
+
 	.btn-danger:hover {
-		background: #c93b3e;
+		background: var(--color-danger-hover);
 	}
 	
 	.btn-sm {
@@ -578,13 +578,13 @@
 	}
 	
 	.log-success .log-status {
-		background: #57F287;
-		color: #000;
+		background: var(--color-success);
+		color: var(--color-text-inverse);
 	}
-	
+
 	.log-error .log-status {
-		background: #ED4245;
-		color: #fff;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
 	
 	.log-info {
@@ -609,7 +609,7 @@
 	.log-error-msg {
 		grid-column: 1 / -1;
 		font-size: 0.75rem;
-		color: #ED4245;
+		color: var(--color-danger);
 		padding-top: 0.5rem;
 		border-top: 1px solid var(--border-color, #40444b);
 		margin-top: 0.5rem;
@@ -641,13 +641,13 @@
 	}
 	
 	.toast-success {
-		background: #57F287;
-		color: #000;
+		background: var(--color-success);
+		color: var(--color-text-inverse);
 	}
-	
+
 	.toast-error {
-		background: #ED4245;
-		color: #fff;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
 	
 	.toast-icon {

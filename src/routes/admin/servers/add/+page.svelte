@@ -145,9 +145,9 @@
 	}
 	
 	.alert-error {
-		background: rgba(237, 66, 69, 0.1);
+		background: var(--color-danger-soft);
 		border: 1px solid rgba(237, 66, 69, 0.3);
-		color: #ed4245;
+		color: var(--color-danger);
 	}
 	
 	.alert p {

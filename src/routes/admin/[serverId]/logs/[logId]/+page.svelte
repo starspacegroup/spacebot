@@ -243,13 +243,13 @@
 	}
 	
 	.back-link {
-		color: var(--text-secondary, #888);
+		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
 	
 	.back-link:hover {
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.guild-info {
@@ -266,13 +266,13 @@
 	}
 	
 	.guild-icon-placeholder {
-		background: var(--bg-secondary, #333);
+		background: var(--color-surface-elevated);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		font-size: 1.25rem;
 		font-weight: bold;
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.guild-text h1 {
@@ -281,15 +281,15 @@
 	}
 	
 	.guild-name {
-		color: var(--text-secondary, #888);
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
 	
 	/* Summary Card */
 	.summary-card {
-		background: var(--bg-secondary, #222);
-		border: 1px solid var(--border-color, #333);
-		border-left: 4px solid var(--event-color, #5865F2);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-left: 4px solid var(--event-color, var(--color-primary));
 		border-radius: 8px;
 		padding: 1.5rem;
 		margin-bottom: 2rem;
@@ -314,11 +314,11 @@
 	.event-type {
 		font-size: 1.5rem;
 		font-weight: bold;
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.event-category {
-		color: var(--event-color, #5865F2);
+		color: var(--event-color, var(--color-primary));
 		font-size: 0.875rem;
 		font-weight: 500;
 		text-transform: uppercase;
@@ -332,7 +332,7 @@
 	}
 	
 	.event-time, .event-id {
-		color: var(--text-secondary, #888);
+		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		display: flex;
 		align-items: center;
@@ -340,7 +340,7 @@
 	}
 	
 	.event-description {
-		color: var(--text-secondary, #aaa);
+		color: var(--color-text-secondary);
 		margin: 0.5rem 0 0;
 		font-size: 0.95rem;
 	}
@@ -354,8 +354,8 @@
 	}
 	
 	.detail-card {
-		background: var(--bg-secondary, #222);
-		border: 1px solid var(--border-color, #333);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 1.25rem;
 	}
@@ -363,7 +363,7 @@
 	.detail-card h3 {
 		margin: 0 0 1rem;
 		font-size: 1rem;
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.detail-content {
@@ -380,13 +380,13 @@
 	
 	.detail-row .label {
 		font-size: 0.75rem;
-		color: var(--text-secondary, #888);
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 	}
 	
 	.detail-row .value {
 		font-size: 0.9rem;
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -399,11 +399,11 @@
 	}
 	
 	.channel-name {
-		color: var(--accent-color, #5865F2);
+		color: var(--color-primary);
 	}
 	
 	.no-data {
-		color: var(--text-secondary, #666);
+		color: var(--color-text-muted);
 		font-style: italic;
 		margin: 0;
 		font-size: 0.875rem;
@@ -425,8 +425,8 @@
 	
 	/* Extra Details Card */
 	.extra-details-card {
-		background: var(--bg-secondary, #222);
-		border: 1px solid var(--border-color, #333);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 1.25rem;
 		margin-bottom: 1rem;
@@ -435,12 +435,12 @@
 	.extra-details-card h3 {
 		margin: 0 0 1rem;
 		font-size: 1rem;
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.json-viewer {
-		background: var(--bg-primary, #111);
-		border: 1px solid var(--border-color, #444);
+		background: var(--color-code-bg);
+		border: 1px solid var(--color-border);
 		border-radius: 6px;
 		padding: 1rem;
 		overflow-x: auto;
@@ -450,7 +450,7 @@
 	.json-viewer pre {
 		margin: 0;
 		font-size: 0.8rem;
-		color: var(--text-primary, #ddd);
+		color: var(--color-text);
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
@@ -458,21 +458,21 @@
 	.copy-json-btn {
 		padding: 0.5rem 1rem;
 		font-size: 0.8rem;
-		background: var(--bg-tertiary, #333);
-		border: 1px solid var(--border-color, #444);
-		color: var(--text-primary, #fff);
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		color: var(--color-text);
 		border-radius: 4px;
 		cursor: pointer;
 	}
 	
 	.copy-json-btn:hover {
-		background: var(--bg-hover, #444);
+		background: var(--color-surface-hover);
 	}
 	
 	/* Raw Data Section */
 	.raw-data-section {
-		background: var(--bg-secondary, #222);
-		border: 1px solid var(--border-color, #333);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 1rem 1.25rem;
 	}
@@ -480,12 +480,12 @@
 	.raw-data-section summary {
 		cursor: pointer;
 		font-weight: 500;
-		color: var(--text-secondary, #aaa);
+		color: var(--color-text-secondary);
 		user-select: none;
 	}
 	
 	.raw-data-section summary:hover {
-		color: var(--text-primary, #fff);
+		color: var(--color-text);
 	}
 	
 	.raw-data-section[open] summary {

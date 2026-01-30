@@ -718,10 +718,10 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 1rem;
-		background: rgba(237, 66, 69, 0.15);
-		border: 1px solid #ED4245;
+		background: var(--color-danger-soft);
+		border: 1px solid var(--color-danger);
 		border-radius: 8px;
-		color: #ED4245;
+		color: var(--color-danger);
 		margin-bottom: 1.5rem;
 	}
 	
@@ -819,7 +819,7 @@
 	}
 	
 	.required {
-		color: #ED4245;
+		color: var(--color-danger);
 	}
 	
 	.field-hint {
@@ -873,7 +873,7 @@
 	}
 	
 	.hint-warning {
-		color: #FEE75C;
+		color: var(--color-warning);
 	}
 	
 	/* Options */
@@ -938,7 +938,7 @@
 	}
 	
 	.required-star {
-		color: #ED4245;
+		color: var(--color-danger);
 	}
 	
 	/* Variables help */
@@ -971,7 +971,7 @@
 	}
 	
 	.variables-list code.option-var {
-		background: rgba(87, 242, 135, 0.15);
+		background: var(--color-success-soft);
 		border: 1px solid rgba(87, 242, 135, 0.3);
 	}
 	
@@ -1095,12 +1095,12 @@
 	}
 	
 	.btn-danger {
-		background: #ED4245;
-		color: white;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
 	
 	.btn-danger:hover {
-		background: #c93b3e;
+		background: var(--color-danger-hover);
 	}
 	
 	.btn-sm {

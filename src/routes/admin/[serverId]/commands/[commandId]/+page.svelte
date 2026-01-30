@@ -733,15 +733,15 @@
 	}
 	
 	.error-banner {
-		background: rgba(237, 66, 69, 0.15);
-		border: 1px solid #ED4245;
-		color: #ED4245;
+		background: var(--color-danger-soft);
+		border: 1px solid var(--color-danger);
+		color: var(--color-danger);
 	}
 	
 	.warning-banner {
-		background: rgba(254, 231, 92, 0.15);
-		border: 1px solid #FEE75C;
-		color: #FEE75C;
+		background: var(--color-warning-soft);
+		border: 1px solid var(--color-warning);
+		color: var(--color-warning);
 	}
 	
 	.command-form {
@@ -831,7 +831,7 @@
 	}
 	
 	.required {
-		color: #ED4245;
+		color: var(--color-danger);
 	}
 	
 	.field-hint {
@@ -885,7 +885,7 @@
 	}
 	
 	.hint-warning {
-		color: #FEE75C;
+		color: var(--color-warning);
 	}
 	
 	/* Options */
@@ -950,7 +950,7 @@
 	}
 	
 	.variables-list code.option-var {
-		background: rgba(87, 242, 135, 0.15);
+		background: var(--color-success-soft);
 		border: 1px solid rgba(87, 242, 135, 0.3);
 	}
 	
@@ -1081,12 +1081,12 @@
 	}
 	
 	.btn-danger {
-		background: #ED4245;
-		color: white;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
 	
 	.btn-danger:hover {
-		background: #c93b3e;
+		background: var(--color-danger-hover);
 	}
 	
 	.btn-sm {

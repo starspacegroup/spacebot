@@ -684,10 +684,10 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 1rem;
-		background: rgba(237, 66, 69, 0.15);
-		border: 1px solid #ED4245;
+		background: var(--color-danger-soft);
+		border: 1px solid var(--color-danger);
 		border-radius: 8px;
-		color: #ED4245;
+		color: var(--color-danger);
 		margin-bottom: 1.5rem;
 	}
 	
@@ -754,7 +754,7 @@
 	}
 	
 	.required {
-		color: #ED4245;
+		color: var(--color-danger);
 	}
 	
 	.current-filters {
@@ -1044,9 +1044,9 @@
 	}
 	
 	.btn-icon.btn-danger:hover:not(:disabled) {
-		background: rgba(237, 66, 69, 0.2);
-		border-color: #ED4245;
-		color: #ED4245;
+		background: var(--color-danger-soft);
+		border-color: var(--color-danger);
+		color: var(--color-danger);
 	}
 	
 	.variables-help {
@@ -1143,12 +1143,12 @@
 	}
 	
 	.btn-danger {
-		background: #ED4245;
-		color: white;
+		background: var(--color-danger);
+		color: var(--color-text-inverse);
 	}
 	
 	.btn-danger:hover {
-		background: #c93b3e;
+		background: var(--color-danger-hover);
 	}
 	
 	/* Confirm Dialog */

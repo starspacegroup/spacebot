@@ -258,13 +258,13 @@
 	}
 	
 	.toast-success {
-		background: linear-gradient(135deg, #22c55e, #16a34a);
-		color: white;
+		background: linear-gradient(135deg, var(--color-success), var(--color-success-hover));
+		color: var(--color-text-inverse);
 	}
 	
 	.toast-error {
-		background: linear-gradient(135deg, #ef4444, #dc2626);
-		color: white;
+		background: linear-gradient(135deg, var(--color-danger), var(--color-danger-hover));
+		color: var(--color-text-inverse);
 	}
 	
 	.toast-icon {
