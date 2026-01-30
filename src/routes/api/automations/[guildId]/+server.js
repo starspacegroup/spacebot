@@ -1,0 +1,153 @@
+/**
+ * Automations API endpoint
+ * GET - List automations for a guild
+ * POST - Create a new automation
+ */
+
+import { json } from "@sveltejs/kit";
+import {
+  ACTION_TYPES,
+  createAutomation,
+  FILTER_TYPES,
+  getAutomations,
+  TEMPLATE_VARIABLES,
+} from "$lib/db/automations.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
+import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+
+/** @type {import('./$types').RequestHandler} */
+export async function GET({ params, url, cookies, platform }) {
+  const { guildId } = params;
+  const accessToken = cookies.get("discord_access_token");
+
+  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+  if (!auth.authorized) {
+    return json({ error: auth.error }, { status: 403 });
+  }
+
+  const db = platform?.env?.DB;
+  if (!db) {
+    return json({ error: "Database not available" }, { status: 500 });
+  }
+
+  const limit = parseInt(url.searchParams.get("limit") || "50");
+  const offset = parseInt(url.searchParams.get("offset") || "0");
+  const eventType = url.searchParams.get("eventType") || undefined;
+  const enabled = url.searchParams.get("enabled");
+
+  const { automations, total } = await getAutomations(db, guildId, {
+    limit,
+    offset,
+    eventType,
+    enabled: enabled !== null ? enabled === "true" : undefined,
+  });
+
+  return json({
+    automations,
+    total,
+    pagination: {
+      limit,
+      offset,
+      hasMore: offset + automations.length < total,
+    },
+    // Include metadata for UI
+    meta: {
+      actionTypes: ACTION_TYPES,
+      filterTypes: FILTER_TYPES,
+      eventTypes: EVENT_TYPES,
+      eventCategories: EVENT_CATEGORIES,
+      templateVariables: TEMPLATE_VARIABLES,
+    },
+  });
+}
+
+/** @type {import('./$types').RequestHandler} */
+export async function POST({ params, request, cookies, platform }) {
+  const { guildId } = params;
+  const accessToken = cookies.get("discord_access_token");
+
+  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+  if (!auth.authorized) {
+    return json({ error: auth.error }, { status: 403 });
+  }
+
+  const db = platform?.env?.DB;
+  if (!db) {
+    return json({ error: "Database not available" }, { status: 500 });
+  }
+
+  try {
+    const body = await request.json();
+
+    // Support both trigger_event (single) and trigger_events (array)
+    const allTriggers = body.trigger_events ||
+      (body.trigger_event ? [body.trigger_event] : []);
+
+    // Validate required fields
+    if (
+      !body.name || allTriggers.length === 0 || !body.action_type ||
+      !body.action_config
+    ) {
+      return json({
+        error:
+          "Missing required fields: name, trigger_event (or trigger_events), action_type, action_config",
+      }, { status: 400 });
+    }
+
+    // Validate all trigger_events exist
+    for (const trigger of allTriggers) {
+      if (!EVENT_TYPES[trigger]) {
+        return json({ error: `Invalid trigger_event: ${trigger}` }, {
+          status: 400,
+        });
+      }
+    }
+
+    // Validate action_type exists
+    if (!ACTION_TYPES[body.action_type]) {
+      return json({ error: `Invalid action_type: ${body.action_type}` }, {
+        status: 400,
+      });
+    }
+
+    // Get user ID from Discord
+    let userId = null;
+    try {
+      const userResponse = await fetch(
+        "https://discord.com/api/v10/users/@me",
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (userResponse.ok) {
+        const user = await userResponse.json();
+        userId = user.id;
+      }
+    } catch {
+      // Continue without user ID
+    }
+
+    const result = await createAutomation(db, {
+      guild_id: guildId,
+      name: body.name,
+      description: body.description,
+      enabled: body.enabled !== false,
+      trigger_event: body.trigger_event,
+      trigger_events: body.trigger_events ||
+        (body.trigger_event ? [body.trigger_event] : []),
+      trigger_filters: body.trigger_filters || null,
+      action_type: body.action_type,
+      action_config: body.action_config,
+      created_by: userId,
+    });
+
+    if (!result.success) {
+      return json({ error: result.error }, { status: 500 });
+    }
+
+    return json({ success: true, id: result.id }, { status: 201 });
+  } catch (error) {
+    log.error("Create automation error:", error);
+    return json({ error: "Failed to create automation" }, { status: 500 });
+  }
+}
