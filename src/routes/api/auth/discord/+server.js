@@ -46,7 +46,7 @@ export async function GET({ url, cookies, platform }) {
 	// Store the flow type in the state for the callback
 	const stateData = JSON.stringify({
 		flow,
-		returnTo: url.searchParams.get("return_to") || "/",
+		returnTo: url.searchParams.get("return_to") || "/admin",
 	});
 	cookies.set("oauth_flow", stateData, {
 		path: "/",
