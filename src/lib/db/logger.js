@@ -111,6 +111,7 @@ export async function logEvent(db, event) {
  * @param {string} [options.startDate] - Filter by start date
  * @param {string} [options.endDate] - Filter by end date
  * @param {string} [options.search] - Search in actor/target names
+ * @param {string} [options.sortOrder] - Sort order: 'asc' or 'desc' (default: 'desc')
  * @returns {Promise<{logs: Array, total: number}>}
  */
 export async function getLogs(db, guildId, options = {}) {
@@ -127,6 +128,7 @@ export async function getLogs(db, guildId, options = {}) {
     startDate,
     endDate,
     search,
+    sortOrder = "desc",
   } = options;
 
   let whereClause = "WHERE guild_id = ?";
@@ -164,6 +166,9 @@ export async function getLogs(db, guildId, options = {}) {
     params.push(searchPattern, searchPattern, searchPattern);
   }
 
+  // Validate sortOrder to prevent SQL injection
+  const orderDirection = sortOrder === "asc" ? "ASC" : "DESC";
+
   try {
     // Get total count
     const countResult = await db.prepare(`
@@ -174,7 +179,7 @@ export async function getLogs(db, guildId, options = {}) {
     const logsResult = await db.prepare(`
 			SELECT * FROM event_logs 
 			${whereClause}
-			ORDER BY created_at DESC
+			ORDER BY created_at ${orderDirection}
 			LIMIT ? OFFSET ?
 		`).bind(...params, limit, offset).all();
 

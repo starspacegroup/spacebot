@@ -68,6 +68,7 @@ export async function GET({ params, url, cookies, platform }) {
   const endDate = url.searchParams.get("endDate");
   const search = url.searchParams.get("search");
   const includeStats = url.searchParams.get("stats") === "true";
+  const sortOrder = url.searchParams.get("sortOrder") || "desc";
 
   const db = platform?.env?.DB;
 
@@ -87,6 +88,7 @@ export async function GET({ params, url, cookies, platform }) {
     startDate,
     endDate,
     search,
+    sortOrder,
   });
 
   const response = {

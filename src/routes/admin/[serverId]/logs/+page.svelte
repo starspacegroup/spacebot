@@ -18,9 +18,14 @@
 	let startDate = $state('');
 	let endDate = $state('');
 	
+	// Sorting
+	let sortOrder = $state('desc'); // 'desc' = newest first, 'asc' = oldest first
+	
 	// Pagination
 	let offset = $state(0);
-	let limit = $state(50);
+	let limit = $state(25);
+	let currentPage = $state(1);
+	const pageSizeOptions = [10, 25, 50, 100];
 	
 	// Metadata
 	let categories = $state({});
@@ -41,7 +46,8 @@
 			const params = new URLSearchParams({
 				limit: limit.toString(),
 				offset: offset.toString(),
-				stats: (!append).toString()
+				stats: (!append).toString(),
+				sortOrder: sortOrder
 			});
 			
 			if (selectedCategory) params.set('category', selectedCategory);
@@ -87,7 +93,32 @@
 		fetchLogs(true);
 	}
 	
+	// Pagination computed values
+	let totalPages = $derived(Math.ceil(total / limit) || 1);
+	
+	function goToPage(page) {
+		if (page < 1 || page > totalPages) return;
+		currentPage = page;
+		offset = (page - 1) * limit;
+		fetchLogs();
+	}
+	
+	function changePageSize(newSize) {
+		limit = newSize;
+		currentPage = 1;
+		offset = 0;
+		fetchLogs();
+	}
+	
+	function toggleSortOrder() {
+		sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
+		currentPage = 1;
+		offset = 0;
+		fetchLogs();
+	}
+	
 	function applyFilters() {
+		currentPage = 1;
 		fetchLogs();
 	}
 	
@@ -97,6 +128,9 @@
 		searchQuery = '';
 		startDate = '';
 		endDate = '';
+		sortOrder = 'desc';
+		currentPage = 1;
+		offset = 0;
 		fetchLogs();
 	}
 	
@@ -296,12 +330,59 @@
 			</div>
 		</div>
 		
-		<!-- Results Info -->
+		<!-- Results Info & Pagination Controls -->
 		<div class="results-info">
-			<span>Showing {logs.length} of {total.toLocaleString()} events</span>
-			{#if loading}
-				<span class="loading-indicator">Loading...</span>
-			{/if}
+			<div class="results-left">
+				<span>Showing {logs.length} of {total.toLocaleString()} events</span>
+				{#if loading}
+					<span class="loading-indicator">Loading...</span>
+				{/if}
+			</div>
+			<div class="results-right">
+				<div class="page-size-selector">
+					<label for="pageSize">Per page:</label>
+					<select id="pageSize" bind:value={limit} onchange={() => changePageSize(limit)}>
+						{#each pageSizeOptions as size}
+							<option value={size}>{size}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="pagination-controls">
+					<button 
+						class="pagination-btn" 
+						onclick={() => goToPage(1)} 
+						disabled={currentPage === 1 || loading}
+						title="First page"
+					>
+						⏮
+					</button>
+					<button 
+						class="pagination-btn" 
+						onclick={() => goToPage(currentPage - 1)} 
+						disabled={currentPage === 1 || loading}
+						title="Previous page"
+					>
+						◀
+					</button>
+					<span class="page-info">Page {currentPage} of {totalPages}</span>
+					<button 
+						class="pagination-btn" 
+						onclick={() => goToPage(currentPage + 1)} 
+						disabled={currentPage >= totalPages || loading}
+						title="Next page"
+					>
+						▶
+					</button>
+					<button 
+						class="pagination-btn" 
+						onclick={() => goToPage(totalPages)} 
+						disabled={currentPage >= totalPages || loading}
+						title="Last page"
+					>
+						⏭
+					</button>
+				</div>
+			</div>
 		</div>
 		
 		<!-- Logs Table -->
@@ -320,7 +401,11 @@
 				<table class="logs-table">
 					<thead>
 						<tr>
-							<th>Time</th>
+							<th class="sortable" onclick={toggleSortOrder}>
+								Time 
+								<span class="sort-indicator">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+								<span class="sort-hint">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
+							</th>
 							<th>Event</th>
 							<th>Actor</th>
 							<th>Target</th>
@@ -393,11 +478,44 @@
 				</table>
 			</div>
 			
-			{#if hasMore}
-				<div class="load-more">
-					<button onclick={loadMore} disabled={loading}>
-						{loading ? 'Loading...' : 'Load More'}
-					</button>
+			<!-- Bottom Pagination -->
+			{#if total > limit}
+				<div class="bottom-pagination">
+					<div class="pagination-controls">
+						<button 
+							class="pagination-btn" 
+							onclick={() => goToPage(1)} 
+							disabled={currentPage === 1 || loading}
+							title="First page"
+						>
+							⏮
+						</button>
+						<button 
+							class="pagination-btn" 
+							onclick={() => goToPage(currentPage - 1)} 
+							disabled={currentPage === 1 || loading}
+							title="Previous page"
+						>
+							◀
+						</button>
+						<span class="page-info">Page {currentPage} of {totalPages}</span>
+						<button 
+							class="pagination-btn" 
+							onclick={() => goToPage(currentPage + 1)} 
+							disabled={currentPage >= totalPages || loading}
+							title="Next page"
+						>
+							▶
+						</button>
+						<button 
+							class="pagination-btn" 
+							onclick={() => goToPage(totalPages)} 
+							disabled={currentPage >= totalPages || loading}
+							title="Last page"
+						>
+							⏭
+						</button>
+					</div>
 				</div>
 			{/if}
 		{/if}
@@ -761,29 +879,125 @@
 		background: color-mix(in srgb, var(--accent-color, #5865F2) 80%, white);
 	}
 	
-	/* Load More */
-	.load-more {
+	/* Results Info & Pagination */
+	.results-info {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 1rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem 1rem;
+		background: var(--bg-secondary, #222);
+		border-radius: 8px;
+	}
+	
+	.results-left {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+	
+	.results-right {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+	}
+	
+	.page-size-selector {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.page-size-selector label {
+		font-size: 0.875rem;
+		color: var(--text-secondary, #888);
+	}
+	
+	.page-size-selector select {
+		padding: 0.35rem 0.5rem;
+		background: var(--bg-tertiary, #333);
+		border: 1px solid var(--border-color, #444);
+		color: var(--text-primary, #fff);
+		border-radius: 4px;
+		font-size: 0.875rem;
+		cursor: pointer;
+	}
+	
+	.pagination-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.pagination-btn {
+		padding: 0.35rem 0.65rem;
+		background: var(--bg-tertiary, #333);
+		border: 1px solid var(--border-color, #444);
+		color: var(--text-primary, #fff);
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.875rem;
+		transition: background-color 0.2s;
+	}
+	
+	.pagination-btn:hover:not(:disabled) {
+		background: var(--bg-quaternary, #444);
+	}
+	
+	.pagination-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	
+	.page-info {
+		font-size: 0.875rem;
+		color: var(--text-secondary, #888);
+		padding: 0 0.5rem;
+		min-width: 100px;
 		text-align: center;
+	}
+	
+	.bottom-pagination {
+		display: flex;
+		justify-content: center;
 		padding: 1.5rem;
 	}
 	
-	.load-more button {
-		padding: 0.75rem 2rem;
-		background: var(--bg-secondary, #333);
-		border: 1px solid var(--border-color, #444);
-		color: var(--text-primary, #fff);
-		border-radius: 6px;
+	/* Sortable Table Headers */
+	th.sortable {
 		cursor: pointer;
-		font-size: 1rem;
+		user-select: none;
+		position: relative;
 	}
 	
-	.load-more button:hover {
-		background: var(--bg-tertiary, #444);
+	th.sortable:hover {
+		background: var(--bg-tertiary, #333);
 	}
 	
-	.load-more button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	.sort-indicator {
+		margin-left: 0.35rem;
+		font-weight: bold;
+	}
+	
+	.sort-hint {
+		display: none;
+		position: absolute;
+		top: 100%;
+		left: 0;
+		background: var(--bg-tertiary, #333);
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.75rem;
+		font-weight: normal;
+		white-space: nowrap;
+		z-index: 10;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+	}
+	
+	th.sortable:hover .sort-hint {
+		display: block;
 	}
 	
 	/* Responsive */
@@ -802,6 +1016,19 @@
 		
 		.stats-grid {
 			grid-template-columns: repeat(2, 1fr);
+		}
+		
+		.results-info {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+		
+		.results-right {
+			flex-wrap: wrap;
+		}
+		
+		.page-info {
+			min-width: auto;
 		}
 	}
 </style>
