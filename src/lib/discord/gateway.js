@@ -1489,19 +1489,26 @@ function setupEventHandlers(client, logFn) {
       interaction.isUserContextMenuCommand() ||
       interaction.isMessageContextMenuCommand()
     ) {
+      // For user context menu, targetUser is the right-clicked user
+      // For message context menu, targetMessage.author is the message author
+      const isUserCommand = interaction.isUserContextMenuCommand();
+      const targetUser = isUserCommand
+        ? interaction.targetUser
+        : interaction.targetMessage?.author;
+
       await logFn({
         guild_id: interaction.guild.id,
         event_type: "CONTEXT_MENU_USE",
         event_category: "interaction",
         actor_id: interaction.user.id,
         actor_name: interaction.user.tag,
+        target_id: targetUser?.id || null,
+        target_name: targetUser?.tag || targetUser?.username || null,
         channel_id: interaction.channel?.id,
         channel_name: interaction.channel?.name,
         details: {
           commandName: interaction.commandName,
-          targetType: interaction.isUserContextMenuCommand()
-            ? "user"
-            : "message",
+          targetType: isUserCommand ? "user" : "message",
           targetId: interaction.targetId,
         },
       });

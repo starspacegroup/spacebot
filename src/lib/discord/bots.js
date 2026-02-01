@@ -48,7 +48,16 @@ export const BOT_REGISTRY = {
         name: "bump",
         description: "Bump your server on DISBOARD",
         successPatterns: {
-          embedContains: ["Bump done", "bump done", "BUMP DONE"],
+          // Various patterns for DISBOARD bump success messages
+          embedContains: [
+            "Bump done",
+            "bump done",
+            "BUMP DONE",
+            ":thumbsup:",
+            "👍",
+            "successfully bumped",
+            "Server bumped",
+          ],
         },
         failurePatterns: {
           embedContains: [
@@ -57,6 +66,9 @@ export const BOT_REGISTRY = {
             "You can bump again",
             "wait another",
             "cooldown",
+            "Wait another",
+            "minutes remaining",
+            "hours remaining",
           ],
         },
         cooldownMinutes: 120, // 2 hours

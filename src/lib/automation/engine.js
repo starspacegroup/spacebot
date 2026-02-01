@@ -121,13 +121,22 @@ export function processTemplate(template, context) {
   return template.replace(/\{([^}]+)\}/g, (match, path) => {
     const parts = path.split(".");
     let value = context;
+    let pathExists = true;
 
     for (const part of parts) {
-      if (value === undefined || value === null) return match;
+      if (value === undefined || value === null) {
+        pathExists = false;
+        break;
+      }
       value = value[part];
     }
 
-    return value !== undefined && value !== null ? String(value) : match;
+    // If path exists in context, return the value (even if null/undefined becomes empty string)
+    // If path doesn't exist at all, keep the original template placeholder
+    if (pathExists) {
+      return value !== undefined && value !== null ? String(value) : "";
+    }
+    return match;
   });
 }
 
@@ -264,6 +273,7 @@ export function matchesFilters(event, filters, context = {}) {
         // Filter by the bot that responded to the command
         // For SLASH_COMMAND_USE, target_id is the bot that responded
         if (filterValue && filterValue !== "ALL") {
+          log.debug(`[Filter] target_bot_id: expected=${filterValue}, actual=${event.target_id}`);
           if (event.target_id !== filterValue) return false;
         }
         break;
@@ -272,6 +282,7 @@ export function matchesFilters(event, filters, context = {}) {
         // Filter by the specific command used
         if (filterValue && filterValue !== "ALL" && filterValue !== "") {
           const eventCommandName = event.details?.commandName?.toLowerCase();
+          log.debug(`[Filter] command_name: expected=${filterValue.toLowerCase()}, actual=${eventCommandName}`);
           if (eventCommandName !== filterValue.toLowerCase()) return false;
         }
         break;
@@ -284,6 +295,7 @@ export function matchesFilters(event, filters, context = {}) {
           
           // Get the detected result from bot registry patterns
           const detectedResult = detectCommandResult(botId, commandName, event.details || {});
+          log.debug(`[Filter] command_result: expected=${filterValue}, detected=${detectedResult}, embedTexts=${JSON.stringify(event.details?.embedTexts)}`);
           
           if (filterValue === "success" && detectedResult !== "success") return false;
           if (filterValue === "failure" && detectedResult !== "failure") return false;
