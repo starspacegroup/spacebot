@@ -86,6 +86,7 @@ export const actions = {
     const description = formData.get("description");
     const ephemeral = formData.get("ephemeral") === "true";
     const defer = formData.get("defer") === "true";
+    const contextMenuUser = formData.get("context_menu_user") === "true";
     const actionType = formData.get("action_type");
     const responseType = formData.get("response_type");
     const responseContent = formData.get("response_content");
@@ -100,6 +101,7 @@ export const actions = {
     if (description !== null) updates.description = description;
     updates.ephemeral = ephemeral;
     updates.defer = defer;
+    updates.context_menu_user = contextMenuUser;
     if (actionType) updates.action_type = actionType;
     if (responseType) updates.response_type = responseType;
     updates.response_content = responseContent || null;

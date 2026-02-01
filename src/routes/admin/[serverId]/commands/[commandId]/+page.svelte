@@ -305,6 +305,16 @@
 					</label>
 				</div>
 			</div>
+			
+			<div class="form-row">
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" name="context_menu_user" value="true" checked={command.context_menu_user} />
+						<span>👤 User Context Menu</span>
+					</label>
+					<p class="field-hint">Also show in Apps menu when right-clicking a user</p>
+				</div>
+			</div>
 		</section>
 		
 		<!-- Options Section -->

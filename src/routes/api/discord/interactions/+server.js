@@ -340,6 +340,13 @@ async function handleCustomCommand(command, interaction, db, platform) {
 			options: {}, // Store all option values by name
 		};
 
+		// For user context menu commands, the target user is in data.target_id
+		// data.type === 2 means USER context menu command
+		if (interaction.data?.type === 2 && interaction.data?.target_id) {
+			event.target_id = interaction.data.target_id;
+			event.options.user = interaction.data.target_id;
+		}
+
 		// Add option values to event for action processing
 		if (interaction.data?.options) {
 			for (const opt of interaction.data.options) {

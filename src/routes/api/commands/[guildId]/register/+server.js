@@ -53,10 +53,25 @@ export async function POST({ params, request, cookies, platform }) {
     }
 
     // Convert to Discord format
-    const discordCommands = customCommands.map((cmd) => ({
-      ...toDiscordCommand(cmd),
-      _dbId: cmd.id, // Track database ID for updating
-    }));
+    // toDiscordCommand may return an array if context_menu_user is enabled
+    const discordCommands = [];
+    for (const cmd of customCommands) {
+      const result = toDiscordCommand(cmd);
+      if (Array.isArray(result)) {
+        // Multiple commands (slash + context menu)
+        for (const discordCmd of result) {
+          discordCommands.push({
+            ...discordCmd,
+            _dbId: cmd.id, // Track database ID for updating
+          });
+        }
+      } else {
+        discordCommands.push({
+          ...result,
+          _dbId: cmd.id,
+        });
+      }
+    }
 
     // Include built-in commands
     const allCommands = [

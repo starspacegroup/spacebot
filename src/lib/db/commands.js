@@ -34,6 +34,7 @@ export { ACTION_TYPES, COMMAND_USER_SOURCES };
  * @property {string} response_type - 'message', 'embed', 'action_only'
  * @property {string} response_content - Response message template
  * @property {Object} response_embed - Embed configuration
+ * @property {boolean} context_menu_user - Show in Apps menu when right-clicking a user
  * @property {boolean} registered - Synced to Discord
  * @property {string} discord_command_id - Discord's command ID
  * @property {string} created_by
@@ -85,6 +86,9 @@ export const COMMAND_TEMPLATE_VARIABLES = {
   "user.id": "Command user's Discord ID",
   "user.name": "Command user's username",
   "user.mention": "Mention the command user",
+  "target.id": "Right-clicked user's ID (context menu only)",
+  "target.name": "Right-clicked user's username (context menu only)",
+  "target.mention": "Mention the right-clicked user (context menu only)",
   "channel.id": "Channel ID where command was used",
   "channel.name": "Channel name",
   "channel.mention": "Mention the channel",
@@ -224,8 +228,9 @@ export async function createCommand(db, command) {
         action_type, action_config,
         response_type, response_content, response_embed,
         default_member_permissions, dm_permission,
+        context_menu_user,
         created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       command.guild_id,
       command.name.toLowerCase(),
@@ -241,6 +246,7 @@ export async function createCommand(db, command) {
       command.response_embed ? JSON.stringify(command.response_embed) : null,
       command.default_member_permissions || null,
       command.dm_permission !== undefined ? (command.dm_permission ? 1 : 0) : 0,
+      command.context_menu_user ? 1 : 0,
       command.created_by || null,
     ).run();
 
@@ -354,6 +360,11 @@ export async function updateCommand(db, id, updates) {
       fields.push("dm_permission = ?");
       values.push(updates.dm_permission ? 1 : 0);
       fields.push("registered = 0");
+    }
+    if (updates.context_menu_user !== undefined) {
+      fields.push("context_menu_user = ?");
+      values.push(updates.context_menu_user ? 1 : 0);
+      fields.push("registered = 0"); // Needs re-registration when context menu changes
     }
 
     if (fields.length === 0) {
@@ -663,19 +674,29 @@ function parseCommand(row) {
 }
 
 /**
+ * Discord command types
+ */
+export const COMMAND_TYPES = {
+  CHAT_INPUT: 1, // Slash command
+  USER: 2, // User context menu command (right-click on user)
+  MESSAGE: 3, // Message context menu command (right-click on message)
+};
+
+/**
  * Convert command to Discord API format for registration
+ * Returns an array of commands if context_menu_user is enabled (slash + user context menu)
  * @param {Command} command
- * @returns {Object}
+ * @returns {Object|Object[]}
  */
 export function toDiscordCommand(command) {
-  const discordCommand = {
+  const baseCommand = {
     name: command.name,
     description: command.description || "No description",
-    type: 1, // CHAT_INPUT
+    type: COMMAND_TYPES.CHAT_INPUT,
   };
 
   if (command.options && command.options.length > 0) {
-    discordCommand.options = command.options.map((opt) => ({
+    baseCommand.options = command.options.map((opt) => ({
       name: opt.name,
       description: opt.description || "No description",
       type: opt.type,
@@ -686,13 +707,31 @@ export function toDiscordCommand(command) {
 
   // Add permission restrictions if set
   if (command.default_member_permissions !== null && command.default_member_permissions !== undefined) {
-    discordCommand.default_member_permissions = command.default_member_permissions;
+    baseCommand.default_member_permissions = command.default_member_permissions;
   }
 
   // DM permission (false by default for guild commands)
-  discordCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
+  baseCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
 
-  return discordCommand;
+  // If context_menu_user is enabled, also create a USER type context menu command
+  if (command.context_menu_user === 1 || command.context_menu_user === true) {
+    const userContextCommand = {
+      name: command.name,
+      type: COMMAND_TYPES.USER, // USER context menu command
+    };
+    
+    // Add permission restrictions if set
+    if (command.default_member_permissions !== null && command.default_member_permissions !== undefined) {
+      userContextCommand.default_member_permissions = command.default_member_permissions;
+    }
+    
+    userContextCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
+    
+    // Return both commands
+    return [baseCommand, userContextCommand];
+  }
+
+  return baseCommand;
 }
 
 /**
@@ -718,6 +757,24 @@ export function buildCommandContext(interaction, guildInfo = {}) {
     },
     option: {},
   };
+
+  // For user context menu commands, add target user info
+  // data.type === 2 means USER context menu command
+  if (interaction.data?.type === 2 && interaction.data?.target_id) {
+    const targetId = interaction.data.target_id;
+    // Get resolved user data if available
+    const resolvedUser = interaction.data.resolved?.users?.[targetId];
+    
+    context.target = {
+      id: targetId,
+      name: resolvedUser?.username || "Unknown",
+      mention: `<@${targetId}>`,
+    };
+    
+    // Also add as an option called "user" for consistency with actions
+    context.option.user = targetId;
+    context.option.user_mention = `<@${targetId}>`;
+  }
 
   // Add option values to context
   if (interaction.data?.options) {
