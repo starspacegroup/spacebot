@@ -7,7 +7,7 @@ import {
   getLogStats,
   log,
 } from "$lib/db/logger.js";
-import { getBotGuildIds } from "$lib/discord/guilds.js";
+import { getBotGuildIds, hasFullAdminPermission } from "$lib/discord/guilds.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -92,6 +92,9 @@ export async function load({ cookies, platform, parent, params }) {
   // Get guild info
   const guild = adminGuilds.find((g) => g.id === serverId);
 
+  // Check if user has full administrator permission (not just MANAGE_GUILD)
+  const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
+
   // Fetch recent logs for the selected guild
   let recentLogs = [];
   let logStats = null;
@@ -125,6 +128,7 @@ export async function load({ cookies, platform, parent, params }) {
   return {
     isAdmin,
     isSuperAdmin,
+    hasFullAdminAccess,
     uptime,
     latency: Math.floor(Math.random() * 50) + 10, // Simulated latency
     stats: {

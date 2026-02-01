@@ -380,6 +380,19 @@ export function filterAdminGuilds(guilds) {
 }
 
 /**
+ * Check if user has full Administrator permission for a guild
+ * @param {object} guild - Guild object with permissions
+ * @returns {boolean} - True if user has ADMINISTRATOR permission or is owner
+ */
+export function hasFullAdminPermission(guild) {
+  if (!guild) return false;
+  if (guild.owner) return true;
+  
+  const permissions = BigInt(guild.permissions || 0);
+  return (permissions & ADMINISTRATOR) !== 0n;
+}
+
+/**
  * Invalidate all guild caches (call after bot install/uninstall)
  * @param {import('@sveltejs/kit').Cookies} cookies - SvelteKit cookies
  */

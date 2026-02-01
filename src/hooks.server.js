@@ -82,7 +82,7 @@ export async function handle({ event, resolve }) {
       setDevAuthCookies(cookies);
       const returnTo = url.searchParams.get("return_to") || "/admin";
       // Use SvelteKit's redirect to ensure cookies are properly sent
-      redirect(302, returnTo);
+      throw redirect(302, returnTo);
     }
 
     // Special /dev-logout route to clear dev auth
@@ -96,7 +96,7 @@ export async function handle({ event, resolve }) {
       cookies.delete("discord_access_token", cookieOptions);
 
       log.debug("[DevAuth] Cleared dev auth cookies");
-      redirect(302, "/");
+      throw redirect(302, "/");
     }
 
     // Allow ?dev_auth=true query param to auto-login
@@ -107,7 +107,7 @@ export async function handle({ event, resolve }) {
         // Remove the dev_auth param and redirect
         const cleanUrl = new URL(url);
         cleanUrl.searchParams.delete("dev_auth");
-        redirect(302, cleanUrl.pathname + cleanUrl.search);
+        throw redirect(302, cleanUrl.pathname + cleanUrl.search);
       }
     }
   }
