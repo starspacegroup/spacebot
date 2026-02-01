@@ -665,6 +665,11 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const changes = {};
 
+    // Check if member accepted server rules (membership screening)
+    if (oldMember.pending === true && newMember.pending === false) {
+      changes.rules_accepted = true;
+    }
+
     if (oldMember.nickname !== newMember.nickname) {
       changes.nickname = { old: oldMember.nickname, new: newMember.nickname };
     }

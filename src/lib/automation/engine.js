@@ -301,6 +301,17 @@ export function matchesFilters(event, filters, context = {}) {
           if (filterValue === "failure" && detectedResult !== "failure") return false;
         }
         break;
+
+      case "member_update_type":
+        // Filter MEMBER_UPDATE events by what changed
+        if (filterValue && filterValue !== "any") {
+          if (filterValue === "rules_accepted") {
+            if (event.details?.rules_accepted !== true) return false;
+          } else if (filterValue === "nickname_changed") {
+            if (!event.details?.nickname) return false;
+          }
+        }
+        break;
     }
   }
 

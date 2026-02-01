@@ -391,6 +391,18 @@ export const FILTER_TYPES = {
     description: "Bot response embed must contain this text",
     applicableEvents: ["SLASH_COMMAND_USE", "MESSAGE_CREATE"],
   },
+  member_update_type: {
+    type: "select",
+    label: "Update Type",
+    description: "Filter by what changed on the member",
+    options: [
+      { value: "any", label: "Any Update" },
+      { value: "rules_accepted", label: "✅ Accepted Server Rules" },
+      { value: "nickname_changed", label: "📝 Nickname Changed" },
+    ],
+    default: "any",
+    applicableEvents: ["MEMBER_UPDATE"],
+  },
 };
 
 /**
