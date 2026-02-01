@@ -28,7 +28,7 @@
 				/>
 			{/if}
 			{#if data.isLoggedIn && data.user}
-				<UserMenu user={data.user} />
+				<UserMenu user={data.user} selectedGuildId={selectedGuildId} />
 			{:else}
 				<a href="/login" class="nav-btn">Login</a>
 			{/if}

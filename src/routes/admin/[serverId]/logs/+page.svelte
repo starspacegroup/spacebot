@@ -216,7 +216,7 @@
 <div class="logs-container">
 	<header class="logs-header">
 		<div class="header-left">
-			<a href="/admin" class="back-link">← Back to Admin</a>
+			<a href="/admin/{data.serverId}" class="back-link">← Back to Admin</a>
 			<div class="guild-info">
 				{#if data.guild?.icon}
 					<img 

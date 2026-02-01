@@ -45,11 +45,8 @@ export async function load({ cookies, platform, parent }) {
 	// User has admin access if they're a superadmin OR have at least one admin guild
 	const isAdmin = isSuperAdmin || guildsWithBot.length > 0;
 
-	// If user has a selected guild, redirect to that server's dashboard
-	// This handles the case where user lands on /admin but already has a server cookie
-	if (parentData.selectedGuildId) {
-		throw redirect(302, `/admin/${parentData.selectedGuildId}`);
-	}
+	// Note: Redirect to default server is handled by +layout.server.js
+	// to avoid duplicate/conflicting redirects
 
 	return {
 		isAdmin,

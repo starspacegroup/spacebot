@@ -69,6 +69,13 @@ export async function load({ cookies, platform, url }) {
   let adminGuilds = [];
   let selectedGuildId = null;
 
+  // Always read the last viewed guild from cookie for non-admin pages
+  // This allows links like "Go to Dashboard" to go directly to the right server
+  const lastViewedGuildId = cookies.get("last_viewed_guild");
+  if (!isAdminPage && lastViewedGuildId) {
+    selectedGuildId = lastViewedGuildId;
+  }
+
   log.debug("[Layout] isAdminPage:", isAdminPage, "pathname:", url.pathname);
 
   if (isAdminPage) {
@@ -155,6 +162,9 @@ export async function load({ cookies, platform, url }) {
         }
       });
 
+      // Sort alphabetically by name for consistent ordering
+      adminGuilds.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
       log.debug(
         "[Layout] SUPERADMIN - Final combined guilds:",
         adminGuilds.map((g) => ({
@@ -174,6 +184,9 @@ export async function load({ cookies, platform, url }) {
       adminGuilds = userAdminGuilds
         .filter((guild) => botGuildIds.has(guild.id))
         .map((guild) => ({ ...guild, botIsInServer: true }));
+      // Sort alphabetically by name for consistent ordering
+      adminGuilds.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
       log.debug(
         "[Layout] Intersection (admin guilds with bot):",
         adminGuilds.map((g) => g.name),
@@ -232,10 +245,8 @@ export async function load({ cookies, platform, url }) {
       throw redirect(302, `/admin/${selectedGuildId}`);
     }
 
-    // Store the selected guild in a cookie for next visit (only if bot is in it)
-    if (
-      selectedGuildId && guildsWithBot.some((g) => g.id === selectedGuildId)
-    ) {
+    // Store the selected guild in a cookie for next visit
+    if (selectedGuildId) {
       cookies.set("last_viewed_guild", selectedGuildId, {
         path: "/",
         httpOnly: false,

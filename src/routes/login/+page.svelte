@@ -1,6 +1,9 @@
 <script>
 	let { data } = $props();
 	
+	// Build admin URL - use guild-specific if available
+	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
+	
 	// Get error from URL if present
 	const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const error = urlParams?.get('error');
@@ -31,7 +34,7 @@
 			</svg>
 			<p class="logged-in-message">You're already signed in!</p>
 			{#if data.isAdmin}
-				<a href="/admin" class="dashboard-btn">Go to Dashboard</a>
+				<a href={adminUrl} class="dashboard-btn">Go to Dashboard</a>
 			{:else}
 				<a href="/" class="dashboard-btn">Go to Home</a>
 			{/if}

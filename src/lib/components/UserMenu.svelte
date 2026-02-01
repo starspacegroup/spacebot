@@ -1,6 +1,9 @@
 <script>
-	let { user } = $props();
+	let { user, selectedGuildId = null } = $props();
 	let isOpen = $state(false);
+	
+	// Build admin URL - use guild-specific if available
+	const adminUrl = $derived(selectedGuildId ? `/admin/${selectedGuildId}` : '/admin');
 	
 	/**
 	 * Get Discord avatar URL
@@ -76,7 +79,7 @@
 			
 			<div class="dropdown-divider"></div>
 			
-			<a href="/admin" class="dropdown-item" role="menuitem" onclick={closeMenu}>
+			<a href={adminUrl} class="dropdown-item" role="menuitem" onclick={closeMenu}>
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
 					<polyline points="9 22 9 12 15 12 15 22"/>

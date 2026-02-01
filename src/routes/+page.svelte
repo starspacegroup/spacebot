@@ -1,5 +1,8 @@
 <script>
 	let { data } = $props();
+	
+	// Build admin URL - use guild-specific if available
+	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 </script>
 
 <svelte:head>
@@ -18,7 +21,7 @@
 			</p>
 			<div class="cta-buttons">
 				{#if data.isLoggedIn}
-					<a href="/admin" class="btn btn-primary">Go to Dashboard</a>
+					<a href={adminUrl} class="btn btn-primary">Go to Dashboard</a>
 				{:else}
 					<a href="/login" class="btn btn-primary">Get Started</a>
 				{/if}
@@ -115,7 +118,7 @@
 		<h2>Ready to supercharge your Discord server?</h2>
 		<p>Get started in minutes with SpaceBot's intuitive dashboard.</p>
 		{#if data.isLoggedIn}
-			<a href="/admin" class="btn btn-primary btn-large">Go to Dashboard</a>
+			<a href={adminUrl} class="btn btn-primary btn-large">Go to Dashboard</a>
 		{:else}
 			<a href="/login" class="btn btn-primary btn-large">Login with Discord</a>
 		{/if}
