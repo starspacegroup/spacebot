@@ -1,5 +1,6 @@
 <script>
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import UserSelector from '$lib/components/UserSelector.svelte';
@@ -9,6 +10,9 @@
 	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
+	
+	// Form submission state
+	let isSubmitting = $state(false);
 	
 	let selectedEventTypes = $state([]);
 	let actions = $state([]);
@@ -261,7 +265,20 @@
 		</div>
 	{/if}
 	
-	<form method="POST" use:enhance class="automation-form">
+	<form method="POST" use:enhance={() => {
+		isSubmitting = true;
+		return async ({ result }) => {
+			isSubmitting = false;
+			if (result.type === 'redirect') {
+				await goto(result.location, { invalidateAll: true });
+			} else if (result.type === 'success' && result.data?.id) {
+				// Navigate to the new automation's edit page
+				await goto(`/admin/${selectedGuildId}/automations/${result.data.id}`, { invalidateAll: true });
+			} else if (result.type === 'failure') {
+				form = result.data;
+			}
+		};
+	}} class="automation-form">
 		<input type="hidden" name="guild_id" value={selectedGuildId}>
 		
 		<!-- Basic Info Section -->

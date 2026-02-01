@@ -1,5 +1,6 @@
 <script>
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import UserSelector from '$lib/components/UserSelector.svelte';
@@ -9,6 +10,9 @@
 	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
+	
+	// Form submission state
+	let isSubmitting = $state(false);
 	
 	// Initialize from existing automation data - support multiple actions
 	function parseExistingActions() {
@@ -315,7 +319,19 @@
 		</div>
 	{/if}
 	
-	<form method="POST" action="?/update" use:enhance class="automation-form">
+	<form method="POST" action="?/update" use:enhance={() => {
+		isSubmitting = true;
+		return async ({ result }) => {
+			isSubmitting = false;
+			if (result.type === 'redirect') {
+				// Handle redirect explicitly to prevent page freeze
+				await goto(result.location, { invalidateAll: true });
+			} else if (result.type === 'failure') {
+				// Let SvelteKit handle the error display
+				form = result.data;
+			}
+		};
+	}} class="automation-form">
 		<input type="hidden" name="guild_id" value={selectedGuildId}>
 		
 		<!-- Basic Info Section -->
@@ -753,10 +769,21 @@
 					<button class="btn btn-secondary" onclick={() => showDeleteConfirm = false}>
 						Cancel
 					</button>
-					<form method="POST" action="?/delete" use:enhance>
+					<form method="POST" action="?/delete" use:enhance={() => {
+						isSubmitting = true;
+						return async ({ result }) => {
+							isSubmitting = false;
+							if (result.type === 'redirect') {
+								await goto(result.location, { invalidateAll: true });
+							} else if (result.type === 'failure') {
+								form = result.data;
+								showDeleteConfirm = false;
+							}
+						};
+					}}>
 						<input type="hidden" name="guild_id" value={selectedGuildId}>
-						<button type="submit" class="btn btn-danger">
-							Delete Automation
+						<button type="submit" class="btn btn-danger" disabled={isSubmitting}>
+							{isSubmitting ? 'Deleting...' : 'Delete Automation'}
 						</button>
 					</form>
 				</div>

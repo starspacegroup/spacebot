@@ -1,13 +1,14 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	
 	let { data, form } = $props();
 	
 	let showLogs = $state(false);
 	let showToast = $state(true);
+	let processingId = $state(null);
 	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
@@ -169,7 +170,17 @@
 									<div class="trigger-count">+{triggers.length - 1} more</div>
 								{/if}
 							</div>
-							<form method="POST" action="?/toggle" use:enhance>
+							<form method="POST" action="?/toggle" use:enhance={() => {
+								processingId = automation.id;
+								return async ({ result, update }) => {
+									processingId = null;
+									if (result.type === 'success') {
+										await invalidateAll();
+									} else if (result.type === 'failure') {
+										form = result.data;
+									}
+								};
+							}}>
 								<input type="hidden" name="id" value={automation.id}>
 								<input type="hidden" name="guild_id" value={selectedGuildId}>
 								<input type="hidden" name="enabled" value={!automation.enabled}>
@@ -177,6 +188,7 @@
 									type="submit" 
 									class="toggle-btn {automation.enabled ? 'enabled' : ''}"
 									title={automation.enabled ? 'Disable' : 'Enable'}
+									disabled={processingId === automation.id}
 								>
 									<span class="toggle-track">
 										<span class="toggle-thumb"></span>
@@ -219,11 +231,21 @@
 								<a href="/admin/{selectedGuildId}/automations/{automation.id}" class="btn btn-sm btn-secondary">
 									✏️ Edit
 								</a>
-								<form method="POST" action="?/delete" use:enhance onsubmit={(e) => { if (!confirm('Delete this automation?')) e.preventDefault(); }}>
+								<form method="POST" action="?/delete" use:enhance={() => {
+									processingId = automation.id;
+									return async ({ result }) => {
+										processingId = null;
+										if (result.type === 'success') {
+											await invalidateAll();
+										} else if (result.type === 'failure') {
+											form = result.data;
+										}
+									};
+								}} onsubmit={(e) => { if (!confirm('Delete this automation?')) e.preventDefault(); }}>
 									<input type="hidden" name="id" value={automation.id}>
 									<input type="hidden" name="guild_id" value={selectedGuildId}>
-									<button type="submit" class="btn btn-sm btn-danger">
-										🗑️ Delete
+									<button type="submit" class="btn btn-sm btn-danger" disabled={processingId === automation.id}>
+										{processingId === automation.id ? '...' : '🗑️ Delete'}
 									</button>
 								</form>
 							</div>

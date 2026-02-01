@@ -1,7 +1,7 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	
 	let { data, form } = $props();
@@ -9,6 +9,7 @@
 	let showLogs = $state(false);
 	let registering = $state(false);
 	let showToast = $state(true);
+	let processingId = $state(null);
 	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
@@ -180,7 +181,17 @@
 									<span class="pending-badge" title="Needs sync">⚠️</span>
 								{/if}
 							</div>
-							<form method="POST" action="?/toggle" use:enhance>
+							<form method="POST" action="?/toggle" use:enhance={() => {
+								processingId = command.id;
+								return async ({ result }) => {
+									processingId = null;
+									if (result.type === 'success') {
+										await invalidateAll();
+									} else if (result.type === 'failure') {
+										form = result.data;
+									}
+								};
+							}}>
 								<input type="hidden" name="id" value={command.id}>
 								<input type="hidden" name="guild_id" value={selectedGuildId}>
 								<input type="hidden" name="enabled" value={!command.enabled}>
@@ -188,6 +199,7 @@
 									type="submit" 
 									class="toggle-btn {command.enabled ? 'enabled' : ''}"
 									title={command.enabled ? 'Disable' : 'Enable'}
+									disabled={processingId === command.id}
 								>
 									<span class="toggle-track">
 										<span class="toggle-thumb"></span>
@@ -236,11 +248,21 @@
 								<a href="/admin/{selectedGuildId}/commands/{command.id}" class="btn btn-sm btn-secondary">
 									✏️ Edit
 								</a>
-								<form method="POST" action="?/delete" use:enhance onsubmit={(e) => { if (!confirm('Delete this command?')) e.preventDefault(); }}>
+								<form method="POST" action="?/delete" use:enhance={() => {
+									processingId = command.id;
+									return async ({ result }) => {
+										processingId = null;
+										if (result.type === 'success') {
+											await invalidateAll();
+										} else if (result.type === 'failure') {
+											form = result.data;
+										}
+									};
+								}} onsubmit={(e) => { if (!confirm('Delete this command?')) e.preventDefault(); }}>
 									<input type="hidden" name="id" value={command.id}>
 									<input type="hidden" name="guild_id" value={selectedGuildId}>
-									<button type="submit" class="btn btn-sm btn-danger">
-										🗑️ Delete
+									<button type="submit" class="btn btn-sm btn-danger" disabled={processingId === command.id}>
+										{processingId === command.id ? '...' : '🗑️ Delete'}
 									</button>
 								</form>
 							</div>

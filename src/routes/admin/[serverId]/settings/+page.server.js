@@ -1,5 +1,6 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
+import { getGuildSettings, saveGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 
 /**
@@ -57,15 +58,20 @@ export async function load({ cookies, platform, parent, params }) {
     throw redirect(302, `/admin/${serverId}`);
   }
 
-  // TODO: Load server settings from database
+  // Load server settings from database
+  const db = platform?.env?.DB;
+  const dbSettings = db ? await getGuildSettings(db, serverId) : DEFAULT_SETTINGS;
+
+  // Map database settings to UI format
   const settings = {
-    prefix: "!",
-    loggingChannelId: null,
-    loggingChannelName: null,
-    welcomeEnabled: false,
-    welcomeChannelId: null,
-    welcomeChannelName: null,
-    welcomeMessage: "Welcome {user} to {server}!",
+    prefix: dbSettings.prefix || "!",
+    loggingChannelId: dbSettings.log_channel_id || null,
+    loggingChannelName: null, // Would need to fetch from Discord API
+    moderationRoleId: dbSettings.moderation_role_id || null,
+    welcomeEnabled: dbSettings.welcome_enabled || false,
+    welcomeChannelId: dbSettings.welcome_channel_id || null,
+    welcomeChannelName: null, // Would need to fetch from Discord API
+    welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
   };
 
   // Permission settings - who can access what in the web interface
@@ -152,11 +158,29 @@ export const actions = {
       welcomeChannelId,
     });
 
-    // TODO: Actually save to database
-    // For now, just return success
-    return {
-      success: true,
-      message: "Settings updated successfully!",
-    };
+    // Save settings to database
+    const db = platform?.env?.DB;
+    if (!db) {
+      return fail(500, { success: false, message: "Database not available" });
+    }
+
+    try {
+      await saveGuildSettings(db, serverId, {
+        prefix: prefix || "!",
+        log_channel_id: loggingChannelId || null,
+        moderation_role_id: moderationRoleId || null,
+        welcome_enabled: welcomeEnabled,
+        welcome_channel_id: welcomeChannelId || null,
+        welcome_message: welcomeMessage || "Welcome {user} to {server}!",
+      });
+
+      return {
+        success: true,
+        message: "Settings updated successfully!",
+      };
+    } catch (error) {
+      log.error(`[Settings] Failed to save settings for server ${serverId}:`, error);
+      return fail(500, { success: false, message: "Failed to save settings" });
+    }
   },
 };
