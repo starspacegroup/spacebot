@@ -898,18 +898,104 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.MessageUpdate, async (oldMessage, newMessage) => {
     if (!newMessage.guild) return;
 
+    // Check if this is a slash command response that now has embeds
+    // Many bots (like DISBOARD) use deferred responses - they send an initial message
+    // then edit it to add the actual result embed
+    if (
+      (newMessage.type === MessageType.ChatInputCommand ||
+        newMessage.type === MessageType.ContextMenuCommand) &&
+      newMessage.embeds.length > 0 &&
+      (!oldMessage.embeds || oldMessage.embeds.length === 0)
+    ) {
+      // This is a slash command response that just got its embed added
+      const interaction = newMessage.interaction || newMessage.interactionMetadata;
+      
+      if (interaction) {
+        const userId = interaction.user?.id || interaction.userId;
+        const userName = interaction.user?.tag || interaction.user?.username || "Unknown User";
+        const cmdName = interaction.commandName || interaction.name || "unknown";
+
+        // Extract embed texts for success/failure detection
+        const embedTexts = newMessage.embeds.map((embed) => {
+          const parts = [];
+          if (embed.title) parts.push(embed.title);
+          if (embed.description) parts.push(embed.description);
+          if (embed.footer?.text) parts.push(embed.footer.text);
+          embed.fields?.forEach((f) => {
+            parts.push(f.name);
+            parts.push(f.value);
+          });
+          return parts.join(" ");
+        });
+
+        // First mentioned non-bot user
+        const mentionedUsers = newMessage.mentions.users.map((u) => ({
+          id: u.id,
+          tag: u.tag,
+          bot: u.bot,
+        }));
+        const firstMentionedHuman = mentionedUsers.find((u) => !u.bot);
+
+        log.debug(`[DEBUG] Slash command response updated with embed: ${cmdName} by ${userName}`);
+        log.debug(`[DEBUG] Embed texts: ${JSON.stringify(embedTexts)}`);
+
+        // Log as SLASH_COMMAND_RESPONSE - this is the actual result of the command
+        await logFn({
+          guild_id: newMessage.guild.id,
+          event_type: "SLASH_COMMAND_RESPONSE",
+          event_category: "interaction",
+          actor_id: userId,
+          actor_name: userName,
+          target_id: newMessage.author.id, // The bot that responded
+          target_name: newMessage.author.tag || newMessage.author.username,
+          channel_id: newMessage.channel.id,
+          channel_name: newMessage.channel.name,
+          details: {
+            commandName: cmdName,
+            commandType: newMessage.type === MessageType.ChatInputCommand ? "slash" : "context_menu",
+            botId: newMessage.author.id,
+            botName: newMessage.author.tag || newMessage.author.username,
+            messageId: newMessage.id,
+            isExternalBot: newMessage.author.id !== newMessage.client.user?.id,
+            content: newMessage.content?.substring(0, 500) || "",
+            embedTexts: embedTexts,
+            hasEmbeds: true,
+            embedCount: newMessage.embeds.length,
+            mentionedUserId: firstMentionedHuman?.id || null,
+            mentionedUserTag: firstMentionedHuman?.tag || null,
+          },
+        });
+      }
+    }
+
+    // Extract embed texts for regular message update logging
+    const updateEmbedTexts = newMessage.embeds.map((embed) => {
+      const parts = [];
+      if (embed.title) parts.push(embed.title);
+      if (embed.description) parts.push(embed.description);
+      if (embed.footer?.text) parts.push(embed.footer.text);
+      embed.fields?.forEach((f) => {
+        parts.push(f.name);
+        parts.push(f.value);
+      });
+      return parts.join(" ");
+    });
+
     await logFn({
-      guild_id: nwMessage.guild.id,
+      guild_id: newMessage.guild.id,
       event_type: "MESSAGE_UPDATE",
       event_category: "message",
-      actor_id: newMessage.autho?.id,
-      actor_name: newMessage.author?.tg,
+      actor_id: newMessage.author?.id,
+      actor_name: newMessage.author?.tag,
       channel_id: newMessage.channel.id,
-      channel_name: newMessage.channel.nme,
+      channel_name: newMessage.channel.name,
       details: {
-        messageI: newMessage.id,
-        oldContentLength: oldMessge.content?.length,
+        messageId: newMessage.id,
+        oldContentLength: oldMessage.content?.length,
         newContentLength: newMessage.content?.length,
+        hasEmbeds: newMessage.embeds.length > 0,
+        embedCount: newMessage.embeds.length,
+        embedTexts: updateEmbedTexts,
         isBot: newMessage.author?.bot || false,
       },
     });

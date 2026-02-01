@@ -599,6 +599,11 @@ export const EVENT_TYPES = {
     description: "External bot slash command (e.g., /bump, /ban)",
     hint: "Use Bot Command filters to detect specific bots and success/failure",
   },
+  SLASH_COMMAND_RESPONSE: {
+    category: "interaction",
+    description: "External bot command response with result (embed loaded)",
+    hint: "Triggers when bot edits its response to add the result embed - best for detecting success/failure",
+  },
   BUTTON_CLICK: { category: "interaction", description: "Button was clicked" },
   MODAL_SUBMIT: { category: "interaction", description: "Modal was submitted" },
   SELECT_MENU_USE: {
