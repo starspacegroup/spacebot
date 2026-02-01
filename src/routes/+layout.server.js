@@ -13,6 +13,37 @@ log.debug(
   !!process.env.DISCORD_BOT_TOKEN,
 );
 
+// Timeout for guild fetching to prevent layout hangs (10 seconds)
+const GUILD_FETCH_TIMEOUT = 10000;
+
+/**
+ * Wrap a promise with a timeout to prevent hanging
+ * @param {Promise<T>} promise - The promise to wrap
+ * @param {number} ms - Timeout in milliseconds
+ * @param {T} fallback - Fallback value if timeout occurs
+ * @returns {Promise<T>}
+ * @template T
+ */
+async function withTimeout(promise, ms, fallback) {
+  let timeoutId;
+  const timeoutPromise = new Promise((resolve) => {
+    timeoutId = setTimeout(() => {
+      log.warn(`[Layout] Request timed out after ${ms}ms, using fallback`);
+      resolve(fallback);
+    }, ms);
+  });
+  
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    log.error("[Layout] Promise error:", error);
+    return fallback;
+  }
+}
+
 // Check if dev auth bypass is enabled
 const isDev = process.env.NODE_ENV !== "production";
 const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
@@ -122,13 +153,18 @@ export async function load({ cookies, platform, url }) {
       !!botToken,
     );
 
-    // Fetch user's guilds and bot guilds in parallel (with caching)
-    const [allUserGuilds, botGuildIds, allBotGuilds] = await Promise.all([
-      getUserGuilds(accessToken, cookies),
-      getBotGuildIds(botToken, cookies),
-      // Only fetch bot guild details for superadmins
-      isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
-    ]);
+    // Fetch user's guilds and bot guilds in parallel (with caching and timeout)
+    // Use timeout wrapper to prevent layout from hanging if Discord API is slow
+    const [allUserGuilds, botGuildIds, allBotGuilds] = await withTimeout(
+      Promise.all([
+        getUserGuilds(accessToken, cookies),
+        getBotGuildIds(botToken, cookies),
+        // Only fetch bot guild details for superadmins
+        isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
+      ]),
+      GUILD_FETCH_TIMEOUT,
+      [[], new Set(), []] // Fallback: empty arrays/set if timeout
+    );
 
     log.debug(
       "[Layout] User guilds:",

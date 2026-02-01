@@ -442,6 +442,14 @@ function setCachedGuilds(cookies, key, data) {
     timestamp: Date.now(),
   });
 
+  // Skip caching if data is too large (cookies have ~4KB limit per cookie)
+  // This prevents request/response bloat over tunnels
+  const MAX_COOKIE_SIZE = 3500; // Leave room for cookie metadata
+  if (cacheValue.length > MAX_COOKIE_SIZE) {
+    log.warn(`[Guilds Cache] Data too large for cookie cache (${cacheValue.length} bytes), skipping cache for ${key}`);
+    return;
+  }
+
   // Only use secure cookies in production
   const isProduction = typeof process !== "undefined" &&
     process.env?.NODE_ENV === "production";

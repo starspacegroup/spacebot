@@ -7,11 +7,11 @@ export default defineConfig({
 		port: 4269,
 		host: true, // Listen on all interfaces for tunnel access
 		allowedHosts: ["spacebot-dev.starspace.group", "localhost"],
-		// Improve HMR over tunnel
-		hmr: {
-			clientPort: 443, // Tunnel uses HTTPS
-			protocol: 'wss',
-			host: 'spacebot-dev.starspace.group',
-		},
+		// Disable HMR completely to prevent WebSocket connection issues over tunnels
+		// This prevents the site from hanging when the HMR WebSocket fails to connect
+		// For local development, you can set VITE_HMR=true to re-enable HMR
+		hmr: process.env.VITE_HMR === 'true' ? {
+			timeout: 5000,
+		} : false,
 	},
 });
