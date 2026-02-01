@@ -5,7 +5,13 @@ A powerful, self-hosted Discord bot platform built with **SvelteKit 2**
 build event-driven automations, and monitor all Discord activity through a
 beautiful admin dashboard.
 
-![SpaceBot Dashboard](docs/screenshots/server-admin.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/server-admin-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/server-admin-light.png">
+    <img alt="SpaceBot Dashboard" src="docs/screenshots/server-admin-dark.png" width="800">
+  </picture>
+</p>
 
 ## ✨ Features
 
@@ -55,11 +61,20 @@ Secure Discord OAuth2 authentication for accessing the admin dashboard.
 </details>
 
 <details>
-<summary>📊 Server Admin</summary>
+<summary>📊 Server Admin (Dark Mode)</summary>
 
-![Server Admin](docs/screenshots/server-admin.png)
+![Server Admin Dark](docs/screenshots/server-admin-dark.png)
 
 View event logs, statistics, and quick access to automations and commands.
+
+</details>
+
+<details>
+<summary>📊 Server Admin (Light Mode)</summary>
+
+![Server Admin Light](docs/screenshots/server-admin-light.png)
+
+The dashboard also supports a clean light theme.
 
 </details>
 

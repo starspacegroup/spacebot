@@ -29,7 +29,8 @@
 			</div>
 		</div>
 		<div class="hero-screenshot">
-			<img src="/server-admin.png" alt="SpaceBot Admin Dashboard" />
+			<img src="/server-admin-light.png" alt="SpaceBot Admin Dashboard" class="screenshot-light" />
+			<img src="/server-admin-dark.png" alt="SpaceBot Admin Dashboard" class="screenshot-dark" />
 		</div>
 	</section>
 
@@ -181,6 +182,20 @@
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-lg);
 		border: 1px solid var(--color-border);
+	}
+
+	/* Theme-based screenshot visibility */
+	.screenshot-dark {
+		display: none;
+	}
+	.screenshot-light {
+		display: block;
+	}
+	:global([data-theme="dark"]) .screenshot-dark {
+		display: block;
+	}
+	:global([data-theme="dark"]) .screenshot-light {
+		display: none;
 	}
 
 	.btn {
