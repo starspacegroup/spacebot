@@ -2,8 +2,24 @@ import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { invalidateGuildCache } from "$lib/discord/guilds.js";
 
+/**
+ * Get the real origin when behind a proxy/tunnel (e.g., Cloudflare Tunnel)
+ */
+function getOrigin(request, url) {
+	// Try x-forwarded-host first, then fall back to host header
+	const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
+	const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
+	
+	// Only use forwarded values if host looks like a real domain (not localhost without tunnel)
+	if (forwardedHost && !forwardedHost.startsWith('localhost') && !forwardedHost.startsWith('127.')) {
+		return `${forwardedProto}://${forwardedHost}`;
+	}
+	
+	return url.origin;
+}
+
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ url, cookies, platform }) {
+export async function GET({ request, url, cookies, platform }) {
 	const code = url.searchParams.get("code");
 	const state = url.searchParams.get("state");
 	const error = url.searchParams.get("error");
@@ -44,7 +60,9 @@ export async function GET({ url, cookies, platform }) {
 		process.env.DISCORD_CLIENT_ID;
 	const CLIENT_SECRET = platform?.env?.DISCORD_CLIENT_SECRET ||
 		process.env.DISCORD_CLIENT_SECRET;
-	const REDIRECT_URI = `${url.origin}/api/auth/discord/callback`;
+	const REDIRECT_URI = `${getOrigin(request, url)}/api/auth/discord/callback`;
+
+	console.log('[OAuth Callback] REDIRECT_URI:', REDIRECT_URI);
 
 	if (!CLIENT_ID || !CLIENT_SECRET) {
 		throw redirect(302, "/login?error=config");
@@ -54,6 +72,7 @@ export async function GET({ url, cookies, platform }) {
 		// Exchange code for access token
 		// This is the critical step for OAuth2 Code Grant - we get the token
 		// BEFORE the bot is added to the server (for install flow)
+		console.log('[OAuth Callback] Exchanging code for token...');
 		const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
 			method: "POST",
 			headers: {
@@ -71,10 +90,12 @@ export async function GET({ url, cookies, platform }) {
 		if (!tokenResponse.ok) {
 			const errorData = await tokenResponse.text();
 			log.error("Token exchange failed:", errorData);
+			console.log('[OAuth Callback] Token exchange failed:', errorData);
 			throw new Error("Failed to get token");
 		}
 
 		const tokenData = await tokenResponse.json();
+		console.log('[OAuth Callback] Token received, fetching user info...');
 
 		// Get user info
 		const userResponse = await fetch("https://discord.com/api/users/@me", {
@@ -88,6 +109,11 @@ export async function GET({ url, cookies, platform }) {
 		}
 
 		const userData = await userResponse.json();
+		console.log('[OAuth Callback] User info received:', userData.username);
+
+		// Determine if we're on a secure connection (behind proxy/tunnel counts as secure)
+		const isSecure = request.headers.get('x-forwarded-proto') === 'https' || url.protocol === 'https:';
+		console.log('[OAuth Callback] isSecure:', isSecure);
 
 		// Store full user object for pages that need it
 		cookies.set(
@@ -102,7 +128,7 @@ export async function GET({ url, cookies, platform }) {
 			{
 				path: "/",
 				httpOnly: true,
-				secure: true,
+				secure: isSecure,
 				sameSite: "lax",
 				maxAge: 60 * 60 * 24 * 7, // 7 days
 			},
@@ -112,7 +138,7 @@ export async function GET({ url, cookies, platform }) {
 		cookies.set("discord_user_id", userData.id, {
 			path: "/",
 			httpOnly: true,
-			secure: true,
+			secure: isSecure,
 			sameSite: "lax",
 			maxAge: 60 * 60 * 24 * 7, // 7 days
 		});
@@ -120,7 +146,7 @@ export async function GET({ url, cookies, platform }) {
 		cookies.set("discord_username", userData.username, {
 			path: "/",
 			httpOnly: true,
-			secure: true,
+			secure: isSecure,
 			sameSite: "lax",
 			maxAge: 60 * 60 * 24 * 7, // 7 days
 		});
@@ -130,7 +156,7 @@ export async function GET({ url, cookies, platform }) {
 			cookies.set("discord_avatar", userData.avatar, {
 				path: "/",
 				httpOnly: true,
-				secure: true,
+				secure: isSecure,
 				sameSite: "lax",
 				maxAge: 60 * 60 * 24 * 7,
 			});
@@ -141,7 +167,7 @@ export async function GET({ url, cookies, platform }) {
 			cookies.set("discord_global_name", userData.global_name, {
 				path: "/",
 				httpOnly: true,
-				secure: true,
+				secure: isSecure,
 				sameSite: "lax",
 				maxAge: 60 * 60 * 24 * 7,
 			});
@@ -151,7 +177,7 @@ export async function GET({ url, cookies, platform }) {
 		cookies.set("discord_discriminator", userData.discriminator || "0", {
 			path: "/",
 			httpOnly: true,
-			secure: true,
+			secure: isSecure,
 			sameSite: "lax",
 			maxAge: 60 * 60 * 24 * 7,
 		});
@@ -160,7 +186,7 @@ export async function GET({ url, cookies, platform }) {
 		cookies.set("discord_access_token", tokenData.access_token, {
 			path: "/",
 			httpOnly: true,
-			secure: true,
+			secure: isSecure,
 			sameSite: "lax",
 			maxAge: tokenData.expires_in || 604800,
 		});
@@ -169,7 +195,7 @@ export async function GET({ url, cookies, platform }) {
 			cookies.set("discord_refresh_token", tokenData.refresh_token, {
 				path: "/",
 				httpOnly: true,
-				secure: true,
+				secure: isSecure,
 				sameSite: "lax",
 				maxAge: 60 * 60 * 24 * 30, // 30 days
 			});
@@ -199,6 +225,7 @@ export async function GET({ url, cookies, platform }) {
 
 		// Standard login flow - redirect to return URL or admin
 		const returnTo = flowData.returnTo || "/admin";
+		console.log('[OAuth Callback] Login complete, redirecting to:', returnTo);
 		throw redirect(302, returnTo);
 	} catch (error) {
 		if (error?.status === 302) {

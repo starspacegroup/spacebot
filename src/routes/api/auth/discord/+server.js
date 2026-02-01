@@ -14,11 +14,39 @@ import { redirect } from "@sveltejs/kit";
  * - permissions: Bot permissions bitfield (default: configured permissions)
  */
 
+/**
+ * Get the real origin when behind a proxy/tunnel (e.g., Cloudflare Tunnel)
+ */
+function getOrigin(request, url) {
+	// Debug: log all relevant headers
+	console.log('[OAuth] Headers:', {
+		'x-forwarded-host': request.headers.get('x-forwarded-host'),
+		'x-forwarded-proto': request.headers.get('x-forwarded-proto'),
+		'host': request.headers.get('host'),
+		'cf-connecting-ip': request.headers.get('cf-connecting-ip'),
+		'origin': url.origin
+	});
+	
+	// Try x-forwarded-host first, then fall back to host header
+	const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
+	const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
+	
+	// Only use forwarded values if host looks like a real domain (not localhost without tunnel)
+	if (forwardedHost && !forwardedHost.startsWith('localhost') && !forwardedHost.startsWith('127.')) {
+		const origin = `${forwardedProto}://${forwardedHost}`;
+		console.log('[OAuth] Using forwarded origin:', origin);
+		return origin;
+	}
+	
+	console.log('[OAuth] Using url.origin:', url.origin);
+	return url.origin;
+}
+
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ url, cookies, platform }) {
+export async function GET({ request, url, cookies, platform }) {
 	const CLIENT_ID = platform?.env?.DISCORD_CLIENT_ID ||
 		process.env.DISCORD_CLIENT_ID;
-	const REDIRECT_URI = `${url.origin}/api/auth/discord/callback`;
+	const REDIRECT_URI = `${getOrigin(request, url)}/api/auth/discord/callback`;
 
 	if (!CLIENT_ID) {
 		throw new Error("DISCORD_CLIENT_ID not configured");

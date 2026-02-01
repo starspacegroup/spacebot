@@ -19,8 +19,11 @@ const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
 
 /** @type {import('./$types').LayoutServerLoad} */
 export async function load({ cookies, platform, url }) {
+  console.log('[Layout] load() called, pathname:', url.pathname);
+  
   // Check if user is logged in via cookie
   const userId = cookies.get("discord_user_id");
+  console.log('[Layout] userId from cookie:', userId);
 
   if (!userId) {
     return {
