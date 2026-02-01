@@ -122,9 +122,13 @@ export async function load({ cookies, platform, url }) {
       !!botToken,
     );
 
-    // Fetch user's guilds (with caching)
-    const allUserGuilds = await getUserGuilds(accessToken, cookies);
-    const botGuildIds = await getBotGuildIds(botToken, cookies);
+    // Fetch user's guilds and bot guilds in parallel (with caching)
+    const [allUserGuilds, botGuildIds, allBotGuilds] = await Promise.all([
+      getUserGuilds(accessToken, cookies),
+      getBotGuildIds(botToken, cookies),
+      // Only fetch bot guild details for superadmins
+      isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
+    ]);
 
     log.debug(
       "[Layout] User guilds:",
@@ -135,7 +139,6 @@ export async function load({ cookies, platform, url }) {
 
     if (isSuperAdmin) {
       // Superadmin sees ALL guilds where the bot is a member plus their admin guilds
-      const allBotGuilds = await getBotGuildsWithDetails(botToken, cookies);
       const userAdminGuilds = filterAdminGuilds(allUserGuilds);
 
       log.debug(

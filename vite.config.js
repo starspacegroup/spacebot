@@ -5,6 +5,13 @@ export default defineConfig({
 	plugins: [sveltekit()],
 	server: {
 		port: 4269,
-		allowedHosts: ["spacebot-dev.starspace.group"],
+		host: true, // Listen on all interfaces for tunnel access
+		allowedHosts: ["spacebot-dev.starspace.group", "localhost"],
+		// Improve HMR over tunnel
+		hmr: {
+			clientPort: 443, // Tunnel uses HTTPS
+			protocol: 'wss',
+			host: 'spacebot-dev.starspace.group',
+		},
 	},
 });

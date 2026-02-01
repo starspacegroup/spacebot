@@ -7,12 +7,37 @@
 
 import { log } from "$lib/db/logger.js";
 
-// Cache TTL in seconds (5 minutes)
-const CACHE_TTL = 5 * 60;
+// Cache TTL in seconds (15 minutes - longer to reduce API calls over tunnel)
+const CACHE_TTL = 15 * 60;
+
+// API timeout in milliseconds (5 seconds)
+const API_TIMEOUT = 5000;
 
 // Permission constants
 const ADMINISTRATOR = BigInt(0x8);
 const MANAGE_GUILD = BigInt(0x20);
+
+/**
+ * Fetch with timeout to prevent hanging requests
+ * @param {string} url - URL to fetch
+ * @param {RequestInit} options - Fetch options
+ * @param {number} timeout - Timeout in milliseconds
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(url, options = {}, timeout = API_TIMEOUT) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 /**
  * Get user's guilds with caching
@@ -47,7 +72,7 @@ export async function getUserGuilds(
   // Fetch from Discord API
   try {
     log.debug("[Guilds Cache] Fetching user guilds from Discord API");
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       "https://discord.com/api/v10/users/@me/guilds",
       {
         headers: {
@@ -102,7 +127,7 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
   // Fetch from Discord API
   try {
     log.debug("[Guilds Cache] Fetching bot guilds from Discord API");
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       "https://discord.com/api/v10/users/@me/guilds",
       {
         headers: {
@@ -159,7 +184,7 @@ export async function getBotGuildsWithDetails(
     log.debug(
       "[Guilds Cache] Fetching bot guilds with details from Discord API",
     );
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       "https://discord.com/api/v10/users/@me/guilds",
       {
         headers: {
@@ -282,7 +307,7 @@ export async function verifyGuildAccess(
 
   try {
     // Fetch user info (not cached as it's user-specific metadata)
-    const userResponse = await fetch("https://discord.com/api/users/@me", {
+    const userResponse = await fetchWithTimeout("https://discord.com/api/users/@me", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
