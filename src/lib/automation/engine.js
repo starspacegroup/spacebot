@@ -636,6 +636,43 @@ export async function executeAction(automation, event, context, discord) {
         return { success: true, result: { sent: true } };
       }
 
+      case "SEND_DM": {
+        const userId = resolveTargetUser(action_config, event);
+        const content = processTemplate(action_config.content, context);
+
+        if (!userId) {
+          return { success: false, error: "Missing target user" };
+        }
+
+        if (!content) {
+          return { success: false, error: "Missing message content" };
+        }
+
+        // Fetch the user and send a DM
+        const user = await discord.users.fetch(userId).catch(() => null);
+        if (!user) {
+          return { success: false, error: "User not found" };
+        }
+
+        try {
+          if (action_config.embed) {
+            await user.send({
+              embeds: [{
+                description: content,
+                color: 0x5865F2,
+                timestamp: new Date().toISOString(),
+              }],
+            });
+          } else {
+            await user.send(content);
+          }
+          return { success: true, result: { dmSent: true, userId } };
+        } catch (dmError) {
+          // User may have DMs disabled or blocked the bot
+          return { success: false, error: `Could not send DM: ${dmError.message || "User has DMs disabled or blocked the bot"}` };
+        }
+      }
+
       case "ADD_ROLE": {
         // Support both legacy role_id (single) and new role_ids (comma-separated)
         const roleIds = action_config.role_ids

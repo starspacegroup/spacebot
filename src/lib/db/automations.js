@@ -113,6 +113,27 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
     },
   },
+  SEND_DM: {
+    name: "Send DM",
+    description: "Send a direct message to a user",
+    icon: "✉️",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Recipient",
+        description: "Which user to send the DM to",
+      },
+      content: {
+        type: "text",
+        required: true,
+        label: "Message content",
+        supportsVariables: true,
+      },
+      embed: { type: "boolean", default: false, label: "Send as embed" },
+    },
+  },
   ADD_ROLE: {
     name: "Add Role(s)",
     description: "Add one or more roles to a user",
