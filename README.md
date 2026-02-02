@@ -25,6 +25,8 @@ beautiful admin dashboard.
   connection
 - **Interactions Endpoint** — HTTP-based slash command handling via Cloudflare
   Workers
+- **AI Chat for Managers** — Server managers can DM the bot for AI-powered
+  assistance using Cloudflare Workers AI
 
 ### 🌐 Web Dashboard
 
@@ -47,6 +49,8 @@ beautiful admin dashboard.
 
 - **Cloudflare Pages** — Deployed on Cloudflare's global edge network
 - **D1 Database** — SQLite-based serverless database for logs and configurations
+- **Workers AI** — AI-powered DM responses via Cloudflare's free LLM models
+- **AI Gateway** — Optional analytics, caching, and rate limiting for AI requests
 - **Zero Cold Starts** — Fast response times worldwide
 
 ## 📸 Screenshots
@@ -178,6 +182,14 @@ Comprehensive logging of all Discord events with filtering and search.
    | `DISCORD_BOT_TOKEN`     | Found under "Bot" settings                                |
    | `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with global admin access |
    | `LOG_LEVEL`             | Logging verbosity: `error`, `warn`, `info`, `debug`       |
+
+   Optional AI variables (for DM chat functionality):
+   | Variable                    | Description                                        |
+   | --------------------------- | -------------------------------------------------- |
+   | `CLOUDFLARE_ACCOUNT_ID`     | Your Cloudflare account ID                         |
+   | `CLOUDFLARE_AI_TOKEN`       | API token with Workers AI permissions              |
+   | `CLOUDFLARE_AI_GATEWAY_ID`  | (Optional) AI Gateway ID for analytics/caching    |
+   | `CLOUDFLARE_AI_MODEL`       | (Optional) Override default LLM model             |
 
 4. **Set up the database (local development)**
    ```bash

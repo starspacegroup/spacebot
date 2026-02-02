@@ -14,8 +14,10 @@ import {
   GatewayIntentBits,
   MessageType,
   Partials,
+  PermissionFlagsBits,
 } from "discord.js";
 import { log } from "../log.js";
+import { generateChatResponse, isAIEnabled } from "../ai/chat.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
@@ -55,6 +57,121 @@ function resolveNumberValue(configValue, event, defaultValue = null) {
     return isNaN(parsed) ? defaultValue : parsed;
   }
   return defaultValue;
+}
+
+/**
+ * Check if a user is a manager of any guild the bot is in
+ * A manager has MANAGE_GUILD or ADMINISTRATOR permissions
+ * @param {Client} client - Discord client
+ * @param {string} userId - User ID to check
+ * @returns {Promise<{isManager: boolean, managedGuilds: Array}>}
+ */
+async function checkUserIsManager(client, userId) {
+  const managedGuilds = [];
+  
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      // Try to fetch the member from this guild
+      const member = await guild.members.fetch(userId).catch(() => null);
+      
+      if (member) {
+        // Check if they have manage guild or admin permissions
+        const hasManageGuild = member.permissions.has(PermissionFlagsBits.ManageGuild);
+        const hasAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+        const isOwner = guild.ownerId === userId;
+        
+        if (hasManageGuild || hasAdmin || isOwner) {
+          managedGuilds.push({
+            id: guild.id,
+            name: guild.name,
+            isOwner,
+            isAdmin: hasAdmin,
+          });
+        }
+      }
+    } catch (error) {
+      // Member not in this guild, skip
+      log.debug(`[DM] Could not check membership for ${userId} in ${guild.name}`);
+    }
+  }
+  
+  return {
+    isManager: managedGuilds.length > 0,
+    managedGuilds,
+  };
+}
+
+/**
+ * Handle a direct message to the bot
+ * @param {Message} message - The DM message
+ * @param {Client} client - Discord client
+ */
+async function handleDirectMessage(message, client) {
+  const userId = message.author.id;
+  const userName = message.author.tag || message.author.username;
+  const content = message.content;
+  
+  log.info(`[DM] Received DM from ${userName} (${userId}): ${content.substring(0, 100)}`);
+  
+  // Ignore bot messages and empty messages
+  if (message.author.bot || !content.trim()) {
+    return;
+  }
+  
+  // Check if AI is enabled
+  if (!isAIEnabled(process.env)) {
+    log.debug("[DM] AI is not enabled, ignoring DM");
+    return;
+  }
+  
+  // Start typing indicator while we check permissions and generate response
+  await message.channel.sendTyping().catch(() => {});
+  
+  // Check if the user is a manager of any guild the bot is in
+  const { isManager, managedGuilds } = await checkUserIsManager(client, userId);
+  
+  if (!isManager) {
+    log.debug(`[DM] User ${userName} is not a manager of any bot guilds`);
+    await message.reply({
+      content: "👋 Hi! I only respond to DMs from server managers. If you manage a server where I'm installed, please make sure you have the **Manage Server** permission.",
+    }).catch(err => log.error("[DM] Failed to send non-manager reply:", err.message));
+    return;
+  }
+  
+  log.info(`[DM] User ${userName} manages ${managedGuilds.length} guild(s): ${managedGuilds.map(g => g.name).join(", ")}`);
+  
+  // Generate AI response
+  const aiResult = await generateChatResponse({
+    message: content,
+    userName,
+    userId,
+  }, process.env);
+  
+  if (!aiResult.success) {
+    log.error("[DM] AI response failed:", aiResult.error);
+    await message.reply({
+      content: "Sorry, I encountered an error while processing your message. Please try again later.",
+    }).catch(err => log.error("[DM] Failed to send error reply:", err.message));
+    return;
+  }
+  
+  // Send the AI response
+  // Discord has a 2000 character limit, so we may need to split
+  const response = aiResult.response;
+  
+  if (response.length <= 2000) {
+    await message.reply({ content: response }).catch(err => 
+      log.error("[DM] Failed to send AI reply:", err.message)
+    );
+  } else {
+    // Split into multiple messages
+    const chunks = response.match(/[\s\S]{1,1990}/g) || [];
+    for (const chunk of chunks) {
+      await message.channel.send({ content: chunk }).catch(err =>
+        log.error("[DM] Failed to send AI reply chunk:", err.message)
+      );
+    }
+  }
 }
 
 /**
@@ -758,7 +875,16 @@ function setupEventHandlers(client, logFn) {
         message.guild?.name || "DM"
       }`,
     );
-    if (!message.guild) return;
+    
+    // Handle DMs separately - AI chat for bot managers
+    if (!message.guild) {
+      try {
+        await handleDirectMessage(message, client);
+      } catch (error) {
+        log.error("[DM] Error handling DM:", error.message);
+      }
+      return;
+    }
 
     log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);
     log.debug(
