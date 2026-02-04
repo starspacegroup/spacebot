@@ -9,8 +9,10 @@
 	let showToast = $state(true);
 	let saving = $state(false);
 	
-	// Local state for form fields
-	let prefix = $state(data.settings?.prefix || '!');
+	// Track the server ID to detect when we navigate to a different server
+	let lastServerId = $state(data.serverId);
+	
+	// Local state for form fields - initialized from data
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
 	let welcomeEnabled = $state(data.settings?.welcomeEnabled || false);
 	let welcomeChannelId = $state(data.settings?.welcomeChannelId || '');
@@ -27,6 +29,30 @@
 	let viewLogsRoles = $state(data.permissionSettings?.viewLogs?.roles || []);
 	let manageAutomationsRoles = $state(data.permissionSettings?.manageAutomations?.roles || []);
 	let manageCommandsRoles = $state(data.permissionSettings?.manageCommands?.roles || []);
+	
+	// Re-sync when navigating to a different server or when data is reloaded after save
+	$effect(() => {
+		// Only re-sync if server changed or we're not currently saving
+		// This prevents the $effect from overwriting user's in-progress changes
+		const serverChanged = data.serverId !== lastServerId;
+		if (serverChanged) {
+			lastServerId = data.serverId;
+		}
+		
+		// Always sync from data - the form enhance uses invalidateAll which reloads data
+		loggingChannelId = data.settings?.loggingChannelId || '';
+		welcomeEnabled = data.settings?.welcomeEnabled || false;
+		welcomeChannelId = data.settings?.welcomeChannelId || '';
+		welcomeMessage = data.settings?.welcomeMessage || 'Welcome {user} to {server}!';
+		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
+		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
+		manageAutomationsPerm = data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
+		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
+		viewDashboardRoles = data.permissionSettings?.viewDashboard?.roles || [];
+		viewLogsRoles = data.permissionSettings?.viewLogs?.roles || [];
+		manageAutomationsRoles = data.permissionSettings?.manageAutomations?.roles || [];
+		manageCommandsRoles = data.permissionSettings?.manageCommands?.roles || [];
+	});
 </script>
 
 <svelte:head>
@@ -56,7 +82,8 @@
 	<form method="POST" action="?/updateSettings" use:enhance={() => {
 		saving = true;
 		return async ({ update }) => {
-			await update();
+			// Use reset: false to keep form values, then invalidate to refetch data
+			await update({ reset: false, invalidateAll: true });
 			saving = false;
 			showToast = true;
 		};
@@ -166,31 +193,6 @@
 			</div>
 		</section>
 		
-		<!-- General Settings -->
-		<section class="settings-section">
-			<h2>
-				<span class="section-icon">🔧</span>
-				General Settings
-			</h2>
-			
-			<div class="settings-card">
-				<div class="setting-row">
-					<div class="setting-info">
-						<label for="prefix" class="setting-label">Command Prefix</label>
-						<span class="setting-desc">The prefix used for text commands (e.g., !help)</span>
-					</div>
-					<input 
-						type="text" 
-						id="prefix" 
-						name="prefix" 
-						bind:value={prefix}
-						maxlength="5"
-						class="setting-input prefix-input"
-					/>
-				</div>
-			</div>
-		</section>
-		
 		<!-- Logging Settings -->
 		<section class="settings-section">
 			<h2>
@@ -201,15 +203,14 @@
 			<div class="settings-card">
 				<div class="setting-row">
 					<div class="setting-info">
-						<label for="loggingChannel" class="setting-label">Logging Channel</label>
+						<span class="setting-label">Logging Channel</span>
 						<span class="setting-desc">Channel where bot activity logs will be sent</span>
 					</div>
 					<div class="setting-control">
-						<input type="hidden" name="loggingChannelId" value={loggingChannelId} />
 						<ChannelSelector 
 							guildId={data.serverId}
-							selectedChannelId={loggingChannelId}
-							onSelect={(channel) => loggingChannelId = channel?.id || ''}
+							bind:value={loggingChannelId}
+							name="loggingChannelId"
 							placeholder="Select a channel..."
 						/>
 					</div>
@@ -244,15 +245,14 @@
 				{#if welcomeEnabled}
 					<div class="setting-row">
 						<div class="setting-info">
-							<label for="welcomeChannel" class="setting-label">Welcome Channel</label>
+							<span class="setting-label">Welcome Channel</span>
 							<span class="setting-desc">Channel where welcome messages will be sent</span>
 						</div>
 						<div class="setting-control">
-							<input type="hidden" name="welcomeChannelId" value={welcomeChannelId} />
 							<ChannelSelector 
 								guildId={data.serverId}
-								selectedChannelId={welcomeChannelId}
-								onSelect={(channel) => welcomeChannelId = channel?.id || ''}
+								bind:value={welcomeChannelId}
+								name="welcomeChannelId"
 								placeholder="Select a channel..."
 							/>
 						</div>
@@ -544,28 +544,6 @@
 	.setting-control {
 		flex-shrink: 0;
 		min-width: 200px;
-	}
-	
-	/* Inputs */
-	.setting-input {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		background: var(--color-surface-elevated);
-		color: var(--color-text);
-		font-size: 0.875rem;
-		transition: border-color 0.2s;
-	}
-	
-	.setting-input:focus {
-		outline: none;
-		border-color: var(--color-primary);
-	}
-	
-	.prefix-input {
-		width: 80px;
-		text-align: center;
-		font-family: var(--font-mono, monospace);
 	}
 	
 	.setting-textarea {

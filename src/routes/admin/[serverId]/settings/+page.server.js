@@ -139,9 +139,7 @@ export const actions = {
     // TODO: Save settings to database
 
     const formData = await request.formData();
-    const prefix = formData.get("prefix");
     const loggingChannelId = formData.get("loggingChannelId");
-    const moderationRoleId = formData.get("moderationRoleId");
     const welcomeEnabled = formData.get("welcomeEnabled") === "on";
     const welcomeChannelId = formData.get("welcomeChannelId");
     const welcomeMessage = formData.get("welcomeMessage");
@@ -153,9 +151,7 @@ export const actions = {
     const manageCommandsPerm = formData.get("manageCommandsPerm") || "MANAGE_GUILD";
 
     log.info(`[Settings] Updating settings for server ${serverId}:`, {
-      prefix,
       loggingChannelId,
-      moderationRoleId,
       welcomeEnabled,
       welcomeChannelId,
       viewDashboardPerm,
@@ -172,9 +168,8 @@ export const actions = {
 
     try {
       await saveGuildSettings(db, serverId, {
-        prefix: prefix || "!",
+        logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
         log_channel_id: loggingChannelId || null,
-        moderation_role_id: moderationRoleId || null,
         welcome_enabled: welcomeEnabled,
         welcome_channel_id: welcomeChannelId || null,
         welcome_message: welcomeMessage || "Welcome {user} to {server}!",

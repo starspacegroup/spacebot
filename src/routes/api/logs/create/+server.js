@@ -1,5 +1,127 @@
 import { json } from "@sveltejs/kit";
 import { log, logEvent } from "$lib/db/logger.js";
+import { getGuildSettings } from "$lib/db/settings.js";
+
+/**
+ * Format an event for Discord channel logging
+ * @param {Object} event - The event data
+ * @returns {Object} - Discord embed object
+ */
+function formatEventEmbed(event) {
+  const colors = {
+    message: 0x3498db,    // Blue
+    member: 0x2ecc71,     // Green
+    guild: 0x9b59b6,      // Purple
+    channel: 0xe67e22,    // Orange
+    role: 0xf1c40f,       // Yellow
+    moderation: 0xe74c3c, // Red
+    voice: 0x1abc9c,      // Teal
+    reaction: 0xff6b6b,   // Coral
+    interaction: 0x5865F2,// Discord Blurple
+  };
+
+  const icons = {
+    MESSAGE_CREATE: "💬",
+    MESSAGE_DELETE: "🗑️",
+    MESSAGE_UPDATE: "✏️",
+    MEMBER_JOIN: "📥",
+    MEMBER_LEAVE: "📤",
+    MEMBER_UPDATE: "👤",
+    MEMBER_BAN_ADD: "🔨",
+    MEMBER_BAN_REMOVE: "🔓",
+    CHANNEL_CREATE: "📁",
+    CHANNEL_DELETE: "📁",
+    CHANNEL_UPDATE: "📁",
+    ROLE_CREATE: "🏷️",
+    ROLE_DELETE: "🏷️",
+    ROLE_UPDATE: "🏷️",
+    VOICE_JOIN: "🔊",
+    VOICE_LEAVE: "🔇",
+    VOICE_MOVE: "🔀",
+    REACTION_ADD: "➕",
+    REACTION_REMOVE: "➖",
+    INTERACTION_CREATE: "⚡",
+  };
+
+  const icon = icons[event.event_type] || "📋";
+  const color = colors[event.event_category] || 0x95a5a6;
+  
+  // Build description
+  let description = "";
+  if (event.actor_name) {
+    description += `**Actor:** ${event.actor_name}`;
+    if (event.actor_id) description += ` (<@${event.actor_id}>)`;
+    description += "\n";
+  }
+  if (event.target_name) {
+    description += `**Target:** ${event.target_name}`;
+    if (event.target_id) description += ` (<@${event.target_id}>)`;
+    description += "\n";
+  }
+  if (event.channel_name) {
+    description += `**Channel:** #${event.channel_name}`;
+    if (event.channel_id) description += ` (<#${event.channel_id}>)`;
+    description += "\n";
+  }
+
+  // Add details if present
+  if (event.details) {
+    const details = typeof event.details === 'string' ? JSON.parse(event.details) : event.details;
+    if (details.content) {
+      const content = details.content.length > 200 
+        ? details.content.substring(0, 200) + "..." 
+        : details.content;
+      description += `\n**Content:**\n\`\`\`\n${content}\n\`\`\``;
+    }
+    if (details.reason) {
+      description += `\n**Reason:** ${details.reason}`;
+    }
+  }
+
+  return {
+    title: `${icon} ${event.event_type.replace(/_/g, " ")}`,
+    description: description || "No additional details",
+    color,
+    timestamp: new Date().toISOString(),
+    footer: {
+      text: `Category: ${event.event_category}`
+    }
+  };
+}
+
+/**
+ * Send a log message to a Discord channel
+ * @param {string} channelId - The channel ID to send to
+ * @param {Object} event - The event data
+ * @param {string} botToken - The bot token for authorization
+ */
+async function sendLogToChannel(channelId, event, botToken) {
+  if (!channelId || !botToken) return;
+
+  try {
+    const embed = formatEventEmbed(event);
+    
+    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bot ${botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        embeds: [embed]
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      log.warn(`[Discord Log] Failed to send log to channel ${channelId}: ${response.status} - ${errorText}`);
+    } else {
+      log.debug(`[Discord Log] Sent event ${event.event_type} to channel ${channelId}`);
+    }
+  } catch (error) {
+    log.error(`[Discord Log] Error sending to channel ${channelId}:`, error.message);
+  }
+}
 
 /**
  * POST endpoint for logging events from the gateway bot
@@ -50,6 +172,17 @@ export async function POST({ request, platform }) {
     const result = await logEvent(db, event);
 
     if (result.success) {
+      // Check if guild has a logging channel configured and send the log there
+      try {
+        const settings = await getGuildSettings(db, event.guild_id);
+        if (settings.logging_enabled && settings.log_channel_id) {
+          // Don't await - send asynchronously to not slow down the response
+          sendLogToChannel(settings.log_channel_id, event, botToken);
+        }
+      } catch (settingsError) {
+        log.debug("[Discord Log] Could not check guild settings:", settingsError.message);
+      }
+
       return json({ success: true });
     } else {
       log.error("Failed to log event:", result.error);
