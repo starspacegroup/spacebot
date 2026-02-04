@@ -710,32 +710,18 @@
 			{#if data.statistics.automationPerformance?.length > 0}
 				<div class="performance-grid">
 					{#each data.statistics.automationPerformance as automation}
-						{@const successRate = automation.log_count > 0 ? (automation.success_count / automation.log_count) * 100 : 100}
 						<div class="performance-card">
 							<div class="performance-header">
 								<span class="performance-name">{automation.name}</span>
-								<span class="performance-status" class:success={successRate >= 90} class:warning={successRate >= 50 && successRate < 90} class:error={successRate < 50}>
-									{successRate.toFixed(0)}% success
-								</span>
 							</div>
 							<div class="performance-stats">
-								<div class="perf-stat">
-									<span class="perf-value">{formatNumber(automation.trigger_count)}</span>
-									<span class="perf-label">Triggers</span>
-								</div>
 								<div class="perf-stat">
 									<span class="perf-value">{formatNumber(automation.log_count)}</span>
 									<span class="perf-label">Executions</span>
 								</div>
-								<div class="perf-stat">
-									<span class="perf-value">{automation.avg_execution_time ? Math.round(automation.avg_execution_time) + 'ms' : 'N/A'}</span>
-									<span class="perf-label">Avg Time</span>
-								</div>
-							</div>
-							<div class="performance-bar">
-								<div class="perf-bar-fill" style="width: {successRate}%"></div>
 							</div>
 							<span class="performance-last">Last triggered: {formatRelativeTime(automation.last_triggered_at)}</span>
+							<a href="/admin/{data.serverId}/automations/{automation.id}" class="btn btn-secondary btn-sm">Edit</a>
 						</div>
 					{/each}
 				</div>
