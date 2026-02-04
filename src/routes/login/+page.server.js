@@ -1,4 +1,7 @@
-import "dotenv/config";
+// Only load dotenv in development (no-op on Cloudflare edge runtime)
+if (process.env.NODE_ENV !== "production") {
+  import("dotenv/config").catch(() => {});
+}
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ locals }) {
