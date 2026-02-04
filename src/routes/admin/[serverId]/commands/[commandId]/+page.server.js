@@ -12,6 +12,7 @@ import {
   RESPONSE_TYPES,
   updateCommand,
 } from "$lib/db/commands.js";
+import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -45,6 +46,15 @@ export async function load({ cookies, platform, parent, params }) {
       throw error(404, "Command not found");
     }
 
+    // Load webhooks for this guild
+    const webhooks = await getGuildWebhooks(db, parentData.selectedGuildId);
+    const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
+      id: w.id,
+      name: w.name,
+      description: w.description,
+      method: w.method,
+    }));
+
     return {
       command,
       // Meta info for the UI
@@ -56,6 +66,7 @@ export async function load({ cookies, platform, parent, params }) {
       userSources: COMMAND_USER_SOURCES,
       permissionFlags: PERMISSION_FLAGS,
       permissionPresets: PERMISSION_PRESETS,
+      webhooks: enabledWebhooks,
     };
   } catch (err) {
     if (err.status) throw err;

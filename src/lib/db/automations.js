@@ -274,6 +274,32 @@ export const ACTION_TYPES = {
     },
     applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE"],
   },
+  CALL_WEBHOOK: {
+    name: "Call Webhook",
+    description: "Send data to an external webhook endpoint",
+    icon: "🔗",
+    configSchema: {
+      webhook_id: {
+        type: "webhook",
+        required: true,
+        label: "Webhook",
+        description: "Select a webhook endpoint to call",
+      },
+      payload_template: {
+        type: "json",
+        required: false,
+        label: "Custom Payload (JSON)",
+        description: "Custom JSON payload to send. Leave empty to send event data.",
+        supportsVariables: true,
+      },
+      include_event_data: {
+        type: "boolean",
+        default: true,
+        label: "Include event data",
+        description: "Merge event data into the payload",
+      },
+    },
+  },
 };
 
 /**

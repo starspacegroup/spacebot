@@ -6,6 +6,7 @@ import {
   FILTER_TYPES,
   TEMPLATE_VARIABLES,
 } from "$lib/db/automations.js";
+import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -17,6 +18,16 @@ export async function load({ cookies, platform, parent }) {
     throw redirect(302, "/admin");
   }
 
+  // Load webhooks for this guild
+  const db = platform?.env?.DB;
+  const webhooks = db ? await getGuildWebhooks(db, parentData.selectedGuildId) : [];
+  const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
+    id: w.id,
+    name: w.name,
+    description: w.description,
+    method: w.method,
+  }));
+
   return {
     // Meta info for the UI
     actionTypes: ACTION_TYPES,
@@ -25,6 +36,7 @@ export async function load({ cookies, platform, parent }) {
     eventCategories: EVENT_CATEGORIES,
     templateVariables: TEMPLATE_VARIABLES,
     userSources: AUTOMATION_USER_SOURCES,
+    webhooks: enabledWebhooks,
   };
 }
 

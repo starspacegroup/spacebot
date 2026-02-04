@@ -8,6 +8,7 @@ import {
   TEMPLATE_VARIABLES,
   updateAutomation,
 } from "$lib/db/automations.js";
+import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -41,6 +42,15 @@ export async function load({ cookies, platform, parent, params }) {
       throw error(404, "Automation not found");
     }
 
+    // Load webhooks for this guild
+    const webhooks = await getGuildWebhooks(db, parentData.selectedGuildId);
+    const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
+      id: w.id,
+      name: w.name,
+      description: w.description,
+      method: w.method,
+    }));
+
     return {
       automation,
       // Meta info for the UI
@@ -50,6 +60,7 @@ export async function load({ cookies, platform, parent, params }) {
       eventCategories: EVENT_CATEGORIES,
       templateVariables: TEMPLATE_VARIABLES,
       userSources: AUTOMATION_USER_SOURCES,
+      webhooks: enabledWebhooks,
     };
   } catch (err) {
     if (err.status) throw err;

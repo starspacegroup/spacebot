@@ -10,6 +10,7 @@ import {
   PERMISSION_PRESETS,
   RESPONSE_TYPES,
 } from "$lib/db/commands.js";
+import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -21,6 +22,16 @@ export async function load({ cookies, platform, parent }) {
     throw redirect(302, "/admin");
   }
 
+  // Load webhooks for this guild
+  const db = platform?.env?.DB;
+  const webhooks = db ? await getGuildWebhooks(db, parentData.selectedGuildId) : [];
+  const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
+    id: w.id,
+    name: w.name,
+    description: w.description,
+    method: w.method,
+  }));
+
   return {
     // Meta info for the UI
     actionTypes: ACTION_TYPES,
@@ -31,6 +42,7 @@ export async function load({ cookies, platform, parent }) {
     userSources: COMMAND_USER_SOURCES,
     permissionFlags: PERMISSION_FLAGS,
     permissionPresets: PERMISSION_PRESETS,
+    webhooks: enabledWebhooks,
   };
 }
 

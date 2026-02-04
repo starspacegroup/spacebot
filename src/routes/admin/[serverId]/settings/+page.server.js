@@ -1,6 +1,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { getGuildSettings, saveGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
+import { getGuildWebhooks, createWebhook, updateWebhook, deleteWebhook } from "$lib/db/webhooks.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 
 /**
@@ -100,6 +101,9 @@ export async function load({ cookies, platform, parent, params }) {
     },
   };
 
+  // Load webhooks for this guild
+  const webhooks = db ? await getGuildWebhooks(db, serverId) : [];
+
   // Available Discord permissions for the dropdown
   const discordPermissions = [
     { value: "ADMINISTRATOR", label: "Administrator", description: "Full server control" },
@@ -112,6 +116,9 @@ export async function load({ cookies, platform, parent, params }) {
     { value: "MODERATE_MEMBERS", label: "Moderate Members", description: "Can timeout members" },
   ];
 
+  // Available HTTP methods for webhooks
+  const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
   return {
     serverId,
     guild,
@@ -119,6 +126,8 @@ export async function load({ cookies, platform, parent, params }) {
     permissionSettings,
     discordPermissions,
     hasFullAdminAccess,
+    webhooks,
+    httpMethods,
   };
 }
 
@@ -190,5 +199,154 @@ export const actions = {
       log.error(`[Settings] Failed to save settings for server ${serverId}:`, error);
       return fail(500, { success: false, message: "Failed to save settings" });
     }
+  },
+
+  /**
+   * Create a new webhook
+   */
+  createWebhook: async ({ request, cookies, platform, params }) => {
+    const userId = cookies.get("discord_user_id");
+    const serverId = params.serverId;
+
+    if (!userId) {
+      return fail(401, { success: false, message: "Not authenticated" });
+    }
+
+    const db = platform?.env?.DB;
+    if (!db) {
+      return fail(500, { success: false, message: "Database not available" });
+    }
+
+    const formData = await request.formData();
+    const name = formData.get("webhookName");
+    const description = formData.get("webhookDescription");
+    const url = formData.get("webhookUrl");
+    const method = formData.get("webhookMethod") || "POST";
+
+    // Parse custom headers (key:value pairs, one per line)
+    const headersRaw = formData.get("webhookHeaders") || "";
+    const headers = {};
+    if (headersRaw.trim()) {
+      for (const line of headersRaw.split("\n")) {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx > 0) {
+          const key = line.substring(0, colonIdx).trim();
+          const value = line.substring(colonIdx + 1).trim();
+          if (key) headers[key] = value;
+        }
+      }
+    }
+
+    log.info(`[Settings] Creating webhook for server ${serverId}:`, { name, method });
+
+    const result = await createWebhook(db, serverId, {
+      name,
+      description,
+      url,
+      method,
+      headers,
+      enabled: true,
+    }, userId);
+
+    if (!result.success) {
+      return fail(400, { success: false, message: result.error });
+    }
+
+    return {
+      success: true,
+      message: "Webhook created successfully!",
+    };
+  },
+
+  /**
+   * Update an existing webhook
+   */
+  updateWebhook: async ({ request, cookies, platform, params }) => {
+    const userId = cookies.get("discord_user_id");
+    const serverId = params.serverId;
+
+    if (!userId) {
+      return fail(401, { success: false, message: "Not authenticated" });
+    }
+
+    const db = platform?.env?.DB;
+    if (!db) {
+      return fail(500, { success: false, message: "Database not available" });
+    }
+
+    const formData = await request.formData();
+    const webhookId = formData.get("webhookId");
+    const name = formData.get("webhookName");
+    const description = formData.get("webhookDescription");
+    const url = formData.get("webhookUrl");
+    const method = formData.get("webhookMethod") || "POST";
+    const enabled = formData.get("webhookEnabled") === "on";
+
+    // Parse custom headers
+    const headersRaw = formData.get("webhookHeaders") || "";
+    const headers = {};
+    if (headersRaw.trim()) {
+      for (const line of headersRaw.split("\n")) {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx > 0) {
+          const key = line.substring(0, colonIdx).trim();
+          const value = line.substring(colonIdx + 1).trim();
+          if (key) headers[key] = value;
+        }
+      }
+    }
+
+    log.info(`[Settings] Updating webhook ${webhookId} for server ${serverId}`);
+
+    const result = await updateWebhook(db, parseInt(webhookId), serverId, {
+      name,
+      description,
+      url,
+      method,
+      headers,
+      enabled,
+    });
+
+    if (!result.success) {
+      return fail(400, { success: false, message: result.error });
+    }
+
+    return {
+      success: true,
+      message: "Webhook updated successfully!",
+    };
+  },
+
+  /**
+   * Delete a webhook
+   */
+  deleteWebhook: async ({ request, cookies, platform, params }) => {
+    const userId = cookies.get("discord_user_id");
+    const serverId = params.serverId;
+
+    if (!userId) {
+      return fail(401, { success: false, message: "Not authenticated" });
+    }
+
+    const db = platform?.env?.DB;
+    if (!db) {
+      return fail(500, { success: false, message: "Database not available" });
+    }
+
+    const formData = await request.formData();
+    const webhookId = formData.get("webhookId");
+
+    log.info(`[Settings] Deleting webhook ${webhookId} for server ${serverId}`);
+
+    const result = await deleteWebhook(db, parseInt(webhookId), serverId);
+
+    if (!result.success) {
+      return fail(400, { success: false, message: result.error });
+    }
+
+    return {
+      success: true,
+      message: "Webhook deleted successfully!",
+    };
   },
 };

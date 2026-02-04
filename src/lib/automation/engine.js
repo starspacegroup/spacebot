@@ -7,6 +7,7 @@ import {
   getTriggeredAutomations,
   logAutomationExecution,
 } from "../db/automations.js";
+import { getWebhook, callWebhook } from "../db/webhooks.js";
 import { log } from "$lib/log.js";
 import { detectCommandResult, getBot } from "$lib/discord/bots.js";
 
@@ -943,6 +944,88 @@ export async function executeAction(automation, event, context, discord) {
         // Handle custom emoji format (e.g., <:name:id> or just the emoji)
         await message.react(emoji.trim());
         return { success: true, result: { reacted: emoji, messageId } };
+      }
+
+      case "CALL_WEBHOOK": {
+        const webhookId = action_config.webhook_id;
+        const customPayload = action_config.payload_template;
+        const includeEventData = action_config.include_event_data !== false;
+
+        if (!webhookId) {
+          return { success: false, error: "Missing webhook ID" };
+        }
+
+        // Fetch the webhook configuration from the database
+        // We need the database reference - it's passed via context
+        const db = context.db;
+        if (!db) {
+          return { success: false, error: "Database not available for webhook lookup" };
+        }
+
+        const webhook = await getWebhook(db, parseInt(webhookId), event.guild_id);
+        if (!webhook) {
+          return { success: false, error: "Webhook not found or not configured" };
+        }
+
+        if (!webhook.enabled) {
+          return { success: false, error: "Webhook is disabled" };
+        }
+
+        // Build the payload
+        let payload = {};
+
+        // Include event data if enabled
+        if (includeEventData) {
+          payload = {
+            event_type: event.event_type,
+            guild_id: event.guild_id,
+            guild_name: context.guild_name,
+            actor_id: event.actor_id,
+            actor_name: event.actor_name,
+            target_id: event.target_id,
+            target_name: event.target_name,
+            channel_id: event.channel_id,
+            timestamp: new Date().toISOString(),
+            automation: {
+              id: automation.id,
+              name: automation.name,
+            },
+            details: event.details || {},
+            options: event.options || {},
+          };
+        }
+
+        // Merge custom payload if provided
+        if (customPayload) {
+          try {
+            // Process template variables in the payload
+            const processedPayload = processTemplate(
+              typeof customPayload === "string" ? customPayload : JSON.stringify(customPayload),
+              context
+            );
+            const parsedCustom = JSON.parse(processedPayload);
+            payload = { ...payload, ...parsedCustom };
+          } catch (parseError) {
+            log.warn("[Webhook] Failed to parse custom payload:", parseError);
+            // Continue with just the event data if custom payload fails
+          }
+        }
+
+        // Call the webhook
+        const result = await callWebhook(webhook, payload);
+
+        if (!result.success) {
+          return { success: false, error: result.error || "Webhook call failed" };
+        }
+
+        return {
+          success: true,
+          result: {
+            webhook: webhook.name,
+            status: result.status,
+            response: result.response,
+          },
+        };
       }
 
       default:

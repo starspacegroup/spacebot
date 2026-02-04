@@ -686,6 +686,41 @@
 												{#if availableUserSources().length === 1}
 													<p class="field-hint hint-warning">💡 Add a User type option above to target specific users</p>
 												{/if}
+											{:else if config.type === 'webhook'}
+												<select 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													bind:value={action.config[configKey]}
+												>
+													<option value="">Select a webhook...</option>
+													{#each data.webhooks || [] as webhook}
+														<option value={webhook.id}>
+															{webhook.name} ({webhook.method})
+														</option>
+													{/each}
+												</select>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
+												{#if !data.webhooks?.length}
+													<p class="field-hint hint-warning">
+														No webhooks configured. <a href="/admin/{selectedGuildId}/settings">Add webhooks in Settings</a>
+													</p>
+												{/if}
+											{:else if config.type === 'json'}
+												<textarea 
+													id="config_{index}_{configKey}" 
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													placeholder='{"key": "value"}'
+													rows="4"
+													class="code-textarea"
+													bind:value={action.config[configKey]}
+												></textarea>
+												{#if config.description}
+													<p class="field-hint">{config.description}</p>
+												{/if}
 											{:else}
 												<input 
 													type="text" 
@@ -921,6 +956,16 @@
 		margin: 0.375rem 0 0;
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+	
+	.field-hint a {
+		color: var(--color-primary);
+		text-decoration: underline;
+	}
+	
+	.code-textarea {
+		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+		font-size: 0.85rem;
 	}
 	
 	.checkbox-label {

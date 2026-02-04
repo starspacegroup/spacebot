@@ -30,6 +30,46 @@
 	let manageAutomationsRoles = $state(data.permissionSettings?.manageAutomations?.roles || []);
 	let manageCommandsRoles = $state(data.permissionSettings?.manageCommands?.roles || []);
 	
+	// Webhook state
+	let showWebhookModal = $state(false);
+	let editingWebhook = $state(null);
+	let webhookSaving = $state(false);
+	let webhookName = $state('');
+	let webhookDescription = $state('');
+	let webhookUrl = $state('');
+	let webhookMethod = $state('POST');
+	let webhookHeaders = $state('');
+	let webhookEnabled = $state(true);
+	let deleteConfirmId = $state(null);
+	
+	function openWebhookModal(webhook = null) {
+		if (webhook) {
+			editingWebhook = webhook;
+			webhookName = webhook.name;
+			webhookDescription = webhook.description || '';
+			webhookUrl = webhook.url;
+			webhookMethod = webhook.method || 'POST';
+			webhookHeaders = Object.entries(webhook.headers || {})
+				.map(([k, v]) => `${k}: ${v}`)
+				.join('\n');
+			webhookEnabled = webhook.enabled;
+		} else {
+			editingWebhook = null;
+			webhookName = '';
+			webhookDescription = '';
+			webhookUrl = '';
+			webhookMethod = 'POST';
+			webhookHeaders = '';
+			webhookEnabled = true;
+		}
+		showWebhookModal = true;
+	}
+	
+	function closeWebhookModal() {
+		showWebhookModal = false;
+		editingWebhook = null;
+	}
+	
 	// Re-sync when navigating to a different server or when data is reloaded after save
 	$effect(() => {
 		// Only re-sync if server changed or we're not currently saving
@@ -291,7 +331,230 @@
 			</button>
 		</div>
 	</form>
+	
+	<!-- Webhooks Section (outside main form since it has its own forms) -->
+	<section class="settings-section webhooks-section">
+		<h2>
+			<span class="section-icon">🔗</span>
+			Webhook Endpoints
+		</h2>
+		<p class="section-desc">
+			Configure webhook URLs that can be called from automations and command actions.
+			These webhooks can send data to external services when triggered.
+		</p>
+		
+		<div class="settings-card">
+			{#if data.webhooks?.length > 0}
+				<div class="webhooks-list">
+					{#each data.webhooks as webhook}
+						<div class="webhook-item" class:disabled={!webhook.enabled}>
+							<div class="webhook-info">
+								<div class="webhook-header">
+									<span class="webhook-name">{webhook.name}</span>
+									<span class="webhook-method method-{webhook.method.toLowerCase()}">{webhook.method}</span>
+									{#if !webhook.enabled}
+										<span class="webhook-badge disabled">Disabled</span>
+									{/if}
+								</div>
+								{#if webhook.description}
+									<span class="webhook-description">{webhook.description}</span>
+								{/if}
+								<span class="webhook-url">{webhook.url}</span>
+							</div>
+							<div class="webhook-actions">
+								<button 
+									type="button" 
+									class="btn btn-small btn-secondary"
+									onclick={() => openWebhookModal(webhook)}
+								>
+									Edit
+								</button>
+								{#if deleteConfirmId === webhook.id}
+									<form method="POST" action="?/deleteWebhook" use:enhance={() => {
+										return async ({ update }) => {
+											await update({ invalidateAll: true });
+											deleteConfirmId = null;
+											showToast = true;
+										};
+									}}>
+										<input type="hidden" name="webhookId" value={webhook.id} />
+										<button type="submit" class="btn btn-small btn-danger">
+											Confirm
+										</button>
+										<button 
+											type="button" 
+											class="btn btn-small btn-secondary"
+											onclick={() => deleteConfirmId = null}
+										>
+											Cancel
+										</button>
+									</form>
+								{:else}
+									<button 
+										type="button" 
+										class="btn btn-small btn-danger-outline"
+										onclick={() => deleteConfirmId = webhook.id}
+									>
+										Delete
+									</button>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="empty-state">
+					<span class="empty-icon">🔗</span>
+					<p>No webhooks configured yet</p>
+					<span class="empty-hint">Add webhook endpoints to use in automations and commands</span>
+				</div>
+			{/if}
+			
+			<div class="webhooks-footer">
+				<button 
+					type="button" 
+					class="btn btn-secondary"
+					onclick={() => openWebhookModal()}
+				>
+					<span class="btn-icon">➕</span>
+					Add Webhook
+				</button>
+			</div>
+		</div>
+	</section>
 </div>
+
+<!-- Webhook Modal -->
+{#if showWebhookModal}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div class="modal-overlay" onclick={closeWebhookModal} role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title">
+		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h3 id="webhook-modal-title">{editingWebhook ? 'Edit Webhook' : 'Add Webhook'}</h3>
+				<button type="button" class="modal-close" onclick={closeWebhookModal}>×</button>
+			</div>
+			
+			<form 
+				method="POST" 
+				action={editingWebhook ? '?/updateWebhook' : '?/createWebhook'}
+				use:enhance={() => {
+					webhookSaving = true;
+					return async ({ update, result }) => {
+						await update({ invalidateAll: true });
+						webhookSaving = false;
+						showToast = true;
+						if (result.type === 'success' || (result.type === 'redirect')) {
+							closeWebhookModal();
+						}
+					};
+				}}
+			>
+				{#if editingWebhook}
+					<input type="hidden" name="webhookId" value={editingWebhook.id} />
+				{/if}
+				
+				<div class="modal-body">
+					<div class="form-group">
+						<label for="webhookName" class="form-label">Name *</label>
+						<input 
+							type="text" 
+							id="webhookName" 
+							name="webhookName"
+							bind:value={webhookName}
+							class="form-input"
+							placeholder="e.g., Slack Notification"
+							required
+						/>
+						<span class="form-hint">A unique name to identify this webhook</span>
+					</div>
+					
+					<div class="form-group">
+						<label for="webhookDescription" class="form-label">Description</label>
+						<input 
+							type="text" 
+							id="webhookDescription" 
+							name="webhookDescription"
+							bind:value={webhookDescription}
+							class="form-input"
+							placeholder="e.g., Send notifications to #alerts channel"
+						/>
+					</div>
+					
+					<div class="form-group">
+						<label for="webhookUrl" class="form-label">URL *</label>
+						<input 
+							type="url" 
+							id="webhookUrl" 
+							name="webhookUrl"
+							bind:value={webhookUrl}
+							class="form-input"
+							placeholder="https://example.com/webhook"
+							required
+						/>
+						<span class="form-hint">The endpoint URL to call</span>
+					</div>
+					
+					<div class="form-group">
+						<label for="webhookMethod" class="form-label">HTTP Method</label>
+						<select 
+							id="webhookMethod" 
+							name="webhookMethod"
+							bind:value={webhookMethod}
+							class="form-select"
+						>
+							{#each data.httpMethods as method}
+								<option value={method}>{method}</option>
+							{/each}
+						</select>
+					</div>
+					
+					<div class="form-group">
+						<label for="webhookHeaders" class="form-label">Custom Headers</label>
+						<textarea 
+							id="webhookHeaders" 
+							name="webhookHeaders"
+							bind:value={webhookHeaders}
+							class="form-textarea"
+							rows="3"
+							placeholder="Authorization: Bearer token&#10;X-Custom-Header: value"
+						></textarea>
+						<span class="form-hint">One header per line in format: Header-Name: value</span>
+					</div>
+					
+					{#if editingWebhook}
+						<div class="form-group form-group-inline">
+							<span class="form-label">Status</span>
+							<label class="toggle">
+								<input 
+									type="checkbox" 
+									name="webhookEnabled"
+									bind:checked={webhookEnabled}
+								/>
+								<span class="toggle-slider"></span>
+							</label>
+							<span class="toggle-label">{webhookEnabled ? 'Enabled' : 'Disabled'}</span>
+						</div>
+					{/if}
+				</div>
+				
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" onclick={closeWebhookModal}>
+						Cancel
+					</button>
+					<button type="submit" class="btn btn-primary" disabled={webhookSaving}>
+						{#if webhookSaving}
+							<span class="spinner"></span>
+							Saving...
+						{:else}
+							{editingWebhook ? 'Update Webhook' : 'Create Webhook'}
+						{/if}
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.settings-page {
@@ -662,6 +925,303 @@
 		font-size: 1.1em;
 	}
 	
+	.btn-secondary {
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+	}
+	
+	.btn-secondary:hover:not(:disabled) {
+		background: var(--color-surface-hover);
+		border-color: var(--color-primary);
+	}
+	
+	.btn-small {
+		padding: 0.4rem 0.75rem;
+		font-size: 0.8rem;
+	}
+	
+	.btn-danger {
+		background: var(--color-danger, #dc3545);
+		color: white;
+	}
+	
+	.btn-danger:hover:not(:disabled) {
+		background: #c82333;
+	}
+	
+	.btn-danger-outline {
+		background: transparent;
+		color: var(--color-danger, #dc3545);
+		border: 1px solid var(--color-danger, #dc3545);
+	}
+	
+	.btn-danger-outline:hover:not(:disabled) {
+		background: rgba(220, 53, 69, 0.1);
+	}
+	
+	/* Webhooks Section */
+	.webhooks-section {
+		margin-top: 2rem;
+	}
+	
+	.webhooks-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.webhook-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		padding: 1rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		transition: border-color 0.2s;
+	}
+	
+	.webhook-item:hover {
+		border-color: var(--color-primary);
+	}
+	
+	.webhook-item.disabled {
+		opacity: 0.6;
+	}
+	
+	.webhook-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	
+	.webhook-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	
+	.webhook-name {
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	
+	.webhook-method {
+		font-size: 0.7rem;
+		font-weight: 600;
+		padding: 0.15rem 0.4rem;
+		border-radius: var(--radius-sm);
+		text-transform: uppercase;
+	}
+	
+	.method-get { background: #28a745; color: white; }
+	.method-post { background: #007bff; color: white; }
+	.method-put { background: #fd7e14; color: white; }
+	.method-patch { background: #6f42c1; color: white; }
+	.method-delete { background: #dc3545; color: white; }
+	
+	.webhook-badge {
+		font-size: 0.7rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: var(--radius-sm);
+		background: var(--color-surface);
+		color: var(--color-text-muted);
+	}
+	
+	.webhook-badge.disabled {
+		background: rgba(220, 53, 69, 0.15);
+		color: var(--color-danger, #dc3545);
+	}
+	
+	.webhook-description {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+	
+	.webhook-url {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		font-family: monospace;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	
+	.webhook-actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+	
+	.webhook-actions form {
+		display: flex;
+		gap: 0.5rem;
+	}
+	
+	.webhooks-footer {
+		margin-top: 1rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-border);
+	}
+	
+	/* Empty State */
+	.empty-state {
+		text-align: center;
+		padding: 2rem;
+		color: var(--color-text-muted);
+	}
+	
+	.empty-icon {
+		font-size: 2.5rem;
+		display: block;
+		margin-bottom: 0.5rem;
+		opacity: 0.5;
+	}
+	
+	.empty-state p {
+		margin: 0;
+		font-weight: 500;
+		color: var(--color-text);
+	}
+	
+	.empty-hint {
+		font-size: 0.85rem;
+		display: block;
+		margin-top: 0.25rem;
+	}
+	
+	/* Modal */
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 1rem;
+	}
+	
+	.modal {
+		background: var(--color-surface);
+		border-radius: var(--radius-lg);
+		width: 100%;
+		max-width: 500px;
+		max-height: 90vh;
+		overflow-y: auto;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+	}
+	
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 1rem 1.25rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.modal-header h3 {
+		margin: 0;
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	
+	.modal-close {
+		background: none;
+		border: none;
+		font-size: 1.5rem;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		padding: 0;
+		line-height: 1;
+		transition: color 0.2s;
+	}
+	
+	.modal-close:hover {
+		color: var(--color-text);
+	}
+	
+	.modal-body {
+		padding: 1.25rem;
+	}
+	
+	.modal-footer {
+		display: flex;
+		justify-content: flex-end;
+		gap: 0.75rem;
+		padding: 1rem 1.25rem;
+		border-top: 1px solid var(--color-border);
+	}
+	
+	/* Form Elements */
+	.form-group {
+		margin-bottom: 1rem;
+	}
+	
+	.form-group:last-child {
+		margin-bottom: 0;
+	}
+	
+	.form-label {
+		display: block;
+		font-weight: 500;
+		font-size: 0.875rem;
+		color: var(--color-text);
+		margin-bottom: 0.375rem;
+	}
+	
+	.form-input,
+	.form-select,
+	.form-textarea {
+		width: 100%;
+		padding: 0.625rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		font-size: 0.875rem;
+		font-family: inherit;
+		transition: border-color 0.2s;
+	}
+	
+	.form-input:focus,
+	.form-select:focus,
+	.form-textarea:focus {
+		outline: none;
+		border-color: var(--color-primary);
+	}
+	
+	.form-textarea {
+		resize: vertical;
+		min-height: 80px;
+	}
+	
+	.form-hint {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin-top: 0.25rem;
+	}
+	
+	.form-group .toggle {
+		vertical-align: middle;
+	}
+	
+	.toggle-label {
+		margin-left: 0.5rem;
+		font-size: 0.875rem;
+		color: var(--color-text);
+	}
+
 	/* Spinner */
 	.spinner {
 		width: 16px;
