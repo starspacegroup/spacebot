@@ -207,31 +207,23 @@
 						<div class="settings-grid">
 							<div class="setting-item">
 								<div class="setting-info">
-									<span class="setting-label">Bot Prefix</span>
-									<span class="setting-desc">Command prefix for text commands</span>
-								</div>
-								<span class="setting-value">!</span>
-							</div>
-							<div class="setting-item">
-								<div class="setting-info">
 									<span class="setting-label">Logging Channel</span>
 									<span class="setting-desc">Where bot logs are sent</span>
 								</div>
-								<span class="setting-value">Not configured</span>
-							</div>
-							<div class="setting-item">
-								<div class="setting-info">
-									<span class="setting-label">Moderation Role</span>
-									<span class="setting-desc">Role with moderation permissions</span>
-								</div>
-								<span class="setting-value">Not configured</span>
+								{#if data.settings?.loggingChannelId}
+									<a href="discord://discord.com/channels/{data.serverId}/{data.settings.loggingChannelId}" target="_blank" rel="noopener noreferrer" class="setting-value setting-link">
+										#{data.settings.loggingChannelName || data.settings.loggingChannelId}
+									</a>
+								{:else}
+									<span class="setting-value">Not configured</span>
+								{/if}
 							</div>
 							<div class="setting-item">
 								<div class="setting-info">
 									<span class="setting-label">Welcome Messages</span>
 									<span class="setting-desc">Greet new members automatically</span>
 								</div>
-								<span class="setting-value setting-disabled">Disabled</span>
+								<span class="setting-value" class:setting-disabled={!data.settings?.welcomeEnabled}>{data.settings?.welcomeEnabled ? 'Enabled' : 'Disabled'}</span>
 							</div>
 						</div>
 						<div class="settings-actions">
@@ -821,6 +813,17 @@
 	.setting-value.setting-disabled {
 		color: var(--color-text-muted);
 		opacity: 0.7;
+	}
+	
+	.setting-value.setting-link {
+		color: var(--color-primary);
+		text-decoration: none;
+		transition: background var(--transition-fast), color var(--transition-fast);
+	}
+	
+	.setting-value.setting-link:hover {
+		background: var(--color-primary-soft);
+		color: var(--color-primary-hover);
 	}
 	
 	.settings-actions {

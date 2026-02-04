@@ -8,9 +8,38 @@ import {
   log,
 } from "$lib/db/logger.js";
 import { getBotGuildIds, hasFullAdminPermission } from "$lib/discord/guilds.js";
+import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
+
+/**
+ * Fetch a channel's info from Discord API
+ * @param {string} botToken - The bot token
+ * @param {string} channelId - The channel ID to fetch
+ * @returns {Promise<{id: string, name: string} | null>}
+ */
+async function getChannelInfo(botToken, channelId) {
+  if (!botToken || !channelId) return null;
+  
+  try {
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}`,
+      {
+        headers: {
+          Authorization: `Bot ${botToken}`,
+        },
+      },
+    );
+    
+    if (!response.ok) return null;
+    
+    const channel = await response.json();
+    return { id: channel.id, name: channel.name };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Format uptime into a human-readable string
@@ -98,6 +127,7 @@ export async function load({ cookies, platform, parent, params }) {
   // Fetch recent logs for the selected guild
   let recentLogs = [];
   let logStats = null;
+  let dbSettings = DEFAULT_SETTINGS;
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
@@ -111,8 +141,20 @@ export async function load({ cookies, platform, parent, params }) {
 
       // Get stats for the dashboard
       logStats = await getLogStats(db, serverId);
+
+      // Get server settings
+      dbSettings = await getGuildSettings(db, serverId);
     } catch (error) {
       log.error("Failed to fetch logs for dashboard:", error);
+    }
+  }
+
+  // Fetch channel name if logging channel is configured
+  let loggingChannelName = null;
+  if (dbSettings.log_channel_id && botToken) {
+    const channelInfo = await getChannelInfo(botToken, dbSettings.log_channel_id);
+    if (channelInfo) {
+      loggingChannelName = channelInfo.name;
     }
   }
 
@@ -152,6 +194,13 @@ export async function load({ cookies, platform, parent, params }) {
     logStats,
     eventCategories: EVENT_CATEGORIES,
     eventTypes: EVENT_TYPES,
+    settings: {
+      loggingChannelId: dbSettings.log_channel_id || null,
+      loggingChannelName,
+      welcomeEnabled: dbSettings.welcome_enabled || false,
+      welcomeChannelId: dbSettings.welcome_channel_id || null,
+      welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
+    },
   };
 }
 
