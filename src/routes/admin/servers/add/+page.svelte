@@ -22,7 +22,7 @@
 		
 		{#if data.user}
 			{#if data.inviteUrl}
-				<a href={data.inviteUrl} class="btn btn-primary btn-large" target="_blank" rel="noopener noreferrer">
+				<a href={data.inviteUrl} class="btn btn-primary btn-large">
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none">
 						<path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 					</svg>

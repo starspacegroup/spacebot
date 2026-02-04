@@ -5,24 +5,10 @@ export async function load({ cookies, platform }) {
   const username = cookies.get("discord_username");
   const avatar = cookies.get("discord_avatar");
 
-  // Get the Discord client ID for the bot invite link
-  const clientId = platform?.env?.DISCORD_CLIENT_ID ||
-    process.env.DISCORD_CLIENT_ID;
-
-  // Bot permissions we need:
-  // - View Channels
-  // - Send Messages
-  // - Read Message History
-  // - Manage Messages (for moderation)
-  // - Kick Members
-  // - Ban Members
-  // - View Audit Log
-  const permissions = 1099511693334;
-
-  // Build the invite URL
-  const inviteUrl = clientId
-    ? `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=bot%20applications.commands`
-    : null;
+  // Use the OAuth2 code grant flow for bot installation
+  // This ensures proper authorization before the bot joins the server
+  // Direct Discord URLs won't work when "Require OAuth2 Code Grant" is enabled
+  const inviteUrl = "/api/auth/discord?flow=install";
 
   return {
     user: userId
