@@ -1,9 +1,6 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
 import { fail, redirect } from "@sveltejs/kit";
 import {
-  EVENT_CATEGORIES,
-  EVENT_TYPES,
-  getLogs,
   getLogStats,
   log,
 } from "$lib/db/logger.js";
@@ -124,28 +121,20 @@ export async function load({ cookies, platform, parent, params }) {
   // Check if user has full administrator permission (not just MANAGE_GUILD)
   const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
 
-  // Fetch recent logs for the selected guild
-  let recentLogs = [];
+  // Fetch data for the selected guild
   let logStats = null;
   let dbSettings = DEFAULT_SETTINGS;
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
-      // Get the 5 most recent logs for the compact widget
-      const logsResult = await getLogs(db, serverId, {
-        limit: 5,
-        offset: 0,
-      });
-      recentLogs = logsResult.logs || [];
-
       // Get stats for the dashboard
       logStats = await getLogStats(db, serverId);
 
       // Get server settings
       dbSettings = await getGuildSettings(db, serverId);
     } catch (error) {
-      log.error("Failed to fetch logs for dashboard:", error);
+      log.error("Failed to fetch data for dashboard:", error);
     }
   }
 
@@ -190,10 +179,7 @@ export async function load({ cookies, platform, parent, params }) {
     serverId,
     guild,
     botInGuild,
-    recentLogs,
     logStats,
-    eventCategories: EVENT_CATEGORIES,
-    eventTypes: EVENT_TYPES,
     settings: {
       loggingChannelId: dbSettings.log_channel_id || null,
       loggingChannelName,
