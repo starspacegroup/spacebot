@@ -25,6 +25,7 @@ import {
 const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const D1_DATABASE_ID = process.env.D1_DATABASE_ID || "6bce735c-2dca-43cd-9911-2eef7062377a";
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
 // ============================================================================
 // Schema Documentation - These constants help provide accurate answers about
@@ -745,6 +746,84 @@ function getSchemaInfo() {
 }
 
 /**
+ * Get a user's roles in a specific guild via Discord API
+ * @param {string} guildId - The guild ID
+ * @param {string} userId - The user ID
+ * @returns {Promise<Object>} - User's member info including roles
+ */
+async function getUserRoles(guildId, userId) {
+  if (!DISCORD_BOT_TOKEN) {
+    throw new Error("DISCORD_BOT_TOKEN not configured - cannot fetch user roles");
+  }
+
+  // First, fetch the guild member to get their role IDs
+  const memberResponse = await fetch(
+    `https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
+    {
+      headers: {
+        "Authorization": `Bot ${DISCORD_BOT_TOKEN}`,
+      },
+    }
+  );
+
+  if (!memberResponse.ok) {
+    if (memberResponse.status === 404) {
+      throw new Error("User is not a member of this guild");
+    }
+    throw new Error(`Failed to fetch member: ${memberResponse.status}`);
+  }
+
+  const member = await memberResponse.json();
+
+  // Fetch the guild's roles to get role names
+  const rolesResponse = await fetch(
+    `https://discord.com/api/v10/guilds/${guildId}/roles`,
+    {
+      headers: {
+        "Authorization": `Bot ${DISCORD_BOT_TOKEN}`,
+      },
+    }
+  );
+
+  if (!rolesResponse.ok) {
+    throw new Error(`Failed to fetch guild roles: ${rolesResponse.status}`);
+  }
+
+  const guildRoles = await rolesResponse.json();
+  const roleMap = new Map(guildRoles.map(r => [r.id, r]));
+
+  // Map user's role IDs to role details
+  const userRoles = member.roles
+    .map(roleId => {
+      const role = roleMap.get(roleId);
+      if (!role) return null;
+      return {
+        id: role.id,
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        permissions: role.permissions,
+        hoist: role.hoist,
+        managed: role.managed,
+        mentionable: role.mentionable,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.position - a.position); // Sort by position (highest first)
+
+  return {
+    userId: member.user.id,
+    username: member.user.username,
+    displayName: member.nick || member.user.global_name || member.user.username,
+    joinedAt: member.joined_at,
+    roles: userRoles,
+    roleCount: userRoles.length,
+    highestRole: userRoles[0] || null,
+    isOwner: false, // Would need additional API call to check
+  };
+}
+
+/**
  * Search automations by name or description
  */
 async function searchAutomations(guildId, query) {
@@ -1192,6 +1271,24 @@ const TOOLS = [
       required: ["guildId", "actionType"],
     },
   },
+  {
+    name: "get_user_roles",
+    description: "Get a user's roles in a specific Discord server. Returns the user's display name, join date, and all their roles with details like role name, color, position, and permissions. Useful for checking what roles a user has or verifying permissions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        userId: {
+          type: "string",
+          description: "The Discord user ID to look up",
+        },
+      },
+      required: ["guildId", "userId"],
+    },
+  },
 ];
 
 // Create the MCP server
@@ -1340,6 +1437,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_automations_by_action":
         result = await getAutomationsByAction(args.guildId, args.actionType);
+        break;
+
+      case "get_user_roles":
+        result = await getUserRoles(args.guildId, args.userId);
         break;
 
       default:

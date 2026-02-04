@@ -27,6 +27,7 @@ export class MCPClient {
     this.databaseId = options.databaseId || "6bce735c-2dca-43cd-9911-2eef7062377a";
     this.useLocalDb = options.useLocalDb || false;
     this.localDb = null;
+    this.discordBotToken = options.discordBotToken;
     
     log.debug(`[MCP] Client initialized - accountId: ${this.accountId ? 'SET' : 'MISSING'}, apiToken: ${this.apiToken ? 'SET' : 'MISSING'}, useLocalDb: ${this.useLocalDb}`);
   }
@@ -606,6 +607,82 @@ export class MCPClient {
   }
 
   /**
+   * Get a user's roles in a specific guild via Discord API
+   * @param {string} guildId - The guild ID
+   * @param {string} userId - The user ID
+   * @returns {Promise<Object>} - User's member info including roles
+   */
+  async getUserRoles(guildId, userId) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot fetch user roles");
+    }
+
+    // Fetch the guild member to get their role IDs
+    const memberResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!memberResponse.ok) {
+      if (memberResponse.status === 404) {
+        throw new Error("User is not a member of this guild");
+      }
+      throw new Error(`Failed to fetch member: ${memberResponse.status}`);
+    }
+
+    const member = await memberResponse.json();
+
+    // Fetch the guild's roles to get role names
+    const rolesResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/roles`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!rolesResponse.ok) {
+      throw new Error(`Failed to fetch guild roles: ${rolesResponse.status}`);
+    }
+
+    const guildRoles = await rolesResponse.json();
+    const roleMap = new Map(guildRoles.map(r => [r.id, r]));
+
+    // Map user's role IDs to role details
+    const userRoles = member.roles
+      .map(roleId => {
+        const role = roleMap.get(roleId);
+        if (!role) return null;
+        return {
+          id: role.id,
+          name: role.name,
+          color: role.color,
+          position: role.position,
+          hoist: role.hoist,
+          managed: role.managed,
+          mentionable: role.mentionable,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.position - a.position); // Sort by position (highest first)
+
+    return {
+      userId: member.user.id,
+      username: member.user.username,
+      displayName: member.nick || member.user.global_name || member.user.username,
+      joinedAt: member.joined_at,
+      roles: userRoles,
+      roleCount: userRoles.length,
+      highestRole: userRoles[0] || null,
+    };
+  }
+
+  /**
    * Execute a tool by name with the given arguments
    * This is the main entry point for AI tool calling
    */
@@ -717,6 +794,12 @@ export class MCPClient {
             console.error("[MCP] get_server_stats error:", statsError);
             return { success: false, error: statsError.message };
           }
+
+        case "get_user_roles":
+          return {
+            success: true,
+            data: await this.getUserRoles(args.guildId, args.userId),
+          };
 
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };
@@ -840,6 +923,14 @@ export const MCP_TOOLS = [
       guildId: "string (required) - The Discord server ID",
     },
   },
+  {
+    name: "get_user_roles",
+    description: "Get a user's roles in a specific Discord server. Returns the user's display name, join date, and all their roles with details like role name, color, and position. Useful for checking what roles a user has.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      userId: "string (required) - The Discord user ID to look up",
+    },
+  },
 ];
 
 /**
@@ -907,5 +998,6 @@ export function getMCPClient(env = {}) {
     apiToken: env.CLOUDFLARE_API_TOKEN,
     databaseId: env.D1_DATABASE_ID,
     useLocalDb,
+    discordBotToken: env.DISCORD_BOT_TOKEN,
   });
 }
