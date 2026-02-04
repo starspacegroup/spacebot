@@ -4,7 +4,8 @@ import {
   getGuildStatistics, 
   getActivityHeatmap, 
   getCategoryTrends,
-  getRecentAutomationExecutions 
+  getRecentAutomationExecutions,
+  getAutomationExecutionHistory
 } from "$lib/db/statistics.js";
 import {
   getServerStatsHistory,
@@ -82,6 +83,7 @@ export async function load({ params, cookies, platform, parent }) {
   let heatmapData = [];
   let categoryTrends = [];
   let recentExecutions = [];
+  let automationHistory = {};
   let memberStats = null;
   let memberHistory = [];
   let voiceActivity = null;
@@ -126,7 +128,8 @@ export async function load({ params, cookies, platform, parent }) {
         statistics, 
         heatmapData, 
         categoryTrends, 
-        recentExecutions, 
+        recentExecutions,
+        automationHistory,
         memberStats, 
         memberHistory,
         voiceActivity,
@@ -138,6 +141,7 @@ export async function load({ params, cookies, platform, parent }) {
         getActivityHeatmap(db, serverId),
         getCategoryTrends(db, serverId),
         getRecentAutomationExecutions(db, serverId, 15),
+        getAutomationExecutionHistory(db, serverId),
         // Member stats from server_stats
         Promise.all([
           getLatestServerStats(db, serverId),
@@ -165,6 +169,7 @@ export async function load({ params, cookies, platform, parent }) {
     heatmapData,
     categoryTrends,
     recentExecutions,
+    automationHistory,
     memberStats,
     memberHistory,
     voiceActivity,

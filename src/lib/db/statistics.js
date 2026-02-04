@@ -312,6 +312,46 @@ async function getAutomationPerformance(db, guildId) {
 }
 
 /**
+ * Get daily execution history for each automation (last 14 days)
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @returns {Promise<Object>} - Map of automation_id to array of daily execution counts
+ */
+export async function getAutomationExecutionHistory(db, guildId) {
+  if (!db) return {};
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        automation_id,
+        DATE(created_at) as date,
+        COUNT(*) as count
+      FROM automation_logs
+      WHERE guild_id = ? AND created_at >= datetime('now', '-14 days')
+      GROUP BY automation_id, DATE(created_at)
+      ORDER BY automation_id, date ASC
+    `).bind(guildId).all();
+
+    // Group by automation_id
+    const historyMap = {};
+    for (const row of (result.results || [])) {
+      if (!historyMap[row.automation_id]) {
+        historyMap[row.automation_id] = [];
+      }
+      historyMap[row.automation_id].push({
+        date: row.date,
+        value: row.count
+      });
+    }
+
+    return historyMap;
+  } catch (error) {
+    log.error("Failed to fetch automation execution history:", error);
+    return {};
+  }
+}
+
+/**
  * Get command usage statistics
  */
 async function getCommandUsageStats(db, guildId) {

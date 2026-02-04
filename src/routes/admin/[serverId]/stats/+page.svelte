@@ -29,6 +29,57 @@
 		return Math.max(...items.map(i => i[key] || 0));
 	}
 	
+	// Build sparkline path from execution history data
+	function buildSparkline(history) {
+		if (!history || history.length === 0) {
+			return { path: null, areaPath: null };
+		}
+		
+		// Fill in missing days for last 14 days
+		const days = 14;
+		const today = new Date();
+		const filledData = [];
+		
+		for (let i = days - 1; i >= 0; i--) {
+			const d = new Date(today);
+			d.setDate(d.getDate() - i);
+			const dateStr = d.toISOString().split('T')[0];
+			const existing = history.find(h => h.date === dateStr);
+			filledData.push({
+				date: dateStr,
+				value: existing ? existing.value : 0
+			});
+		}
+		
+		const values = filledData.map(d => d.value);
+		const maxValue = Math.max(...values, 1);
+		
+		// Calculate points (viewBox is 100x30)
+		const width = 100;
+		const height = 30;
+		const padding = 2;
+		const innerWidth = width - padding * 2;
+		const innerHeight = height - padding * 2;
+		
+		const xStep = innerWidth / (filledData.length - 1 || 1);
+		const points = filledData.map((d, i) => {
+			const x = padding + i * xStep;
+			const y = padding + innerHeight - (d.value / maxValue) * innerHeight;
+			return { x, y };
+		});
+		
+		// Build line path
+		let path = `M ${points[0].x} ${points[0].y}`;
+		for (let i = 1; i < points.length; i++) {
+			path += ` L ${points[i].x} ${points[i].y}`;
+		}
+		
+		// Build area path
+		const areaPath = `${path} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
+		
+		return { path, areaPath };
+	}
+	
 	// Format relative time
 	function formatRelativeTime(dateStr) {
 		if (!dateStr) return 'Never';
@@ -710,10 +761,28 @@
 			{#if data.statistics.automationPerformance?.length > 0}
 				<div class="performance-grid">
 					{#each data.statistics.automationPerformance as automation}
+						{@const history = data.automationHistory?.[automation.id] || []}
+						{@const sparklineData = buildSparkline(history)}
 						<div class="performance-card">
 							<div class="performance-header">
 								<span class="performance-name">{automation.name}</span>
 							</div>
+							{#if sparklineData.path}
+								<div class="sparkline-container">
+									<svg viewBox="0 0 100 30" preserveAspectRatio="none" class="sparkline">
+										<defs>
+											<linearGradient id="sparkline-gradient-{automation.id}" x1="0%" y1="0%" x2="0%" y2="100%">
+												<stop offset="0%" stop-color="var(--color-primary)" stop-opacity="0.3"/>
+												<stop offset="100%" stop-color="var(--color-primary)" stop-opacity="0"/>
+											</linearGradient>
+										</defs>
+										<path d={sparklineData.areaPath} fill="url(#sparkline-gradient-{automation.id})"/>
+										<path d={sparklineData.path} fill="none" stroke="var(--color-primary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+									</svg>
+								</div>
+							{:else}
+								<div class="sparkline-empty">No recent activity</div>
+							{/if}
 							<div class="performance-stats">
 								<div class="perf-stat">
 									<span class="perf-value">{formatNumber(automation.log_count)}</span>
@@ -1323,6 +1392,26 @@
 		padding: 1rem;
 	}
 	
+	.sparkline-container {
+		height: 40px;
+		margin-bottom: 0.75rem;
+	}
+	
+	.sparkline {
+		width: 100%;
+		height: 100%;
+	}
+	
+	.sparkline-empty {
+		height: 40px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin-bottom: 0.75rem;
+	}
+	
 	.performance-header {
 		display: flex;
 		justify-content: space-between;
@@ -1333,28 +1422,6 @@
 	.performance-name {
 		font-weight: 600;
 		color: var(--color-text);
-	}
-	
-	.performance-status {
-		font-size: 0.75rem;
-		font-weight: 500;
-		padding: 0.25rem 0.5rem;
-		border-radius: var(--radius-sm);
-	}
-	
-	.performance-status.success {
-		background: var(--color-success-soft);
-		color: var(--color-success);
-	}
-	
-	.performance-status.warning {
-		background: var(--color-warning-soft);
-		color: var(--color-warning);
-	}
-	
-	.performance-status.error {
-		background: var(--color-danger-soft);
-		color: var(--color-danger);
 	}
 	
 	.performance-stats {
@@ -1376,20 +1443,6 @@
 	.perf-label {
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
-	}
-	
-	.performance-bar {
-		height: 4px;
-		background: var(--color-surface-elevated);
-		border-radius: 2px;
-		overflow: hidden;
-		margin-bottom: 0.5rem;
-	}
-	
-	.perf-bar-fill {
-		height: 100%;
-		background: var(--color-success);
-		border-radius: 2px;
 	}
 	
 	.performance-last {
