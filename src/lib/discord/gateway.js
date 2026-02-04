@@ -81,6 +81,28 @@ async function checkUserIsManager(client, userId) {
         const isOwner = guild.ownerId === userId;
         
         if (hasManageGuild || hasAdmin || isOwner) {
+          // Count members in voice channels and get voice channel details
+          let voiceMemberCount = 0;
+          const voiceChannels = [];
+          for (const channel of guild.channels.cache.values()) {
+            if (channel.isVoiceBased() && channel.members) {
+              const membersInChannel = channel.members.size;
+              if (membersInChannel > 0) {
+                voiceMemberCount += membersInChannel;
+                voiceChannels.push({
+                  name: channel.name,
+                  memberCount: membersInChannel,
+                  members: channel.members.map(m => m.user.username).slice(0, 10), // First 10 usernames
+                });
+              }
+            }
+          }
+          
+          // Count online members (requires GuildPresences intent)
+          const onlineCount = guild.members.cache.filter(m => 
+            m.presence?.status && m.presence.status !== 'offline'
+          ).size;
+          
           managedGuilds.push({
             id: guild.id,
             name: guild.name,
@@ -88,11 +110,15 @@ async function checkUserIsManager(client, userId) {
             isAdmin: hasAdmin,
             // Include live stats from Discord.js cache
             memberCount: guild.memberCount,
+            onlineCount,
             channelCount: guild.channels.cache.size,
             roleCount: guild.roles.cache.size,
             emojiCount: guild.emojis.cache.size,
             boostCount: guild.premiumSubscriptionCount || 0,
             boostLevel: guild.premiumTier,
+            // Voice channel stats
+            voiceMemberCount,
+            voiceChannels,
           });
         }
       }

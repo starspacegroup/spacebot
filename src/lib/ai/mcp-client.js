@@ -184,7 +184,7 @@ export class MCPClient {
    * Get event logs for a guild
    */
   async getEventLogs(guildId, options = {}) {
-    const { limit = 50, offset = 0, category, eventType } = options;
+    const { limit = 50, offset = 0, category, eventType, since, until, actorId } = options;
     
     let sql = "SELECT * FROM event_logs WHERE guild_id = ?";
     const params = [guildId];
@@ -199,6 +199,21 @@ export class MCPClient {
       params.push(eventType);
     }
 
+    if (since) {
+      sql += " AND created_at >= ?";
+      params.push(since);
+    }
+
+    if (until) {
+      sql += " AND created_at <= ?";
+      params.push(until);
+    }
+
+    if (actorId) {
+      sql += " AND actor_id = ?";
+      params.push(actorId);
+    }
+
     sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
@@ -208,6 +223,114 @@ export class MCPClient {
       ...logEntry,
       details: logEntry.details ? JSON.parse(logEntry.details) : null,
     }));
+  }
+
+  /**
+   * Get voice activity stats for a guild
+   */
+  async getVoiceActivity(guildId, options = {}) {
+    const { days = 7 } = options;
+    const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const [joinCount, uniqueUsers, topUsers, topChannels] = await Promise.all([
+      // Total voice joins
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      // Unique users in voice
+      this.executeD1Query(
+        `SELECT COUNT(DISTINCT actor_id) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      // Top voice users
+      this.executeD1Query(
+        `SELECT actor_name, actor_id, COUNT(*) as join_count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?
+         GROUP BY actor_id ORDER BY join_count DESC LIMIT 10`,
+        [guildId, sinceDate]
+      ),
+      // Top voice channels
+      this.executeD1Query(
+        `SELECT channel_name, channel_id, COUNT(*) as join_count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?
+         GROUP BY channel_id ORDER BY join_count DESC LIMIT 10`,
+        [guildId, sinceDate]
+      ),
+    ]);
+
+    return {
+      period: `Last ${days} days`,
+      totalVoiceJoins: joinCount.results[0]?.count || 0,
+      uniqueUsersInVoice: uniqueUsers.results[0]?.count || 0,
+      topVoiceUsers: topUsers.results,
+      topVoiceChannels: topChannels.results,
+    };
+  }
+
+  /**
+   * Get activity summary for a guild
+   */
+  async getActivitySummary(guildId, options = {}) {
+    const { days = 7 } = options;
+    const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+    const [messages, joins, leaves, voice, reactions] = await Promise.all([
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'MESSAGE_CREATE' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'MEMBER_JOIN' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'MEMBER_LEAVE' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+      this.executeD1Query(
+        `SELECT COUNT(*) as count FROM event_logs 
+         WHERE guild_id = ? AND event_type = 'REACTION_ADD' AND created_at >= ?`,
+        [guildId, sinceDate]
+      ),
+    ]);
+
+    // Get top active members by message count
+    const topMembers = await this.executeD1Query(
+      `SELECT actor_name, actor_id, COUNT(*) as message_count FROM event_logs 
+       WHERE guild_id = ? AND event_type = 'MESSAGE_CREATE' AND created_at >= ? AND actor_is_bot = 0
+       GROUP BY actor_id ORDER BY message_count DESC LIMIT 10`,
+      [guildId, sinceDate]
+    );
+
+    // Get most active channels
+    const topChannels = await this.executeD1Query(
+      `SELECT channel_name, channel_id, COUNT(*) as message_count FROM event_logs 
+       WHERE guild_id = ? AND event_type = 'MESSAGE_CREATE' AND created_at >= ?
+       GROUP BY channel_id ORDER BY message_count DESC LIMIT 10`,
+      [guildId, sinceDate]
+    );
+
+    return {
+      period: `Last ${days} days`,
+      messageCount: messages.results[0]?.count || 0,
+      memberJoins: joins.results[0]?.count || 0,
+      memberLeaves: leaves.results[0]?.count || 0,
+      voiceJoins: voice.results[0]?.count || 0,
+      reactionCount: reactions.results[0]?.count || 0,
+      topActiveMembers: topMembers.results,
+      topActiveChannels: topChannels.results,
+    };
   }
 
   /**
@@ -498,10 +621,29 @@ export class MCPClient {
           return { 
             success: true, 
             data: await this.getEventLogs(args.guildId, {
-              limit: Math.min(args.limit || 20, 50),
+              limit: Math.min(args.limit || 20, 100),
               offset: args.offset || 0,
               category: args.category,
               eventType: args.eventType,
+              since: args.since,
+              until: args.until,
+              actorId: args.actorId,
+            })
+          };
+
+        case "get_voice_activity":
+          return {
+            success: true,
+            data: await this.getVoiceActivity(args.guildId, {
+              days: args.days || 7,
+            })
+          };
+
+        case "get_activity_summary":
+          return {
+            success: true,
+            data: await this.getActivitySummary(args.guildId, {
+              days: args.days || 7,
             })
           };
 
@@ -597,12 +739,31 @@ export const MCP_TOOLS = [
   },
   {
     name: "get_event_logs",
-    description: "Get event logs for a Discord server. Shows message creates, member joins, role changes, etc.",
+    description: "Get event logs for a Discord server. Shows message creates, member joins, voice activity, role changes, etc. Supports date filtering.",
     parameters: {
       guildId: "string (required) - The Discord server ID",
-      limit: "number (optional) - Max logs to return (default: 20)",
-      category: "string (optional) - Filter by category: message, member, role, channel, guild, etc.",
-      eventType: "string (optional) - Filter by event type: MESSAGE_CREATE, MEMBER_JOIN, etc.",
+      limit: "number (optional) - Max logs to return (default: 20, max: 100)",
+      category: "string (optional) - Filter by category: message, member, role, channel, guild, voice, reaction, etc.",
+      eventType: "string (optional) - Filter by event type: MESSAGE_CREATE, MEMBER_JOIN, VOICE_JOIN, VOICE_LEAVE, etc.",
+      since: "string (optional) - ISO date string to filter events after this date (e.g., '2026-02-01T00:00:00Z')",
+      until: "string (optional) - ISO date string to filter events before this date",
+      actorId: "string (optional) - Filter by a specific user ID",
+    },
+  },
+  {
+    name: "get_voice_activity",
+    description: "Get voice chat activity statistics for a server over a time period. Shows total voice joins, unique users, top voice users, and most popular voice channels.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      days: "number (optional) - Number of days to look back (default: 7)",
+    },
+  },
+  {
+    name: "get_activity_summary",
+    description: "Get a comprehensive activity summary for a server. Shows message counts, member joins/leaves, voice activity, reactions, top active members, and most active channels over a time period.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      days: "number (optional) - Number of days to look back (default: 7)",
     },
   },
   {

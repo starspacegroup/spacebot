@@ -18,32 +18,50 @@ const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 // Base system prompt for the bot assistant
 const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.
 
-## IMPORTANT: CHECK CONTEXT FIRST
+## DATA SOURCES
 
-Before calling any tools, CHECK if the answer is already in this prompt under "User's Managed Servers (LIVE DATA)".
+You have TWO sources of data:
 
-**For these questions, use the LIVE DATA from context - DO NOT call tools:**
-- "How many members?" → Use memberCount from context
-- "How many channels/roles/emojis?" → Use the counts from context
-- "What's the boost level?" → Use boostLevel from context
+### 1. LIVE DATA (in context below) - Use for CURRENT state:
+- Member count, online count, channel count, role count, emoji count, boosts
+- Who's in voice chat RIGHT NOW, which voice channels are active
+- Server name, ID, boost level
 
-**Only use database tools for:**
-- Event logs (messages, joins, leaves, etc.)
-- Automations and their execution history
-- Custom commands and usage logs
-- Server settings
-- Historical statistics over time
+### 2. DATABASE TOOLS - Use for HISTORICAL data:
+- "How many messages in the last week?" → Use get_activity_summary
+- "Who's been most active?" → Use get_activity_summary  
+- "Voice activity over the last 3 days?" → Use get_voice_activity with days=3
+- "How many people joined this month?" → Use get_event_logs with since date
+- Event logs, automations, commands, settings
+
+## WHEN TO USE WHAT
+
+**Use LIVE DATA from context for:**
+- Current member/online counts
+- Current voice chat status (who's in voice RIGHT NOW)
+- Current channel/role/emoji counts
+- Boost level
+
+**Use get_voice_activity tool for:**
+- Historical voice stats (last X days)
+- Top voice users, most popular voice channels
+- Total voice joins over time
+
+**Use get_activity_summary tool for:**
+- Overall server activity (messages, joins, leaves, voice, reactions)
+- Top active members
+- Most active channels
+
+**Use get_event_logs tool for:**
+- Specific event searches with date filters
+- Finding specific users' activity
+- Raw event data
 
 ## HONESTY RULES
 
 - Only report data that comes from context or tool results
-- If a tool fails or returns empty, say so honestly
-- Never invent or guess numbers, names, or statistics
-
-## What you can help with WITHOUT tools:
-- Explaining SpaceBot features
-- Discord server management advice
-- How to set up automations/commands (conceptually)
+- If a tool returns empty/zero, say so honestly
+- Never invent or guess numbers
 
 Keep responses concise. Use Discord markdown.`;
 
@@ -60,12 +78,27 @@ function buildSystemPrompt(context = {}) {
       prompt += `\n### ${guild.name}${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
       prompt += `- Server ID: ${guild.id}\n`;
       if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
+      if (guild.onlineCount !== undefined) prompt += `- Online: ${guild.onlineCount}\n`;
       if (guild.channelCount !== undefined) prompt += `- Channels: ${guild.channelCount}\n`;
       if (guild.roleCount !== undefined) prompt += `- Roles: ${guild.roleCount}\n`;
       if (guild.emojiCount !== undefined) prompt += `- Custom Emojis: ${guild.emojiCount}\n`;
       if (guild.boostCount !== undefined) prompt += `- Boosts: ${guild.boostCount} (Level ${guild.boostLevel})\n`;
+      // Voice channel stats
+      if (guild.voiceMemberCount !== undefined) {
+        prompt += `- Members in Voice: ${guild.voiceMemberCount}\n`;
+        if (guild.voiceChannels && guild.voiceChannels.length > 0) {
+          prompt += `- Active Voice Channels:\n`;
+          for (const vc of guild.voiceChannels) {
+            prompt += `  - ${vc.name}: ${vc.memberCount} member${vc.memberCount !== 1 ? 's' : ''}`;
+            if (vc.members && vc.members.length > 0) {
+              prompt += ` (${vc.members.join(', ')}${vc.memberCount > 10 ? '...' : ''})`;
+            }
+            prompt += `\n`;
+          }
+        }
+      }
     }
-    prompt += "\n**For basic questions like member count, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n";
+    prompt += "\n**For basic questions like member count, voice chat, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n";
   }
   
   // Add MCP tools if enabled, or explain the limitation
