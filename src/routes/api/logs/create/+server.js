@@ -176,8 +176,17 @@ export async function POST({ request, platform }) {
       try {
         const settings = await getGuildSettings(db, event.guild_id);
         if (settings.logging_enabled && settings.log_channel_id) {
-          // Don't await - send asynchronously to not slow down the response
-          sendLogToChannel(settings.log_channel_id, event, botToken);
+          // Skip sending log messages for events that occurred in the log channel itself
+          // This prevents infinite loops when THIS bot sends log messages
+          const isLogChannelEvent = event.channel_id === settings.log_channel_id;
+          const isOwnBotMessage = event.details?.isOwnBot === true;
+          
+          if (isLogChannelEvent && isOwnBotMessage) {
+            log.debug("[Discord Log] Skipping log for own bot message in log channel to prevent loop");
+          } else {
+            // Don't await - send asynchronously to not slow down the response
+            sendLogToChannel(settings.log_channel_id, event, botToken);
+          }
         }
       } catch (settingsError) {
         log.debug("[Discord Log] Could not check guild settings:", settingsError.message);

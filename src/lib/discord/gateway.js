@@ -1017,6 +1017,7 @@ function setupEventHandlers(client, logFn) {
         mentionCount: message.mentions.users.size,
         mentionedUsers: mentionedUsers,
         isBot: message.author.bot || false,
+        isOwnBot: message.author.id === message.client.user?.id,
       },
     });
   });
