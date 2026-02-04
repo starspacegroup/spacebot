@@ -152,11 +152,16 @@
 	function initializeActionConfig(actionIndex, actionType) {
 		const schema = getActionConfigSchema(actionType);
 		const action = actions[actionIndex];
+		const newConfig = { ...action.config };
 		for (const configKey of Object.keys(schema)) {
-			if (action.config[configKey] === undefined) {
-				action.config[configKey] = '';
+			if (newConfig[configKey] === undefined) {
+				newConfig[configKey] = '';
 			}
 		}
+		// Create a new array to trigger reactivity
+		actions = actions.map((a, i) => 
+			i === actionIndex ? { ...a, config: newConfig } : a
+		);
 	}
 
 	// Stacked actions management
@@ -528,7 +533,26 @@
 							
 							<div class="form-group">
 								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
-								<select id="action_type_{index}" name="action_type[]" required bind:value={action.type} onchange={() => initializeActionConfig(index, action.type)}>
+								<select 
+									id="action_type_{index}" 
+									name="action_type[]" 
+									required 
+									value={action.type} 
+									onchange={(e) => {
+										const newType = e.target.value;
+										const schema = getActionConfigSchema(newType);
+										const newConfig = { ...action.config };
+										for (const configKey of Object.keys(schema)) {
+											if (newConfig[configKey] === undefined) {
+												newConfig[configKey] = '';
+											}
+										}
+										// Update both type and config together to avoid undefined bindings
+										actions = actions.map((a, i) => 
+											i === index ? { ...a, type: newType, config: newConfig } : a
+										);
+									}}
+								>
 									<option value="">Select an action...</option>
 									{#each Object.entries(data.actionTypes) as [actionType, info]}
 										<option value={actionType}>{info.icon} {info.name} - {info.description}</option>
