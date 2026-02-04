@@ -110,6 +110,59 @@ Get usage logs for commands.
 Get server settings and configuration.
 - `guildId` (required): Discord server ID
 
+### `get_server_stats`
+Get current server statistics.
+- `guildId` (required): Discord server ID
+- Returns: member_count, online_count, bot_count, human_count, channel_count, role_count, emoji_count, boost_count, boost_level
+
+### `get_server_stats_history`
+Get historical server statistics for graphing.
+- `guildId` (required): Discord server ID
+- `period`: Time period - `24h`, `7d`, `30d`, or `90d` (default: 7d)
+- Returns: Array of stats snapshots with period, member_count, online_count, bot_count, human_count
+
+### `get_member_growth`
+Get member growth statistics.
+- `guildId` (required): Discord server ID
+- Returns: Current counts and changes over 1 day, 7 days, and 30 days (total and human-only)
+
+### `get_aggregated_stats`
+Get aggregated activity statistics.
+- `guildId` (required): Discord server ID
+- `period`: Time period - `24h`, `7d`, `30d`, or `90d` (default: 7d)
+- `periodType`: Granularity - `hourly` or `daily` (default: daily)
+- Returns: member_joins, member_leaves, voice_total_seconds, voice_unique_users, message_count, total_events per period
+
+### `get_activity_summary`
+Get a summary of server activity for the last 7 days.
+- `guildId` (required): Discord server ID
+- Returns: Total joins, leaves, net growth, voice hours, messages, events, peak voice users, most active hours
+
+### `get_schema_info`
+Get documentation about SpaceBot's capabilities.
+- No parameters required
+- Returns: Available trigger events, action types, filter types, template variables, command option types
+
+### `search_automations`
+Search for automations by name or description.
+- `guildId` (required): Discord server ID
+- `query` (required): Search text to match
+
+### `search_commands`
+Search for commands by name or description.
+- `guildId` (required): Discord server ID
+- `query` (required): Search text to match
+
+### `get_automations_by_trigger`
+Find all automations triggered by a specific event.
+- `guildId` (required): Discord server ID
+- `triggerEvent` (required): Event type (e.g., `MEMBER_JOIN`, `MESSAGE_CREATE`, `VOICE_JOIN`)
+
+### `get_automations_by_action`
+Find all automations that perform a specific action.
+- `guildId` (required): Discord server ID
+- `actionType` (required): Action type (e.g., `SEND_MESSAGE`, `ADD_ROLE`, `BAN_MEMBER`)
+
 ## Resources
 
 The server also exposes guilds as MCP resources. Each guild is available at:
