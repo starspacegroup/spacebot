@@ -40,6 +40,11 @@ function checkIsSuperAdmin(userId, platform) {
 export async function load({ params, cookies, platform, parent }) {
   const { serverId } = params;
 
+  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+  if (!/^\d{17,20}$/.test(serverId)) {
+    throw redirect(302, "/admin");
+  }
+
   // Get parent layout data
   const parentData = await parent();
 

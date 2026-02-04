@@ -22,6 +22,7 @@
 	const user = $derived(data?.user ?? null);
 	const adminGuilds = $derived(data?.adminGuilds ?? []);
 	const selectedGuildId = $derived(data?.selectedGuildId ?? $page.url.searchParams.get('guild'));
+	const isSuperAdmin = $derived(data?.isSuperAdmin ?? false);
 	
 	// Only show login button after initialization to prevent flash
 	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
@@ -42,7 +43,7 @@
 				/>
 			{/if}
 			{#if isLoggedIn && user}
-				<UserMenu user={user} selectedGuildId={selectedGuildId} />
+				<UserMenu user={user} selectedGuildId={selectedGuildId} isSuperAdmin={isSuperAdmin} />
 			{:else if showLoginButton}
 				<a href="/login" class="nav-btn">Login</a>
 			{/if}

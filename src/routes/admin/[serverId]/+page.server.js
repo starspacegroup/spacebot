@@ -88,6 +88,12 @@ export async function load({ cookies, platform, parent, params }) {
   // Get the server ID from the route params
   const serverId = params.serverId;
 
+  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+  // This prevents this route from catching static paths like 'superadmin' or 'servers'
+  if (!/^\d{17,20}$/.test(serverId)) {
+    throw redirect(302, "/admin");
+  }
+
   // Check if current user is a superadmin (has access to everything)
   const isSuperAdmin = checkIsSuperAdmin(userId, platform);
 

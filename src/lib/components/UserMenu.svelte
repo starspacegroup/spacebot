@@ -1,5 +1,5 @@
 <script>
-	let { user, selectedGuildId = null } = $props();
+	let { user, selectedGuildId = null, isSuperAdmin = false } = $props();
 	let isOpen = $state(false);
 	
 	// Build admin URL - use guild-specific if available
@@ -86,6 +86,18 @@
 				</svg>
 				Dashboard
 			</a>
+			
+			{#if isSuperAdmin}
+				<a href="/admin/superadmin" class="dropdown-item superadmin" role="menuitem" onclick={closeMenu}>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="8" r="4"/>
+						<path d="M12 14c-6 0-8 3-8 6v1h16v-1c0-3-2-6-8-6z"/>
+						<path d="M20 8l2 2-5 5-2-2 5-5z"/>
+					</svg>
+					<span class="superadmin-text">Superadmin</span>
+					<span class="superadmin-badge">👑</span>
+				</a>
+			{/if}
 			
 			<div class="dropdown-divider"></div>
 			
@@ -251,6 +263,22 @@
 	.dropdown-item.danger:hover {
 		background: rgba(237, 66, 69, 0.1);
 		color: var(--color-danger);
+	}
+	
+	.dropdown-item.superadmin {
+		color: var(--color-warning, #f59e0b);
+	}
+	
+	.dropdown-item.superadmin:hover {
+		background: rgba(245, 158, 11, 0.1);
+	}
+	
+	.superadmin-text {
+		flex: 1;
+	}
+	
+	.superadmin-badge {
+		font-size: 0.875rem;
 	}
 	
 	@media (max-width: 480px) {

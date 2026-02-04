@@ -13,6 +13,11 @@ import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
+  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+  if (!/^\d{17,20}$/.test(params.serverId)) {
+    throw redirect(302, "/admin");
+  }
+
   const parentData = await parent();
 
   // Require admin access

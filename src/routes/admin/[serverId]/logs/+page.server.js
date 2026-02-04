@@ -37,6 +37,11 @@ async function fetchGuildInfo(guildId, botToken) {
 export async function load({ params, cookies, platform, parent }) {
   const { serverId } = params;
 
+  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+  if (!/^\d{17,20}$/.test(serverId)) {
+    throw redirect(302, "/admin");
+  }
+
   // Get parent layout data (includes user info, admin guilds, etc.)
   const parentData = await parent();
   const accessToken = cookies.get("discord_access_token");

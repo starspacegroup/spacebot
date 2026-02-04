@@ -24,6 +24,15 @@ This project uses:
 
 The user manages their own development servers via separate terminal instances.
 
+## Local Development URLs
+
+The dev server is **always** running on these URLs:
+
+- **Local:** `http://localhost:4269`
+- **Tunnel:** `https://spacebot-dev.starspace.group` (via cloudflared tunnel, always running)
+
+When testing or debugging with browser dev tools, always use port **4269** for localhost. Both URLs should be tested when investigating issues.
+
 ## Code Changes
 
 When making code changes that would typically require a server restart (e.g., environment variables, server hooks), simply note this to the user rather than attempting to restart anything.

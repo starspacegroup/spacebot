@@ -18,7 +18,12 @@ import { commands as builtInCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, parent, url }) {
+export async function load({ cookies, platform, parent, url, params }) {
+  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+  if (!/^\d{17,20}$/.test(params.serverId)) {
+    throw redirect(302, "/admin");
+  }
+
   const parentData = await parent();
 
   // Require admin access
