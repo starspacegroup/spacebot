@@ -148,11 +148,22 @@
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
 	
+	// Initialize config values when action type changes to avoid undefined bind errors
+	function initializeActionConfig(actionIndex, actionType) {
+		const schema = getActionConfigSchema(actionType);
+		const action = actions[actionIndex];
+		for (const configKey of Object.keys(schema)) {
+			if (action.config[configKey] === undefined) {
+				action.config[configKey] = '';
+			}
+		}
+	}
+
 	// Stacked actions management
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
 	}
-	
+
 	function removeAction(index) {
 		actions = actions.filter((_, i) => i !== index);
 	}
@@ -517,7 +528,7 @@
 							
 							<div class="form-group">
 								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
-								<select id="action_type_{index}" name="action_type[]" required bind:value={action.type}>
+								<select id="action_type_{index}" name="action_type[]" required bind:value={action.type} onchange={() => initializeActionConfig(index, action.type)}>
 									<option value="">Select an action...</option>
 									{#each Object.entries(data.actionTypes) as [actionType, info]}
 										<option value={actionType}>{info.icon} {info.name} - {info.description}</option>

@@ -15,21 +15,37 @@
 	// Form submission state
 	let isSubmitting = $state(false);
 	
+	// Get action config schema (used by parseExistingActions and initializeActionConfig)
+	function getActionConfigSchema(actionType) {
+		return data.actionTypes[actionType]?.configSchema || {};
+	}
+	
+	// Initialize config values for an action based on schema
+	function initializeConfigForAction(action) {
+		const schema = getActionConfigSchema(action.type);
+		for (const configKey of Object.keys(schema)) {
+			if (action.config[configKey] === undefined) {
+				action.config[configKey] = '';
+			}
+		}
+		return action;
+	}
+
 	// Initialize from existing automation data - support multiple actions
 	function parseExistingActions() {
 		// Handle legacy single action format or new array format
 		if (data.automation.actions && Array.isArray(data.automation.actions)) {
-			return data.automation.actions.map(a => ({
+			return data.automation.actions.map(a => initializeConfigForAction({
 				type: a.type || '',
 				config: a.config || {}
 			}));
 		}
 		// Legacy format: single action_type and action_config
 		if (data.automation.action_type) {
-			return [{
+			return [initializeConfigForAction({
 				type: data.automation.action_type,
 				config: data.automation.action_config || {}
-			}];
+			})];
 		}
 		return [];
 	}
@@ -193,11 +209,6 @@
 	// Filtered events based on search
 	const filteredEventsByCategory = $derived(getEventsByCategory(eventSearchQuery));
 	const hasFilteredResults = $derived(Object.keys(filteredEventsByCategory).length > 0);
-	
-	// Get action config schema
-	function getActionConfigSchema(actionType) {
-		return data.actionTypes[actionType]?.configSchema || {};
-	}
 	
 	// Initialize config values when action type changes to avoid undefined bind errors
 	function initializeActionConfig(actionIndex, actionType) {

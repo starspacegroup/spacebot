@@ -11,21 +11,38 @@
 	// Form submission state
 	let isSubmitting = $state(false);
 	
+	// Get action config schema (used by parseExistingActions and initializeActionConfig)
+	function getActionConfigSchema(actionType) {
+		if (!actionType || actionType === 'NONE') return {};
+		return data.actionTypes[actionType]?.configSchema || {};
+	}
+	
+	// Initialize config values for an action based on schema
+	function initializeConfigForAction(action) {
+		const schema = getActionConfigSchema(action.type);
+		for (const configKey of Object.keys(schema)) {
+			if (action.config[configKey] === undefined) {
+				action.config[configKey] = '';
+			}
+		}
+		return action;
+	}
+
 	// Initialize from existing command data - support multiple actions
 	function parseExistingActions() {
 		// Handle legacy single action format or new array format
 		if (data.command.actions && Array.isArray(data.command.actions)) {
-			return data.command.actions.map(a => ({
+			return data.command.actions.map(a => initializeConfigForAction({
 				type: a.type || 'NONE',
 				config: a.config || {}
 			}));
 		}
 		// Legacy format: single action_type and action_config
 		if (data.command.action_type && data.command.action_type !== 'NONE') {
-			return [{
+			return [initializeConfigForAction({
 				type: data.command.action_type,
 				config: data.command.action_config || {}
-			}];
+			})];
 		}
 		return [];
 	}
@@ -121,19 +138,25 @@
 	const selectedGuildId = $derived(data.selectedGuildId);
 	const command = $derived(data.command);
 	
-	function getActionConfigSchema(actionType) {
-		if (!actionType || actionType === 'NONE') return {};
-		return data.actionTypes[actionType]?.configSchema || {};
+	// Initialize config values when action type changes to avoid undefined bind errors
+	function initializeActionConfig(actionIndex, actionType) {
+		const schema = getActionConfigSchema(actionType);
+		const action = actions[actionIndex];
+		for (const configKey of Object.keys(schema)) {
+			if (action.config[configKey] === undefined) {
+				action.config[configKey] = '';
+			}
+		}
 	}
-	
+
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
 	}
-	
+
 	function removeAction(index) {
 		actions = actions.filter((_, i) => i !== index);
 	}
-	
+
 	function moveActionUp(index) {
 		if (index <= 0) return;
 		const newActions = [...actions];
@@ -516,7 +539,7 @@
 							<div class="form-group">
 								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
 								<input type="hidden" name="action_type[]" value={action.type}>
-								<select id="action_type_{index}" bind:value={action.type} required>
+								<select id="action_type_{index}" bind:value={action.type} onchange={() => initializeActionConfig(index, action.type)} required>
 									<option value="">Select an action...</option>
 									{#each Object.entries(data.actionTypes) as [actionType, info]}
 										<option value={actionType}>{info.icon} {info.name}</option>
