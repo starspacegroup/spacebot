@@ -475,9 +475,14 @@ export function hasFullAdminPermission(guild) {
  */
 export function invalidateGuildCache(cookies) {
   log.debug("[Guilds Cache] Invalidating all guild caches");
+  
+  // Clear cookie caches
   cookies.delete("cached_user_guilds", { path: "/" });
   cookies.delete("cached_bot_guild_ids", { path: "/" });
   cookies.delete("cached_bot_guilds_details", { path: "/" });
+  
+  // Clear in-memory cache entirely to ensure fresh data on next request
+  memoryCache.clear();
 }
 
 // --- Private helper functions ---
