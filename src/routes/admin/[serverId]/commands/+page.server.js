@@ -25,14 +25,14 @@ export async function load({ cookies, platform, parent, url, params }) {
   }
 
   const parentData = await parent();
+  const guildId = params.serverId;
 
-  // Require admin access
-  if (!parentData.selectedGuildId) {
+  // Require admin access - check that user has access to this guild
+  if (!parentData.adminGuilds?.some(g => g.id === guildId) && !parentData.isSuperAdmin) {
     throw redirect(302, "/admin");
   }
 
   const db = platform?.env?.DB;
-  const guildId = parentData.selectedGuildId;
 
   let commands = [];
   let recentLogs = [];

@@ -19,9 +19,10 @@ export async function load({ cookies, platform, parent, params }) {
   }
 
   const parentData = await parent();
+  const guildId = params.serverId;
 
-  // Require admin access
-  if (!parentData.selectedGuildId) {
+  // Require admin access - check that user has access to this guild
+  if (!parentData.adminGuilds?.some(g => g.id === guildId) && !parentData.isSuperAdmin) {
     throw redirect(302, "/admin");
   }
 
@@ -40,7 +41,7 @@ export async function load({ cookies, platform, parent, params }) {
     const automation = await getAutomation(
       db,
       automationId,
-      parentData.selectedGuildId,
+      guildId,
     );
 
     if (!automation) {
@@ -48,7 +49,7 @@ export async function load({ cookies, platform, parent, params }) {
     }
 
     // Load webhooks for this guild
-    const webhooks = await getGuildWebhooks(db, parentData.selectedGuildId);
+    const webhooks = await getGuildWebhooks(db, guildId);
     const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
       id: w.id,
       name: w.name,

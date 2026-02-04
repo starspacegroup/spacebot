@@ -17,15 +17,16 @@ export async function load({ cookies, platform, parent, params }) {
   }
 
   const parentData = await parent();
+  const guildId = params.serverId;
 
-  // Require admin access
-  if (!parentData.selectedGuildId) {
+  // Require admin access - check that user has access to this guild
+  if (!parentData.adminGuilds?.some(g => g.id === guildId) && !parentData.isSuperAdmin) {
     throw redirect(302, "/admin");
   }
 
   // Load webhooks for this guild
   const db = platform?.env?.DB;
-  const webhooks = db ? await getGuildWebhooks(db, parentData.selectedGuildId) : [];
+  const webhooks = db ? await getGuildWebhooks(db, guildId) : [];
   const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
     id: w.id,
     name: w.name,

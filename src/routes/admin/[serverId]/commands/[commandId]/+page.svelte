@@ -707,7 +707,7 @@
 													id="config_{index}_{configKey}" 
 													name="action_config.{index}.{configKey}"
 													required={config.required}
-													placeholder='{"key": "value"}'
+													placeholder={'{"key": "value"}'}
 													rows="4"
 													class="code-textarea"
 													bind:value={action.config[configKey]}
