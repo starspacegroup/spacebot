@@ -173,6 +173,18 @@
 	}
 	
 	/**
+	 * Convert a Date to local datetime-local input format (YYYY-MM-DDTHH:mm)
+	 */
+	function toLocalDateTimeString(date) {
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		const hours = String(date.getHours()).padStart(2, '0');
+		const minutes = String(date.getMinutes()).padStart(2, '0');
+		return `${year}-${month}-${day}T${hours}:${minutes}`;
+	}
+	
+	/**
 	 * Initialize the edit form with event data
 	 */
 	function initializeEditForm(event, isFullSeries) {
@@ -182,8 +194,8 @@
 		editChannelId = event.channelId || '';
 		editLocation = event.location || '';
 		// Convert ISO to local datetime format
-		editStartTime = event.scheduledStartTime ? new Date(event.scheduledStartTime).toISOString().slice(0, 16) : '';
-		editEndTime = event.scheduledEndTime ? new Date(event.scheduledEndTime).toISOString().slice(0, 16) : '';
+		editStartTime = event.scheduledStartTime ? toLocalDateTimeString(new Date(event.scheduledStartTime)) : '';
+		editEndTime = event.scheduledEndTime ? toLocalDateTimeString(new Date(event.scheduledEndTime)) : '';
 		
 		// Initialize image state
 		editImagePreview = event.image || null;
