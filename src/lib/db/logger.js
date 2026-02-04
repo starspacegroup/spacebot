@@ -15,6 +15,7 @@ export { log };
  * @property {string} event_category - Event category (e.g., 'message')
  * @property {string|null} actor_id - User who performed the action
  * @property {string|null} actor_name - Username of the actor
+ * @property {boolean|null} actor_is_bot - Whether the actor is a bot
  * @property {string|null} target_id - Target of the action (user, channel, etc.)
  * @property {string|null} target_name - Name of the target
  * @property {string|null} channel_id - Channel where event occurred
@@ -38,15 +39,16 @@ export async function logEvent(db, event) {
     await db.prepare(`
 			INSERT INTO event_logs (
 				guild_id, event_type, event_category,
-				actor_id, actor_name, target_id, target_name,
+				actor_id, actor_name, actor_is_bot, target_id, target_name,
 				channel_id, channel_name, details
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).bind(
       event.guild_id,
       event.event_type,
       event.event_category,
       event.actor_id || null,
       event.actor_name || null,
+      event.actor_is_bot ? 1 : 0,
       event.target_id || null,
       event.target_name || null,
       event.channel_id || null,

@@ -3,6 +3,116 @@
 	
 	let { data } = $props();
 	
+	// Master toggle for all bot visibility
+	let showBotsGlobal = $state(false);
+	
+	// Toggle states for showing bots in different sections
+	let showBotsInActiveUsers = $state(false);
+	let showBotsInVoiceUsers = $state(false);
+	let showBotsInVideoUsers = $state(false);
+	let showBotsInScreenshareUsers = $state(false);
+	let showBotsInEventTypes = $state(false);
+	let showBotsInChannels = $state(false);
+	let showBotsInCategories = $state(false);
+	let showBotsInActivityChart = $state(false);
+	let showBotsInHeatmap = $state(false);
+	let showBotsInTotalEvents = $state(false);
+	
+	// Master toggle handler
+	function toggleAllBots(value) {
+		showBotsGlobal = value;
+		showBotsInActiveUsers = value;
+		showBotsInVoiceUsers = value;
+		showBotsInVideoUsers = value;
+		showBotsInScreenshareUsers = value;
+		showBotsInEventTypes = value;
+		showBotsInChannels = value;
+		showBotsInCategories = value;
+		showBotsInActivityChart = value;
+		showBotsInTotalEvents = value;
+		showBotsInHeatmap = value;
+	}
+	
+	// Bot detection: checks actor_is_bot flag OR common bot name patterns (for legacy data)
+	function isBot(actor) {
+		if (actor.actor_is_bot) return true;
+		const name = (actor.actor_name || '').toLowerCase();
+		// Common bot patterns for legacy data without actor_is_bot flag
+		return name.includes('bot') || 
+			   name.includes('disboard') || 
+			   name.includes('github') ||
+			   name.includes('probot') ||
+			   name.includes('mee6') ||
+			   name.includes('dyno');
+	}
+	
+	// Filtered data based on toggle states
+	const filteredTopActors = $derived(
+		(data.statistics?.topActors || [])
+			.filter(actor => showBotsInActiveUsers || !isBot(actor))
+			.slice(0, 10)
+	);
+	
+	const filteredVoiceUsers = $derived(
+		(data.topVoiceUsers || [])
+			.filter(user => showBotsInVoiceUsers || !isBot(user))
+			.slice(0, 5)
+	);
+	
+	const filteredVideoUsers = $derived(
+		(data.topVideoUsers || [])
+			.filter(user => showBotsInVideoUsers || !isBot(user))
+			.slice(0, 5)
+	);
+	
+	const filteredScreenshareUsers = $derived(
+		(data.topScreenshareUsers || [])
+			.filter(user => showBotsInScreenshareUsers || !isBot(user))
+			.slice(0, 5)
+	);
+	
+	// Filtered event types based on toggle - use non_bot_count when hiding bots
+	const filteredEventTypes = $derived(
+		(data.statistics?.events?.byType || [])
+			.map(et => ({
+				...et,
+				display_count: showBotsInEventTypes ? et.count : (et.non_bot_count || 0)
+			}))
+			.filter(et => et.display_count > 0)
+			.sort((a, b) => b.display_count - a.display_count)
+			.slice(0, 10)
+	);
+	
+	// Filtered channels based on toggle - use non_bot_count when hiding bots
+	const filteredChannels = $derived(
+		(data.statistics?.topChannels || [])
+			.map(ch => ({
+				...ch,
+				display_count: showBotsInChannels ? ch.event_count : (ch.non_bot_count || 0)
+			}))
+			.filter(ch => ch.display_count > 0)
+			.sort((a, b) => b.display_count - a.display_count)
+			.slice(0, 10)
+	);
+	
+	// Filtered categories based on toggle
+	const filteredCategories = $derived(() => {
+		const categories = data.statistics?.events?.byCategory || {};
+		const categoriesNonBot = data.statistics?.events?.byCategoryNonBot || {};
+		
+		return Object.entries(categories).map(([category, count]) => ({
+			category,
+			count,
+			non_bot_count: categoriesNonBot[category] || 0,
+			display_count: showBotsInCategories ? count : (categoriesNonBot[category] || 0)
+		})).filter(c => c.display_count > 0);
+	});
+	
+	// Filtered category total
+	const filteredCategoryTotal = $derived(
+		filteredCategories().reduce((sum, c) => sum + c.display_count, 0)
+	);
+	
 	// Calculate percentages for category breakdown - use $derived for reactivity
 	const categoryTotal = $derived(Object.values(data.statistics?.events?.byCategory || {}).reduce((a, b) => a + b, 0));
 	
@@ -131,13 +241,15 @@
 		return icons[category] || '📊';
 	}
 	
-	// Prepare heatmap grid (7 days x 24 hours)
+	// Prepare heatmap grid (7 days x 24 hours) - filtered by bot toggle
 	const heatmapGrid = $derived.by(() => {
 		const grid = Array(7).fill(null).map(() => Array(24).fill(0));
-		const maxCount = Math.max(...(data.heatmapData?.map(h => h.count) || [1]), 1);
+		const countKey = showBotsInHeatmap ? 'count' : 'non_bot_count';
+		const maxCount = Math.max(...(data.heatmapData?.map(h => h[countKey] || 0) || [1]), 1);
 		
 		for (const item of data.heatmapData || []) {
-			grid[item.day_of_week][item.hour] = item.count / maxCount;
+			const value = item[countKey] || 0;
+			grid[item.day_of_week][item.hour] = value / maxCount;
 		}
 		
 		return grid;
@@ -145,13 +257,16 @@
 	
 	const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 	
-	// Daily chart data
+	// Daily chart data - filtered by bot toggle
 	const dailyChartData = $derived.by(() => {
 		const data_array = data.statistics?.timeSeries?.daily || [];
-		const maxCount = Math.max(...data_array.map(d => d.count), 1);
+		const countKey = showBotsInActivityChart ? 'count' : 'non_bot_count';
+		const counts = data_array.map(d => d[countKey] || 0);
+		const maxCount = Math.max(...counts, 1);
 		return data_array.map(d => ({
 			...d,
-			percentage: (d.count / maxCount) * 100,
+			display_count: d[countKey] || 0,
+			percentage: ((d[countKey] || 0) / maxCount) * 100,
 			label: new Date(d.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 		}));
 	});
@@ -303,9 +418,16 @@
 				<span>←</span>
 				Back to Dashboard
 			</a>
-			<div class="title-section">
-				<h1>📊 Statistics</h1>
-				<p class="subtitle">Comprehensive analytics for {data.guild?.name || 'your server'}</p>
+			<div class="title-row">
+				<div class="title-section">
+					<h1>📊 Statistics</h1>
+					<p class="subtitle">Comprehensive analytics for {data.guild?.name || 'your server'}</p>
+				</div>
+				<label class="master-bot-toggle">
+					<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
+					<span class="toggle-switch"></span>
+					<span class="toggle-label">🤖 Include Bots</span>
+				</label>
 			</div>
 		</div>
 	</header>
@@ -326,22 +448,29 @@
 			<div class="overview-grid">
 				<!-- Total Events Card -->
 				<div class="stat-card primary">
-					<div class="stat-icon">📊</div>
+					<div class="stat-card-header">
+						<div class="stat-icon">📊</div>
+						<label class="bot-toggle-sm">
+							<input type="checkbox" bind:checked={showBotsInTotalEvents} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(data.statistics.events.total)}</span>
+						<span class="stat-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.total : data.statistics.events.totalNonBot)}</span>
 						<span class="stat-label">Total Events</span>
 					</div>
 					<div class="stat-breakdown">
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.events.today)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.today : data.statistics.events.todayNonBot)}</span>
 							<span class="breakdown-label">Today</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.events.thisWeek)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisWeek : data.statistics.events.thisWeekNonBot)}</span>
 							<span class="breakdown-label">This Week</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.events.thisMonth)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisMonth : data.statistics.events.thisMonthNonBot)}</span>
 							<span class="breakdown-label">This Month</span>
 						</div>
 					</div>
@@ -526,27 +655,34 @@
 		
 		<!-- Event Categories -->
 		<section class="categories-section">
-			<h2 class="section-title">
-				<span class="section-icon">📁</span>
-				Events by Category
-			</h2>
+			<div class="section-header-row">
+				<h2 class="section-title">
+					<span class="section-icon">📁</span>
+					Events by Category
+				</h2>
+				<label class="bot-toggle">
+					<input type="checkbox" bind:checked={showBotsInCategories} />
+					<span class="toggle-switch"></span>
+					<span class="toggle-label">🤖 Bots</span>
+				</label>
+			</div>
 			<div class="categories-grid">
-				{#each Object.entries(data.statistics.events.byCategory) as [category, count]}
+				{#each filteredCategories() as cat}
 					<div class="category-card">
 						<div class="category-header">
-							<span class="category-icon" style="background-color: {getCategoryColor(category)}15; color: {getCategoryColor(category)}">
-								{getCategoryIcon(category)}
+							<span class="category-icon" style="background-color: {getCategoryColor(cat.category)}15; color: {getCategoryColor(cat.category)}">
+								{getCategoryIcon(cat.category)}
 							</span>
-							<span class="category-name">{category}</span>
+							<span class="category-name">{cat.category}</span>
 						</div>
 						<div class="category-stats">
-							<span class="category-count">{formatNumber(count)}</span>
-							<span class="category-percent">{getCategoryPercentage(count, categoryTotal)}%</span>
+							<span class="category-count">{formatNumber(cat.display_count)}</span>
+							<span class="category-percent">{getCategoryPercentage(cat.display_count, filteredCategoryTotal)}%</span>
 						</div>
 						<div class="category-bar">
 							<div 
 								class="category-bar-fill" 
-								style="width: {getCategoryPercentage(count, categoryTotal)}%; background-color: {getCategoryColor(category)}"
+								style="width: {getCategoryPercentage(cat.display_count, filteredCategoryTotal)}%; background-color: {getCategoryColor(cat.category)}"
 							></div>
 						</div>
 					</div>
@@ -556,15 +692,22 @@
 		
 		<!-- Activity Chart -->
 		<section class="chart-section">
-			<h2 class="section-title">
-				<span class="section-icon">📈</span>
-				Activity (Last 30 Days)
-			</h2>
+			<div class="section-header-row">
+				<h2 class="section-title">
+					<span class="section-icon">📈</span>
+					Activity (Last 30 Days)
+				</h2>
+				<label class="bot-toggle">
+					<input type="checkbox" bind:checked={showBotsInActivityChart} />
+					<span class="toggle-switch"></span>
+					<span class="toggle-label">🤖 Bots</span>
+				</label>
+			</div>
 			<div class="chart-container">
 				{#if dailyChartData.length > 0}
 					<div class="bar-chart">
 						{#each dailyChartData as day, i}
-							<div class="bar-wrapper" title="{day.label}: {day.count} events">
+							<div class="bar-wrapper" title="{day.label}: {formatNumber(day.display_count)} events">
 								<div class="bar" style="height: {Math.max(day.percentage, 2)}%"></div>
 								{#if i % 5 === 0 || i === dailyChartData.length - 1}
 									<span class="bar-label">{day.label}</span>
@@ -582,10 +725,17 @@
 		
 		<!-- Activity Heatmap -->
 		<section class="heatmap-section">
-			<h2 class="section-title">
-				<span class="section-icon">🗓️</span>
-				Activity Heatmap (Last 30 Days)
-			</h2>
+			<div class="section-header-row">
+				<h2 class="section-title">
+					<span class="section-icon">🗓️</span>
+					Activity Heatmap (Last 30 Days)
+				</h2>
+				<label class="bot-toggle">
+					<input type="checkbox" bind:checked={showBotsInHeatmap} />
+					<span class="toggle-switch"></span>
+					<span class="toggle-label">🤖 Bots</span>
+				</label>
+			</div>
 			<div class="heatmap-container">
 				<div class="heatmap-hours">
 					{#each Array(24) as _, hour}
@@ -625,14 +775,21 @@
 		<div class="two-column-section">
 			<!-- Top Event Types -->
 			<section class="list-section">
-				<h2 class="section-title">
-					<span class="section-icon">🏆</span>
-					Top Event Types
-				</h2>
+				<div class="section-header-row">
+					<h2 class="section-title">
+						<span class="section-icon">🏆</span>
+						Top Event Types
+					</h2>
+					<label class="bot-toggle">
+						<input type="checkbox" bind:checked={showBotsInEventTypes} />
+						<span class="toggle-switch"></span>
+						<span class="toggle-label">🤖 Bots</span>
+					</label>
+				</div>
 				<div class="list-container">
-					{#if data.statistics.events.byType?.length > 0}
-						{#each data.statistics.events.byType as eventType, i}
-							{@const maxCount = getMaxValue(data.statistics.events.byType, 'count')}
+					{#if filteredEventTypes?.length > 0}
+						{#each filteredEventTypes as eventType, i}
+							{@const maxCount = getMaxValue(filteredEventTypes, 'display_count')}
 							<div class="list-item">
 								<span class="list-rank">#{i + 1}</span>
 								<div class="list-info">
@@ -644,10 +801,10 @@
 								<div class="list-bar-container">
 									<div 
 										class="list-bar" 
-										style="width: {(eventType.count / maxCount) * 100}%; background-color: {getCategoryColor(eventType.event_category)}"
+										style="width: {(eventType.display_count / maxCount) * 100}%; background-color: {getCategoryColor(eventType.event_category)}"
 									></div>
 								</div>
-								<span class="list-count">{formatNumber(eventType.count)}</span>
+								<span class="list-count">{formatNumber(eventType.display_count)}</span>
 							</div>
 						{/each}
 					{:else}
@@ -658,14 +815,21 @@
 			
 			<!-- Top Channels -->
 			<section class="list-section">
-				<h2 class="section-title">
-					<span class="section-icon">📢</span>
-					Most Active Channels
-				</h2>
+				<div class="section-header-row">
+					<h2 class="section-title">
+						<span class="section-icon">📢</span>
+						Most Active Channels
+					</h2>
+					<label class="bot-toggle">
+						<input type="checkbox" bind:checked={showBotsInChannels} />
+						<span class="toggle-switch"></span>
+						<span class="toggle-label">🤖 Bots</span>
+					</label>
+				</div>
 				<div class="list-container">
-					{#if data.statistics.topChannels?.length > 0}
-						{#each data.statistics.topChannels as channel, i}
-							{@const maxCount = getMaxValue(data.statistics.topChannels, 'event_count')}
+					{#if filteredChannels?.length > 0}
+						{#each filteredChannels as channel, i}
+							{@const maxCount = getMaxValue(filteredChannels, 'display_count')}
 							<div class="list-item">
 								<span class="list-rank">#{i + 1}</span>
 								<div class="list-info">
@@ -675,10 +839,10 @@
 								<div class="list-bar-container">
 									<div 
 										class="list-bar" 
-										style="width: {(channel.event_count / maxCount) * 100}%"
+										style="width: {(channel.display_count / maxCount) * 100}%"
 									></div>
 								</div>
-								<span class="list-count">{formatNumber(channel.event_count)}</span>
+								<span class="list-count">{formatNumber(channel.display_count)}</span>
 							</div>
 						{/each}
 					{:else}
@@ -691,18 +855,28 @@
 		<div class="two-column-section">
 			<!-- Top Users -->
 			<section class="list-section">
-				<h2 class="section-title">
-					<span class="section-icon">👤</span>
-					Most Active Users
-				</h2>
+				<div class="section-header-row">
+					<h2 class="section-title">
+						<span class="section-icon">👤</span>
+						Most Active Users
+					</h2>
+					<label class="bot-toggle">
+						<input type="checkbox" bind:checked={showBotsInActiveUsers} />
+						<span class="toggle-switch"></span>
+						<span class="toggle-label">🤖 Bots</span>
+					</label>
+				</div>
 				<div class="list-container">
-					{#if data.statistics.topActors?.length > 0}
-						{#each data.statistics.topActors as actor, i}
-							{@const maxCount = getMaxValue(data.statistics.topActors, 'event_count')}
+					{#if filteredTopActors?.length > 0}
+						{#each filteredTopActors as actor, i}
+							{@const maxCount = getMaxValue(filteredTopActors, 'event_count')}
 							<div class="list-item">
 								<span class="list-rank">#{i + 1}</span>
 								<div class="list-info">
-									<span class="list-name">{actor.actor_name || 'Unknown User'}</span>
+									<span class="list-name">
+										{actor.actor_name || 'Unknown User'}
+										{#if isBot(actor)}<span class="bot-badge">🤖</span>{/if}
+									</span>
 									<span class="list-meta">{actor.event_types} event types</span>
 								</div>
 								<div class="list-bar-container">
@@ -719,38 +893,166 @@
 					{/if}
 				</div>
 			</section>
-			
-			<!-- Command Usage -->
-			<section class="list-section">
-				<h2 class="section-title">
-					<span class="section-icon">💬</span>
-					Command Usage
-				</h2>
-				<div class="list-container">
-					{#if data.statistics.commandUsage?.length > 0}
-						{#each data.statistics.commandUsage as command, i}
-							{@const maxCount = getMaxValue(data.statistics.commandUsage, 'use_count')}
-							<div class="list-item">
-								<span class="list-rank">#{i + 1}</span>
-								<div class="list-info">
-									<span class="list-name">/{command.name}</span>
-									<span class="list-meta">{command.enabled ? '✅ Active' : '❌ Disabled'}</span>
-								</div>
-								<div class="list-bar-container">
-									<div 
-										class="list-bar command" 
-										style="width: {(command.use_count / maxCount) * 100}%"
-									></div>
-								</div>
-								<span class="list-count">{formatNumber(command.use_count)}</span>
-							</div>
-						{/each}
-					{:else}
-						<div class="list-empty">No command usage data</div>
-					{/if}
-				</div>
-			</section>
 		</div>
+		
+		<!-- Voice Activity Users Section -->
+		<section class="performance-section">
+			<h2 class="section-title">
+				<span class="section-icon">🎙️</span>
+				Voice Activity Leaders
+				<span class="section-subtitle">Last 30 Days</span>
+			</h2>
+			<div class="performance-grid">
+				<!-- Most Active Voice Users -->
+				<div class="performance-card user-card">
+					<div class="performance-header">
+						<span class="performance-name">🎤 Most Active Voice Users</span>
+						<label class="bot-toggle-sm">
+							<input type="checkbox" bind:checked={showBotsInVoiceUsers} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					</div>
+					<div class="user-list">
+						{#if filteredVoiceUsers?.length > 0}
+							{#each filteredVoiceUsers as user, i}
+								{@const maxCount = getMaxValue(filteredVoiceUsers, 'event_count')}
+								<div class="user-item">
+									<span class="user-rank">#{i + 1}</span>
+									<div class="user-info">
+										<span class="user-name">
+											{user.actor_name || 'Unknown User'}
+											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
+										</span>
+									</div>
+									<div class="user-bar-container">
+										<div 
+											class="user-bar voice" 
+											style="width: {(user.event_count / maxCount) * 100}%"
+										></div>
+									</div>
+									<span class="user-count">{formatNumber(user.event_count)}</span>
+								</div>
+							{/each}
+						{:else}
+							<div class="user-empty">No voice activity data</div>
+						{/if}
+					</div>
+					<span class="performance-last">Voice joins, leaves, moves</span>
+				</div>
+				
+				<!-- Most Active Video Users -->
+				<div class="performance-card user-card">
+					<div class="performance-header">
+						<span class="performance-name">📹 Most Active Video Users</span>
+						<label class="bot-toggle-sm">
+							<input type="checkbox" bind:checked={showBotsInVideoUsers} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					</div>
+					<div class="user-list">
+						{#if filteredVideoUsers?.length > 0}
+							{#each filteredVideoUsers as user, i}
+								{@const maxCount = getMaxValue(filteredVideoUsers, 'event_count')}
+								<div class="user-item">
+									<span class="user-rank">#{i + 1}</span>
+									<div class="user-info">
+										<span class="user-name">
+											{user.actor_name || 'Unknown User'}
+											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
+										</span>
+									</div>
+									<div class="user-bar-container">
+										<div 
+											class="user-bar video" 
+											style="width: {(user.event_count / maxCount) * 100}%"
+										></div>
+									</div>
+									<span class="user-count">{formatNumber(user.event_count)}</span>
+								</div>
+							{/each}
+						{:else}
+							<div class="user-empty">No video activity data</div>
+						{/if}
+					</div>
+					<span class="performance-last">Camera on/off events</span>
+				</div>
+				
+				<!-- Most Active Screenshare Users -->
+				<div class="performance-card user-card">
+					<div class="performance-header">
+						<span class="performance-name">🖥️ Most Active Screenshare Users</span>
+						<label class="bot-toggle-sm">
+							<input type="checkbox" bind:checked={showBotsInScreenshareUsers} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					</div>
+					<div class="user-list">
+						{#if filteredScreenshareUsers?.length > 0}
+							{#each filteredScreenshareUsers as user, i}
+								{@const maxCount = getMaxValue(filteredScreenshareUsers, 'event_count')}
+								<div class="user-item">
+									<span class="user-rank">#{i + 1}</span>
+									<div class="user-info">
+										<span class="user-name">
+											{user.actor_name || 'Unknown User'}
+											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
+										</span>
+									</div>
+									<div class="user-bar-container">
+										<div 
+											class="user-bar screenshare" 
+											style="width: {(user.event_count / maxCount) * 100}%"
+										></div>
+									</div>
+									<span class="user-count">{formatNumber(user.event_count)}</span>
+								</div>
+							{/each}
+						{:else}
+							<div class="user-empty">No screenshare activity data</div>
+						{/if}
+					</div>
+					<span class="performance-last">Stream start/stop events</span>
+				</div>
+			</div>
+		</section>
+		
+		<!-- Command Usage Section -->
+		<section class="performance-section">
+			<h2 class="section-title">
+				<span class="section-icon">💬</span>
+				Command Usage
+			</h2>
+			{#if data.statistics.commandUsage?.length > 0}
+				<div class="performance-grid">
+					{#each data.statistics.commandUsage as command}
+						<div class="performance-card">
+							<div class="performance-header">
+								<span class="performance-name">/{command.name}</span>
+								<span class="command-status" class:enabled={command.enabled} class:disabled={!command.enabled}>
+									{command.enabled ? '✅' : '❌'}
+								</span>
+							</div>
+							<div class="performance-stats">
+								<div class="perf-stat">
+									<span class="perf-value">{formatNumber(command.use_count)}</span>
+									<span class="perf-label">Total Uses</span>
+								</div>
+							</div>
+							<span class="performance-last">Last used: {formatRelativeTime(command.last_used_at)}</span>
+							<a href="/admin/{data.serverId}/commands/{command.id}" class="btn btn-secondary btn-sm">Edit</a>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="empty-list">
+					<span>No commands configured yet</span>
+					<a href="/admin/{data.serverId}/commands/new" class="btn btn-primary btn-sm">Create Command</a>
+				</div>
+			{/if}
+		</section>
 		
 		<!-- Automation Performance -->
 		<section class="performance-section">
@@ -881,6 +1183,14 @@
 		color: var(--color-primary);
 	}
 	
+	.title-row {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
 	.title-section h1 {
 		font-size: 1.75rem;
 		font-weight: 700;
@@ -891,6 +1201,72 @@
 	.subtitle {
 		color: var(--color-text-muted);
 		margin: 0.25rem 0 0;
+	}
+	
+	/* Master bot toggle */
+	.master-bot-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+		user-select: none;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.5rem 0.75rem;
+	}
+	
+	.master-bot-toggle input[type="checkbox"] {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+	
+	.master-bot-toggle .toggle-switch {
+		position: relative;
+		width: 40px;
+		height: 22px;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 11px;
+		transition: all var(--transition-fast);
+	}
+	
+	.master-bot-toggle .toggle-switch::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 16px;
+		height: 16px;
+		background: var(--color-text-muted);
+		border-radius: 50%;
+		transition: all var(--transition-fast);
+	}
+	
+	.master-bot-toggle input:checked + .toggle-switch {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+	
+	.master-bot-toggle input:checked + .toggle-switch::after {
+		left: 20px;
+		background: #1C1917;
+	}
+	
+	.master-bot-toggle .toggle-label {
+		font-size: 0.85rem;
+		opacity: 0.5;
+		filter: grayscale(1);
+		transition: opacity var(--transition-fast), filter var(--transition-fast);
+	}
+	
+	.master-bot-toggle input:checked ~ .toggle-label {
+		opacity: 1;
+		filter: grayscale(0);
 	}
 	
 	/* Section Titles */
@@ -968,9 +1344,19 @@
 		background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-primary-soft) 100%);
 	}
 	
+	.stat-card-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 0.5rem;
+	}
+	
 	.stat-icon {
 		font-size: 2rem;
-		margin-bottom: 0.75rem;
+	}
+	
+	.stat-card-header + .stat-content {
+		margin-top: 0.75rem;
 	}
 	
 	.stat-content {
@@ -1344,10 +1730,6 @@
 		transition: width var(--transition-normal);
 	}
 	
-	.list-bar.command {
-		background: var(--discord-blurple);
-	}
-	
 	.list-count {
 		font-weight: 600;
 		color: var(--color-text);
@@ -1615,5 +1997,264 @@
 		.overview-grid {
 			grid-template-columns: repeat(4, 1fr);
 		}
+	}
+	
+	/* User Activity Cards (Voice, Video, Screenshare) */
+	.performance-card.user-card {
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.user-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+		min-height: 120px;
+	}
+	
+	.user-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.5rem;
+		background: var(--color-surface-elevated);
+		border-radius: var(--radius-sm);
+	}
+	
+	.user-rank {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		width: 20px;
+		flex-shrink: 0;
+	}
+	
+	.user-info {
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.user-name {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: var(--color-text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: block;
+	}
+	
+	.user-bar-container {
+		width: 40px;
+		height: 4px;
+		background: var(--color-surface);
+		border-radius: 2px;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+	
+	.user-bar {
+		height: 100%;
+		border-radius: 2px;
+		transition: width var(--transition-normal);
+	}
+	
+	.user-bar.voice {
+		background: #FEE75C;
+	}
+	
+	.user-bar.video {
+		background: #5865F2;
+	}
+	
+	.user-bar.screenshare {
+		background: #57F287;
+	}
+	
+	.user-count {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-text);
+		min-width: 30px;
+		text-align: right;
+		flex-shrink: 0;
+	}
+	
+	.user-empty {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		min-height: 80px;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+	
+	/* Command Status Badge */
+	.command-status {
+		font-size: 0.9rem;
+	}
+	
+	.btn-secondary {
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+	}
+	
+	.btn-secondary:hover {
+		background: var(--color-border);
+	}
+	
+	/* Bot Toggle and Badge Styles */
+	.section-header-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+	}
+	
+	.section-header-row .section-title {
+		margin: 0;
+	}
+	
+	/* Toggle switch styles */
+	.bot-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		cursor: pointer;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		user-select: none;
+	}
+	
+	.bot-toggle input[type="checkbox"] {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+	
+	.toggle-switch {
+		position: relative;
+		width: 36px;
+		height: 20px;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 10px;
+		transition: all var(--transition-fast);
+	}
+	
+	.toggle-switch::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 14px;
+		height: 14px;
+		background: var(--color-text-muted);
+		border-radius: 50%;
+		transition: all var(--transition-fast);
+	}
+	
+	.bot-toggle input:checked + .toggle-switch {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+	
+	.bot-toggle input:checked + .toggle-switch::after {
+		left: 18px;
+		background: #1C1917;
+	}
+	
+	.toggle-label {
+		font-size: 0.8rem;
+		white-space: nowrap;
+		opacity: 0.5;
+		filter: grayscale(1);
+		transition: opacity var(--transition-fast), filter var(--transition-fast);
+	}
+	
+	.bot-toggle input:checked ~ .toggle-label {
+		opacity: 1;
+		filter: grayscale(0);
+	}
+	
+	.bot-badge {
+		font-size: 0.7rem;
+		padding: 0.1rem 0.35rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		margin-left: 0.35rem;
+		color: var(--color-text-muted);
+	}
+	
+	/* Smaller toggle for card headers */
+	.bot-toggle-sm {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		cursor: pointer;
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		user-select: none;
+	}
+	
+	.bot-toggle-sm input[type="checkbox"] {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+	
+	.toggle-switch-sm {
+		position: relative;
+		width: 28px;
+		height: 16px;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		transition: all var(--transition-fast);
+	}
+	
+	.toggle-switch-sm::after {
+		content: '';
+		position: absolute;
+		top: 2px;
+		left: 2px;
+		width: 10px;
+		height: 10px;
+		background: var(--color-text-muted);
+		border-radius: 50%;
+		transition: all var(--transition-fast);
+	}
+	
+	.bot-toggle-sm input:checked + .toggle-switch-sm {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+	
+	.bot-toggle-sm input:checked + .toggle-switch-sm::after {
+		left: 14px;
+		background: #1C1917;
+	}
+	
+	.toggle-label-sm {
+		font-size: 0.7rem;
+		opacity: 0.5;
+		filter: grayscale(1);
+		transition: opacity var(--transition-fast), filter var(--transition-fast);
+	}
+	
+	.bot-toggle-sm input:checked ~ .toggle-label-sm {
+		opacity: 1;
+		filter: grayscale(0);
+	}
+	
+	.bot-badge-sm {
+		font-size: 0.65rem;
+		margin-left: 0.25rem;
 	}
 </style>

@@ -5,7 +5,10 @@ import {
   getActivityHeatmap, 
   getCategoryTrends,
   getRecentAutomationExecutions,
-  getAutomationExecutionHistory
+  getAutomationExecutionHistory,
+  getTopVoiceUsers,
+  getTopVideoUsers,
+  getTopScreenshareUsers,
 } from "$lib/db/statistics.js";
 import {
   getServerStatsHistory,
@@ -90,6 +93,9 @@ export async function load({ params, cookies, platform, parent }) {
   let memberGrowth = null;
   let memberGrowthChartData = [];
   let voiceActivityChartData = [];
+  let topVoiceUsers = [];
+  let topVideoUsers = [];
+  let topScreenshareUsers = [];
 
   if (db) {
     try {
@@ -136,6 +142,9 @@ export async function load({ params, cookies, platform, parent }) {
         memberGrowth,
         memberGrowthChartData,
         voiceActivityChartData,
+        topVoiceUsers,
+        topVideoUsers,
+        topScreenshareUsers,
       ] = await Promise.all([
         getGuildStatistics(db, serverId),
         getActivityHeatmap(db, serverId),
@@ -156,6 +165,10 @@ export async function load({ params, cookies, platform, parent }) {
         // Chart data for beautiful graphs
         getMemberGrowthChart(db, serverId, "30d"),
         getVoiceActivityChart(db, serverId, "30d"),
+        // Top users for voice, video, and screenshare
+        getTopVoiceUsers(db, serverId, 10),
+        getTopVideoUsers(db, serverId, 10),
+        getTopScreenshareUsers(db, serverId, 10),
       ]);
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
@@ -176,6 +189,9 @@ export async function load({ params, cookies, platform, parent }) {
     memberGrowth,
     memberGrowthChartData,
     voiceActivityChartData,
+    topVoiceUsers,
+    topVideoUsers,
+    topScreenshareUsers,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,

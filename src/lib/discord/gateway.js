@@ -763,6 +763,7 @@ function setupEventHandlers(client, logFn) {
       event_category: "member",
       actor_id: member.user.id,
       actor_name: member.user.tag,
+      actor_is_bot: member.user.bot || false,
       details: {
         accountCreated: member.user.createdAt?.toISOString(),
         bot: member.user.bot,
@@ -778,6 +779,7 @@ function setupEventHandlers(client, logFn) {
       event_category: "member",
       actor_id: member.user.id,
       actor_name: member.user.tag,
+      actor_is_bot: member.user.bot || false,
       details: {
         roles: member.roles?.cache.map((r) => r.name) || [],
         joinedAt: member.joinedAt?.toISOString(),
@@ -1005,6 +1007,7 @@ function setupEventHandlers(client, logFn) {
       event_category: "message",
       actor_id: message.author.id,
       actor_name: message.author.tag,
+      actor_is_bot: message.author.bot || false,
       // Target is the first mentioned human (useful for bot response automations)
       target_id: firstMentionedHuman?.id || null,
       target_name: firstMentionedHuman?.tag || null,
@@ -1183,6 +1186,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
         details: {
@@ -1203,6 +1207,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: oldState.channel.id,
         channel_name: oldState.channel.name,
         details: {
@@ -1227,6 +1232,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
         details: {
@@ -1250,6 +1256,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -1268,6 +1275,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -1284,6 +1292,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -1302,6 +1311,7 @@ function setupEventHandlers(client, logFn) {
         event_category: "voice",
         actor_id: member.user.id,
         actor_name: member.user.tag,
+        actor_is_bot: member.user.bot || false,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {

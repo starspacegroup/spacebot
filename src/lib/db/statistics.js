@@ -94,7 +94,18 @@ function getEmptyStats() {
  * Get event statistics
  */
 async function getEventStatistics(db, guildId) {
-  const [totalResult, todayResult, weekResult, monthResult, categoryResult, typeResult] = await Promise.all([
+  const botFilterSQL = `
+    AND NOT (
+      actor_is_bot = 1 
+      OR LOWER(actor_name) LIKE '%bot%'
+      OR LOWER(actor_name) LIKE '%disboard%'
+      OR LOWER(actor_name) LIKE '%github%'
+      OR LOWER(actor_name) LIKE '%mee6%'
+      OR LOWER(actor_name) LIKE '%dyno%'
+    )
+  `;
+  
+  const [totalResult, todayResult, weekResult, monthResult, totalNonBotResult, todayNonBotResult, weekNonBotResult, monthNonBotResult, categoryResult, typeResult] = await Promise.all([
     // Total events
     db.prepare(`SELECT COUNT(*) as count FROM event_logs WHERE guild_id = ?`).bind(guildId).first(),
     
@@ -116,23 +127,102 @@ async function getEventStatistics(db, guildId) {
       WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
     `).bind(guildId).first(),
     
-    // Events by category
+    // Total events (non-bot)
     db.prepare(`
-      SELECT event_category, COUNT(*) as count 
+      SELECT COUNT(*) as count FROM event_logs 
+      WHERE guild_id = ? 
+        AND NOT (
+          actor_is_bot = 1 
+          OR LOWER(actor_name) LIKE '%bot%'
+          OR LOWER(actor_name) LIKE '%disboard%'
+          OR LOWER(actor_name) LIKE '%github%'
+          OR LOWER(actor_name) LIKE '%mee6%'
+          OR LOWER(actor_name) LIKE '%dyno%'
+        )
+    `).bind(guildId).first(),
+    
+    // Events today (non-bot)
+    db.prepare(`
+      SELECT COUNT(*) as count FROM event_logs 
+      WHERE guild_id = ? AND created_at >= datetime('now', '-1 day')
+        AND NOT (
+          actor_is_bot = 1 
+          OR LOWER(actor_name) LIKE '%bot%'
+          OR LOWER(actor_name) LIKE '%disboard%'
+          OR LOWER(actor_name) LIKE '%github%'
+          OR LOWER(actor_name) LIKE '%mee6%'
+          OR LOWER(actor_name) LIKE '%dyno%'
+        )
+    `).bind(guildId).first(),
+    
+    // Events this week (non-bot)
+    db.prepare(`
+      SELECT COUNT(*) as count FROM event_logs 
+      WHERE guild_id = ? AND created_at >= datetime('now', '-7 days')
+        AND NOT (
+          actor_is_bot = 1 
+          OR LOWER(actor_name) LIKE '%bot%'
+          OR LOWER(actor_name) LIKE '%disboard%'
+          OR LOWER(actor_name) LIKE '%github%'
+          OR LOWER(actor_name) LIKE '%mee6%'
+          OR LOWER(actor_name) LIKE '%dyno%'
+        )
+    `).bind(guildId).first(),
+    
+    // Events this month (non-bot)
+    db.prepare(`
+      SELECT COUNT(*) as count FROM event_logs 
+      WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
+        AND NOT (
+          actor_is_bot = 1 
+          OR LOWER(actor_name) LIKE '%bot%'
+          OR LOWER(actor_name) LIKE '%disboard%'
+          OR LOWER(actor_name) LIKE '%github%'
+          OR LOWER(actor_name) LIKE '%mee6%'
+          OR LOWER(actor_name) LIKE '%dyno%'
+        )
+    `).bind(guildId).first(),
+    
+    // Events by category (with bot/non-bot breakdown)
+    db.prepare(`
+      SELECT 
+        event_category, 
+        COUNT(*) as count,
+        SUM(CASE 
+          WHEN actor_is_bot = 1 THEN 0
+          WHEN LOWER(actor_name) LIKE '%bot%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%disboard%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%github%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%mee6%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%dyno%' THEN 0
+          ELSE 1 
+        END) as non_bot_count
       FROM event_logs 
       WHERE guild_id = ?
       GROUP BY event_category
       ORDER BY count DESC
     `).bind(guildId).all(),
     
-    // Top event types
+    // Top event types (with bot/non-bot breakdown)
     db.prepare(`
-      SELECT event_type, event_category, COUNT(*) as count 
+      SELECT 
+        event_type, 
+        event_category, 
+        COUNT(*) as count,
+        SUM(CASE 
+          WHEN actor_is_bot = 1 THEN 0
+          WHEN LOWER(actor_name) LIKE '%bot%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%disboard%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%github%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%mee6%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%dyno%' THEN 0
+          ELSE 1 
+        END) as non_bot_count
       FROM event_logs 
       WHERE guild_id = ?
       GROUP BY event_type
       ORDER BY count DESC
-      LIMIT 15
+      LIMIT 20
     `).bind(guildId).all(),
   ]);
 
@@ -141,8 +231,15 @@ async function getEventStatistics(db, guildId) {
     today: todayResult?.count || 0,
     thisWeek: weekResult?.count || 0,
     thisMonth: monthResult?.count || 0,
+    totalNonBot: totalNonBotResult?.count || 0,
+    todayNonBot: todayNonBotResult?.count || 0,
+    thisWeekNonBot: weekNonBotResult?.count || 0,
+    thisMonthNonBot: monthNonBotResult?.count || 0,
     byCategory: Object.fromEntries(
       (categoryResult.results || []).map((r) => [r.event_category, r.count])
+    ),
+    byCategoryNonBot: Object.fromEntries(
+      (categoryResult.results || []).map((r) => [r.event_category, r.non_bot_count || 0])
     ),
     byType: typeResult.results || [],
   };
@@ -205,7 +302,18 @@ async function getCommandStatistics(db, guildId) {
  * Get time series data for charts
  */
 async function getTimeSeriesData(db, guildId) {
-  const [hourlyResult, dailyResult, weeklyResult] = await Promise.all([
+  const botFilter = `
+    AND NOT (
+      actor_is_bot = 1 
+      OR LOWER(actor_name) LIKE '%bot%'
+      OR LOWER(actor_name) LIKE '%disboard%'
+      OR LOWER(actor_name) LIKE '%github%'
+      OR LOWER(actor_name) LIKE '%mee6%'
+      OR LOWER(actor_name) LIKE '%dyno%'
+    )
+  `;
+  
+  const [hourlyResult, dailyResult, weeklyResult, dailyNonBotResult] = await Promise.all([
     // Hourly (last 24 hours)
     db.prepare(`
       SELECT 
@@ -238,11 +346,44 @@ async function getTimeSeriesData(db, guildId) {
       GROUP BY strftime('%Y-W%W', created_at)
       ORDER BY period ASC
     `).bind(guildId).all(),
+    
+    // Daily non-bot (last 30 days)
+    db.prepare(`
+      SELECT 
+        strftime('%Y-%m-%d', created_at) as period,
+        COUNT(*) as count
+      FROM event_logs 
+      WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
+        AND NOT (
+          actor_is_bot = 1 
+          OR LOWER(actor_name) LIKE '%bot%'
+          OR LOWER(actor_name) LIKE '%disboard%'
+          OR LOWER(actor_name) LIKE '%github%'
+          OR LOWER(actor_name) LIKE '%mee6%'
+          OR LOWER(actor_name) LIKE '%dyno%'
+        )
+      GROUP BY strftime('%Y-%m-%d', created_at)
+      ORDER BY period ASC
+    `).bind(guildId).all(),
   ]);
+
+  // Merge daily and dailyNonBot into array with both counts
+  const dailyMap = new Map();
+  for (const d of dailyResult.results || []) {
+    dailyMap.set(d.period, { period: d.period, count: d.count, non_bot_count: 0 });
+  }
+  for (const d of dailyNonBotResult.results || []) {
+    if (dailyMap.has(d.period)) {
+      dailyMap.get(d.period).non_bot_count = d.count;
+    } else {
+      dailyMap.set(d.period, { period: d.period, count: 0, non_bot_count: d.count });
+    }
+  }
+  const dailyMerged = Array.from(dailyMap.values()).sort((a, b) => a.period.localeCompare(b.period));
 
   return {
     hourly: hourlyResult.results || [],
-    daily: dailyResult.results || [],
+    daily: dailyMerged,
     weekly: weeklyResult.results || [],
   };
 }
@@ -255,13 +396,15 @@ async function getTopActors(db, guildId) {
     SELECT 
       actor_id,
       actor_name,
+      actor_is_bot,
       COUNT(*) as event_count,
       COUNT(DISTINCT event_type) as event_types
     FROM event_logs 
-    WHERE guild_id = ? AND actor_id IS NOT NULL
+    WHERE guild_id = ? 
+      AND actor_id IS NOT NULL
     GROUP BY actor_id
     ORDER BY event_count DESC
-    LIMIT 10
+    LIMIT 20
   `).bind(guildId).all();
 
   return result.results || [];
@@ -276,12 +419,21 @@ async function getTopChannels(db, guildId) {
       channel_id,
       channel_name,
       COUNT(*) as event_count,
+      SUM(CASE 
+        WHEN actor_is_bot = 1 THEN 0
+        WHEN LOWER(actor_name) LIKE '%bot%' THEN 0
+        WHEN LOWER(actor_name) LIKE '%disboard%' THEN 0
+        WHEN LOWER(actor_name) LIKE '%github%' THEN 0
+        WHEN LOWER(actor_name) LIKE '%mee6%' THEN 0
+        WHEN LOWER(actor_name) LIKE '%dyno%' THEN 0
+        ELSE 1 
+      END) as non_bot_count,
       COUNT(DISTINCT event_type) as event_types
     FROM event_logs 
     WHERE guild_id = ? AND channel_id IS NOT NULL
     GROUP BY channel_id
     ORDER BY event_count DESC
-    LIMIT 10
+    LIMIT 15
   `).bind(guildId).all();
 
   return result.results || [];
@@ -386,7 +538,16 @@ export async function getActivityHeatmap(db, guildId) {
       SELECT 
         CAST(strftime('%w', created_at) AS INTEGER) as day_of_week,
         CAST(strftime('%H', created_at) AS INTEGER) as hour,
-        COUNT(*) as count
+        COUNT(*) as count,
+        SUM(CASE 
+          WHEN actor_is_bot = 1 THEN 0
+          WHEN LOWER(actor_name) LIKE '%bot%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%disboard%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%github%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%mee6%' THEN 0
+          WHEN LOWER(actor_name) LIKE '%dyno%' THEN 0
+          ELSE 1 
+        END) as non_bot_count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
       GROUP BY day_of_week, hour
@@ -459,6 +620,111 @@ export async function getRecentAutomationExecutions(db, guildId, limit = 10) {
     return result.results || [];
   } catch (error) {
     log.error("Failed to fetch recent automation executions:", error);
+    return [];
+  }
+}
+
+/**
+ * Get top voice users (users with most voice activity)
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @param {number} limit - Number of results
+ * @returns {Promise<Array>} - Top voice users
+ */
+export async function getTopVoiceUsers(db, guildId, limit = 20) {
+  if (!db) return [];
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        actor_id,
+        actor_name,
+        actor_is_bot,
+        COUNT(*) as event_count,
+        MAX(created_at) as last_active
+      FROM event_logs 
+      WHERE guild_id = ? 
+        AND actor_id IS NOT NULL
+        AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE', 'VOICE_MOVE', 'VOICE_MUTE', 'VOICE_DEAFEN')
+        AND created_at >= datetime('now', '-30 days')
+      GROUP BY actor_id
+      ORDER BY event_count DESC
+      LIMIT ?
+    `).bind(guildId, limit).all();
+
+    return result.results || [];
+  } catch (error) {
+    log.error("Failed to fetch top voice users:", error);
+    return [];
+  }
+}
+
+/**
+ * Get top video users (users who use camera most)
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @param {number} limit - Number of results
+ * @returns {Promise<Array>} - Top video users
+ */
+export async function getTopVideoUsers(db, guildId, limit = 20) {
+  if (!db) return [];
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        actor_id,
+        actor_name,
+        actor_is_bot,
+        COUNT(*) as event_count,
+        MAX(created_at) as last_active
+      FROM event_logs 
+      WHERE guild_id = ? 
+        AND actor_id IS NOT NULL
+        AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP')
+        AND created_at >= datetime('now', '-30 days')
+      GROUP BY actor_id
+      ORDER BY event_count DESC
+      LIMIT ?
+    `).bind(guildId, limit).all();
+
+    return result.results || [];
+  } catch (error) {
+    log.error("Failed to fetch top video users:", error);
+    return [];
+  }
+}
+
+/**
+ * Get top screenshare users (users who share screen most)
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @param {number} limit - Number of results
+ * @returns {Promise<Array>} - Top screenshare users
+ */
+export async function getTopScreenshareUsers(db, guildId, limit = 20) {
+  if (!db) return [];
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        actor_id,
+        actor_name,
+        actor_is_bot,
+        COUNT(*) as event_count,
+        MAX(created_at) as last_active
+      FROM event_logs 
+      WHERE guild_id = ? 
+        AND actor_id IS NOT NULL
+        AND event_type IN ('VOICE_STREAM_START', 'VOICE_STREAM_STOP')
+        AND created_at >= datetime('now', '-30 days')
+      GROUP BY actor_id
+      ORDER BY event_count DESC
+      LIMIT ?
+    `).bind(guildId, limit).all();
+
+    return result.results || [];
+  } catch (error) {
+    log.error("Failed to fetch top screenshare users:", error);
     return [];
   }
 }
