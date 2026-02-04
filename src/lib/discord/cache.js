@@ -22,14 +22,24 @@ const roleCache = new Map();
 /** @type {Map<string, CacheEntry>} */
 const emojiCache = new Map();
 
+/** @type {Map<string, CacheEntry>} */
+const scheduledEventsCache = new Map();
+
+/** @type {Map<string, CacheEntry>} */
+const voiceChannelsCache = new Map();
+
+// Shorter TTL for scheduled events since they change more frequently
+const EVENTS_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
 /**
  * Check if a cache entry is still valid
  * @param {CacheEntry | undefined} entry
+ * @param {number} [ttl=CACHE_TTL_MS] - Custom TTL in ms
  * @returns {boolean}
  */
-function isValid(entry) {
+function isValid(entry, ttl = CACHE_TTL_MS) {
   if (!entry) return false;
-  return Date.now() - entry.timestamp < CACHE_TTL_MS;
+  return Date.now() - entry.timestamp < ttl;
 }
 
 /**
@@ -243,4 +253,106 @@ export async function fetchEmojisWithCache(guildId) {
   }
 
   return [];
+}
+
+/**
+ * Get cached scheduled events for a guild
+ * @param {string} guildId
+ * @returns {any[] | null} - Cached events or null if not cached/expired
+ */
+export function getCachedScheduledEvents(guildId) {
+  const entry = scheduledEventsCache.get(guildId);
+  if (isValid(entry, EVENTS_CACHE_TTL_MS)) {
+    return entry.data;
+  }
+  return null;
+}
+
+/**
+ * Set cached scheduled events for a guild
+ * @param {string} guildId
+ * @param {any[]} events
+ */
+export function setCachedScheduledEvents(guildId, events) {
+  scheduledEventsCache.set(guildId, {
+    data: events,
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Invalidate scheduled events cache for a guild
+ * @param {string} guildId
+ */
+export function invalidateScheduledEvents(guildId) {
+  scheduledEventsCache.delete(guildId);
+}
+
+/**
+ * Get cached voice channels for a guild
+ * @param {string} guildId
+ * @returns {any[] | null} - Cached voice channels or null if not cached/expired
+ */
+export function getCachedVoiceChannels(guildId) {
+  const entry = voiceChannelsCache.get(guildId);
+  if (isValid(entry)) {
+    return entry.data;
+  }
+  return null;
+}
+
+/**
+ * Set cached voice channels for a guild
+ * @param {string} guildId
+ * @param {any[]} channels
+ */
+export function setCachedVoiceChannels(guildId, channels) {
+  voiceChannelsCache.set(guildId, {
+    data: channels,
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Invalidate voice channels cache for a guild
+ * @param {string} guildId
+ */
+export function invalidateVoiceChannels(guildId) {
+  voiceChannelsCache.delete(guildId);
+}
+
+/**
+ * Helper to fetch with retry on rate limit (429)
+ * @param {string} url
+ * @param {RequestInit} options
+ * @param {number} maxRetries
+ * @returns {Promise<Response>}
+ */
+export async function fetchWithRateLimitRetry(url, options, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      if (response.status === 429) {
+        // Get retry-after header (in seconds) or use exponential backoff
+        const retryAfter = response.headers.get('retry-after');
+        const waitMs = retryAfter 
+          ? parseFloat(retryAfter) * 1000 
+          : Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+        
+        log.warn(`[RateLimit] 429 received, waiting ${Math.round(waitMs)}ms before retry ${attempt + 1}/${maxRetries}`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+        continue;
+      }
+      
+      return response;
+    } catch (err) {
+      lastError = err;
+      log.error(`[RateLimit] Fetch error on attempt ${attempt + 1}:`, err);
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
 }

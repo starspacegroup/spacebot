@@ -107,6 +107,14 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
+					<a href="/admin/{data.serverId}/scheduled-server-events" class="quick-link-card">
+						<div class="quick-link-icon">📅</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">Scheduled Events</span>
+							<span class="quick-link-desc">Manage server events and activities</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
 				</div>
 			</section>
 			
