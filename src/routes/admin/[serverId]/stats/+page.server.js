@@ -14,6 +14,11 @@ import {
   fetchGuildStatsFromDiscord,
   recordServerStats,
 } from "$lib/db/server-stats.js";
+import {
+  getVoiceActivitySummary,
+  getMemberGrowthSummary,
+  getAggregatedStats,
+} from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 
 /**
@@ -71,6 +76,8 @@ export async function load({ params, cookies, platform, parent }) {
   let recentExecutions = [];
   let memberStats = null;
   let memberHistory = [];
+  let voiceActivity = null;
+  let memberGrowth = null;
 
   if (db) {
     try {
@@ -92,19 +99,32 @@ export async function load({ params, cookies, platform, parent }) {
         }
       }
 
-      // Now fetch all statistics
-      [statistics, heatmapData, categoryTrends, recentExecutions, memberStats, memberHistory] = await Promise.all([
+      // Now fetch all statistics including aggregated data
+      [
+        statistics, 
+        heatmapData, 
+        categoryTrends, 
+        recentExecutions, 
+        memberStats, 
+        memberHistory,
+        voiceActivity,
+        memberGrowth,
+      ] = await Promise.all([
         getGuildStatistics(db, serverId),
         getActivityHeatmap(db, serverId),
         getCategoryTrends(db, serverId),
         getRecentAutomationExecutions(db, serverId, 15),
-        // Member stats
+        // Member stats from server_stats
         Promise.all([
           getLatestServerStats(db, serverId),
           getMemberCountChanges(db, serverId),
           getPeakMemberCount(db, serverId, "30d"),
         ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
         getServerStatsHistory(db, serverId, { period: "30d", granularity: "daily" }),
+        // Aggregated voice activity
+        getVoiceActivitySummary(db, serverId, "7d"),
+        // Aggregated member growth
+        getMemberGrowthSummary(db, serverId, "7d"),
       ]);
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
@@ -120,6 +140,8 @@ export async function load({ params, cookies, platform, parent }) {
     recentExecutions,
     memberStats,
     memberHistory,
+    voiceActivity,
+    memberGrowth,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,

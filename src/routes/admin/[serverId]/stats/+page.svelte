@@ -349,6 +349,112 @@
 			</section>
 		{/if}
 		
+		<!-- Voice Activity Section (from aggregated stats) -->
+		{#if data.voiceActivity}
+			<section class="voice-activity-section">
+				<h2 class="section-title">
+					<span class="section-icon">🎤</span>
+					Voice Activity (Last 7 Days)
+				</h2>
+				<div class="voice-stats-grid">
+					<div class="voice-stat-card total-time">
+						<div class="voice-stat-icon">⏱️</div>
+						<div class="voice-stat-content">
+							<span class="voice-stat-value">
+								{#if data.voiceActivity.totalHours >= 1}
+									{data.voiceActivity.totalHours.toFixed(1)}
+								{:else}
+									{data.voiceActivity.totalMinutes}
+								{/if}
+							</span>
+							<span class="voice-stat-unit">
+								{#if data.voiceActivity.totalHours >= 1}
+									hours
+								{:else}
+									minutes
+								{/if}
+							</span>
+							<span class="voice-stat-label">Total Voice Time</span>
+						</div>
+					</div>
+					
+					<div class="voice-stat-card unique-users">
+						<div class="voice-stat-icon">👥</div>
+						<div class="voice-stat-content">
+							<span class="voice-stat-value">{data.voiceActivity.uniqueUsers || 0}</span>
+							<span class="voice-stat-unit">users</span>
+							<span class="voice-stat-label">Unique Voice Users</span>
+						</div>
+					</div>
+					
+					<div class="voice-stat-card sessions">
+						<div class="voice-stat-icon">🎙️</div>
+						<div class="voice-stat-content">
+							<span class="voice-stat-value">{data.voiceActivity.sessionCount || 0}</span>
+							<span class="voice-stat-unit">sessions</span>
+							<span class="voice-stat-label">Voice Sessions</span>
+						</div>
+					</div>
+					
+					<div class="voice-stat-card avg-session">
+						<div class="voice-stat-icon">📊</div>
+						<div class="voice-stat-content">
+							<span class="voice-stat-value">{data.voiceActivity.avgSessionMinutes || 0}</span>
+							<span class="voice-stat-unit">min</span>
+							<span class="voice-stat-label">Avg Session Length</span>
+						</div>
+					</div>
+				</div>
+			</section>
+		{/if}
+		
+		<!-- Member Growth Stats (from aggregated data) -->
+		{#if data.memberGrowth && (data.memberGrowth.joins > 0 || data.memberGrowth.leaves > 0)}
+			<section class="member-growth-section">
+				<h2 class="section-title">
+					<span class="section-icon">📈</span>
+					Member Growth (Last 7 Days)
+				</h2>
+				<div class="growth-stats-grid">
+					<div class="growth-stat-card joins">
+						<div class="growth-stat-icon">➕</div>
+						<div class="growth-stat-content">
+							<span class="growth-stat-value positive">+{formatNumber(data.memberGrowth.joins)}</span>
+							<span class="growth-stat-label">Members Joined</span>
+						</div>
+					</div>
+					
+					<div class="growth-stat-card leaves">
+						<div class="growth-stat-icon">➖</div>
+						<div class="growth-stat-content">
+							<span class="growth-stat-value negative">-{formatNumber(data.memberGrowth.leaves)}</span>
+							<span class="growth-stat-label">Members Left</span>
+						</div>
+					</div>
+					
+					<div class="growth-stat-card net">
+						<div class="growth-stat-icon">📊</div>
+						<div class="growth-stat-content">
+							<span class="growth-stat-value" class:positive={data.memberGrowth.netChange > 0} class:negative={data.memberGrowth.netChange < 0}>
+								{formatChange(data.memberGrowth.netChange)}
+							</span>
+							<span class="growth-stat-label">Net Change</span>
+						</div>
+					</div>
+					
+					<div class="growth-stat-card daily">
+						<div class="growth-stat-icon">📅</div>
+						<div class="growth-stat-content">
+							<span class="growth-stat-value" class:positive={data.memberGrowth.dailyAverage > 0} class:negative={data.memberGrowth.dailyAverage < 0}>
+								{data.memberGrowth.dailyAverage > 0 ? '+' : ''}{data.memberGrowth.dailyAverage}
+							</span>
+							<span class="growth-stat-label">Daily Average</span>
+						</div>
+					</div>
+				</div>
+			</section>
+		{/if}
+		
 		<!-- Event Categories -->
 		<section class="categories-section">
 			<h2 class="section-title">
@@ -1554,6 +1660,154 @@
 	.empty-hint {
 		font-size: 0.85rem;
 		margin-top: 0.5rem !important;
+	}
+	
+	/* Voice Activity Section */
+	.voice-activity-section {
+		margin-bottom: 2rem;
+	}
+	
+	.voice-stats-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+	
+	@media (min-width: 768px) {
+		.voice-stats-grid {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+	
+	.voice-stat-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+	
+	.voice-stat-card:hover {
+		border-color: var(--color-primary);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+	
+	.voice-stat-icon {
+		font-size: 2rem;
+		flex-shrink: 0;
+	}
+	
+	.voice-stat-content {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	
+	.voice-stat-value {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--color-text);
+		line-height: 1.1;
+	}
+	
+	.voice-stat-unit {
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+		font-weight: 500;
+	}
+	
+	.voice-stat-label {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+		margin-top: 0.25rem;
+	}
+	
+	.voice-stat-card.total-time .voice-stat-value {
+		color: #FEE75C;
+	}
+	
+	.voice-stat-card.unique-users .voice-stat-value {
+		color: #5865F2;
+	}
+	
+	.voice-stat-card.sessions .voice-stat-value {
+		color: #57F287;
+	}
+	
+	.voice-stat-card.avg-session .voice-stat-value {
+		color: #EB459E;
+	}
+	
+	/* Member Growth Section */
+	.member-growth-section {
+		margin-bottom: 2rem;
+	}
+	
+	.growth-stats-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1rem;
+	}
+	
+	@media (min-width: 768px) {
+		.growth-stats-grid {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+	
+	.growth-stat-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+	
+	.growth-stat-card:hover {
+		border-color: var(--color-primary);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+	
+	.growth-stat-icon {
+		font-size: 2rem;
+		flex-shrink: 0;
+	}
+	
+	.growth-stat-content {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	
+	.growth-stat-value {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--color-text);
+		line-height: 1.1;
+	}
+	
+	.growth-stat-value.positive {
+		color: var(--color-success);
+	}
+	
+	.growth-stat-value.negative {
+		color: var(--color-danger);
+	}
+	
+	.growth-stat-label {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+		margin-top: 0.25rem;
 	}
 	
 	/* Overview grid with 4 columns for members card */

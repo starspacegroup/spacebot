@@ -177,3 +177,84 @@ Recommended setup:
 1. Deploy SvelteKit app to Cloudflare Pages
 2. Deploy gateway bot to a long-running server (Railway, Fly.io, VPS)
 3. Both use the same D1 database via the REST API
+
+## Stats Aggregation
+
+The system includes a smart stats aggregation cron job that runs hourly to build
+aggregated statistics from event logs. This enables efficient querying for:
+
+- **Member Growth**: Joins, leaves, and net change over time
+- **Voice Activity**: Total time (minutes/hours/days), unique users, peak concurrent users
+- **Message Activity**: Message counts and unique authors
+- **Trend Analysis**: Daily and weekly comparisons
+
+### How It Works
+
+1. **Hourly Cron** (`0 * * * *`): Aggregates raw events into hourly buckets
+2. **Daily Cron** (`0 0 * * *`): Rolls up hourly data into daily summaries, refreshes stats from Discord API, and cleans up old data
+
+### Smart Processing
+
+The aggregation is designed to be efficient and idempotent:
+
+- **Checkpoint Tracking**: Remembers the last processed event ID per guild
+- **Skip Existing Data**: Never reprocesses periods that already have aggregated stats
+- **Incremental Updates**: Only processes new events since last run
+- **Voice Session Tracking**: Pairs VOICE_JOIN/VOICE_LEAVE events to calculate accurate session durations
+
+### Database Tables
+
+```sql
+-- Aggregated statistics (hourly/daily)
+CREATE TABLE aggregated_stats (
+    guild_id TEXT NOT NULL,
+    period_type TEXT NOT NULL,  -- 'hourly', 'daily'
+    period_start DATETIME NOT NULL,
+    period_end DATETIME NOT NULL,
+    member_joins INTEGER DEFAULT 0,
+    member_leaves INTEGER DEFAULT 0,
+    member_net_change INTEGER DEFAULT 0,
+    voice_total_seconds INTEGER DEFAULT 0,
+    voice_unique_users INTEGER DEFAULT 0,
+    message_count INTEGER DEFAULT 0,
+    ...
+);
+
+-- Voice session tracking
+CREATE TABLE voice_sessions (
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    joined_at DATETIME NOT NULL,
+    left_at DATETIME,  -- NULL if still in channel
+    duration_seconds INTEGER,  -- Computed on leave
+    ...
+);
+```
+
+### API Endpoints
+
+- `POST /api/stats/aggregate` - Trigger stats aggregation (requires CRON_SECRET)
+- `GET /api/stats/aggregate` - View aggregation status and info
+
+### Querying Aggregated Stats
+
+```javascript
+import { getAggregatedStats, getVoiceActivitySummary, getMemberGrowthSummary } from '$lib/db/stats-aggregation.js';
+
+// Get voice activity for last 7 days
+const voiceStats = await getVoiceActivitySummary(db, guildId, '7d');
+// Returns: { totalSeconds, totalMinutes, totalHours, uniqueUsers, sessionCount, avgSessionMinutes }
+
+// Get member growth for last 30 days
+const memberStats = await getMemberGrowthSummary(db, guildId, '30d');
+// Returns: { joins, leaves, netChange, dailyAverage }
+
+// Get raw aggregated data for charts
+const data = await getAggregatedStats(db, guildId, {
+  periodType: 'daily',
+  startDate: '2026-01-01',
+  endDate: '2026-02-01'
+});
+```
+

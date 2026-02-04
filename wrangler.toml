@@ -30,4 +30,7 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"
 
 [triggers]
-crons = ["0 0 * * *"]  # Runs at midnight UTC daily
+# Cron jobs for scheduled tasks
+# - "0 * * * *" = Every hour (stats aggregation)
+# - "0 0 * * *" = Daily at midnight (cleanup)
+crons = ["0 * * * *", "0 0 * * *"]

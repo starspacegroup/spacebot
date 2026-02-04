@@ -1,0 +1,635 @@
+/**
+ * Stats aggregation module
+ * Handles building aggregated statistics from event logs
+ * Smart enough to skip data that's already been processed
+ */
+
+import { log } from "$lib/log.js";
+
+/**
+ * @typedef {Object} AggregationResult
+ * @property {boolean} success
+ * @property {number} periodsProcessed - Number of periods that were aggregated
+ * @property {number} eventsProcessed - Number of events processed
+ * @property {string} [error]
+ */
+
+/**
+ * Get the processing checkpoint for a guild
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {string} checkpointType - 'hourly', 'daily', 'voice_sessions'
+ * @returns {Promise<{lastEventId: number, lastProcessedAt: string|null}>}
+ */
+async function getCheckpoint(db, guildId, checkpointType) {
+  try {
+    const result = await db.prepare(`
+      SELECT last_processed_event_id, last_processed_at
+      FROM stats_processing_checkpoint
+      WHERE guild_id = ? AND checkpoint_type = ?
+    `).bind(guildId, checkpointType).first();
+
+    return {
+      lastEventId: result?.last_processed_event_id || 0,
+      lastProcessedAt: result?.last_processed_at || null,
+    };
+  } catch {
+    return { lastEventId: 0, lastProcessedAt: null };
+  }
+}
+
+/**
+ * Update the processing checkpoint
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {string} checkpointType
+ * @param {number} lastEventId
+ */
+async function updateCheckpoint(db, guildId, checkpointType, lastEventId) {
+  await db.prepare(`
+    INSERT INTO stats_processing_checkpoint (guild_id, checkpoint_type, last_processed_event_id, last_processed_at)
+    VALUES (?, ?, ?, datetime('now'))
+    ON CONFLICT(guild_id, checkpoint_type) 
+    DO UPDATE SET last_processed_event_id = ?, last_processed_at = datetime('now')
+  `).bind(guildId, checkpointType, lastEventId, lastEventId).run();
+}
+
+/**
+ * Process voice sessions from VOICE_JOIN/VOICE_LEAVE events
+ * Creates session records for accurate time tracking
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<{processed: number, sessionsCreated: number, sessionsClosed: number}>}
+ */
+async function processVoiceSessions(db, guildId) {
+  const checkpoint = await getCheckpoint(db, guildId, "voice_sessions");
+  
+  // Get unprocessed voice events
+  const events = await db.prepare(`
+    SELECT id, event_type, actor_id, channel_id, channel_name, created_at
+    FROM event_logs
+    WHERE guild_id = ? 
+      AND id > ?
+      AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE', 'VOICE_MOVE')
+    ORDER BY id ASC
+    LIMIT 1000
+  `).bind(guildId, checkpoint.lastEventId).all();
+
+  if (!events.results?.length) {
+    return { processed: 0, sessionsCreated: 0, sessionsClosed: 0 };
+  }
+
+  let sessionsCreated = 0;
+  let sessionsClosed = 0;
+  let lastEventId = checkpoint.lastEventId;
+
+  for (const event of events.results) {
+    lastEventId = event.id;
+
+    if (event.event_type === "VOICE_JOIN") {
+      // Create a new session
+      await db.prepare(`
+        INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        guildId,
+        event.actor_id,
+        event.channel_id,
+        event.channel_name,
+        event.created_at,
+        event.id
+      ).run();
+      sessionsCreated++;
+    } else if (event.event_type === "VOICE_LEAVE") {
+      // Close the most recent open session for this user
+      const result = await db.prepare(`
+        UPDATE voice_sessions
+        SET 
+          left_at = ?,
+          leave_event_id = ?,
+          duration_seconds = CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER)
+        WHERE guild_id = ? 
+          AND user_id = ? 
+          AND left_at IS NULL
+          AND id = (
+            SELECT id FROM voice_sessions 
+            WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
+            ORDER BY joined_at DESC
+            LIMIT 1
+          )
+      `).bind(
+        event.created_at,
+        event.id,
+        event.created_at,
+        guildId,
+        event.actor_id,
+        guildId,
+        event.actor_id
+      ).run();
+      
+      if (result.meta?.changes > 0) {
+        sessionsClosed++;
+      }
+    } else if (event.event_type === "VOICE_MOVE") {
+      // Close old session and create new one
+      // First close the existing session
+      await db.prepare(`
+        UPDATE voice_sessions
+        SET 
+          left_at = ?,
+          duration_seconds = CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER)
+        WHERE guild_id = ? 
+          AND user_id = ? 
+          AND left_at IS NULL
+      `).bind(event.created_at, event.created_at, guildId, event.actor_id).run();
+      sessionsClosed++;
+
+      // Then create new session in new channel
+      await db.prepare(`
+        INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        guildId,
+        event.actor_id,
+        event.channel_id,
+        event.channel_name,
+        event.created_at,
+        event.id
+      ).run();
+      sessionsCreated++;
+    }
+  }
+
+  // Update checkpoint
+  await updateCheckpoint(db, guildId, "voice_sessions", lastEventId);
+
+  return {
+    processed: events.results.length,
+    sessionsCreated,
+    sessionsClosed,
+  };
+}
+
+/**
+ * Build hourly aggregated statistics for a guild
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<AggregationResult>}
+ */
+export async function buildHourlyStats(db, guildId) {
+  if (!db) {
+    return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: "Database not available" };
+  }
+
+  try {
+    // First, process any new voice sessions
+    await processVoiceSessions(db, guildId);
+
+    // Get the last fully processed hour
+    const lastAggregated = await db.prepare(`
+      SELECT MAX(period_end) as last_period
+      FROM aggregated_stats
+      WHERE guild_id = ? AND period_type = 'hourly'
+    `).bind(guildId).first();
+
+    // Determine start time for aggregation
+    // If no previous data, start from 7 days ago (don't rebuild entire history)
+    let startTime;
+    if (lastAggregated?.last_period) {
+      startTime = lastAggregated.last_period;
+    } else {
+      // Get the earliest event or default to 7 days ago
+      const earliest = await db.prepare(`
+        SELECT MIN(created_at) as earliest
+        FROM event_logs
+        WHERE guild_id = ? AND created_at >= datetime('now', '-7 days')
+      `).bind(guildId).first();
+      
+      startTime = earliest?.earliest || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+
+    // Get hours that need processing (completed hours only, not the current hour)
+    const hoursToProcess = await db.prepare(`
+      SELECT DISTINCT 
+        strftime('%Y-%m-%d %H:00:00', created_at) as period_start,
+        strftime('%Y-%m-%d %H:00:00', created_at, '+1 hour') as period_end
+      FROM event_logs
+      WHERE guild_id = ? 
+        AND created_at >= ?
+        AND created_at < strftime('%Y-%m-%d %H:00:00', 'now')
+      ORDER BY period_start ASC
+    `).bind(guildId, startTime).all();
+
+    if (!hoursToProcess.results?.length) {
+      return { success: true, periodsProcessed: 0, eventsProcessed: 0 };
+    }
+
+    let totalEventsProcessed = 0;
+    let periodsProcessed = 0;
+
+    for (const period of hoursToProcess.results) {
+      // Check if this period already exists
+      const existing = await db.prepare(`
+        SELECT id FROM aggregated_stats
+        WHERE guild_id = ? AND period_type = 'hourly' AND period_start = ?
+      `).bind(guildId, period.period_start).first();
+
+      if (existing) {
+        continue; // Skip already processed periods
+      }
+
+      // Aggregate member events
+      const memberStats = await db.prepare(`
+        SELECT 
+          SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END) as joins,
+          SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END) as leaves
+        FROM event_logs
+        WHERE guild_id = ? 
+          AND created_at >= ? 
+          AND created_at < ?
+          AND event_type IN ('MEMBER_JOIN', 'MEMBER_LEAVE')
+      `).bind(guildId, period.period_start, period.period_end).first();
+
+      // Aggregate voice activity from sessions
+      const voiceStats = await db.prepare(`
+        SELECT 
+          COUNT(DISTINCT user_id) as unique_users,
+          SUM(
+            CASE 
+              WHEN left_at IS NULL THEN 
+                CAST((julianday(?) - julianday(MAX(joined_at, ?))) * 86400 AS INTEGER)
+              WHEN left_at > ? AND joined_at < ? THEN
+                CAST((julianday(MIN(left_at, ?)) - julianday(MAX(joined_at, ?))) * 86400 AS INTEGER)
+              ELSE 0
+            END
+          ) as total_seconds
+        FROM voice_sessions
+        WHERE guild_id = ?
+          AND joined_at < ?
+          AND (left_at IS NULL OR left_at > ?)
+      `).bind(
+        period.period_end, period.period_start,
+        period.period_start, period.period_end,
+        period.period_end, period.period_start,
+        guildId,
+        period.period_end, period.period_start
+      ).first();
+
+      // Aggregate message activity
+      const messageStats = await db.prepare(`
+        SELECT 
+          COUNT(*) as count,
+          COUNT(DISTINCT actor_id) as unique_users
+        FROM event_logs
+        WHERE guild_id = ? 
+          AND created_at >= ? 
+          AND created_at < ?
+          AND event_type = 'MESSAGE_CREATE'
+      `).bind(guildId, period.period_start, period.period_end).first();
+
+      // Total events
+      const totalEvents = await db.prepare(`
+        SELECT COUNT(*) as count, MAX(id) as last_id
+        FROM event_logs
+        WHERE guild_id = ? 
+          AND created_at >= ? 
+          AND created_at < ?
+      `).bind(guildId, period.period_start, period.period_end).first();
+
+      // Insert aggregated stats
+      await db.prepare(`
+        INSERT INTO aggregated_stats (
+          guild_id, period_type, period_start, period_end,
+          member_joins, member_leaves, member_net_change,
+          voice_total_seconds, voice_unique_users,
+          message_count, message_unique_users,
+          total_events, last_event_id
+        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        guildId,
+        period.period_start,
+        period.period_end,
+        memberStats?.joins || 0,
+        memberStats?.leaves || 0,
+        (memberStats?.joins || 0) - (memberStats?.leaves || 0),
+        voiceStats?.total_seconds || 0,
+        voiceStats?.unique_users || 0,
+        messageStats?.count || 0,
+        messageStats?.unique_users || 0,
+        totalEvents?.count || 0,
+        totalEvents?.last_id || null
+      ).run();
+
+      totalEventsProcessed += totalEvents?.count || 0;
+      periodsProcessed++;
+    }
+
+    return { success: true, periodsProcessed, eventsProcessed: totalEventsProcessed };
+  } catch (error) {
+    log.error(`Failed to build hourly stats for ${guildId}:`, error);
+    return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Build daily aggregated statistics by rolling up hourly data
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<AggregationResult>}
+ */
+export async function buildDailyStats(db, guildId) {
+  if (!db) {
+    return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: "Database not available" };
+  }
+
+  try {
+    // Get the last fully processed day
+    const lastAggregated = await db.prepare(`
+      SELECT MAX(period_end) as last_period
+      FROM aggregated_stats
+      WHERE guild_id = ? AND period_type = 'daily'
+    `).bind(guildId).first();
+
+    // Get days that have complete hourly data (24 hours) and aren't today
+    const daysToProcess = await db.prepare(`
+      SELECT 
+        strftime('%Y-%m-%d 00:00:00', period_start) as day_start,
+        strftime('%Y-%m-%d 00:00:00', period_start, '+1 day') as day_end,
+        COUNT(*) as hour_count
+      FROM aggregated_stats
+      WHERE guild_id = ? 
+        AND period_type = 'hourly'
+        AND period_start >= COALESCE(?, datetime('now', '-30 days'))
+        AND period_start < strftime('%Y-%m-%d 00:00:00', 'now')
+      GROUP BY strftime('%Y-%m-%d', period_start)
+      HAVING hour_count >= 1
+      ORDER BY day_start ASC
+    `).bind(guildId, lastAggregated?.last_period).all();
+
+    if (!daysToProcess.results?.length) {
+      return { success: true, periodsProcessed: 0, eventsProcessed: 0 };
+    }
+
+    let periodsProcessed = 0;
+
+    for (const day of daysToProcess.results) {
+      // Check if this day already exists
+      const existing = await db.prepare(`
+        SELECT id FROM aggregated_stats
+        WHERE guild_id = ? AND period_type = 'daily' AND period_start = ?
+      `).bind(guildId, day.day_start).first();
+
+      if (existing) {
+        continue;
+      }
+
+      // Roll up hourly stats into daily
+      const dayStats = await db.prepare(`
+        SELECT 
+          SUM(member_joins) as member_joins,
+          SUM(member_leaves) as member_leaves,
+          SUM(voice_total_seconds) as voice_total_seconds,
+          MAX(voice_unique_users) as voice_unique_users,
+          SUM(message_count) as message_count,
+          MAX(message_unique_users) as message_unique_users,
+          SUM(total_events) as total_events,
+          MAX(last_event_id) as last_event_id
+        FROM aggregated_stats
+        WHERE guild_id = ? 
+          AND period_type = 'hourly'
+          AND period_start >= ?
+          AND period_start < ?
+      `).bind(guildId, day.day_start, day.day_end).first();
+
+      // Insert daily aggregation
+      await db.prepare(`
+        INSERT INTO aggregated_stats (
+          guild_id, period_type, period_start, period_end,
+          member_joins, member_leaves, member_net_change,
+          voice_total_seconds, voice_unique_users,
+          message_count, message_unique_users,
+          total_events, last_event_id
+        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        guildId,
+        day.day_start,
+        day.day_end,
+        dayStats?.member_joins || 0,
+        dayStats?.member_leaves || 0,
+        (dayStats?.member_joins || 0) - (dayStats?.member_leaves || 0),
+        dayStats?.voice_total_seconds || 0,
+        dayStats?.voice_unique_users || 0,
+        dayStats?.message_count || 0,
+        dayStats?.message_unique_users || 0,
+        dayStats?.total_events || 0,
+        dayStats?.last_event_id || null
+      ).run();
+
+      periodsProcessed++;
+    }
+
+    return { success: true, periodsProcessed, eventsProcessed: 0 };
+  } catch (error) {
+    log.error(`Failed to build daily stats for ${guildId}:`, error);
+    return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Run full stats aggregation for a guild
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<{hourly: AggregationResult, daily: AggregationResult}>}
+ */
+export async function runStatsAggregation(db, guildId) {
+  const hourly = await buildHourlyStats(db, guildId);
+  const daily = await buildDailyStats(db, guildId);
+  
+  return { hourly, daily };
+}
+
+/**
+ * Get aggregated stats for display
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {Object} options
+ * @param {'hourly'|'daily'} options.periodType
+ * @param {string} options.startDate - ISO date string
+ * @param {string} options.endDate - ISO date string
+ * @returns {Promise<Array>}
+ */
+export async function getAggregatedStats(db, guildId, options = {}) {
+  if (!db) return [];
+
+  const { periodType = "daily", startDate, endDate } = options;
+
+  let query = `
+    SELECT * FROM aggregated_stats
+    WHERE guild_id = ? AND period_type = ?
+  `;
+  const params = [guildId, periodType];
+
+  if (startDate) {
+    query += " AND period_start >= ?";
+    params.push(startDate);
+  }
+
+  if (endDate) {
+    query += " AND period_end <= ?";
+    params.push(endDate);
+  }
+
+  query += " ORDER BY period_start ASC";
+
+  try {
+    const result = await db.prepare(query).bind(...params).all();
+    return result.results || [];
+  } catch (error) {
+    log.error("Failed to get aggregated stats:", error);
+    return [];
+  }
+}
+
+/**
+ * Get voice activity summary
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {'24h'|'7d'|'30d'} period
+ * @returns {Promise<Object>}
+ */
+export async function getVoiceActivitySummary(db, guildId, period = "7d") {
+  if (!db) {
+    return { totalSeconds: 0, totalMinutes: 0, totalHours: 0, uniqueUsers: 0, avgSessionMinutes: 0 };
+  }
+
+  const periodMap = {
+    "24h": "-1 day",
+    "7d": "-7 days",
+    "30d": "-30 days",
+  };
+  const timeRange = periodMap[period] || "-7 days";
+
+  try {
+    // Get from aggregated stats if available
+    const aggregated = await db.prepare(`
+      SELECT 
+        SUM(voice_total_seconds) as total_seconds,
+        MAX(voice_unique_users) as unique_users
+      FROM aggregated_stats
+      WHERE guild_id = ? 
+        AND period_type = 'hourly'
+        AND period_start >= datetime('now', ?)
+    `).bind(guildId, timeRange).first();
+
+    // Get session stats for more detail
+    const sessions = await db.prepare(`
+      SELECT 
+        COUNT(*) as session_count,
+        COUNT(DISTINCT user_id) as unique_users,
+        AVG(duration_seconds) as avg_duration
+      FROM voice_sessions
+      WHERE guild_id = ? 
+        AND joined_at >= datetime('now', ?)
+        AND duration_seconds IS NOT NULL
+    `).bind(guildId, timeRange).first();
+
+    const totalSeconds = aggregated?.total_seconds || 0;
+
+    return {
+      totalSeconds,
+      totalMinutes: Math.round(totalSeconds / 60),
+      totalHours: Math.round(totalSeconds / 3600 * 10) / 10,
+      uniqueUsers: sessions?.unique_users || aggregated?.unique_users || 0,
+      sessionCount: sessions?.session_count || 0,
+      avgSessionMinutes: Math.round((sessions?.avg_duration || 0) / 60),
+    };
+  } catch (error) {
+    log.error("Failed to get voice activity summary:", error);
+    return { totalSeconds: 0, totalMinutes: 0, totalHours: 0, uniqueUsers: 0, avgSessionMinutes: 0 };
+  }
+}
+
+/**
+ * Get member growth summary
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {'24h'|'7d'|'30d'} period
+ * @returns {Promise<Object>}
+ */
+export async function getMemberGrowthSummary(db, guildId, period = "7d") {
+  if (!db) {
+    return { joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 };
+  }
+
+  const periodMap = {
+    "24h": { sql: "-1 day", days: 1 },
+    "7d": { sql: "-7 days", days: 7 },
+    "30d": { sql: "-30 days", days: 30 },
+  };
+  const { sql: timeRange, days } = periodMap[period] || periodMap["7d"];
+
+  try {
+    const stats = await db.prepare(`
+      SELECT 
+        SUM(member_joins) as joins,
+        SUM(member_leaves) as leaves,
+        SUM(member_net_change) as net_change
+      FROM aggregated_stats
+      WHERE guild_id = ? 
+        AND period_type = 'hourly'
+        AND period_start >= datetime('now', ?)
+    `).bind(guildId, timeRange).first();
+
+    const joins = stats?.joins || 0;
+    const leaves = stats?.leaves || 0;
+    const netChange = stats?.net_change || (joins - leaves);
+
+    return {
+      joins,
+      leaves,
+      netChange,
+      dailyAverage: Math.round((netChange / days) * 10) / 10,
+    };
+  } catch (error) {
+    log.error("Failed to get member growth summary:", error);
+    return { joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 };
+  }
+}
+
+/**
+ * Clean up old voice sessions and aggregated data
+ * @param {D1Database} db
+ * @param {string} [guildId] - Optional guild ID, cleans all if not provided
+ * @returns {Promise<{sessionsDeleted: number, aggregatesDeleted: number}>}
+ */
+export async function cleanupOldData(db, guildId = null) {
+  if (!db) return { sessionsDeleted: 0, aggregatesDeleted: 0 };
+
+  try {
+    // Delete completed voice sessions older than 90 days
+    const sessionsQuery = guildId
+      ? `DELETE FROM voice_sessions WHERE guild_id = ? AND left_at IS NOT NULL AND left_at < datetime('now', '-90 days')`
+      : `DELETE FROM voice_sessions WHERE left_at IS NOT NULL AND left_at < datetime('now', '-90 days')`;
+    
+    const sessionsResult = guildId
+      ? await db.prepare(sessionsQuery).bind(guildId).run()
+      : await db.prepare(sessionsQuery).run();
+
+    // Delete hourly aggregates older than 30 days (daily summaries are sufficient)
+    const hourlyQuery = guildId
+      ? `DELETE FROM aggregated_stats WHERE guild_id = ? AND period_type = 'hourly' AND period_start < datetime('now', '-30 days')`
+      : `DELETE FROM aggregated_stats WHERE period_type = 'hourly' AND period_start < datetime('now', '-30 days')`;
+    
+    const hourlyResult = guildId
+      ? await db.prepare(hourlyQuery).bind(guildId).run()
+      : await db.prepare(hourlyQuery).run();
+
+    return {
+      sessionsDeleted: sessionsResult.meta?.changes || 0,
+      aggregatesDeleted: hourlyResult.meta?.changes || 0,
+    };
+  } catch (error) {
+    log.error("Failed to cleanup old data:", error);
+    return { sessionsDeleted: 0, aggregatesDeleted: 0 };
+  }
+}
