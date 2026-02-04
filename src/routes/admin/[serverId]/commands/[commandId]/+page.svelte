@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
@@ -170,6 +171,18 @@
 				desc: opt.description || `Value of ${opt.name} option`
 			}))
 	);
+	
+	// Combined template variables for DiscordMessageEditor (base + option variables)
+	const commandTemplateVariables = $derived.by(() => {
+		const vars = { ...data.templateVariables };
+		// Remove the generic option.<name> placeholder since we'll add specific ones
+		delete vars['option.<name>'];
+		// Add specific option variables
+		for (const optVar of optionVariables) {
+			vars[optVar.name] = optVar.desc;
+		}
+		return vars;
+	});
 	
 	// Computed user sources for actions (command invoker + any user-type options)
 	const availableUserSources = $derived(() => {
@@ -521,25 +534,26 @@
 												{#if config.required}<span class="required">*</span>{/if}
 											</label>
 											{#if config.type === 'text'}
-												<textarea 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													placeholder={config.supportsVariables ? 'Supports variables like {user.mention} and {option.name}' : ''}
-													rows="3"
-													bind:value={action.config[configKey]}
-												></textarea>
 												{#if config.supportsVariables}
-													<div class="variables-help compact">
-														<span class="variables-label">Variables:</span>
-														<div class="variables-list">
-															<code title="Mention the user">{'{user.mention}'}</code>
-															<code title="Channel mention">{'{channel.mention}'}</code>
-															{#each optionVariables as optVar}
-																<code title={optVar.desc} class="option-var">{`{${optVar.name}}`}</code>
-															{/each}
-														</div>
-													</div>
+													<DiscordMessageEditor
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+														channels={sharedChannels}
+														roles={sharedRoles}
+														templateVariables={commandTemplateVariables}
+														placeholder="Enter your message..."
+														rows={4}
+													/>
+												{:else}
+													<textarea 
+														id="config_{index}_{configKey}" 
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														placeholder=""
+														rows="3"
+														bind:value={action.config[configKey]}
+													></textarea>
 												{/if}
 											{:else if config.type === 'number'}
 												<input 
@@ -1062,20 +1076,6 @@
 		font-style: italic;
 	}
 	
-	.variables-help.compact {
-		margin-top: 0.5rem;
-		padding: 0.5rem 0.75rem;
-	}
-	
-	.variables-help.compact .variables-label {
-		display: inline;
-		margin-right: 0.5rem;
-	}
-	
-	.variables-help.compact .variables-list {
-		display: inline-flex;
-	}
-	
 	/* Embed config */
 	.embed-config {
 		background: var(--bg-tertiary, #36393f);
@@ -1090,11 +1090,6 @@
 		padding: 1rem;
 		background: var(--bg-primary, #202225);
 		border-radius: 8px;
-	}
-	
-	.action-config h3 {
-		margin: 0 0 1rem;
-		font-size: 1rem;
 	}
 	
 	/* Stacked actions */

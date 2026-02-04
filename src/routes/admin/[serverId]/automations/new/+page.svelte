@@ -6,6 +6,7 @@
 	import UserSelector from '$lib/components/UserSelector.svelte';
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
+	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache, fetchEmojisWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
 	
@@ -535,23 +536,26 @@
 												{#if config.required}<span class="required">*</span>{/if}
 											</label>
 											{#if config.type === 'text'}
-												<textarea 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													placeholder={config.supportsVariables ? 'Supports variables like {user.mention}' : ''}
-													rows="3"
-													bind:value={action.config[configKey]}
-												></textarea>
 												{#if config.supportsVariables}
-													<div class="variables-help">
-														<span class="variables-label">Available variables:</span>
-														<div class="variables-list">
-															{#each Object.entries(data.templateVariables) as [varName, desc]}
-																<code title={desc}>{`{${varName}}`}</code>
-															{/each}
-														</div>
-													</div>
+													<DiscordMessageEditor
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+														channels={sharedChannels}
+														roles={sharedRoles}
+														templateVariables={data.templateVariables}
+														placeholder="Enter your message..."
+														rows={4}
+													/>
+												{:else}
+													<textarea 
+														id="config_{index}_{configKey}" 
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														placeholder=""
+														rows="3"
+														bind:value={action.config[configKey]}
+													></textarea>
 												{/if}
 											{:else if config.type === 'number'}
 												<input 
@@ -1160,31 +1164,6 @@
 		background: var(--color-danger-soft);
 		border-color: var(--color-danger);
 		color: var(--color-danger);
-	}
-	
-	.variables-help {
-		margin-top: 0.5rem;
-		font-size: 0.75rem;
-	}
-	
-	.variables-label {
-		color: var(--text-muted);
-		display: block;
-		margin-bottom: 0.375rem;
-	}
-	
-	.variables-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-	
-	.variables-list code {
-		background: var(--bg-primary, #202225);
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.7rem;
-		cursor: help;
 	}
 	
 	.field-hint {
