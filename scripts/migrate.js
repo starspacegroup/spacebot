@@ -38,13 +38,13 @@ let errorCount = 0;
 
 for (const file of migrationFiles) {
   const filePath = join(migrationsDir, file);
-  const localFlag = isLocal ? "--local" : "";
+  const locationFlag = isLocal ? "--local" : "--remote";
 
   console.log(`  📄 ${file}`);
 
   try {
     execSync(
-      `wrangler d1 execute ${dbName} ${localFlag} --file="${filePath}"`,
+      `wrangler d1 execute ${dbName} ${locationFlag} --file="${filePath}"`,
       { stdio: "pipe" },
     );
     console.log(`     ✅ Success\n`);

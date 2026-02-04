@@ -86,6 +86,13 @@ async function checkUserIsManager(client, userId) {
             name: guild.name,
             isOwner,
             isAdmin: hasAdmin,
+            // Include live stats from Discord.js cache
+            memberCount: guild.memberCount,
+            channelCount: guild.channels.cache.size,
+            roleCount: guild.roles.cache.size,
+            emojiCount: guild.emojis.cache.size,
+            boostCount: guild.premiumSubscriptionCount || 0,
+            boostLevel: guild.premiumTier,
           });
         }
       }

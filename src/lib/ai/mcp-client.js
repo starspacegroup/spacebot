@@ -3,32 +3,93 @@
  * 
  * This module provides a client interface to call MCP tools from within
  * the Discord gateway. Instead of running as a stdio server, these functions
- * can be called directly with the Cloudflare API credentials.
+ * can be called directly with the Cloudflare API credentials or local SQLite.
  */
 
 import { log } from "../log.js";
+import { existsSync, readdirSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+// Dynamic import for better-sqlite3 (only loaded when needed)
+let Database = null;
+
+// Get __dirname equivalent for ES modules
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * MCP Client class that connects to D1 database via Cloudflare API
+ * MCP Client class that connects to D1 database via Cloudflare API or local SQLite
  */
 export class MCPClient {
   constructor(options = {}) {
-    this.accountId = options.accountId || process.env.CLOUDFLARE_ACCOUNT_ID;
-    this.apiToken = options.apiToken || process.env.CLOUDFLARE_API_TOKEN;
-    this.databaseId = options.databaseId || process.env.D1_DATABASE_ID || "6bce735c-2dca-43cd-9911-2eef7062377a";
+    this.accountId = options.accountId;
+    this.apiToken = options.apiToken;
+    this.databaseId = options.databaseId || "6bce735c-2dca-43cd-9911-2eef7062377a";
+    this.useLocalDb = options.useLocalDb || false;
+    this.localDb = null;
+    
+    log.debug(`[MCP] Client initialized - accountId: ${this.accountId ? 'SET' : 'MISSING'}, apiToken: ${this.apiToken ? 'SET' : 'MISSING'}, useLocalDb: ${this.useLocalDb}`);
   }
 
   /**
    * Check if the client is properly configured
    */
   isConfigured() {
-    return Boolean(this.accountId && this.apiToken);
+    if (this.useLocalDb) {
+      return true; // Local DB doesn't need API credentials
+    }
+    const configured = Boolean(this.accountId && this.apiToken);
+    if (!configured) {
+      log.warn(`[MCP] Client not configured - accountId: ${this.accountId ? 'SET' : 'MISSING'}, apiToken: ${this.apiToken ? 'SET' : 'MISSING'}`);
+    }
+    return configured;
   }
 
   /**
-   * Execute a query against the D1 database via Cloudflare API
+   * Initialize local SQLite database connection
+   */
+  async initLocalDb() {
+    if (this.localDb) return this.localDb;
+    
+    try {
+      if (!Database) {
+        const betterSqlite3 = await import("better-sqlite3");
+        Database = betterSqlite3.default;
+      }
+      
+      const wranglerDbPath = join(__dirname, "../../../.wrangler/state/v3/d1/miniflare-D1DatabaseObject");
+      
+      if (!existsSync(wranglerDbPath)) {
+        throw new Error(`Local D1 database path not found: ${wranglerDbPath}`);
+      }
+      
+      const files = readdirSync(wranglerDbPath).filter(f => f.endsWith(".sqlite") && !f.includes("-shm") && !f.includes("-wal"));
+      
+      if (files.length === 0) {
+        throw new Error("No local D1 database found");
+      }
+      
+      // Use the first sqlite file (or the one with WAL)
+      const withWal = files.find(f => existsSync(join(wranglerDbPath, f + "-wal")));
+      const dbPath = join(wranglerDbPath, withWal || files[0]);
+      
+      log.info(`[MCP] Using local SQLite database: ${dbPath}`);
+      this.localDb = new Database(dbPath, { readonly: true });
+      return this.localDb;
+    } catch (error) {
+      log.error(`[MCP] Failed to initialize local DB:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a query against the D1 database via Cloudflare API or local SQLite
    */
   async executeD1Query(sql, params = []) {
+    if (this.useLocalDb) {
+      return this.executeLocalQuery(sql, params);
+    }
+    
     if (!this.isConfigured()) {
       throw new Error("MCP Client not configured: Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN");
     }
@@ -52,6 +113,26 @@ export class MCPClient {
     }
 
     return data.result[0];
+  }
+
+  /**
+   * Execute a query against the local SQLite database
+   */
+  async executeLocalQuery(sql, params = []) {
+    const db = await this.initLocalDb();
+    
+    try {
+      // Replace ? placeholders with $1, $2, etc. for better-sqlite3 if needed
+      const stmt = db.prepare(sql);
+      const results = stmt.all(...params);
+      
+      return {
+        results: results,
+        success: true,
+      };
+    } catch (error) {
+      throw new Error(`Local DB query failed: ${error.message}`);
+    }
   }
 
   /**
@@ -342,6 +423,38 @@ export class MCPClient {
   }
 
   /**
+   * Get server statistics (member count, channel count, etc.)
+   */
+  async getServerStats(guildId) {
+    // Get the latest stats snapshot
+    const result = await this.executeD1Query(
+      `SELECT * FROM server_stats 
+       WHERE guild_id = ?
+       ORDER BY recorded_at DESC
+       LIMIT 1`,
+      [guildId]
+    );
+
+    if (!result.results.length) {
+      return null;
+    }
+
+    const stats = result.results[0];
+    return {
+      member_count: stats.member_count,
+      human_count: stats.human_count,
+      bot_count: stats.bot_count,
+      online_count: stats.online_count,
+      channel_count: stats.channel_count,
+      role_count: stats.role_count,
+      emoji_count: stats.emoji_count,
+      boost_count: stats.boost_count,
+      boost_level: stats.boost_level,
+      recorded_at: stats.recorded_at,
+    };
+  }
+
+  /**
    * Execute a tool by name with the given arguments
    * This is the main entry point for AI tool calling
    */
@@ -420,6 +533,20 @@ export class MCPClient {
 
         case "get_server_settings":
           return { success: true, data: await this.getGuildSettings(args.guildId) };
+
+        case "get_server_stats":
+          console.log("[MCP] get_server_stats called with guildId:", args.guildId);
+          try {
+            const stats = await this.getServerStats(args.guildId);
+            console.log("[MCP] get_server_stats result:", stats);
+            if (!stats) {
+              return { success: false, error: "No statistics recorded for this server yet. Stats are recorded when the dashboard is viewed." };
+            }
+            return { success: true, data: stats };
+          } catch (statsError) {
+            console.error("[MCP] get_server_stats error:", statsError);
+            return { success: false, error: statsError.message };
+          }
 
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };
@@ -517,13 +644,21 @@ export const MCP_TOOLS = [
       guildId: "string (required) - The Discord server ID",
     },
   },
+  {
+    name: "get_server_stats",
+    description: "Get server statistics including member count, bot count, channel count, boost level, etc. Use this to answer questions about server size or member counts.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+    },
+  },
 ];
 
 /**
  * Format tool definitions for the AI system prompt
  */
 export function formatToolsForPrompt() {
-  let prompt = "You have access to the following tools to help manage Discord servers:\n\n";
+  let prompt = "You have access to database tools. You MUST use these tools to get any server-specific data.\n\n";
+  prompt += "**BEFORE you can tell the user ANY statistics, counts, automations, commands, logs, or settings, you MUST call a tool first.**\n\n";
   
   for (const tool of MCP_TOOLS) {
     prompt += `### ${tool.name}\n${tool.description}\n`;
@@ -536,25 +671,52 @@ export function formatToolsForPrompt() {
     prompt += "\n";
   }
   
-  prompt += `To use a tool, respond with a JSON block in this format:
+  prompt += `To use a tool, respond with ONLY a JSON block like this:
 \`\`\`tool
-{"tool": "tool_name", "args": {"param1": "value1", "param2": "value2"}}
+{"tool": "tool_name", "args": {"param1": "value1"}}
 \`\`\`
 
-After receiving tool results, provide a helpful response summarizing the information for the user.
-You can call multiple tools if needed by including multiple tool blocks.
+## CRITICAL INSTRUCTIONS
 
-IMPORTANT: Always use the server IDs from the user's managed guilds list when calling tools.`;
+1. **JUST OUTPUT THE TOOL BLOCK**: When you need data, output ONLY the tool JSON block. Do NOT add explanations like "Here's how to do it" or "Please wait for the result". The tool will be executed automatically.
+
+2. **NO PREAMBLE**: Do not explain what you're about to do. Just call the tool.
+
+3. **NO DATA WITHOUT TOOLS**: You have ZERO knowledge of the user's servers until you call a tool.
+
+4. **Tool results are your ONLY source of truth**: Only cite numbers, names, and details that appear in tool results.
+
+5. **Empty results = say so**: If a tool returns an empty array or zero count, tell the user "I found no [X]".
+
+6. **Use correct guild IDs**: Only query servers from the user's managed guilds list.
+
+Example of CORRECT tool usage:
+User: "How many events in my server?"
+You: \`\`\`tool
+{"tool": "get_log_stats", "args": {"guildId": "123456789"}}
+\`\`\`
+
+Example of WRONG tool usage (DO NOT DO THIS):
+User: "How many events?"
+You: "I'll look that up for you! Here's how to do it: {...} Please wait..."`;
   
   return prompt;
 }
 
-// Create a singleton instance for the gateway
-let mcpClientInstance = null;
-
-export function getMCPClient() {
-  if (!mcpClientInstance) {
-    mcpClientInstance = new MCPClient();
-  }
-  return mcpClientInstance;
+/**
+ * Create an MCP client with the given environment variables.
+ * This creates a new instance each time to ensure we have the correct env.
+ * Uses local SQLite DB when MCP_USE_LOCAL_DB=true or when running locally (no D1 binding).
+ * @param {Object} env - Environment variables from the Worker context
+ */
+export function getMCPClient(env = {}) {
+  // Use local DB if explicitly set, or if we're likely running in local dev mode
+  const useLocalDb = env.MCP_USE_LOCAL_DB === "true" || env.MCP_USE_LOCAL_DB === true;
+  
+  return new MCPClient({
+    accountId: env.CLOUDFLARE_ACCOUNT_ID,
+    apiToken: env.CLOUDFLARE_API_TOKEN,
+    databaseId: env.D1_DATABASE_ID,
+    useLocalDb,
+  });
 }

@@ -12,17 +12,36 @@ import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from "./mcp-client.js";
 const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 
 // Base system prompt for the bot assistant
-const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace. You help server managers with their Discord servers.
+const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.
 
-You can help with:
-- Explaining bot features and automations
-- Answering questions about Discord server management
-- Providing tips for growing and moderating communities
-- Explaining how to set up commands and automations
-- Looking up event logs, automations, commands, and server settings
+## IMPORTANT: CHECK CONTEXT FIRST
 
-Keep responses concise and friendly. Use Discord markdown formatting when helpful.
-If you don't know something specific about the bot's features, be honest about it.`;
+Before calling any tools, CHECK if the answer is already in this prompt under "User's Managed Servers (LIVE DATA)".
+
+**For these questions, use the LIVE DATA from context - DO NOT call tools:**
+- "How many members?" → Use memberCount from context
+- "How many channels/roles/emojis?" → Use the counts from context
+- "What's the boost level?" → Use boostLevel from context
+
+**Only use database tools for:**
+- Event logs (messages, joins, leaves, etc.)
+- Automations and their execution history
+- Custom commands and usage logs
+- Server settings
+- Historical statistics over time
+
+## HONESTY RULES
+
+- Only report data that comes from context or tool results
+- If a tool fails or returns empty, say so honestly
+- Never invent or guess numbers, names, or statistics
+
+## What you can help with WITHOUT tools:
+- Explaining SpaceBot features
+- Discord server management advice
+- How to set up automations/commands (conceptually)
+
+Keep responses concise. Use Discord markdown.`;
 
 /**
  * Build the full system prompt with context
@@ -30,18 +49,35 @@ If you don't know something specific about the bot's features, be honest about i
 function buildSystemPrompt(context = {}) {
   let prompt = BASE_SYSTEM_PROMPT;
   
-  // Add managed guilds context if available
+  // Add managed guilds context if available - including live stats
   if (context.managedGuilds && context.managedGuilds.length > 0) {
-    prompt += "\n\n## User's Managed Servers\nThe user manages the following Discord servers where SpaceBot is installed:\n";
+    prompt += "\n\n## User's Managed Servers (LIVE DATA)\nThe user manages the following Discord servers where SpaceBot is installed. This data is LIVE from Discord:\n";
     for (const guild of context.managedGuilds) {
-      prompt += `- **${guild.name}** (ID: ${guild.id})${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
+      prompt += `\n### ${guild.name}${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
+      prompt += `- Server ID: ${guild.id}\n`;
+      if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
+      if (guild.channelCount !== undefined) prompt += `- Channels: ${guild.channelCount}\n`;
+      if (guild.roleCount !== undefined) prompt += `- Roles: ${guild.roleCount}\n`;
+      if (guild.emojiCount !== undefined) prompt += `- Custom Emojis: ${guild.emojiCount}\n`;
+      if (guild.boostCount !== undefined) prompt += `- Boosts: ${guild.boostCount} (Level ${guild.boostLevel})\n`;
     }
+    prompt += "\n**For basic questions like member count, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n";
   }
   
-  // Add MCP tools if enabled
+  // Add MCP tools if enabled, or explain the limitation
   if (context.mcpEnabled) {
     prompt += "\n\n## Available Tools\n";
     prompt += formatToolsForPrompt();
+  } else {
+    prompt += "\n\n## ⚠️ NO DATA ACCESS ⚠️\n";
+    prompt += "Database tools are NOT available. You have ZERO access to:\n";
+    prompt += "- Event logs, message counts, join counts, or ANY statistics\n";
+    prompt += "- Automation names, configurations, or execution history\n";
+    prompt += "- Custom command details or usage logs\n";
+    prompt += "- Server settings\n\n";
+    prompt += "When the user asks about ANY of the above, your ONLY valid response is:\n";
+    prompt += "\"I don't have access to look up that data right now. Please check the SpaceBot dashboard at [your-dashboard-url] to see your server's logs, automations, and settings.\"\n\n";
+    prompt += "DO NOT attempt to guess, estimate, or fabricate any data. You literally have no information about their server's data.";
   }
   
   return prompt;
@@ -49,24 +85,38 @@ function buildSystemPrompt(context = {}) {
 
 /**
  * Parse tool calls from AI response
- * Looks for ```tool JSON blocks
+ * Looks for tool JSON in various formats
  */
 function parseToolCalls(response) {
   const toolCalls = [];
-  const toolBlockRegex = /```tool\s*\n([\s\S]*?)```/g;
   
-  let match;
-  while ((match = toolBlockRegex.exec(response)) !== null) {
-    try {
-      const parsed = JSON.parse(match[1].trim());
-      if (parsed.tool && typeof parsed.tool === "string") {
-        toolCalls.push({
-          tool: parsed.tool,
-          args: parsed.args || {},
-        });
+  // Try multiple patterns the AI might use
+  const patterns = [
+    /```tool\s*\n([\s\S]*?)```/g,           // ```tool\n{...}```
+    /```json\s*\n([\s\S]*?)```/g,           // ```json\n{...}```
+    /```\s*\n(\{"tool"[\s\S]*?)```/g,       // ```\n{"tool":...}```
+    /(?:^|\n)(\{"tool"\s*:\s*"[^"]+"[^}]*\})/g,  // Raw JSON with "tool" key
+  ];
+  
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(response)) !== null) {
+      try {
+        const jsonStr = match[1].trim();
+        const parsed = JSON.parse(jsonStr);
+        if (parsed.tool && typeof parsed.tool === "string") {
+          // Avoid duplicates
+          if (!toolCalls.some(t => t.tool === parsed.tool && JSON.stringify(t.args) === JSON.stringify(parsed.args || {}))) {
+            toolCalls.push({
+              tool: parsed.tool,
+              args: parsed.args || {},
+            });
+            log.debug(`[AI] Parsed tool call: ${parsed.tool}`);
+          }
+        }
+      } catch (e) {
+        log.warn("[AI] Failed to parse tool call:", match[1]);
       }
-    } catch (e) {
-      log.warn("[AI] Failed to parse tool call:", match[1]);
     }
   }
   
@@ -76,13 +126,13 @@ function parseToolCalls(response) {
 /**
  * Execute tool calls and return results
  */
-async function executeToolCalls(toolCalls) {
-  const mcpClient = getMCPClient();
+async function executeToolCalls(toolCalls, env) {
+  const mcpClient = getMCPClient(env);
   
   if (!mcpClient.isConfigured()) {
     return [{
       tool: "error",
-      result: { success: false, error: "MCP client not configured" },
+      result: { success: false, error: "MCP client not configured - missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN" },
     }];
   }
   
@@ -155,7 +205,7 @@ async function callAI(messages, env) {
     body: JSON.stringify({
       messages,
       max_tokens: 1500,
-      temperature: 0.7,
+      temperature: 0.2, // Low temperature to reduce hallucination/creativity
     }),
   });
   
@@ -196,8 +246,16 @@ async function callAI(messages, env) {
 export async function generateChatResponse(options, env) {
   const { message, userName, userId, history = [], managedGuilds = [] } = options;
   
+  // Direct console.log for debugging (bypasses LOG_LEVEL)
+  console.log("[AI] generateChatResponse called for user:", userName);
+  console.log("[AI] env keys:", Object.keys(env || {}));
+  
   const accountId = env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = env.CLOUDFLARE_AI_TOKEN;
+  
+  console.log("[AI] CLOUDFLARE_ACCOUNT_ID:", accountId ? "SET" : "MISSING");
+  console.log("[AI] CLOUDFLARE_AI_TOKEN:", apiToken ? "SET" : "MISSING");
+  console.log("[AI] CLOUDFLARE_API_TOKEN:", env.CLOUDFLARE_API_TOKEN ? "SET" : "MISSING");
   
   if (!accountId || !apiToken) {
     log.error("[AI] Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_AI_TOKEN");
@@ -207,9 +265,13 @@ export async function generateChatResponse(options, env) {
     };
   }
   
-  // Check if MCP is enabled (needs D1 access)
-  const mcpClient = getMCPClient();
+  // Check if MCP is enabled (needs D1 access via Cloudflare API)
+  const mcpClient = getMCPClient(env);
   const mcpEnabled = mcpClient.isConfigured();
+  
+  console.log("[AI] MCP enabled:", mcpEnabled);
+  
+  log.info(`[AI] MCP enabled: ${mcpEnabled}`);
   
   // Build system prompt with context
   const systemPrompt = buildSystemPrompt({
@@ -227,17 +289,19 @@ export async function generateChatResponse(options, env) {
   try {
     // First AI call
     let aiResponse = await callAI(messages, env);
-    log.debug("[AI] Initial response:", aiResponse.substring(0, 200));
+    console.log("[AI] Full initial response:", aiResponse);
     
     // Check if AI wants to use tools
     const toolCalls = parseToolCalls(aiResponse);
+    console.log("[AI] Parsed tool calls:", toolCalls.length, toolCalls);
     const toolsUsed = [];
     
     if (toolCalls.length > 0 && mcpEnabled) {
-      log.info(`[AI] Processing ${toolCalls.length} tool call(s)`);
+      console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
       
       // Execute the tools
-      const results = await executeToolCalls(toolCalls);
+      const results = await executeToolCalls(toolCalls, env);
+      console.log("[AI] Tool results:", JSON.stringify(results, null, 2));
       toolsUsed.push(...toolCalls.map(t => t.tool));
       
       // Add the tool results to the conversation
@@ -255,8 +319,18 @@ export async function generateChatResponse(options, env) {
       log.debug("[AI] Final response after tools:", aiResponse.substring(0, 200));
     }
     
-    // Clean up response - remove any remaining tool blocks for final output
-    const cleanResponse = aiResponse.replace(/```tool\s*\n[\s\S]*?```/g, "").trim();
+    // Clean up response - remove tool blocks and related text for final output
+    let cleanResponse = aiResponse
+      .replace(/```tool\s*\n[\s\S]*?```/g, "")           // ```tool blocks
+      .replace(/```json\s*\n[\s\S]*?```/g, "")           // ```json blocks
+      .replace(/```\s*\n\{"tool"[\s\S]*?```/g, "")       // ``` blocks with tool JSON
+      .replace(/\{"tool"\s*:\s*"[^"]+"[^}]*\}/g, "")     // Raw tool JSON
+      .replace(/Please wait for the result\.*/gi, "")    // "Please wait" text
+      .replace(/Here's how to do it:\s*/gi, "")          // Instructional text
+      .replace(/This should return[^.]*\./gi, "")        // "This should return" text
+      .replace(/I can then provide[^.]*\./gi, "")        // "I can then provide" text
+      .replace(/\n{3,}/g, "\n\n")                         // Collapse multiple newlines
+      .trim();
     
     return {
       success: true,
