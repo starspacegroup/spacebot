@@ -246,14 +246,18 @@ export class MCPClient {
    * Get automations for a guild
    */
   async getAutomations(guildId, options = {}) {
-    const { enabledOnly = false, limit = 100 } = options;
+    const { enabled, limit = 100 } = options;
     
     let sql = "SELECT * FROM automations WHERE guild_id = ?";
     const params = [guildId];
 
-    if (enabledOnly) {
+    // Filter by enabled status if specified
+    if (enabled === true) {
       sql += " AND enabled = 1";
+    } else if (enabled === false) {
+      sql += " AND enabled = 0";
     }
+    // If enabled is undefined, return all automations
 
     sql += " ORDER BY created_at DESC LIMIT ?";
     params.push(limit);
@@ -508,7 +512,7 @@ export class MCPClient {
           return { 
             success: true, 
             data: await this.getAutomations(args.guildId, {
-              enabledOnly: args.enabledOnly || false,
+              enabled: args.enabled, // true = active only, false = inactive only, undefined = all
               limit: args.limit || 20,
             })
           };
@@ -610,10 +614,10 @@ export const MCP_TOOLS = [
   },
   {
     name: "get_automations",
-    description: "Get all automations configured for a Discord server",
+    description: "Get automations configured for a Discord server. Can filter by active/inactive status.",
     parameters: {
       guildId: "string (required) - The Discord server ID",
-      enabledOnly: "boolean (optional) - Only return enabled automations",
+      enabled: "boolean (optional) - Filter by status: true = active/enabled only, false = inactive/disabled only, omit for all automations",
       limit: "number (optional) - Max automations to return (default: 20)",
     },
   },

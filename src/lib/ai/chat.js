@@ -8,8 +8,12 @@
 import { log } from "../log.js";
 import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from "./mcp-client.js";
 
-// Default model - Llama 3.1 8B is fast and free, supports function calling
-const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+// Default model - Llama 3.3 70B is smarter and better at reasoning
+// Other options:
+//   @cf/meta/llama-3.1-8b-instruct-fast - Fast but less capable
+//   @cf/meta/llama-3.1-70b-instruct - Slower but smarter
+//   @cf/meta/llama-3.3-70b-instruct-fp8-fast - Best balance of speed and intelligence
+const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 // Base system prompt for the bot assistant
 const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.
@@ -155,10 +159,12 @@ async function executeToolCalls(toolCalls, env) {
  * Summarize an automation for AI display (keeps essential info, drops verbose config)
  */
 function summarizeAutomation(auto) {
+  // Convert enabled 0/1 to clear status string for AI understanding
+  const isEnabled = auto.enabled === 1 || auto.enabled === true;
   return {
     id: auto.id,
     name: auto.name,
-    enabled: auto.enabled,
+    status: isEnabled ? "ACTIVE" : "INACTIVE",
     trigger_events: auto.trigger_events,
     action_type: auto.action_type,
     trigger_count: auto.trigger_count,
@@ -171,11 +177,12 @@ function summarizeAutomation(auto) {
  * Summarize a command for AI display
  */
 function summarizeCommand(cmd) {
+  const isEnabled = cmd.enabled === 1 || cmd.enabled === true;
   return {
     id: cmd.id,
     name: cmd.name,
     description: cmd.description,
-    enabled: cmd.enabled,
+    status: isEnabled ? "ACTIVE" : "INACTIVE",
     use_count: cmd.use_count,
     created_by: cmd.created_by,
   };
@@ -202,8 +209,15 @@ function formatToolResults(results) {
         // Summarize specific types to reduce token usage
         if (tool === "get_automations" && data.length > 0) {
           data = data.map(summarizeAutomation);
+          // Add status counts for clarity
+          const activeCount = data.filter(a => a.status === "ACTIVE").length;
+          const inactiveCount = data.filter(a => a.status === "INACTIVE").length;
+          formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
         } else if (tool === "get_commands" && data.length > 0) {
           data = data.map(summarizeCommand);
+          const activeCount = data.filter(c => c.status === "ACTIVE").length;
+          const inactiveCount = data.filter(c => c.status === "INACTIVE").length;
+          formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
         }
       }
       
