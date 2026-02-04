@@ -23,6 +23,8 @@
 				}
 				document.documentElement.dataset.theme = theme;
 				document.documentElement.style.colorScheme = theme;
+				// Set base font size immediately to prevent flash
+				document.documentElement.style.fontSize = "118%";
 			})();
 			
 			// Auto-reload on critical Svelte errors (cache busting)
