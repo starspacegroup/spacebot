@@ -24,13 +24,25 @@ const API_BASE = process.env.API_BASE || "http://localhost:4269";
 
 /**
  * User DM session storage
- * Tracks selected server and conversation state per user
- * Map<userId, { selectedGuildId: string | null, selectedGuildName: string | null, lastMessageAt: number }>
+ * Tracks selected server, conversation state, and pending operations per user
+ * Map<userId, { 
+ *   selectedGuildId: string | null, 
+ *   selectedGuildName: string | null, 
+ *   lastMessageAt: number,
+ *   pendingEvents: Object | null,  // Stores events awaiting confirmation
+ *   conversationHistory: Array<{role: string, content: string}>  // Recent conversation history for AI context
+ * }>
  */
 const userSessions = new Map();
 
 // Session timeout - clear after 24 hours of inactivity
 const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+// Pending events timeout - clear after 10 minutes
+const PENDING_EVENTS_TIMEOUT_MS = 10 * 60 * 1000;
+
+// Max conversation history to retain (messages, not turns)
+const MAX_HISTORY_MESSAGES = 20;
 
 /**
  * Get or create a user's DM session
@@ -47,13 +59,89 @@ function getUserSession(userId) {
       selectedGuildId: null,
       selectedGuildName: null,
       lastMessageAt: now,
+      pendingEvents: null,
+      conversationHistory: [],
     };
     userSessions.set(userId, session);
   } else {
     session.lastMessageAt = now;
+    
+    // Clear pending events if they've expired
+    if (session.pendingEvents && 
+        (now - session.pendingEvents.createdAt) > PENDING_EVENTS_TIMEOUT_MS) {
+      session.pendingEvents = null;
+    }
+    
+    // Initialize conversationHistory if missing (for older sessions)
+    if (!session.conversationHistory) {
+      session.conversationHistory = [];
+    }
   }
   
   return session;
+}
+
+/**
+ * Add message to conversation history
+ * @param {string} userId - Discord user ID
+ * @param {string} role - 'user' or 'assistant'
+ * @param {string} content - Message content
+ */
+function addToConversationHistory(userId, role, content) {
+  const session = getUserSession(userId);
+  session.conversationHistory.push({ role, content });
+  
+  // Trim to max length
+  if (session.conversationHistory.length > MAX_HISTORY_MESSAGES) {
+    session.conversationHistory = session.conversationHistory.slice(-MAX_HISTORY_MESSAGES);
+  }
+}
+
+/**
+ * Store pending events for user confirmation
+ * @param {string} userId - Discord user ID
+ * @param {Object} pendingData - The pending events data
+ */
+export function setPendingEvents(userId, pendingData) {
+  const session = getUserSession(userId);
+  session.pendingEvents = {
+    ...pendingData,
+    createdAt: Date.now(),
+  };
+  log.info(`[DM] Stored ${pendingData.events?.length || 1} pending event(s) for user ${userId}`);
+}
+
+/**
+ * Get pending events for a user
+ * @param {string} userId - Discord user ID
+ * @returns {Object|null} Pending events data or null
+ */
+export function getPendingEvents(userId) {
+  const session = getUserSession(userId);
+  const now = Date.now();
+  
+  // Check if pending events exist and haven't expired
+  if (session.pendingEvents && 
+      (now - session.pendingEvents.createdAt) <= PENDING_EVENTS_TIMEOUT_MS) {
+    return session.pendingEvents;
+  }
+  
+  // Clear expired pending events
+  if (session.pendingEvents) {
+    session.pendingEvents = null;
+  }
+  
+  return null;
+}
+
+/**
+ * Clear pending events for a user
+ * @param {string} userId - Discord user ID
+ */
+export function clearPendingEvents(userId) {
+  const session = getUserSession(userId);
+  session.pendingEvents = null;
+  log.info(`[DM] Cleared pending events for user ${userId}`);
 }
 
 /**
@@ -414,12 +502,16 @@ async function handleDirectMessage(message, client) {
     log.info(`[DM] User ${userName} is a superadmin`);
   }
   
+  // Add user message to conversation history
+  addToConversationHistory(userId, "user", content);
+  
   // Generate AI response with MCP tool access
   const aiResult = await generateChatResponse({
     message: content,
     userName,
     userId,
     isSuperAdmin, // Pass superadmin status
+    history: currentSession.conversationHistory.slice(0, -1), // Exclude the message we just added (it's passed separately)
     managedGuilds, // Pass all guilds so AI knows what's available
     selectedGuild, // Pass the currently selected guild
     selectedGuildId: currentSession.selectedGuildId,
@@ -433,6 +525,9 @@ async function handleDirectMessage(message, client) {
     }).catch(err => log.error("[DM] Failed to send error reply:", err.message));
     return;
   }
+  
+  // Store the AI response in conversation history
+  addToConversationHistory(userId, "assistant", aiResult.response);
   
   // Log if tools were used
   if (aiResult.toolsUsed && aiResult.toolsUsed.length > 0) {

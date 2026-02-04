@@ -990,12 +990,24 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
       imageDataUri = await this.generateEventImage(eventData.name, options.env);
     }
 
+    // Infer entity type from provided data if not explicitly set
+    let entityType = eventData.entityType;
+    if (!entityType) {
+      if (eventData.channelId) {
+        entityType = 2; // Voice Channel Event
+      } else if (eventData.location) {
+        entityType = 3; // External Event
+      } else {
+        entityType = 3; // Default to External
+      }
+    }
+
     // Build the event payload for Discord API
     const payload = {
       name: eventData.name,
       privacy_level: 2, // Guild only
       scheduled_start_time: eventData.scheduledStartTime,
-      entity_type: eventData.entityType || 3, // Default to external
+      entity_type: entityType,
     };
 
     // Add optional fields
@@ -1005,11 +1017,11 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
     if (eventData.scheduledEndTime) {
       payload.scheduled_end_time = eventData.scheduledEndTime;
     }
-    if (eventData.channelId && eventData.entityType !== 3) {
+    if (eventData.channelId && entityType !== 3) {
       payload.channel_id = eventData.channelId;
     }
     // For external events (entityType 3), location is required
-    if (eventData.entityType === 3) {
+    if (entityType === 3) {
       payload.entity_metadata = { 
         location: eventData.location || eventData.entityMetadata?.location || "To be announced" 
       };
@@ -1076,6 +1088,17 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
       };
     }
 
+    // Infer entity type from provided parameters if not explicitly set
+    let effectiveEntityType = entityType;
+    if (!effectiveEntityType) {
+      if (channelId) {
+        effectiveEntityType = 2; // Voice Channel Event
+      } else if (location) {
+        effectiveEntityType = 3; // External Event
+      }
+      // If still null, each event will infer its own type
+    }
+
     log.info(`[MCP] Creating ${parsedEvents.length} scheduled events in guild ${guildId}${generateImages ? ' with AI images' : ''}`);
 
     const results = {
@@ -1088,9 +1111,9 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 
     for (const event of parsedEvents) {
       try {
-        // Apply entity type if provided
-        if (entityType) {
-          event.entityType = entityType;
+        // Apply entity type if determined
+        if (effectiveEntityType) {
+          event.entityType = effectiveEntityType;
         }
         
         // Apply channel ID if provided (for voice/stage events)
@@ -1123,6 +1146,229 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
     }
 
     return results;
+  }
+
+  /**
+   * Preview a single scheduled event without creating it
+   * Returns the parsed event data for user confirmation
+   * @param {string} guildId - The guild ID
+   * @param {Object} eventData - Event data to preview
+   * @returns {Object} - Preview of the event
+   */
+  previewScheduledEvent(guildId, eventData) {
+    const entityTypeNames = {
+      1: "Stage Channel Event",
+      2: "Voice Channel Event", 
+      3: "External Event",
+    };
+    
+    const errors = [];
+    
+    // Validate required fields
+    if (!eventData.name) {
+      errors.push("Event name is required");
+    }
+    if (!eventData.scheduledStartTime) {
+      errors.push("Start time is required");
+    }
+    
+    // Infer entity type from provided data if not explicitly set
+    let entityType = eventData.entityType;
+    if (!entityType) {
+      if (eventData.channelId) {
+        entityType = 2; // Voice Channel Event
+      } else if (eventData.location) {
+        entityType = 3; // External Event
+      } else {
+        entityType = 3; // Default to External
+      }
+    }
+    
+    // Validate entity-type specific requirements
+    if (entityType === 1 || entityType === 2) {
+      if (!eventData.channelId) {
+        errors.push(`Channel ID is required for ${entityTypeNames[entityType]}s`);
+      }
+    }
+    if (entityType === 3 && !eventData.location) {
+      errors.push("Location is required for External Events");
+    }
+    
+    // Parse and format dates for display
+    let startTimeFormatted = "Invalid date";
+    let endTimeFormatted = null;
+    
+    try {
+      const startDate = new Date(eventData.scheduledStartTime);
+      if (!isNaN(startDate.getTime())) {
+        startTimeFormatted = startDate.toLocaleString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        });
+      }
+      
+      if (eventData.scheduledEndTime) {
+        const endDate = new Date(eventData.scheduledEndTime);
+        if (!isNaN(endDate.getTime())) {
+          endTimeFormatted = endDate.toLocaleString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            timeZoneName: "short",
+          });
+        }
+      }
+    } catch (e) {
+      errors.push("Invalid date format");
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors,
+      preview: {
+        name: eventData.name || "(no name)",
+        description: eventData.description || "(no description)",
+        eventType: entityTypeNames[entityType] || "Unknown",
+        entityType,
+        startTime: startTimeFormatted,
+        startTimeISO: eventData.scheduledStartTime,
+        endTime: endTimeFormatted,
+        endTimeISO: eventData.scheduledEndTime,
+        location: entityType === 3 ? (eventData.location || "(no location)") : null,
+        channelId: (entityType === 1 || entityType === 2) ? eventData.channelId : null,
+        generateImage: eventData.generateImage || false,
+      },
+      guildId,
+    };
+  }
+
+  /**
+   * Preview multiple scheduled events without creating them
+   * Returns parsed event data for user confirmation
+   * @param {string} guildId - The guild ID
+   * @param {string} eventsText - Text containing event descriptions
+   * @param {string} [location] - Default location for external events
+   * @param {number} [entityType] - Event type (1=Stage, 2=Voice, 3=External)
+   * @param {string} [channelId] - Channel ID for voice/stage events
+   * @param {boolean} [generateImages] - Whether to generate AI images
+   * @returns {Object} - Preview of all events
+   */
+  previewMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null, generateImages = false) {
+    const parsedEvents = this.parseEventsFromText(eventsText);
+    
+    if (parsedEvents.length === 0) {
+      return {
+        valid: false,
+        error: "Could not parse any events from the provided text. Please use a format like:\n\nEvent Name\nMonth Day, Year · StartTime–EndTime AM/PM",
+        events: [],
+        totalEvents: 0,
+      };
+    }
+
+    const entityTypeNames = {
+      1: "Stage Channel Event",
+      2: "Voice Channel Event", 
+      3: "External Event",
+    };
+
+    // If channelId is provided but no explicit entityType, default to Voice Channel (2)
+    // If neither channelId nor entityType provided, and location is provided, use External (3)
+    // If nothing provided, default to Voice (2) if channelId exists, otherwise External (3)
+    let effectiveEntityType = entityType;
+    if (!effectiveEntityType) {
+      if (channelId) {
+        effectiveEntityType = 2; // Voice Channel Event
+      } else if (location) {
+        effectiveEntityType = 3; // External Event
+      } else {
+        effectiveEntityType = 3; // Default to External if no hints
+      }
+    }
+    
+    const previews = [];
+    const errors = [];
+
+    // Validate entity-type specific requirements once
+    if (effectiveEntityType === 1 || effectiveEntityType === 2) {
+      if (!channelId) {
+        errors.push(`Channel ID is required for ${entityTypeNames[effectiveEntityType]}s`);
+      }
+    }
+    if (effectiveEntityType === 3 && !location) {
+      errors.push("Default location is required for External Events");
+    }
+
+    for (const event of parsedEvents) {
+      // Apply defaults
+      const eventEntityType = entityType || event.entityType || 3;
+      const eventLocation = event.location || location;
+      const eventChannelId = channelId || event.channelId;
+      
+      // Parse and format dates for display
+      let startTimeFormatted = "Invalid date";
+      let endTimeFormatted = null;
+      
+      try {
+        const startDate = new Date(event.scheduledStartTime);
+        if (!isNaN(startDate.getTime())) {
+          startTimeFormatted = startDate.toLocaleString("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          });
+        }
+        
+        if (event.scheduledEndTime) {
+          const endDate = new Date(event.scheduledEndTime);
+          if (!isNaN(endDate.getTime())) {
+            endTimeFormatted = endDate.toLocaleString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+            });
+          }
+        }
+      } catch (e) {
+        // Keep default "Invalid date"
+      }
+
+      previews.push({
+        name: event.name,
+        startTime: startTimeFormatted,
+        startTimeISO: event.scheduledStartTime,
+        endTime: endTimeFormatted,
+        endTimeISO: event.scheduledEndTime,
+        eventType: entityTypeNames[eventEntityType],
+        entityType: eventEntityType,
+        location: eventEntityType === 3 ? eventLocation : null,
+        channelId: (eventEntityType === 1 || eventEntityType === 2) ? eventChannelId : null,
+      });
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      events: previews,
+      totalEvents: previews.length,
+      guildId,
+      options: {
+        location,
+        entityType: effectiveEntityType,
+        entityTypeName: entityTypeNames[effectiveEntityType],
+        channelId,
+        generateImages,
+      },
+    };
   }
 
   /**
@@ -1325,6 +1571,74 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             ),
           };
 
+        case "preview_scheduled_event":
+          return {
+            success: true,
+            data: this.previewScheduledEvent(args.guildId, {
+              name: args.name,
+              description: args.description,
+              scheduledStartTime: args.scheduledStartTime,
+              scheduledEndTime: args.scheduledEndTime,
+              entityType: args.entityType || 3,
+              location: args.location,
+              channelId: args.channelId,
+              generateImage: args.generateImage,
+            }),
+            // Flag to indicate this needs user confirmation
+            requiresConfirmation: true,
+            confirmationTool: "confirm_scheduled_event",
+          };
+
+        case "preview_multiple_scheduled_events":
+          return {
+            success: true,
+            data: this.previewMultipleScheduledEvents(
+              args.guildId,
+              args.eventsText,
+              args.location,
+              args.entityType,
+              args.channelId,
+              args.generateImages
+            ),
+            // Flag to indicate this needs user confirmation
+            requiresConfirmation: true,
+            confirmationTool: "confirm_multiple_scheduled_events",
+          };
+
+        case "confirm_scheduled_event":
+          // This is called after the user confirms the preview
+          // The args should contain the full event data from the preview
+          return {
+            success: true,
+            data: await this.createScheduledEvent(args.guildId, {
+              name: args.name,
+              description: args.description,
+              scheduledStartTime: args.scheduledStartTime,
+              scheduledEndTime: args.scheduledEndTime,
+              entityType: args.entityType || 3,
+              location: args.location,
+              channelId: args.channelId,
+            }, {
+              generateImage: args.generateImage,
+              env: args._env,
+            }),
+          };
+
+        case "confirm_multiple_scheduled_events":
+          // This is called after the user confirms the preview
+          return {
+            success: true,
+            data: await this.createMultipleScheduledEvents(
+              args.guildId,
+              args.eventsText,
+              args.location,
+              args.entityType,
+              args.channelId,
+              args.generateImages,
+              args._env
+            ),
+          };
+
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };
       }
@@ -1496,6 +1810,62 @@ export const MCP_TOOLS = [
       generateImages: "boolean (optional) - Set to true to auto-generate AI images for each event banner based on their names",
     },
   },
+  // Preview tools - ALWAYS use these first before creating events
+  {
+    name: "preview_scheduled_event",
+    description: "**ALWAYS USE THIS FIRST** before creating a scheduled event. Shows the user what event will be created and asks for confirmation. Returns a preview of the event with parsed dates and validation errors if any. The user must confirm before the event is actually created.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - The name of the event",
+      scheduledStartTime: "string (required) - ISO 8601 date/time when the event starts (e.g., '2026-02-14T21:10:00.000Z')",
+      scheduledEndTime: "string (optional) - ISO 8601 date/time when the event ends",
+      description: "string (optional) - Description of the event",
+      entityType: "number (required) - Event type: 1=Stage, 2=Voice, 3=External",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED for entityType 1 or 2",
+      location: "string (conditional) - Location or URL - REQUIRED for entityType 3",
+      generateImage: "boolean (optional) - Set to true to auto-generate an AI image",
+    },
+  },
+  {
+    name: "preview_multiple_scheduled_events",
+    description: "**ALWAYS USE THIS FIRST** before creating multiple scheduled events. Parses event text and shows the user ALL events that will be created with their dates and times. Returns a list of all parsed events for user review. The user must confirm before events are actually created.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      eventsText: "string (required) - Text containing multiple event descriptions, separated by blank lines",
+      entityType: "number (optional) - Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+      location: "string (conditional) - Default location for external events - REQUIRED if entityType is 3",
+      generateImages: "boolean (optional) - Set to true to auto-generate AI images",
+    },
+  },
+  // Confirmation tools - use after user confirms the preview
+  {
+    name: "confirm_scheduled_event",
+    description: "Create a scheduled event AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - The name of the event",
+      scheduledStartTime: "string (required) - ISO 8601 date/time when the event starts",
+      scheduledEndTime: "string (optional) - ISO 8601 date/time when the event ends",
+      description: "string (optional) - Description of the event",
+      entityType: "number (required) - Event type: 1=Stage, 2=Voice, 3=External",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED for entityType 1 or 2",
+      location: "string (conditional) - Location or URL - REQUIRED for entityType 3",
+      generateImage: "boolean (optional) - Set to true to auto-generate an AI image",
+    },
+  },
+  {
+    name: "confirm_multiple_scheduled_events",
+    description: "Create multiple scheduled events AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      eventsText: "string (required) - Text containing multiple event descriptions",
+      entityType: "number (optional) - Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+      location: "string (conditional) - Default location for external events - REQUIRED if entityType is 3",
+      generateImages: "boolean (optional) - Set to true to auto-generate AI images",
+    },
+  },
 ];
 
 /**
@@ -1504,6 +1874,17 @@ export const MCP_TOOLS = [
 export function formatToolsForPrompt() {
   let prompt = "You have access to database tools. You MUST use these tools to get any server-specific data.\n\n";
   prompt += "**BEFORE you can tell the user ANY statistics, counts, automations, commands, logs, or settings, you MUST call a tool first.**\n\n";
+  
+  // Add critical instruction about preview workflow for scheduled events
+  prompt += `## ⚠️ SCHEDULED EVENT WORKFLOW - PREVIEW FIRST!\n\n`;
+  prompt += `**IMPORTANT:** When creating scheduled events, you MUST follow this workflow:\n\n`;
+  prompt += `1. **If user mentions a voice/stage channel by NAME:** First call \`get_voice_and_stage_channels\` to get the channel ID. DO NOT explain - just call the tool.\n`;
+  prompt += `2. **ALWAYS use preview tools:** Use \`preview_scheduled_event\` or \`preview_multiple_scheduled_events\` FIRST.\n`;
+  prompt += `3. **Show the preview:** Display the parsed event details clearly to the user (names, dates, times, location).\n`;
+  prompt += `4. **Ask for confirmation:** Ask "Does this look correct? Say 'yes' or 'confirm' to create these events, or tell me what to change."\n`;
+  prompt += `5. **Wait for user response:** Do NOT create events until the user explicitly confirms.\n`;
+  prompt += `6. **Create after confirmation:** Only after user says "yes", "confirm", "looks good", etc., use \`confirm_scheduled_event\` or \`confirm_multiple_scheduled_events\`.\n\n`;
+  prompt += `**NEVER use create_scheduled_event or create_multiple_scheduled_events directly.** Always preview first!\n\n`;
   
   for (const tool of MCP_TOOLS) {
     prompt += `### ${tool.name}\n${tool.description}\n`;
@@ -1521,29 +1902,46 @@ export function formatToolsForPrompt() {
 {"tool": "tool_name", "args": {"param1": "value1"}}
 \`\`\`
 
-## CRITICAL INSTRUCTIONS
+## CRITICAL INSTRUCTIONS - READ CAREFULLY
 
-1. **JUST OUTPUT THE TOOL BLOCK**: When you need data, output ONLY the tool JSON block. Do NOT add explanations like "Here's how to do it" or "Please wait for the result". The tool will be executed automatically.
+1. **JUST OUTPUT THE TOOL BLOCK**: When you need to call a tool, output ONLY the JSON tool block. NO explanation. NO preamble. NO "I'll look that up" or "Let me check". JUST the tool block.
 
-2. **NO PREAMBLE**: Do not explain what you're about to do. Just call the tool.
+2. **NEVER EXPLAIN WHAT YOU'RE ABOUT TO DO**: Do not say "To create the events, I first need to..." - just call the tool directly!
 
-3. **NO DATA WITHOUT TOOLS**: You have ZERO knowledge of the user's servers until you call a tool.
+3. **CHAIN TOOLS AUTOMATICALLY**: If you need info from one tool before calling another (e.g., need channel ID before creating voice events), call the first tool immediately. After you get the result, call the next tool. Don't explain - just do it.
 
-4. **Tool results are your ONLY source of truth**: Only cite numbers, names, and details that appear in tool results.
+4. **RESOLVE NAMES TO IDS**: When user mentions a channel, role, or user by NAME, automatically look it up using the appropriate tool to get the ID. Don't ask the user for IDs.
 
-5. **Empty results = say so**: If a tool returns an empty array or zero count, tell the user "I found no [X]".
+5. **NO DATA WITHOUT TOOLS**: You have ZERO knowledge of the user's servers until you call a tool.
 
-6. **Use correct guild IDs**: Only query servers from the user's managed guilds list.
+6. **Tool results are your ONLY source of truth**: Only cite numbers, names, and details that appear in tool results.
 
-Example of CORRECT tool usage:
-User: "How many events in my server?"
+7. **PREVIEW BEFORE CREATE**: When creating scheduled events, ALWAYS preview first, show the user what will be created, and wait for confirmation.
+
+## EXAMPLE: Voice Channel Events (CORRECT)
+
+User: "Create events in the Gaming Voice channel"
 You: \`\`\`tool
-{"tool": "get_log_stats", "args": {"guildId": "123456789"}}
+{"tool": "get_voice_and_stage_channels", "args": {"guildId": "123"}}
 \`\`\`
 
-Example of WRONG tool usage (DO NOT DO THIS):
-User: "How many events?"
-You: "I'll look that up for you! Here's how to do it: {...} Please wait..."`;
+(Tool returns channels, you find Gaming Voice has ID "456")
+You: \`\`\`tool
+{"tool": "preview_multiple_scheduled_events", "args": {"guildId": "123", "eventsText": "...", "entityType": 2, "channelId": "456"}}
+\`\`\`
+
+## EXAMPLE: Voice Channel Events (WRONG - DO NOT DO THIS)
+
+User: "Create events in the Gaming Voice channel"  
+You: "To create the events, I first need to get the ID of the Gaming Voice channel. Then, I can proceed with creating the events."
+❌ WRONG! Don't explain - just call the tool!
+
+## EXAMPLE: External Events (CORRECT)
+
+User: "Create an event called Game Night on Feb 20 at 7pm at Discord"
+You: \`\`\`tool
+{"tool": "preview_scheduled_event", "args": {"guildId": "123", "name": "Game Night", "scheduledStartTime": "2026-02-20T19:00:00.000Z", "entityType": 3, "location": "Discord"}}
+\`\`\``;
   
   return prompt;
 }

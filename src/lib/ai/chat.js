@@ -550,12 +550,21 @@ export async function generateChatResponse(options, env) {
     let aiResponse = await callAI(messages, env);
     console.log("[AI] Full initial response:", aiResponse);
     
-    // Check if AI wants to use tools
-    const toolCalls = parseToolCalls(aiResponse);
-    console.log("[AI] Parsed tool calls:", toolCalls.length, toolCalls);
     const toolsUsed = [];
+    const MAX_TOOL_ITERATIONS = 5; // Prevent infinite loops
+    let iteration = 0;
     
-    if (toolCalls.length > 0 && mcpEnabled) {
+    // Tool call loop - keep processing until AI stops making tool calls or we hit the limit
+    while (iteration < MAX_TOOL_ITERATIONS) {
+      // Check if AI wants to use tools
+      const toolCalls = parseToolCalls(aiResponse);
+      console.log(`[AI] Iteration ${iteration + 1}: Parsed ${toolCalls.length} tool call(s)`, toolCalls.map(t => t.tool));
+      
+      if (toolCalls.length === 0 || !mcpEnabled) {
+        // No more tool calls, we're done
+        break;
+      }
+      
       console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
       
       // Execute the tools
@@ -566,16 +575,22 @@ export async function generateChatResponse(options, env) {
       // Add the tool results to the conversation
       const toolResultsText = formatToolResults(results);
       
-      // Add assistant response and tool results, then get final response
+      // Add assistant response and tool results
       messages.push({ role: "assistant", content: aiResponse });
       messages.push({ 
         role: "user", 
-        content: `Here are the results from the tools you requested:\n\n${toolResultsText}\n\nPlease provide a helpful summary of this information for the user.` 
+        content: `Here are the results from the tools you requested:\n\n${toolResultsText}\n\nBased on these results, either use more tools if needed, or provide a helpful response to the user.` 
       });
       
-      // Get final response with tool results
+      // Get next response (may contain more tool calls or final answer)
       aiResponse = await callAI(messages, env);
-      log.debug("[AI] Final response after tools:", aiResponse.substring(0, 200));
+      log.debug(`[AI] Response after iteration ${iteration + 1}:`, aiResponse.substring(0, 200));
+      
+      iteration++;
+    }
+    
+    if (iteration >= MAX_TOOL_ITERATIONS) {
+      log.warn("[AI] Hit max tool iterations limit");
     }
     
     // Clean up response - remove tool blocks and related text for final output

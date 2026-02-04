@@ -1086,6 +1086,208 @@ async function createMultipleScheduledEvents(guildId, eventsText, location = nul
 }
 
 /**
+ * Preview a single scheduled event without creating it
+ * Returns the parsed event data for user confirmation
+ */
+function previewScheduledEvent(guildId, eventData) {
+  const entityTypeNames = {
+    1: "Stage Channel Event",
+    2: "Voice Channel Event", 
+    3: "External Event",
+  };
+  
+  const errors = [];
+  
+  // Validate required fields
+  if (!eventData.name) errors.push("Event name is required");
+  if (!eventData.scheduledStartTime) errors.push("Start time is required");
+  if (!eventData.entityType) errors.push("Event type is required (1=Stage, 2=Voice, 3=External)");
+  
+  // Validate entity-type specific requirements
+  const entityType = eventData.entityType || 3;
+  if (entityType === 1 || entityType === 2) {
+    if (!eventData.channelId) {
+      errors.push(`Channel ID is required for ${entityTypeNames[entityType]}s`);
+    }
+  }
+  if (entityType === 3 && !eventData.location) {
+    errors.push("Location is required for External Events");
+  }
+  
+  // Parse and format dates for display
+  let startTimeFormatted = "Invalid date";
+  let endTimeFormatted = null;
+  
+  try {
+    const startDate = new Date(eventData.scheduledStartTime);
+    if (!isNaN(startDate.getTime())) {
+      startTimeFormatted = startDate.toLocaleString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+    }
+    
+    if (eventData.scheduledEndTime) {
+      const endDate = new Date(eventData.scheduledEndTime);
+      if (!isNaN(endDate.getTime())) {
+        endTimeFormatted = endDate.toLocaleString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          timeZoneName: "short",
+        });
+      }
+    }
+  } catch (e) {
+    errors.push("Invalid date format");
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    preview: {
+      name: eventData.name || "(no name)",
+      description: eventData.description || "(no description)",
+      eventType: entityTypeNames[entityType] || "Unknown",
+      entityType,
+      startTime: startTimeFormatted,
+      startTimeISO: eventData.scheduledStartTime,
+      endTime: endTimeFormatted,
+      endTimeISO: eventData.scheduledEndTime,
+      location: entityType === 3 ? (eventData.location || "(no location)") : null,
+      channelId: (entityType === 1 || entityType === 2) ? eventData.channelId : null,
+    },
+    guildId,
+    message: errors.length === 0 
+      ? "Does this look correct? Reply 'yes' or 'confirm' to create this event, or tell me what to change."
+      : "Please fix the errors above before creating this event.",
+  };
+}
+
+/**
+ * Preview multiple scheduled events without creating them
+ * Returns parsed event data for user confirmation
+ */
+function previewMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null) {
+  const parsedEvents = parseEventsFromText(eventsText);
+  
+  if (parsedEvents.length === 0) {
+    return {
+      valid: false,
+      error: "Could not parse any events from the provided text. Please use a format like:\n\nEvent Name\nMonth Day, Year · StartTime–EndTime AM/PM",
+      events: [],
+      totalEvents: 0,
+    };
+  }
+
+  const entityTypeNames = {
+    1: "Stage Channel Event",
+    2: "Voice Channel Event", 
+    3: "External Event",
+  };
+
+  // If channelId is provided but no explicit entityType, default to Voice Channel (2)
+  // If neither channelId nor entityType provided, and location is provided, use External (3)
+  let effectiveEntityType = entityType;
+  if (!effectiveEntityType) {
+    if (channelId) {
+      effectiveEntityType = 2; // Voice Channel Event
+    } else if (location) {
+      effectiveEntityType = 3; // External Event
+    } else {
+      effectiveEntityType = 3; // Default to External if no hints
+    }
+  }
+  
+  const previews = [];
+  const errors = [];
+
+  // Validate entity-type specific requirements once
+  if (effectiveEntityType === 1 || effectiveEntityType === 2) {
+    if (!channelId) {
+      errors.push(`Channel ID is required for ${entityTypeNames[effectiveEntityType]}s`);
+    }
+  }
+  if (effectiveEntityType === 3 && !location) {
+    errors.push("Default location is required for External Events");
+  }
+
+  for (const event of parsedEvents) {
+    // Apply defaults - use the effective entity type we calculated
+    const eventEntityType = effectiveEntityType;
+    const eventLocation = event.location || location;
+    const eventChannelId = channelId || event.channelId;
+    
+    // Parse and format dates for display
+    let startTimeFormatted = "Invalid date";
+    let endTimeFormatted = null;
+    
+    try {
+      const startDate = new Date(event.scheduledStartTime);
+      if (!isNaN(startDate.getTime())) {
+        startTimeFormatted = startDate.toLocaleString("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
+      }
+      
+      if (event.scheduledEndTime) {
+        const endDate = new Date(event.scheduledEndTime);
+        if (!isNaN(endDate.getTime())) {
+          endTimeFormatted = endDate.toLocaleString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+          });
+        }
+      }
+    } catch (e) {
+      // Keep default "Invalid date"
+    }
+
+    previews.push({
+      name: event.name,
+      startTime: startTimeFormatted,
+      startTimeISO: event.scheduledStartTime,
+      endTime: endTimeFormatted,
+      endTimeISO: event.scheduledEndTime,
+      eventType: entityTypeNames[eventEntityType],
+      entityType: eventEntityType,
+      location: eventEntityType === 3 ? eventLocation : null,
+      channelId: (eventEntityType === 1 || eventEntityType === 2) ? eventChannelId : null,
+    });
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    events: previews,
+    totalEvents: previews.length,
+    guildId,
+    options: {
+      location,
+      entityType: effectiveEntityType,
+      entityTypeName: entityTypeNames[effectiveEntityType],
+      channelId,
+    },
+    message: errors.length === 0 
+      ? `Found ${previews.length} event(s). Does this look correct? Reply 'yes' or 'confirm' to create these events, or tell me what to change.`
+      : "Please fix the errors above before creating these events.",
+  };
+}
+
+/**
  * Search automations by name or description
  */
 async function searchAutomations(guildId, query) {
@@ -1659,6 +1861,152 @@ const TOOLS = [
       required: ["guildId", "eventsText"],
     },
   },
+  // Preview tools - ALWAYS use these first before creating events
+  {
+    name: "preview_scheduled_event",
+    description: "**ALWAYS USE THIS FIRST** before creating a scheduled event. Shows what event will be created and validates the data. Returns a preview for user confirmation. The user must confirm before the event is actually created.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        name: {
+          type: "string",
+          description: "The name of the event",
+        },
+        scheduledStartTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event starts",
+        },
+        scheduledEndTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event ends",
+        },
+        description: {
+          type: "string",
+          description: "Description of the event",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type: 1=Stage, 2=Voice, 3=External",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED for entityType 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Location or URL - REQUIRED for entityType 3",
+        },
+      },
+      required: ["guildId", "name", "scheduledStartTime", "entityType"],
+    },
+  },
+  {
+    name: "preview_multiple_scheduled_events",
+    description: "**ALWAYS USE THIS FIRST** before creating multiple scheduled events. Parses event text and shows ALL events that will be created with their dates and times. Returns a list for user review. The user must confirm before events are actually created.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        eventsText: {
+          type: "string",
+          description: "Text containing multiple event descriptions, separated by blank lines",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Default location for external events - REQUIRED if entityType is 3",
+        },
+      },
+      required: ["guildId", "eventsText"],
+    },
+  },
+  // Confirmation tools - use after user confirms the preview
+  {
+    name: "confirm_scheduled_event",
+    description: "Create a scheduled event AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        name: {
+          type: "string",
+          description: "The name of the event",
+        },
+        scheduledStartTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event starts",
+        },
+        scheduledEndTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event ends",
+        },
+        description: {
+          type: "string",
+          description: "Description of the event",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type: 1=Stage, 2=Voice, 3=External",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED for entityType 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Location or URL - REQUIRED for entityType 3",
+        },
+      },
+      required: ["guildId", "name", "scheduledStartTime", "entityType"],
+    },
+  },
+  {
+    name: "confirm_multiple_scheduled_events",
+    description: "Create multiple scheduled events AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        eventsText: {
+          type: "string",
+          description: "Text containing multiple event descriptions",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Default location for external events - REQUIRED if entityType is 3",
+        },
+      },
+      required: ["guildId", "eventsText"],
+    },
+  },
 ];
 
 // Create the MCP server
@@ -1834,6 +2182,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
 
       case "create_multiple_scheduled_events":
+        result = await createMultipleScheduledEvents(
+          args.guildId,
+          args.eventsText,
+          args.location,
+          args.entityType,
+          args.channelId
+        );
+        break;
+
+      case "preview_scheduled_event":
+        result = previewScheduledEvent(args.guildId, {
+          name: args.name,
+          description: args.description,
+          scheduledStartTime: args.scheduledStartTime,
+          scheduledEndTime: args.scheduledEndTime,
+          entityType: args.entityType || 3,
+          location: args.location,
+          channelId: args.channelId,
+        });
+        break;
+
+      case "preview_multiple_scheduled_events":
+        result = previewMultipleScheduledEvents(
+          args.guildId,
+          args.eventsText,
+          args.location,
+          args.entityType,
+          args.channelId
+        );
+        break;
+
+      case "confirm_scheduled_event":
+        // Same as create_scheduled_event - used after user confirms preview
+        result = await createScheduledEvent(args.guildId, {
+          name: args.name,
+          description: args.description,
+          scheduledStartTime: args.scheduledStartTime,
+          scheduledEndTime: args.scheduledEndTime,
+          entityType: args.entityType || 3,
+          location: args.location,
+          channelId: args.channelId,
+        });
+        break;
+
+      case "confirm_multiple_scheduled_events":
+        // Same as create_multiple_scheduled_events - used after user confirms preview
         result = await createMultipleScheduledEvents(
           args.guildId,
           args.eventsText,
