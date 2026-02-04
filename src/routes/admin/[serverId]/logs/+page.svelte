@@ -37,10 +37,8 @@
 	let refreshInterval = $state(null);
 	
 	async function fetchLogs(append = false) {
-		log.debug('[DEBUG] fetchLogs called, append:', append);
 		if (!append) {
 			loading = true;
-			offset = 0;
 		}
 		
 		try {
@@ -120,7 +118,7 @@
 	}
 	
 	// Pagination computed values
-	let totalPages = $derived(Math.ceil(total / limit) || 1);
+	let totalPages = $derived(Math.ceil(Number(total) / Number(limit)) || 1);
 	
 	function goToPage(page) {
 		if (page < 1 || page > totalPages) return;
@@ -130,7 +128,7 @@
 	}
 	
 	function changePageSize(newSize) {
-		limit = newSize;
+		limit = Number(newSize);
 		currentPage = 1;
 		offset = 0;
 		fetchLogs();
@@ -145,6 +143,7 @@
 	
 	function applyFilters() {
 		currentPage = 1;
+		offset = 0;
 		fetchLogs();
 	}
 	
@@ -155,6 +154,20 @@
 		startDate = '';
 		endDate = '';
 		sortOrder = 'desc';
+		currentPage = 1;
+		offset = 0;
+		fetchLogs();
+	}
+	
+	// Toggle category filter when clicking stat cards
+	function toggleCategoryFilter(category) {
+		if (selectedCategory === category) {
+			// Deselect if already selected
+			selectedCategory = '';
+		} else {
+			selectedCategory = category;
+		}
+		selectedEventType = ''; // Reset event type when category changes
 		currentPage = 1;
 		offset = 0;
 		fetchLogs();
@@ -284,132 +297,180 @@
 		<!-- Stats Section -->
 		{#if stats}
 			<div class="stats-grid">
-				<div class="stat-card">
+				<button 
+					class="stat-card stat-card-total"
+					class:active={selectedCategory === ''}
+					onclick={() => { selectedCategory = ''; selectedEventType = ''; currentPage = 1; offset = 0; fetchLogs(); }}
+					type="button"
+				>
 					<span class="stat-value">{stats.totalEvents.toLocaleString()}</span>
 					<span class="stat-label">Total Events</span>
-				</div>
+				</button>
 				{#each Object.entries(stats.byCategory || {}) as [cat, count]}
-					<div class="stat-card" style="--cat-color: {getEventColor(cat)}">
+					<button 
+						class="stat-card" 
+						class:active={selectedCategory === cat}
+						style="--cat-color: {getEventColor(cat)}"
+						onclick={() => toggleCategoryFilter(cat)}
+						type="button"
+						title="Click to filter by {getCategoryName(cat)}"
+					>
 						<span class="stat-icon">{getEventIcon(cat)}</span>
 						<span class="stat-value">{count.toLocaleString()}</span>
 						<span class="stat-label">{getCategoryName(cat)}</span>
-					</div>
+					</button>
 				{/each}
 			</div>
 		{/if}
 		
 		<!-- Filters Section -->
-		<div class="filters-section">
-			<div class="filters-row">
-				<div class="filter-group">
-					<label for="category">Category</label>
-					<select id="category" bind:value={selectedCategory} onchange={applyFilters}>
-						<option value="">All Categories</option>
-						{#each Object.entries(categories) as [key, info]}
-							<option value={key}>{info.icon} {info.name}</option>
-						{/each}
-					</select>
+		<details class="filters-section" open>
+			<summary class="filters-header">
+				<span class="filters-title">🔍 Filters</span>
+				{#if selectedCategory || selectedEventType || searchQuery || startDate || endDate}
+					<span class="filter-badge">Active</span>
+				{/if}
+				<span class="filters-toggle">▼</span>
+			</summary>
+			<div class="filters-content">
+				<div class="filters-row">
+					<div class="filter-group">
+						<label for="category">Category</label>
+						<select id="category" bind:value={selectedCategory} onchange={applyFilters}>
+							<option value="">All Categories</option>
+							{#each Object.entries(categories) as [key, info]}
+								<option value={key}>{info.icon} {info.name}</option>
+							{/each}
+						</select>
+					</div>
+					
+					<div class="filter-group">
+						<label for="eventType">Event Type</label>
+						<select id="eventType" bind:value={selectedEventType} onchange={applyFilters}>
+							<option value="">All Events</option>
+							{#each filteredEventTypes() as type}
+								<option value={type}>{type.replace(/_/g, ' ')}</option>
+							{/each}
+						</select>
+					</div>
+					
+					<div class="filter-group filter-group-search">
+						<label for="search">Search</label>
+						<div class="search-input-wrapper">
+							<input 
+								id="search" 
+								type="text" 
+								placeholder="Search users, channels..." 
+								bind:value={searchQuery}
+								onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+							/>
+							<button class="search-btn" onclick={applyFilters} type="button">Go</button>
+						</div>
+					</div>
 				</div>
 				
-				<div class="filter-group">
-					<label for="eventType">Event Type</label>
-					<select id="eventType" bind:value={selectedEventType} onchange={applyFilters}>
-						<option value="">All Events</option>
-						{#each filteredEventTypes() as type}
-							<option value={type}>{type.replace(/_/g, ' ')}</option>
-						{/each}
-					</select>
+				<div class="filters-row filters-row-secondary">
+					<div class="filter-group filter-group-date">
+						<label for="startDate">From</label>
+						<input 
+							id="startDate" 
+							type="datetime-local" 
+							bind:value={startDate}
+							onchange={applyFilters}
+						/>
+					</div>
+					
+					<div class="filter-group filter-group-date">
+						<label for="endDate">To</label>
+						<input 
+							id="endDate" 
+							type="datetime-local" 
+							bind:value={endDate}
+							onchange={applyFilters}
+						/>
+					</div>
+					
+					<button class="clear-btn" onclick={clearFilters} type="button">
+						✕ Clear All
+					</button>
 				</div>
-				
-				<div class="filter-group">
-					<label for="search">Search</label>
-					<input 
-						id="search" 
-						type="text" 
-						placeholder="Search users, channels..." 
-						bind:value={searchQuery}
-						onkeydown={(e) => e.key === 'Enter' && applyFilters()}
-					/>
-				</div>
-				
-				<div class="filter-group">
-					<label for="startDate">From</label>
-					<input 
-						id="startDate" 
-						type="datetime-local" 
-						bind:value={startDate}
-						onchange={applyFilters}
-					/>
-				</div>
-				
-				<div class="filter-group">
-					<label for="endDate">To</label>
-					<input 
-						id="endDate" 
-						type="datetime-local" 
-						bind:value={endDate}
-						onchange={applyFilters}
-					/>
-				</div>
-				
-				<button class="clear-btn" onclick={clearFilters}>Clear Filters</button>
 			</div>
-		</div>
+		</details>
 		
 		<!-- Results Info & Pagination Controls -->
 		<div class="results-info">
 			<div class="results-left">
-				<span>Showing {logs.length} of {total.toLocaleString()} events</span>
+				<span class="results-count">
+					<strong>{offset + 1}-{Math.min(offset + logs.length, total)}</strong> of <strong>{total.toLocaleString()}</strong> events
+				</span>
 				{#if loading}
-					<span class="loading-indicator">Loading...</span>
+					<span class="loading-indicator">⟳ Loading...</span>
 				{/if}
 			</div>
 			<div class="results-right">
 				<div class="page-size-selector">
-					<label for="pageSize">Per page:</label>
-					<select id="pageSize" bind:value={limit} onchange={() => changePageSize(limit)}>
+					<label for="pageSize">Show:</label>
+					<select id="pageSize" value={limit} onchange={(e) => changePageSize(parseInt(e.target.value))}>
 						{#each pageSizeOptions as size}
-							<option value={size}>{size}</option>
+							<option value={size} selected={size === limit}>{size}</option>
 						{/each}
 					</select>
 				</div>
-				<div class="pagination-controls">
-					<button 
-						class="pagination-btn" 
-						onclick={() => goToPage(1)} 
-						disabled={currentPage === 1 || loading}
-						title="First page"
-					>
-						⏮
-					</button>
-					<button 
-						class="pagination-btn" 
-						onclick={() => goToPage(currentPage - 1)} 
-						disabled={currentPage === 1 || loading}
-						title="Previous page"
-					>
-						◀
-					</button>
-					<span class="page-info">Page {currentPage} of {totalPages}</span>
-					<button 
-						class="pagination-btn" 
-						onclick={() => goToPage(currentPage + 1)} 
-						disabled={currentPage >= totalPages || loading}
-						title="Next page"
-					>
-						▶
-					</button>
-					<button 
-						class="pagination-btn" 
-						onclick={() => goToPage(totalPages)} 
-						disabled={currentPage >= totalPages || loading}
-						title="Last page"
-					>
-						⏭
-					</button>
-				</div>
 			</div>
 		</div>
+		
+		<!-- Pagination Controls -->
+		{#if total > limit}
+			<div class="pagination-bar">
+				<button 
+					type="button"
+					class="pagination-btn" 
+					onclick={() => goToPage(1)} 
+					disabled={currentPage === 1 || loading}
+					title="First page"
+				>
+					<span class="pagination-btn-icon">⏮</span>
+					<span class="pagination-btn-text">First</span>
+				</button>
+				<button 
+					type="button"
+					class="pagination-btn" 
+					onclick={() => goToPage(currentPage - 1)} 
+					disabled={currentPage === 1 || loading}
+					title="Previous page"
+				>
+					<span class="pagination-btn-icon">◀</span>
+					<span class="pagination-btn-text">Prev</span>
+				</button>
+				
+				<div class="page-indicator">
+					<span class="page-current">{currentPage}</span>
+					<span class="page-separator">/</span>
+					<span class="page-total">{totalPages}</span>
+				</div>
+				
+				<button 
+					type="button"
+					class="pagination-btn" 
+					onclick={() => goToPage(currentPage + 1)} 
+					disabled={currentPage >= totalPages || loading}
+					title="Next page"
+				>
+					<span class="pagination-btn-text">Next</span>
+					<span class="pagination-btn-icon">▶</span>
+				</button>
+				<button 
+					type="button"
+					class="pagination-btn" 
+					onclick={() => goToPage(totalPages)} 
+					disabled={currentPage >= totalPages || loading}
+					title="Last page"
+				>
+					<span class="pagination-btn-text">Last</span>
+					<span class="pagination-btn-icon">⏭</span>
+				</button>
+			</div>
+		{/if}
 		
 		<!-- Logs Table -->
 		{#if loading && logs.length === 0}
@@ -512,39 +573,53 @@
 			<!-- Bottom Pagination -->
 			{#if total > limit}
 				<div class="bottom-pagination">
-					<div class="pagination-controls">
+					<div class="pagination-bar">
 						<button 
+							type="button"
 							class="pagination-btn" 
 							onclick={() => goToPage(1)} 
 							disabled={currentPage === 1 || loading}
 							title="First page"
 						>
-							⏮
+							<span class="pagination-btn-icon">⏮</span>
+							<span class="pagination-btn-text">First</span>
 						</button>
 						<button 
+							type="button"
 							class="pagination-btn" 
 							onclick={() => goToPage(currentPage - 1)} 
 							disabled={currentPage === 1 || loading}
 							title="Previous page"
 						>
-							◀
+							<span class="pagination-btn-icon">◀</span>
+							<span class="pagination-btn-text">Prev</span>
 						</button>
-						<span class="page-info">Page {currentPage} of {totalPages}</span>
+						
+						<div class="page-indicator">
+							<span class="page-current">{currentPage}</span>
+							<span class="page-separator">/</span>
+							<span class="page-total">{totalPages}</span>
+						</div>
+						
 						<button 
+							type="button"
 							class="pagination-btn" 
 							onclick={() => goToPage(currentPage + 1)} 
 							disabled={currentPage >= totalPages || loading}
 							title="Next page"
 						>
-							▶
+							<span class="pagination-btn-text">Next</span>
+							<span class="pagination-btn-icon">▶</span>
 						</button>
 						<button 
+							type="button"
 							class="pagination-btn" 
 							onclick={() => goToPage(totalPages)} 
 							disabled={currentPage >= totalPages || loading}
 							title="Last page"
 						>
-							⏭
+							<span class="pagination-btn-text">Last</span>
+							<span class="pagination-btn-icon">⏭</span>
 						</button>
 					</div>
 				</div>
@@ -557,16 +632,35 @@
 	.logs-container {
 		max-width: 1400px;
 		margin: 0 auto;
-		padding: 2rem;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.logs-container {
+			padding: 1.5rem;
+		}
+	}
+	
+	@media (min-width: 1024px) {
+		.logs-container {
+			padding: 2rem;
+		}
 	}
 	
 	.logs-header {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		margin-bottom: 2rem;
-		flex-wrap: wrap;
+		flex-direction: column;
 		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	@media (min-width: 640px) {
+		.logs-header {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: flex-start;
+			margin-bottom: 2rem;
+		}
 	}
 	
 	.header-left {
@@ -592,10 +686,18 @@
 	}
 	
 	.guild-icon, .guild-icon-placeholder {
-		width: 64px;
-		height: 64px;
+		width: 48px;
+		height: 48px;
 		border-radius: 50%;
 		object-fit: cover;
+		flex-shrink: 0;
+	}
+	
+	@media (min-width: 640px) {
+		.guild-icon, .guild-icon-placeholder {
+			width: 64px;
+			height: 64px;
+		}
 	}
 	
 	.guild-icon-placeholder {
@@ -610,7 +712,13 @@
 	
 	.guild-text h1 {
 		margin: 0;
-		font-size: 1.5rem;
+		font-size: 1.25rem;
+	}
+	
+	@media (min-width: 640px) {
+		.guild-text h1 {
+			font-size: 1.5rem;
+		}
 	}
 	
 	.guild-id {
@@ -622,6 +730,7 @@
 	.header-right {
 		display: flex;
 		gap: 0.5rem;
+		flex-wrap: wrap;
 	}
 	
 	.refresh-btn {
@@ -654,36 +763,99 @@
 	/* Stats Grid */
 	.stats-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		grid-template-columns: repeat(2, 1fr);
 		gap: 1rem;
 		margin-bottom: 2rem;
+	}
+	
+	@media (min-width: 640px) {
+		.stats-grid {
+			grid-template-columns: repeat(3, 1fr);
+		}
+	}
+	
+	@media (min-width: 900px) {
+		.stats-grid {
+			grid-template-columns: repeat(4, 1fr);
+		}
+	}
+	
+	@media (min-width: 1200px) {
+		.stats-grid {
+			grid-template-columns: repeat(5, 1fr);
+		}
 	}
 	
 	.stat-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		padding: 1rem;
+		padding: 1rem 0.75rem;
 		text-align: center;
 		border-left: 3px solid var(--cat-color, var(--color-primary));
+		cursor: pointer;
+		transition: all 0.2s ease;
+		font-family: inherit;
+		color: inherit;
+	}
+	
+	.stat-card:hover {
+		background: var(--color-surface-elevated);
+		border-color: var(--cat-color, var(--color-primary));
+		transform: translateY(-2px);
+	}
+	
+	.stat-card.active {
+		background: color-mix(in srgb, var(--cat-color, var(--color-primary)) 15%, var(--color-surface));
+		border-color: var(--cat-color, var(--color-primary));
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--cat-color, var(--color-primary)) 30%, transparent);
+	}
+	
+	.stat-card-total {
+		--cat-color: var(--color-primary);
+	}
+	
+	@media (min-width: 640px) {
+		.stat-card {
+			padding: 1.25rem 1rem;
+		}
 	}
 	
 	.stat-icon {
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		display: block;
 		margin-bottom: 0.25rem;
 	}
 	
+	@media (min-width: 640px) {
+		.stat-icon {
+			font-size: 1.5rem;
+		}
+	}
+	
 	.stat-value {
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		font-weight: bold;
 		display: block;
 	}
 	
+	@media (min-width: 640px) {
+		.stat-value {
+			font-size: 1.5rem;
+		}
+	}
+	
 	.stat-label {
-		font-size: 0.75rem;
+		font-size: 0.65rem;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
+		line-height: 1.2;
+	}
+	
+	@media (min-width: 640px) {
+		.stat-label {
+			font-size: 0.75rem;
+		}
 	}
 	
 	/* Filters */
@@ -691,63 +863,180 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
-		padding: 1rem;
 		margin-bottom: 1rem;
+		overflow: hidden;
+	}
+	
+	.filters-section[open] .filters-toggle {
+		transform: rotate(180deg);
+	}
+	
+	.filters-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		cursor: pointer;
+		user-select: none;
+		list-style: none;
+		background: var(--color-surface);
+	}
+	
+	.filters-header::-webkit-details-marker {
+		display: none;
+	}
+	
+	.filters-header:hover {
+		background: var(--color-surface-elevated);
+	}
+	
+	.filters-title {
+		font-weight: 600;
+		font-size: 0.875rem;
+	}
+	
+	.filter-badge {
+		background: var(--color-primary);
+		color: var(--color-text-inverse);
+		font-size: 0.65rem;
+		padding: 0.15rem 0.5rem;
+		border-radius: 999px;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+	
+	.filters-toggle {
+		margin-left: auto;
+		transition: transform 0.2s ease;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+	
+	.filters-content {
+		padding: 1rem;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
 	
 	.filters-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1rem;
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.75rem;
+	}
+	
+	@media (min-width: 480px) {
+		.filters-row {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	
+	@media (min-width: 768px) {
+		.filters-row {
+			grid-template-columns: repeat(3, 1fr);
+			gap: 1rem;
+		}
+	}
+	
+	.filters-row-secondary {
 		align-items: flex-end;
+	}
+	
+	@media (min-width: 768px) {
+		.filters-row-secondary {
+			grid-template-columns: 1fr 1fr auto;
+		}
 	}
 	
 	.filter-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
-		flex: 1;
-		min-width: 150px;
+		gap: 0.35rem;
+	}
+	
+	.filter-group-search {
+		grid-column: 1 / -1;
+	}
+	
+	@media (min-width: 768px) {
+		.filter-group-search {
+			grid-column: auto;
+		}
 	}
 	
 	.filter-group label {
-		font-size: 0.75rem;
+		font-size: 0.7rem;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
+		font-weight: 500;
 	}
 	
 	.filter-group select,
 	.filter-group input {
-		padding: 0.5rem;
+		padding: 0.6rem 0.75rem;
 		border: 1px solid var(--color-border);
 		background: var(--color-background);
 		color: var(--color-text);
-		border-radius: 4px;
+		border-radius: 6px;
 		font-size: 0.875rem;
+		width: 100%;
 	}
 	
-	.clear-btn {
-		padding: 0.5rem 1rem;
-		background: transparent;
-		border: 1px solid var(--color-border);
-		color: var(--color-text-muted);
-		border-radius: 4px;
+	.filter-group select:focus,
+	.filter-group input:focus {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+	}
+	
+	.search-input-wrapper {
+		display: flex;
+		gap: 0.5rem;
+	}
+	
+	.search-input-wrapper input {
+		flex: 1;
+	}
+	
+	.search-btn {
+		padding: 0.6rem 1rem;
+		background: var(--color-primary);
+		color: var(--color-text-inverse);
+		border: none;
+		border-radius: 6px;
+		font-weight: 600;
 		cursor: pointer;
 		white-space: nowrap;
 	}
 	
+	.search-btn:hover {
+		background: var(--color-primary-hover);
+	}
+	
+	.clear-btn {
+		padding: 0.6rem 1rem;
+		background: transparent;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-muted);
+		border-radius: 6px;
+		cursor: pointer;
+		white-space: nowrap;
+		font-size: 0.875rem;
+		transition: all 0.2s;
+	}
+	
 	.clear-btn:hover {
-		color: var(--color-text);
-		border-color: var(--color-text);
+		color: var(--color-danger);
+		border-color: var(--color-danger);
+		background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 	}
 	
 	/* Results Info */
 	.results-info {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 1rem;
+		flex-direction: column;
+		gap: 0.75rem;
 		margin-bottom: 1rem;
 		padding: 0.75rem 1rem;
 		background: var(--color-surface);
@@ -756,8 +1045,66 @@
 		font-size: 0.875rem;
 	}
 	
+	@media (min-width: 480px) {
+		.results-info {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+		}
+	}
+	
+	.results-count strong {
+		color: var(--color-text);
+	}
+	
 	.loading-indicator {
 		color: var(--color-primary);
+		animation: pulse 1s ease-in-out infinite;
+	}
+	
+	@keyframes pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
+	}
+	
+	/* Pagination Bar */
+	.pagination-bar {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.35rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem;
+		background: var(--color-surface);
+		border-radius: 8px;
+		flex-wrap: wrap;
+	}
+	
+	@media (min-width: 480px) {
+		.pagination-bar {
+			gap: 0.5rem;
+		}
+	}
+	
+	.page-indicator {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0 0.75rem;
+		font-size: 0.875rem;
+	}
+	
+	.page-current {
+		font-weight: bold;
+		color: var(--color-primary);
+	}
+	
+	.page-separator {
+		color: var(--color-text-muted);
+	}
+	
+	.page-total {
+		color: var(--color-text-muted);
 	}
 	
 	/* Logs Table */
@@ -951,25 +1298,24 @@
 		cursor: pointer;
 	}
 	
-	.pagination-controls {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	
 	.pagination-btn {
-		padding: 0.35rem 0.65rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.5rem 0.65rem;
 		background: var(--color-surface-elevated);
 		border: 1px solid var(--color-border);
 		color: var(--color-text);
-		border-radius: 4px;
+		border-radius: 6px;
 		cursor: pointer;
-		font-size: 0.875rem;
-		transition: background-color 0.2s;
+		font-size: 0.8rem;
+		transition: all 0.2s;
 	}
 	
 	.pagination-btn:hover:not(:disabled) {
-		background: var(--color-surface-hover);
+		background: var(--color-primary);
+		color: var(--color-text-inverse);
+		border-color: var(--color-primary);
 	}
 	
 	.pagination-btn:disabled {
@@ -977,18 +1323,30 @@
 		cursor: not-allowed;
 	}
 	
-	.page-info {
-		font-size: 0.875rem;
-		color: var(--color-text-muted);
-		padding: 0 0.5rem;
-		min-width: 100px;
-		text-align: center;
+	.pagination-btn-text {
+		display: none;
+	}
+	
+	@media (min-width: 480px) {
+		.pagination-btn-text {
+			display: inline;
+		}
+		
+		.pagination-btn {
+			padding: 0.5rem 0.85rem;
+		}
 	}
 	
 	.bottom-pagination {
 		display: flex;
 		justify-content: center;
-		padding: 1.5rem;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.bottom-pagination {
+			padding: 1.5rem;
+		}
 	}
 	
 	/* Sortable Table Headers */
@@ -1026,35 +1384,13 @@
 		display: block;
 	}
 	
-	/* Responsive */
+	/* Table Mobile Styles */
 	@media (max-width: 768px) {
-		.logs-container {
-			padding: 1rem;
-		}
-		
-		.filters-row {
-			flex-direction: column;
-		}
-		
-		.filter-group {
-			width: 100%;
-		}
-		
-		.stats-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-		
-		.results-info {
-			flex-direction: column;
-			align-items: flex-start;
-		}
-		
-		.results-right {
-			flex-wrap: wrap;
-		}
-		
-		.page-info {
-			min-width: auto;
+		.logs-table th:nth-child(4),
+		.logs-table td:nth-child(4),
+		.logs-table th:nth-child(5),
+		.logs-table td:nth-child(5) {
+			display: none;
 		}
 	}
 	
