@@ -18,6 +18,35 @@ const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 // Base system prompt for the bot assistant
 const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.
 
+## PERMISSION HIERARCHY
+
+SpaceBot has a layered permission system. You MUST understand who you're talking to:
+
+### 1. Platform Superadmin
+- Has access to ALL servers where SpaceBot is installed
+- Can view cross-server data and analytics
+- Can run maintenance tasks and cron jobs
+- Can access diagnostic/debug tools
+- Can manage global bot settings
+
+### 2. Discord Server Admin (Administrator permission)
+- Full control of SpaceBot for THEIR servers only
+- Can manage server settings, webhooks, scheduled events
+- Can create/edit/delete automations and custom commands
+- Can view all logs and statistics
+- Can configure permission settings for other roles
+
+### 3. Discord Server Manager (Manage Server permission)
+- Can view dashboard, logs, and statistics
+- Can create/edit automations and commands (if allowed)
+- Cannot access server settings or configure permissions
+- Limited to servers they manage
+
+### 4. Regular Discord User
+- Cannot DM you for admin features
+- Can only use bot commands in servers
+- Their access depends on server permission settings
+
 ## DATA SOURCES
 
 You have TWO sources of data:
@@ -71,38 +100,124 @@ Keep responses concise. Use Discord markdown.`;
 function buildSystemPrompt(context = {}) {
   let prompt = BASE_SYSTEM_PROMPT;
   
-  // Add superadmin context if applicable
+  // Add detailed user permission context
+  prompt += `\n\n## 🔐 CURRENT USER PERMISSIONS\n`;
+  
+  // Platform-level permissions
+  prompt += `### Platform Access:\n`;
   if (context.isSuperAdmin) {
-    prompt += `\n\n## 👑 SUPERADMIN STATUS\n`;
-    prompt += `**This user is a SpaceBot superadmin.** They have elevated privileges including:\n`;
-    prompt += `- Access to ALL servers where SpaceBot is installed (not just ones they manage)\n`;
-    prompt += `- Ability to view and manage global bot settings\n`;
-    prompt += `- Access to admin-only features and diagnostics\n`;
-    prompt += `- Can run cron jobs and maintenance tasks\n`;
-    prompt += `\nWhen they ask about "all servers" or cross-server data, you can provide it. They have full access.\n`;
+    prompt += `- **Role:** 👑 SUPERADMIN (full platform access)\n`;
+    prompt += `- Can access ALL servers where SpaceBot is installed\n`;
+    prompt += `- Can view cross-server analytics and data\n`;
+    prompt += `- Can run maintenance tasks and cron jobs\n`;
+    prompt += `- Can access diagnostic/debug tools\n`;
+    prompt += `\nWhen they ask about "all servers" or cross-server data, you can provide it.\n`;
+  } else {
+    prompt += `- **Role:** Server Manager (limited to their own servers)\n`;
+    prompt += `- Can ONLY access servers where they have Manage Server or Administrator permission\n`;
+    prompt += `- Cannot view data from other servers\n`;
+    prompt += `- Cannot run global maintenance or cron tasks\n`;
   }
   
-  // Add selected server context prominently at the top
+  // Add selected server context with detailed permissions
   if (context.selectedGuildId && context.selectedGuildName) {
-    prompt += `\n\n## 🎯 CURRENTLY SELECTED SERVER\n`;
-    prompt += `**Server Name:** ${context.selectedGuildName}\n`;
-    prompt += `**Server ID:** ${context.selectedGuildId}\n`;
-    prompt += `\n**IMPORTANT:** When the user asks questions about "my server", "the server", stats, logs, automations, etc., use this server's ID (${context.selectedGuildId}) in all tool calls.\n`;
+    const selectedGuild = context.managedGuilds?.find(g => g.id === context.selectedGuildId);
+    
+    prompt += `\n### 🎯 CURRENTLY SELECTED SERVER: ${context.selectedGuildName}\n`;
+    prompt += `**Server ID:** ${context.selectedGuildId}\n\n`;
+    
+    // Show user's specific permissions for this server
+    prompt += `**User's permissions on this server:**\n`;
+    if (context.isSuperAdmin) {
+      prompt += `- ✅ Full access (Superadmin override)\n`;
+      prompt += `- ✅ Can view all logs and statistics\n`;
+      prompt += `- ✅ Can manage automations and commands\n`;
+      prompt += `- ✅ Can change server settings\n`;
+      prompt += `- ✅ Can manage webhooks\n`;
+    } else if (selectedGuild) {
+      // Detailed server permissions
+      if (selectedGuild.isOwner) {
+        prompt += `- 👑 **Server Owner** - Full control of this server\n`;
+      }
+      if (selectedGuild.isAdmin) {
+        prompt += `- ✅ **Administrator** - Can change all server settings\n`;
+      } else {
+        prompt += `- ⚠️ **Manager** - Cannot change server settings (requires Administrator)\n`;
+      }
+      
+      // What they CAN do
+      prompt += `- ✅ Can view dashboard and statistics\n`;
+      prompt += `- ✅ Can view event logs\n`;
+      prompt += selectedGuild.isAdmin 
+        ? `- ✅ Can create/edit/delete automations\n`
+        : `- ⚠️ Automation editing depends on server permission settings\n`;
+      prompt += selectedGuild.isAdmin
+        ? `- ✅ Can create/edit/delete custom commands\n`
+        : `- ⚠️ Command editing depends on server permission settings\n`;
+      prompt += selectedGuild.isAdmin
+        ? `- ✅ Can manage server settings and webhooks\n`
+        : `- ❌ Cannot manage server settings (requires Administrator)\n`;
+    }
+    
+    prompt += `\n**IMPORTANT:** When the user asks about "my server", "the server", stats, logs, automations, etc., use this server's ID (${context.selectedGuildId}) in all tool calls.\n`;
     prompt += `Do NOT ask them which server - they have already selected it.\n`;
+    
+    // Add permission-aware guidance
+    if (!context.isSuperAdmin && selectedGuild && !selectedGuild.isAdmin) {
+      prompt += `\n**Note:** If the user tries to do something they don't have permission for (like changing server settings), politely explain that they need the Administrator permission for that action.\n`;
+    }
   } else if (context.managedGuilds && context.managedGuilds.length > 1) {
-    prompt += `\n\n## ⚠️ NO SERVER SELECTED\n`;
+    prompt += `\n### ⚠️ NO SERVER SELECTED\n`;
     prompt += `The user manages ${context.managedGuilds.length} servers but hasn't selected one yet.\n`;
     prompt += `When they ask about server-specific data, remind them to select a server first.\n`;
     prompt += `They can say: "switch to <server name>", "select <server>", or "list servers"\n`;
+  } else if (context.managedGuilds?.length === 1) {
+    prompt += `\n### 📍 Single Server User\n`;
+    prompt += `User only manages one server, so that server is auto-selected.\n`;
   }
   
-  // Add managed guilds context if available - including live stats
+  // Add managed guilds context if available - including live stats and permissions
   if (context.managedGuilds && context.managedGuilds.length > 0) {
     prompt += "\n\n## User's Managed Servers (LIVE DATA)\nThe user manages the following Discord servers where SpaceBot is installed. This data is LIVE from Discord:\n";
     for (const guild of context.managedGuilds) {
       const isSelected = context.selectedGuildId === guild.id;
-      prompt += `\n### ${guild.name}${isSelected ? ' ✅ SELECTED' : ''}${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
+      
+      // Build permission badges
+      let badges = [];
+      if (isSelected) badges.push('✅ SELECTED');
+      if (guild.isOwner) badges.push('👑 Owner');
+      else if (guild.isAdmin) badges.push('🛡️ Admin');
+      else badges.push('⚙️ Manager');
+      
+      prompt += `\n### ${guild.name} [${badges.join(' | ')}]\n`;
       prompt += `- Server ID: ${guild.id}\n`;
+      
+      // User's permission level on this server
+      prompt += `- User's Access: ${guild.isOwner ? 'Server Owner' : guild.isAdmin ? 'Administrator' : 'Manage Server'}\n`;
+      
+      // Show user's Discord roles on this server
+      if (guild.userRoles && guild.userRoles.length > 0) {
+        prompt += `- User's Roles: ${guild.userRoles.join(', ')}\n`;
+      }
+      
+      // Show detailed Discord permissions for this user
+      if (guild.permissions) {
+        const perms = guild.permissions;
+        let permList = [];
+        if (perms.administrator) permList.push('Administrator');
+        if (perms.manageGuild) permList.push('Manage Server');
+        if (perms.manageChannels) permList.push('Manage Channels');
+        if (perms.manageRoles) permList.push('Manage Roles');
+        if (perms.manageMessages) permList.push('Manage Messages');
+        if (perms.manageWebhooks) permList.push('Manage Webhooks');
+        if (perms.manageEvents) permList.push('Manage Events');
+        if (perms.kickMembers) permList.push('Kick Members');
+        if (perms.banMembers) permList.push('Ban Members');
+        if (permList.length > 0) {
+          prompt += `- Discord Permissions: ${permList.join(', ')}\n`;
+        }
+      }
+      
       if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
       if (guild.onlineCount !== undefined) prompt += `- Online: ${guild.onlineCount}\n`;
       if (guild.channelCount !== undefined) prompt += `- Channels: ${guild.channelCount}\n`;
@@ -355,8 +470,9 @@ async function callAI(messages, env) {
  * @param {string} options.message - The user's message
  * @param {string} options.userName - The user's display name
  * @param {string} options.userId - The user's Discord ID
+ * @param {boolean} [options.isSuperAdmin] - Whether user is a platform superadmin
  * @param {Object[]} [options.history] - Previous messages in the conversation
- * @param {Object[]} [options.managedGuilds] - Guilds the user manages
+ * @param {Object[]} [options.managedGuilds] - Guilds the user manages (with isOwner, isAdmin flags)
  * @param {Object} [options.selectedGuild] - The currently selected guild object
  * @param {string} [options.selectedGuildId] - The currently selected guild ID
  * @param {string} [options.selectedGuildName] - The currently selected guild name
@@ -367,7 +483,8 @@ export async function generateChatResponse(options, env) {
   const { 
     message, 
     userName, 
-    userId, 
+    userId,
+    isSuperAdmin = false,
     history = [], 
     managedGuilds = [],
     selectedGuild = null,
@@ -379,6 +496,7 @@ export async function generateChatResponse(options, env) {
   console.log("[AI] generateChatResponse called for user:", userName);
   console.log("[AI] env keys:", Object.keys(env || {}));
   console.log("[AI] Selected server:", selectedGuildName || "none", `(${selectedGuildId || "none"})`);
+  console.log("[AI] User is superadmin:", isSuperAdmin);
   
   const accountId = env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = env.CLOUDFLARE_AI_TOKEN;
@@ -403,10 +521,11 @@ export async function generateChatResponse(options, env) {
   
   log.info(`[AI] MCP enabled: ${mcpEnabled}`);
   
-  // Build system prompt with context including selected server
+  // Build system prompt with context including selected server and permissions
   const systemPrompt = buildSystemPrompt({
     managedGuilds,
     mcpEnabled,
+    isSuperAdmin,
     selectedGuild,
     selectedGuildId,
     selectedGuildName,

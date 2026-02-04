@@ -197,10 +197,19 @@ async function checkUserIsManager(client, userId) {
       const member = await guild.members.fetch(userId).catch(() => null);
       
       if (member) {
-        // Check if they have manage guild or admin permissions
+        // Check all relevant permissions
         const hasManageGuild = member.permissions.has(PermissionFlagsBits.ManageGuild);
         const hasAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
         const isOwner = guild.ownerId === userId;
+        
+        // Additional permissions the AI should know about
+        const hasManageChannels = member.permissions.has(PermissionFlagsBits.ManageChannels);
+        const hasManageRoles = member.permissions.has(PermissionFlagsBits.ManageRoles);
+        const hasManageMessages = member.permissions.has(PermissionFlagsBits.ManageMessages);
+        const hasKickMembers = member.permissions.has(PermissionFlagsBits.KickMembers);
+        const hasBanMembers = member.permissions.has(PermissionFlagsBits.BanMembers);
+        const hasManageWebhooks = member.permissions.has(PermissionFlagsBits.ManageWebhooks);
+        const hasManageEvents = member.permissions.has(PermissionFlagsBits.ManageEvents);
         
         if (hasManageGuild || hasAdmin || isOwner) {
           // Count members in voice channels and get voice channel details
@@ -225,11 +234,31 @@ async function checkUserIsManager(client, userId) {
             m.presence?.status && m.presence.status !== 'offline'
           ).size;
           
+          // Get user's roles in this guild (for context)
+          const userRoles = member.roles.cache
+            .filter(r => r.id !== guild.id) // Exclude @everyone
+            .sort((a, b) => b.position - a.position)
+            .map(r => r.name)
+            .slice(0, 5); // Top 5 roles
+          
           managedGuilds.push({
             id: guild.id,
             name: guild.name,
             isOwner,
             isAdmin: hasAdmin,
+            // Detailed Discord permissions for this user
+            permissions: {
+              administrator: hasAdmin,
+              manageGuild: hasManageGuild,
+              manageChannels: hasManageChannels,
+              manageRoles: hasManageRoles,
+              manageMessages: hasManageMessages,
+              manageWebhooks: hasManageWebhooks,
+              manageEvents: hasManageEvents,
+              kickMembers: hasKickMembers,
+              banMembers: hasBanMembers,
+            },
+            userRoles,
             // Include live stats from Discord.js cache
             memberCount: guild.memberCount,
             onlineCount,
