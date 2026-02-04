@@ -17,6 +17,7 @@
 	let showBotsInActivityChart = $state(false);
 	let showBotsInHeatmap = $state(false);
 	let showBotsInTotalEvents = $state(false);
+	let showBotsInMembers = $state(false);  // Default to false to show human members only
 	
 	// Pagination state for list sections
 	const ITEMS_PER_PAGE = 5;
@@ -37,6 +38,7 @@
 		showBotsInActivityChart = value;
 		showBotsInTotalEvents = value;
 		showBotsInHeatmap = value;
+		showBotsInMembers = value;
 	}
 	
 	// Bot detection: checks actor_is_bot flag OR common bot name patterns (for legacy data)
@@ -467,31 +469,33 @@
 				Overview
 			</h2>
 			<div class="overview-grid">
-				<!-- Total Events Card -->
-				<div class="stat-card primary">
+				<!-- Members Card -->
+				<div class="stat-card primary members">
 					<div class="stat-card-header">
-						<div class="stat-icon">📊</div>
-						<label class="bot-toggle-sm">
-							<input type="checkbox" bind:checked={showBotsInTotalEvents} />
+						<div class="stat-icon">👥</div>
+						<label class="bot-toggle-sm" title="Toggle to show only human members (excludes bots)">
+							<input type="checkbox" bind:checked={showBotsInMembers} />
 							<span class="toggle-switch-sm"></span>
 							<span class="toggle-label-sm">🤖</span>
 						</label>
 					</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.total : data.statistics.events.totalNonBot)}</span>
-						<span class="stat-label">Total Events</span>
+						<span class="stat-value">{formatNumber(showBotsInMembers 
+							? (data.memberStats?.changes?.current || data.memberStats?.latest?.member_count || 0) 
+							: (data.memberStats?.changes?.currentHuman ?? data.memberStats?.latest?.human_count ?? data.memberStats?.changes?.current ?? data.memberStats?.latest?.member_count ?? 0))}</span>
+						<span class="stat-label">{showBotsInMembers ? 'Server Members' : 'Human Members'}</span>
 					</div>
 					<div class="stat-breakdown">
-						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.today : data.statistics.events.todayNonBot)}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.day : data.memberStats?.changes?.dayHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.day : data.memberStats?.changes?.dayHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.day || 0) : (data.memberStats?.changes?.dayHuman ?? data.memberStats?.changes?.day ?? 0))}</span>
 							<span class="breakdown-label">Today</span>
 						</div>
-						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisWeek : data.statistics.events.thisWeekNonBot)}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.week : data.memberStats?.changes?.weekHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.week : data.memberStats?.changes?.weekHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.week || 0) : (data.memberStats?.changes?.weekHuman ?? data.memberStats?.changes?.week ?? 0))}</span>
 							<span class="breakdown-label">This Week</span>
 						</div>
-						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisMonth : data.statistics.events.thisMonthNonBot)}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.month : data.memberStats?.changes?.monthHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.month : data.memberStats?.changes?.monthHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.month || 0) : (data.memberStats?.changes?.monthHuman ?? data.memberStats?.changes?.month ?? 0))}</span>
 							<span class="breakdown-label">This Month</span>
 						</div>
 					</div>
@@ -539,24 +543,31 @@
 					</div>
 				</div>
 				
-				<!-- Members Card -->
-				<div class="stat-card members">
-					<div class="stat-icon">👥</div>
+				<!-- Total Events Card -->
+				<div class="stat-card">
+					<div class="stat-card-header">
+						<div class="stat-icon">📊</div>
+						<label class="bot-toggle-sm">
+							<input type="checkbox" bind:checked={showBotsInTotalEvents} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(data.memberStats?.changes?.current || data.memberStats?.latest?.member_count || 0)}</span>
-						<span class="stat-label">Server Members</span>
+						<span class="stat-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.total : data.statistics.events.totalNonBot)}</span>
+						<span class="stat-label">Total Events</span>
 					</div>
 					<div class="stat-breakdown">
-						<div class="breakdown-item" class:positive={data.memberStats?.changes?.day > 0} class:negative={data.memberStats?.changes?.day < 0}>
-							<span class="breakdown-value">{formatChange(data.memberStats?.changes?.day || 0)}</span>
+						<div class="breakdown-item">
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.today : data.statistics.events.todayNonBot)}</span>
 							<span class="breakdown-label">Today</span>
 						</div>
-						<div class="breakdown-item" class:positive={data.memberStats?.changes?.week > 0} class:negative={data.memberStats?.changes?.week < 0}>
-							<span class="breakdown-value">{formatChange(data.memberStats?.changes?.week || 0)}</span>
+						<div class="breakdown-item">
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisWeek : data.statistics.events.thisWeekNonBot)}</span>
 							<span class="breakdown-label">This Week</span>
 						</div>
-						<div class="breakdown-item" class:positive={data.memberStats?.changes?.month > 0} class:negative={data.memberStats?.changes?.month < 0}>
-							<span class="breakdown-value">{formatChange(data.memberStats?.changes?.month || 0)}</span>
+						<div class="breakdown-item">
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisMonth : data.statistics.events.thisMonthNonBot)}</span>
 							<span class="breakdown-label">This Month</span>
 						</div>
 					</div>
@@ -1227,7 +1238,7 @@
 
 <style>
 	.stats-page {
-		max-width: 1400px;
+		width: 100%;
 		margin: 0 auto;
 		padding: 1rem;
 	}
@@ -1240,7 +1251,13 @@
 	
 	@media (min-width: 1024px) {
 		.stats-page {
-			padding: 2rem;
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.stats-page {
+			padding: 2rem 4rem;
 		}
 	}
 	

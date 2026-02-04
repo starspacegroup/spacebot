@@ -227,9 +227,27 @@
 
 <style>
 	.event-detail-container {
-		max-width: 1200px;
+		width: 100%;
 		margin: 0 auto;
-		padding: 2rem;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.event-detail-container {
+			padding: 1.5rem;
+		}
+	}
+	
+	@media (min-width: 1024px) {
+		.event-detail-container {
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.event-detail-container {
+			padding: 2rem 4rem;
+		}
 	}
 	
 	.event-header {

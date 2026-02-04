@@ -102,7 +102,7 @@
 <style>
 	/* Base Dashboard Styles */
 	.admin-dashboard {
-		max-width: 1400px;
+		width: 100%;
 		margin: 0 auto;
 		padding: 1rem;
 		min-height: 100vh;
@@ -116,7 +116,13 @@
 	
 	@media (min-width: 1024px) {
 		.admin-dashboard {
-			padding: 2rem;
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.admin-dashboard {
+			padding: 2rem 4rem;
 		}
 	}
 	

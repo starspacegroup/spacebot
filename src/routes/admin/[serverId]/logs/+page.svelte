@@ -630,7 +630,7 @@
 
 <style>
 	.logs-container {
-		max-width: 1400px;
+		width: 100%;
 		margin: 0 auto;
 		padding: 1rem;
 	}
@@ -643,7 +643,13 @@
 	
 	@media (min-width: 1024px) {
 		.logs-container {
-			padding: 2rem;
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.logs-container {
+			padding: 2rem 4rem;
 		}
 	}
 	

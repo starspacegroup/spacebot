@@ -11,6 +11,7 @@ import { log } from "$lib/log.js";
  * @property {number} member_count - Total member count
  * @property {number|null} online_count - Online member count (if available)
  * @property {number|null} bot_count - Number of bots
+ * @property {number|null} human_count - Number of human members (member_count - bot_count)
  * @property {number|null} channel_count - Number of channels
  * @property {number|null} role_count - Number of roles
  * @property {number|null} emoji_count - Number of custom emojis
@@ -32,16 +33,23 @@ export async function recordServerStats(db, guildId, stats) {
   }
 
   try {
+    // Calculate human_count if bot_count is available
+    const humanCount = stats.human_count ?? 
+      (stats.bot_count !== null && stats.bot_count !== undefined 
+        ? Math.max(0, (stats.member_count || 0) - stats.bot_count)
+        : null);
+    
     await db.prepare(`
       INSERT INTO server_stats (
-        guild_id, member_count, online_count, bot_count,
+        guild_id, member_count, online_count, bot_count, human_count,
         channel_count, role_count, emoji_count, boost_count, boost_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       guildId,
       stats.member_count || 0,
       stats.online_count ?? null,
       stats.bot_count ?? null,
+      humanCount,
       stats.channel_count ?? null,
       stats.role_count ?? null,
       stats.emoji_count ?? null,
@@ -62,9 +70,10 @@ export async function recordServerStats(db, guildId, stats) {
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID
  * @param {'join' | 'leave'} eventType - Whether a member joined or left
+ * @param {boolean} [isBot=false] - Whether the joining/leaving member is a bot
  * @returns {Promise<{success: boolean, newCount?: number, error?: string}>}
  */
-export async function updateMemberCount(db, guildId, eventType) {
+export async function updateMemberCount(db, guildId, eventType, isBot = false) {
   if (!db) {
     return { success: false, error: "Database not available" };
   }
@@ -79,21 +88,31 @@ export async function updateMemberCount(db, guildId, eventType) {
       return { success: false, error: "No baseline stats exist" };
     }
 
-    // Calculate new count
+    // Calculate new counts
     const delta = eventType === 'join' ? 1 : -1;
     const newCount = Math.max(0, (latest.member_count || 0) + delta);
+    
+    // Update bot count if the member is a bot
+    let newBotCount = latest.bot_count;
+    if (isBot && latest.bot_count !== null) {
+      newBotCount = Math.max(0, latest.bot_count + delta);
+    }
+    
+    // Calculate human count
+    const newHumanCount = newBotCount !== null ? Math.max(0, newCount - newBotCount) : latest.human_count;
 
     // Record the new stats
     await db.prepare(`
       INSERT INTO server_stats (
-        guild_id, member_count, online_count, bot_count,
+        guild_id, member_count, online_count, bot_count, human_count,
         channel_count, role_count, emoji_count, boost_count, boost_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       guildId,
       newCount,
       null, // online_count not updated on events
-      latest.bot_count,
+      newBotCount,
+      newHumanCount,
       latest.channel_count,
       latest.role_count,
       latest.emoji_count,
@@ -101,7 +120,7 @@ export async function updateMemberCount(db, guildId, eventType) {
       latest.boost_level,
     ).run();
 
-    log.debug(`[Stats] Updated member count for ${guildId}: ${latest.member_count} -> ${newCount} (${eventType})`);
+    log.debug(`[Stats] Updated member count for ${guildId}: ${latest.member_count} -> ${newCount} (${eventType}${isBot ? ', bot' : ''})`);
     return { success: true, newCount };
   } catch (error) {
     log.error("Failed to update member count:", error);
@@ -201,18 +220,22 @@ export async function getServerStatsHistory(db, guildId, options = {}) {
  * Get member count change statistics
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID
- * @returns {Promise<Object>} - Change statistics
+ * @returns {Promise<Object>} - Change statistics including human (non-bot) counts
  */
 export async function getMemberCountChanges(db, guildId) {
   if (!db) {
-    return { current: 0, dayChange: 0, weekChange: 0, monthChange: 0 };
+    return { 
+      current: 0, day: 0, week: 0, month: 0,
+      currentHuman: null, dayHuman: null, weekHuman: null, monthHuman: null,
+      botCount: null
+    };
   }
 
   try {
     const [current, dayAgo, weekAgo, monthAgo] = await Promise.all([
       // Current count
       db.prepare(`
-        SELECT member_count FROM server_stats 
+        SELECT member_count, human_count, bot_count FROM server_stats 
         WHERE guild_id = ?
         ORDER BY recorded_at DESC
         LIMIT 1
@@ -220,7 +243,7 @@ export async function getMemberCountChanges(db, guildId) {
 
       // 24 hours ago
       db.prepare(`
-        SELECT member_count FROM server_stats 
+        SELECT member_count, human_count FROM server_stats 
         WHERE guild_id = ? AND recorded_at <= datetime('now', '-1 day')
         ORDER BY recorded_at DESC
         LIMIT 1
@@ -228,7 +251,7 @@ export async function getMemberCountChanges(db, guildId) {
 
       // 7 days ago
       db.prepare(`
-        SELECT member_count FROM server_stats 
+        SELECT member_count, human_count FROM server_stats 
         WHERE guild_id = ? AND recorded_at <= datetime('now', '-7 days')
         ORDER BY recorded_at DESC
         LIMIT 1
@@ -236,7 +259,7 @@ export async function getMemberCountChanges(db, guildId) {
 
       // 30 days ago
       db.prepare(`
-        SELECT member_count FROM server_stats 
+        SELECT member_count, human_count FROM server_stats 
         WHERE guild_id = ? AND recorded_at <= datetime('now', '-30 days')
         ORDER BY recorded_at DESC
         LIMIT 1
@@ -244,16 +267,38 @@ export async function getMemberCountChanges(db, guildId) {
     ]);
 
     const currentCount = current?.member_count || 0;
+    const currentHuman = current?.human_count;
+    const currentBotCount = current?.bot_count;
 
     return {
+      // Total member counts (including bots)
       current: currentCount,
-      dayChange: dayAgo?.member_count ? currentCount - dayAgo.member_count : 0,
-      weekChange: weekAgo?.member_count ? currentCount - weekAgo.member_count : 0,
-      monthChange: monthAgo?.member_count ? currentCount - monthAgo.member_count : 0,
+      day: dayAgo?.member_count ? currentCount - dayAgo.member_count : 0,
+      week: weekAgo?.member_count ? currentCount - weekAgo.member_count : 0,
+      month: monthAgo?.member_count ? currentCount - monthAgo.member_count : 0,
+      
+      // Human (non-bot) member counts
+      currentHuman: currentHuman,
+      dayHuman: (currentHuman !== null && dayAgo?.human_count !== null && dayAgo?.human_count !== undefined)
+        ? currentHuman - dayAgo.human_count 
+        : null,
+      weekHuman: (currentHuman !== null && weekAgo?.human_count !== null && weekAgo?.human_count !== undefined)
+        ? currentHuman - weekAgo.human_count 
+        : null,
+      monthHuman: (currentHuman !== null && monthAgo?.human_count !== null && monthAgo?.human_count !== undefined)
+        ? currentHuman - monthAgo.human_count 
+        : null,
+      
+      // Bot count for reference
+      botCount: currentBotCount,
     };
   } catch (error) {
     log.error("Failed to get member count changes:", error);
-    return { current: 0, dayChange: 0, weekChange: 0, monthChange: 0 };
+    return { 
+      current: 0, day: 0, week: 0, month: 0,
+      currentHuman: null, dayHuman: null, weekHuman: null, monthHuman: null,
+      botCount: null
+    };
   }
 }
 
@@ -355,11 +400,25 @@ export async function fetchGuildStatsFromDiscord(botToken, guildId) {
     // Discord may return member_count or approximate_member_count depending on context
     const memberCount = guild.approximate_member_count || guild.member_count || 0;
     
-    log.debug(`[Stats] Fetched guild ${guildId}: ${memberCount} members (approximate: ${guild.approximate_member_count}, exact: ${guild.member_count})`);
+    // Try to get bot count by fetching members with bot filter
+    // This uses the List Guild Members endpoint with a limit
+    // For accuracy, we'll count bots we can see
+    let botCount = null;
+    try {
+      botCount = await countGuildBots(botToken, guildId);
+    } catch (botError) {
+      log.debug(`[Stats] Could not count bots for guild ${guildId}:`, botError.message);
+    }
+    
+    const humanCount = botCount !== null ? Math.max(0, memberCount - botCount) : null;
+    
+    log.debug(`[Stats] Fetched guild ${guildId}: ${memberCount} members, ${botCount ?? '?'} bots, ${humanCount ?? '?'} humans`);
 
     return {
       member_count: memberCount,
       online_count: guild.approximate_presence_count || null,
+      bot_count: botCount,
+      human_count: humanCount,
       channel_count: null, // Would need separate API call
       role_count: guild.roles?.length || null,
       emoji_count: guild.emojis?.length || null,
@@ -370,4 +429,68 @@ export async function fetchGuildStatsFromDiscord(botToken, guildId) {
     log.error("Failed to fetch guild stats from Discord:", error);
     return null;
   }
+}
+
+/**
+ * Count the number of bots in a guild
+ * Uses pagination to count all bot members
+ * @param {string} botToken - Bot token
+ * @param {string} guildId - Guild ID
+ * @returns {Promise<number>} - Number of bots
+ */
+async function countGuildBots(botToken, guildId) {
+  let botCount = 0;
+  let after = '0';
+  const limit = 1000; // Max per request
+  let hasMore = true;
+  let iterations = 0;
+  const maxIterations = 50; // Safety limit to prevent infinite loops (50k members max)
+
+  while (hasMore && iterations < maxIterations) {
+    iterations++;
+    
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/members?limit=${limit}&after=${after}`,
+      {
+        headers: {
+          Authorization: `Bot ${botToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 403) {
+        // Bot doesn't have SERVER MEMBERS INTENT or permission
+        log.debug(`[Stats] No permission to list members for guild ${guildId}`);
+        return null;
+      }
+      throw new Error(`Failed to fetch members: ${response.status}`);
+    }
+
+    const members = await response.json();
+    
+    if (!Array.isArray(members) || members.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    // Count bots in this batch
+    for (const member of members) {
+      if (member.user?.bot) {
+        botCount++;
+      }
+    }
+
+    // Set up for next page
+    after = members[members.length - 1].user.id;
+    hasMore = members.length === limit;
+    
+    // Small delay to avoid rate limiting
+    if (hasMore) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+
+  log.debug(`[Stats] Counted ${botCount} bots in guild ${guildId} (${iterations} API calls)`);
+  return botCount;
 }

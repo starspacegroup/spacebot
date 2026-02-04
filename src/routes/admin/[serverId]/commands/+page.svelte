@@ -276,9 +276,27 @@
 
 <style>
 	.commands-page {
-		padding: 2rem;
-		max-width: 1400px;
+		width: 100%;
 		margin: 0 auto;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.commands-page {
+			padding: 1.5rem;
+		}
+	}
+	
+	@media (min-width: 1024px) {
+		.commands-page {
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.commands-page {
+			padding: 2rem 4rem;
+		}
 	}
 	
 	.back-link {

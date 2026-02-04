@@ -176,9 +176,11 @@ export async function POST({ request, platform }) {
       // Update member count on join/leave events
       if (event.event_type === 'MEMBER_JOIN' || event.event_type === 'MEMBER_LEAVE') {
         const eventType = event.event_type === 'MEMBER_JOIN' ? 'join' : 'leave';
-        const statsResult = await updateMemberCount(db, event.guild_id, eventType);
+        // Pass whether the joining/leaving member is a bot
+        const isBot = event.actor_is_bot || event.details?.bot || false;
+        const statsResult = await updateMemberCount(db, event.guild_id, eventType, isBot);
         if (statsResult.success) {
-          log.debug(`[Stats] Member count updated for ${event.guild_id}: ${statsResult.newCount}`);
+          log.debug(`[Stats] Member count updated for ${event.guild_id}: ${statsResult.newCount}${isBot ? ' (bot)' : ''}`);
         } else {
           log.debug(`[Stats] Could not update member count: ${statsResult.error}`);
         }

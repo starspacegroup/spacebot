@@ -274,9 +274,27 @@
 
 <style>
 	.automations-page {
-		padding: 2rem;
-		max-width: 1400px;
+		width: 100%;
 		margin: 0 auto;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.automations-page {
+			padding: 1.5rem;
+		}
+	}
+	
+	@media (min-width: 1024px) {
+		.automations-page {
+			padding: 2rem 3rem;
+		}
+	}
+	
+	@media (min-width: 1536px) {
+		.automations-page {
+			padding: 2rem 4rem;
+		}
 	}
 	
 	.back-link {
