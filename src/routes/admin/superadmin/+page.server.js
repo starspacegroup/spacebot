@@ -6,6 +6,102 @@
 
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
+import { 
+	getGlobalMemberGrowthChart, 
+	getGlobalVoiceActivityChart, 
+	getGlobalStatsSummary 
+} from "$lib/db/stats-aggregation.js";
+
+/**
+ * Get the list of available cron jobs
+ */
+function getCronJobDefinitions() {
+	return [
+		{
+			name: "hourly_aggregation",
+			displayName: "Hourly Stats Aggregation",
+			description: "Aggregates event logs into hourly and daily statistics",
+			cronPattern: "0 * * * *",
+			schedule: "Every hour at :00",
+		},
+		{
+			name: "daily_refresh",
+			displayName: "Daily Discord Refresh",
+			description: "Refreshes server stats from Discord API and cleans up old data",
+			cronPattern: "0 0 * * *",
+			schedule: "Daily at midnight UTC",
+		},
+		{
+			name: "rebuild_stats",
+			displayName: "Rebuild All Stats",
+			description: "Deletes all aggregated stats and rebuilds from event logs. Use after schema changes.",
+			cronPattern: null,
+			schedule: "Manual only",
+			dangerous: true,
+		},
+	];
+}
+
+/**
+ * Get cron job execution history and last run times
+ */
+async function getCronJobData(db) {
+	if (!db) return { history: [], lastRuns: {} };
+
+	try {
+		// Check if the table exists
+		const tableCheck = await db.prepare(`
+			SELECT name FROM sqlite_master 
+			WHERE type='table' AND name='cron_job_history'
+		`).first();
+
+		if (!tableCheck) {
+			return { history: [], lastRuns: {} };
+		}
+
+		// Get recent history
+		const historyResult = await db.prepare(`
+			SELECT *
+			FROM cron_job_history
+			ORDER BY started_at DESC
+			LIMIT 20
+		`).all();
+
+		// Get last run for each job
+		const lastRunResult = await db.prepare(`
+			SELECT job_name, 
+			       MAX(started_at) as last_run,
+			       (SELECT status FROM cron_job_history c2 
+			        WHERE c2.job_name = cron_job_history.job_name 
+			        ORDER BY started_at DESC LIMIT 1) as last_status,
+			       (SELECT duration_ms FROM cron_job_history c3 
+			        WHERE c3.job_name = cron_job_history.job_name 
+			        ORDER BY started_at DESC LIMIT 1) as last_duration
+			FROM cron_job_history
+			GROUP BY job_name
+		`).all();
+
+		const lastRuns = {};
+		for (const row of lastRunResult.results || []) {
+			lastRuns[row.job_name] = {
+				lastRun: row.last_run,
+				lastStatus: row.last_status,
+				lastDuration: row.last_duration,
+			};
+		}
+
+		return {
+			history: (historyResult.results || []).map(h => ({
+				...h,
+				result_data: h.result_data ? JSON.parse(h.result_data) : null,
+			})),
+			lastRuns,
+		};
+	} catch (error) {
+		log.error("[Superadmin] Failed to get cron job data:", error);
+		return { history: [], lastRuns: {} };
+	}
+}
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -169,12 +265,33 @@ export async function load({ cookies, platform }) {
 	const db = platform?.env?.DB;
 
 	// Fetch all data in parallel
-	const [botGuilds, botAppInfo, globalStats, serverStatsSummary] = await Promise.all([
+	const [
+		botGuilds, 
+		botAppInfo, 
+		globalStats, 
+		serverStatsSummary, 
+		cronJobData,
+		memberGrowthChart,
+		voiceActivityChart,
+		activitySummary,
+	] = await Promise.all([
 		getBotGuildsWithDetails(botToken),
 		getBotApplicationInfo(botToken),
 		getGlobalStats(db),
 		getServerStatsSummary(db),
+		getCronJobData(db),
+		getGlobalMemberGrowthChart(db, "30d"),
+		getGlobalVoiceActivityChart(db, "30d"),
+		getGlobalStatsSummary(db, "30d"),
 	]);
+
+	// Build cron jobs with last run info
+	const cronJobs = getCronJobDefinitions().map(job => ({
+		...job,
+		lastRun: cronJobData.lastRuns[job.name]?.lastRun || null,
+		lastStatus: cronJobData.lastRuns[job.name]?.lastStatus || null,
+		lastDuration: cronJobData.lastRuns[job.name]?.lastDuration || null,
+	}));
 
 	// Merge server stats with guild info
 	const statsMap = new Map(serverStatsSummary.map(s => [s.guild_id, s]));
@@ -220,6 +337,12 @@ export async function load({ cookies, platform }) {
 			totalWebhooks: 0,
 			recentActivityByGuild: [],
 		},
+		// Chart data
+		memberGrowthChart,
+		voiceActivityChart,
+		activitySummary,
+		cronJobs,
+		cronJobHistory: cronJobData.history,
 		user: {
 			id: userId,
 			username: cookies.get("discord_username") || "Superadmin",

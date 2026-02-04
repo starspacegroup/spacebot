@@ -224,6 +224,32 @@ async function buildHourlyStats(db, guildId) {
         guildId, period.period_end, period.period_start
       ).first();
 
+      // Calculate peak concurrent voice users
+      const peakConcurrent = await db.prepare(`
+        WITH voice_events AS (
+          SELECT 
+            created_at as event_time,
+            CASE 
+              WHEN event_type = 'VOICE_JOIN' THEN 1
+              WHEN event_type = 'VOICE_LEAVE' THEN -1
+              ELSE 0
+            END as delta
+          FROM event_logs
+          WHERE guild_id = ?
+            AND created_at >= ?
+            AND created_at < ?
+            AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
+        ),
+        running_count AS (
+          SELECT 
+            event_time,
+            SUM(delta) OVER (ORDER BY event_time ROWS UNBOUNDED PRECEDING) as concurrent
+          FROM voice_events
+        )
+        SELECT COALESCE(MAX(concurrent), 0) as peak
+        FROM running_count
+      `).bind(guildId, period.period_start, period.period_end).first();
+
       // Aggregate message activity
       const messageStats = await db.prepare(`
         SELECT COUNT(*) as count, COUNT(DISTINCT actor_id) as unique_users
@@ -243,15 +269,16 @@ async function buildHourlyStats(db, guildId) {
         INSERT INTO aggregated_stats (
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
-          voice_total_seconds, voice_unique_users,
+          voice_total_seconds, voice_unique_users, voice_peak_concurrent,
           message_count, message_unique_users,
           total_events, last_event_id
-        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         guildId, period.period_start, period.period_end,
         memberStats?.joins || 0, memberStats?.leaves || 0,
         (memberStats?.joins || 0) - (memberStats?.leaves || 0),
         voiceStats?.total_seconds || 0, voiceStats?.unique_users || 0,
+        peakConcurrent?.peak || 0,
         messageStats?.count || 0, messageStats?.unique_users || 0,
         totalEvents?.count || 0, totalEvents?.last_id || null
       ).run();
@@ -313,6 +340,7 @@ async function buildDailyStats(db, guildId) {
           SUM(member_leaves) as member_leaves,
           SUM(voice_total_seconds) as voice_total_seconds,
           MAX(voice_unique_users) as voice_unique_users,
+          MAX(voice_peak_concurrent) as voice_peak_concurrent,
           SUM(message_count) as message_count,
           MAX(message_unique_users) as message_unique_users,
           SUM(total_events) as total_events,
@@ -325,15 +353,16 @@ async function buildDailyStats(db, guildId) {
         INSERT INTO aggregated_stats (
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
-          voice_total_seconds, voice_unique_users,
+          voice_total_seconds, voice_unique_users, voice_peak_concurrent,
           message_count, message_unique_users,
           total_events, last_event_id
-        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         guildId, day.day_start, day.day_end,
         dayStats?.member_joins || 0, dayStats?.member_leaves || 0,
         (dayStats?.member_joins || 0) - (dayStats?.member_leaves || 0),
         dayStats?.voice_total_seconds || 0, dayStats?.voice_unique_users || 0,
+        dayStats?.voice_peak_concurrent || 0,
         dayStats?.message_count || 0, dayStats?.message_unique_users || 0,
         dayStats?.total_events || 0, dayStats?.last_event_id || null
       ).run();

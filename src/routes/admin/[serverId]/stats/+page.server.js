@@ -18,6 +18,9 @@ import {
   getVoiceActivitySummary,
   getMemberGrowthSummary,
   getAggregatedStats,
+  getMemberGrowthChart,
+  getVoiceActivityChart,
+  runStatsAggregation,
 } from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 
@@ -83,6 +86,8 @@ export async function load({ params, cookies, platform, parent }) {
   let memberHistory = [];
   let voiceActivity = null;
   let memberGrowth = null;
+  let memberGrowthChartData = [];
+  let voiceActivityChartData = [];
 
   if (db) {
     try {
@@ -104,6 +109,18 @@ export async function load({ params, cookies, platform, parent }) {
         }
       }
 
+      // Run stats aggregation on-demand to ensure chart data exists
+      // This is safe to run multiple times - it will only process new data
+      try {
+        const aggregationResult = await runStatsAggregation(db, serverId);
+        if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
+          log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
+        }
+      } catch (aggError) {
+        log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
+        // Continue - we can still show whatever data exists
+      }
+
       // Now fetch all statistics including aggregated data
       [
         statistics, 
@@ -114,6 +131,8 @@ export async function load({ params, cookies, platform, parent }) {
         memberHistory,
         voiceActivity,
         memberGrowth,
+        memberGrowthChartData,
+        voiceActivityChartData,
       ] = await Promise.all([
         getGuildStatistics(db, serverId),
         getActivityHeatmap(db, serverId),
@@ -130,6 +149,9 @@ export async function load({ params, cookies, platform, parent }) {
         getVoiceActivitySummary(db, serverId, "7d"),
         // Aggregated member growth
         getMemberGrowthSummary(db, serverId, "7d"),
+        // Chart data for beautiful graphs
+        getMemberGrowthChart(db, serverId, "30d"),
+        getVoiceActivityChart(db, serverId, "30d"),
       ]);
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
@@ -147,6 +169,8 @@ export async function load({ params, cookies, platform, parent }) {
     memberHistory,
     voiceActivity,
     memberGrowth,
+    memberGrowthChartData,
+    voiceActivityChartData,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,

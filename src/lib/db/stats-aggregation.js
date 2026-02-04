@@ -275,6 +275,33 @@ export async function buildHourlyStats(db, guildId) {
         period.period_end, period.period_start
       ).first();
 
+      // Calculate peak concurrent voice users
+      // This uses voice state events to find the max concurrent users at any point
+      const peakConcurrent = await db.prepare(`
+        WITH voice_events AS (
+          SELECT 
+            created_at as event_time,
+            CASE 
+              WHEN event_type = 'VOICE_JOIN' THEN 1
+              WHEN event_type = 'VOICE_LEAVE' THEN -1
+              ELSE 0
+            END as delta
+          FROM event_logs
+          WHERE guild_id = ?
+            AND created_at >= ?
+            AND created_at < ?
+            AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
+        ),
+        running_count AS (
+          SELECT 
+            event_time,
+            SUM(delta) OVER (ORDER BY event_time ROWS UNBOUNDED PRECEDING) as concurrent
+          FROM voice_events
+        )
+        SELECT COALESCE(MAX(concurrent), 0) as peak
+        FROM running_count
+      `).bind(guildId, period.period_start, period.period_end).first();
+
       // Aggregate message activity
       const messageStats = await db.prepare(`
         SELECT 
@@ -301,10 +328,10 @@ export async function buildHourlyStats(db, guildId) {
         INSERT INTO aggregated_stats (
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
-          voice_total_seconds, voice_unique_users,
+          voice_total_seconds, voice_unique_users, voice_peak_concurrent,
           message_count, message_unique_users,
           total_events, last_event_id
-        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         guildId,
         period.period_start,
@@ -314,6 +341,7 @@ export async function buildHourlyStats(db, guildId) {
         (memberStats?.joins || 0) - (memberStats?.leaves || 0),
         voiceStats?.total_seconds || 0,
         voiceStats?.unique_users || 0,
+        peakConcurrent?.peak || 0,
         messageStats?.count || 0,
         messageStats?.unique_users || 0,
         totalEvents?.count || 0,
@@ -390,6 +418,7 @@ export async function buildDailyStats(db, guildId) {
           SUM(member_leaves) as member_leaves,
           SUM(voice_total_seconds) as voice_total_seconds,
           MAX(voice_unique_users) as voice_unique_users,
+          MAX(voice_peak_concurrent) as voice_peak_concurrent,
           SUM(message_count) as message_count,
           MAX(message_unique_users) as message_unique_users,
           SUM(total_events) as total_events,
@@ -406,10 +435,10 @@ export async function buildDailyStats(db, guildId) {
         INSERT INTO aggregated_stats (
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
-          voice_total_seconds, voice_unique_users,
+          voice_total_seconds, voice_unique_users, voice_peak_concurrent,
           message_count, message_unique_users,
           total_events, last_event_id
-        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         guildId,
         day.day_start,
@@ -419,6 +448,7 @@ export async function buildDailyStats(db, guildId) {
         (dayStats?.member_joins || 0) - (dayStats?.member_leaves || 0),
         dayStats?.voice_total_seconds || 0,
         dayStats?.voice_unique_users || 0,
+        dayStats?.voice_peak_concurrent || 0,
         dayStats?.message_count || 0,
         dayStats?.message_unique_users || 0,
         dayStats?.total_events || 0,
@@ -631,5 +661,212 @@ export async function cleanupOldData(db, guildId = null) {
   } catch (error) {
     log.error("Failed to cleanup old data:", error);
     return { sessionsDeleted: 0, aggregatesDeleted: 0 };
+  }
+}
+
+/**
+ * Get global member growth data across all guilds (for superadmin)
+ * @param {D1Database} db
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Array<{date: string, joins: number, leaves: number, netChange: number}>>}
+ */
+export async function getGlobalMemberGrowthChart(db, period = "30d") {
+  if (!db) return [];
+
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        date(period_start) as date,
+        SUM(member_joins) as joins,
+        SUM(member_leaves) as leaves,
+        SUM(member_net_change) as net_change
+      FROM aggregated_stats
+      WHERE period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+      GROUP BY date(period_start)
+      ORDER BY date ASC
+    `).bind(timeRange).all();
+
+    return (result.results || []).map(row => ({
+      date: row.date,
+      joins: row.joins || 0,
+      leaves: row.leaves || 0,
+      netChange: row.net_change || 0,
+    }));
+  } catch (error) {
+    log.error("Failed to get global member growth chart:", error);
+    return [];
+  }
+}
+
+/**
+ * Get global voice activity data across all guilds (for superadmin)
+ * @param {D1Database} db
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Array<{date: string, totalMinutes: number, uniqueUsers: number}>>}
+ */
+export async function getGlobalVoiceActivityChart(db, period = "30d") {
+  if (!db) return [];
+
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        date(period_start) as date,
+        SUM(voice_total_seconds) as total_seconds,
+        SUM(voice_unique_users) as unique_users
+      FROM aggregated_stats
+      WHERE period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+      GROUP BY date(period_start)
+      ORDER BY date ASC
+    `).bind(timeRange).all();
+
+    return (result.results || []).map(row => ({
+      date: row.date,
+      totalMinutes: Math.round((row.total_seconds || 0) / 60),
+      totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
+      uniqueUsers: row.unique_users || 0,
+    }));
+  } catch (error) {
+    log.error("Failed to get global voice activity chart:", error);
+    return [];
+  }
+}
+
+/**
+ * Get global totals across all guilds (for superadmin)
+ * @param {D1Database} db
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Object>}
+ */
+export async function getGlobalStatsSummary(db, period = "30d") {
+  if (!db) return {
+    memberJoins: 0,
+    memberLeaves: 0,
+    memberNetChange: 0,
+    voiceTotalHours: 0,
+    voiceUniqueUsers: 0,
+    totalMessages: 0,
+    totalEvents: 0,
+  };
+
+  const timeRange = period === "30d" ? "-30 days" : "-7 days";
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        SUM(member_joins) as member_joins,
+        SUM(member_leaves) as member_leaves,
+        SUM(member_net_change) as member_net_change,
+        SUM(voice_total_seconds) as voice_total_seconds,
+        SUM(voice_unique_users) as voice_unique_users,
+        SUM(message_count) as message_count,
+        SUM(total_events) as total_events
+      FROM aggregated_stats
+      WHERE period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+    `).bind(timeRange).first();
+
+    return {
+      memberJoins: result?.member_joins || 0,
+      memberLeaves: result?.member_leaves || 0,
+      memberNetChange: result?.member_net_change || 0,
+      voiceTotalHours: Math.round((result?.voice_total_seconds || 0) / 3600 * 10) / 10,
+      voiceUniqueUsers: result?.voice_unique_users || 0,
+      totalMessages: result?.message_count || 0,
+      totalEvents: result?.total_events || 0,
+    };
+  } catch (error) {
+    log.error("Failed to get global stats summary:", error);
+    return {
+      memberJoins: 0,
+      memberLeaves: 0,
+      memberNetChange: 0,
+      voiceTotalHours: 0,
+      voiceUniqueUsers: 0,
+      totalMessages: 0,
+      totalEvents: 0,
+    };
+  }
+}
+
+/**
+ * Get member growth chart data for a specific server
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Array<{date: string, joins: number, leaves: number, netChange: number}>>}
+ */
+export async function getMemberGrowthChart(db, guildId, period = "30d") {
+  if (!db || !guildId) return [];
+
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        date(period_start) as date,
+        member_joins as joins,
+        member_leaves as leaves,
+        member_net_change as net_change
+      FROM aggregated_stats
+      WHERE guild_id = ?
+        AND period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+      ORDER BY date ASC
+    `).bind(guildId, timeRange).all();
+
+    return (result.results || []).map(row => ({
+      date: row.date,
+      joins: row.joins || 0,
+      leaves: row.leaves || 0,
+      netChange: row.net_change || 0,
+    }));
+  } catch (error) {
+    log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get voice activity chart data for a specific server
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Array<{date: string, totalMinutes: number, totalHours: number, uniqueUsers: number}>>}
+ */
+export async function getVoiceActivityChart(db, guildId, period = "30d") {
+  if (!db || !guildId) return [];
+
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+
+  try {
+    const result = await db.prepare(`
+      SELECT 
+        date(period_start) as date,
+        voice_total_seconds as total_seconds,
+        voice_unique_users as unique_users,
+        voice_peak_concurrent as peak_concurrent
+      FROM aggregated_stats
+      WHERE guild_id = ?
+        AND period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+      ORDER BY date ASC
+    `).bind(guildId, timeRange).all();
+
+    return (result.results || []).map(row => ({
+      date: row.date,
+      totalMinutes: Math.round((row.total_seconds || 0) / 60),
+      totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
+      uniqueUsers: row.unique_users || 0,
+      peakConcurrent: row.peak_concurrent || 0,
+    }));
+  } catch (error) {
+    log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
+    return [];
   }
 }

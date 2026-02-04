@@ -1,4 +1,6 @@
 <script>
+	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
+	
 	let { data } = $props();
 	
 	// Calculate percentages for category breakdown - use $derived for reactivity
@@ -134,6 +136,108 @@
 			width: processed.length * 30,
 		};
 	});
+	
+	// Transform member growth chart data for bar chart component
+	const memberGrowthBarData = $derived.by(() => {
+		const points = data.memberGrowthChartData || [];
+		if (!points || points.length === 0) return [];
+		
+		return points.map(p => ({
+			date: p.date,
+			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			values: [
+				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
+				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
+			]
+		}));
+	});
+	
+	// Member growth summary stats
+	const memberGrowthStats = $derived.by(() => {
+		const points = data.memberGrowthChartData || [];
+		if (!points || points.length === 0) return null;
+		
+		const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
+		const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
+		const netChange = totalJoins - totalLeaves;
+		
+		return { totalJoins, totalLeaves, netChange };
+	});
+	
+	// Transform voice activity data for area chart component
+	const voiceActivityData = $derived.by(() => {
+		const points = data.voiceActivityChartData || [];
+		if (!points || points.length === 0) return [];
+		
+		// Determine if we should use hours or minutes
+		const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
+		const useHours = totalMinutes > 120;
+		
+		return points.map(p => ({
+			date: p.date,
+			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			value: useHours ? (p.totalHours || 0) : (p.totalMinutes || 0),
+		}));
+	});
+	
+	// Peak users chart data
+	const peakUsersData = $derived.by(() => {
+		const points = data.voiceActivityChartData || [];
+		if (!points || points.length === 0) return [];
+		
+		return points.map(p => ({
+			date: p.date,
+			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			value: p.uniqueUsers || 0,
+		}));
+	});
+	
+	// Peak concurrent chart data
+	const peakConcurrentData = $derived.by(() => {
+		const points = data.voiceActivityChartData || [];
+		if (!points || points.length === 0) return [];
+		
+		return points.map(p => ({
+			date: p.date,
+			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			value: p.peakConcurrent || 0,
+		}));
+	});
+	
+	// Derive member count history from current count + aggregated net changes
+	const memberCountHistory = $derived.by(() => {
+		const currentCount = data.memberStats?.latest?.member_count || 0;
+		const growthData = data.memberGrowthChartData || [];
+		if (!currentCount || growthData.length === 0) return [];
+		
+		// Calculate cumulative net change from end to start
+		// Then work backwards from current count
+		const totalNetChange = growthData.reduce((sum, d) => sum + (d.netChange || 0), 0);
+		let runningCount = currentCount - totalNetChange;
+		
+		return growthData.map(d => {
+			runningCount += (d.netChange || 0);
+			return {
+				date: d.date,
+				label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				value: runningCount,
+			};
+		});
+	});
+	
+	// Voice activity summary stats
+	const voiceActivityStats = $derived.by(() => {
+		const points = data.voiceActivityChartData || [];
+		if (!points || points.length === 0) return null;
+		
+		const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
+		const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+		const useHours = totalMinutes > 120;
+		const uniqueUsers = points.reduce((max, p) => Math.max(max, p.uniqueUsers || 0), 0);
+		const peakConcurrent = points.reduce((max, p) => Math.max(max, p.peakConcurrent || 0), 0);
+		
+		return { totalMinutes, totalHours, useHours, uniqueUsers, peakConcurrent };
+	});
 </script>
 
 <svelte:head>
@@ -259,201 +363,115 @@
 			</div>
 		</section>
 		
-		<!-- Member Growth Chart -->
-		{#if data.memberHistory?.length > 0}
-			<section class="member-chart-section">
-				<h2 class="section-title">
-					<span class="section-icon">👥</span>
-					Member Growth (Last 30 Days)
-					{#if data.memberStats?.latest?.recorded_at}
-						<span class="last-updated">Last updated: {formatRelativeTime(data.memberStats.latest.recorded_at)}</span>
-					{/if}
-				</h2>
-				<div class="member-chart-container">
-					<div class="member-stats-row">
-						<div class="member-stat-item">
-							<span class="member-stat-label">Current</span>
-							<span class="member-stat-value">{formatNumber(data.memberStats?.changes?.current || 0)}</span>
-						</div>
-						<div class="member-stat-item">
-							<span class="member-stat-label">Peak (30d)</span>
-							<span class="member-stat-value">{formatNumber(data.memberStats?.peak?.count || 0)}</span>
-						</div>
-						{#if data.memberStats?.latest?.online_count}
-							<div class="member-stat-item online">
-								<span class="member-stat-label">Online Now</span>
-								<span class="member-stat-value">{formatNumber(data.memberStats.latest.online_count)}</span>
-							</div>
-						{/if}
-						{#if data.memberStats?.latest?.boost_count > 0}
-							<div class="member-stat-item boost">
-								<span class="member-stat-label">Boosts</span>
-								<span class="member-stat-value">{data.memberStats.latest.boost_count} (Lvl {data.memberStats.latest.boost_level})</span>
-							</div>
-						{/if}
-					</div>
-					<div class="member-line-chart">
-						<svg viewBox="0 0 {memberChartData.width} 150" preserveAspectRatio="none" class="chart-svg">
-							<!-- Grid lines -->
-							<line x1="0" y1="0" x2="{memberChartData.width}" y2="0" class="grid-line" />
-							<line x1="0" y1="50" x2="{memberChartData.width}" y2="50" class="grid-line" />
-							<line x1="0" y1="100" x2="{memberChartData.width}" y2="100" class="grid-line" />
-							<line x1="0" y1="150" x2="{memberChartData.width}" y2="150" class="grid-line" />
-							
-							<!-- Area fill -->
-							<path 
-								d="M 0 150 {memberChartData.points.map((d, i) => `L ${i * 30 + 15} ${150 - ((d.member_count - memberChartData.minValue) / memberChartData.range) * 130}`).join(' ')} L {(memberChartData.points.length - 1) * 30 + 15} 150 Z"
-								class="chart-area"
-							/>
-							
-							<!-- Line -->
-							<path 
-								d="M {memberChartData.points.map((d, i) => `${i * 30 + 15} ${150 - ((d.member_count - memberChartData.minValue) / memberChartData.range) * 130}`).join(' L ')}"
-								class="chart-line"
-								fill="none"
-							/>
-							
-							<!-- Data points -->
-							{#each memberChartData.points as point, i}
-								<circle 
-									cx="{i * 30 + 15}" 
-									cy="{150 - ((point.member_count - memberChartData.minValue) / memberChartData.range) * 130}" 
-									r="4" 
-									class="chart-point"
-								>
-									<title>{point.label}: {formatNumber(point.member_count)} members</title>
-								</circle>
-							{/each}
-						</svg>
-						<div class="chart-labels">
-							{#each memberChartData.points as point, i}
-								{#if i === 0 || i === memberChartData.points.length - 1 || i % 7 === 0}
-									<span class="chart-label" style="left: {(i / (memberChartData.points.length - 1)) * 100}%">{point.label}</span>
-								{/if}
-							{/each}
-						</div>
-					</div>
-				</div>
-			</section>
-		{:else}
-			<section class="member-chart-section">
-				<h2 class="section-title">
-					<span class="section-icon">👥</span>
-					Member Growth
-				</h2>
-				<div class="member-chart-empty">
-					<div class="empty-chart-icon">📈</div>
-					<p>No member data recorded yet.</p>
-					<p class="empty-hint">Member statistics are updated periodically. Check back later to see growth trends.</p>
-				</div>
+		<!-- Server Members Overview -->
+		{#if data.memberStats?.latest}
+			<section class="chart-section">
+				<ChartCard 
+					title="Server Members" 
+					subtitle={data.memberStats?.latest?.recorded_at ? `Updated ${formatRelativeTime(data.memberStats.latest.recorded_at)}` : 'Current'}
+					icon="👥"
+					stats={[
+						{ icon: '👤', value: formatNumber(data.memberStats?.latest?.member_count || 0), label: 'Total Members', color: '#5865F2' },
+						{ icon: '🟢', value: formatNumber(data.memberStats?.latest?.online_count || 0), label: 'Online Now', color: '#57F287' },
+						{ icon: '🏷️', value: formatNumber(data.memberStats?.latest?.role_count || 0), label: 'Roles', color: '#EB459E' },
+						...(data.memberStats?.latest?.boost_count > 0 ? [{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: `Boosts (Lvl ${data.memberStats.latest.boost_level})`, color: '#F47FFF' }] : []),
+					]}
+				>
+					<AreaChart 
+						data={memberCountHistory}
+						color="#5865F2"
+						gradientId="memberCountGradient"
+						title="Member Count"
+						emptyMessage="Member count history will appear as data is collected over time."
+					/>
+				</ChartCard>
 			</section>
 		{/if}
 		
-		<!-- Voice Activity Section (from aggregated stats) -->
-		{#if data.voiceActivity}
-			<section class="voice-activity-section">
-				<h2 class="section-title">
-					<span class="section-icon">🎤</span>
-					Voice Activity (Last 7 Days)
-				</h2>
-				<div class="voice-stats-grid">
-					<div class="voice-stat-card total-time">
-						<div class="voice-stat-icon">⏱️</div>
-						<div class="voice-stat-content">
-							<span class="voice-stat-value">
-								{#if data.voiceActivity.totalHours >= 1}
-									{data.voiceActivity.totalHours.toFixed(1)}
-								{:else}
-									{data.voiceActivity.totalMinutes}
-								{/if}
-							</span>
-							<span class="voice-stat-unit">
-								{#if data.voiceActivity.totalHours >= 1}
-									hours
-								{:else}
-									minutes
-								{/if}
-							</span>
-							<span class="voice-stat-label">Total Voice Time</span>
-						</div>
-					</div>
-					
-					<div class="voice-stat-card unique-users">
-						<div class="voice-stat-icon">👥</div>
-						<div class="voice-stat-content">
-							<span class="voice-stat-value">{data.voiceActivity.uniqueUsers || 0}</span>
-							<span class="voice-stat-unit">users</span>
-							<span class="voice-stat-label">Unique Voice Users</span>
-						</div>
-					</div>
-					
-					<div class="voice-stat-card sessions">
-						<div class="voice-stat-icon">🎙️</div>
-						<div class="voice-stat-content">
-							<span class="voice-stat-value">{data.voiceActivity.sessionCount || 0}</span>
-							<span class="voice-stat-unit">sessions</span>
-							<span class="voice-stat-label">Voice Sessions</span>
-						</div>
-					</div>
-					
-					<div class="voice-stat-card avg-session">
-						<div class="voice-stat-icon">📊</div>
-						<div class="voice-stat-content">
-							<span class="voice-stat-value">{data.voiceActivity.avgSessionMinutes || 0}</span>
-							<span class="voice-stat-unit">min</span>
-							<span class="voice-stat-label">Avg Session Length</span>
-						</div>
-					</div>
-				</div>
-			</section>
-		{/if}
+		<!-- Voice Activity Charts Section -->
+		<section class="chart-section">
+			<h2 class="section-title">
+				<span class="section-icon">🎤</span>
+				Voice Channel Activity
+				<span class="section-subtitle">Last 30 Days</span>
+			</h2>
+			<div class="voice-charts-grid">
+				<ChartCard 
+					title="Voice Time" 
+					icon="⏱️"
+					stats={voiceActivityStats ? [
+						{ icon: '⏱️', value: voiceActivityStats.totalHours >= 1 ? `${voiceActivityStats.totalHours.toFixed(1)}` : `${voiceActivityStats.totalMinutes}`, label: voiceActivityStats.useHours ? 'Total Hours' : 'Total Minutes', color: '#FEE75C' },
+					] : []}
+				>
+					<AreaChart 
+						data={voiceActivityData}
+						color="#FEE75C"
+						gradientId="voiceGradientServer"
+						unit={voiceActivityStats?.useHours ? 'h' : 'm'}
+						title="Voice Time"
+						emptyMessage="No voice activity data yet."
+					/>
+				</ChartCard>
+				
+				<ChartCard 
+					title="Peak Users" 
+					icon="👥"
+					stats={voiceActivityStats ? [
+						{ icon: '👥', value: formatNumber(voiceActivityStats.uniqueUsers || 0), label: 'Max Peak', color: '#5865F2' },
+					] : []}
+				>
+					<AreaChart 
+						data={peakUsersData}
+						color="#5865F2"
+						gradientId="peakUsersGradient"
+						unit=""
+						title="Peak Users"
+						emptyMessage="No peak users data yet."
+					/>
+				</ChartCard>
+				
+				<ChartCard 
+					title="Peak Concurrent" 
+					icon="📊"
+					stats={voiceActivityStats ? [
+						{ icon: '📊', value: formatNumber(voiceActivityStats.peakConcurrent || 0), label: 'Max Concurrent', color: '#57F287' },
+					] : []}
+				>
+					<AreaChart 
+						data={peakConcurrentData}
+						color="#57F287"
+						gradientId="peakConcurrentGradient"
+						unit=""
+						title="Peak Concurrent"
+						emptyMessage="No peak concurrent data yet."
+					/>
+				</ChartCard>
+			</div>
+		</section>
 		
-		<!-- Member Growth Stats (from aggregated data) -->
-		{#if data.memberGrowth && (data.memberGrowth.joins > 0 || data.memberGrowth.leaves > 0)}
-			<section class="member-growth-section">
-				<h2 class="section-title">
-					<span class="section-icon">📈</span>
-					Member Growth (Last 7 Days)
-				</h2>
-				<div class="growth-stats-grid">
-					<div class="growth-stat-card joins">
-						<div class="growth-stat-icon">➕</div>
-						<div class="growth-stat-content">
-							<span class="growth-stat-value positive">+{formatNumber(data.memberGrowth.joins)}</span>
-							<span class="growth-stat-label">Members Joined</span>
-						</div>
-					</div>
-					
-					<div class="growth-stat-card leaves">
-						<div class="growth-stat-icon">➖</div>
-						<div class="growth-stat-content">
-							<span class="growth-stat-value negative">-{formatNumber(data.memberGrowth.leaves)}</span>
-							<span class="growth-stat-label">Members Left</span>
-						</div>
-					</div>
-					
-					<div class="growth-stat-card net">
-						<div class="growth-stat-icon">📊</div>
-						<div class="growth-stat-content">
-							<span class="growth-stat-value" class:positive={data.memberGrowth.netChange > 0} class:negative={data.memberGrowth.netChange < 0}>
-								{formatChange(data.memberGrowth.netChange)}
-							</span>
-							<span class="growth-stat-label">Net Change</span>
-						</div>
-					</div>
-					
-					<div class="growth-stat-card daily">
-						<div class="growth-stat-icon">📅</div>
-						<div class="growth-stat-content">
-							<span class="growth-stat-value" class:positive={data.memberGrowth.dailyAverage > 0} class:negative={data.memberGrowth.dailyAverage < 0}>
-								{data.memberGrowth.dailyAverage > 0 ? '+' : ''}{data.memberGrowth.dailyAverage}
-							</span>
-							<span class="growth-stat-label">Daily Average</span>
-						</div>
-					</div>
-				</div>
-			</section>
-		{/if}
+		<!-- Member Growth Chart Section -->
+		<section class="chart-section">
+			<ChartCard 
+				title="Member Growth" 
+				subtitle="Last 30 Days"
+				icon="📈"
+				stats={memberGrowthStats ? [
+					{ icon: '➕', value: `+${formatNumber(memberGrowthStats.totalJoins)}`, label: 'Joined', color: '#22c55e' },
+					{ icon: '➖', value: `-${formatNumber(memberGrowthStats.totalLeaves)}`, label: 'Left', color: '#ef4444' },
+					{ icon: '📊', value: formatChange(memberGrowthStats.netChange), label: 'Net Change', color: memberGrowthStats.netChange > 0 ? '#22c55e' : memberGrowthStats.netChange < 0 ? '#ef4444' : undefined },
+				] : (data.memberGrowth ? [
+					{ icon: '➕', value: `+${formatNumber(data.memberGrowth.joins)}`, label: 'Joined', color: '#22c55e' },
+					{ icon: '➖', value: `-${formatNumber(data.memberGrowth.leaves)}`, label: 'Left', color: '#ef4444' },
+					{ icon: '📊', value: formatChange(data.memberGrowth.netChange), label: 'Net Change', color: data.memberGrowth.netChange > 0 ? '#22c55e' : data.memberGrowth.netChange < 0 ? '#ef4444' : undefined },
+				] : [])}
+			>
+				<BarChart 
+					data={memberGrowthBarData}
+					title="Member Growth"
+					emptyMessage="No member growth data yet. Stats are collected when members join or leave."
+				/>
+			</ChartCard>
+		</section>
 		
 		<!-- Event Categories -->
 		<section class="categories-section">
@@ -831,6 +849,13 @@
 		color: var(--color-text);
 	}
 	
+	.section-subtitle {
+		font-size: 0.85rem;
+		font-weight: 400;
+		color: var(--color-text-muted);
+		margin-left: 0.25rem;
+	}
+	
 	.section-icon {
 		font-size: 1rem;
 	}
@@ -1024,6 +1049,24 @@
 	/* Chart Section */
 	.chart-section {
 		margin-bottom: 2rem;
+	}
+	
+	.voice-charts-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1.5rem;
+	}
+	
+	@media (max-width: 1200px) {
+		.voice-charts-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+	
+	@media (max-width: 768px) {
+		.voice-charts-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 	
 	.chart-container {
@@ -1520,296 +1563,7 @@
 	.breakdown-item.negative .breakdown-value {
 		color: var(--color-danger);
 	}
-	
-	/* Member Chart Section */
-	.member-chart-section {
-		margin-bottom: 2rem;
-	}
-	
-	.member-chart-section .section-title {
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-	
-	.last-updated {
-		font-size: 0.75rem;
-		font-weight: 400;
-		color: var(--color-text-muted);
-		margin-left: auto;
-	}
-	
-	.member-chart-container {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		padding: 1.5rem;
-	}
-	
-	.member-stats-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1.5rem;
-		margin-bottom: 1.5rem;
-		padding-bottom: 1rem;
-		border-bottom: 1px solid var(--color-border);
-	}
-	
-	.member-stat-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-	
-	.member-stat-label {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-	}
-	
-	.member-stat-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-	
-	.member-stat-item.online .member-stat-value {
-		color: var(--color-success);
-	}
-	
-	.member-stat-item.boost .member-stat-value {
-		color: #f47fff;
-	}
-	
-	/* Member Line Chart */
-	.member-line-chart {
-		position: relative;
-		height: 180px;
-		margin-bottom: 1.5rem;
-	}
-	
-	.chart-svg {
-		width: 100%;
-		height: 150px;
-	}
-	
-	.grid-line {
-		stroke: var(--color-border);
-		stroke-width: 1;
-		stroke-dasharray: 4 4;
-	}
-	
-	.chart-area {
-		fill: rgba(88, 101, 242, 0.15);
-	}
-	
-	.chart-line {
-		stroke: var(--discord-blurple);
-		stroke-width: 2.5;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
-	
-	.chart-point {
-		fill: var(--discord-blurple);
-		stroke: var(--color-surface);
-		stroke-width: 2;
-		cursor: pointer;
-		transition: r var(--transition-fast);
-	}
-	
-	.chart-point:hover {
-		r: 6;
-	}
-	
-	.chart-labels {
-		position: relative;
-		height: 20px;
-		margin-top: 0.5rem;
-	}
-	
-	.chart-label {
-		position: absolute;
-		transform: translateX(-50%);
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
-		white-space: nowrap;
-	}
-	
-	.member-chart-empty {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		padding: 3rem 2rem;
-		text-align: center;
-	}
-	
-	.empty-chart-icon {
-		font-size: 3rem;
-		margin-bottom: 1rem;
-		opacity: 0.5;
-	}
-	
-	.member-chart-empty p {
-		margin: 0;
-		color: var(--color-text-muted);
-	}
-	
-	.empty-hint {
-		font-size: 0.85rem;
-		margin-top: 0.5rem !important;
-	}
-	
-	/* Voice Activity Section */
-	.voice-activity-section {
-		margin-bottom: 2rem;
-	}
-	
-	.voice-stats-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-	}
-	
-	@media (min-width: 768px) {
-		.voice-stats-grid {
-			grid-template-columns: repeat(4, 1fr);
-		}
-	}
-	
-	.voice-stat-card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		padding: 1.25rem;
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-	}
-	
-	.voice-stat-card:hover {
-		border-color: var(--color-primary);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-	}
-	
-	.voice-stat-icon {
-		font-size: 2rem;
-		flex-shrink: 0;
-	}
-	
-	.voice-stat-content {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-	
-	.voice-stat-value {
-		font-size: 1.75rem;
-		font-weight: 700;
-		color: var(--color-text);
-		line-height: 1.1;
-	}
-	
-	.voice-stat-unit {
-		font-size: 0.875rem;
-		color: var(--color-text-muted);
-		font-weight: 500;
-	}
-	
-	.voice-stat-label {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-		margin-top: 0.25rem;
-	}
-	
-	.voice-stat-card.total-time .voice-stat-value {
-		color: #FEE75C;
-	}
-	
-	.voice-stat-card.unique-users .voice-stat-value {
-		color: #5865F2;
-	}
-	
-	.voice-stat-card.sessions .voice-stat-value {
-		color: #57F287;
-	}
-	
-	.voice-stat-card.avg-session .voice-stat-value {
-		color: #EB459E;
-	}
-	
-	/* Member Growth Section */
-	.member-growth-section {
-		margin-bottom: 2rem;
-	}
-	
-	.growth-stats-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 1rem;
-	}
-	
-	@media (min-width: 768px) {
-		.growth-stats-grid {
-			grid-template-columns: repeat(4, 1fr);
-		}
-	}
-	
-	.growth-stat-card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-		padding: 1.25rem;
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-	}
-	
-	.growth-stat-card:hover {
-		border-color: var(--color-primary);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-	}
-	
-	.growth-stat-icon {
-		font-size: 2rem;
-		flex-shrink: 0;
-	}
-	
-	.growth-stat-content {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-	
-	.growth-stat-value {
-		font-size: 1.75rem;
-		font-weight: 700;
-		color: var(--color-text);
-		line-height: 1.1;
-	}
-	
-	.growth-stat-value.positive {
-		color: var(--color-success);
-	}
-	
-	.growth-stat-value.negative {
-		color: var(--color-danger);
-	}
-	
-	.growth-stat-label {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.025em;
-		margin-top: 0.25rem;
-	}
-	
+
 	/* Overview grid with 4 columns for members card */
 	@media (min-width: 768px) {
 		.overview-grid {
