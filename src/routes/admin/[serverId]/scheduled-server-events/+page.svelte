@@ -838,8 +838,8 @@
 					<input type="hidden" name="editFullSeries" value={editFullSeries ? 'true' : ''} />
 					
 					<div class="modal-body">
-						{#if editFullSeries}
-							<!-- Cover Image Section - Only for full series edit -->
+						{#if editFullSeries || !editingEvent.recurrenceRule}
+							<!-- Cover Image Section - For full series edit or non-recurring events -->
 							<div class="form-section">
 								<h3 class="form-section-title">🖼️ Cover Image</h3>
 								<div class="image-upload-area">
@@ -872,7 +872,7 @@
 								</div>
 							</div>
 							
-							<!-- Event Type Section -->
+							<!-- Event Type Section - For full series edit or non-recurring events -->
 							<div class="form-section">
 								<h3 class="form-section-title">🎯 Event Type</h3>
 								<div class="form-group">
@@ -885,7 +885,7 @@
 								</div>
 							</div>
 							
-							<!-- Basic Info Section - Only for full series edit -->
+							<!-- Basic Info Section - For full series edit or non-recurring events -->
 							<div class="form-section">
 								<h3 class="form-section-title">Basic Info</h3>
 								
@@ -912,7 +912,7 @@
 								</div>
 							</div>
 							
-							<!-- Location / Channel Section - Only for full series edit -->
+							<!-- Location / Channel Section - For full series edit or non-recurring events -->
 							<div class="form-section">
 								<h3 class="form-section-title">
 									{editEntityType === 3 ? '📍 Location' : '🔊 Channel'}
@@ -949,7 +949,7 @@
 								{/if}
 							</div>
 						{:else}
-							<!-- Single Occurrence Edit Info -->
+							<!-- Single Occurrence Edit Info (recurring events only) -->
 							<input type="hidden" name="entityType" value={editEntityType} />
 							<div class="occurrence-info">
 								<div class="occurrence-header">
