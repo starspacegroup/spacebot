@@ -8,9 +8,23 @@
 
 	let { children, data } = $props();
 	
-	// Use $page.data for the most up-to-date merged data from layout + page
-	const adminGuilds = $derived($page.data.adminGuilds || []);
-	const selectedGuildId = $derived($page.data.selectedGuildId || $page.url.searchParams.get('guild'));
+	// Track if we've received valid data to prevent flash during hydration
+	let hasInitialized = $state(false);
+	
+	$effect(() => {
+		if (data && data.user !== undefined) {
+			hasInitialized = true;
+		}
+	});
+	
+	// Use data prop for layout data
+	const isLoggedIn = $derived(data?.isLoggedIn ?? false);
+	const user = $derived(data?.user ?? null);
+	const adminGuilds = $derived(data?.adminGuilds ?? []);
+	const selectedGuildId = $derived(data?.selectedGuildId ?? $page.url.searchParams.get('guild'));
+	
+	// Only show login button after initialization to prevent flash
+	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
 </script>
 
 <svelte:head>
@@ -21,15 +35,15 @@
 	<header class="app-header">
 		<a href="/" class="logo">SpaceBot</a>
 		<nav class="nav">
-			{#if $page.url.pathname.startsWith('/admin')}
+			{#if $page.url.pathname.startsWith('/admin') && adminGuilds.length > 0}
 				<ServerSelector 
 					guilds={adminGuilds} 
 					selectedGuildId={selectedGuildId}
 				/>
 			{/if}
-			{#if data.isLoggedIn && data.user}
-				<UserMenu user={data.user} selectedGuildId={selectedGuildId} />
-			{:else}
+			{#if isLoggedIn && user}
+				<UserMenu user={user} selectedGuildId={selectedGuildId} />
+			{:else if showLoginButton}
 				<a href="/login" class="nav-btn">Login</a>
 			{/if}
 			<ThemeToggle />

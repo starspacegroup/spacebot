@@ -1,7 +1,7 @@
 /**
  * Discord Guilds Cache Helper
  *
- * Caches guild data in cookies to reduce Discord API calls.
+ * Caches guild data using in-memory cache with cookie fallback.
  * The cache is stored per-user and has a configurable TTL.
  */
 
@@ -10,12 +10,65 @@ import { log } from "$lib/db/logger.js";
 // Cache TTL in seconds (15 minutes - longer to reduce API calls over tunnel)
 const CACHE_TTL = 15 * 60;
 
+// Cache TTL in milliseconds for in-memory cache
+const CACHE_TTL_MS = CACHE_TTL * 1000;
+
 // API timeout in milliseconds (5 seconds)
 const API_TIMEOUT = 5000;
 
 // Permission constants
 const ADMINISTRATOR = BigInt(0x8);
 const MANAGE_GUILD = BigInt(0x20);
+
+// In-memory cache for guilds (keyed by a hash of the access token)
+/** @type {Map<string, {data: any, timestamp: number}>} */
+const memoryCache = new Map();
+
+/**
+ * Generate a simple hash of the access token for cache key
+ * @param {string} token
+ * @returns {string}
+ */
+function hashToken(token) {
+  // Simple hash - just use first 16 chars + last 8 chars
+  // This is NOT cryptographic, just for cache keying
+  if (token.length < 24) return token;
+  return `${token.slice(0, 16)}...${token.slice(-8)}`;
+}
+
+/**
+ * Get from in-memory cache
+ * @param {string} key
+ * @returns {any|null}
+ */
+function getMemoryCache(key) {
+  const entry = memoryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+/**
+ * Set in-memory cache
+ * @param {string} key
+ * @param {any} data
+ */
+function setMemoryCache(key, data) {
+  memoryCache.set(key, { data, timestamp: Date.now() });
+  
+  // Cleanup old entries periodically (keep cache from growing indefinitely)
+  if (memoryCache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of memoryCache.entries()) {
+      if (now - v.timestamp > CACHE_TTL_MS) {
+        memoryCache.delete(k);
+      }
+    }
+  }
+}
 
 /**
  * Fetch with timeout to prevent hanging requests
@@ -56,15 +109,23 @@ export async function getUserGuilds(
     return [];
   }
 
-  // Check cache first
+  const cacheKey = `user_guilds_${hashToken(accessToken)}`;
+
+  // Check in-memory cache first (fastest)
   if (!forceRefresh) {
-    const cached = getCachedGuilds(cookies, "user_guilds");
-    if (cached) {
-      log.debug(
-        "[Guilds Cache] Using cached user guilds, count:",
-        cached.length,
-      );
-      return cached;
+    const memCached = getMemoryCache(cacheKey);
+    if (memCached) {
+      log.debug("[Guilds Cache] Using in-memory cached user guilds, count:", memCached.length);
+      return memCached;
+    }
+
+    // Fallback to cookie cache
+    const cookieCached = getCachedGuilds(cookies, "user_guilds");
+    if (cookieCached) {
+      log.debug("[Guilds Cache] Using cookie cached user guilds, count:", cookieCached.length);
+      // Populate in-memory cache from cookie
+      setMemoryCache(cacheKey, cookieCached);
+      return cookieCached;
     }
     log.debug("[Guilds Cache] No valid cache for user_guilds");
   }
@@ -93,7 +154,10 @@ export async function getUserGuilds(
       "guilds from Discord API",
     );
 
-    // Cache the result
+    // Cache in memory (always works, regardless of size)
+    setMemoryCache(cacheKey, guilds);
+    
+    // Try to cache in cookie (may fail if too large, but that's okay)
     setCachedGuilds(cookies, "user_guilds", guilds);
 
     return guilds;
@@ -115,12 +179,22 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
     return new Set();
   }
 
-  // Check cache first
+  const cacheKey = `bot_guild_ids_${hashToken(botToken)}`;
+
+  // Check in-memory cache first
   if (!forceRefresh) {
-    const cached = getCachedGuilds(cookies, "bot_guild_ids");
-    if (cached) {
-      log.debug("[Guilds Cache] Using cached bot guild IDs");
-      return new Set(cached);
+    const memCached = getMemoryCache(cacheKey);
+    if (memCached) {
+      log.debug("[Guilds Cache] Using in-memory cached bot guild IDs");
+      return new Set(memCached);
+    }
+
+    // Fallback to cookie cache
+    const cookieCached = getCachedGuilds(cookies, "bot_guild_ids");
+    if (cookieCached) {
+      log.debug("[Guilds Cache] Using cookie cached bot guild IDs");
+      setMemoryCache(cacheKey, cookieCached);
+      return new Set(cookieCached);
     }
   }
 
@@ -144,7 +218,10 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
     const guilds = await response.json();
     const guildIds = guilds.map((g) => g.id);
 
-    // Cache the result (store as array for JSON serialization)
+    // Cache in memory
+    setMemoryCache(cacheKey, guildIds);
+    
+    // Try to cache in cookie (store as array for JSON serialization)
     setCachedGuilds(cookies, "bot_guild_ids", guildIds);
 
     return new Set(guildIds);
@@ -443,10 +520,10 @@ function setCachedGuilds(cookies, key, data) {
   });
 
   // Skip caching if data is too large (cookies have ~4KB limit per cookie)
-  // This prevents request/response bloat over tunnels
+  // This is expected for users with many guilds - in-memory cache handles it
   const MAX_COOKIE_SIZE = 3500; // Leave room for cookie metadata
   if (cacheValue.length > MAX_COOKIE_SIZE) {
-    log.warn(`[Guilds Cache] Data too large for cookie cache (${cacheValue.length} bytes), skipping cache for ${key}`);
+    log.debug(`[Guilds Cache] Data too large for cookie (${cacheValue.length} bytes), using in-memory cache only for ${key}`);
     return;
   }
 

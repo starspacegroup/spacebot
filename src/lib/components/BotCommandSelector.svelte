@@ -189,7 +189,7 @@
 	);
 </script>
 
-<svelte:window on:click={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} />
 
 <div class="bot-command-selector">
 	<!-- Hidden inputs for form submission -->

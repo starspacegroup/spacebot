@@ -115,5 +115,18 @@ export async function handle({ event, resolve }) {
   // Add dev auth status to event.locals for use in routes
   event.locals.devAuthEnabled = devAuthEnabled;
 
-  return resolve(event);
+  const response = await resolve(event);
+
+  // Add cache headers for HTML pages to ensure fresh content
+  // Assets in /_app/ are already hashed and can be cached long-term
+  if (!url.pathname.startsWith('/_app/') && 
+      !url.pathname.startsWith('/api/') &&
+      response.headers.get('content-type')?.includes('text/html')) {
+    // For HTML pages: no-cache forces revalidation on each request
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+  }
+
+  return response;
 }

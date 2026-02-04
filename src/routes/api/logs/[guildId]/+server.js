@@ -78,35 +78,57 @@ export async function GET({ params, url, cookies, platform }) {
   );
   log.debug("[DEBUG] db binding:", db ? "exists" : "null");
 
-  // Fetch logs
-  const { logs, total } = await getLogs(db, guildId, {
-    limit,
-    offset,
-    category,
-    eventType,
-    actorId,
-    startDate,
-    endDate,
-    search,
-    sortOrder,
-  });
-
-  const response = {
-    logs,
-    total,
-    limit,
-    offset,
-    hasMore: offset + logs.length < total,
-  };
-
-  // Include stats if requested
-  if (includeStats) {
-    response.stats = await getLogStats(db, guildId);
+  if (!db) {
+    log.error("[Logs API] Database binding not available");
+    return json({ 
+      error: "Database not available", 
+      logs: [], 
+      total: 0, 
+      categories: EVENT_CATEGORIES, 
+      eventTypes: EVENT_TYPES 
+    }, { status: 503 });
   }
 
-  // Include category and event type metadata
-  response.categories = EVENT_CATEGORIES;
-  response.eventTypes = EVENT_TYPES;
+  try {
+    // Fetch logs
+    const { logs, total } = await getLogs(db, guildId, {
+      limit,
+      offset,
+      category,
+      eventType,
+      actorId,
+      startDate,
+      endDate,
+      search,
+      sortOrder,
+    });
 
-  return json(response);
+    const response = {
+      logs,
+      total,
+      limit,
+      offset,
+      hasMore: offset + logs.length < total,
+    };
+
+    // Include stats if requested
+    if (includeStats) {
+      response.stats = await getLogStats(db, guildId);
+    }
+
+    // Include category and event type metadata
+    response.categories = EVENT_CATEGORIES;
+    response.eventTypes = EVENT_TYPES;
+
+    return json(response);
+  } catch (error) {
+    log.error("[Logs API] Error fetching logs:", error);
+    return json({ 
+      error: "Failed to fetch logs", 
+      logs: [], 
+      total: 0, 
+      categories: EVENT_CATEGORIES, 
+      eventTypes: EVENT_TYPES 
+    }, { status: 500 });
+  }
 }

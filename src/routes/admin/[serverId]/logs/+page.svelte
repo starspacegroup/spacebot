@@ -59,19 +59,34 @@
 			
 			const url = `/api/logs/${data.serverId}?${params}`;
 			log.debug('[DEBUG] Fetching from:', url);
-			const response = await fetch(url);
 			
-			if (!response.ok) {
-				throw new Error('Failed to fetch logs');
+			// Add timeout to prevent hanging forever
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), 15000);
+			
+			let response;
+			try {
+				response = await fetch(url, { signal: controller.signal });
+			} finally {
+				clearTimeout(timeoutId);
 			}
 			
 			const result = await response.json();
 			log.debug('[DEBUG] API response:', result);
 			
+			// Check for error in response
+			if (result.error) {
+				throw new Error(result.error);
+			}
+			
+			if (!response.ok) {
+				throw new Error('Failed to fetch logs');
+			}
+			
 			if (append) {
-				logs = [...logs, ...result.logs];
+				logs = [...logs, ...result.logs || []];
 			} else {
-				logs = result.logs;
+				logs = result.logs || [];
 				categories = result.categories || {};
 				eventTypes = result.eventTypes || {};
 				if (result.stats) {
@@ -79,11 +94,21 @@
 				}
 			}
 			
-			total = result.total;
-			hasMore = result.hasMore;
+			total = result.total || 0;
+			hasMore = result.hasMore || false;
 			error = null;
 		} catch (e) {
-			error = e.message;
+			log.error('[Logs] Fetch error:', e);
+			if (e.name === 'AbortError') {
+				error = 'Request timed out - the server may be slow or unavailable';
+			} else {
+				error = e.message || 'Unknown error occurred';
+			}
+			// Still load category/event metadata even on error
+			if (!append) {
+				logs = [];
+				total = 0;
+			}
 		} finally {
 			loading = false;
 		}
@@ -387,7 +412,12 @@
 		</div>
 		
 		<!-- Logs Table -->
-		{#if error}
+		{#if loading && logs.length === 0}
+			<div class="loading-state">
+				<div class="loading-spinner"></div>
+				<p>Loading event logs...</p>
+			</div>
+		{:else if error}
 			<div class="error-card">
 				<p>Error: {error}</p>
 			</div>
@@ -1023,6 +1053,32 @@
 		
 		.page-info {
 			min-width: auto;
+		}
+	}
+	
+	/* Loading State */
+	.loading-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 4rem 2rem;
+		color: var(--color-text-muted);
+		gap: 1rem;
+	}
+	
+	.loading-spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid var(--color-border);
+		border-top-color: var(--color-primary);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
 		}
 	}
 </style>

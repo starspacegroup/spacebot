@@ -74,28 +74,24 @@ export async function load({ cookies, platform, parent, params }) {
     welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
   };
 
-  // Permission settings - who can access what in the web interface
-  // These map Discord permissions to web interface features
+  // Permission settings - load from database or use defaults
+  const dbPermSettings = dbSettings.permission_settings || {};
   const permissionSettings = {
-    // View-only access to the dashboard
     viewDashboard: {
-      permission: "MANAGE_GUILD", // Discord permission required
-      roles: [], // Or specific role IDs that override
+      permission: dbPermSettings.viewDashboard?.permission || "MANAGE_GUILD",
+      roles: dbPermSettings.viewDashboard?.roles || [],
     },
-    // View event logs
     viewLogs: {
-      permission: "MANAGE_GUILD",
-      roles: [],
+      permission: dbPermSettings.viewLogs?.permission || "MANAGE_GUILD",
+      roles: dbPermSettings.viewLogs?.roles || [],
     },
-    // Manage automations (create, edit, delete)
     manageAutomations: {
-      permission: "MANAGE_GUILD",
-      roles: [],
+      permission: dbPermSettings.manageAutomations?.permission || "MANAGE_GUILD",
+      roles: dbPermSettings.manageAutomations?.roles || [],
     },
-    // Manage custom commands
     manageCommands: {
-      permission: "MANAGE_GUILD",
-      roles: [],
+      permission: dbPermSettings.manageCommands?.permission || "MANAGE_GUILD",
+      roles: dbPermSettings.manageCommands?.roles || [],
     },
     // Access server settings (this page) - always requires ADMINISTRATOR
     manageSettings: {
@@ -150,12 +146,22 @@ export const actions = {
     const welcomeChannelId = formData.get("welcomeChannelId");
     const welcomeMessage = formData.get("welcomeMessage");
 
+    // Permission settings
+    const viewDashboardPerm = formData.get("viewDashboardPerm") || "MANAGE_GUILD";
+    const viewLogsPerm = formData.get("viewLogsPerm") || "MANAGE_GUILD";
+    const manageAutomationsPerm = formData.get("manageAutomationsPerm") || "MANAGE_GUILD";
+    const manageCommandsPerm = formData.get("manageCommandsPerm") || "MANAGE_GUILD";
+
     log.info(`[Settings] Updating settings for server ${serverId}:`, {
       prefix,
       loggingChannelId,
       moderationRoleId,
       welcomeEnabled,
       welcomeChannelId,
+      viewDashboardPerm,
+      viewLogsPerm,
+      manageAutomationsPerm,
+      manageCommandsPerm,
     });
 
     // Save settings to database
@@ -172,6 +178,13 @@ export const actions = {
         welcome_enabled: welcomeEnabled,
         welcome_channel_id: welcomeChannelId || null,
         welcome_message: welcomeMessage || "Welcome {user} to {server}!",
+        permission_settings: {
+          viewDashboard: { permission: viewDashboardPerm, roles: [] },
+          viewLogs: { permission: viewLogsPerm, roles: [] },
+          manageAutomations: { permission: manageAutomationsPerm, roles: [] },
+          manageCommands: { permission: manageCommandsPerm, roles: [] },
+          manageSettings: { permission: "ADMINISTRATOR", roles: [] },
+        },
       });
 
       return {

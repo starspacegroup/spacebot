@@ -38,7 +38,7 @@
 	}
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="user-menu" class:open={isOpen}>
 	<button 

@@ -1,10 +1,19 @@
 <script>
+	import { onMount } from 'svelte';
 	import { theme } from '$lib/theme.svelte.js';
 	
 	/** @type {{ showLabels?: boolean }} */
 	let { showLabels = false } = $props();
+	
+	// Track if component has mounted to avoid hydration mismatch
+	let mounted = $state(false);
+	
+	onMount(() => {
+		mounted = true;
+	});
 </script>
 
+{#if mounted}
 <button 
 	class="theme-toggle" 
 	onclick={() => theme.toggle()}
@@ -34,8 +43,17 @@
 		<span class="label">{theme.isDark ? 'Light' : 'Dark'}</span>
 	{/if}
 </button>
+{:else}
+<!-- Placeholder to prevent layout shift during hydration -->
+<div class="theme-toggle-placeholder"></div>
+{/if}
 
 <style>
+	.theme-toggle-placeholder {
+		width: 36px;
+		height: 36px;
+	}
+	
 	.theme-toggle {
 		display: inline-flex;
 		align-items: center;
