@@ -717,6 +717,36 @@ async function executeAutomationAction(automation, event) {
       break;
     }
 
+    case "ADD_REACTION": {
+      const emoji = action_config.emoji;
+      // For SLASH_COMMAND_USE events, messageId is the bot's response message
+      const messageId = event.details?.messageId;
+      const channelId = event.channel_id;
+
+      if (!emoji) {
+        throw new Error("Missing emoji");
+      }
+
+      if (!messageId) {
+        throw new Error("No message ID available - this action requires a message event");
+      }
+
+      if (!channelId) {
+        throw new Error("No channel ID available");
+      }
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      const message = await channel.messages.fetch(messageId);
+      if (!message) throw new Error("Message not found");
+
+      // Handle custom emoji format (e.g., <:name:id> or just the emoji)
+      await message.react(emoji.trim());
+      log.info(`[Automation] Added reaction ${emoji} to message ${messageId}`);
+      break;
+    }
+
     default:
       throw new Error(`Unknown action type: ${action_type}`);
   }
