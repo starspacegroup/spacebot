@@ -152,6 +152,36 @@ async function executeToolCalls(toolCalls, env) {
 }
 
 /**
+ * Summarize an automation for AI display (keeps essential info, drops verbose config)
+ */
+function summarizeAutomation(auto) {
+  return {
+    id: auto.id,
+    name: auto.name,
+    enabled: auto.enabled,
+    trigger_events: auto.trigger_events,
+    action_type: auto.action_type,
+    trigger_count: auto.trigger_count,
+    created_by: auto.created_by,
+    last_triggered_at: auto.last_triggered_at,
+  };
+}
+
+/**
+ * Summarize a command for AI display
+ */
+function summarizeCommand(cmd) {
+  return {
+    id: cmd.id,
+    name: cmd.name,
+    description: cmd.description,
+    enabled: cmd.enabled,
+    use_count: cmd.use_count,
+    created_by: cmd.created_by,
+  };
+}
+
+/**
  * Format tool results for the AI to process
  */
 function formatToolResults(results) {
@@ -163,10 +193,24 @@ function formatToolResults(results) {
       formatted += `Arguments: ${JSON.stringify(args)}\n`;
     }
     if (result.success) {
-      // Truncate large results to avoid token limits
-      const dataStr = JSON.stringify(result.data, null, 2);
-      if (dataStr.length > 2000) {
-        formatted += `Result (truncated):\n${dataStr.substring(0, 2000)}...\n\n`;
+      let data = result.data;
+      
+      // For array results, provide count and summarize items
+      if (Array.isArray(data)) {
+        formatted += `Total items: ${data.length}\n`;
+        
+        // Summarize specific types to reduce token usage
+        if (tool === "get_automations" && data.length > 0) {
+          data = data.map(summarizeAutomation);
+        } else if (tool === "get_commands" && data.length > 0) {
+          data = data.map(summarizeCommand);
+        }
+      }
+      
+      // Truncate large results to avoid token limits (increased from 2000)
+      const dataStr = JSON.stringify(data, null, 2);
+      if (dataStr.length > 8000) {
+        formatted += `Result (truncated):\n${dataStr.substring(0, 8000)}...\n\n`;
       } else {
         formatted += `Result:\n${dataStr}\n\n`;
       }

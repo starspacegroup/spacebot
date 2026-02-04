@@ -69,10 +69,34 @@ export class MCPClient {
         throw new Error("No local D1 database found");
       }
       
-      // Use the first sqlite file (or the one with WAL)
-      const withWal = files.find(f => existsSync(join(wranglerDbPath, f + "-wal")));
-      const dbPath = join(wranglerDbPath, withWal || files[0]);
+      // Find the database that has the automations table (the SpaceBot database)
+      // This is necessary because miniflare creates multiple sqlite files for different D1 bindings
+      let selectedFile = null;
+      for (const file of files) {
+        try {
+          const testDb = new Database(join(wranglerDbPath, file), { readonly: true });
+          // Check if this database has our tables
+          const tables = testDb.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='automations'").all();
+          testDb.close();
+          if (tables.length > 0) {
+            selectedFile = file;
+            log.debug(`[MCP] Found SpaceBot database: ${file}`);
+            break;
+          }
+        } catch (e) {
+          // Skip files that can't be opened
+          log.debug(`[MCP] Skipping database file ${file}: ${e.message}`);
+        }
+      }
       
+      // Fallback to WAL-based selection if no database has the automations table
+      if (!selectedFile) {
+        const withWal = files.find(f => existsSync(join(wranglerDbPath, f + "-wal")));
+        selectedFile = withWal || files[0];
+        log.warn(`[MCP] Could not find database with automations table, falling back to: ${selectedFile}`);
+      }
+      
+      const dbPath = join(wranglerDbPath, selectedFile);
       log.info(`[MCP] Using local SQLite database: ${dbPath}`);
       this.localDb = new Database(dbPath, { readonly: true });
       return this.localDb;
