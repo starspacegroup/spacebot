@@ -99,6 +99,14 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
+					<a href="/admin/{data.serverId}/stats" class="quick-link-card">
+						<div class="quick-link-icon">📈</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">Statistics</span>
+							<span class="quick-link-desc">Comprehensive analytics dashboard</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
 				</div>
 			</section>
 			

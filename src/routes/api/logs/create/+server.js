@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { log, logEvent } from "$lib/db/logger.js";
 import { getGuildSettings } from "$lib/db/settings.js";
+import { updateMemberCount } from "$lib/db/server-stats.js";
 
 /**
  * Format an event for Discord channel logging
@@ -172,6 +173,17 @@ export async function POST({ request, platform }) {
     const result = await logEvent(db, event);
 
     if (result.success) {
+      // Update member count on join/leave events
+      if (event.event_type === 'MEMBER_JOIN' || event.event_type === 'MEMBER_LEAVE') {
+        const eventType = event.event_type === 'MEMBER_JOIN' ? 'join' : 'leave';
+        const statsResult = await updateMemberCount(db, event.guild_id, eventType);
+        if (statsResult.success) {
+          log.debug(`[Stats] Member count updated for ${event.guild_id}: ${statsResult.newCount}`);
+        } else {
+          log.debug(`[Stats] Could not update member count: ${statsResult.error}`);
+        }
+      }
+
       // Check if guild has a logging channel configured and send the log there
       try {
         const settings = await getGuildSettings(db, event.guild_id);
