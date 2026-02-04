@@ -15,6 +15,27 @@
 		secondaryLines = []
 	} = $props();
 	
+	// Tooltip state
+	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', value: '', label: '' });
+	
+	function showTooltip(event, point, labelOverride = null, unitOverride = null) {
+		const rect = event.currentTarget.closest('svg').getBoundingClientRect();
+		const svgX = event.clientX - rect.left;
+		const svgY = event.clientY - rect.top;
+		tooltip = {
+			visible: true,
+			x: svgX,
+			y: svgY,
+			date: point.label || formatDate(point.date),
+			value: point.value.toLocaleString() + (unitOverride ?? unit),
+			label: labelOverride
+		};
+	}
+	
+	function hideTooltip() {
+		tooltip.visible = false;
+	}
+	
 	// Responsive chart dimensions - using viewBox for scaling
 	const viewBoxWidth = 800;
 	const viewBoxHeight = 200;
@@ -29,7 +50,7 @@
 		
 		const values = data.map(d => d.value || 0);
 		const maxValue = Math.max(...values, 1);
-		const minValue = Math.min(...values, 0);
+		const minValue = Math.min(...values);
 		const range = maxValue - minValue || 1;
 		
 		// Calculate positions
@@ -153,6 +174,17 @@
 </script>
 
 <div class="chart-wrapper" style:--chart-color={color} style:--chart-height={height}>
+	{#if tooltip.visible}
+		<div 
+			class="chart-tooltip"
+			style:left="{tooltip.x}px"
+			style:top="{tooltip.y}px"
+		>
+			{#if tooltip.label}<div class="tooltip-label">{tooltip.label}</div>{/if}
+			<div class="tooltip-date">{tooltip.date}</div>
+			<div class="tooltip-value">{tooltip.value}</div>
+		</div>
+	{/if}
 	{#if chartData && chartData.points.length > 0}
 		<svg 
 			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}" 
@@ -235,9 +267,9 @@
 						cy={point.y} 
 						r="4" 
 						class="chart-point"
-					>
-						<title>{point.label || formatDate(point.date)}: {point.value.toLocaleString()}{unit}</title>
-					</circle>
+						onmouseenter={(e) => showTooltip(e, point)}
+						onmouseleave={hideTooltip}
+					/>
 				{/each}
 			{/if}
 			
@@ -257,9 +289,9 @@
 							r="3" 
 							class="secondary-point"
 							style:fill={secondary.color}
-						>
-							<title>{point.label || formatDate(point.date)} - {secondary.label}: {point.value.toLocaleString()}{secondary.unit || ''}</title>
-						</circle>
+							onmouseenter={(e) => showTooltip(e, point, secondary.label, secondary.unit || '')}
+							onmouseleave={hideTooltip}
+						/>
 					{/each}
 				{/if}
 			{/each}
@@ -305,6 +337,37 @@
 		width: 100%;
 		position: relative;
 		container-type: inline-size;
+	}
+	
+	.chart-tooltip {
+		position: absolute;
+		pointer-events: none;
+		background: var(--color-surface, rgba(30, 30, 30, 0.95));
+		border: 1px solid var(--color-border, rgba(255, 255, 255, 0.15));
+		border-radius: 8px;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.875rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		transform: translate(-50%, -120%);
+		z-index: 10;
+		white-space: nowrap;
+	}
+	
+	.tooltip-label {
+		color: var(--chart-color, #FEE75C);
+		font-weight: 600;
+		margin-bottom: 0.15rem;
+	}
+	
+	.tooltip-date {
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
+		font-size: 0.8rem;
+	}
+	
+	.tooltip-value {
+		color: var(--color-text, #fff);
+		font-weight: 600;
+		font-size: 1rem;
 	}
 	
 	.area-chart {
