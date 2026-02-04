@@ -22,6 +22,114 @@ import { generateChatResponse, isAIEnabled } from "../ai/chat.js";
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
 
+/**
+ * User DM session storage
+ * Tracks selected server and conversation state per user
+ * Map<userId, { selectedGuildId: string | null, selectedGuildName: string | null, lastMessageAt: number }>
+ */
+const userSessions = new Map();
+
+// Session timeout - clear after 24 hours of inactivity
+const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Get or create a user's DM session
+ * @param {string} userId - Discord user ID
+ * @returns {Object} Session object
+ */
+function getUserSession(userId) {
+  let session = userSessions.get(userId);
+  const now = Date.now();
+  
+  // Create new session if doesn't exist or expired
+  if (!session || (now - session.lastMessageAt) > SESSION_TIMEOUT_MS) {
+    session = {
+      selectedGuildId: null,
+      selectedGuildName: null,
+      lastMessageAt: now,
+    };
+    userSessions.set(userId, session);
+  } else {
+    session.lastMessageAt = now;
+  }
+  
+  return session;
+}
+
+/**
+ * Update user's selected server
+ * @param {string} userId - Discord user ID
+ * @param {string|null} guildId - Selected guild ID (null to clear)
+ * @param {string|null} guildName - Selected guild name
+ */
+function setUserSelectedGuild(userId, guildId, guildName) {
+  const session = getUserSession(userId);
+  session.selectedGuildId = guildId;
+  session.selectedGuildName = guildName;
+  log.info(`[DM] User ${userId} selected server: ${guildName || 'none'} (${guildId || 'none'})`);
+}
+
+/**
+ * Parse server selection from user message
+ * Supports:
+ * - "switch to <server>"
+ * - "use server <server>"
+ * - "select <server>"
+ * - "server: <server>"
+ * @param {string} message - User's message
+ * @param {Object[]} managedGuilds - Guilds user can select from
+ * @returns {{matched: boolean, guildId?: string, guildName?: string}}
+ */
+function parseServerSelection(message, managedGuilds) {
+  const lowerMessage = message.toLowerCase().trim();
+  
+  // Check for list servers command
+  if (lowerMessage === 'list servers' || lowerMessage === 'show servers' || lowerMessage === 'my servers') {
+    return { matched: true, listServers: true };
+  }
+  
+  // Patterns for selecting a server
+  const patterns = [
+    /^(?:switch\s+to|use\s+server|select(?:\s+server)?|server:)\s+(.+)$/i,
+    /^(?:set\s+server\s+(?:to\s+)?)(.+)$/i,
+  ];
+  
+  let serverNameQuery = null;
+  
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match) {
+      serverNameQuery = match[1].trim().toLowerCase();
+      break;
+    }
+  }
+  
+  if (!serverNameQuery) {
+    return { matched: false };
+  }
+  
+  // Try to match against user's managed guilds
+  // First try exact match, then partial match
+  let matchedGuild = managedGuilds.find(g => g.name.toLowerCase() === serverNameQuery);
+  
+  if (!matchedGuild) {
+    // Try partial match
+    matchedGuild = managedGuilds.find(g => g.name.toLowerCase().includes(serverNameQuery));
+  }
+  
+  if (!matchedGuild) {
+    // Try matching by ID
+    matchedGuild = managedGuilds.find(g => g.id === serverNameQuery);
+  }
+  
+  if (matchedGuild) {
+    return { matched: true, guildId: matchedGuild.id, guildName: matchedGuild.name };
+  }
+  
+  // Server selection was attempted but no match found
+  return { matched: true, notFound: true, query: serverNameQuery };
+}
+
 // Store reference to the client for automation execution
 let discordClient = null;
 
@@ -135,6 +243,40 @@ async function checkUserIsManager(client, userId) {
 }
 
 /**
+ * Format a list of servers for display
+ * @param {Object[]} guilds - Array of guild objects
+ * @param {string|null} selectedGuildId - Currently selected guild ID
+ * @returns {string}
+ */
+function formatServerList(guilds, selectedGuildId) {
+  if (guilds.length === 0) {
+    return "You don't manage any servers where I'm installed.";
+  }
+  
+  let response = "**Your Servers:**\n\n";
+  for (const guild of guilds) {
+    const isSelected = guild.id === selectedGuildId;
+    const marker = isSelected ? "✅ " : "• ";
+    const selectedText = isSelected ? " *(currently selected)*" : "";
+    response += `${marker}**${guild.name}**${selectedText}\n`;
+    response += `   Members: ${guild.memberCount || "?"} | Channels: ${guild.channelCount || "?"}\n`;
+  }
+  
+  response += "\n**To select a server:**\n";
+  response += "• `switch to <server name>`\n";
+  response += "• `select <server name>`\n";
+  response += "• `use server <server name>`\n";
+  
+  if (selectedGuildId) {
+    response += `\nCurrently working with: **${guilds.find(g => g.id === selectedGuildId)?.name || 'Unknown'}**`;
+  } else if (guilds.length === 1) {
+    response += `\n💡 *Since you only manage one server, I'll automatically use **${guilds[0].name}**.*`;
+  }
+  
+  return response;
+}
+
+/**
  * Handle a direct message to the bot
  * @param {Message} message - The DM message
  * @param {Client} client - Discord client
@@ -173,12 +315,65 @@ async function handleDirectMessage(message, client) {
   
   log.info(`[DM] User ${userName} manages ${managedGuilds.length} guild(s): ${managedGuilds.map(g => g.name).join(", ")}`);
   
+  // Get user's session
+  const session = getUserSession(userId);
+  
+  // If user only has one server, auto-select it
+  if (managedGuilds.length === 1 && !session.selectedGuildId) {
+    setUserSelectedGuild(userId, managedGuilds[0].id, managedGuilds[0].name);
+  }
+  
+  // Check if user is trying to select a server
+  const serverSelection = parseServerSelection(content, managedGuilds);
+  
+  if (serverSelection.matched) {
+    if (serverSelection.listServers) {
+      // User wants to list their servers
+      const response = formatServerList(managedGuilds, session.selectedGuildId);
+      await message.reply({ content: response }).catch(err => 
+        log.error("[DM] Failed to send server list:", err.message)
+      );
+      return;
+    }
+    
+    if (serverSelection.notFound) {
+      // Server selection attempted but no match
+      const response = `❌ I couldn't find a server matching "${serverSelection.query}".\n\n` +
+        formatServerList(managedGuilds, session.selectedGuildId);
+      await message.reply({ content: response }).catch(err => 
+        log.error("[DM] Failed to send server not found:", err.message)
+      );
+      return;
+    }
+    
+    if (serverSelection.guildId) {
+      // Successfully matched a server
+      setUserSelectedGuild(userId, serverSelection.guildId, serverSelection.guildName);
+      const response = `✅ Switched to **${serverSelection.guildName}**. I'll now answer questions about this server.\n\nWhat would you like to know?`;
+      await message.reply({ content: response }).catch(err => 
+        log.error("[DM] Failed to send server selection confirmation:", err.message)
+      );
+      return;
+    }
+  }
+  
+  // Get updated session after potential auto-selection
+  const currentSession = getUserSession(userId);
+  
+  // Find the selected guild object from managed guilds
+  const selectedGuild = currentSession.selectedGuildId 
+    ? managedGuilds.find(g => g.id === currentSession.selectedGuildId)
+    : null;
+  
   // Generate AI response with MCP tool access
   const aiResult = await generateChatResponse({
     message: content,
     userName,
     userId,
-    managedGuilds, // Pass guilds so AI knows which servers to query
+    managedGuilds, // Pass all guilds so AI knows what's available
+    selectedGuild, // Pass the currently selected guild
+    selectedGuildId: currentSession.selectedGuildId,
+    selectedGuildName: currentSession.selectedGuildName,
   }, process.env);
   
   if (!aiResult.success) {

@@ -71,11 +71,26 @@ Keep responses concise. Use Discord markdown.`;
 function buildSystemPrompt(context = {}) {
   let prompt = BASE_SYSTEM_PROMPT;
   
+  // Add selected server context prominently at the top
+  if (context.selectedGuildId && context.selectedGuildName) {
+    prompt += `\n\n## 🎯 CURRENTLY SELECTED SERVER\n`;
+    prompt += `**Server Name:** ${context.selectedGuildName}\n`;
+    prompt += `**Server ID:** ${context.selectedGuildId}\n`;
+    prompt += `\n**IMPORTANT:** When the user asks questions about "my server", "the server", stats, logs, automations, etc., use this server's ID (${context.selectedGuildId}) in all tool calls.\n`;
+    prompt += `Do NOT ask them which server - they have already selected it.\n`;
+  } else if (context.managedGuilds && context.managedGuilds.length > 1) {
+    prompt += `\n\n## ⚠️ NO SERVER SELECTED\n`;
+    prompt += `The user manages ${context.managedGuilds.length} servers but hasn't selected one yet.\n`;
+    prompt += `When they ask about server-specific data, remind them to select a server first.\n`;
+    prompt += `They can say: "switch to <server name>", "select <server>", or "list servers"\n`;
+  }
+  
   // Add managed guilds context if available - including live stats
   if (context.managedGuilds && context.managedGuilds.length > 0) {
     prompt += "\n\n## User's Managed Servers (LIVE DATA)\nThe user manages the following Discord servers where SpaceBot is installed. This data is LIVE from Discord:\n";
     for (const guild of context.managedGuilds) {
-      prompt += `\n### ${guild.name}${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
+      const isSelected = context.selectedGuildId === guild.id;
+      prompt += `\n### ${guild.name}${isSelected ? ' ✅ SELECTED' : ''}${guild.isOwner ? ' [Owner]' : ''}${guild.isAdmin ? ' [Admin]' : ''}\n`;
       prompt += `- Server ID: ${guild.id}\n`;
       if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
       if (guild.onlineCount !== undefined) prompt += `- Online: ${guild.onlineCount}\n`;
@@ -331,15 +346,28 @@ async function callAI(messages, env) {
  * @param {string} options.userId - The user's Discord ID
  * @param {Object[]} [options.history] - Previous messages in the conversation
  * @param {Object[]} [options.managedGuilds] - Guilds the user manages
+ * @param {Object} [options.selectedGuild] - The currently selected guild object
+ * @param {string} [options.selectedGuildId] - The currently selected guild ID
+ * @param {string} [options.selectedGuildName] - The currently selected guild name
  * @param {Object} env - Environment variables
  * @returns {Promise<{success: boolean, response?: string, error?: string, toolsUsed?: string[]}>}
  */
 export async function generateChatResponse(options, env) {
-  const { message, userName, userId, history = [], managedGuilds = [] } = options;
+  const { 
+    message, 
+    userName, 
+    userId, 
+    history = [], 
+    managedGuilds = [],
+    selectedGuild = null,
+    selectedGuildId = null,
+    selectedGuildName = null,
+  } = options;
   
   // Direct console.log for debugging (bypasses LOG_LEVEL)
   console.log("[AI] generateChatResponse called for user:", userName);
   console.log("[AI] env keys:", Object.keys(env || {}));
+  console.log("[AI] Selected server:", selectedGuildName || "none", `(${selectedGuildId || "none"})`);
   
   const accountId = env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = env.CLOUDFLARE_AI_TOKEN;
@@ -364,10 +392,13 @@ export async function generateChatResponse(options, env) {
   
   log.info(`[AI] MCP enabled: ${mcpEnabled}`);
   
-  // Build system prompt with context
+  // Build system prompt with context including selected server
   const systemPrompt = buildSystemPrompt({
     managedGuilds,
     mcpEnabled,
+    selectedGuild,
+    selectedGuildId,
+    selectedGuildName,
   });
   
   // Build initial messages

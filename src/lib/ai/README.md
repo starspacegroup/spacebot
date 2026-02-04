@@ -7,6 +7,47 @@ This module integrates with Cloudflare Workers AI to provide LLM-based chat func
 - **AI Chat via DMs**: Server managers can chat with SpaceBot in DMs
 - **MCP Tool Integration**: AI can query event logs, automations, commands, and settings
 - **Multi-Guild Support**: Works across all servers where the user is a manager
+- **Server Selection**: Users can select which server to operate on when managing multiple servers
+
+## Server Selection
+
+When a user manages multiple servers, they can select which server to work with:
+
+### Commands
+- `list servers` / `show servers` / `my servers` - List all managed servers
+- `switch to <server name>` - Select a server by name
+- `select <server name>` - Select a server by name
+- `use server <server name>` - Select a server by name
+- `set server to <server name>` - Select a server by name
+
+### Behavior
+- If a user only manages one server, it's automatically selected
+- Server selection persists for 24 hours of inactivity
+- The AI will use the selected server's ID for all tool calls
+- If no server is selected and multiple are available, the AI will prompt the user to select one
+
+### Example
+```
+User: list servers
+SpaceBot: 
+**Your Servers:**
+
+• **My Gaming Server**
+   Members: 150 | Channels: 25
+• **Coding Community**
+   Members: 500 | Channels: 40
+
+**To select a server:**
+• `switch to <server name>`
+• `select <server name>`
+• `use server <server name>`
+
+User: switch to gaming
+SpaceBot: ✅ Switched to **My Gaming Server**. I'll now answer questions about this server.
+
+User: how many events today?
+SpaceBot: [Uses get_log_stats with the selected server's ID]
+```
 
 ## Setup
 
