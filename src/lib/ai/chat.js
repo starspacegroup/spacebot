@@ -318,10 +318,17 @@ async function executeToolCalls(toolCalls, env) {
   
   for (const call of toolCalls) {
     log.info(`[AI] Executing tool: ${call.tool}`);
-    const result = await mcpClient.executeTool(call.tool, call.args);
+    
+    // Inject environment variables for tools that need them (e.g., image generation)
+    const argsWithEnv = {
+      ...call.args,
+      _env: env, // Internal parameter for Cloudflare AI access
+    };
+    
+    const result = await mcpClient.executeTool(call.tool, argsWithEnv);
     results.push({
       tool: call.tool,
-      args: call.args,
+      args: call.args, // Don't expose _env in the formatted output
       result,
     });
   }

@@ -824,6 +824,268 @@ async function getUserRoles(guildId, userId) {
 }
 
 /**
+ * Get voice and stage channels for a guild via Discord API
+ */
+async function getVoiceAndStageChannels(guildId) {
+  if (!DISCORD_BOT_TOKEN) {
+    throw new Error("DISCORD_BOT_TOKEN not configured");
+  }
+
+  const response = await fetch(
+    `https://discord.com/api/v10/guilds/${guildId}/channels`,
+    { headers: { "Authorization": `Bot ${DISCORD_BOT_TOKEN}` } }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch channels: ${response.status}`);
+  }
+
+  const channels = await response.json();
+  
+  // Channel types: 2 = Voice, 13 = Stage
+  const voiceChannels = channels
+    .filter(c => c.type === 2)
+    .map(c => ({ id: c.id, name: c.name, type: "voice", parentId: c.parent_id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  
+  const stageChannels = channels
+    .filter(c => c.type === 13)
+    .map(c => ({ id: c.id, name: c.name, type: "stage", parentId: c.parent_id }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return {
+    voiceChannels,
+    stageChannels,
+    totalVoice: voiceChannels.length,
+    totalStage: stageChannels.length,
+  };
+}
+
+/**
+ * Parse a natural language event text into structured event data
+ */
+function parseEventFromText(text) {
+  const lines = text.trim().split(/\n/);
+  let name, dateTimeStr;
+  
+  if (lines.length >= 2) {
+    name = lines[0].trim();
+    dateTimeStr = lines.slice(1).join(' ').trim();
+  } else {
+    const dateMatch = text.match(/(.+?)\s*[,·]?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})/i);
+    if (dateMatch) {
+      name = dateMatch[1].trim();
+      dateTimeStr = text.substring(dateMatch.index + dateMatch[1].length).trim();
+    } else {
+      return null;
+    }
+  }
+  
+  name = name.replace(/[,·]\s*$/, '').trim();
+  dateTimeStr = dateTimeStr.replace(/^[,·\s]+/, '');
+  
+  const datePattern = /([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/;
+  const dateMatch = dateTimeStr.match(datePattern);
+  
+  if (!dateMatch) return null;
+  
+  const monthStr = dateMatch[1];
+  const day = parseInt(dateMatch[2], 10);
+  const year = parseInt(dateMatch[3], 10);
+  
+  const months = {
+    'jan': 0, 'january': 0, 'feb': 1, 'february': 1, 'mar': 2, 'march': 2,
+    'apr': 3, 'april': 3, 'may': 4, 'jun': 5, 'june': 5, 'jul': 6, 'july': 6,
+    'aug': 7, 'august': 7, 'sep': 8, 'september': 8, 'oct': 9, 'october': 9,
+    'nov': 10, 'november': 10, 'dec': 11, 'december': 11,
+  };
+  
+  const month = months[monthStr.toLowerCase()];
+  if (month === undefined) return null;
+  
+  const timeStr = dateTimeStr.substring(dateMatch.index + dateMatch[0].length).trim();
+  const cleanTimeStr = timeStr.replace(/^[·,]\s*|^at\s+/i, '').trim();
+  
+  const timeRangePattern = /(\d{1,2}):?(\d{2})?\s*(AM|PM)?\s*[–\-–]\s*(\d{1,2}):?(\d{2})?\s*(AM|PM)/i;
+  const singleTimePattern = /(\d{1,2}):?(\d{2})?\s*(AM|PM)/i;
+  
+  let startHour, startMinute, endHour, endMinute;
+  const rangeMatch = cleanTimeStr.match(timeRangePattern);
+  
+  if (rangeMatch) {
+    startHour = parseInt(rangeMatch[1], 10);
+    startMinute = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : 0;
+    const startAmPm = rangeMatch[3]?.toUpperCase();
+    endHour = parseInt(rangeMatch[4], 10);
+    endMinute = rangeMatch[5] ? parseInt(rangeMatch[5], 10) : 0;
+    const endAmPm = rangeMatch[6].toUpperCase();
+    
+    const effectiveStartAmPm = startAmPm || endAmPm;
+    if (effectiveStartAmPm === 'PM' && startHour !== 12) startHour += 12;
+    else if (effectiveStartAmPm === 'AM' && startHour === 12) startHour = 0;
+    if (endAmPm === 'PM' && endHour !== 12) endHour += 12;
+    else if (endAmPm === 'AM' && endHour === 12) endHour = 0;
+  } else {
+    const singleMatch = cleanTimeStr.match(singleTimePattern);
+    if (singleMatch) {
+      startHour = parseInt(singleMatch[1], 10);
+      startMinute = singleMatch[2] ? parseInt(singleMatch[2], 10) : 0;
+      const amPm = singleMatch[3].toUpperCase();
+      if (amPm === 'PM' && startHour !== 12) startHour += 12;
+      else if (amPm === 'AM' && startHour === 12) startHour = 0;
+      endHour = startHour + 2;
+      endMinute = startMinute;
+      if (endHour >= 24) endHour -= 24;
+    } else {
+      startHour = 12; startMinute = 0; endHour = 14; endMinute = 0;
+    }
+  }
+  
+  const startDate = new Date(year, month, day, startHour, startMinute, 0);
+  const endDate = new Date(year, month, day, endHour, endMinute, 0);
+  if (endDate <= startDate) endDate.setDate(endDate.getDate() + 1);
+  
+  return {
+    name,
+    scheduledStartTime: startDate.toISOString(),
+    scheduledEndTime: endDate.toISOString(),
+    entityType: 3,
+  };
+}
+
+/**
+ * Parse multiple events from text
+ */
+function parseEventsFromText(text) {
+  const eventBlocks = text.split(/\n\s*\n/).filter(block => block.trim());
+  const events = [];
+  for (const block of eventBlocks) {
+    const event = parseEventFromText(block);
+    if (event) events.push(event);
+  }
+  return events;
+}
+
+/**
+ * Get scheduled events for a guild via Discord API
+ */
+async function getScheduledEvents(guildId) {
+  if (!DISCORD_BOT_TOKEN) {
+    throw new Error("DISCORD_BOT_TOKEN not configured");
+  }
+
+  const response = await fetch(
+    `https://discord.com/api/v10/guilds/${guildId}/scheduled-events?with_user_count=true`,
+    { headers: { "Authorization": `Bot ${DISCORD_BOT_TOKEN}` } }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch scheduled events: ${response.status}`);
+  }
+
+  const events = await response.json();
+  return events.map(event => ({
+    id: event.id,
+    name: event.name,
+    description: event.description,
+    scheduledStartTime: event.scheduled_start_time,
+    scheduledEndTime: event.scheduled_end_time,
+    entityType: event.entity_type,
+    status: event.status,
+    userCount: event.user_count,
+    location: event.entity_metadata?.location,
+  }));
+}
+
+/**
+ * Create a scheduled event in a guild via Discord API
+ */
+async function createScheduledEvent(guildId, eventData) {
+  if (!DISCORD_BOT_TOKEN) {
+    throw new Error("DISCORD_BOT_TOKEN not configured");
+  }
+
+  const payload = {
+    name: eventData.name,
+    privacy_level: 2,
+    scheduled_start_time: eventData.scheduledStartTime,
+    entity_type: eventData.entityType || 3,
+  };
+
+  if (eventData.description) payload.description = eventData.description;
+  if (eventData.scheduledEndTime) payload.scheduled_end_time = eventData.scheduledEndTime;
+  if (eventData.channelId && eventData.entityType !== 3) payload.channel_id = eventData.channelId;
+  if (eventData.entityType === 3) {
+    payload.entity_metadata = { location: eventData.location || "To be announced" };
+  }
+
+  const response = await fetch(
+    `https://discord.com/api/v10/guilds/${guildId}/scheduled-events`,
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bot ${DISCORD_BOT_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(`Failed to create event: ${errorData.message || response.status}`);
+  }
+
+  const event = await response.json();
+  return {
+    id: event.id,
+    name: event.name,
+    description: event.description,
+    scheduledStartTime: event.scheduled_start_time,
+    scheduledEndTime: event.scheduled_end_time,
+    entityType: event.entity_type,
+    status: event.status,
+  };
+}
+
+/**
+ * Create multiple scheduled events from text
+ */
+async function createMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null) {
+  const parsedEvents = parseEventsFromText(eventsText);
+  
+  if (parsedEvents.length === 0) {
+    return {
+      success: false,
+      error: "Could not parse any events from the provided text.",
+      created: [],
+      failed: [],
+    };
+  }
+
+  const results = { success: true, created: [], failed: [], total: parsedEvents.length };
+
+  for (const event of parsedEvents) {
+    try {
+      // Apply entity type if provided
+      if (entityType) event.entityType = entityType;
+      // Apply channel ID if provided (for voice/stage events)
+      if (channelId) event.channelId = channelId;
+      // Apply location if provided (for external events)
+      if (location && !event.location) event.location = location;
+      
+      const created = await createScheduledEvent(guildId, event);
+      results.created.push(created);
+    } catch (error) {
+      results.failed.push({ name: event.name, error: error.message, scheduledStartTime: event.scheduledStartTime });
+      results.success = false;
+    }
+  }
+
+  return results;
+}
+
+/**
  * Search automations by name or description
  */
 async function searchAutomations(guildId, query) {
@@ -1289,6 +1551,114 @@ const TOOLS = [
       required: ["guildId", "userId"],
     },
   },
+  {
+    name: "get_voice_and_stage_channels",
+    description: "Get all voice and stage channels in a Discord server. Use this BEFORE creating voice or stage events to find the correct channel ID.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+      },
+      required: ["guildId"],
+    },
+  },
+  {
+    name: "get_scheduled_events",
+    description: "Get all scheduled events for a Discord server. Returns upcoming events with names, times, locations, and RSVP counts.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+      },
+      required: ["guildId"],
+    },
+  },
+  {
+    name: "create_scheduled_event",
+    description: "Create a single scheduled event. Event types: 1=Stage (in stage channel), 2=Voice (in voice channel), 3=External (location/URL). For Stage/Voice events, use get_voice_and_stage_channels first to find channel IDs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        name: {
+          type: "string",
+          description: "The name of the event",
+        },
+        scheduledStartTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event starts (e.g., '2026-02-14T21:10:00.000Z')",
+        },
+        scheduledEndTime: {
+          type: "string",
+          description: "ISO 8601 date/time when the event ends",
+        },
+        description: {
+          type: "string",
+          description: "Description of the event",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type: 1=Stage, 2=Voice, 3=External",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED for entityType 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Location or URL - REQUIRED for entityType 3 (external events)",
+        },
+        generateImage: {
+          type: "boolean",
+          description: "Generate an AI banner image for the event (only available via Discord bot, not standalone MCP server)",
+        },
+      },
+      required: ["guildId", "name", "scheduledStartTime", "entityType"],
+    },
+  },
+  {
+    name: "create_multiple_scheduled_events",
+    description: "Create multiple scheduled events from text. All events use the same type. For Voice/Stage events, get the channel ID first using get_voice_and_stage_channels.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        guildId: {
+          type: "string",
+          description: "The Discord server (guild) ID",
+        },
+        eventsText: {
+          type: "string",
+          description: "Text containing multiple event descriptions, separated by blank lines",
+        },
+        entityType: {
+          type: "number",
+          description: "Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+        },
+        channelId: {
+          type: "string",
+          description: "Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+        },
+        location: {
+          type: "string",
+          description: "Default location for external events - REQUIRED if entityType is 3",
+        },
+        generateImages: {
+          type: "boolean",
+          description: "Generate AI banner images for all events (only available via Discord bot, not standalone MCP server)",
+        },
+      },
+      required: ["guildId", "eventsText"],
+    },
+  },
 ];
 
 // Create the MCP server
@@ -1441,6 +1811,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_user_roles":
         result = await getUserRoles(args.guildId, args.userId);
+        break;
+
+      case "get_voice_and_stage_channels":
+        result = await getVoiceAndStageChannels(args.guildId);
+        break;
+
+      case "get_scheduled_events":
+        result = await getScheduledEvents(args.guildId);
+        break;
+
+      case "create_scheduled_event":
+        result = await createScheduledEvent(args.guildId, {
+          name: args.name,
+          description: args.description,
+          scheduledStartTime: args.scheduledStartTime,
+          scheduledEndTime: args.scheduledEndTime,
+          entityType: args.entityType || 3,
+          location: args.location,
+          channelId: args.channelId,
+        });
+        break;
+
+      case "create_multiple_scheduled_events":
+        result = await createMultipleScheduledEvents(
+          args.guildId,
+          args.eventsText,
+          args.location,
+          args.entityType,
+          args.channelId
+        );
         break;
 
       default:

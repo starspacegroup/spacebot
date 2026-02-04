@@ -683,6 +683,487 @@ export class MCPClient {
   }
 
   /**
+   * Get voice and stage channels for a guild
+   * @param {string} guildId - The guild ID
+   * @returns {Promise<Object>} - Voice and stage channels
+   */
+  async getVoiceAndStageChannels(guildId) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot fetch channels");
+    }
+
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/channels`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch channels: ${response.status}`);
+    }
+
+    const channels = await response.json();
+    
+    // Channel types: 2 = Voice, 13 = Stage
+    const voiceChannels = channels
+      .filter(c => c.type === 2)
+      .map(c => ({ id: c.id, name: c.name, type: "voice", parentId: c.parent_id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    
+    const stageChannels = channels
+      .filter(c => c.type === 13)
+      .map(c => ({ id: c.id, name: c.name, type: "stage", parentId: c.parent_id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      voiceChannels,
+      stageChannels,
+      totalVoice: voiceChannels.length,
+      totalStage: stageChannels.length,
+    };
+  }
+
+  /**
+   * Parse a natural language event text into structured event data
+   * Handles formats like:
+   * - "Men's Olympic Ice Hockey Preliminary: USA vs Denmark\nFeb 14, 2026 · 9:10–11:30 PM"
+   * - "Event Name, Feb 14 2026 9:10 PM - 11:30 PM"
+   */
+  parseEventFromText(text) {
+    // Try to extract event name and time from the text
+    // Common patterns:
+    // 1. Name on first line, date/time on second line (separated by \n)
+    // 2. Name, then date · time–time format
+    
+    const lines = text.trim().split(/\n/);
+    let name, dateTimeStr;
+    
+    if (lines.length >= 2) {
+      // Multi-line format
+      name = lines[0].trim();
+      dateTimeStr = lines.slice(1).join(' ').trim();
+    } else {
+      // Try to find date pattern in single line
+      // Look for patterns like "Feb 14, 2026" or "2026-02-14"
+      const dateMatch = text.match(/(.+?)\s*[,·]?\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}|\d{4}-\d{2}-\d{2})/i);
+      if (dateMatch) {
+        name = dateMatch[1].trim();
+        dateTimeStr = text.substring(dateMatch.index + dateMatch[1].length).trim();
+      } else {
+        return null; // Can't parse
+      }
+    }
+    
+    // Clean up name (remove trailing comma, period, etc.)
+    name = name.replace(/[,·]\s*$/, '').trim();
+    
+    // Parse date and time from dateTimeStr
+    // Format examples:
+    // "Feb 14, 2026 · 9:10–11:30 PM"
+    // "Feb 14, 2026 9:10 PM - 11:30 PM"
+    // "February 14, 2026 at 9:10 PM"
+    
+    // Remove leading separators
+    dateTimeStr = dateTimeStr.replace(/^[,·\s]+/, '');
+    
+    // Extract date part (e.g., "Feb 14, 2026")
+    const datePattern = /([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})/;
+    const dateMatch = dateTimeStr.match(datePattern);
+    
+    if (!dateMatch) {
+      return null;
+    }
+    
+    const monthStr = dateMatch[1];
+    const day = parseInt(dateMatch[2], 10);
+    const year = parseInt(dateMatch[3], 10);
+    
+    // Convert month name to number
+    const months = {
+      'jan': 0, 'january': 0,
+      'feb': 1, 'february': 1,
+      'mar': 2, 'march': 2,
+      'apr': 3, 'april': 3,
+      'may': 4,
+      'jun': 5, 'june': 5,
+      'jul': 6, 'july': 6,
+      'aug': 7, 'august': 7,
+      'sep': 8, 'september': 8,
+      'oct': 9, 'october': 9,
+      'nov': 10, 'november': 10,
+      'dec': 11, 'december': 11,
+    };
+    
+    const month = months[monthStr.toLowerCase()];
+    if (month === undefined) {
+      return null;
+    }
+    
+    // Extract time part
+    // Look for patterns like "9:10–11:30 PM", "9:10 PM - 11:30 PM", "9:10 PM"
+    const timeStr = dateTimeStr.substring(dateMatch.index + dateMatch[0].length).trim();
+    
+    // Remove leading separators (· or at or ,)
+    const cleanTimeStr = timeStr.replace(/^[·,]\s*|^at\s+/i, '').trim();
+    
+    // Parse start and end times
+    // Formats: "9:10–11:30 PM", "9:10 PM – 11:30 PM", "9:10-11:30 PM", "9:10 PM"
+    const timeRangePattern = /(\d{1,2}):?(\d{2})?\s*(AM|PM)?\s*[–\-–]\s*(\d{1,2}):?(\d{2})?\s*(AM|PM)/i;
+    const singleTimePattern = /(\d{1,2}):?(\d{2})?\s*(AM|PM)/i;
+    
+    let startHour, startMinute, endHour, endMinute;
+    const rangeMatch = cleanTimeStr.match(timeRangePattern);
+    
+    if (rangeMatch) {
+      // Time range found
+      startHour = parseInt(rangeMatch[1], 10);
+      startMinute = rangeMatch[2] ? parseInt(rangeMatch[2], 10) : 0;
+      const startAmPm = rangeMatch[3]?.toUpperCase();
+      endHour = parseInt(rangeMatch[4], 10);
+      endMinute = rangeMatch[5] ? parseInt(rangeMatch[5], 10) : 0;
+      const endAmPm = rangeMatch[6].toUpperCase();
+      
+      // Convert to 24-hour format
+      // If start AM/PM is not specified, infer from end time
+      const effectiveStartAmPm = startAmPm || endAmPm;
+      
+      if (effectiveStartAmPm === 'PM' && startHour !== 12) {
+        startHour += 12;
+      } else if (effectiveStartAmPm === 'AM' && startHour === 12) {
+        startHour = 0;
+      }
+      
+      if (endAmPm === 'PM' && endHour !== 12) {
+        endHour += 12;
+      } else if (endAmPm === 'AM' && endHour === 12) {
+        endHour = 0;
+      }
+    } else {
+      // Try single time
+      const singleMatch = cleanTimeStr.match(singleTimePattern);
+      if (singleMatch) {
+        startHour = parseInt(singleMatch[1], 10);
+        startMinute = singleMatch[2] ? parseInt(singleMatch[2], 10) : 0;
+        const amPm = singleMatch[3].toUpperCase();
+        
+        if (amPm === 'PM' && startHour !== 12) {
+          startHour += 12;
+        } else if (amPm === 'AM' && startHour === 12) {
+          startHour = 0;
+        }
+        
+        // Default end time: 2 hours after start
+        endHour = startHour + 2;
+        endMinute = startMinute;
+        if (endHour >= 24) {
+          endHour -= 24;
+        }
+      } else {
+        // No time found, default to noon-2pm
+        startHour = 12;
+        startMinute = 0;
+        endHour = 14;
+        endMinute = 0;
+      }
+    }
+    
+    // Create Date objects
+    const startDate = new Date(year, month, day, startHour, startMinute, 0);
+    const endDate = new Date(year, month, day, endHour, endMinute, 0);
+    
+    // If end time is before start time, assume it's the next day
+    if (endDate <= startDate) {
+      endDate.setDate(endDate.getDate() + 1);
+    }
+    
+    return {
+      name,
+      scheduledStartTime: startDate.toISOString(),
+      scheduledEndTime: endDate.toISOString(),
+      entityType: 3, // External event
+    };
+  }
+
+  /**
+   * Parse multiple events from text, separated by blank lines
+   */
+  parseEventsFromText(text) {
+    // Split by double newlines or look for patterns
+    const eventBlocks = text.split(/\n\s*\n/).filter(block => block.trim());
+    const events = [];
+    
+    for (const block of eventBlocks) {
+      const event = this.parseEventFromText(block);
+      if (event) {
+        events.push(event);
+      }
+    }
+    
+    return events;
+  }
+
+  /**
+   * Generate an image using Cloudflare AI for an event
+   * @param {string} eventName - The event name to generate an image for
+   * @param {Object} env - Environment variables with Cloudflare credentials
+   * @returns {Promise<string|null>} - Base64 data URI or null if failed
+   */
+  async generateEventImage(eventName, env = {}) {
+    const accountId = env.CLOUDFLARE_ACCOUNT_ID || this.accountId;
+    const apiToken = env.CLOUDFLARE_AI_TOKEN || env.CLOUDFLARE_API_TOKEN || this.apiToken;
+    
+    if (!accountId || !apiToken) {
+      log.warn("[MCP] Cannot generate image: missing Cloudflare credentials");
+      return null;
+    }
+
+    // Use Stable Diffusion XL Lightning - fast and free
+    const model = "@cf/bytedance/stable-diffusion-xl-lightning";
+    
+    // Create a prompt that generates an attractive event banner
+    const prompt = `Create a vibrant, eye-catching event banner image for: "${eventName}". 
+Style: Modern, professional, suitable for a Discord server event. 
+Include relevant visual elements that match the event theme. 
+No text or words in the image. High quality, 16:9 aspect ratio.`;
+
+    log.info(`[MCP] Generating image for event: ${eventName}`);
+
+    try {
+      const response = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt,
+            num_steps: 4, // Lightning model uses fewer steps
+            width: 1024,
+            height: 576, // 16:9 aspect ratio
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        log.error(`[MCP] Image generation failed: ${response.status} - ${errorText}`);
+        return null;
+      }
+
+      // The response is raw image bytes
+      const imageBuffer = await response.arrayBuffer();
+      const base64 = Buffer.from(imageBuffer).toString("base64");
+      
+      // Return as data URI for Discord
+      const dataUri = `data:image/png;base64,${base64}`;
+      
+      log.info(`[MCP] Successfully generated image for: ${eventName}`);
+      return dataUri;
+    } catch (error) {
+      log.error(`[MCP] Image generation error:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Create a scheduled event in a Discord server
+   * @param {string} guildId - The guild ID
+   * @param {Object} eventData - Event data
+   * @param {Object} [options] - Additional options
+   * @param {boolean} [options.generateImage] - Whether to generate an AI image
+   * @param {Object} [options.env] - Environment variables for image generation
+   * @returns {Promise<Object>} - Created event
+   */
+  async createScheduledEvent(guildId, eventData, options = {}) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot create events");
+    }
+
+    // Generate AI image if requested
+    let imageDataUri = eventData.image;
+    if (options.generateImage && !imageDataUri) {
+      imageDataUri = await this.generateEventImage(eventData.name, options.env);
+    }
+
+    // Build the event payload for Discord API
+    const payload = {
+      name: eventData.name,
+      privacy_level: 2, // Guild only
+      scheduled_start_time: eventData.scheduledStartTime,
+      entity_type: eventData.entityType || 3, // Default to external
+    };
+
+    // Add optional fields
+    if (eventData.description) {
+      payload.description = eventData.description;
+    }
+    if (eventData.scheduledEndTime) {
+      payload.scheduled_end_time = eventData.scheduledEndTime;
+    }
+    if (eventData.channelId && eventData.entityType !== 3) {
+      payload.channel_id = eventData.channelId;
+    }
+    // For external events (entityType 3), location is required
+    if (eventData.entityType === 3) {
+      payload.entity_metadata = { 
+        location: eventData.location || eventData.entityMetadata?.location || "To be announced" 
+      };
+    }
+    if (imageDataUri) {
+      payload.image = imageDataUri;
+    }
+
+    log.info(`[MCP] Creating scheduled event in guild ${guildId}: ${eventData.name}`);
+
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/scheduled-events`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = errorData.message || `HTTP ${response.status}`;
+      log.error(`[MCP] Failed to create event: ${errorMsg}`, errorData);
+      throw new Error(`Failed to create event: ${errorMsg}`);
+    }
+
+    const createdEvent = await response.json();
+    log.info(`[MCP] Created event: ${createdEvent.name} (ID: ${createdEvent.id})`);
+
+    return {
+      id: createdEvent.id,
+      name: createdEvent.name,
+      description: createdEvent.description,
+      scheduledStartTime: createdEvent.scheduled_start_time,
+      scheduledEndTime: createdEvent.scheduled_end_time,
+      entityType: createdEvent.entity_type,
+      status: createdEvent.status,
+    };
+  }
+
+  /**
+   * Create multiple scheduled events from a text description
+   * @param {string} guildId - The guild ID
+   * @param {string} eventsText - Text containing multiple event descriptions
+   * @param {string} [location] - Optional default location for external events
+   * @param {number} [entityType] - Optional entity type (1=Stage, 2=Voice, 3=External)
+   * @param {string} [channelId] - Optional channel ID for voice/stage events
+   * @param {boolean} [generateImages] - Whether to generate AI images for each event
+   * @param {Object} [env] - Environment variables for image generation
+   * @returns {Promise<Object>} - Results of the batch creation
+   */
+  async createMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null, generateImages = false, env = {}) {
+    const parsedEvents = this.parseEventsFromText(eventsText);
+    
+    if (parsedEvents.length === 0) {
+      return {
+        success: false,
+        error: "Could not parse any events from the provided text. Please use a format like:\n\nEvent Name\nMonth Day, Year · StartTime–EndTime AM/PM",
+        created: [],
+        failed: [],
+      };
+    }
+
+    log.info(`[MCP] Creating ${parsedEvents.length} scheduled events in guild ${guildId}${generateImages ? ' with AI images' : ''}`);
+
+    const results = {
+      success: true,
+      created: [],
+      failed: [],
+      total: parsedEvents.length,
+      imagesGenerated: 0,
+    };
+
+    for (const event of parsedEvents) {
+      try {
+        // Apply entity type if provided
+        if (entityType) {
+          event.entityType = entityType;
+        }
+        
+        // Apply channel ID if provided (for voice/stage events)
+        if (channelId) {
+          event.channelId = channelId;
+        }
+        
+        // Add default location if provided (for external events)
+        if (location && !event.location) {
+          event.location = location;
+        }
+        
+        const created = await this.createScheduledEvent(guildId, event, {
+          generateImage: generateImages,
+          env,
+        });
+        results.created.push(created);
+        
+        if (generateImages) {
+          results.imagesGenerated++;
+        }
+      } catch (error) {
+        results.failed.push({
+          name: event.name,
+          error: error.message,
+          scheduledStartTime: event.scheduledStartTime,
+        });
+        results.success = false;
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Get scheduled events for a guild
+   * @param {string} guildId - The guild ID
+   * @returns {Promise<Array>} - List of scheduled events
+   */
+  async getScheduledEvents(guildId) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot fetch events");
+    }
+
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/scheduled-events?with_user_count=true`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch scheduled events: ${response.status}`);
+    }
+
+    const events = await response.json();
+    
+    return events.map(event => ({
+      id: event.id,
+      name: event.name,
+      description: event.description,
+      scheduledStartTime: event.scheduled_start_time,
+      scheduledEndTime: event.scheduled_end_time,
+      entityType: event.entity_type,
+      status: event.status,
+      userCount: event.user_count,
+      location: event.entity_metadata?.location,
+    }));
+  }
+
+  /**
    * Execute a tool by name with the given arguments
    * This is the main entry point for AI tool calling
    */
@@ -799,6 +1280,49 @@ export class MCPClient {
           return {
             success: true,
             data: await this.getUserRoles(args.guildId, args.userId),
+          };
+
+        case "get_voice_and_stage_channels":
+          return {
+            success: true,
+            data: await this.getVoiceAndStageChannels(args.guildId),
+          };
+
+        case "get_scheduled_events":
+          return {
+            success: true,
+            data: await this.getScheduledEvents(args.guildId),
+          };
+
+        case "create_scheduled_event":
+          return {
+            success: true,
+            data: await this.createScheduledEvent(args.guildId, {
+              name: args.name,
+              description: args.description,
+              scheduledStartTime: args.scheduledStartTime,
+              scheduledEndTime: args.scheduledEndTime,
+              entityType: args.entityType || 3,
+              location: args.location,
+              channelId: args.channelId,
+            }, {
+              generateImage: args.generateImage,
+              env: args._env, // Internal: passed from chat.js
+            }),
+          };
+
+        case "create_multiple_scheduled_events":
+          return {
+            success: true,
+            data: await this.createMultipleScheduledEvents(
+              args.guildId,
+              args.eventsText,
+              args.location,
+              args.entityType,
+              args.channelId,
+              args.generateImages,
+              args._env // Internal: passed from chat.js
+            ),
           };
 
         default:
@@ -929,6 +1453,47 @@ export const MCP_TOOLS = [
     parameters: {
       guildId: "string (required) - The Discord server ID",
       userId: "string (required) - The Discord user ID to look up",
+    },
+  },
+  {
+    name: "get_voice_and_stage_channels",
+    description: "Get all voice and stage channels in a Discord server. Use this BEFORE creating voice or stage events to find the correct channel ID. Returns a list of voice channels and stage channels with their IDs and names.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+    },
+  },
+  {
+    name: "get_scheduled_events",
+    description: "Get all scheduled events for a Discord server. Returns upcoming events with their names, times, locations, and RSVP counts.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+    },
+  },
+  {
+    name: "create_scheduled_event",
+    description: "Create a single scheduled event in a Discord server. There are 3 event types: (1) Stage events happen in a stage channel, (2) Voice events happen in a voice channel, (3) External events happen at a location/URL outside Discord. For Stage/Voice events, you MUST provide a channelId - use get_voice_and_stage_channels first to find available channels. Can optionally generate an AI image for the event banner.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - The name of the event",
+      scheduledStartTime: "string (required) - ISO 8601 date/time when the event starts (e.g., '2026-02-14T21:10:00.000Z')",
+      scheduledEndTime: "string (optional) - ISO 8601 date/time when the event ends",
+      description: "string (optional) - Description of the event",
+      entityType: "number (required) - Event type: 1=Stage (in stage channel), 2=Voice (in voice channel), 3=External (location/URL)",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED for entityType 1 or 2. Use get_voice_and_stage_channels to find channel IDs.",
+      location: "string (conditional) - Location or URL - REQUIRED for entityType 3 (external events)",
+      generateImage: "boolean (optional) - Set to true to auto-generate an AI image for the event banner based on the event name",
+    },
+  },
+  {
+    name: "create_multiple_scheduled_events",
+    description: "Create multiple scheduled events from a text description. The text should contain event names and dates in a natural format, separated by blank lines. Supports formats like 'Event Name\\nFeb 14, 2026 · 9:10–11:30 PM'. All events will be created with the same type (external, voice, or stage). For Voice/Stage events, get the channel ID first using get_voice_and_stage_channels. Can optionally generate AI images for each event.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      eventsText: "string (required) - Text containing multiple event descriptions, separated by blank lines",
+      entityType: "number (optional) - Event type for ALL events: 1=Stage, 2=Voice, 3=External (default: 3)",
+      channelId: "string (conditional) - Voice/Stage channel ID - REQUIRED if entityType is 1 or 2",
+      location: "string (conditional) - Default location for external events - REQUIRED if entityType is 3",
+      generateImages: "boolean (optional) - Set to true to auto-generate AI images for each event banner based on their names",
     },
   },
 ];
