@@ -140,11 +140,12 @@ async function handleDirectMessage(message, client) {
   
   log.info(`[DM] User ${userName} manages ${managedGuilds.length} guild(s): ${managedGuilds.map(g => g.name).join(", ")}`);
   
-  // Generate AI response
+  // Generate AI response with MCP tool access
   const aiResult = await generateChatResponse({
     message: content,
     userName,
     userId,
+    managedGuilds, // Pass guilds so AI knows which servers to query
   }, process.env);
   
   if (!aiResult.success) {
@@ -153,6 +154,11 @@ async function handleDirectMessage(message, client) {
       content: "Sorry, I encountered an error while processing your message. Please try again later.",
     }).catch(err => log.error("[DM] Failed to send error reply:", err.message));
     return;
+  }
+  
+  // Log if tools were used
+  if (aiResult.toolsUsed && aiResult.toolsUsed.length > 0) {
+    log.info(`[DM] AI used MCP tools: ${aiResult.toolsUsed.join(", ")}`);
   }
   
   // Send the AI response
