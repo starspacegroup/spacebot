@@ -1,6 +1,10 @@
 <script>
 	let { data } = $props();
 	
+	// Track if data has been loaded (not just default empty values)
+	// Data is considered loaded when we have an explicit response from the server
+	const isLoaded = $derived(data?.isSuperAdmin === true);
+	
 	// Defensive defaults for data properties
 	const guilds = $derived(data?.guilds ?? []);
 	const summary = $derived(data?.summary ?? { totalGuilds: 0, totalMembers: 0, totalChannels: 0 });
@@ -51,6 +55,14 @@
 			</a>
 		</div>
 	</header>
+	
+	{#if !isLoaded}
+		<!-- Loading State -->
+		<div class="loading-state">
+			<div class="loading-spinner"></div>
+			<p>Loading superadmin data...</p>
+		</div>
+	{:else}
 	
 	{#if botApp}
 		<section class="bot-info-section">
@@ -249,6 +261,8 @@
 			</div>
 		</section>
 	{/if}
+	
+	{/if}
 </div>
 
 <style>
@@ -314,6 +328,32 @@
 		margin: 0.5rem 0 0;
 		color: var(--color-text-muted);
 		font-size: 0.9rem;
+	}
+	
+	/* Loading State */
+	.loading-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 4rem 2rem;
+		color: var(--color-text-muted);
+		gap: 1rem;
+	}
+	
+	.loading-spinner {
+		width: 40px;
+		height: 40px;
+		border: 3px solid var(--color-border);
+		border-top-color: var(--color-primary);
+		border-radius: 50%;
+		animation: spin 0.8s linear infinite;
+	}
+	
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	
 	/* Bot Info */
