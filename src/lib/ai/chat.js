@@ -71,6 +71,17 @@ Keep responses concise. Use Discord markdown.`;
 function buildSystemPrompt(context = {}) {
   let prompt = BASE_SYSTEM_PROMPT;
   
+  // Add superadmin context if applicable
+  if (context.isSuperAdmin) {
+    prompt += `\n\n## 👑 SUPERADMIN STATUS\n`;
+    prompt += `**This user is a SpaceBot superadmin.** They have elevated privileges including:\n`;
+    prompt += `- Access to ALL servers where SpaceBot is installed (not just ones they manage)\n`;
+    prompt += `- Ability to view and manage global bot settings\n`;
+    prompt += `- Access to admin-only features and diagnostics\n`;
+    prompt += `- Can run cron jobs and maintenance tasks\n`;
+    prompt += `\nWhen they ask about "all servers" or cross-server data, you can provide it. They have full access.\n`;
+  }
+  
   // Add selected server context prominently at the top
   if (context.selectedGuildId && context.selectedGuildName) {
     prompt += `\n\n## 🎯 CURRENTLY SELECTED SERVER\n`;

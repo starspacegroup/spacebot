@@ -57,6 +57,20 @@ function getUserSession(userId) {
 }
 
 /**
+ * Check if a user is a superadmin (defined in ADMIN_USER_IDS env var)
+ * @param {string} userId - Discord user ID
+ * @returns {boolean}
+ */
+function checkIsSuperAdmin(userId) {
+  if (!userId) return false;
+
+  const adminUserIds = process.env.ADMIN_USER_IDS || "";
+  const superAdminIdList = adminUserIds.split(",").map((id) => id.trim()).filter(Boolean);
+
+  return superAdminIdList.includes(userId);
+}
+
+/**
  * Update user's selected server
  * @param {string} userId - Discord user ID
  * @param {string|null} guildId - Selected guild ID (null to clear)
@@ -365,11 +379,18 @@ async function handleDirectMessage(message, client) {
     ? managedGuilds.find(g => g.id === currentSession.selectedGuildId)
     : null;
   
+  // Check if user is a superadmin
+  const isSuperAdmin = checkIsSuperAdmin(userId);
+  if (isSuperAdmin) {
+    log.info(`[DM] User ${userName} is a superadmin`);
+  }
+  
   // Generate AI response with MCP tool access
   const aiResult = await generateChatResponse({
     message: content,
     userName,
     userId,
+    isSuperAdmin, // Pass superadmin status
     managedGuilds, // Pass all guilds so AI knows what's available
     selectedGuild, // Pass the currently selected guild
     selectedGuildId: currentSession.selectedGuildId,
