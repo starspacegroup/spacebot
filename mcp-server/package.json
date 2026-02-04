@@ -1,0 +1,14 @@
+{
+  "name": "spacebot-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for SpaceBot - read events, automations, commands, and server settings",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}
