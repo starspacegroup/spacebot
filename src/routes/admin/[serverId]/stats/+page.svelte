@@ -18,6 +18,12 @@
 	let showBotsInHeatmap = $state(false);
 	let showBotsInTotalEvents = $state(false);
 	
+	// Pagination state for list sections
+	const ITEMS_PER_PAGE = 5;
+	let eventTypesPage = $state(0);
+	let channelsPage = $state(0);
+	let usersPage = $state(0);
+	
 	// Master toggle handler
 	function toggleAllBots(value) {
 		showBotsGlobal = value;
@@ -47,11 +53,16 @@
 	}
 	
 	// Filtered data based on toggle states
-	const filteredTopActors = $derived(
+	const allFilteredTopActors = $derived(
 		(data.statistics?.topActors || [])
 			.filter(actor => showBotsInActiveUsers || !isBot(actor))
-			.slice(0, 10)
 	);
+	
+	const filteredTopActors = $derived(
+		allFilteredTopActors.slice(usersPage * ITEMS_PER_PAGE, (usersPage + 1) * ITEMS_PER_PAGE)
+	);
+	
+	const usersTotalPages = $derived(Math.ceil(allFilteredTopActors.length / ITEMS_PER_PAGE));
 	
 	const filteredVoiceUsers = $derived(
 		(data.topVoiceUsers || [])
@@ -72,7 +83,7 @@
 	);
 	
 	// Filtered event types based on toggle - use non_bot_count when hiding bots
-	const filteredEventTypes = $derived(
+	const allFilteredEventTypes = $derived(
 		(data.statistics?.events?.byType || [])
 			.map(et => ({
 				...et,
@@ -80,11 +91,16 @@
 			}))
 			.filter(et => et.display_count > 0)
 			.sort((a, b) => b.display_count - a.display_count)
-			.slice(0, 10)
 	);
 	
+	const filteredEventTypes = $derived(
+		allFilteredEventTypes.slice(eventTypesPage * ITEMS_PER_PAGE, (eventTypesPage + 1) * ITEMS_PER_PAGE)
+	);
+	
+	const eventTypesTotalPages = $derived(Math.ceil(allFilteredEventTypes.length / ITEMS_PER_PAGE));
+	
 	// Filtered channels based on toggle - use non_bot_count when hiding bots
-	const filteredChannels = $derived(
+	const allFilteredChannels = $derived(
 		(data.statistics?.topChannels || [])
 			.map(ch => ({
 				...ch,
@@ -92,8 +108,13 @@
 			}))
 			.filter(ch => ch.display_count > 0)
 			.sort((a, b) => b.display_count - a.display_count)
-			.slice(0, 10)
 	);
+	
+	const filteredChannels = $derived(
+		allFilteredChannels.slice(channelsPage * ITEMS_PER_PAGE, (channelsPage + 1) * ITEMS_PER_PAGE)
+	);
+	
+	const channelsTotalPages = $derived(Math.ceil(allFilteredChannels.length / ITEMS_PER_PAGE));
 	
 	// Filtered categories based on toggle
 	const filteredCategories = $derived(() => {
@@ -781,7 +802,7 @@
 						Top Event Types
 					</h2>
 					<label class="bot-toggle">
-						<input type="checkbox" bind:checked={showBotsInEventTypes} />
+						<input type="checkbox" bind:checked={showBotsInEventTypes} onchange={() => eventTypesPage = 0} />
 						<span class="toggle-switch"></span>
 						<span class="toggle-label">🤖 Bots</span>
 					</label>
@@ -789,9 +810,10 @@
 				<div class="list-container">
 					{#if filteredEventTypes?.length > 0}
 						{#each filteredEventTypes as eventType, i}
-							{@const maxCount = getMaxValue(filteredEventTypes, 'display_count')}
+							{@const maxCount = getMaxValue(allFilteredEventTypes, 'display_count')}
+							{@const rank = eventTypesPage * ITEMS_PER_PAGE + i + 1}
 							<div class="list-item">
-								<span class="list-rank">#{i + 1}</span>
+								<span class="list-rank">#{rank}</span>
 								<div class="list-info">
 									<span class="list-name">{eventType.event_type}</span>
 									<span class="list-category" style="color: {getCategoryColor(eventType.event_category)}">
@@ -811,6 +833,25 @@
 						<div class="list-empty">No event data available</div>
 					{/if}
 				</div>
+				{#if eventTypesTotalPages > 1}
+					<div class="list-pagination">
+						<button 
+							class="pagination-btn" 
+							disabled={eventTypesPage === 0}
+							onclick={() => eventTypesPage--}
+						>
+							←
+						</button>
+						<span class="pagination-info">{eventTypesPage + 1} / {eventTypesTotalPages}</span>
+						<button 
+							class="pagination-btn" 
+							disabled={eventTypesPage >= eventTypesTotalPages - 1}
+							onclick={() => eventTypesPage++}
+						>
+							→
+						</button>
+					</div>
+				{/if}
 			</section>
 			
 			<!-- Top Channels -->
@@ -821,7 +862,7 @@
 						Most Active Channels
 					</h2>
 					<label class="bot-toggle">
-						<input type="checkbox" bind:checked={showBotsInChannels} />
+						<input type="checkbox" bind:checked={showBotsInChannels} onchange={() => channelsPage = 0} />
 						<span class="toggle-switch"></span>
 						<span class="toggle-label">🤖 Bots</span>
 					</label>
@@ -829,9 +870,10 @@
 				<div class="list-container">
 					{#if filteredChannels?.length > 0}
 						{#each filteredChannels as channel, i}
-							{@const maxCount = getMaxValue(filteredChannels, 'display_count')}
+							{@const maxCount = getMaxValue(allFilteredChannels, 'display_count')}
+							{@const rank = channelsPage * ITEMS_PER_PAGE + i + 1}
 							<div class="list-item">
-								<span class="list-rank">#{i + 1}</span>
+								<span class="list-rank">#{rank}</span>
 								<div class="list-info">
 									<span class="list-name">#{channel.channel_name || 'Unknown'}</span>
 									<span class="list-meta">{channel.event_types} event types</span>
@@ -849,6 +891,25 @@
 						<div class="list-empty">No channel data available</div>
 					{/if}
 				</div>
+				{#if channelsTotalPages > 1}
+					<div class="list-pagination">
+						<button 
+							class="pagination-btn" 
+							disabled={channelsPage === 0}
+							onclick={() => channelsPage--}
+						>
+							←
+						</button>
+						<span class="pagination-info">{channelsPage + 1} / {channelsTotalPages}</span>
+						<button 
+							class="pagination-btn" 
+							disabled={channelsPage >= channelsTotalPages - 1}
+							onclick={() => channelsPage++}
+						>
+							→
+						</button>
+					</div>
+				{/if}
 			</section>
 		</div>
 		
@@ -861,7 +922,7 @@
 						Most Active Users
 					</h2>
 					<label class="bot-toggle">
-						<input type="checkbox" bind:checked={showBotsInActiveUsers} />
+						<input type="checkbox" bind:checked={showBotsInActiveUsers} onchange={() => usersPage = 0} />
 						<span class="toggle-switch"></span>
 						<span class="toggle-label">🤖 Bots</span>
 					</label>
@@ -869,9 +930,10 @@
 				<div class="list-container">
 					{#if filteredTopActors?.length > 0}
 						{#each filteredTopActors as actor, i}
-							{@const maxCount = getMaxValue(filteredTopActors, 'event_count')}
+							{@const maxCount = getMaxValue(allFilteredTopActors, 'event_count')}
+							{@const rank = usersPage * ITEMS_PER_PAGE + i + 1}
 							<div class="list-item">
-								<span class="list-rank">#{i + 1}</span>
+								<span class="list-rank">#{rank}</span>
 								<div class="list-info">
 									<span class="list-name">
 										{actor.actor_name || 'Unknown User'}
@@ -892,6 +954,25 @@
 						<div class="list-empty">No user data available</div>
 					{/if}
 				</div>
+				{#if usersTotalPages > 1}
+					<div class="list-pagination">
+						<button 
+							class="pagination-btn" 
+							disabled={usersPage === 0}
+							onclick={() => usersPage--}
+						>
+							←
+						</button>
+						<span class="pagination-info">{usersPage + 1} / {usersTotalPages}</span>
+						<button 
+							class="pagination-btn" 
+							disabled={usersPage >= usersTotalPages - 1}
+							onclick={() => usersPage++}
+						>
+							→
+						</button>
+					</div>
+				{/if}
 			</section>
 		</div>
 		
@@ -1672,8 +1753,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		max-height: 400px;
-		overflow-y: auto;
 	}
 	
 	.list-item {
@@ -1742,6 +1821,50 @@
 		padding: 2rem;
 		text-align: center;
 		color: var(--color-text-muted);
+	}
+	
+	/* Pagination */
+	.list-pagination {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--color-border);
+	}
+	
+	.pagination-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		cursor: pointer;
+		font-size: 0.85rem;
+		transition: all var(--transition-fast);
+	}
+	
+	.pagination-btn:hover:not(:disabled) {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+		color: white;
+	}
+	
+	.pagination-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	
+	.pagination-info {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		min-width: 50px;
+		text-align: center;
 	}
 	
 	/* Performance Section */
