@@ -727,6 +727,120 @@ export class MCPClient {
   }
 
   /**
+   * Get text channels for a guild
+   * @param {string} guildId - The guild ID
+   * @param {string} [nameFilter] - Optional filter to match channel names (case-insensitive partial match)
+   * @returns {Promise<Object>} - Text channels
+   */
+  async getTextChannels(guildId, nameFilter = null) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot fetch channels");
+    }
+
+    const response = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/channels`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch channels: ${response.status}`);
+    }
+
+    const channels = await response.json();
+    
+    // Channel types: 0 = Text, 5 = Announcement/News, 15 = Forum
+    let textChannels = channels
+      .filter(c => c.type === 0 || c.type === 5 || c.type === 15)
+      .map(c => ({ 
+        id: c.id, 
+        name: c.name, 
+        type: c.type === 0 ? "text" : c.type === 5 ? "announcement" : "forum", 
+        parentId: c.parent_id,
+        position: c.position,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    
+    // Filter by name if provided
+    if (nameFilter) {
+      const filter = nameFilter.toLowerCase().replace(/^#/, ''); // Remove leading # if present
+      textChannels = textChannels.filter(c => 
+        c.name.toLowerCase().includes(filter)
+      );
+    }
+
+    return {
+      textChannels,
+      totalChannels: textChannels.length,
+    };
+  }
+
+  /**
+   * Send a message to a Discord channel
+   * @param {string} guildId - The guild ID (for verification)
+   * @param {string} channelId - The channel ID to send to
+   * @param {string} content - The message content
+   * @param {Object} [options] - Additional options
+   * @param {boolean} [options.embed] - Whether to send as an embed
+   * @param {string} [options.embedTitle] - Title for embed
+   * @param {number} [options.embedColor] - Embed color (default: 0x5865F2)
+   * @returns {Promise<Object>} - Sent message info
+   */
+  async sendChannelMessage(guildId, channelId, content, options = {}) {
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot send messages");
+    }
+
+    // Build the message payload
+    let payload;
+    if (options.embed) {
+      payload = {
+        embeds: [{
+          title: options.embedTitle || undefined,
+          description: content,
+          color: options.embedColor || 0x5865F2,
+          timestamp: new Date().toISOString(),
+        }],
+      };
+    } else {
+      payload = {
+        content,
+      };
+    }
+
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = errorData.message || `HTTP ${response.status}`;
+      throw new Error(`Failed to send message: ${errorMsg}`);
+    }
+
+    const sentMessage = await response.json();
+    log.info(`[MCP] Sent message to channel ${channelId} in guild ${guildId}`);
+
+    return {
+      id: sentMessage.id,
+      channelId: sentMessage.channel_id,
+      content: sentMessage.content,
+      timestamp: sentMessage.timestamp,
+    };
+  }
+
+  /**
    * Parse a natural language event text into structured event data
    * Handles formats like:
    * - "Men's Olympic Ice Hockey Preliminary: USA vs Denmark\nFeb 14, 2026 · 9:10–11:30 PM"
@@ -1374,9 +1488,12 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
   /**
    * Get scheduled events for a guild
    * @param {string} guildId - The guild ID
+   * @param {Object} [options] - Filter options
+   * @param {string} [options.nameFilter] - Filter events by name (case-insensitive partial match)
+   * @param {boolean} [options.upcomingOnly] - Only return events that haven't started yet
    * @returns {Promise<Array>} - List of scheduled events
    */
-  async getScheduledEvents(guildId) {
+  async getScheduledEvents(guildId, options = {}) {
     if (!this.discordBotToken) {
       throw new Error("Discord bot token not configured - cannot fetch events");
     }
@@ -1394,9 +1511,10 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
       throw new Error(`Failed to fetch scheduled events: ${response.status}`);
     }
 
-    const events = await response.json();
+    let events = await response.json();
     
-    return events.map(event => ({
+    // Map to our format
+    events = events.map(event => ({
       id: event.id,
       name: event.name,
       description: event.description,
@@ -1406,7 +1524,28 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
       status: event.status,
       userCount: event.user_count,
       location: event.entity_metadata?.location,
+      // Generate the event link
+      eventLink: `https://discord.com/events/${guildId}/${event.id}`,
     }));
+    
+    // Filter by name if provided
+    if (options.nameFilter) {
+      const filter = options.nameFilter.toLowerCase();
+      events = events.filter(e => 
+        e.name.toLowerCase().includes(filter) ||
+        (e.description && e.description.toLowerCase().includes(filter))
+      );
+    }
+    
+    // Filter to upcoming only if requested (status 1 = scheduled, 2 = active)
+    if (options.upcomingOnly) {
+      const now = new Date();
+      events = events.filter(e => 
+        e.status === 1 || e.status === 2 || new Date(e.scheduledStartTime) > now
+      );
+    }
+    
+    return events;
   }
 
   /**
@@ -1534,10 +1673,34 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             data: await this.getVoiceAndStageChannels(args.guildId),
           };
 
+        case "get_text_channels":
+          return {
+            success: true,
+            data: await this.getTextChannels(args.guildId, args.nameFilter),
+          };
+
+        case "send_channel_message":
+          return {
+            success: true,
+            data: await this.sendChannelMessage(
+              args.guildId,
+              args.channelId,
+              args.content,
+              {
+                embed: args.embed,
+                embedTitle: args.embedTitle,
+                embedColor: args.embedColor,
+              }
+            ),
+          };
+
         case "get_scheduled_events":
           return {
             success: true,
-            data: await this.getScheduledEvents(args.guildId),
+            data: await this.getScheduledEvents(args.guildId, {
+              nameFilter: args.nameFilter,
+              upcomingOnly: args.upcomingOnly,
+            }),
           };
 
         case "create_scheduled_event":
@@ -1777,10 +1940,32 @@ export const MCP_TOOLS = [
     },
   },
   {
-    name: "get_scheduled_events",
-    description: "Get all scheduled events for a Discord server. Returns upcoming events with their names, times, locations, and RSVP counts.",
+    name: "get_text_channels",
+    description: "Get text channels in a Discord server. Use this to find the channel ID for a text channel by name (like #announcements, #general). Supports partial name matching.",
     parameters: {
       guildId: "string (required) - The Discord server ID",
+      nameFilter: "string (optional) - Filter channels by name (case-insensitive partial match). For example, 'announce' will match 'announcements'.",
+    },
+  },
+  {
+    name: "send_channel_message",
+    description: "Send a message to a text channel in a Discord server. Use this to post messages to channels like #announcements. First use get_text_channels to find the channel ID if you only have the channel name.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      channelId: "string (required) - The ID of the channel to send the message to",
+      content: "string (required) - The message content to send. Can include Discord markdown and links.",
+      embed: "boolean (optional) - Set to true to send as an embed instead of plain text",
+      embedTitle: "string (optional) - Title for the embed (only used if embed=true)",
+      embedColor: "number (optional) - Embed color as integer (default: 0x5865F2 / Discord blue)",
+    },
+  },
+  {
+    name: "get_scheduled_events",
+    description: "Get scheduled events for a Discord server. Returns events with their names, times, locations, RSVP counts, and shareable EVENT LINKS. Use nameFilter to search for specific events (e.g., 'hockey' to find all hockey events). The eventLink property contains a shareable Discord URL for each event.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      nameFilter: "string (optional) - Filter events by name/description (case-insensitive partial match). For example, 'hockey' will match 'Men's Ice Hockey Final'.",
+      upcomingOnly: "boolean (optional) - Set to true to only return upcoming/active events (excludes completed events)",
     },
   },
   {
@@ -1941,7 +2126,28 @@ You: "To create the events, I first need to get the ID of the Gaming Voice chann
 User: "Create an event called Game Night on Feb 20 at 7pm at Discord"
 You: \`\`\`tool
 {"tool": "preview_scheduled_event", "args": {"guildId": "123", "name": "Game Night", "scheduledStartTime": "2026-02-20T19:00:00.000Z", "entityType": 3, "location": "Discord"}}
-\`\`\``;
+\`\`\`
+
+## EXAMPLE: Send Event Links to a Channel (CORRECT)
+
+User: "Send links to the hockey events in the #announcements channel"
+
+Step 1 - Find the channel:
+\`\`\`tool
+{"tool": "get_text_channels", "args": {"guildId": "123", "nameFilter": "announcements"}}
+\`\`\`
+
+Step 2 - After getting channel ID "789", find the events:
+\`\`\`tool
+{"tool": "get_scheduled_events", "args": {"guildId": "123", "nameFilter": "hockey", "upcomingOnly": true}}
+\`\`\`
+
+Step 3 - After getting events with their eventLinks, send the message:
+\`\`\`tool
+{"tool": "send_channel_message", "args": {"guildId": "123", "channelId": "789", "content": "🏒 **Upcoming Hockey Events**\\n\\n• [USA vs Canada](https://discord.com/events/123/456)\\n• [Gold Medal Game](https://discord.com/events/123/457)", "embed": true, "embedTitle": "Hockey Event Links"}}
+\`\`\`
+
+**NOTE:** Format the event links nicely - include the event name as link text and the eventLink from the event data.`;
   
   return prompt;
 }

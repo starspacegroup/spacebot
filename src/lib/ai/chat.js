@@ -86,6 +86,25 @@ You have TWO sources of data:
 - Finding specific users' activity
 - Raw event data
 
+## SENDING MESSAGES TO CHANNELS
+
+You can send messages to Discord channels on the user's behalf. For requests like "send event links to #announcements":
+
+1. **Find the channel**: Use \`get_text_channels\` with a nameFilter to find the channel ID
+   - Example: \`get_text_channels\` with nameFilter "announcements" to find #announcements
+2. **Get the content**: Use the appropriate tool to gather the information
+   - For events: Use \`get_scheduled_events\` with nameFilter to find matching events
+   - Events include an \`eventLink\` property with a shareable Discord URL
+3. **Send the message**: Use \`send_channel_message\` with the channel ID and formatted content
+   - Format event links nicely with the event name and link
+   - Consider using embeds for better presentation
+
+**Example workflow for "send hockey event links to #announcements":**
+1. Call \`get_text_channels\` with nameFilter="announcements" → get channel ID
+2. Call \`get_scheduled_events\` with nameFilter="hockey" → get hockey events with links
+3. Format a message with the event names and links
+4. Call \`send_channel_message\` with the channel ID and formatted message
+
 ## HONESTY RULES
 
 - Only report data that comes from context or tool results
