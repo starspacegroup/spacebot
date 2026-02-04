@@ -348,7 +348,8 @@
 	
 	.btn-primary {
 		background: var(--accent-color, #5865F2);
-		color: white;
+		color: #1C1917;
+		font-weight: 600;
 	}
 	
 	.btn-primary:hover:not(:disabled) {

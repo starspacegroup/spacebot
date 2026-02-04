@@ -632,6 +632,7 @@
 		border-radius: 6px;
 		cursor: pointer;
 		font-size: 0.875rem;
+		font-weight: 500;
 	}
 	
 	.refresh-btn:hover {
@@ -641,7 +642,8 @@
 	.refresh-btn.active {
 		background: var(--color-primary);
 		border-color: var(--color-primary);
-		color: var(--color-text-inverse);
+		color: #1C1917;
+		font-weight: 600;
 	}
 	
 	.refresh-btn:disabled {
