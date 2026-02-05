@@ -28,6 +28,7 @@ export class MCPClient {
     this.useLocalDb = options.useLocalDb || false;
     this.localDb = null;
     this.discordBotToken = options.discordBotToken;
+    this.d1Database = options.d1Database || null; // D1 database for cache lookups
     
     log.debug(`[MCP] Client initialized - accountId: ${this.accountId ? 'SET' : 'MISSING'}, apiToken: ${this.apiToken ? 'SET' : 'MISSING'}, useLocalDb: ${this.useLocalDb}`);
   }
@@ -679,6 +680,163 @@ export class MCPClient {
       roles: userRoles,
       roleCount: userRoles.length,
       highestRole: userRoles[0] || null,
+    };
+  }
+
+  /**
+   * Get members who have a specific role in a guild
+   * Tries cache first, falls back to Discord API
+   * @param {string} guildId - The guild ID
+   * @param {string} roleNameOrId - The role name (case-insensitive partial match) or role ID
+   * @param {number} [limit=100] - Maximum number of members to return
+   * @param {D1Database} [db] - Optional D1 database for cache lookup
+   * @returns {Promise<Object>} - Members with the role and role details
+   */
+  async getMembersWithRole(guildId, roleNameOrId, limit = 100, db = null) {
+    // Try cache first if db is available
+    if (db) {
+      try {
+        const { getMembersWithRoleFromCache, getCacheMetadata } = await import("../db/guild-cache.js");
+        const metadata = await getCacheMetadata(db, guildId);
+        
+        // Check if cache exists and is reasonably fresh (within 2 hours)
+        if (metadata?.members_last_refreshed) {
+          const cacheAge = Date.now() - new Date(metadata.members_last_refreshed).getTime();
+          const maxAge = 2 * 60 * 60 * 1000; // 2 hours
+          
+          if (cacheAge < maxAge) {
+            log.debug(`[MCP] Using cached member data for guild ${guildId} (age: ${Math.round(cacheAge / 60000)}min)`);
+            const cacheResult = await getMembersWithRoleFromCache(db, guildId, roleNameOrId, limit);
+            
+            if (cacheResult.role) {
+              return {
+                role: cacheResult.role,
+                members: cacheResult.members,
+                memberCount: cacheResult.memberCount,
+                source: "cache",
+                cacheAge: Math.round(cacheAge / 60000), // minutes
+              };
+            }
+            // If role not found in cache, fall through to API
+            if (cacheResult.error && cacheResult.error.includes("not found")) {
+              return {
+                success: false,
+                error: cacheResult.error,
+                availableRoles: cacheResult.availableRoles,
+                source: "cache",
+              };
+            }
+          }
+        }
+      } catch (cacheError) {
+        log.debug(`[MCP] Cache lookup failed, falling back to API:`, cacheError.message);
+      }
+    }
+
+    // Fall back to Discord API
+    if (!this.discordBotToken) {
+      throw new Error("Discord bot token not configured - cannot fetch members");
+    }
+
+    // First, fetch the guild's roles to find the role by name or ID
+    const rolesResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/roles`,
+      {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      }
+    );
+
+    if (!rolesResponse.ok) {
+      throw new Error(`Failed to fetch guild roles: ${rolesResponse.status}`);
+    }
+
+    const guildRoles = await rolesResponse.json();
+    
+    // Find the role by ID or name (case-insensitive partial match)
+    let targetRole = guildRoles.find(r => r.id === roleNameOrId);
+    if (!targetRole) {
+      const searchName = roleNameOrId.toLowerCase();
+      targetRole = guildRoles.find(r => r.name.toLowerCase() === searchName) ||
+                   guildRoles.find(r => r.name.toLowerCase().includes(searchName));
+    }
+    
+    if (!targetRole) {
+      return {
+        success: false,
+        error: `Role "${roleNameOrId}" not found. Available roles: ${guildRoles.map(r => r.name).join(', ')}`,
+        availableRoles: guildRoles.map(r => ({ id: r.id, name: r.name })),
+      };
+    }
+
+    // Fetch ALL guild members - Discord limits to 1000 per request
+    // We need to paginate through ALL members first, then filter by role
+    // The limit parameter only affects how many role members we return, not how many we fetch
+    const allMembers = [];
+    let lastMemberId = null;
+    const maxMembersToFetch = 10000; // Safety limit to prevent infinite loops
+    
+    // Fetch members in batches until we have all of them
+    while (allMembers.length < maxMembersToFetch) {
+      const url = new URL(`https://discord.com/api/v10/guilds/${guildId}/members`);
+      url.searchParams.set('limit', '1000'); // Always fetch max per request
+      if (lastMemberId) {
+        url.searchParams.set('after', lastMemberId);
+      }
+
+      const membersResponse = await fetch(url.toString(), {
+        headers: {
+          "Authorization": `Bot ${this.discordBotToken}`,
+        },
+      });
+
+      if (!membersResponse.ok) {
+        if (membersResponse.status === 403) {
+          throw new Error("Bot doesn't have permission to view members. The 'Server Members Intent' must be enabled in the Discord Developer Portal.");
+        }
+        throw new Error(`Failed to fetch members: ${membersResponse.status}`);
+      }
+
+      const members = await membersResponse.json();
+      if (members.length === 0) break;
+      
+      allMembers.push(...members);
+      lastMemberId = members[members.length - 1].user.id;
+      
+      log.debug(`[MCP] Fetched ${allMembers.length} members so far...`);
+      
+      // If we got fewer than 1000, we've reached the end
+      if (members.length < 1000) break;
+    }
+
+    // Filter members who have the target role
+    const membersWithRole = allMembers
+      .filter(member => member.roles.includes(targetRole.id))
+      .map(member => ({
+        id: member.user.id,
+        username: member.user.username,
+        displayName: member.nick || member.user.global_name || member.user.username,
+        isBot: member.user.bot || false,
+        joinedAt: member.joined_at,
+      }))
+      .sort((a, b) => a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()))
+      .slice(0, limit); // Apply limit to the results, not the fetch
+
+    log.info(`[MCP] Found ${membersWithRole.length} members with role "${targetRole.name}" (checked ${allMembers.length} total members)`);
+
+    return {
+      role: {
+        id: targetRole.id,
+        name: targetRole.name,
+        color: targetRole.color,
+        position: targetRole.position,
+        mentionable: targetRole.mentionable,
+      },
+      members: membersWithRole,
+      memberCount: membersWithRole.length,
+      totalMembersChecked: allMembers.length,
+      source: "discord_api",
     };
   }
 
@@ -1667,6 +1825,12 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             data: await this.getUserRoles(args.guildId, args.userId),
           };
 
+        case "get_members_with_role":
+          return {
+            success: true,
+            data: await this.getMembersWithRole(args.guildId, args.roleName, args.limit || 100, this.d1Database),
+          };
+
         case "get_voice_and_stage_channels":
           return {
             success: true,
@@ -1933,6 +2097,15 @@ export const MCP_TOOLS = [
     },
   },
   {
+    name: "get_members_with_role",
+    description: "Get all members who have a specific role in a Discord server. Use this when asked 'who has the X role?' or 'list members with Y role'. Can search by role name (case-insensitive partial match) or role ID. Returns the list of members with their display names.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      roleName: "string (required) - The role name to search for (case-insensitive, supports partial matching like 'crew' for 'Crew') or the exact role ID",
+      limit: "number (optional) - Maximum members to return (default: 100, max: 1000)",
+    },
+  },
+  {
     name: "get_voice_and_stage_channels",
     description: "Get all voice and stage channels in a Discord server. Use this BEFORE creating voice or stage events to find the correct channel ID. Returns a list of voice channels and stage channels with their IDs and names.",
     parameters: {
@@ -2168,5 +2341,6 @@ export function getMCPClient(env = {}) {
     databaseId: env.D1_DATABASE_ID,
     useLocalDb,
     discordBotToken: env.DISCORD_BOT_TOKEN,
+    d1Database: env.DB, // D1 database binding for cache lookups
   });
 }

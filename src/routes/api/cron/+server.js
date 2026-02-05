@@ -10,6 +10,7 @@
 import { json } from "@sveltejs/kit";
 import { runStatsAggregation, cleanupOldData } from "$lib/db/stats-aggregation.js";
 import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "$lib/db/server-stats.js";
+import { refreshGuildCache } from "$lib/db/guild-cache.js";
 import { log } from "$lib/log.js";
 
 /**
@@ -42,9 +43,16 @@ function getCronJobDefinitions() {
     {
       name: "daily_refresh",
       displayName: "Daily Discord Refresh",
-      description: "Refreshes server stats from Discord API and cleans up old data",
+      description: "Refreshes server stats, member cache, and role cache from Discord API. Also cleans up old data.",
       cronPattern: "0 0 * * *",
       schedule: "Daily at midnight UTC",
+    },
+    {
+      name: "refresh_cache",
+      displayName: "Refresh Member/Role Cache",
+      description: "Refreshes only the member and role cache for all guilds. Useful for getting latest user/role data.",
+      cronPattern: null,
+      schedule: "Manual only",
     },
     {
       name: "rebuild_stats",
@@ -264,46 +272,158 @@ async function runHourlyAggregation(db) {
 
 /**
  * Run the daily refresh job
+ * Refreshes server stats, member cache, and role cache for all guilds
  */
 async function runDailyRefresh(db, botToken) {
   const guilds = await getBotGuilds(botToken);
 
   if (guilds.length === 0) {
-    return { processed: 0, failed: 0 };
+    return { stats: { processed: 0, failed: 0 }, cache: { processed: 0, failed: 0, skipped: 0 } };
   }
 
   const results = {
-    processed: 0,
-    failed: 0,
+    stats: {
+      processed: 0,
+      failed: 0,
+    },
+    cache: {
+      processed: 0,
+      failed: 0,
+      skipped: 0,
+      totalMembers: 0,
+      totalRoles: 0,
+      totalBots: 0,
+      totalHumans: 0,
+    },
   };
 
-  // Refresh stats from Discord for each guild
+  // Refresh stats and cache from Discord for each guild
   for (const guild of guilds) {
     try {
+      // 1. Refresh basic server stats
       const stats = await fetchGuildStatsFromDiscord(botToken, guild.id);
       
       if (stats) {
         const result = await recordServerStats(db, guild.id, stats);
         if (result.success) {
-          results.processed++;
+          results.stats.processed++;
         } else {
-          results.failed++;
+          results.stats.failed++;
         }
       } else {
-        results.failed++;
+        results.stats.failed++;
       }
 
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Small delay between API calls
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // 2. Refresh member and role cache (comprehensive data)
+      try {
+        const cacheResult = await refreshGuildCache(db, botToken, guild.id);
+        
+        if (cacheResult.success) {
+          results.cache.processed++;
+          results.cache.totalMembers += cacheResult.members?.count || 0;
+          results.cache.totalRoles += cacheResult.roles?.count || 0;
+          results.cache.totalBots += cacheResult.members?.botCount || 0;
+          results.cache.totalHumans += cacheResult.members?.humanCount || 0;
+        } else if (cacheResult.error?.includes("Intent") || cacheResult.error?.includes("permission")) {
+          // Server Members Intent not enabled or missing permissions - skip but don't count as failure
+          results.cache.skipped++;
+          log.debug(`[Cron API] Cache refresh skipped for ${guild.id}: ${cacheResult.error}`);
+        } else {
+          results.cache.failed++;
+          log.warn(`[Cron API] Cache refresh failed for ${guild.id}: ${cacheResult.error}`);
+        }
+      } catch (cacheError) {
+        results.cache.failed++;
+        log.error(`[Cron API] Cache refresh error for ${guild.id}:`, cacheError);
+      }
+
+      // Delay between guilds to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
     } catch (error) {
-      results.failed++;
-      log.error(`[Cron API] Failed to refresh stats for ${guild.id}:`, error);
+      results.stats.failed++;
+      log.error(`[Cron API] Failed to refresh data for ${guild.id}:`, error);
     }
   }
 
   // Cleanup old data
   results.prunedStats = await pruneOldStats(db);
   results.cleanup = await cleanupOldData(db);
+
+  log.info(`[Cron API] Daily refresh complete: ${results.stats.processed} stats, ${results.cache.processed} caches (${results.cache.totalMembers} members, ${results.cache.totalRoles} roles)`);
+
+  return results;
+}
+
+/**
+ * Run cache-only refresh job
+ * Refreshes member and role cache for all guilds without updating stats
+ */
+async function runCacheRefresh(db, botToken) {
+  const guilds = await getBotGuilds(botToken);
+
+  if (guilds.length === 0) {
+    return { processed: 0, failed: 0, skipped: 0 };
+  }
+
+  const results = {
+    processed: 0,
+    failed: 0,
+    skipped: 0,
+    totalMembers: 0,
+    totalRoles: 0,
+    totalBots: 0,
+    totalHumans: 0,
+    guilds: [],
+  };
+
+  for (const guild of guilds) {
+    try {
+      const cacheResult = await refreshGuildCache(db, botToken, guild.id);
+      
+      const guildResult = {
+        id: guild.id,
+        name: guild.name,
+        success: cacheResult.success,
+        members: cacheResult.members?.count || 0,
+        roles: cacheResult.roles?.count || 0,
+        bots: cacheResult.members?.botCount || 0,
+        humans: cacheResult.members?.humanCount || 0,
+        error: cacheResult.error || null,
+      };
+      
+      if (cacheResult.success) {
+        results.processed++;
+        results.totalMembers += guildResult.members;
+        results.totalRoles += guildResult.roles;
+        results.totalBots += guildResult.bots;
+        results.totalHumans += guildResult.humans;
+      } else if (cacheResult.error?.includes("Intent") || cacheResult.error?.includes("permission")) {
+        results.skipped++;
+        guildResult.skipped = true;
+      } else {
+        results.failed++;
+      }
+      
+      results.guilds.push(guildResult);
+
+      // Delay between guilds to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (error) {
+      results.failed++;
+      results.guilds.push({
+        id: guild.id,
+        name: guild.name,
+        success: false,
+        error: error.message,
+      });
+      log.error(`[Cron API] Cache refresh error for ${guild.id}:`, error);
+    }
+  }
+
+  log.info(`[Cron API] Cache refresh complete: ${results.processed} guilds, ${results.totalMembers} members, ${results.totalRoles} roles`);
 
   return results;
 }
@@ -458,18 +578,11 @@ export async function POST({ request, cookies, platform }) {
       const aggregationResult = await runHourlyAggregation(db);
       const refreshResult = await runDailyRefresh(db, botToken);
       result = { aggregation: aggregationResult, refresh: refreshResult };
-    } else if (jobName === 'rebuild_stats') {
-      result = await runRebuildStats(db);
-    }
-
-    const duration = Date.now() - startTime;
-    await recordJobComplete(db, jobId, true, result, null, duration);
-
-    log.info(`[Cron API] Manual job ${jobName} completed by user ${userId} in ${duration}ms`);
-
-    return json({
-      success: true,
-      jobName,
+    } else if (jobName === 'refresh_cache') {
+      if (!botToken) {
+        throw new Error("Bot token not configured");
+      }
+      result = await runCacheRefresh(db, botToken);
       result,
       duration,
     });
