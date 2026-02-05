@@ -1,6 +1,4 @@
 <script>
-	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
-	
 	let { data } = $props();
 	
 	// Track if data has been loaded (not just default empty values)
@@ -21,9 +19,6 @@
 	const botApp = $derived(data?.botApp ?? null);
 	const cronJobs = $derived(data?.cronJobs ?? []);
 	const cronJobHistory = $derived(data?.cronJobHistory ?? []);
-	const memberGrowthChart = $derived(data?.memberGrowthChart ?? []);
-	const voiceActivityChart = $derived(data?.voiceActivityChart ?? []);
-	const activitySummary = $derived(data?.activitySummary ?? {});
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
@@ -60,94 +55,6 @@
 		if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
 		return `${(ms / 60000).toFixed(1)}m`;
 	}
-	
-	// Format +/- change
-	function formatChange(value) {
-		if (!value || value === 0) return '0';
-		const sign = value > 0 ? '+' : '';
-		return `${sign}${value.toLocaleString()}`;
-	}
-	
-	// Transform member growth data for bar chart component
-	const memberGrowthBarData = $derived.by(() => {
-		const points = memberGrowthChart;
-		if (!points || points.length === 0) return [];
-		
-		return points.map(p => ({
-			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-			values: [
-				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
-				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
-			]
-		}));
-	});
-	
-	// Member growth summary stats
-	const memberGrowthStats = $derived.by(() => {
-		const points = memberGrowthChart;
-		if (!points || points.length === 0) return null;
-		
-		const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
-		const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
-		const netChange = totalJoins - totalLeaves;
-		
-		return { totalJoins, totalLeaves, netChange };
-	});
-	
-	// Transform voice activity data for area chart component
-	const voiceActivityData = $derived.by(() => {
-		const points = voiceActivityChart;
-		if (!points || points.length === 0) return [];
-		
-		// Determine if we should use hours or minutes
-		const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
-		const useHours = totalMinutes > 120;
-		
-		return points.map(p => ({
-			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-			value: useHours ? (p.totalHours || 0) : (p.totalMinutes || 0),
-		}));
-	});
-	
-	// Peak users chart data
-	const peakUsersData = $derived.by(() => {
-		const points = voiceActivityChart;
-		if (!points || points.length === 0) return [];
-		
-		return points.map(p => ({
-			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-			value: p.uniqueUsers || 0,
-		}));
-	});
-	
-	// Peak concurrent chart data
-	const peakConcurrentData = $derived.by(() => {
-		const points = voiceActivityChart;
-		if (!points || points.length === 0) return [];
-		
-		return points.map(p => ({
-			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-			value: p.peakConcurrent || 0,
-		}));
-	});
-	
-	// Voice activity summary stats
-	const voiceActivityStats = $derived.by(() => {
-		const points = voiceActivityChart;
-		if (!points || points.length === 0) return null;
-		
-		const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
-		const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
-		const useHours = totalMinutes > 120;
-		const uniqueUsers = points.reduce((max, p) => Math.max(max, p.uniqueUsers || 0), 0);
-		const peakConcurrent = points.reduce((max, p) => Math.max(max, p.peakConcurrent || 0), 0);
-		
-		return { totalMinutes, totalHours, useHours, uniqueUsers, peakConcurrent };
-	});
 	
 	// Run a cron job manually
 	async function runCronJob(jobName, dangerous = false) {
@@ -299,87 +206,6 @@
 				<span class="stat-label">Total Channels</span>
 				<span class="stat-value">{formatNumber(summary.totalChannels)}</span>
 			</div>
-		</div>
-	</section>
-	
-	<!-- Member Growth Chart -->
-	<section class="chart-section">
-		<ChartCard 
-			title="Member Growth" 
-			subtitle="Last 30 Days Across All Servers"
-			icon="👥"
-			stats={memberGrowthStats ? [
-				{ icon: '➕', value: `+${formatNumber(memberGrowthStats.totalJoins)}`, label: 'Joined', color: '#22c55e' },
-				{ icon: '➖', value: `-${formatNumber(memberGrowthStats.totalLeaves)}`, label: 'Left', color: '#ef4444' },
-				{ icon: '📊', value: formatChange(memberGrowthStats.netChange), label: 'Net Change', color: memberGrowthStats.netChange > 0 ? '#22c55e' : memberGrowthStats.netChange < 0 ? '#ef4444' : undefined },
-			] : []}
-		>
-			<BarChart 
-				data={memberGrowthBarData}
-				title="Member Growth"
-				emptyMessage="No member growth data available yet. Run the hourly aggregation job to generate statistics."
-			/>
-		</ChartCard>
-	</section>
-	
-	<!-- Voice Activity Charts -->
-	<section class="chart-section">
-		<h2 class="section-title">
-			<span class="section-icon">🎤</span>
-			Voice Channel Activity
-			<span class="section-subtitle">Last 30 Days Across All Servers</span>
-		</h2>
-		<div class="voice-charts-grid">
-			<ChartCard 
-				title="Voice Time" 
-				icon="⏱️"
-				stats={voiceActivityStats ? [
-					{ icon: '⏱️', value: voiceActivityStats.totalHours >= 1 ? `${voiceActivityStats.totalHours.toFixed(1)}` : `${voiceActivityStats.totalMinutes}`, label: voiceActivityStats.useHours ? 'Total Hours' : 'Total Minutes', color: '#FEE75C' },
-				] : []}
-			>
-				<AreaChart 
-					data={voiceActivityData}
-					color="#FEE75C"
-					gradientId="voiceGradient"
-					unit={voiceActivityStats?.useHours ? 'h' : 'm'}
-					title="Voice Time"
-					emptyMessage="No voice activity data yet."
-				/>
-			</ChartCard>
-			
-			<ChartCard 
-				title="Peak Users" 
-				icon="👥"
-				stats={voiceActivityStats ? [
-					{ icon: '👥', value: formatNumber(voiceActivityStats.uniqueUsers || 0), label: 'Max Peak', color: '#5865F2' },
-				] : []}
-			>
-				<AreaChart 
-					data={peakUsersData}
-					color="#5865F2"
-					gradientId="peakUsersGradient"
-					unit=""
-					title="Peak Users"
-					emptyMessage="No peak users data yet."
-				/>
-			</ChartCard>
-			
-			<ChartCard 
-				title="Peak Concurrent" 
-				icon="📊"
-				stats={voiceActivityStats ? [
-					{ icon: '📊', value: formatNumber(voiceActivityStats.peakConcurrent || 0), label: 'Max Concurrent', color: '#57F287' },
-				] : []}
-			>
-				<AreaChart 
-					data={peakConcurrentData}
-					color="#57F287"
-					gradientId="peakConcurrentGradient"
-					unit=""
-					title="Peak Concurrent"
-					emptyMessage="No peak concurrent data yet."
-				/>
-			</ChartCard>
 		</div>
 	</section>
 	
