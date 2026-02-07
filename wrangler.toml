@@ -17,6 +17,7 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # DISCORD_CLIENT_SECRET = ""
 # DISCORD_BOT_TOKEN = ""
 # ADMIN_USER_IDS = ""
+# CRON_SECRET = ""  # Secret for GitHub Actions scheduled jobs (also add to GitHub Secrets)
 
 # Cloudflare AI Configuration
 # Get these from the Cloudflare dashboard:
@@ -29,8 +30,7 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # CLOUDFLARE_AI_GATEWAY_ID = ""
 # CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"
 
-[triggers]
-# Cron jobs for scheduled tasks
-# - "0 * * * *" = Every hour (stats aggregation)
-# - "0 0 * * *" = Daily at midnight (cleanup)
-crons = ["0 * * * *", "0 0 * * *"]
+# NOTE: Cron triggers are NOT supported on Cloudflare Pages.
+# Use an external cron service to call /api/cron endpoints instead:
+# - "0 * * * *" = Every hour (stats aggregation) → POST /api/cron with job=hourly_aggregation
+# - "0 0 * * *" = Daily at midnight (cleanup) → POST /api/cron with job=daily_refresh
