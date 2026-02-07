@@ -1,7 +1,3 @@
-// Only load dotenv in development (no-op on Cloudflare edge runtime)
-if (process.env.NODE_ENV !== "production") {
-  import("dotenv/config").catch(() => {});
-}
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/log.js";
 
@@ -17,37 +13,44 @@ import { log } from "$lib/log.js";
  * (defaults to the first ADMIN_USER_IDS if set, or a placeholder)
  */
 
-const isDev = process.env.NODE_ENV !== "production";
-const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
-
-log.debug("[DevAuth] isDev:", isDev, "devAuthEnabled:", devAuthEnabled);
-log.debug("[DevAuth] ADMIN_USER_IDS:", process.env.ADMIN_USER_IDS);
+/**
+ * Safely get environment variable, works in both Node.js and Cloudflare Workers
+ * @param {string} name - Environment variable name
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform - SvelteKit platform object
+ * @returns {string|undefined}
+ */
+function getEnv(name, platform) {
+  return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
 
 /**
  * Get dev user configuration from environment
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
  */
-function getDevUser() {
+function getDevUser(platform) {
   // Use DEV_USER_ID if set, otherwise fall back to first admin user
-  const devUserId = process.env.DEV_USER_ID ||
-    (process.env.ADMIN_USER_IDS?.split(",")[0]?.trim()) ||
+  const devUserId = getEnv('DEV_USER_ID', platform) ||
+    (getEnv('ADMIN_USER_IDS', platform)?.split(",")[0]?.trim()) ||
     "000000000000000000";
 
   log.debug("[DevAuth] Using dev user ID:", devUserId);
 
   return {
     id: devUserId,
-    username: process.env.DEV_USERNAME || "DevUser",
-    globalName: process.env.DEV_GLOBAL_NAME || "Development User",
-    avatar: process.env.DEV_AVATAR || null,
+    username: getEnv('DEV_USERNAME', platform) || "DevUser",
+    globalName: getEnv('DEV_GLOBAL_NAME', platform) || "Development User",
+    avatar: getEnv('DEV_AVATAR', platform) || null,
     discriminator: "0",
   };
 }
 
 /**
  * Set dev auth cookies
+ * @param {import('@sveltejs/kit').Cookies} cookies
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
  */
-function setDevAuthCookies(cookies) {
-  const devUser = getDevUser();
+function setDevAuthCookies(cookies, platform) {
+  const devUser = getDevUser(platform);
   const cookieOptions = {
     path: "/",
     httpOnly: false,
@@ -76,13 +79,17 @@ function setDevAuthCookies(cookies) {
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-  const { url, cookies } = event;
+  const { url, cookies, platform } = event;
+
+  // Check if dev auth bypass is enabled
+  const isDev = getEnv('NODE_ENV', platform) !== 'production';
+  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
   // Handle dev auth bypass
   if (devAuthEnabled) {
     // Special /dev-login route for easy dev authentication
     if (url.pathname === "/dev-login") {
-      setDevAuthCookies(cookies);
+      setDevAuthCookies(cookies, platform);
       const returnTo = url.searchParams.get("return_to") || "/admin";
       // Use SvelteKit's redirect to ensure cookies are properly sent
       throw redirect(302, returnTo);
@@ -106,7 +113,7 @@ export async function handle({ event, resolve }) {
     if (url.searchParams.get("dev_auth") === "true") {
       const userId = cookies.get("discord_user_id");
       if (!userId) {
-        setDevAuthCookies(cookies);
+        setDevAuthCookies(cookies, platform);
         // Remove the dev_auth param and redirect
         const cleanUrl = new URL(url);
         cleanUrl.searchParams.delete("dev_auth");

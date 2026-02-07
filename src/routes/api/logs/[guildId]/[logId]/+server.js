@@ -7,9 +7,15 @@ import {
 } from "$lib/db/logger.js";
 import { verifyGuildAccess } from "$lib/discord/guilds.js";
 
-// Check if dev auth bypass is enabled
-const isDev = process.env.NODE_ENV !== "production";
-const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
+/**
+ * Safely get environment variable, works in both Node.js and Cloudflare Workers
+ * @param {string} name - Environment variable name
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform - SvelteKit platform object
+ * @returns {string|undefined}
+ */
+function getEnv(name, platform) {
+  return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
 
 /**
  * GET /api/logs/[guildId]/[logId] - Fetch a single log entry
@@ -17,16 +23,18 @@ const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
 export async function GET({ params, cookies, platform }) {
   const { guildId, logId } = params;
 
+  // Check if dev auth bypass is enabled
+  const isDev = getEnv('NODE_ENV', platform) !== 'production';
+  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+
   if (!guildId || !logId) {
     return json({ error: "Guild ID and Log ID required" }, { status: 400 });
   }
 
   // Get auth info
   const accessToken = cookies.get("discord_access_token");
-  const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-    process.env.DISCORD_BOT_TOKEN;
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
-    process.env.ADMIN_USER_IDS;
+  const botToken = getEnv('DISCORD_BOT_TOKEN', platform);
+  const adminUserIds = getEnv('ADMIN_USER_IDS', platform);
 
   // Check for dev auth bypass
   const isDevMockToken = accessToken === "dev_mock_token" && devAuthEnabled;

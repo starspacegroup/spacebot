@@ -583,6 +583,15 @@ export async function POST({ request, cookies, platform }) {
         throw new Error("Bot token not configured");
       }
       result = await runCacheRefresh(db, botToken);
+    }
+
+    const duration = Date.now() - startTime;
+    await recordJobComplete(db, jobId, true, result, null, duration);
+
+    log.info(`[Cron API] Manual job ${jobName} completed successfully in ${duration}ms`);
+
+    return json({
+      success: true,
       result,
       duration,
     });

@@ -1,21 +1,11 @@
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
-
-// Load dotenv in dev (fails gracefully in production on Cloudflare)
-if (typeof process !== "undefined") {
-  import("dotenv/config").catch(() => {});
-}
 import {
   filterAdminGuilds,
   getBotGuildIds,
   getBotGuildsWithDetails,
   getUserGuilds,
 } from "$lib/discord/guilds.js";
-
-log.debug(
-  "[Layout] Module loaded, BOT_TOKEN exists:",
-  !!process.env.DISCORD_BOT_TOKEN,
-);
 
 // Timeout for guild fetching to prevent layout hangs (10 seconds)
 const GUILD_FETCH_TIMEOUT = 10000;
@@ -48,13 +38,23 @@ async function withTimeout(promise, ms, fallback) {
   }
 }
 
-// Check if dev auth bypass is enabled
-const isDev = process.env.NODE_ENV !== "production";
-const devAuthEnabled = isDev && process.env.DEV_AUTH_BYPASS === "true";
+/**
+ * Safely get environment variable, works in both Node.js and Cloudflare Workers
+ * @param {string} name - Environment variable name
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform - SvelteKit platform object
+ * @returns {string|undefined}
+ */
+function getEnv(name, platform) {
+  return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
 
 /** @type {import('./$types').LayoutServerLoad} */
 export async function load({ cookies, platform, url }) {
   console.log('[Layout] load() called, pathname:', url.pathname);
+  
+  // Check if dev auth bypass is enabled
+  const isDev = getEnv('NODE_ENV', platform) !== 'production';
+  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
   
   // Check if user is logged in via cookie
   const userId = cookies.get("discord_user_id");
@@ -72,8 +72,7 @@ export async function load({ cookies, platform, url }) {
   }
 
   // Get ADMIN_USER_IDS from environment (these are superadmins with full access)
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
-    process.env.ADMIN_USER_IDS || "";
+  const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
 
   // Parse comma-separated list of superadmin IDs
   const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
@@ -118,8 +117,7 @@ export async function load({ cookies, platform, url }) {
 
   if (isAdminPage) {
     // Check if we're using dev auth bypass with a mock guild
-    const devGuildId = platform?.env?.DISCORD_GUILD_ID ||
-      process.env.DISCORD_GUILD_ID;
+    const devGuildId = getEnv('DISCORD_GUILD_ID', platform);
     const isDevMockToken =
       cookies.get("discord_access_token") === "dev_mock_token";
 
@@ -147,8 +145,7 @@ export async function load({ cookies, platform, url }) {
     }
 
     const accessToken = cookies.get("discord_access_token");
-    const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-      process.env.DISCORD_BOT_TOKEN;
+    const botToken = getEnv('DISCORD_BOT_TOKEN', platform);
 
     log.debug(
       "[Layout] Has accessToken:",
