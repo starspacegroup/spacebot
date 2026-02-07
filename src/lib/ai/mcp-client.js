@@ -1292,11 +1292,17 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
     if (eventData.channelId && entityType !== 3) {
       payload.channel_id = eventData.channelId;
     }
-    // For external events (entityType 3), location is required
+    // For external events (entityType 3), location AND scheduled_end_time are required
     if (entityType === 3) {
       payload.entity_metadata = { 
         location: eventData.location || eventData.entityMetadata?.location || "To be announced" 
       };
+      // Discord requires end time for external events - default to 3 hours after start
+      if (!payload.scheduled_end_time) {
+        const startTime = new Date(eventData.scheduledStartTime);
+        const endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+        payload.scheduled_end_time = endTime.toISOString();
+      }
     }
     if (imageDataUri) {
       payload.image = imageDataUri;

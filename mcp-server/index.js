@@ -1005,18 +1005,26 @@ async function createScheduledEvent(guildId, eventData) {
     throw new Error("DISCORD_BOT_TOKEN not configured");
   }
 
+  const entityType = eventData.entityType || 3;
   const payload = {
     name: eventData.name,
     privacy_level: 2,
     scheduled_start_time: eventData.scheduledStartTime,
-    entity_type: eventData.entityType || 3,
+    entity_type: entityType,
   };
 
   if (eventData.description) payload.description = eventData.description;
   if (eventData.scheduledEndTime) payload.scheduled_end_time = eventData.scheduledEndTime;
-  if (eventData.channelId && eventData.entityType !== 3) payload.channel_id = eventData.channelId;
-  if (eventData.entityType === 3) {
+  if (eventData.channelId && entityType !== 3) payload.channel_id = eventData.channelId;
+  // For external events (entityType 3), location AND scheduled_end_time are required
+  if (entityType === 3) {
     payload.entity_metadata = { location: eventData.location || "To be announced" };
+    // Discord requires end time for external events - default to 3 hours after start
+    if (!payload.scheduled_end_time) {
+      const startTime = new Date(eventData.scheduledStartTime);
+      const endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+      payload.scheduled_end_time = endTime.toISOString();
+    }
   }
 
   const response = await fetch(

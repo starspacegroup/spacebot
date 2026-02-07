@@ -253,8 +253,15 @@ export async function POST({ params, cookies, platform, request }) {
     if (body.channelId && body.entityType !== 3) {
       eventPayload.channel_id = body.channelId;
     }
-    if (body.entityType === 3 && body.entityMetadata?.location) {
-      eventPayload.entity_metadata = { location: body.entityMetadata.location };
+    // For external events (entityType 3), location AND scheduled_end_time are required
+    if (body.entityType === 3) {
+      eventPayload.entity_metadata = { location: body.entityMetadata?.location || "To be announced" };
+      // Discord requires end time for external events - default to 3 hours after start
+      if (!eventPayload.scheduled_end_time) {
+        const startTime = new Date(body.scheduledStartTime);
+        const endTime = new Date(startTime.getTime() + 3 * 60 * 60 * 1000);
+        eventPayload.scheduled_end_time = endTime.toISOString();
+      }
     }
     if (body.image) {
       eventPayload.image = body.image;
