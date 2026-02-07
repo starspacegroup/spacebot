@@ -1,6 +1,10 @@
 import { redirect } from "@sveltejs/kit";
-import "dotenv/config";
 import { log } from "$lib/db/logger.js";
+
+// Load dotenv in dev (fails gracefully in production on Cloudflare)
+if (typeof process !== "undefined") {
+  import("dotenv/config").catch(() => {});
+}
 import {
   filterAdminGuilds,
   getBotGuildIds,
