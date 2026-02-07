@@ -1,4 +1,4 @@
-import { redirect } from "@sveltejs/kit";
+import { redirect, json } from "@sveltejs/kit";
 
 /**
  * Discord OAuth2 Authorization Endpoint
@@ -13,6 +13,15 @@ import { redirect } from "@sveltejs/kit";
  * - guild_id: Pre-select a specific guild for bot installation
  * - permissions: Bot permissions bitfield (default: configured permissions)
  */
+
+/**
+ * Safely get environment variable from platform.env (Cloudflare Workers/Pages)
+ * @param {string} name
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
+ */
+function getEnv(name, platform) {
+	return platform?.env?.[name];
+}
 
 /**
  * Get the real origin when behind a proxy/tunnel (e.g., Cloudflare Tunnel)
@@ -44,12 +53,21 @@ function getOrigin(request, url) {
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ request, url, cookies, platform }) {
-	const CLIENT_ID = platform?.env?.DISCORD_CLIENT_ID ||
-		process.env.DISCORD_CLIENT_ID;
+	// Use only platform.env for Cloudflare Workers/Pages environments
+	const CLIENT_ID = getEnv('DISCORD_CLIENT_ID', platform);
 	const REDIRECT_URI = `${getOrigin(request, url)}/api/auth/discord/callback`;
 
 	if (!CLIENT_ID) {
-		throw new Error("DISCORD_CLIENT_ID not configured");
+		console.error('[OAuth] DISCORD_CLIENT_ID not configured. Platform env keys:', 
+			platform?.env ? Object.keys(platform.env) : 'platform.env is undefined');
+		return json({ 
+			error: "DISCORD_CLIENT_ID not configured",
+			debug: {
+				hasPlatform: !!platform,
+				hasEnv: !!platform?.env,
+				envKeys: platform?.env ? Object.keys(platform.env).filter(k => !k.includes('SECRET') && !k.includes('TOKEN')) : []
+			}
+		}, { status: 500 });
 	}
 
 	// Determine the OAuth2 flow type

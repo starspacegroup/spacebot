@@ -3,6 +3,15 @@ import { log } from "$lib/db/logger.js";
 import { invalidateGuildCache } from "$lib/discord/guilds.js";
 
 /**
+ * Safely get environment variable from platform.env (Cloudflare Workers/Pages)
+ * @param {string} name
+ * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
+ */
+function getEnv(name, platform) {
+	return platform?.env?.[name];
+}
+
+/**
  * Get the real origin when behind a proxy/tunnel (e.g., Cloudflare Tunnel)
  */
 function getOrigin(request, url) {
@@ -56,10 +65,8 @@ export async function GET({ request, url, cookies, platform }) {
 	}
 	cookies.delete("oauth_flow", { path: "/" });
 
-	const CLIENT_ID = platform?.env?.DISCORD_CLIENT_ID ||
-		process.env.DISCORD_CLIENT_ID;
-	const CLIENT_SECRET = platform?.env?.DISCORD_CLIENT_SECRET ||
-		process.env.DISCORD_CLIENT_SECRET;
+	const CLIENT_ID = getEnv('DISCORD_CLIENT_ID', platform);
+	const CLIENT_SECRET = getEnv('DISCORD_CLIENT_SECRET', platform);
 	const REDIRECT_URI = `${getOrigin(request, url)}/api/auth/discord/callback`;
 
 	console.log('[OAuth Callback] REDIRECT_URI:', REDIRECT_URI);
