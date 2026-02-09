@@ -15,14 +15,14 @@ import { matchesFilters, processTemplate, buildContext } from "$lib/automation/e
 /**
  * Verify bot authorization
  */
-function verifyBotAuth(request) {
+function verifyBotAuth(request, platform) {
   const auth = request.headers.get("Authorization");
   if (!auth?.startsWith("Bot ")) {
     return false;
   }
 
   const token = auth.slice(4);
-  const expectedToken = process.env.DISCORD_BOT_TOKEN;
+  const expectedToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
   return token === expectedToken;
 }
@@ -30,7 +30,7 @@ function verifyBotAuth(request) {
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, request, platform }) {
   // Verify this is coming from our bot
-  if (!verifyBotAuth(request)) {
+  if (!verifyBotAuth(request, platform)) {
     return json({ error: "Unauthorized" }, { status: 401 });
   }
 

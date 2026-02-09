@@ -29,11 +29,10 @@ function getLogLevel() {
     return LOG_LEVELS[level] ?? -1;
   }
 
-  // Server-side: check process.env
+  // Server-side: check process.env, default to "info" for development
   const logLevel = typeof process !== "undefined" ? process.env?.LOG_LEVEL : undefined;
-  if (!logLevel) return -1;
-  const level = logLevel.toLowerCase();
-  return LOG_LEVELS[level] ?? -1;
+  const level = (logLevel || "info").toLowerCase();
+  return LOG_LEVELS[level] ?? LOG_LEVELS.info;
 }
 
 /**
