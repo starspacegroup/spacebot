@@ -280,11 +280,6 @@
 					<div class="selected-item">
 						<span class="command-slash">/</span>
 						<span class="command-name">{selectedCommand.name}</span>
-						{#if selectedCommand.cooldownMinutes}
-							<span class="cooldown-badge" title="Has {selectedCommand.cooldownMinutes} minute cooldown">
-								⏱️ {selectedCommand.cooldownMinutes}m
-							</span>
-						{/if}
 						<button type="button" class="clear-btn" onclick={clearCommand} title="Clear selection">×</button>
 					</div>
 				{:else}
@@ -341,11 +336,7 @@
 										<span class="bot-name">{cmd.name}</span>
 										<span class="bot-desc">{cmd.description}</span>
 									</div>
-									{#if cmd.cooldownMinutes}
-										<span class="cooldown-badge" title="{cmd.cooldownMinutes} minute cooldown">
-											⏱️
-										</span>
-									{/if}
+
 								</button>
 							{/each}
 						{/if}
@@ -397,18 +388,6 @@
 					<span class="result-text">Failure Only</span>
 				</label>
 			</div>
-			
-			{#if selectedCommand.cooldownMinutes && resultValue === 'success'}
-				<div class="result-hint success-hint">
-					<span>💡</span>
-					<span>Successful /{selectedCommand.name} has a {selectedCommand.cooldownMinutes} minute cooldown. Consider setting up a reminder!</span>
-				</div>
-			{:else if resultValue === 'failure'}
-				<div class="result-hint failure-hint">
-					<span>💡</span>
-					<span>This will trigger when the command fails (e.g., cooldown not expired, missing permissions)</span>
-				</div>
-			{/if}
 		</div>
 	{/if}
 </div>
