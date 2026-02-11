@@ -21,7 +21,8 @@
 		multiple = false, // Enable multi-select
 		placeholder = 'Search channels...',
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
-		showAllOption = false // Show "Any" option at top (multi-select only)
+		showAllOption = false, // Show "Any" option at top (multi-select only)
+		onchange = null // Callback when value changes
 	} = $props();
 	
 	// Ensure value is never undefined internally
@@ -158,6 +159,7 @@
 	function selectAll() {
 		value = ALL_CHANNELS;
 		searchQuery = '';
+		onchange?.();
 	}
 	
 	function toggleChannel(channel) {
@@ -183,6 +185,7 @@
 			isOpen = false;
 			highlightedIndex = -1;
 		}
+		onchange?.();
 	}
 	
 	function removeChannel(channelId) {
@@ -193,12 +196,14 @@
 		} else {
 			value = newIds.join(',');
 		}
+		onchange?.();
 	}
 	
 	function clearSelection() {
 		value = '';
 		searchQuery = '';
 		inputRef?.focus();
+		onchange?.();
 	}
 	
 	function handleInputFocus() {

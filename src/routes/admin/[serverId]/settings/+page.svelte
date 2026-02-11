@@ -8,6 +8,18 @@
 	
 	let showToast = $state(true);
 	let saving = $state(false);
+	let autoSaveTimer = null;
+	let settingsFormEl = $state(null);
+	
+	/** Auto-save: debounce and submit the settings form */
+	function autoSave() {
+		if (autoSaveTimer) clearTimeout(autoSaveTimer);
+		autoSaveTimer = setTimeout(() => {
+			if (settingsFormEl) {
+				settingsFormEl.requestSubmit();
+			}
+		}, 500);
+	}
 	
 	// Track the server ID to detect when we navigate to a different server
 	let lastServerId = $state(data.serverId);
@@ -119,10 +131,9 @@
 		</div>
 	</header>
 	
-	<form method="POST" action="?/updateSettings" use:enhance={() => {
+	<form bind:this={settingsFormEl} method="POST" action="?/updateSettings" use:enhance={() => {
 		saving = true;
 		return async ({ update }) => {
-			// Use reset: false to keep form values, then invalidate to refetch data
 			await update({ reset: false, invalidateAll: true });
 			saving = false;
 			showToast = true;
@@ -152,6 +163,7 @@
 							name="viewDashboardPerm" 
 							bind:value={viewDashboardPerm}
 							class="permission-select"
+							onchange={autoSave}
 						>
 							{#each data.discordPermissions as perm}
 								<option value={perm.value}>{perm.label}</option>
@@ -171,6 +183,7 @@
 							name="viewLogsPerm" 
 							bind:value={viewLogsPerm}
 							class="permission-select"
+							onchange={autoSave}
 						>
 							{#each data.discordPermissions as perm}
 								<option value={perm.value}>{perm.label}</option>
@@ -190,6 +203,7 @@
 							name="manageAutomationsPerm" 
 							bind:value={manageAutomationsPerm}
 							class="permission-select"
+							onchange={autoSave}
 						>
 							{#each data.discordPermissions as perm}
 								<option value={perm.value}>{perm.label}</option>
@@ -209,6 +223,7 @@
 							name="manageCommandsPerm" 
 							bind:value={manageCommandsPerm}
 							class="permission-select"
+							onchange={autoSave}
 						>
 							{#each data.discordPermissions as perm}
 								<option value={perm.value}>{perm.label}</option>
@@ -252,6 +267,7 @@
 							bind:value={loggingChannelId}
 							name="loggingChannelId"
 							placeholder="Select a channel..."
+							onchange={autoSave}
 						/>
 					</div>
 				</div>
@@ -277,6 +293,7 @@
 							id="welcomeEnabled" 
 							name="welcomeEnabled"
 							bind:checked={welcomeEnabled}
+							onchange={autoSave}
 						/>
 						<span class="toggle-slider"></span>
 					</label>
@@ -294,6 +311,7 @@
 								bind:value={welcomeChannelId}
 								name="welcomeChannelId"
 								placeholder="Select a channel..."
+								onchange={autoSave}
 							/>
 						</div>
 					</div>
@@ -312,24 +330,13 @@
 							rows="3"
 							class="setting-textarea"
 							placeholder="Welcome {user} to {server}!"
+							oninput={autoSave}
 						></textarea>
 					</div>
 				{/if}
 			</div>
 		</section>
 		
-		<!-- Save Button -->
-		<div class="form-actions">
-			<button type="submit" class="btn btn-primary" disabled={saving}>
-				{#if saving}
-					<span class="spinner"></span>
-					Saving...
-				{:else}
-					<span class="btn-icon">💾</span>
-					Save Settings
-				{/if}
-			</button>
-		</div>
 	</form>
 	
 	<!-- Webhooks Section (outside main form since it has its own forms) -->
@@ -892,15 +899,6 @@
 	
 	.toggle input:focus + .toggle-slider {
 		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.3);
-	}
-	
-	/* Form Actions */
-	.form-actions {
-		display: flex;
-		justify-content: flex-end;
-		padding-top: 1rem;
-		border-top: 1px solid var(--color-border);
-		margin-top: 1rem;
 	}
 	
 	/* Webhooks Section */
