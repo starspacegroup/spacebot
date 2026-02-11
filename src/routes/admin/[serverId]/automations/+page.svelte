@@ -341,59 +341,6 @@
 		gap: 0.5rem;
 	}
 	
-	/* Buttons */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.625rem 1rem;
-		border: none;
-		border-radius: 8px;
-		font-size: 0.875rem;
-		font-weight: 500;
-		cursor: pointer;
-		text-decoration: none;
-		transition: all 0.2s;
-	}
-	
-	.btn-primary {
-		background: var(--accent-color, #5865F2);
-		color: #1C1917;
-		font-weight: 600;
-	}
-	
-	.btn-primary:hover {
-		background: var(--accent-hover, #4752C4);
-	}
-	
-	.btn-secondary {
-		background: var(--bg-secondary, #2f3136);
-		color: var(--text-primary, #fff);
-	}
-	
-	.btn-secondary:hover {
-		background: var(--bg-tertiary, #36393f);
-	}
-	
-	.btn-danger {
-		background: var(--color-danger);
-		color: var(--color-text-inverse);
-	}
-
-	.btn-danger:hover {
-		background: var(--color-danger-hover);
-	}
-	
-	.btn-sm {
-		padding: 0.375rem 0.75rem;
-		font-size: 0.75rem;
-	}
-	
-	.btn-lg {
-		padding: 0.875rem 1.5rem;
-		font-size: 1rem;
-	}
-	
 	/* Cards */
 	.card {
 		background: var(--bg-secondary, #2f3136);

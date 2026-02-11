@@ -98,34 +98,7 @@
 		line-height: 1.5;
 	}
 	
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1.5rem;
-		border-radius: var(--radius-md);
-		font-size: 1rem;
-		font-weight: 500;
-		text-decoration: none;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-	}
-	
-	.btn-primary {
-		background: var(--color-primary);
-		color: #1C1917;
-		font-weight: 600;
-	}
-	
-	.btn-primary:hover {
-		background: var(--color-primary-hover);
-	}
-	
-	.btn-large {
-		padding: 1rem 2rem;
-		font-size: 1.125rem;
-	}
+
 	
 	.hint {
 		margin: 1.5rem 0;

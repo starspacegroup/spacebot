@@ -50,6 +50,45 @@
 				}
 			});
 		</script>
+		<!-- Critical button CSS — inlined so buttons render correctly before JS loads.
+		     The full button system lives in src/lib/styles/global.css;
+		     this subset prevents FOUC during hydration / stale cache scenarios. -->
+		<style id="critical-buttons">
+			.btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				gap: 0.5rem;
+				padding: 0.625rem 1.25rem;
+				font-size: 0.875rem;
+				font-weight: 500;
+				line-height: 1.25;
+				border: 1px solid transparent;
+				border-radius: 8px;
+				cursor: pointer;
+				text-decoration: none;
+				white-space: nowrap;
+			}
+			.btn-primary {
+				background: #D97706;
+				color: white;
+				font-weight: 600;
+			}
+			.btn-secondary {
+				background: var(--color-surface-elevated, #292524);
+				color: var(--color-text, #FAFAF9);
+				border-color: var(--color-border, #44403C);
+			}
+			.btn-danger {
+				background: #EF4444;
+				color: white;
+			}
+			.btn-sm, .btn-small {
+				padding: 0.375rem 0.75rem;
+				font-size: 0.8rem;
+			}
+			a.btn { color: inherit; }
+		</style>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="tap">

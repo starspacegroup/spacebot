@@ -757,7 +757,7 @@
 	.refresh-btn.active {
 		background: var(--color-primary);
 		border-color: var(--color-primary);
-		color: #1C1917;
+		color: white;
 		font-weight: 600;
 	}
 	
@@ -1256,20 +1256,7 @@
 		margin: 0 0 1rem;
 	}
 	
-	.btn {
-		display: inline-block;
-		padding: 0.75rem 1.5rem;
-		background: var(--color-primary);
-		color: var(--color-text-inverse);
-		text-decoration: none;
-		border-radius: 6px;
-		font-weight: 500;
-		margin-top: 1rem;
-	}
-	
-	.btn:hover {
-		background: var(--color-primary-hover);
-	}
+
 
 	.results-left {
 		display: flex;

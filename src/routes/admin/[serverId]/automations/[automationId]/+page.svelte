@@ -1399,54 +1399,6 @@
 		gap: 0.75rem;
 	}
 	
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.75rem 1.25rem;
-		border: none;
-		border-radius: 8px;
-		font-size: 1rem;
-		font-weight: 500;
-		cursor: pointer;
-		text-decoration: none;
-		transition: all 0.2s;
-	}
-	
-	.btn-primary {
-		background: var(--accent-color, #5865F2);
-		color: #1C1917;
-		font-weight: 600;
-	}
-	
-	.btn-primary:hover {
-		background: var(--accent-hover, #4752C4);
-	}
-	
-	.btn-secondary {
-		background: var(--bg-secondary, #2f3136);
-		color: var(--text-primary, #fff);
-		border: 1px solid var(--border-color, #40444b);
-	}
-	
-	.btn-secondary:hover {
-		background: var(--bg-tertiary, #36393f);
-	}
-	
-	.btn-sm {
-		padding: 0.5rem 0.875rem;
-		font-size: 0.875rem;
-	}
-	
-	.btn-danger {
-		background: var(--color-danger);
-		color: var(--color-text-inverse);
-	}
-	
-	.btn-danger:hover {
-		background: var(--color-danger-hover);
-	}
-	
 	/* Confirm Dialog */
 	.confirm-overlay {
 		position: fixed;

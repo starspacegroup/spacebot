@@ -13,5 +13,11 @@ export default defineConfig({
 		hmr: process.env.VITE_HMR === 'true' ? {
 			timeout: 5000,
 		} : false,
+		// Prevent browsers from caching modules and CSS with 304 responses.
+		// Without HMR the only way to pick up changes is a full reload,
+		// so stale 304s cause "flash then revert" styling bugs.
+		headers: {
+			'Cache-Control': 'no-store, max-age=0',
+		},
 	},
 });

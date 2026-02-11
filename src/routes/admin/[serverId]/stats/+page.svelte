@@ -2058,36 +2058,6 @@
 		color: var(--color-text-muted);
 	}
 	
-	/* Buttons */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.6rem 1rem;
-		border-radius: var(--radius-md);
-		border: none;
-		font-weight: 500;
-		font-size: 0.9rem;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-		text-decoration: none;
-	}
-	
-	.btn-primary {
-		background: var(--color-primary);
-		color: #1C1917;
-	}
-	
-	.btn-primary:hover {
-		background: var(--color-primary-hover);
-	}
-	
-	.btn-sm {
-		padding: 0.4rem 0.75rem;
-		font-size: 0.85rem;
-	}
-	
 	/* Responsive table */
 	@media (max-width: 640px) {
 		.table-header {
@@ -2234,16 +2204,6 @@
 	/* Command Status Badge */
 	.command-status {
 		font-size: 0.9rem;
-	}
-	
-	.btn-secondary {
-		background: var(--color-surface-elevated);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
-	}
-	
-	.btn-secondary:hover {
-		background: var(--color-border);
 	}
 	
 	/* Bot Toggle and Badge Styles */

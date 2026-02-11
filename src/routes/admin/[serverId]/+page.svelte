@@ -417,56 +417,7 @@
 		color: var(--color-primary);
 	}
 	
-	/* Buttons */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.6rem 1rem;
-		border-radius: var(--radius-md);
-		border: none;
-		font-weight: 500;
-		font-size: 0.9rem;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-		text-decoration: none;
-	}
-	
-	.btn-primary {
-		background: var(--color-primary);
-		color: #1C1917;
-		font-weight: 600;
-	}
-	
-	.btn-primary:hover {
-		background: var(--color-primary-hover);
-	}
-	
-	.btn-secondary {
-		background: var(--color-surface-elevated);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
-	}
-	
-	.btn-secondary:hover {
-		background: var(--color-surface-hover);
-		border-color: var(--color-primary);
-	}
-	
-	.btn-lg {
-		padding: 0.875rem 1.5rem;
-		font-size: 1rem;
-	}
-	
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-	
-	.btn-icon {
-		font-size: 1.1em;
-	}
+
 	
 	/* Server Settings Section - Admin Only */
 	.server-settings-section {

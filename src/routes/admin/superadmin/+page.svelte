@@ -1060,68 +1060,6 @@
 		margin: 0;
 	}
 	
-	/* Buttons */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.6rem 1rem;
-		border-radius: var(--radius-md);
-		border: none;
-		font-weight: 500;
-		font-size: 0.9rem;
-		cursor: pointer;
-		transition: all var(--transition-fast);
-		text-decoration: none;
-	}
-	
-	.btn-sm {
-		padding: 0.4rem 0.75rem;
-		font-size: 0.8rem;
-	}
-	
-	.btn-secondary {
-		background: var(--color-surface-elevated);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
-	}
-	
-	.btn-secondary:hover {
-		background: var(--color-surface-hover);
-		border-color: var(--color-primary);
-	}
-	
-	.btn-primary {
-		background: var(--color-primary);
-		color: #1C1917;
-		border: 1px solid var(--color-primary);
-	}
-	
-	.btn-primary:hover:not(:disabled) {
-		filter: brightness(1.1);
-	}
-	
-	.btn-primary:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-	
-	.btn-danger {
-		background: var(--color-error, #ef4444);
-		color: white;
-		border: 1px solid var(--color-error, #ef4444);
-	}
-	
-	.btn-danger:hover:not(:disabled) {
-		filter: brightness(1.1);
-	}
-	
-	.btn-danger:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-	
 	.btn-run {
 		white-space: nowrap;
 		width: 100%;

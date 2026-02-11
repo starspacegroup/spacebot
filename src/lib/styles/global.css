@@ -213,14 +213,14 @@ body {
 	background: var(--color-text-muted);
 }
 
-/* Link defaults */
-a {
+/* Link defaults — exclude .btn so button-links never flash the link color */
+a:not(.btn) {
 	color: var(--color-primary);
 	text-decoration: none;
 	transition: color var(--transition-fast);
 }
 
-a:hover {
+a:not(.btn):hover {
 	color: var(--color-primary-hover);
 }
 
@@ -244,4 +244,153 @@ pre {
 pre code {
 	background: transparent;
 	padding: 0;
+}
+
+/* ==========================================================================
+   Global Button System
+   Unified button styles — remove per-page .btn CSS and use these instead.
+   ========================================================================== */
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5rem;
+	padding: 0.625rem 1.25rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	line-height: 1.25;
+	border: 1px solid transparent;
+	border-radius: var(--radius-md);
+	cursor: pointer;
+	text-decoration: none;
+	font-family: inherit;
+	white-space: nowrap;
+	transition: background-color var(--transition-fast),
+	            border-color var(--transition-fast),
+	            color var(--transition-fast),
+	            opacity var(--transition-fast);
+}
+
+.btn:active {
+	transform: scale(0.98);
+}
+
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	pointer-events: none;
+}
+
+.btn:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+/* Primary — amber brand with white text for readability */
+.btn-primary {
+	background: var(--color-primary);
+	color: white;
+	font-weight: 600;
+	text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
+}
+
+.btn-primary:hover:not(:disabled) {
+	background: var(--color-primary-hover);
+}
+
+/*
+ * In dark mode the accent is bright (#F59E0B) which gives poor
+ * white-text contrast. Use the deeper amber (#D97706) for buttons.
+ */
+[data-theme="dark"] .btn-primary {
+	background: #D97706;
+}
+
+[data-theme="dark"] .btn-primary:hover:not(:disabled) {
+	background: #B45309;
+}
+
+/* Secondary — surface color with border */
+.btn-secondary {
+	background: var(--color-surface-elevated);
+	color: var(--color-text);
+	border-color: var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+	background: var(--color-surface-hover);
+	border-color: var(--color-border-strong);
+}
+
+/* Danger — solid red */
+.btn-danger {
+	background: var(--color-danger);
+	color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+	background: var(--color-danger-hover);
+}
+
+/* Danger outline */
+.btn-danger-outline {
+	background: transparent;
+	color: var(--color-danger);
+	border-color: var(--color-danger);
+}
+
+.btn-danger-outline:hover:not(:disabled) {
+	background: var(--color-danger-soft);
+}
+
+/* Warning — yellow/amber for caution actions */
+.btn-warning {
+	background: var(--color-warning);
+	color: #1C1917;
+	font-weight: 600;
+}
+
+.btn-warning:hover:not(:disabled) {
+	background: var(--color-warning-hover);
+}
+
+/* Warning outline */
+.btn-warning-outline {
+	background: transparent;
+	color: var(--color-warning);
+	border-color: var(--color-warning);
+}
+
+.btn-warning-outline:hover:not(:disabled) {
+	background: var(--color-warning-soft);
+}
+
+/* Success */
+.btn-success {
+	background: var(--color-success);
+	color: #1C1917;
+	font-weight: 600;
+}
+
+.btn-success:hover:not(:disabled) {
+	background: var(--color-success-hover);
+}
+
+/* Size variants */
+.btn-sm,
+.btn-small {
+	padding: 0.375rem 0.75rem;
+	font-size: 0.8rem;
+}
+
+.btn-lg,
+.btn-large {
+	padding: 0.875rem 1.5rem;
+	font-size: 1rem;
+}
+
+/* Icon inside a button */
+.btn-icon {
+	font-size: 1.1em;
 }
