@@ -1549,15 +1549,21 @@
 	.categories-grid {
 		display: grid;
 		gap: 0.75rem;
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-columns: 1fr;
 	}
-	
+
+	@media (min-width: 480px) {
+		.categories-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
 	@media (min-width: 768px) {
 		.categories-grid {
 			grid-template-columns: repeat(3, 1fr);
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.categories-grid {
 			grid-template-columns: repeat(5, 1fr);
@@ -1568,7 +1574,13 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
-		padding: 1rem;
+		padding: 0.875rem;
+	}
+
+	@media (min-width: 480px) {
+		.category-card {
+			padding: 1rem;
+		}
 	}
 	
 	.category-header {
@@ -1603,9 +1615,15 @@
 	}
 	
 	.category-count {
-		font-size: 1.5rem;
+		font-size: 1.25rem;
 		font-weight: 700;
 		color: var(--color-text);
+	}
+
+	@media (min-width: 480px) {
+		.category-count {
+			font-size: 1.5rem;
+		}
 	}
 	
 	.category-percent {
@@ -1785,10 +1803,17 @@
 	/* Two Column Layout */
 	.two-column-section {
 		display: grid;
-		gap: 1.5rem;
-		margin-bottom: 2rem;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
 	}
-	
+
+	@media (min-width: 480px) {
+		.two-column-section {
+			gap: 1.5rem;
+			margin-bottom: 2rem;
+		}
+	}
+
 	@media (min-width: 768px) {
 		.two-column-section {
 			grid-template-columns: repeat(2, 1fr);
@@ -1800,35 +1825,60 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
-		padding: 1.25rem;
+		padding: 0.875rem;
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-section {
+			padding: 1.25rem;
+		}
+	}
+
 	.list-section .section-title {
 		margin-bottom: 0.75rem;
 	}
-	
+
 	.list-container {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 0.375rem;
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-container {
+			gap: 0.5rem;
+		}
+	}
+
 	.list-item {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.5rem;
 		padding: 0.5rem;
 		background: var(--color-surface-elevated);
 		border-radius: var(--radius-md);
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-item {
+			gap: 0.75rem;
+		}
+	}
+
 	.list-rank {
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--color-text-muted);
-		width: 24px;
+		width: 20px;
+		flex-shrink: 0;
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-rank {
+			width: 24px;
+		}
+	}
+
 	.list-info {
 		flex: 1;
 		min-width: 0;
@@ -1836,43 +1886,71 @@
 		flex-direction: column;
 		gap: 0.125rem;
 	}
-	
+
 	.list-name {
 		font-weight: 500;
 		color: var(--color-text);
-		font-size: 0.9rem;
+		font-size: 0.8rem;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-name {
+			font-size: 0.9rem;
+		}
+	}
+
 	.list-category,
 	.list-meta {
-		font-size: 0.75rem;
+		font-size: 0.7rem;
 		color: var(--color-text-muted);
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-category,
+		.list-meta {
+			font-size: 0.75rem;
+		}
+	}
+
 	.list-bar-container {
+		display: none;
 		width: 60px;
 		height: 6px;
 		background: var(--color-surface);
 		border-radius: 3px;
 		overflow: hidden;
 	}
-	
+
+	@media (min-width: 480px) {
+		.list-bar-container {
+			display: block;
+		}
+	}
+
 	.list-bar {
 		height: 100%;
 		background: var(--color-primary);
 		border-radius: 3px;
 		transition: width var(--transition-normal);
 	}
-	
+
 	.list-count {
 		font-weight: 600;
 		color: var(--color-text);
-		font-size: 0.85rem;
-		min-width: 40px;
+		font-size: 0.8rem;
+		min-width: 36px;
 		text-align: right;
+		flex-shrink: 0;
+	}
+
+	@media (min-width: 480px) {
+		.list-count {
+			font-size: 0.85rem;
+			min-width: 40px;
+		}
 	}
 	
 	.list-empty {
@@ -2252,11 +2330,26 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		margin-bottom: 1rem;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+		flex-wrap: wrap;
 	}
-	
+
+	@media (min-width: 480px) {
+		.section-header-row {
+			margin-bottom: 1rem;
+		}
+	}
+
 	.section-header-row .section-title {
 		margin: 0;
+		font-size: 1rem;
+	}
+
+	@media (min-width: 480px) {
+		.section-header-row .section-title {
+			font-size: 1.1rem;
+		}
 	}
 	
 	/* Toggle switch styles */
