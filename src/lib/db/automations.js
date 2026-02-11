@@ -4,6 +4,7 @@
  */
 
 import { log } from "$lib/log.js";
+import { generateHashId } from "$lib/index.js";
 
 /**
  * @typedef {Object} Automation
@@ -584,13 +585,16 @@ export async function createAutomation(db, automation) {
       }
     }
 
+    // Generate a unique public_id for URL-safe references
+    const publicId = generateHashId(12);
+
     const result = await db.prepare(`
       INSERT INTO automations (
         guild_id, name, description, enabled,
         trigger_event, trigger_events, trigger_filters,
         action_type, action_config,
-        created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_by, public_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       automation.guild_id,
       automation.name,
@@ -604,9 +608,10 @@ export async function createAutomation(db, automation) {
       automation.action_type,
       JSON.stringify(cleanActionConfig),
       automation.created_by || null,
+      publicId,
     ).run();
 
-    return { success: true, id: result.meta?.last_row_id };
+    return { success: true, id: result.meta?.last_row_id, publicId };
   } catch (error) {
     log.error("Failed to create automation:", error);
     return { success: false, error: error.message || String(error) };
@@ -614,18 +619,20 @@ export async function createAutomation(db, automation) {
 }
 
 /**
- * Update an existing automation
+ * Update an existing automation (supports both numeric ID and public_id hash)
  * @param {D1Database} db
- * @param {number} id
+ * @param {number|string} id - Numeric ID or public_id hash
  * @param {Partial<Automation>} updates
+ * @param {string} [guildId] - Optional guild ID for extra security with public_id
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function updateAutomation(db, id, updates) {
+export async function updateAutomation(db, id, updates, guildId = null) {
   if (!db) {
     return { success: false, error: "Database not available" };
   }
 
   try {
+    const isNumericId = typeof id === 'number' || /^\d+$/.test(String(id));
     const fields = [];
     const values = [];
 
@@ -688,10 +695,25 @@ export async function updateAutomation(db, id, updates) {
     }
 
     fields.push("updated_at = CURRENT_TIMESTAMP");
-    values.push(id);
+
+    // Build WHERE clause based on ID type
+    let whereClause;
+    if (isNumericId) {
+      whereClause = "id = ?";
+      values.push(parseInt(id));
+    } else {
+      whereClause = "public_id = ?";
+      values.push(String(id));
+    }
+    
+    // Add guild_id restriction if provided
+    if (guildId) {
+      whereClause += " AND guild_id = ?";
+      values.push(guildId);
+    }
 
     await db.prepare(`
-      UPDATE automations SET ${fields.join(", ")} WHERE id = ?
+      UPDATE automations SET ${fields.join(", ")} WHERE ${whereClause}
     `).bind(...values).run();
 
     return { success: true };
@@ -702,9 +724,9 @@ export async function updateAutomation(db, id, updates) {
 }
 
 /**
- * Delete an automation
+ * Delete an automation (supports both numeric ID and public_id hash)
  * @param {D1Database} db
- * @param {number} id
+ * @param {number|string} id - Numeric ID or public_id hash
  * @param {string} guildId - Ensure deletion is for correct guild
  * @returns {Promise<{success: boolean, error?: string}>}
  */
@@ -714,9 +736,17 @@ export async function deleteAutomation(db, id, guildId) {
   }
 
   try {
-    await db.prepare(`
-      DELETE FROM automations WHERE id = ? AND guild_id = ?
-    `).bind(id, guildId).run();
+    const isNumericId = typeof id === 'number' || /^\d+$/.test(String(id));
+    
+    if (isNumericId) {
+      await db.prepare(`
+        DELETE FROM automations WHERE id = ? AND guild_id = ?
+      `).bind(parseInt(id), guildId).run();
+    } else {
+      await db.prepare(`
+        DELETE FROM automations WHERE public_id = ? AND guild_id = ?
+      `).bind(String(id), guildId).run();
+    }
 
     return { success: true };
   } catch (error) {
@@ -726,9 +756,9 @@ export async function deleteAutomation(db, id, guildId) {
 }
 
 /**
- * Get a single automation by ID
+ * Get a single automation by ID (supports both numeric ID and public_id hash)
  * @param {D1Database} db
- * @param {number} id
+ * @param {number|string} id - Numeric ID or public_id hash
  * @param {string} guildId
  * @returns {Promise<Automation|null>}
  */
@@ -736,9 +766,20 @@ export async function getAutomation(db, id, guildId) {
   if (!db) return null;
 
   try {
-    const result = await db.prepare(`
-      SELECT * FROM automations WHERE id = ? AND guild_id = ?
-    `).bind(id, guildId).first();
+    // Determine if we're looking up by numeric ID or public_id
+    const isNumericId = typeof id === 'number' || /^\d+$/.test(String(id));
+    
+    let result;
+    if (isNumericId) {
+      result = await db.prepare(`
+        SELECT * FROM automations WHERE id = ? AND guild_id = ?
+      `).bind(parseInt(id), guildId).first();
+    } else {
+      // Lookup by public_id (hash)
+      result = await db.prepare(`
+        SELECT * FROM automations WHERE public_id = ? AND guild_id = ?
+      `).bind(String(id), guildId).first();
+    }
 
     if (!result) return null;
 
@@ -794,10 +835,12 @@ export async function getAutomation(db, id, guildId) {
  */
 export async function getAutomations(db, guildId, options = {}) {
   if (!db) {
+    log.warn("[DB] getAutomations called but db is not available");
     return { automations: [], total: 0 };
   }
 
   const { limit = 50, offset = 0, eventType, enabled } = options;
+  log.info(`[DB] getAutomations called: guildId=${guildId}, eventType=${eventType}, enabled=${enabled}, limit=${limit}, offset=${offset}`);
 
   try {
     let whereClause = "WHERE guild_id = ?";
@@ -822,6 +865,8 @@ export async function getAutomations(db, guildId, options = {}) {
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `).bind(...params, limit, offset).all();
+
+    log.info(`[DB] getAutomations query results: count=${countResult?.total}, rows=${results.results?.length}`);
 
     return {
       automations: (results.results || []).map((a) => {
@@ -1007,9 +1052,9 @@ export async function getAutomationLogs(db, guildId, options = {}) {
 }
 
 /**
- * Toggle automation enabled state
+ * Toggle automation enabled state (supports both numeric ID and public_id hash)
  * @param {D1Database} db
- * @param {number} id
+ * @param {number|string} id - Numeric ID or public_id hash
  * @param {string} guildId
  * @param {boolean} enabled
  * @returns {Promise<{success: boolean}>}
@@ -1018,10 +1063,19 @@ export async function toggleAutomation(db, id, guildId, enabled) {
   if (!db) return { success: false };
 
   try {
-    await db.prepare(`
-      UPDATE automations SET enabled = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND guild_id = ?
-    `).bind(enabled ? 1 : 0, id, guildId).run();
+    const isNumericId = typeof id === 'number' || /^\d+$/.test(String(id));
+    
+    if (isNumericId) {
+      await db.prepare(`
+        UPDATE automations SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND guild_id = ?
+      `).bind(enabled ? 1 : 0, parseInt(id), guildId).run();
+    } else {
+      await db.prepare(`
+        UPDATE automations SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE public_id = ? AND guild_id = ?
+      `).bind(enabled ? 1 : 0, String(id), guildId).run();
+    }
 
     return { success: true };
   } catch (error) {

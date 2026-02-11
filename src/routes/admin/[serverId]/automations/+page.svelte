@@ -181,7 +181,7 @@
 									}
 								};
 							}}>
-								<input type="hidden" name="id" value={automation.id}>
+								<input type="hidden" name="id" value={automation.public_id || automation.id}>
 								<input type="hidden" name="guild_id" value={selectedGuildId}>
 								<input type="hidden" name="enabled" value={!automation.enabled}>
 								<button 
@@ -228,7 +228,7 @@
 								</span>
 							</div>
 							<div class="automation-actions">
-								<a href="/admin/{selectedGuildId}/automations/{automation.id}" class="btn btn-sm btn-secondary">
+								<a href="/admin/{selectedGuildId}/automations/{automation.public_id || automation.id}" class="btn btn-sm btn-secondary">
 									✏️ Edit
 								</a>
 								<form method="POST" action="?/delete" use:enhance={() => {
@@ -242,7 +242,7 @@
 										}
 									};
 								}} onsubmit={(e) => { if (!confirm('Delete this automation?')) e.preventDefault(); }}>
-									<input type="hidden" name="id" value={automation.id}>
+									<input type="hidden" name="id" value={automation.public_id || automation.id}>
 									<input type="hidden" name="guild_id" value={selectedGuildId}>
 									<button type="submit" class="btn btn-sm btn-danger" disabled={processingId === automation.id}>
 										{processingId === automation.id ? '...' : '🗑️ Delete'}

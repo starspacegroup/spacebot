@@ -30,7 +30,8 @@ export async function GET({ params, cookies, platform }) {
     return json({ error: "Database not available" }, { status: 500 });
   }
 
-  const automation = await getAutomation(db, parseInt(automationId), guildId);
+  // automationId can be either numeric ID or public_id hash
+  const automation = await getAutomation(db, automationId, guildId);
 
   if (!automation) {
     return json({ error: "Automation not found" }, { status: 404 });
@@ -56,17 +57,16 @@ export async function PATCH({ params, request, cookies, platform }) {
 
   try {
     const body = await request.json();
-    const id = parseInt(automationId);
 
-    // Check automation exists and belongs to guild
-    const existing = await getAutomation(db, id, guildId);
+    // Check automation exists and belongs to guild (supports both numeric ID and public_id)
+    const existing = await getAutomation(db, automationId, guildId);
     if (!existing) {
       return json({ error: "Automation not found" }, { status: 404 });
     }
 
     // Handle toggle action
     if (body.action === "toggle") {
-      const result = await toggleAutomation(db, id, guildId, body.enabled);
+      const result = await toggleAutomation(db, automationId, guildId, body.enabled);
       if (!result.success) {
         return json({ error: "Failed to toggle automation" }, { status: 500 });
       }
@@ -80,7 +80,7 @@ export async function PATCH({ params, request, cookies, platform }) {
       });
     }
 
-    const result = await updateAutomation(db, id, body);
+    const result = await updateAutomation(db, automationId, body, guildId);
 
     if (!result.success) {
       return json({ error: result.error }, { status: 500 });
@@ -108,15 +108,13 @@ export async function DELETE({ params, cookies, platform }) {
     return json({ error: "Database not available" }, { status: 500 });
   }
 
-  const id = parseInt(automationId);
-
-  // Check automation exists and belongs to guild
-  const existing = await getAutomation(db, id, guildId);
+  // Check automation exists and belongs to guild (supports both numeric ID and public_id)
+  const existing = await getAutomation(db, automationId, guildId);
   if (!existing) {
     return json({ error: "Automation not found" }, { status: 404 });
   }
 
-  const result = await deleteAutomation(db, id, guildId);
+  const result = await deleteAutomation(db, automationId, guildId);
 
   if (!result.success) {
     return json({ error: result.error }, { status: 500 });

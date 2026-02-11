@@ -41,6 +41,8 @@ export async function load({ cookies, platform, parent, url, params }) {
   let total = 0;
   let recentLogs = [];
 
+  log.info(`[Automations Page] Loading automations for guild: ${guildId}, db available: ${!!db}`);
+
   if (db) {
     try {
       const result = await getAutomations(db, guildId, {
@@ -51,6 +53,7 @@ export async function load({ cookies, platform, parent, url, params }) {
       });
       automations = result.automations;
       total = result.total;
+      log.info(`[Automations Page] Found ${total} total automations, returning ${automations.length}`);
 
       // Get recent automation logs
       const logsResult = await getAutomationLogs(db, guildId, { limit: 10 });
@@ -58,6 +61,8 @@ export async function load({ cookies, platform, parent, url, params }) {
     } catch (error) {
       log.error("Failed to fetch automations:", error);
     }
+  } else {
+    log.warn("[Automations Page] Database not available!");
   }
 
   return {
@@ -213,7 +218,7 @@ export const actions = {
       : null;
 
     try {
-      const result = await updateAutomation(db, parseInt(id), updates);
+      const result = await updateAutomation(db, id, updates, guildId);
 
       if (!result.success) {
         return fail(500, { error: result.error });
@@ -242,7 +247,7 @@ export const actions = {
     }
 
     try {
-      const result = await toggleAutomation(db, parseInt(id), guildId, enabled);
+      const result = await toggleAutomation(db, id, guildId, enabled);
 
       if (!result.success) {
         return fail(500, { error: "Failed to toggle automation" });
@@ -273,7 +278,7 @@ export const actions = {
     }
 
     try {
-      const result = await deleteAutomation(db, parseInt(id), guildId);
+      const result = await deleteAutomation(db, id, guildId);
 
       if (!result.success) {
         return fail(500, { error: result.error });

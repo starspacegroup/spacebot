@@ -1184,7 +1184,7 @@
 								</div>
 							</div>
 							<span class="performance-last">Last triggered: {formatRelativeTime(automation.last_triggered_at)}</span>
-							<a href="/admin/{data.serverId}/automations/{automation.id}" class="btn btn-secondary btn-sm">Edit</a>
+							<a href="/admin/{data.serverId}/automations/{automation.public_id || automation.id}" class="btn btn-secondary btn-sm">Edit</a>
 						</div>
 					{/each}
 				</div>

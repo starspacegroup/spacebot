@@ -27,13 +27,14 @@ export async function load({ cookies, platform, parent, params }) {
   }
 
   const db = platform?.env?.DB;
-  const automationId = parseInt(params.automationId);
+  // automationId can be either numeric ID or public_id hash
+  const automationId = params.automationId;
 
   if (!db) {
     throw error(500, "Database not available");
   }
 
-  if (isNaN(automationId)) {
+  if (!automationId) {
     throw error(400, "Invalid automation ID");
   }
 
@@ -157,7 +158,7 @@ export const actions = {
       : null;
 
     try {
-      const result = await updateAutomation(db, parseInt(id), updates);
+      const result = await updateAutomation(db, id, updates, guildId);
 
       if (!result.success) {
         return fail(500, { error: result.error });
@@ -190,7 +191,7 @@ export const actions = {
     try {
       const result = await deleteAutomation(
         db,
-        parseInt(params.automationId),
+        params.automationId,
         guildId,
       );
 
