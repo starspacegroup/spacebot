@@ -6,6 +6,9 @@ import {
 } from "$lib/db/logger.js";
 import { getBotGuildIds, hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
+import { getGuildStatistics } from "$lib/db/statistics.js";
+import { getLatestServerStats } from "$lib/db/server-stats.js";
+import { getMemberGrowthChart, getVoiceActivityChart } from "$lib/db/stats-aggregation.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -130,15 +133,33 @@ export async function load({ cookies, platform, parent, params }) {
   // Fetch data for the selected guild
   let logStats = null;
   let dbSettings = DEFAULT_SETTINGS;
+  let basicStats = null;
+  let memberGrowthChartData = [];
+  let voiceActivityChartData = [];
+  let activityChartData = [];
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
-      // Get stats for the dashboard
-      logStats = await getLogStats(db, serverId);
-
-      // Get server settings
-      dbSettings = await getGuildSettings(db, serverId);
+      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity] = await Promise.all([
+        getLogStats(db, serverId),
+        getGuildSettings(db, serverId),
+        getGuildStatistics(db, serverId),
+        getLatestServerStats(db, serverId),
+        getMemberGrowthChart(db, serverId, "30d"),
+        getVoiceActivityChart(db, serverId, "30d"),
+      ]);
+      logStats = stats;
+      dbSettings = settings;
+      memberGrowthChartData = memberGrowth || [];
+      voiceActivityChartData = voiceActivity || [];
+      activityChartData = guildStats?.timeSeries?.daily || [];
+      basicStats = {
+        members: memberStats?.member_count || 0,
+        humanMembers: memberStats?.human_count || 0,
+        totalEvents: guildStats?.events?.total || 0,
+        eventsToday: guildStats?.events?.today || 0,
+      };
     } catch (error) {
       log.error("Failed to fetch data for dashboard:", error);
     }
@@ -193,6 +214,10 @@ export async function load({ cookies, platform, parent, params }) {
       welcomeChannelId: dbSettings.welcome_channel_id || null,
       welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
     },
+    basicStats,
+    memberGrowthChartData,
+    voiceActivityChartData,
+    activityChartData,
   };
 }
 
