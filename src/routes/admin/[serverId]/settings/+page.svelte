@@ -556,6 +556,18 @@
 	</div>
 {/if}
 
+<section class="api-keys-section">
+	<h2>
+		<span class="section-icon">🔑</span>
+		API Keys
+	</h2>
+	<p class="section-desc">Manage API keys for connecting external apps and MCP clients to your server.</p>
+	<a href="/admin/{data.serverId}/api-keys" class="btn btn-secondary">
+		<span class="btn-icon">🔑</span>
+		Manage API Keys
+	</a>
+</section>
+
 <style>
 	.settings-page {
 		max-width: 800px;
@@ -1167,5 +1179,45 @@
 		to {
 			transform: rotate(360deg);
 		}
+	}
+
+	/* API Keys Section */
+	.api-keys-section {
+		max-width: 800px;
+		margin: 0 auto;
+		padding: 0 1rem 2rem;
+		border-top: 1px solid var(--color-border);
+		padding-top: 2rem;
+		margin-top: 1rem;
+	}
+
+	@media (min-width: 640px) {
+		.api-keys-section {
+			padding: 0 1.5rem 2rem;
+			padding-top: 2rem;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.api-keys-section {
+			padding: 0 2rem 2rem;
+			padding-top: 2rem;
+		}
+	}
+
+	.api-keys-section h2 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		margin: 0 0 0.5rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--color-text);
+	}
+
+	.api-keys-section .section-desc {
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+		margin: 0 0 1rem;
 	}
 </style>

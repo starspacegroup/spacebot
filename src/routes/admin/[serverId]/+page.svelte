@@ -115,16 +115,6 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
-					{#if data.hasFullAdminAccess}
-						<a href="/admin/{data.serverId}/api-keys" class="quick-link-card">
-							<div class="quick-link-icon">🔑</div>
-							<div class="quick-link-info">
-								<span class="quick-link-title">API Keys</span>
-								<span class="quick-link-desc">Connect external apps and MCP clients</span>
-							</div>
-							<span class="quick-link-arrow">→</span>
-						</a>
-					{/if}
 				</div>
 			</section>
 			
