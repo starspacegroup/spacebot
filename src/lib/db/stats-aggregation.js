@@ -193,16 +193,16 @@ export async function buildHourlyStats(db, guildId) {
     `).bind(guildId).first();
 
     // Determine start time for aggregation
-    // If no previous data, start from 7 days ago (don't rebuild entire history)
+    // If no previous data, start from the earliest available event (up to 90 days back)
     let startTime;
     if (lastAggregated?.last_period) {
       startTime = lastAggregated.last_period;
     } else {
-      // Get the earliest event or default to 7 days ago
+      // Get the earliest event within the retention window
       const earliest = await db.prepare(`
         SELECT MIN(created_at) as earliest
         FROM event_logs
-        WHERE guild_id = ? AND created_at >= datetime('now', '-7 days')
+        WHERE guild_id = ? AND created_at >= datetime('now', '-90 days')
       `).bind(guildId).first();
       
       startTime = earliest?.earliest || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -378,7 +378,7 @@ export async function buildDailyStats(db, guildId) {
       WHERE guild_id = ? AND period_type = 'daily'
     `).bind(guildId).first();
 
-    // Get days that have complete hourly data (24 hours) and aren't today
+    // Get days that have hourly data and aren't today
     const daysToProcess = await db.prepare(`
       SELECT 
         strftime('%Y-%m-%d 00:00:00', period_start) as day_start,
@@ -387,7 +387,7 @@ export async function buildDailyStats(db, guildId) {
       FROM aggregated_stats
       WHERE guild_id = ? 
         AND period_type = 'hourly'
-        AND period_start >= COALESCE(?, datetime('now', '-30 days'))
+        AND period_start >= COALESCE(?, datetime('now', '-90 days'))
         AND period_start < strftime('%Y-%m-%d 00:00:00', 'now')
       GROUP BY strftime('%Y-%m-%d', period_start)
       HAVING hour_count >= 1
@@ -673,6 +673,7 @@ export async function cleanupOldData(db, guildId = null) {
 export async function getGlobalMemberGrowthChart(db, period = "30d") {
   if (!db) return [];
 
+  const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
 
   try {
@@ -689,12 +690,14 @@ export async function getGlobalMemberGrowthChart(db, period = "30d") {
       ORDER BY date ASC
     `).bind(timeRange).all();
 
-    return (result.results || []).map(row => ({
+    const rawData = (result.results || []).map(row => ({
       date: row.date,
       joins: row.joins || 0,
       leaves: row.leaves || 0,
       netChange: row.net_change || 0,
     }));
+
+    return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 });
   } catch (error) {
     log.error("Failed to get global member growth chart:", error);
     return [];
@@ -710,6 +713,7 @@ export async function getGlobalMemberGrowthChart(db, period = "30d") {
 export async function getGlobalVoiceActivityChart(db, period = "30d") {
   if (!db) return [];
 
+  const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
 
   try {
@@ -725,12 +729,14 @@ export async function getGlobalVoiceActivityChart(db, period = "30d") {
       ORDER BY date ASC
     `).bind(timeRange).all();
 
-    return (result.results || []).map(row => ({
+    const rawData = (result.results || []).map(row => ({
       date: row.date,
       totalMinutes: Math.round((row.total_seconds || 0) / 60),
       totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
       uniqueUsers: row.unique_users || 0,
     }));
+
+    return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0 });
   } catch (error) {
     log.error("Failed to get global voice activity chart:", error);
     return [];
@@ -795,6 +801,38 @@ export async function getGlobalStatsSummary(db, period = "30d") {
 }
 
 /**
+ * Fill date gaps in chart data, ensuring every day in the range has an entry
+ * @param {Array<Object>} data - Array of objects with a 'date' property (YYYY-MM-DD)
+ * @param {number} days - Number of days to cover
+ * @param {Object} defaults - Default values for missing days
+ * @returns {Array<Object>} - Data with gaps filled
+ */
+function fillDateGaps(data, days, defaults = {}) {
+  const today = new Date();
+  const dateMap = new Map();
+  
+  // Index existing data by date
+  for (const row of data) {
+    dateMap.set(row.date, row);
+  }
+  
+  const filled = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    
+    if (dateMap.has(dateStr)) {
+      filled.push(dateMap.get(dateStr));
+    } else {
+      filled.push({ date: dateStr, ...defaults });
+    }
+  }
+  
+  return filled;
+}
+
+/**
  * Get member growth chart data for a specific server
  * @param {D1Database} db
  * @param {string} guildId
@@ -804,6 +842,7 @@ export async function getGlobalStatsSummary(db, period = "30d") {
 export async function getMemberGrowthChart(db, guildId, period = "30d") {
   if (!db || !guildId) return [];
 
+  const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
 
   try {
@@ -820,12 +859,15 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
       ORDER BY date ASC
     `).bind(guildId, timeRange).all();
 
-    return (result.results || []).map(row => ({
+    const rawData = (result.results || []).map(row => ({
       date: row.date,
       joins: row.joins || 0,
       leaves: row.leaves || 0,
       netChange: row.net_change || 0,
     }));
+
+    // Fill in missing dates with zero values so the chart is continuous
+    return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 });
   } catch (error) {
     log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
     return [];
@@ -842,6 +884,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
 export async function getVoiceActivityChart(db, guildId, period = "30d") {
   if (!db || !guildId) return [];
 
+  const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
 
   try {
@@ -858,13 +901,16 @@ export async function getVoiceActivityChart(db, guildId, period = "30d") {
       ORDER BY date ASC
     `).bind(guildId, timeRange).all();
 
-    return (result.results || []).map(row => ({
+    const rawData = (result.results || []).map(row => ({
       date: row.date,
       totalMinutes: Math.round((row.total_seconds || 0) / 60),
       totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
       uniqueUsers: row.unique_users || 0,
       peakConcurrent: row.peak_concurrent || 0,
     }));
+
+    // Fill in missing dates with zero values so the chart is continuous
+    return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 });
   } catch (error) {
     log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
     return [];

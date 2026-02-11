@@ -583,6 +583,8 @@ export async function POST({ request, cookies, platform }) {
         throw new Error("Bot token not configured");
       }
       result = await runCacheRefresh(db, botToken);
+    } else if (jobName === 'rebuild_stats') {
+      result = await runRebuildStats(db);
     }
 
     const duration = Date.now() - startTime;

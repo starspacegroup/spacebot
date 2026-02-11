@@ -8,7 +8,8 @@
 		subtitle = '',
 		icon = '📊',
 		stats = [],
-		children
+		children,
+		headerAction
 	} = $props();
 </script>
 
@@ -23,6 +24,11 @@
 					<span class="chart-subtitle">{subtitle}</span>
 				{/if}
 			</h3>
+			{#if headerAction}
+				<div class="chart-header-action">
+					{@render headerAction()}
+				</div>
+			{/if}
 		</header>
 	{/if}
 	
@@ -72,6 +78,14 @@
 	
 	.chart-header {
 		margin-bottom: 1rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+	
+	.chart-header-action {
+		flex-shrink: 0;
 	}
 	
 	.chart-title {

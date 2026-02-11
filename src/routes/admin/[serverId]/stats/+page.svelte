@@ -39,6 +39,7 @@
 		showBotsInTotalEvents = value;
 		showBotsInHeatmap = value;
 		showBotsInMembers = value;
+		showBotsInMemberChart = value;
 	}
 	
 	// Bot detection: checks actor_is_bot flag OR common bot name patterns (for legacy data)
@@ -394,17 +395,34 @@
 	});
 	
 	// Derive member count history from current count + aggregated net changes
+	let showBotsInMemberChart = $state(false);
+	
 	const memberCountHistory = $derived.by(() => {
-		const currentCount = data.memberStats?.latest?.member_count || 0;
+		const latest = data.memberStats?.latest;
+		const currentCount = showBotsInMemberChart
+			? (latest?.member_count || 0)
+			: (latest?.human_count ?? latest?.member_count ?? 0);
+		const botCount = latest?.bot_count ?? 0;
 		const growthData = data.memberGrowthChartData || [];
-		if (!currentCount || growthData.length === 0) return [];
+		if (!currentCount || growthData.length === 0) {
+			// Even with no growth data, show at least today's point from server_stats
+			if (currentCount > 0) {
+				const today = new Date().toISOString().split('T')[0];
+				return [{
+					date: today,
+					label: new Date(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+					value: currentCount,
+				}];
+			}
+			return [];
+		}
 		
 		// Calculate cumulative net change from end to start
 		// Then work backwards from current count
 		const totalNetChange = growthData.reduce((sum, d) => sum + (d.netChange || 0), 0);
 		let runningCount = currentCount - totalNetChange;
 		
-		return growthData.map(d => {
+		const points = growthData.map(d => {
 			runningCount += (d.netChange || 0);
 			return {
 				date: d.date,
@@ -412,6 +430,22 @@
 				value: runningCount,
 			};
 		});
+		
+		// Ensure today is always represented with the actual current count
+		const today = new Date().toISOString().split('T')[0];
+		const lastPoint = points[points.length - 1];
+		if (lastPoint && lastPoint.date < today) {
+			points.push({
+				date: today,
+				label: new Date(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				value: currentCount,
+			});
+		} else if (lastPoint && lastPoint.date === today) {
+			// Override today's derived value with the authoritative current count
+			lastPoint.value = currentCount;
+		}
+		
+		return points;
 	});
 	
 	// Voice activity summary stats
@@ -579,16 +613,23 @@
 		{#if data.memberStats?.latest}
 			<section class="chart-section">
 				<ChartCard 
-					title="Server Members" 
+					title={showBotsInMemberChart ? 'Server Members' : 'Human Members'}
 					subtitle={data.memberStats?.latest?.recorded_at ? `Updated ${formatRelativeTime(data.memberStats.latest.recorded_at)}` : 'Current'}
 					icon="👥"
 					stats={[
-						{ icon: '👤', value: formatNumber(data.memberStats?.latest?.member_count || 0), label: 'Total Members', color: '#5865F2' },
+						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (data.memberStats?.latest?.member_count || 0) : (data.memberStats?.latest?.human_count ?? data.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
 						{ icon: '🟢', value: formatNumber(data.memberStats?.latest?.online_count || 0), label: 'Online Now', color: '#57F287' },
 						{ icon: '🏷️', value: formatNumber(data.memberStats?.latest?.role_count || 0), label: 'Roles', color: '#EB459E' },
 						...(data.memberStats?.latest?.boost_count > 0 ? [{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: `Boosts (Lvl ${data.memberStats.latest.boost_level})`, color: '#F47FFF' }] : []),
 					]}
 				>
+					{#snippet headerAction()}
+						<label class="bot-toggle-sm" title="Toggle to include bots in member count">
+							<input type="checkbox" bind:checked={showBotsInMemberChart} />
+							<span class="toggle-switch-sm"></span>
+							<span class="toggle-label-sm">🤖</span>
+						</label>
+					{/snippet}
 					<AreaChart 
 						data={memberCountHistory}
 						color="#5865F2"
