@@ -162,6 +162,13 @@
 		if (!items?.length) return 1;
 		return Math.max(...items.map(i => i[key] || 0));
 	}
+
+	// Format hours into a readable string (e.g. "12.5h" or "45m")
+	function formatHours(hours) {
+		if (!hours || hours <= 0) return '0m';
+		if (hours < 1) return `${Math.round(hours * 60)}m`;
+		return `${hours.toFixed(1)}h`;
+	}
 	
 	// Build sparkline path from execution history data
 	function buildSparkline(history) {
@@ -1049,7 +1056,7 @@
 					<div class="user-list">
 						{#if filteredVoiceUsers?.length > 0}
 							{#each filteredVoiceUsers as user, i}
-								{@const maxCount = getMaxValue(filteredVoiceUsers, 'event_count')}
+								{@const maxHours = getMaxValue(filteredVoiceUsers, 'total_hours')}
 								<div class="user-item">
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
@@ -1059,19 +1066,19 @@
 										</span>
 									</div>
 									<div class="user-bar-container">
-										<div 
-											class="user-bar voice" 
-											style="width: {(user.event_count / maxCount) * 100}%"
+										<div
+											class="user-bar voice"
+											style="width: {(user.total_hours / maxHours) * 100}%"
 										></div>
 									</div>
-									<span class="user-count">{formatNumber(user.event_count)}</span>
+									<span class="user-count">{formatHours(user.total_hours)}</span>
 								</div>
 							{/each}
 						{:else}
 							<div class="user-empty">No voice activity data</div>
 						{/if}
 					</div>
-					<span class="performance-last">Voice joins, leaves, moves</span>
+					<span class="performance-last">Hours spent in voice chat</span>
 				</div>
 				
 				<!-- Most Active Video Users -->
@@ -1087,7 +1094,7 @@
 					<div class="user-list">
 						{#if filteredVideoUsers?.length > 0}
 							{#each filteredVideoUsers as user, i}
-								{@const maxCount = getMaxValue(filteredVideoUsers, 'event_count')}
+								{@const maxHours = getMaxValue(filteredVideoUsers, 'total_hours')}
 								<div class="user-item">
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
@@ -1097,19 +1104,19 @@
 										</span>
 									</div>
 									<div class="user-bar-container">
-										<div 
-											class="user-bar video" 
-											style="width: {(user.event_count / maxCount) * 100}%"
+										<div
+											class="user-bar video"
+											style="width: {(user.total_hours / maxHours) * 100}%"
 										></div>
 									</div>
-									<span class="user-count">{formatNumber(user.event_count)}</span>
+									<span class="user-count">{formatHours(user.total_hours)}</span>
 								</div>
 							{/each}
 						{:else}
 							<div class="user-empty">No video activity data</div>
 						{/if}
 					</div>
-					<span class="performance-last">Camera on/off events</span>
+					<span class="performance-last">Hours with camera on</span>
 				</div>
 				
 				<!-- Most Active Screenshare Users -->

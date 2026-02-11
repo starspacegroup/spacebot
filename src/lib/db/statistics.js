@@ -636,19 +636,39 @@ export async function getTopVoiceUsers(db, guildId, limit = 20) {
 
   try {
     const result = await db.prepare(`
-      SELECT 
+      WITH voice_events AS (
+        SELECT
+          actor_id,
+          actor_name,
+          actor_is_bot,
+          event_type,
+          created_at,
+          LEAD(event_type) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_type,
+          LEAD(created_at) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_time
+        FROM event_logs
+        WHERE guild_id = ?
+          AND actor_id IS NOT NULL
+          AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
+          AND created_at >= datetime('now', '-30 days')
+      )
+      SELECT
         actor_id,
         actor_name,
         actor_is_bot,
-        COUNT(*) as event_count,
+        ROUND(SUM(
+          CASE
+            WHEN event_type = 'VOICE_JOIN' AND next_event_type = 'VOICE_LEAVE'
+            THEN (julianday(next_event_time) - julianday(created_at)) * 24
+            WHEN event_type = 'VOICE_JOIN' AND next_event_type IS NULL
+            THEN MIN((julianday('now') - julianday(created_at)) * 24, 24)
+            ELSE 0
+          END
+        ), 2) as total_hours,
         MAX(created_at) as last_active
-      FROM event_logs 
-      WHERE guild_id = ? 
-        AND actor_id IS NOT NULL
-        AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE', 'VOICE_MOVE', 'VOICE_MUTE', 'VOICE_DEAFEN')
-        AND created_at >= datetime('now', '-30 days')
+      FROM voice_events
       GROUP BY actor_id
-      ORDER BY event_count DESC
+      HAVING total_hours > 0
+      ORDER BY total_hours DESC
       LIMIT ?
     `).bind(guildId, limit).all();
 
@@ -671,19 +691,39 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
 
   try {
     const result = await db.prepare(`
-      SELECT 
+      WITH video_events AS (
+        SELECT
+          actor_id,
+          actor_name,
+          actor_is_bot,
+          event_type,
+          created_at,
+          LEAD(event_type) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_type,
+          LEAD(created_at) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_time
+        FROM event_logs
+        WHERE guild_id = ?
+          AND actor_id IS NOT NULL
+          AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP')
+          AND created_at >= datetime('now', '-30 days')
+      )
+      SELECT
         actor_id,
         actor_name,
         actor_is_bot,
-        COUNT(*) as event_count,
+        ROUND(SUM(
+          CASE
+            WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type = 'VOICE_VIDEO_STOP'
+            THEN (julianday(next_event_time) - julianday(created_at)) * 24
+            WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type IS NULL
+            THEN MIN((julianday('now') - julianday(created_at)) * 24, 24)
+            ELSE 0
+          END
+        ), 2) as total_hours,
         MAX(created_at) as last_active
-      FROM event_logs 
-      WHERE guild_id = ? 
-        AND actor_id IS NOT NULL
-        AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP')
-        AND created_at >= datetime('now', '-30 days')
+      FROM video_events
       GROUP BY actor_id
-      ORDER BY event_count DESC
+      HAVING total_hours > 0
+      ORDER BY total_hours DESC
       LIMIT ?
     `).bind(guildId, limit).all();
 
