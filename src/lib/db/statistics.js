@@ -658,17 +658,17 @@ export async function getTopVoiceUsers(db, guildId, limit = 20) {
         ROUND(SUM(
           CASE
             WHEN event_type = 'VOICE_JOIN' AND next_event_type = 'VOICE_LEAVE'
-            THEN (julianday(next_event_time) - julianday(created_at)) * 24
+            THEN (julianday(next_event_time) - julianday(created_at)) * 86400
             WHEN event_type = 'VOICE_JOIN' AND next_event_type IS NULL
-            THEN MIN((julianday('now') - julianday(created_at)) * 24, 24)
+            THEN MIN((julianday('now') - julianday(created_at)) * 86400, 86400)
             ELSE 0
           END
-        ), 2) as total_hours,
+        ), 0) as total_seconds,
         MAX(created_at) as last_active
       FROM voice_events
       GROUP BY actor_id
-      HAVING total_hours > 0
-      ORDER BY total_hours DESC
+      HAVING total_seconds > 0
+      ORDER BY total_seconds DESC
       LIMIT ?
     `).bind(guildId, limit).all();
 
@@ -703,7 +703,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
         FROM event_logs
         WHERE guild_id = ?
           AND actor_id IS NOT NULL
-          AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP')
+          AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
           AND created_at >= datetime('now', '-30 days')
       )
       SELECT
@@ -712,18 +712,18 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
         actor_is_bot,
         ROUND(SUM(
           CASE
-            WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type = 'VOICE_VIDEO_STOP'
-            THEN (julianday(next_event_time) - julianday(created_at)) * 24
+            WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type IN ('VOICE_VIDEO_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
+            THEN (julianday(next_event_time) - julianday(created_at)) * 86400
             WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type IS NULL
-            THEN MIN((julianday('now') - julianday(created_at)) * 24, 24)
+            THEN MIN((julianday('now') - julianday(created_at)) * 86400, 86400)
             ELSE 0
           END
-        ), 2) as total_hours,
+        ), 0) as total_seconds,
         MAX(created_at) as last_active
       FROM video_events
       GROUP BY actor_id
-      HAVING total_hours > 0
-      ORDER BY total_hours DESC
+      HAVING total_seconds > 0
+      ORDER BY total_seconds DESC
       LIMIT ?
     `).bind(guildId, limit).all();
 
@@ -746,19 +746,39 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20) {
 
   try {
     const result = await db.prepare(`
-      SELECT 
+      WITH stream_events AS (
+        SELECT
+          actor_id,
+          actor_name,
+          actor_is_bot,
+          event_type,
+          created_at,
+          LEAD(event_type) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_type,
+          LEAD(created_at) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_time
+        FROM event_logs
+        WHERE guild_id = ?
+          AND actor_id IS NOT NULL
+          AND event_type IN ('VOICE_STREAM_START', 'VOICE_STREAM_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
+          AND created_at >= datetime('now', '-30 days')
+      )
+      SELECT
         actor_id,
         actor_name,
         actor_is_bot,
-        COUNT(*) as event_count,
+        ROUND(SUM(
+          CASE
+            WHEN event_type = 'VOICE_STREAM_START' AND next_event_type IN ('VOICE_STREAM_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
+            THEN (julianday(next_event_time) - julianday(created_at)) * 86400
+            WHEN event_type = 'VOICE_STREAM_START' AND next_event_type IS NULL
+            THEN MIN((julianday('now') - julianday(created_at)) * 86400, 86400)
+            ELSE 0
+          END
+        ), 0) as total_seconds,
         MAX(created_at) as last_active
-      FROM event_logs 
-      WHERE guild_id = ? 
-        AND actor_id IS NOT NULL
-        AND event_type IN ('VOICE_STREAM_START', 'VOICE_STREAM_STOP')
-        AND created_at >= datetime('now', '-30 days')
+      FROM stream_events
       GROUP BY actor_id
-      ORDER BY event_count DESC
+      HAVING total_seconds > 0
+      ORDER BY total_seconds DESC
       LIMIT ?
     `).bind(guildId, limit).all();
 

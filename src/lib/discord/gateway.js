@@ -1604,6 +1604,34 @@ function setupEventHandlers(client, logFn) {
 
     // User left a voice channel
     if (oldState.channel && !newState.channel) {
+      // Log video/streaming stop events if they were active when leaving
+      if (oldState.selfVideo) {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_VIDEO_STOP",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          actor_is_bot: member.user.bot || false,
+          channel_id: oldState.channel.id,
+          channel_name: oldState.channel.name,
+          details: { videoEnabled: false, reason: "left_channel" },
+        });
+      }
+      if (oldState.streaming) {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_STREAM_STOP",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          actor_is_bot: member.user.bot || false,
+          channel_id: oldState.channel.id,
+          channel_name: oldState.channel.name,
+          details: { streaming: false, reason: "left_channel" },
+        });
+      }
+
       await logFn({
         guild_id: guildId,
         event_type: "VOICE_LEAVE",
@@ -1629,6 +1657,34 @@ function setupEventHandlers(client, logFn) {
       oldState.channel && newState.channel &&
       oldState.channel.id !== newState.channel.id
     ) {
+      // Log video/streaming stop events if they were active when moving
+      if (oldState.selfVideo) {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_VIDEO_STOP",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          actor_is_bot: member.user.bot || false,
+          channel_id: oldState.channel.id,
+          channel_name: oldState.channel.name,
+          details: { videoEnabled: false, reason: "moved_channel" },
+        });
+      }
+      if (oldState.streaming) {
+        await logFn({
+          guild_id: guildId,
+          event_type: "VOICE_STREAM_STOP",
+          event_category: "voice",
+          actor_id: member.user.id,
+          actor_name: member.user.tag,
+          actor_is_bot: member.user.bot || false,
+          channel_id: oldState.channel.id,
+          channel_name: oldState.channel.name,
+          details: { streaming: false, reason: "moved_channel" },
+        });
+      }
+
       await logFn({
         guild_id: guildId,
         event_type: "VOICE_MOVE",

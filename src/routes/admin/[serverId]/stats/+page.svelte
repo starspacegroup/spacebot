@@ -11,6 +11,9 @@
 	let showBotsInVoiceUsers = $state(false);
 	let showBotsInVideoUsers = $state(false);
 	let showBotsInScreenshareUsers = $state(false);
+	
+	// Time unit toggle for voice activity cards: 'hours', 'minutes', 'seconds'
+	let voiceTimeUnit = $state('hours');
 	let showBotsInEventTypes = $state(false);
 	let showBotsInChannels = $state(false);
 	let showBotsInCategories = $state(false);
@@ -163,11 +166,23 @@
 		return Math.max(...items.map(i => i[key] || 0));
 	}
 
-	// Format hours into a readable string (e.g. "12.5h" or "45m")
-	function formatHours(hours) {
-		if (!hours || hours <= 0) return '0m';
-		if (hours < 1) return `${Math.round(hours * 60)}m`;
-		return `${hours.toFixed(1)}h`;
+	// Format seconds into the selected time unit
+	function formatTime(seconds) {
+		if (!seconds || seconds <= 0) return '0';
+		if (voiceTimeUnit === 'seconds') return `${formatNumber(Math.round(seconds))}s`;
+		if (voiceTimeUnit === 'minutes') return `${(seconds / 60).toFixed(1)}m`;
+		return `${(seconds / 3600).toFixed(1)}h`;
+	}
+	
+	function getTimeUnitLabel(prefix) {
+		const labels = { hours: 'Hours', minutes: 'Minutes', seconds: 'Seconds' };
+		return `${labels[voiceTimeUnit]} ${prefix}`;
+	}
+	
+	function cycleTimeUnit() {
+		if (voiceTimeUnit === 'hours') voiceTimeUnit = 'minutes';
+		else if (voiceTimeUnit === 'minutes') voiceTimeUnit = 'seconds';
+		else voiceTimeUnit = 'hours';
 	}
 	
 	// Build sparkline path from execution history data
@@ -1041,6 +1056,9 @@
 				<span class="section-icon">🎙️</span>
 				Voice Activity Leaders
 				<span class="section-subtitle">Last 30 Days</span>
+				<button class="time-unit-toggle" onclick={cycleTimeUnit} title="Click to cycle between hours, minutes, and seconds">
+					{voiceTimeUnit === 'hours' ? '🕐 hrs' : voiceTimeUnit === 'minutes' ? '⏱️ min' : '⏲️ sec'}
+				</button>
 			</h2>
 			<div class="performance-grid">
 				<!-- Most Active Voice Users -->
@@ -1056,7 +1074,7 @@
 					<div class="user-list">
 						{#if filteredVoiceUsers?.length > 0}
 							{#each filteredVoiceUsers as user, i}
-								{@const maxHours = getMaxValue(filteredVoiceUsers, 'total_hours')}
+								{@const maxVal = getMaxValue(filteredVoiceUsers, 'total_seconds')}
 								<div class="user-item">
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
@@ -1068,17 +1086,17 @@
 									<div class="user-bar-container">
 										<div
 											class="user-bar voice"
-											style="width: {(user.total_hours / maxHours) * 100}%"
+											style="width: {(user.total_seconds / maxVal) * 100}%"
 										></div>
 									</div>
-									<span class="user-count">{formatHours(user.total_hours)}</span>
+									<span class="user-count">{formatTime(user.total_seconds)}</span>
 								</div>
 							{/each}
 						{:else}
 							<div class="user-empty">No voice activity data</div>
 						{/if}
 					</div>
-					<span class="performance-last">Hours spent in voice chat</span>
+					<span class="performance-last">{getTimeUnitLabel('spent in voice chat')}</span>
 				</div>
 				
 				<!-- Most Active Video Users -->
@@ -1094,7 +1112,7 @@
 					<div class="user-list">
 						{#if filteredVideoUsers?.length > 0}
 							{#each filteredVideoUsers as user, i}
-								{@const maxHours = getMaxValue(filteredVideoUsers, 'total_hours')}
+								{@const maxVal = getMaxValue(filteredVideoUsers, 'total_seconds')}
 								<div class="user-item">
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
@@ -1106,17 +1124,17 @@
 									<div class="user-bar-container">
 										<div
 											class="user-bar video"
-											style="width: {(user.total_hours / maxHours) * 100}%"
+											style="width: {(user.total_seconds / maxVal) * 100}%"
 										></div>
 									</div>
-									<span class="user-count">{formatHours(user.total_hours)}</span>
+									<span class="user-count">{formatTime(user.total_seconds)}</span>
 								</div>
 							{/each}
 						{:else}
 							<div class="user-empty">No video activity data</div>
 						{/if}
 					</div>
-					<span class="performance-last">Hours with camera on</span>
+					<span class="performance-last">{getTimeUnitLabel('with camera on')}</span>
 				</div>
 				
 				<!-- Most Active Screenshare Users -->
@@ -1132,7 +1150,7 @@
 					<div class="user-list">
 						{#if filteredScreenshareUsers?.length > 0}
 							{#each filteredScreenshareUsers as user, i}
-								{@const maxCount = getMaxValue(filteredScreenshareUsers, 'event_count')}
+								{@const maxVal = getMaxValue(filteredScreenshareUsers, 'total_seconds')}
 								<div class="user-item">
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
@@ -1144,17 +1162,17 @@
 									<div class="user-bar-container">
 										<div 
 											class="user-bar screenshare" 
-											style="width: {(user.event_count / maxCount) * 100}%"
+											style="width: {(user.total_seconds / maxVal) * 100}%"
 										></div>
 									</div>
-									<span class="user-count">{formatNumber(user.event_count)}</span>
+									<span class="user-count">{formatTime(user.total_seconds)}</span>
 								</div>
 							{/each}
 						{:else}
 							<div class="user-empty">No screenshare activity data</div>
 						{/if}
 					</div>
-					<span class="performance-last">Stream start/stop events</span>
+					<span class="performance-last">{getTimeUnitLabel('with screenshare active')}</span>
 				</div>
 			</div>
 		</section>
@@ -2497,5 +2515,26 @@
 	.bot-badge-sm {
 		font-size: 0.65rem;
 		margin-left: 0.25rem;
+	}
+	
+	/* Time unit toggle button */
+	.time-unit-toggle {
+		margin-left: auto;
+		padding: 0.2rem 0.6rem;
+		font-size: 0.7rem;
+		font-weight: 500;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-text-secondary);
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		user-select: none;
+	}
+	
+	.time-unit-toggle:hover {
+		background: var(--color-surface-hover);
+		color: var(--color-text);
+		border-color: var(--color-primary);
 	}
 </style>
