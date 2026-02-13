@@ -287,9 +287,61 @@ export async function POST({ request, platform }) {
  */
 async function handleCustomCommand(command, interaction, db, platform) {
 	const startTime = Date.now();
-	const context = buildCommandContext(interaction);
+	const userId = interaction.member?.user?.id || interaction.user?.id;
+	const guildId = interaction.guild_id;
 
 	log.debug(`[Command] Executing custom command: ${command.name}`);
+
+	// If command requires voice channel, check the user's voice state
+	let voiceState = null;
+	if (command.require_voice) {
+		const token = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+		if (token && guildId && userId) {
+			try {
+				const vsRes = await fetch(
+					`https://discord.com/api/v10/guilds/${guildId}/voice-states/${userId}`,
+					{ headers: { "Authorization": `Bot ${token}` } },
+				);
+				if (vsRes.ok) {
+					const vsData = await vsRes.json();
+					if (vsData.channel_id) {
+						// Fetch channel name for template variables
+						let channelName = "";
+						try {
+							const chRes = await fetch(
+								`https://discord.com/api/v10/channels/${vsData.channel_id}`,
+								{ headers: { "Authorization": `Bot ${token}` } },
+							);
+							if (chRes.ok) {
+								const chData = await chRes.json();
+								channelName = chData.name || "";
+							}
+						} catch {
+							// Channel name is nice-to-have, not critical
+						}
+						voiceState = {
+							channel_id: vsData.channel_id,
+							channel_name: channelName,
+						};
+					}
+				}
+			} catch (err) {
+				log.error("[Command] Failed to fetch voice state:", err);
+			}
+		}
+
+		if (!voiceState) {
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: {
+					content: "🔇 You must be in a voice channel to use this command.",
+					flags: 64, // EPHEMERAL
+				},
+			});
+		}
+	}
+
+	const context = buildCommandContext(interaction, {}, voiceState);
 
 	// Record usage
 	await recordCommandUse(db, command.id);
@@ -339,6 +391,12 @@ async function handleCustomCommand(command, interaction, db, platform) {
 			actor_name: context.user.name,
 			options: {}, // Store all option values by name
 		};
+
+		// Add voice channel info to event if available
+		if (voiceState) {
+			event.voice_channel_id = voiceState.channel_id;
+			event.voice_channel_name = voiceState.channel_name;
+		}
 
 		// For user context menu commands, the target user is in data.target_id
 		// data.type === 2 means USER context menu command

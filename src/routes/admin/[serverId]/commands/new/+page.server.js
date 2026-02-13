@@ -74,6 +74,7 @@ export const actions = {
     const ephemeral = formData.get("ephemeral") === "true";
     const defer = formData.get("defer") === "true";
     const contextMenuUser = formData.get("context_menu_user") === "true";
+    const requireVoice = formData.get("require_voice") === "true";
     const responseType = formData.get("response_type") || "message";
     const responseContent = formData.get("response_content");
 
@@ -194,6 +195,7 @@ export const actions = {
         default_member_permissions: defaultMemberPermissions,
         dm_permission: false, // Guild commands typically don't work in DMs
         context_menu_user: contextMenuUser,
+        require_voice: requireVoice,
         created_by: userId,
       });
 

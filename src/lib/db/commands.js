@@ -92,6 +92,9 @@ export const COMMAND_TEMPLATE_VARIABLES = {
   "channel.id": "Channel ID where command was used",
   "channel.name": "Channel name",
   "channel.mention": "Mention the channel",
+  "voice_channel.id": "User's current voice channel ID (require voice only)",
+  "voice_channel.name": "User's current voice channel name (require voice only)",
+  "voice_channel.mention": "Mention the user's voice channel (require voice only)",
   "guild.id": "Server ID",
   "guild.name": "Server name",
   "option.<name>": "Value of the option with that name",
@@ -228,9 +231,9 @@ export async function createCommand(db, command) {
         action_type, action_config,
         response_type, response_content, response_embed,
         default_member_permissions, dm_permission,
-        context_menu_user,
+        context_menu_user, require_voice,
         created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       command.guild_id,
       command.name.toLowerCase(),
@@ -247,6 +250,7 @@ export async function createCommand(db, command) {
       command.default_member_permissions || null,
       command.dm_permission !== undefined ? (command.dm_permission ? 1 : 0) : 0,
       command.context_menu_user ? 1 : 0,
+      command.require_voice ? 1 : 0,
       command.created_by || null,
     ).run();
 
@@ -365,6 +369,10 @@ export async function updateCommand(db, id, updates) {
       fields.push("context_menu_user = ?");
       values.push(updates.context_menu_user ? 1 : 0);
       fields.push("registered = 0"); // Needs re-registration when context menu changes
+    }
+    if (updates.require_voice !== undefined) {
+      fields.push("require_voice = ?");
+      values.push(updates.require_voice ? 1 : 0);
     }
 
     if (fields.length === 0) {
@@ -649,6 +657,7 @@ function parseCommand(row) {
     defer: !!row.defer,
     registered: !!row.registered,
     dm_permission: !!row.dm_permission,
+    require_voice: !!row.require_voice,
     options: row.options ? JSON.parse(row.options) : [],
     action_config: row.action_config ? JSON.parse(row.action_config) : {},
     response_embed: row.response_embed ? JSON.parse(row.response_embed) : null,
@@ -738,9 +747,10 @@ export function toDiscordCommand(command) {
  * Build context from command interaction for action execution
  * @param {Object} interaction - Discord interaction data
  * @param {Object} guildInfo - Guild information
+ * @param {Object} [voiceState] - User's voice state (if require_voice is enabled)
  * @returns {Object}
  */
-export function buildCommandContext(interaction, guildInfo = {}) {
+export function buildCommandContext(interaction, guildInfo = {}, voiceState = null) {
   const context = {
     user: {
       id: interaction.member?.user?.id || interaction.user?.id,
@@ -757,6 +767,15 @@ export function buildCommandContext(interaction, guildInfo = {}) {
     },
     option: {},
   };
+
+  // Add voice channel info if available
+  if (voiceState) {
+    context.voice_channel = {
+      id: voiceState.channel_id,
+      name: voiceState.channel_name || "",
+      mention: voiceState.channel_id ? `<#${voiceState.channel_id}>` : "",
+    };
+  }
 
   // For user context menu commands, add target user info
   // data.type === 2 means USER context menu command

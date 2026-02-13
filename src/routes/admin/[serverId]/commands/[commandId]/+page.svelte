@@ -369,6 +369,14 @@
 					</label>
 					<p class="field-hint">Also show in Apps menu when right-clicking a user</p>
 				</div>
+				
+				<div class="form-group">
+					<label class="checkbox-label">
+						<input type="checkbox" name="require_voice" value="true" checked={command.require_voice} />
+						<span>🔊 Require Voice Channel</span>
+					</label>
+					<p class="field-hint">Only usable by members currently in a voice channel. Enables <code>{'{voice_channel.mention}'}</code> variable</p>
+				</div>
 			</div>
 		</section>
 		
