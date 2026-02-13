@@ -303,14 +303,6 @@
 	}} class="command-form">
 		<input type="hidden" name="guild_id" value={selectedGuildId}>
 		
-		<!-- Status Banner -->
-		{#if !command.registered && command.enabled}
-			<div class="warning-banner">
-				<span>⚠️</span>
-				<span>This command has changes that need to be synced with Discord.</span>
-			</div>
-		{/if}
-		
 		<!-- Basic Info Section -->
 		<section class="form-section">
 			<h2>📝 Command Info</h2>
@@ -928,8 +920,7 @@
 		margin: 0.5rem 0 0;
 	}
 	
-	.error-banner,
-	.warning-banner {
+	.error-banner {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -942,12 +933,6 @@
 		background: var(--color-danger-soft);
 		border: 1px solid var(--color-danger);
 		color: var(--color-danger);
-	}
-	
-	.warning-banner {
-		background: var(--color-warning-soft);
-		border: 1px solid var(--color-warning);
-		color: var(--color-warning);
 	}
 	
 	.command-form {

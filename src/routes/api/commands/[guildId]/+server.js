@@ -14,6 +14,7 @@ import {
   OPTION_TYPES,
   RESPONSE_TYPES,
 } from "$lib/db/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
@@ -129,6 +130,9 @@ export async function POST({ params, request, cookies, platform }) {
     if (!result.success) {
       return json({ error: result.error }, { status: 400 });
     }
+
+    // Auto-sync to Discord
+    await syncGuildCommands(db, guildId, platform?.env);
 
     return json({ success: true, id: result.id }, { status: 201 });
   } catch (error) {

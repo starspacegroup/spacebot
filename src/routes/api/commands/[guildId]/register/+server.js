@@ -1,21 +1,16 @@
 /**
  * Command Registration API endpoint
- * POST - Register commands with Discord
+ * POST - Force sync all commands with Discord
+ * GET - List currently registered commands from Discord
  */
 
 import { json } from "@sveltejs/kit";
-import {
-  getGuildCommands,
-  getUnregisteredCommands,
-  markCommandRegistered,
-  toDiscordCommand,
-} from "$lib/db/commands.js";
-import { commands as builtInCommands } from "$lib/discord/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
 /** @type {import('./$types').RequestHandler} */
-export async function POST({ params, request, cookies, platform }) {
+export async function POST({ params, cookies, platform }) {
   const { guildId } = params;
   const accessToken = cookies.get("discord_access_token");
 
@@ -29,98 +24,16 @@ export async function POST({ params, request, cookies, platform }) {
     return json({ error: "Database not available" }, { status: 500 });
   }
 
-  const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-    process.env.DISCORD_BOT_TOKEN;
-  const clientId = platform?.env?.DISCORD_CLIENT_ID ||
-    process.env.DISCORD_CLIENT_ID;
-
-  if (!botToken || !clientId) {
-    return json({ error: "Bot configuration not available" }, { status: 500 });
-  }
-
   try {
-    const body = await request.json();
-    const mode = body.mode || "sync"; // 'sync' = all commands, 'pending' = only unregistered
+    const result = await syncGuildCommands(db, guildId, platform?.env);
 
-    // Get custom commands from database
-    let customCommands;
-    if (mode === "pending") {
-      customCommands = await getUnregisteredCommands(db, guildId);
-    } else {
-      customCommands = await getGuildCommands(db, guildId, {
-        enabledOnly: true,
-      });
-    }
-
-    // Convert to Discord format
-    // toDiscordCommand may return an array if context_menu_user is enabled
-    const discordCommands = [];
-    for (const cmd of customCommands) {
-      const result = toDiscordCommand(cmd);
-      if (Array.isArray(result)) {
-        // Multiple commands (slash + context menu)
-        for (const discordCmd of result) {
-          discordCommands.push({
-            ...discordCmd,
-            _dbId: cmd.id, // Track database ID for updating
-          });
-        }
-      } else {
-        discordCommands.push({
-          ...result,
-          _dbId: cmd.id,
-        });
-      }
-    }
-
-    // Include built-in commands
-    const allCommands = [
-      ...builtInCommands,
-      ...discordCommands.map(({ _dbId, ...cmd }) => cmd),
-    ];
-
-    // Register all commands with Discord
-    const url =
-      `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
-
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bot ${botToken}`,
-      },
-      body: JSON.stringify(allCommands),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      log.error("Discord registration error:", error);
-      return json({
-        error: "Failed to register commands with Discord",
-        details: error,
-      }, { status: 500 });
-    }
-
-    const registeredCommands = await response.json();
-
-    // Update database with Discord command IDs
-    for (const dbCommand of discordCommands) {
-      const registered = registeredCommands.find((rc) =>
-        rc.name === dbCommand.name
-      );
-      if (registered) {
-        await markCommandRegistered(db, dbCommand._dbId, registered.id);
-      }
+    if (!result.success) {
+      return json({ error: result.error }, { status: 500 });
     }
 
     return json({
       success: true,
-      registered: registeredCommands.length,
-      commands: registeredCommands.map((cmd) => ({
-        id: cmd.id,
-        name: cmd.name,
-        description: cmd.description,
-      })),
+      registered: result.registered,
     });
   } catch (error) {
     log.error("Register commands error:", error);

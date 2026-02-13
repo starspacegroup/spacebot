@@ -7,7 +7,6 @@
 	let { data, form } = $props();
 	
 	let showLogs = $state(false);
-	let registering = $state(false);
 	let showToast = $state(true);
 	let processingId = $state(null);
 	
@@ -20,7 +19,6 @@
 		if (url.searchParams.has('created')) return 'Command created successfully!';
 		if (url.searchParams.has('updated')) return 'Command updated successfully!';
 		if (url.searchParams.has('deleted')) return 'Command deleted successfully!';
-		if (url.searchParams.has('registered')) return 'Commands registered with Discord!';
 		return null;
 	});
 	
@@ -31,7 +29,6 @@
 			url.searchParams.delete('created');
 			url.searchParams.delete('updated');
 			url.searchParams.delete('deleted');
-			url.searchParams.delete('registered');
 			goto(url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
 		}
 	});
@@ -67,9 +64,6 @@
 		
 		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 	}
-	
-	// Count unregistered commands
-	const unregisteredCount = $derived(data.commands.filter(c => !c.registered && c.enabled).length);
 </script>
 
 <svelte:head>
@@ -100,25 +94,6 @@
 				<span>📋</span>
 				{showLogs ? 'Hide Logs' : 'View Logs'}
 			</button>
-			<form method="POST" action="?/register" use:enhance={() => {
-				registering = true;
-				return async ({ result, update }) => {
-					registering = false;
-					await update();
-				};
-			}}>
-				<input type="hidden" name="guild_id" value={selectedGuildId}>
-				<button type="submit" class="btn {unregisteredCount > 0 ? 'btn-warning' : 'btn-secondary'}" disabled={registering}>
-					<span>🔄</span>
-					{#if registering}
-						Syncing...
-					{:else if unregisteredCount > 0}
-						Sync {unregisteredCount} Command{unregisteredCount > 1 ? 's' : ''}
-					{:else}
-						Sync Commands
-					{/if}
-				</button>
-			</form>
 			<a href="/admin/{selectedGuildId}/commands/new" class="btn btn-primary">
 				<span>➕</span>
 				Create Command
@@ -175,11 +150,6 @@
 							<div class="command-name-row">
 								<span class="command-slash">/</span>
 								<span class="command-name">{command.name}</span>
-								{#if command.registered}
-									<span class="registered-badge" title="Synced with Discord">✓</span>
-								{:else if command.enabled}
-									<span class="pending-badge" title="Needs sync">⚠️</span>
-								{/if}
 							</div>
 							<form method="POST" action="?/toggle" use:enhance={() => {
 								processingId = command.id;
@@ -424,17 +394,6 @@
 	.command-name {
 		font-weight: 600;
 		font-size: 1.1rem;
-	}
-	
-	.registered-badge {
-		color: var(--color-success);
-		font-size: 0.875rem;
-		margin-left: 0.5rem;
-	}
-	
-	.pending-badge {
-		font-size: 0.875rem;
-		margin-left: 0.5rem;
 	}
 	
 	/* Toggle Button */

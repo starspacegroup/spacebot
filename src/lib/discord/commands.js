@@ -4,6 +4,11 @@
  */
 
 import { log } from "$lib/log.js";
+import {
+	getGuildCommands,
+	markCommandRegistered,
+	toDiscordCommand,
+} from "$lib/db/commands.js";
 
 export const commands = [
 	{
@@ -60,5 +65,88 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 	} catch (error) {
 		log.error("Error registering commands:", error);
 		throw error;
+	}
+}
+
+/**
+ * Sync all guild commands to Discord.
+ * Performs a bulk PUT of built-in + enabled custom commands, then updates DB registration state.
+ * Call this after any command CRUD operation so users never need to manually sync.
+ *
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {Object} env - Platform env with DISCORD_BOT_TOKEN and DISCORD_CLIENT_ID
+ * @returns {Promise<{success: boolean, registered?: number, error?: string}>}
+ */
+export async function syncGuildCommands(db, guildId, env) {
+	const botToken = env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+	const clientId = env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
+
+	if (!botToken || !clientId) {
+		log.warn("syncGuildCommands: Bot configuration not available, skipping sync");
+		return { success: false, error: "Bot configuration not available" };
+	}
+
+	if (!db) {
+		log.warn("syncGuildCommands: Database not available, skipping sync");
+		return { success: false, error: "Database not available" };
+	}
+
+	try {
+		// Get all enabled custom commands
+		const customCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+
+		// Convert to Discord format, tracking DB IDs
+		const discordCommands = [];
+		for (const cmd of customCommands) {
+			const result = toDiscordCommand(cmd);
+			if (Array.isArray(result)) {
+				for (const discordCmd of result) {
+					discordCommands.push({ ...discordCmd, _dbId: cmd.id });
+				}
+			} else {
+				discordCommands.push({ ...result, _dbId: cmd.id });
+			}
+		}
+
+		// Combine built-in and custom commands
+		const allCommands = [
+			...commands,
+			...discordCommands.map(({ _dbId, ...cmd }) => cmd),
+		];
+
+		// Bulk-overwrite guild commands (PUT replaces the entire set)
+		const url = `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
+
+		const response = await fetch(url, {
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bot ${botToken}`,
+			},
+			body: JSON.stringify(allCommands),
+		});
+
+		if (!response.ok) {
+			const error = await response.text();
+			log.error("syncGuildCommands: Discord registration error:", error);
+			return { success: false, error: `Discord API error: ${error}` };
+		}
+
+		const registeredCommands = await response.json();
+
+		// Update database with Discord command IDs
+		for (const dbCommand of discordCommands) {
+			const registered = registeredCommands.find((rc) => rc.name === dbCommand.name);
+			if (registered) {
+				await markCommandRegistered(db, dbCommand._dbId, registered.id);
+			}
+		}
+
+		log.info(`syncGuildCommands: Synced ${registeredCommands.length} commands for guild ${guildId}`);
+		return { success: true, registered: registeredCommands.length };
+	} catch (error) {
+		log.error("syncGuildCommands error:", error);
+		return { success: false, error: error.message || String(error) };
 	}
 }

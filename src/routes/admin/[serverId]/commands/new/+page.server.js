@@ -10,6 +10,7 @@ import {
   PERMISSION_PRESETS,
   RESPONSE_TYPES,
 } from "$lib/db/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
 import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
 
@@ -202,6 +203,9 @@ export const actions = {
       if (!result.success) {
         return fail(500, { error: result.error });
       }
+
+      // Auto-sync to Discord
+      await syncGuildCommands(db, guildId, platform?.env);
 
       // Redirect back to commands list on success
       throw redirect(302, `/admin/${params.serverId}/commands?created=true`);

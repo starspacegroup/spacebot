@@ -12,6 +12,7 @@ import {
   getCommand,
   updateCommand,
 } from "$lib/db/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
@@ -70,6 +71,8 @@ export async function PATCH({ params, request, cookies, platform }) {
       if (!result.success) {
         return json({ error: "Failed to toggle command" }, { status: 500 });
       }
+      // Auto-sync to Discord
+      await syncGuildCommands(db, guildId, platform?.env);
       return json({ success: true, enabled: body.enabled });
     }
 
@@ -99,6 +102,9 @@ export async function PATCH({ params, request, cookies, platform }) {
     if (!result.success) {
       return json({ error: result.error }, { status: 400 });
     }
+
+    // Auto-sync to Discord
+    await syncGuildCommands(db, guildId, platform?.env);
 
     return json({ success: true });
   } catch (error) {
@@ -136,31 +142,8 @@ export async function DELETE({ params, cookies, platform }) {
     return json({ error: result.error }, { status: 500 });
   }
 
-  // If the command was registered with Discord, we should unregister it
-  // This would require calling Discord's API to delete the command
-  if (existing.discord_command_id) {
-    try {
-      const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-        process.env.DISCORD_BOT_TOKEN;
-      const clientId = platform?.env?.DISCORD_CLIENT_ID ||
-        process.env.DISCORD_CLIENT_ID;
-
-      if (botToken && clientId) {
-        await fetch(
-          `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands/${existing.discord_command_id}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bot ${botToken}`,
-            },
-          },
-        );
-      }
-    } catch (error) {
-      log.error("Failed to unregister command from Discord:", error);
-      // Continue anyway - the command is deleted from our database
-    }
-  }
+  // Auto-sync to Discord (the bulk PUT will remove the deleted command)
+  await syncGuildCommands(db, guildId, platform?.env);
 
   return json({ success: true });
 }

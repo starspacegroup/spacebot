@@ -12,6 +12,7 @@ import {
   RESPONSE_TYPES,
   updateCommand,
 } from "$lib/db/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
 import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
 
@@ -219,6 +220,9 @@ export const actions = {
         return fail(500, { error: result.error });
       }
 
+      // Auto-sync to Discord
+      await syncGuildCommands(db, guildId, platform?.env);
+
       // Redirect back to commands list on success
       throw redirect(302, `/admin/${params.serverId}/commands?updated=true`);
     } catch (err) {
@@ -244,9 +248,6 @@ export const actions = {
     }
 
     try {
-      // Get command first to check for Discord registration
-      const command = await getCommand(db, parseInt(params.commandId), guildId);
-
       const result = await deleteCommand(
         db,
         parseInt(params.commandId),
@@ -257,29 +258,8 @@ export const actions = {
         return fail(500, { error: result.error });
       }
 
-      // If command was registered with Discord, unregister it
-      if (command?.discord_command_id) {
-        try {
-          const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
-            process.env.DISCORD_BOT_TOKEN;
-          const clientId = platform?.env?.DISCORD_CLIENT_ID ||
-            process.env.DISCORD_CLIENT_ID;
-
-          if (botToken && clientId) {
-            await fetch(
-              `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands/${command.discord_command_id}`,
-              {
-                method: "DELETE",
-                headers: {
-                  Authorization: `Bot ${botToken}`,
-                },
-              },
-            );
-          }
-        } catch (error) {
-          log.error("Failed to unregister command from Discord:", error);
-        }
-      }
+      // Auto-sync to Discord (the bulk PUT will remove the deleted command)
+      await syncGuildCommands(db, guildId, platform?.env);
 
       throw redirect(302, `/admin/${params.serverId}/commands?deleted=true`);
     } catch (err) {
