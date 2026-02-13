@@ -9,6 +9,7 @@
 
 import "dotenv/config";
 import {
+  AuditLogEvent,
   Client,
   Events,
   GatewayIntentBits,
@@ -1543,17 +1544,43 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.MessageDelete, async (message) => {
     if (!message.guild) return;
 
+    // Try to determine who deleted the message via audit logs
+    let deletedBy = null;
+    try {
+      const auditLogs = await message.guild.fetchAuditLogs({
+        type: AuditLogEvent.MessageDelete,
+        limit: 5,
+      });
+      const entry = auditLogs.entries.find(
+        (e) =>
+          e.target?.id === message.author?.id &&
+          e.extra?.channel?.id === message.channel.id &&
+          Date.now() - e.createdTimestamp < 5000,
+      );
+      if (entry) {
+        deletedBy = { id: entry.executor.id, name: entry.executor.tag };
+      }
+    } catch {
+      // Bot may lack VIEW_AUDIT_LOG permission — fall through
+    }
+
+    // If no audit log entry, the author likely deleted their own message
+    const actorId = deletedBy?.id || message.author?.id;
+    const actorName = deletedBy?.name || message.author?.tag || "Unknown";
+
     await logFn({
       guild_id: message.guild.id,
       event_type: "MESSAGE_DELETE",
       event_category: "message",
-      actor_id: message.author?.id,
-      actor_name: message.author?.tag || "Unknown",
+      actor_id: actorId,
+      actor_name: actorName,
+      target_id: message.author?.id,
+      target_name: message.author?.tag,
       channel_id: message.channel.id,
       channel_name: message.channel.name,
       details: {
         messageId: message.id,
-        hadContent: !!message.content,
+        content: message.content || null,
         hadAttachments: message.attachments?.size > 0,
       },
     });
