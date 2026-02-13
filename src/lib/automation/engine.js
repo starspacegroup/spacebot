@@ -32,6 +32,13 @@ export function resolveTargetUser(action_config, event) {
     case "target":
       return event.target_id;
     default:
+      // Check if it's a specific user reference (specific:<userId>)
+      if (targetUserSource.startsWith("specific:")) {
+        const userId = targetUserSource.substring(9);
+        if (userId) return userId;
+        // Fall back to actor if no user ID provided
+        return event.actor_id;
+      }
       // Check if it's an option reference (option:<optionName>)
       if (targetUserSource.startsWith("option:")) {
         const optionName = targetUserSource.substring(7);

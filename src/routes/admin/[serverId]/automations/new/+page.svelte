@@ -254,7 +254,8 @@
 	const availableUserSources = $derived(() => {
 		return [
 			{ value: 'actor', label: '👤 Event Actor', description: 'The user who triggered the event' },
-			{ value: 'target', label: '🎯 Event Target', description: 'The user who was the target of the event (if any)' }
+			{ value: 'target', label: '🎯 Event Target', description: 'The user who was the target of the event (if any)' },
+			{ value: 'specific_user', label: '🔍 Specific User', description: 'A specific user selected from the server members list' }
 		];
 	});
 </script>
@@ -664,9 +665,8 @@
 													{/each}
 												</select>
 											{:else if config.type === 'user_source'}
-												<select 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
+												<select
+													id="config_{index}_{configKey}"
 													required={config.required}
 													bind:value={action.config[configKey]}
 												>
@@ -677,6 +677,20 @@
 														</option>
 													{/each}
 												</select>
+												{#if action.config[configKey] === 'specific_user'}
+													<div class="specific-user-picker">
+														<UserSelector
+															guildId={selectedGuildId}
+															name="action_config.{index}.{configKey}_specific_id"
+															multiple={false}
+															showAnyOption={false}
+															placeholder="Search for a server member..."
+															bind:value={action.config[configKey + '_specific_id']}
+														/>
+													</div>
+												{/if}
+												<!-- Submit the resolved value: either the source type or specific:<userId> -->
+												<input type="hidden" name="action_config.{index}.{configKey}" value={action.config[configKey] === 'specific_user' ? 'specific:' + (action.config[configKey + '_specific_id'] || '') : (action.config[configKey] || '')} />
 												{#if config.description}
 													<p class="field-hint">{config.description}</p>
 												{/if}
@@ -1250,7 +1264,11 @@
 		color: var(--color-primary);
 		text-decoration: underline;
 	}
-	
+
+	.specific-user-picker {
+		margin-top: 0.5rem;
+	}
+
 	.code-textarea {
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 0.85rem;

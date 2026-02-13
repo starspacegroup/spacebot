@@ -532,6 +532,11 @@ export const AUTOMATION_USER_SOURCES = {
     label: "Event Target",
     description: "The user who was the target of the event (if any)",
   },
+  specific_user: {
+    value: "specific_user",
+    label: "Specific User",
+    description: "A specific user selected from the server members list",
+  },
 };
 
 /**
