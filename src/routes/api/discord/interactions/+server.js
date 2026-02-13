@@ -450,6 +450,19 @@ function createRESTClient(platform) {
 		"Content-Type": "application/json",
 	};
 
+	// Simple Collection-like Map that supports discord.js .filter() chaining
+	function createCollection(entries) {
+		const map = new Map(entries);
+		map.filter = function (fn) {
+			const filtered = [];
+			for (const [k, v] of this) {
+				if (fn(v, k)) filtered.push([k, v]);
+			}
+			return createCollection(filtered);
+		};
+		return map;
+	}
+
 	// Create a minimal mock of discord.js client structure
 	return {
 		channels: {
@@ -461,9 +474,63 @@ function createRESTClient(platform) {
 				if (!response.ok) return null;
 				const channel = await response.json();
 
+				// Text-based channel types: GUILD_TEXT(0), DM(1), GUILD_VOICE(2), GROUP_DM(3),
+				// GUILD_CATEGORY(4), GUILD_ANNOUNCEMENT(5), ANNOUNCEMENT_THREAD(10),
+				// PUBLIC_THREAD(11), PRIVATE_THREAD(12), GUILD_STAGE_VOICE(13), GUILD_FORUM(15)
+				const textBasedTypes = [0, 1, 2, 3, 5, 10, 11, 12, 13, 15];
+				const voiceTypes = [2, 13];
+
 				return {
 					id: channel.id,
 					name: channel.name,
+					type: channel.type,
+					isTextBased() {
+						return textBasedTypes.includes(channel.type);
+					},
+					isVoiceBased() {
+						return voiceTypes.includes(channel.type);
+					},
+					messages: {
+						async fetch(options = {}) {
+							const params = new URLSearchParams();
+							if (options.limit) params.set("limit", options.limit);
+							if (options.before) params.set("before", options.before);
+							const res = await fetch(
+								`https://discord.com/api/v10/channels/${channelId}/messages?${params}`,
+								{ headers },
+							);
+							if (!res.ok) return createCollection();
+							const msgs = await res.json();
+							const map = createCollection();
+							for (const m of msgs) {
+								map.set(m.id, {
+									id: m.id,
+									author: m.author,
+									content: m.content,
+									pinned: m.pinned,
+									createdTimestamp: new Date(m.timestamp).getTime(),
+									async delete() {
+										await fetch(
+											`https://discord.com/api/v10/channels/${channelId}/messages/${m.id}`,
+											{ method: "DELETE", headers },
+										);
+									},
+								});
+							}
+							return map;
+						},
+					},
+					async bulkDelete(messages) {
+						const ids = messages.map((m) => m.id);
+						await fetch(
+							`https://discord.com/api/v10/channels/${channelId}/messages/bulk-delete`,
+							{
+								method: "POST",
+								headers,
+								body: JSON.stringify({ messages: ids }),
+							},
+						);
+					},
 					async send(content) {
 						const body = typeof content === "string" ? { content } : content;
 
@@ -492,6 +559,33 @@ function createRESTClient(platform) {
 				return {
 					id: guild.id,
 					name: guild.name,
+					channels: {
+						async fetch() {
+							const res = await fetch(
+								`https://discord.com/api/v10/guilds/${guildId}/channels`,
+								{ headers },
+							);
+							if (!res.ok) return createCollection();
+							const channels = await res.json();
+							const textBasedTypes = [0, 1, 2, 3, 5, 10, 11, 12, 13, 15];
+							const voiceTypes = [2, 13];
+							const map = createCollection();
+							for (const c of channels) {
+								map.set(c.id, {
+									id: c.id,
+									name: c.name,
+									type: c.type,
+									isTextBased() {
+										return textBasedTypes.includes(c.type);
+									},
+									isVoiceBased() {
+										return voiceTypes.includes(c.type);
+									},
+								});
+							}
+							return map;
+						},
+					},
 					members: {
 						async fetch(userId) {
 							const res = await fetch(
