@@ -1,6 +1,7 @@
 /**
  * Database Migration Runner
  * Automatically runs all SQL migration files in the migrations folder
+ * Tracks applied migrations in a _migrations table to avoid re-running them.
  *
  * Usage:
  *   node scripts/migrate.js         # Run against remote D1
@@ -18,8 +19,37 @@ const migrationsDir = join(__dirname, "..", "migrations");
 // Check for --local flag
 const isLocal = process.argv.includes("--local");
 const dbName = "spacebot-logs";
+const locationFlag = isLocal ? "--local" : "--remote";
 
 console.log(`🗄️  Running migrations ${isLocal ? "(local)" : "(remote)"}...\n`);
+
+/**
+ * Execute a SQL command string against D1 and return stdout
+ */
+function d1Execute(sql) {
+  return execSync(
+    `wrangler d1 execute ${dbName} ${locationFlag} --command="${sql.replace(/"/g, '\\"')}"`,
+    { stdio: "pipe" },
+  ).toString();
+}
+
+// Ensure the _migrations tracking table exists
+d1Execute(
+  "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
+);
+
+// Get the set of already-applied migrations
+let appliedMigrations = new Set();
+try {
+  const output = d1Execute("SELECT name FROM _migrations");
+  // Parse migration names from wrangler output
+  const matches = output.matchAll(/"name":\s*"([^"]+)"/g);
+  for (const match of matches) {
+    appliedMigrations.add(match[1]);
+  }
+} catch {
+  // Table may be empty or output parsing failed — treat as no applied migrations
+}
 
 // Get all .sql files sorted alphabetically (ensures order like 0001, 0002, etc.)
 const migrationFiles = readdirSync(migrationsDir)
@@ -34,32 +64,52 @@ if (migrationFiles.length === 0) {
 console.log(`Found ${migrationFiles.length} migration file(s):\n`);
 
 let successCount = 0;
+let skippedCount = 0;
 let errorCount = 0;
 
 for (const file of migrationFiles) {
-  const filePath = join(migrationsDir, file);
-  const locationFlag = isLocal ? "--local" : "--remote";
-
   console.log(`  📄 ${file}`);
+
+  // Skip if already applied
+  if (appliedMigrations.has(file)) {
+    console.log(`     ⏭️  Already applied (skipped)\n`);
+    skippedCount++;
+    continue;
+  }
+
+  const filePath = join(migrationsDir, file);
 
   try {
     execSync(
       `wrangler d1 execute ${dbName} ${locationFlag} --file="${filePath}"`,
       { stdio: "pipe" },
     );
+
+    // Record successful migration
+    try {
+      d1Execute(`INSERT INTO _migrations (name) VALUES ('${file}')`);
+    } catch {
+      // Non-fatal: migration ran but tracking insert failed
+      console.log(`     ⚠️  Migration ran but failed to record in tracking table\n`);
+    }
+
     console.log(`     ✅ Success\n`);
     successCount++;
   } catch (error) {
-    // Check if it's just a "table already exists" type error (which is fine)
-    const errorOutput = error.stderr?.toString() || error.stdout?.toString() ||
-      "";
+    const errorOutput = error.stderr?.toString() || error.stdout?.toString() || "";
 
     if (
       errorOutput.includes("already exists") ||
       errorOutput.includes("duplicate")
     ) {
+      // Migration was already applied before tracking existed — record it now
+      try {
+        d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
+      } catch {
+        // Non-fatal
+      }
       console.log(`     ⏭️  Already applied (skipped)\n`);
-      successCount++;
+      skippedCount++;
     } else {
       console.error(`     ❌ Error: ${errorOutput || error.message}\n`);
       errorCount++;
@@ -69,6 +119,9 @@ for (const file of migrationFiles) {
 
 console.log(`\n📊 Migration Summary:`);
 console.log(`   ✅ ${successCount} succeeded`);
+if (skippedCount > 0) {
+  console.log(`   ⏭️  ${skippedCount} already applied`);
+}
 if (errorCount > 0) {
   console.log(`   ❌ ${errorCount} failed`);
   process.exit(1);
