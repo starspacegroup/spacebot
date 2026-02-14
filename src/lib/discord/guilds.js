@@ -39,12 +39,17 @@ function hashToken(token) {
 /**
  * Get from in-memory cache
  * @param {string} key
+ * @param {boolean} allowStale - If true, return stale data even if expired
  * @returns {any|null}
  */
-function getMemoryCache(key) {
+function getMemoryCache(key, allowStale = false) {
   const entry = memoryCache.get(key);
   if (!entry) return null;
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    if (allowStale) {
+      log.debug(`[Guilds Cache] Returning stale in-memory cache for ${key}`);
+      return entry.data;
+    }
     memoryCache.delete(key);
     return null;
   }
@@ -144,6 +149,12 @@ export async function getUserGuilds(
 
     if (!response.ok) {
       log.error("[Guilds Cache] Failed to fetch user guilds:", response.status);
+      // Return stale cache data if available, rather than empty array
+      const staleData = getMemoryCache(cacheKey, true);
+      if (staleData) {
+        log.debug("[Guilds Cache] API failed, using stale user guilds cache");
+        return staleData;
+      }
       return [];
     }
 
@@ -163,6 +174,12 @@ export async function getUserGuilds(
     return guilds;
   } catch (error) {
     log.error("[Guilds Cache] Error fetching user guilds:", error);
+    // Return stale cache data if available, rather than empty array
+    const staleData = getMemoryCache(cacheKey, true);
+    if (staleData) {
+      log.debug("[Guilds Cache] API error, using stale user guilds cache");
+      return staleData;
+    }
     return [];
   }
 }
@@ -212,6 +229,12 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
 
     if (!response.ok) {
       log.error("[Guilds Cache] Failed to fetch bot guilds:", response.status);
+      // Return stale cache data if available
+      const staleData = getMemoryCache(cacheKey, true);
+      if (staleData) {
+        log.debug("[Guilds Cache] API failed, using stale bot guild IDs cache");
+        return new Set(staleData);
+      }
       return new Set();
     }
 
@@ -227,6 +250,12 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
     return new Set(guildIds);
   } catch (error) {
     log.error("[Guilds Cache] Error fetching bot guilds:", error);
+    // Return stale cache data if available
+    const staleData = getMemoryCache(cacheKey, true);
+    if (staleData) {
+      log.debug("[Guilds Cache] API error, using stale bot guild IDs cache");
+      return new Set(staleData);
+    }
     return new Set();
   }
 }

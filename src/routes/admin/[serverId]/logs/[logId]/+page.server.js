@@ -82,12 +82,23 @@ export async function load({ params, cookies, platform, parent }) {
     throw redirect(302, "/admin");
   }
 
-  // Fetch guild info from bot to verify bot is in guild
-  const guildInfo = await fetchGuildInfo(serverId, botToken);
-  const botInGuild = !!guildInfo;
+  // Derive bot presence from parent layout data (already resolved with caching)
+  // This avoids a redundant uncached API call that can transiently fail
+  const adminGuilds = parentData.adminGuilds || [];
+  const layoutGuild = adminGuilds.find((g) => g.id === serverId);
+  const botInGuild = layoutGuild?.botIsInServer !== false;
 
   if (!botInGuild) {
     throw redirect(302, `/admin/${serverId}/logs`);
+  }
+
+  // Get richer guild info from bot API if possible, fallback to layout data
+  let guildInfo = await fetchGuildInfo(serverId, botToken);
+  if (!guildInfo) {
+    // Use layout data as fallback instead of treating as "bot not installed"
+    guildInfo = layoutGuild
+      ? { id: layoutGuild.id, name: layoutGuild.name, icon: layoutGuild.icon }
+      : (userGuild ? { id: userGuild.id, name: userGuild.name, icon: userGuild.icon } : { id: serverId, name: "Unknown Server" });
   }
 
   // Get database

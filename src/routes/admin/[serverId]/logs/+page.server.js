@@ -99,22 +99,36 @@ export async function load({ params, cookies, platform, parent }) {
     maxAge: 60 * 60 * 24 * 365, // 1 year
   });
 
-  // Fetch guild info from bot
-  const guildInfo = await fetchGuildInfo(serverId, botToken);
+  // Derive bot presence from parent layout data (already resolved with caching)
+  // This avoids a redundant uncached API call that can transiently fail
+  const adminGuilds = parentData.adminGuilds || [];
+  const layoutGuild = adminGuilds.find((g) => g.id === serverId);
+  const botInGuild = layoutGuild?.botIsInServer !== false;
 
-  if (!guildInfo) {
-    // Bot not in guild
+  // Use guild info from layout data; optionally enrich with bot API data
+  let guild = layoutGuild
+    ? { id: layoutGuild.id, name: layoutGuild.name, icon: layoutGuild.icon }
+    : (userGuild ? { id: userGuild.id, name: userGuild.name, icon: userGuild.icon } : null);
+
+  // Try to get richer guild info from bot API (member count, etc.) but don't fail if it errors
+  if (botInGuild) {
+    const guildInfo = await fetchGuildInfo(serverId, botToken);
+    if (guildInfo) {
+      guild = {
+        id: guildInfo.id,
+        name: guildInfo.name,
+        icon: guildInfo.icon,
+        memberCount: guildInfo.approximate_member_count,
+      };
+    }
+  }
+
+  if (!botInGuild) {
     return {
       user,
       isSuperAdmin,
       serverId,
-      guild: userGuild
-        ? {
-          id: userGuild.id,
-          name: userGuild.name,
-          icon: userGuild.icon,
-        }
-        : null,
+      guild,
       botInGuild: false,
       error: "Bot is not in this server",
     };
@@ -124,12 +138,7 @@ export async function load({ params, cookies, platform, parent }) {
     user,
     isSuperAdmin,
     serverId,
-    guild: {
-      id: guildInfo.id,
-      name: guildInfo.name,
-      icon: guildInfo.icon,
-      memberCount: guildInfo.approximate_member_count,
-    },
+    guild,
     botInGuild: true,
   };
 }

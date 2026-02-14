@@ -4,7 +4,7 @@ import {
   getLogStats,
   log,
 } from "$lib/db/logger.js";
-import { getBotGuildIds, hasFullAdminPermission } from "$lib/discord/guilds.js";
+import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 import { getGuildStatistics } from "$lib/db/statistics.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
@@ -118,14 +118,14 @@ export async function load({ cookies, platform, parent, params }) {
     throw redirect(302, "/admin");
   }
 
-  // Check if bot is in this guild
+  // Get guild info from parent layout data (already resolved with bot presence)
+  const guild = adminGuilds.find((g) => g.id === serverId);
+
+  // Derive bot presence from layout data — avoids redundant API call that can transiently fail
+  const botInGuild = guild?.botIsInServer !== false;
+
   const botToken = platform?.env?.DISCORD_BOT_TOKEN ||
     process.env.DISCORD_BOT_TOKEN;
-  const botGuildIds = await getBotGuildIds(botToken, cookies);
-  const botInGuild = botGuildIds.has(serverId);
-
-  // Get guild info
-  const guild = adminGuilds.find((g) => g.id === serverId);
 
   // Check if user has full administrator permission (not just MANAGE_GUILD)
   const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
