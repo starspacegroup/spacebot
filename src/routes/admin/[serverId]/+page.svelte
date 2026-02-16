@@ -99,12 +99,16 @@
 		</header>
 		
 		{#if !data.botInGuild}
-			<div class="error-card">
-				<h2>⚠️ Bot Not Installed</h2>
-				<p>The bot is not installed in this server. Add the bot to enable features.</p>
-				<a href="/api/auth/discord?flow=install" class="btn btn-primary">Add Bot to Server</a>
+			<div class="warning-banner">
+				<span class="warning-icon">⚠️</span>
+				<div class="warning-content">
+					<strong>Bot Not Installed</strong>
+					<p>The bot is not installed in this server. Some features require the bot to be added.</p>
+				</div>
+				<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-sm">Add Bot to Server</a>
 			</div>
-		{:else}
+		{/if}
+
 			<!-- Quick Links Section -->
 			<section class="quick-links-section">
 				<h2>
@@ -144,9 +148,18 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
+					<a href="/admin/{data.serverId}/integrations" class="quick-link-card">
+						<div class="quick-link-icon">🔌</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">Integrations</span>
+							<span class="quick-link-desc">Connect external apps and services</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
 				</div>
 			</section>
 
+		{#if data.botInGuild}
 			<!-- Statistics Overview -->
 			<section class="stats-section">
 				<div class="stats-header">
@@ -353,24 +366,37 @@
 		margin-bottom: 1.5rem;
 	}
 	
-	/* Error Card */
-	.error-card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
+	/* Warning Banner */
+	.warning-banner {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		background: rgba(237, 166, 0, 0.1);
+		border: 1px solid rgba(237, 166, 0, 0.3);
 		border-radius: var(--radius-lg);
-		padding: 2rem;
-		text-align: center;
+		padding: 1rem 1.25rem;
 		margin-bottom: 1.5rem;
 	}
-	
-	.error-card h2 {
-		margin: 0 0 0.5rem;
-		font-size: 1.25rem;
+
+	.warning-icon {
+		font-size: 1.5rem;
+		flex-shrink: 0;
 	}
-	
-	.error-card p {
+
+	.warning-content {
+		flex: 1;
+	}
+
+	.warning-content strong {
+		display: block;
+		color: var(--color-text);
+		margin-bottom: 0.25rem;
+	}
+
+	.warning-content p {
+		margin: 0;
 		color: var(--color-text-muted);
-		margin: 0 0 1rem;
+		font-size: 0.875rem;
 	}
 	
 	/* Dashboard Header */

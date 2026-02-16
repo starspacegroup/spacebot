@@ -9,6 +9,8 @@ import {
 	markCommandRegistered,
 	toDiscordCommand,
 } from "$lib/db/commands.js";
+import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
+import { getIntegrationCommands } from "$lib/integrations/registry.js";
 
 export const commands = [
 	{
@@ -109,10 +111,26 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
-		// Combine built-in and custom commands
+		// Gather commands from enabled integrations
+		let integrationCommands = [];
+		try {
+			const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
+			for (const integration of enabledIntegrations) {
+				const cmds = getIntegrationCommands(integration);
+				integrationCommands.push(...cmds);
+			}
+			if (integrationCommands.length > 0) {
+				log.info(`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`);
+			}
+		} catch (err) {
+			log.warn("syncGuildCommands: Failed to load integration commands:", err);
+		}
+
+		// Combine built-in, custom, and integration commands
 		const allCommands = [
 			...commands,
 			...discordCommands.map(({ _dbId, ...cmd }) => cmd),
+			...integrationCommands,
 		];
 
 		// Bulk-overwrite guild commands (PUT replaces the entire set)

@@ -5,8 +5,20 @@
 	import UserMenu from '$lib/components/UserMenu.svelte';
 	import ServerSelector from '$lib/components/ServerSelector.svelte';
 	import { page } from '$app/stores';
+	import { beforeNavigate } from '$app/navigation';
+	import { updated } from '$app/stores';
 
 	let { children, data } = $props();
+	
+	// Force a full page reload when the app version changes.
+	// This prevents stale client-side route manifests from loading
+	// the wrong page component (e.g. showing logs page at /integrations).
+	// Critical when HMR is disabled (tunnel / production).
+	beforeNavigate(({ willUnload, to }) => {
+		if ($updated && !willUnload && to?.url) {
+			location.href = to.url.href;
+		}
+	});
 	
 	// Track if we've received valid data to prevent flash during hydration
 	let hasInitialized = $state(false);
