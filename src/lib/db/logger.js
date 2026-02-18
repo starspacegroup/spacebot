@@ -3,7 +3,7 @@
  * Handles storing and retrieving event logs from D1
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 // Re-export the unified log utility for other modules
 export { log };

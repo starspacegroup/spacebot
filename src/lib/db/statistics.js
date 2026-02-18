@@ -3,7 +3,7 @@
  * Provides comprehensive analytics and metrics for the dashboard
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 /**
  * Get comprehensive statistics for a guild

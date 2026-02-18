@@ -3,14 +3,14 @@
  * Register these commands using the Discord API
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 import {
 	getGuildCommands,
 	markCommandRegistered,
 	toDiscordCommand,
-} from "$lib/db/commands.js";
-import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
-import { getIntegrationCommands } from "$lib/integrations/registry.js";
+} from "../db/commands.js";
+import { getEnabledGuildIntegrations } from "../db/integrations.js";
+import { getIntegrationCommands } from "../integrations/registry.js";
 
 export const commands = [
 	{

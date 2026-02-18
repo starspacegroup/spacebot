@@ -5,7 +5,7 @@
  * without hitting the Discord API. Updated periodically by cron job.
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 /**
  * @typedef {Object} CachedRole

@@ -5,7 +5,7 @@
  */
 
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from "./automations.js";
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 // Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
 export { ACTION_TYPES, COMMAND_USER_SOURCES };

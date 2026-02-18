@@ -4,7 +4,7 @@
  * Smart enough to skip data that's already been processed
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 /**
  * @typedef {Object} AggregationResult

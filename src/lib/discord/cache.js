@@ -3,7 +3,7 @@
  * Caches channels and roles per guild with 15-minute expiration
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 

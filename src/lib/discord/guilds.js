@@ -5,7 +5,7 @@
  * The cache is stored per-user and has a configurable TTL.
  */
 
-import { log } from "$lib/db/logger.js";
+import { log } from "../db/logger.js";
 
 // Cache TTL in seconds (15 minutes - longer to reduce API calls over tunnel)
 const CACHE_TTL = 15 * 60;

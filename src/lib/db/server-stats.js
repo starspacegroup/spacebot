@@ -3,7 +3,7 @@
  * Handles recording and retrieving historical server metrics
  */
 
-import { log } from "$lib/log.js";
+import { log } from "../log.js";
 
 /**
  * @typedef {Object} ServerStats

@@ -3,8 +3,8 @@
  * Handles CRUD operations for automations and execution logging
  */
 
-import { log } from "$lib/log.js";
-import { generateHashId } from "$lib/index.js";
+import { log } from "../log.js";
+import { generateHashId } from "../utils.js";
 
 /**
  * @typedef {Object} Automation

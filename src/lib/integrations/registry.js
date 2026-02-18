@@ -9,8 +9,8 @@
  * at a remote URL that SpaceBot can fetch and register.
  */
 
-import { log } from "$lib/log.js";
-import { upsertIntegration } from "$lib/db/integrations.js";
+import { log } from "../log.js";
+import { upsertIntegration } from "../db/integrations.js";
 
 // ---------------------------------------------------------------------------
 // Manifest schema (what an integration declares)

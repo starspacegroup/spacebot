@@ -8,8 +8,8 @@ import {
   logAutomationExecution,
 } from "../db/automations.js";
 import { getWebhook, callWebhook } from "../db/webhooks.js";
-import { log } from "$lib/log.js";
-import { detectCommandResult, getBot } from "$lib/discord/bots.js";
+import { log } from "../log.js";
+import { detectCommandResult, getBot } from "../discord/bots.js";
 
 /**
  * Resolve the target user ID from action config

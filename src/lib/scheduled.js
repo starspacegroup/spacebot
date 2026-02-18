@@ -9,9 +9,9 @@
  * - "0 0 * * *" = Daily at midnight (stats refresh from Discord + cleanup)
  */
 
-import { runStatsAggregation, cleanupOldData } from "$lib/db/stats-aggregation.js";
-import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "$lib/db/server-stats.js";
-import { log } from "$lib/log.js";
+import { runStatsAggregation, cleanupOldData } from "./db/stats-aggregation.js";
+import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "./db/server-stats.js";
+import { log } from "./log.js";
 
 /**
  * Get all guilds that have event logs

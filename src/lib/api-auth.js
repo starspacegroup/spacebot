@@ -14,8 +14,8 @@
  *   // auth.guildId, auth.scopes, auth.keyId available
  */
 
-import { validateApiKey } from "$lib/db/api-keys.js";
-import { log } from "$lib/db/logger.js";
+import { validateApiKey } from "./db/api-keys.js";
+import { log } from "./db/logger.js";
 
 /**
  * @typedef {Object} ApiAuthResult
