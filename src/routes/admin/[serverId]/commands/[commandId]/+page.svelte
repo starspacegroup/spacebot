@@ -49,6 +49,7 @@
 	
 	let actions = $state(parseExistingActions());
 	let selectedResponseType = $state(data.command.response_type || 'message');
+	let responseContent = $state(data.command.response_content || '');
 	let showDeleteConfirm = $state(false);
 	// Map 'default' from DB to 'defaultValue' for UI binding
 	let options = $state((data.command.options || []).map(opt => ({
@@ -464,26 +465,15 @@
 			{#if selectedResponseType === 'message'}
 				<div class="form-group">
 					<label for="response_content">Response Message</label>
-					<textarea 
-						id="response_content" 
+					<DiscordMessageEditor
 						name="response_content"
-						rows="3"
-						placeholder={'Hello {user.mention}!'}
-					>{command.response_content || ''}</textarea>
-					<div class="variables-help">
-						<span class="variables-label">Available variables:</span>
-						<div class="variables-list">
-							{#each Object.entries(data.templateVariables).filter(([k]) => k !== 'option.<name>') as [varName, desc]}
-								<code title={desc}>{`{${varName}}`}</code>
-							{/each}
-							{#each optionVariables as optVar}
-								<code title={optVar.desc} class="option-var">{`{${optVar.name}}`}</code>
-							{/each}
-							{#if optionVariables.length === 0}
-								<code title="Add options above to use their values" class="placeholder-var">{'{option.<name>}'}</code>
-							{/if}
-						</div>
-					</div>
+						bind:value={responseContent}
+						channels={sharedChannels}
+						roles={sharedRoles}
+						templateVariables={commandTemplateVariables}
+						placeholder="Hello {user.mention}!"
+						rows={3}
+					/>
 				</div>
 			{:else if selectedResponseType === 'embed'}
 				<div class="embed-config">

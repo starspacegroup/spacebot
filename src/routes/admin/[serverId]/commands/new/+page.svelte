@@ -13,6 +13,7 @@
 	
 	let actions = $state([]);
 	let selectedResponseType = $state('message');
+	let responseContent = $state('');
 	let options = $state([]);
 	
 	// Permission controls
@@ -449,26 +450,15 @@
 			{#if selectedResponseType === 'message'}
 				<div class="form-group">
 					<label for="response_content">Response Message</label>
-					<textarea 
-						id="response_content" 
+					<DiscordMessageEditor
 						name="response_content"
-						rows="3"
-						placeholder={'Hello {user.mention}! You used the command.'}
-					></textarea>
-					<div class="variables-help">
-						<span class="variables-label">Available variables:</span>
-						<div class="variables-list">
-							{#each Object.entries(data.templateVariables).filter(([k]) => k !== 'option.<name>') as [varName, desc]}
-								<code title={desc}>{`{${varName}}`}</code>
-							{/each}
-							{#each optionVariables as optVar}
-								<code title={optVar.desc} class="option-var">{`{${optVar.name}}`}</code>
-							{/each}
-							{#if optionVariables.length === 0}
-								<code title="Add options above to use their values" class="placeholder-var">{'{option.<name>}'}</code>
-							{/if}
-						</div>
-					</div>
+						bind:value={responseContent}
+						channels={sharedChannels}
+						roles={sharedRoles}
+						templateVariables={commandTemplateVariables}
+						placeholder="Hello {user.mention}! You used the command."
+						rows={3}
+					/>
 				</div>
 			{:else if selectedResponseType === 'embed'}
 				<div class="embed-config">
