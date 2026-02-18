@@ -143,6 +143,40 @@ export async function POST({ request, platform }) {
 			const customCommand = await getCommandByName(db, data.name, guildId);
 
 			if (customCommand) {
+				// Check if command has actions that need deferring
+				const hasActions = (customCommand.actions && customCommand.actions.length > 0) ||
+					(customCommand.action_type && customCommand.action_type !== "NONE" &&
+						customCommand.action_type !== "MULTIPLE");
+
+				if (hasActions) {
+					// Defer the response so Discord doesn't time out
+					const applicationId = body.application_id;
+					const interactionToken = body.token;
+
+					// Fire off the async work
+					const asyncWork = handleDeferredCommand(
+						customCommand, body, db, platform, applicationId, interactionToken
+					);
+
+					// Use platform.context.waitUntil if available (Cloudflare Workers)
+					if (platform?.context?.waitUntil) {
+						platform.context.waitUntil(asyncWork);
+					} else {
+						// Fire and forget for non-Cloudflare environments
+						asyncWork.catch(err => log.error("[Command] Deferred command error:", err));
+					}
+
+					// Return deferred response immediately (type 5)
+					const deferData = {};
+					if (customCommand.ephemeral) {
+						deferData.flags = 64; // EPHEMERAL
+					}
+					return json({
+						type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+						data: deferData,
+					});
+				}
+
 				return await handleCustomCommand(customCommand, body, db, platform);
 			}
 		}
@@ -487,6 +521,198 @@ async function handleCustomCommand(command, interaction, db, platform) {
 		type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 		data: responseData,
 	});
+}
+
+/**
+ * Handle a deferred custom command - executes actions asynchronously
+ * and follows up via Discord webhook
+ */
+async function handleDeferredCommand(command, interaction, db, platform, applicationId, interactionToken) {
+	const startTime = Date.now();
+	const userId = interaction.member?.user?.id || interaction.user?.id;
+	const guildId = interaction.guild_id;
+
+	log.debug(`[Command] Executing deferred command: ${command.name}`);
+
+	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+
+	// Helper to edit the deferred response
+	async function editOriginalResponse(data) {
+		try {
+			const res = await fetch(
+				`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+				{
+					method: "PATCH",
+					headers: {
+						"Authorization": `Bot ${botToken}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(data),
+				},
+			);
+			if (!res.ok) {
+				const errText = await res.text();
+				log.error("[Command] Failed to edit deferred response:", errText);
+			}
+		} catch (err) {
+			log.error("[Command] Error editing deferred response:", err);
+		}
+	}
+
+	try {
+		// Check voice state if required
+		let voiceState = null;
+		if (command.require_voice) {
+			if (botToken && guildId && userId) {
+				try {
+					const vsRes = await fetch(
+						`https://discord.com/api/v10/guilds/${guildId}/voice-states/${userId}`,
+						{ headers: { "Authorization": `Bot ${botToken}` } },
+					);
+					if (vsRes.ok) {
+						const vsData = await vsRes.json();
+						if (vsData.channel_id) {
+							let channelName = "";
+							try {
+								const chRes = await fetch(
+									`https://discord.com/api/v10/channels/${vsData.channel_id}`,
+									{ headers: { "Authorization": `Bot ${botToken}` } },
+								);
+								if (chRes.ok) {
+									const chData = await chRes.json();
+									channelName = chData.name || "";
+								}
+							} catch { /* not critical */ }
+							voiceState = {
+								channel_id: vsData.channel_id,
+								channel_name: channelName,
+							};
+						}
+					}
+				} catch (err) {
+					log.error("[Command] Failed to fetch voice state:", err);
+				}
+			}
+
+			if (!voiceState) {
+				await editOriginalResponse({
+					content: "🔇 You must be in a voice channel to use this command.",
+				});
+				return;
+			}
+		}
+
+		const context = buildCommandContext(interaction, {}, voiceState);
+
+		// Record usage
+		await recordCommandUse(db, command.id);
+
+		// Build response
+		let responseData = {};
+		if (command.response_type === "message" && command.response_content) {
+			responseData.content = processTemplate(command.response_content, context);
+		} else if (command.response_type === "embed" && command.response_embed) {
+			const embed = { ...command.response_embed };
+			if (embed.description) embed.description = processTemplate(embed.description, context);
+			if (embed.title) embed.title = processTemplate(embed.title, context);
+			responseData.embeds = [embed];
+		} else if (command.response_type === "action_only") {
+			responseData.content = "✅ Command executed";
+		} else {
+			responseData.content = `Command /${command.name} executed`;
+		}
+
+		// Execute actions
+		let actionResult = { success: true };
+
+		const event = {
+			guild_id: interaction.guild_id,
+			channel_id: interaction.channel_id,
+			actor_id: context.user.id,
+			actor_name: context.user.name,
+			options: {},
+		};
+
+		if (voiceState) {
+			event.voice_channel_id = voiceState.channel_id;
+			event.voice_channel_name = voiceState.channel_name;
+		}
+
+		if (interaction.data?.type === 2 && interaction.data?.target_id) {
+			event.target_id = interaction.data.target_id;
+			event.options.user = interaction.data.target_id;
+		}
+
+		if (interaction.data?.options) {
+			for (const opt of interaction.data.options) {
+				event.options[opt.name] = opt.value;
+				if (opt.type === 6 && !event.target_id) {
+					event.target_id = opt.value;
+				}
+			}
+		}
+
+		const discord = createRESTClient(platform);
+
+		if (discord) {
+			const actionsToExecute = command.actions && command.actions.length > 0
+				? command.actions
+				: [{ type: command.action_type, config: command.action_config || {} }];
+
+			const results = [];
+			for (const action of actionsToExecute) {
+				const result = await executeAction(
+					{
+						name: command.name,
+						action_type: action.type,
+						action_config: action.config || {},
+					},
+					event,
+					context,
+					discord,
+				);
+				results.push(result);
+				if (!result.success) {
+					actionResult = result;
+					break;
+				}
+			}
+
+			if (actionResult.success) {
+				actionResult = {
+					success: true,
+					result: results.map((r) => r.result),
+				};
+			}
+		}
+
+		// Log execution
+		await logCommandExecution(db, {
+			command_id: command.id,
+			guild_id: interaction.guild_id,
+			user_id: context.user.id,
+			user_name: context.user.name,
+			channel_id: interaction.channel_id,
+			options_used: interaction.data?.options || null,
+			action_result: actionResult.result || null,
+			success: actionResult.success,
+			error_message: actionResult.error || null,
+			execution_time_ms: Date.now() - startTime,
+		});
+
+		// Update the deferred response with the result
+		if (!actionResult.success && command.action_type !== "NONE") {
+			responseData.content = `❌ Command failed: ${actionResult.error || "Unknown error"}`;
+		}
+
+		await editOriginalResponse(responseData);
+
+	} catch (err) {
+		log.error("[Command] Deferred command failed:", err);
+		await editOriginalResponse({
+			content: `❌ Command failed: ${err.message || "Unknown error"}`,
+		});
+	}
 }
 
 /**

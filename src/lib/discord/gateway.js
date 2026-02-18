@@ -752,8 +752,8 @@ async function executeAutomationAction(automation, event) {
       // Handle "ALL" option or empty - get all text channels in the guild
       if (!channelIds || channelIds === "ALL") {
         const allChannels = await guild.channels.fetch();
-        channelsToProcess = allChannels
-          .filter((c) => c.isTextBased() && !c.isVoiceBased())
+        channelsToProcess = Array.from(allChannels.values())
+          .filter((c) => c && c.isTextBased() && !c.isVoiceBased())
           .map((c) => c.id);
       } else {
         // Parse comma-separated channel IDs
