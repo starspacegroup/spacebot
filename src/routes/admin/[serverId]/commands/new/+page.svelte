@@ -697,6 +697,15 @@
 													placeholder="Select a role..."
 													value={action.config[configKey] || ''}
 												/>
+											{:else if config.type === 'roles'}
+												<RoleSelector
+													roles={sharedRoles}
+													name="action_config.{index}.{configKey}"
+													required={config.required}
+													multiple={true}
+													placeholder="Search and select role(s)..."
+													bind:value={action.config[configKey]}
+												/>
 											{:else if config.type === 'select'}
 												<select 
 													id="config_{index}_{configKey}" 
