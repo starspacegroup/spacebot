@@ -471,7 +471,7 @@
 						channels={sharedChannels}
 						roles={sharedRoles}
 						templateVariables={commandTemplateVariables}
-						placeholder="Hello {user.mention}!"
+						placeholder={'Hello {user.mention}!'}
 						rows={3}
 					/>
 				</div>
