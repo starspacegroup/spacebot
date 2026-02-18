@@ -66,6 +66,27 @@
 		}
 	});
 	
+	// Pre-fetch display info for any pre-selected user IDs not in cache
+	let hasFetchedSelected = $state(false);
+	$effect(() => {
+		if (hasFetchedSelected || !guildId || !value) return;
+		const ids = selectedIds.filter(id => id && id !== ANY_USER && !selectedMembersCache[id]);
+		if (ids.length === 0) return;
+		hasFetchedSelected = true;
+		
+		fetch(`/api/discord/guilds/${guildId}/members?ids=${ids.join(',')}`)
+			.then(res => res.ok ? res.json() : null)
+			.then(data => {
+				if (!data?.members) return;
+				const newCache = { ...selectedMembersCache };
+				for (const m of data.members) {
+					newCache[m.id] = { id: m.id, displayName: m.displayName, isBot: m.isBot };
+				}
+				selectedMembersCache = newCache;
+			})
+			.catch(() => {});
+	});
+	
 	// Live search members when search query changes (with debounce)
 	$effect(() => {
 		if (!guildId || !isOpen) return;

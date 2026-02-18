@@ -19,6 +19,7 @@ import {
 } from "discord.js";
 import { log } from "../log.js";
 import { generateChatResponse, isAIEnabled } from "../ai/chat.js";
+import { resolveTargetUser } from "../automation/engine.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
@@ -738,7 +739,7 @@ async function executeAutomationAction(automation, event) {
       );
       const skipPinned = action_config.skip_pinned !== false &&
         action_config.skip_pinned !== "false";
-      const userId = event.actor_id;
+      const userId = resolveTargetUser(action_config, event);
 
       if (!userId) {
         throw new Error("Missing user ID");
@@ -847,42 +848,81 @@ async function executeAutomationAction(automation, event) {
     }
 
     case "DELETE_MESSAGES": {
-      const channelId = action_config.channel_id;
+      const channelIds = action_config.channel_ids;
       const limit = action_config.limit || 100;
-      const userId = event.actor_id;
+      const userId = resolveTargetUser(action_config, event);
 
-      if (!channelId || !userId) {
-        throw new Error("Missing channel or user ID");
+      if (!userId) {
+        throw new Error("Missing user ID");
       }
 
-      const channel = await client.channels.fetch(channelId);
-      if (!channel) throw new Error("Channel not found");
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
 
-      // Fetch messages and filter by user
-      const messages = await channel.messages.fetch({ limit: 100 });
-      const userMessages = messages.filter((m) => m.author.id === userId);
-      const toDelete = Array.from(userMessages.values()).slice(0, limit);
+      let channelsToProcess = [];
 
-      // Try bulk delete for recent messages
-      const recentMessages = toDelete.filter((m) =>
-        Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
-      );
-
-      if (recentMessages.length > 1) {
-        await channel.bulkDelete(recentMessages);
-      } else if (recentMessages.length === 1) {
-        await recentMessages[0].delete();
+      // Handle "ALL" option or empty - get all text channels in the guild
+      if (!channelIds || channelIds === "ALL") {
+        const allChannels = await guild.channels.fetch();
+        channelsToProcess = Array.from(allChannels.values())
+          .filter((c) => c && c.isTextBased() && !c.isVoiceBased())
+          .map((c) => c.id);
+      } else {
+        // Parse comma-separated channel IDs
+        channelsToProcess = channelIds.split(",").map((id) => id.trim());
       }
 
-      // Delete older messages individually
-      const oldMessages = toDelete.filter((m) =>
-        Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
-      );
+      let totalDeleted = 0;
 
-      for (const msg of oldMessages) {
-        await msg.delete().catch(() => {});
-        await new Promise((r) => setTimeout(r, 500));
+      for (const channelId of channelsToProcess) {
+        if (totalDeleted >= limit) break;
+
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (!channel || !channel.messages) continue;
+
+        try {
+          // Fetch messages and filter by user
+          const messages = await channel.messages.fetch({ limit: 100 });
+          const userMessages = messages.filter((m) => m.author.id === userId);
+          const remainingQuota = limit - totalDeleted;
+          const toDelete = Array.from(userMessages.values()).slice(0, remainingQuota);
+
+          if (toDelete.length === 0) continue;
+
+          // Try bulk delete for recent messages
+          const recentMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+          );
+
+          if (recentMessages.length > 1) {
+            await channel.bulkDelete(recentMessages);
+          } else if (recentMessages.length === 1) {
+            await recentMessages[0].delete();
+          }
+
+          // Delete older messages individually
+          const oldMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+          );
+
+          for (const msg of oldMessages) {
+            await msg.delete().catch(() => {});
+            await new Promise((r) => setTimeout(r, 500));
+          }
+
+          totalDeleted += toDelete.length;
+          log.info(
+            `[Automation] Deleted ${toDelete.length} messages in #${channel.name}`,
+          );
+        } catch (err) {
+          log.error(
+            `[Automation] Error deleting in ${channelId}:`,
+            err.message,
+          );
+        }
       }
+
+      log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
       break;
     }
 

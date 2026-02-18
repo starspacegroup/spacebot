@@ -29,10 +29,26 @@ export async function GET({ params, cookies, platform, url }) {
     // Get search query from URL params
     const searchQuery = url.searchParams.get("query")?.trim() || "";
     const limit = Math.min(parseInt(url.searchParams.get("limit") || "100"), 1000);
+    const memberIds = url.searchParams.get("ids")?.split(",").filter(Boolean) || [];
 
     let members = [];
 
-    if (searchQuery && searchQuery.length >= 1) {
+    // Fetch specific members by ID
+    if (memberIds.length > 0) {
+      const fetched = await Promise.all(
+        memberIds.slice(0, 25).map(async (id) => {
+          try {
+            const res = await fetch(
+              `https://discord.com/api/v10/guilds/${guildId}/members/${id}`,
+              { headers: { Authorization: `Bot ${botToken}` } },
+            );
+            if (res.ok) return await res.json();
+          } catch {}
+          return null;
+        }),
+      );
+      members = fetched.filter(Boolean);
+    } else if (searchQuery && searchQuery.length >= 1) {
       // Use search endpoint for filtered results
       const response = await fetch(
         `https://discord.com/api/v10/guilds/${guildId}/members/search?query=${encodeURIComponent(searchQuery)}&limit=${limit}`,
