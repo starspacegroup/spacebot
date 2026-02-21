@@ -115,6 +115,11 @@ export const BUILT_IN_INTEGRATIONS = [
                 },
               ],
             },
+            {
+              name: "play",
+              description: "Get the link to play StarSpace Game",
+              type: 1, // SUB_COMMAND
+            },
 
           ],
         },
