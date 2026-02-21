@@ -61,7 +61,7 @@ export const BUILT_IN_INTEGRATIONS = [
     description:
       "Connect the *Space multiplayer game to your Discord server. Adds commands for checking player stats, leaderboards, and linking Discord accounts to game profiles.",
     icon: "🎮",
-    author: "StarSpace Group",
+    author: "*Space",
     version: "1.0.0",
     category: "gaming",
     is_official: true,
@@ -73,7 +73,8 @@ export const BUILT_IN_INTEGRATIONS = [
       version: "1.0.0",
       description:
         "Connect the *Space multiplayer game to your Discord server.",
-      author: "StarSpace Group",
+      author: "*Space",
+      author_url: "https://starspace.group",
       icon: "🎮",
       category: "gaming",
       homepage: "https://game.starspace.group/",

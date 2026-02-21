@@ -82,7 +82,7 @@
 							<div class="card-meta">
 								<span class="category-badge">{category.icon} {category.label}</span>
 								{#if integration.author}
-									<span class="meta-item">by {integration.author}</span>
+									<span class="meta-item">by {#if integration.manifest?.author_url}<a href={integration.manifest.author_url} target="_blank" rel="noopener noreferrer">{integration.author}</a>{:else}{integration.author}{/if}</span>
 								{/if}
 								<span class="meta-item">v{integration.version}</span>
 							</div>
