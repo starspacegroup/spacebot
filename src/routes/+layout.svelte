@@ -1,6 +1,5 @@
 <script>
 	import '$lib/styles/global.css';
-	import favicon from '$lib/assets/favicon.svg';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import UserMenu from '$lib/components/UserMenu.svelte';
 	import ServerSelector from '$lib/components/ServerSelector.svelte';
@@ -42,12 +41,18 @@
 </script>
 
 <svelte:head>
-	<link rel="icon" href={favicon} />
+	<link rel="icon" href="/favicon.ico" sizes="any" />
+	<link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192" />
+	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+	<link rel="manifest" href="/site.webmanifest" />
 </svelte:head>
 
 <div class="app-layout">
 	<header class="app-header">
-		<a href="/" class="logo">SpaceBot</a>
+		<a href="/" class="logo">
+			<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
+			SpaceBot
+		</a>
 		<nav class="nav">
 			{#if $page.url.pathname.startsWith('/admin') && adminGuilds.length > 0}
 				<ServerSelector 
@@ -94,6 +99,13 @@
 		color: var(--color-primary);
 		text-decoration: none;
 		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.logo-img {
+		border-radius: 6px;
 	}
 	
 	.nav {
