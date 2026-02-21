@@ -12,6 +12,8 @@ import {
 } from "$lib/db/commands.js";
 import { executeAction, processTemplate } from "$lib/automation/engine.js";
 import { log } from "$lib/db/logger.js";
+import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
+import { getIntegrationCommands } from "$lib/integrations/registry.js";
 
 /**
  * Convert hex string to Uint8Array
@@ -176,6 +178,12 @@ export async function POST({ request, platform }) {
 			}
 		}
 
+		// Check if this is an integration command
+		if (db && guildId) {
+			const integrationResponse = await handleIntegrationCommand(data, db, guildId);
+			if (integrationResponse) return integrationResponse;
+		}
+
 		// No command found in database
 		return json({
 			type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -196,6 +204,63 @@ export async function POST({ request, platform }) {
 	}
 
 	return json({ error: "Unknown interaction type" }, { status: 400 });
+}
+
+/**
+ * Handle a command that belongs to an enabled integration.
+ * Returns a JSON response if matched, or null to fall through.
+ */
+async function handleIntegrationCommand(data, db, guildId) {
+	try {
+		const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
+
+		for (const integration of enabledIntegrations) {
+			const commands = getIntegrationCommands(integration);
+			const matched = commands.find((cmd) => cmd.name === data.name);
+			if (!matched) continue;
+
+			// Determine subcommand (if any)
+			const subcommand = data.options?.find((o) => o.type === 1)?.name;
+			const manifest = integration.manifest || integration.manifest_json;
+
+			// --- StarSpace Game built-in handling ---
+			if (integration.slug === "starspace-game") {
+				if (subcommand === "play") {
+					const homepage = manifest?.homepage || "https://game.starspace.group/";
+					return json({
+						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+						data: {
+							content: `🎮 **Play *Space Game**\n${homepage}`,
+						},
+					});
+				}
+
+				// Other /game sub-commands are placeholders for now
+				return json({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: `The \`/game ${subcommand || ""}\` command is not yet available.`,
+					},
+				});
+			}
+
+			// Generic integration — webhook handler or fallback
+			if (manifest?.webhooks?.command_handler) {
+				// TODO: forward to external webhook
+			}
+
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: {
+					content: `Integration command \`/${data.name}\` is not fully configured yet.`,
+				},
+			});
+		}
+	} catch (err) {
+		log.error("[Interactions] Integration command lookup error:", err);
+	}
+
+	return null;
 }
 
 /**

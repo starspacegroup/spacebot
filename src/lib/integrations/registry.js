@@ -57,9 +57,9 @@ import { upsertIntegration } from "../db/integrations.js";
 export const BUILT_IN_INTEGRATIONS = [
   {
     slug: "starspace-game",
-    name: "StarSpace Game",
+    name: "*Space Game",
     description:
-      "Connect the StarSpace multiplayer game to your Discord server. Adds commands for checking player stats, leaderboards, and linking Discord accounts to game profiles.",
+      "Connect the *Space multiplayer game to your Discord server. Adds commands for checking player stats, leaderboards, and linking Discord accounts to game profiles.",
     icon: "🎮",
     author: "StarSpace Group",
     version: "1.0.0",
@@ -68,15 +68,15 @@ export const BUILT_IN_INTEGRATIONS = [
     manifest_url:
       "https://raw.githubusercontent.com/starspacegroup/game/main/spacebot-integration.json",
     manifest_json: {
-      name: "StarSpace Game",
+      name: "*Space Game",
       slug: "starspace-game",
       version: "1.0.0",
       description:
-        "Connect the StarSpace multiplayer game to your Discord server.",
+        "Connect the *Space multiplayer game to your Discord server.",
       author: "StarSpace Group",
       icon: "🎮",
       category: "gaming",
-      homepage: "https://github.com/starspacegroup/game",
+      homepage: "https://game.starspace.group/",
 
       commands: [
         {
