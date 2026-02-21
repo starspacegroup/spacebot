@@ -434,6 +434,7 @@ export async function updateIntegrationManifest(db, integrationId, manifest) {
   try {
     const now = new Date().toISOString();
 
+    // Set connected_at on first sync (handshake)
     await db
       .prepare(`
         UPDATE integrations
@@ -443,6 +444,7 @@ export async function updateIntegrationManifest(db, integrationId, manifest) {
             health_endpoint = ?,
             status = 'online',
             last_heartbeat_at = ?,
+            connected_at = COALESCE(connected_at, ?),
             updated_at = ?
         WHERE id = ?
       `)
@@ -453,11 +455,12 @@ export async function updateIntegrationManifest(db, integrationId, manifest) {
         manifest.health_endpoint || null,
         now,
         now,
+        now,
         integrationId,
       )
       .run();
 
-    log.info(`[Integrations] Updated manifest for integration ${integrationId}`);
+    log.info(`[Integrations] Updated manifest for integration ${integrationId} (handshake complete)`);
     return { success: true };
   } catch (error) {
     log.error("[Integrations] Error updating manifest:", error);

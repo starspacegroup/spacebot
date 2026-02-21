@@ -79,61 +79,13 @@ export const BUILT_IN_INTEGRATIONS = [
       category: "gaming",
       homepage: "https://game.starspace.group/",
 
-      commands: [
-        {
-          name: "game",
-          description: "StarSpace Game commands",
-          type: 1,
-          options: [
-            {
-              name: "stats",
-              description: "View your game stats or another player's stats",
-              type: 1, // SUB_COMMAND
-              options: [
-                {
-                  name: "player",
-                  description: "Player to look up (defaults to yourself)",
-                  type: 6, // USER
-                  required: false,
-                },
-              ],
-            },
-            {
-              name: "leaderboard",
-              description: "View the server leaderboard",
-              type: 1,
-              options: [
-                {
-                  name: "category",
-                  description: "Leaderboard category",
-                  type: 3, // STRING
-                  required: false,
-                  choices: [
-                    { name: "Score", value: "score" },
-                    { name: "Wins", value: "wins" },
-                    { name: "Play Time", value: "playtime" },
-                  ],
-                },
-              ],
-            },
-            {
-              name: "play",
-              description: "Get the link to play StarSpace Game",
-              type: 1, // SUB_COMMAND
-            },
-
-          ],
-        },
-      ],
-
-      webhooks: {
-        on_enable: "https://game.starspace.group/api/spacebot/on-enable",
-        on_disable: "https://game.starspace.group/api/spacebot/on-disable",
-        command_handler: "https://game.starspace.group/api/spacebot/command",
-      },
-
-      health_endpoint: "https://game.starspace.group/api/spacebot/health",
-
+      // Commands, webhooks, and health_endpoint are provided by the Game
+      // project via the sync API when it starts up. The seed only contains
+      // metadata so SpaceBot knows the integration exists in the catalog.
+      // The Game project pushes the real manifest (with commands & webhooks)
+      // when it connects.
+      commands: [],
+      webhooks: {},
       config_schema: [],
     },
   },

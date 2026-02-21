@@ -225,6 +225,17 @@ async function handleIntegrationCommand(data, db, guildId) {
 
 			const manifest = integration.manifest || integration.manifest_json;
 
+			// If the integration is offline, return immediately with a helpful message
+			if (integration.status === 'offline') {
+				return json({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: `⚠️ The **${integration.name || integration.slug}** integration is currently offline. Please try again later.`,
+						flags: 64,
+					},
+				});
+			}
+
 			// If the integration has a command handler webhook, proxy the command
 			if (manifest?.webhooks?.command_handler) {
 				try {

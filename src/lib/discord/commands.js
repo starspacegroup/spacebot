@@ -127,11 +127,16 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
-		// Gather commands from enabled integrations
+		// Gather commands from enabled integrations (only if the integration is online)
 		let integrationCommands = [];
 		try {
 			const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
 			for (const integration of enabledIntegrations) {
+				// Only register commands for integrations that have connected and are online
+				if (integration.status !== 'online') {
+					log.debug(`syncGuildCommands: Skipping ${integration.slug} commands (status: ${integration.status || 'unknown'})`);
+					continue;
+				}
 				const cmds = getIntegrationCommands(integration);
 				integrationCommands.push(...cmds);
 			}

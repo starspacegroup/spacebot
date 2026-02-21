@@ -170,6 +170,13 @@
 						</div>
 					{/if}
 
+					<!-- Offline warning for enabled integrations -->
+					{#if isEnabled && integration.status === 'offline'}
+						<div class="offline-warning">
+							⚠️ This integration is currently offline. Its commands are temporarily unavailable and will return automatically when the service reconnects.
+						</div>
+					{/if}
+
 					<!-- Actions -->
 					<div class="card-actions">
 						{#if isEnabled}
@@ -192,7 +199,7 @@
 									Disable
 								</button>
 							{/if}
-						{:else}
+						{:else if integration.status === 'online'}
 							<form method="POST" action="?/enableIntegration" use:enhance={() => {
 								return async ({ update }) => {
 									await update({ invalidateAll: true });
@@ -203,6 +210,16 @@
 									Enable Integration
 								</button>
 							</form>
+						{:else}
+							<div class="unavailable-notice">
+								<span class="unavailable-text">
+									{#if integration.status === 'offline'}
+										🔴 This integration is currently offline and cannot be enabled.
+									{:else}
+										⏳ Waiting for this integration to connect...
+									{/if}
+								</span>
+							</div>
 						{/if}
 					</div>
 
@@ -618,6 +635,29 @@
 	.footer-text {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+	}
+
+	/* Offline Warning */
+	.offline-warning {
+		background: rgba(239, 68, 68, 0.08);
+		border: 1px solid rgba(239, 68, 68, 0.25);
+		border-radius: 0.5rem;
+		padding: 0.6rem 0.85rem;
+		font-size: 0.8rem;
+		color: #f87171;
+		line-height: 1.5;
+		margin-bottom: 0.75rem;
+	}
+
+	/* Unavailable Notice */
+	.unavailable-notice {
+		padding: 0.5rem 0;
+	}
+
+	.unavailable-text {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		font-style: italic;
 	}
 
 	/* Responsive */
