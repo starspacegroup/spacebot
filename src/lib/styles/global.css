@@ -180,6 +180,15 @@ body {
 	background-color: var(--color-background);
 	color: var(--color-text);
 	transition: background-color var(--transition-normal), color var(--transition-normal);
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* Re-enable text selection for interactive & content elements */
+input, textarea, select, code, pre, kbd, samp,
+[contenteditable="true"], .selectable {
+	-webkit-user-select: text;
+	user-select: text;
 }
 
 /* Selection colors */

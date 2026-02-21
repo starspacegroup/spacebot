@@ -14,7 +14,7 @@
 	<!-- Hero Section -->
 	<section class="hero">
 		<div class="hero-content">
-			<h1>🚀 SpaceBot</h1>
+			<h1><span class="selectable">🚀</span> SpaceBot</h1>
 			<p class="tagline">The powerful Discord bot platform you control</p>
 			<p class="description">
 				Create custom slash commands, build event-driven automations, and monitor all Discord activity through a beautiful admin dashboard. <strong>100% open source.</strong>
