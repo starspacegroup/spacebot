@@ -1,14 +1,49 @@
-<svelte:head>
-	<title>Terms of Service – SpaceBot</title>
-	<meta name="description" content="SpaceBot Terms of Service" />
-</svelte:head>
+<script>
+	import LegalPage from '$lib/components/LegalPage.svelte';
 
-<div class="legal-page">
-	<h1>Terms of Service</h1>
-	<p class="last-updated">Last updated: February 21, 2026</p>
+	const toc = [
+		{ id: 'acceptance', label: 'Acceptance of Terms' },
+		{ id: 'eligibility', label: 'Eligibility' },
+		{ id: 'description', label: 'Description of Service' },
+		{ id: 'accounts', label: 'User Accounts & Authentication' },
+		{ id: 'acceptable-use', label: 'Acceptable Use' },
+		{ id: 'intellectual-property', label: 'User Content & Intellectual Property' },
+		{ id: 'api-access', label: 'API Access' },
+		{ id: 'availability', label: 'Service Availability & Modifications' },
+		{ id: 'warranties', label: 'Disclaimer of Warranties' },
+		{ id: 'liability', label: 'Limitation of Liability' },
+		{ id: 'indemnification', label: 'Indemnification' },
+		{ id: 'termination', label: 'Termination' },
+		{ id: 'privacy', label: 'Privacy' },
+		{ id: 'governing-law', label: 'Governing Law' },
+		{ id: 'disputes', label: 'Dispute Resolution' },
+		{ id: 'changes', label: 'Changes to Terms' },
+		{ id: 'general', label: 'General Provisions' },
+		{ id: 'contact', label: 'Contact' },
+		{ id: 'changelog', label: 'Changelog' }
+	];
 
+	const versions = [
+		{ version: '1.0', date: 'February 21, 2026', current: true }
+	];
+
+	const changelog = [
+		{
+			version: '1.0',
+			date: 'February 21, 2026',
+			changes: ['Initial terms of service']
+		}
+	];
+</script>
+
+<LegalPage
+	title="Terms of Service"
+	{toc}
+	{versions}
+	{changelog}
+>
 	<section>
-		<h2>1. Acceptance of Terms</h2>
+		<h2 id="acceptance">1. Acceptance of Terms</h2>
 		<p>
 			By accessing or using SpaceBot ("the Service"), operated by Starspace Group ("Starspace",
 			"we", "us", or "our"), you agree to be bound by these Terms of Service ("Terms"). If you
@@ -22,7 +57,7 @@
 	</section>
 
 	<section>
-		<h2>2. Eligibility</h2>
+		<h2 id="eligibility">2. Eligibility</h2>
 		<p>
 			You must meet the minimum age requirements set by Discord's
 			<a href="https://discord.com/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
@@ -37,7 +72,7 @@
 	</section>
 
 	<section>
-		<h2>3. Description of Service</h2>
+		<h2 id="description">3. Description of Service</h2>
 		<p>
 			SpaceBot is a Discord bot platform that allows server administrators to create custom slash
 			commands, build event-driven automations, view server analytics, and monitor Discord activity
@@ -47,7 +82,7 @@
 	</section>
 
 	<section>
-		<h2>4. User Accounts &amp; Authentication</h2>
+		<h2 id="accounts">4. User Accounts &amp; Authentication</h2>
 		<p>
 			You access SpaceBot by authenticating through Discord OAuth2. You are responsible for
 			maintaining the security of your Discord account and are fully responsible for all
@@ -61,7 +96,7 @@
 	</section>
 
 	<section>
-		<h2>5. Acceptable Use</h2>
+		<h2 id="acceptable-use">5. Acceptable Use</h2>
 		<p>You agree that you will not, and will not permit others to:</p>
 		<ul>
 			<li>Use the Service in any way that violates any applicable local, state, national, or international law or regulation</li>
@@ -85,7 +120,7 @@
 	</section>
 
 	<section>
-		<h2>6. User Content &amp; Intellectual Property</h2>
+		<h2 id="intellectual-property">6. User Content &amp; Intellectual Property</h2>
 		<h3>6.1 Your Content</h3>
 		<p>
 			You retain ownership of any content you create through the Service, including custom
@@ -118,7 +153,7 @@
 	</section>
 
 	<section>
-		<h2>7. API Access</h2>
+		<h2 id="api-access">7. API Access</h2>
 		<p>
 			The Service may provide API access for programmatic interaction. API keys are issued
 			per-server and are the responsibility of the server administrator. You agree not to share
@@ -128,7 +163,7 @@
 	</section>
 
 	<section>
-		<h2>8. Service Availability &amp; Modifications</h2>
+		<h2 id="availability">8. Service Availability &amp; Modifications</h2>
 		<p>
 			We strive to keep SpaceBot available and functioning reliably, but we do not guarantee
 			uninterrupted, error-free, or secure access. The Service may be temporarily unavailable
@@ -142,7 +177,7 @@
 	</section>
 
 	<section>
-		<h2>9. Disclaimer of Warranties</h2>
+		<h2 id="warranties">9. Disclaimer of Warranties</h2>
 		<p>
 			THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER
 			EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY,
@@ -158,7 +193,7 @@
 	</section>
 
 	<section>
-		<h2>10. Limitation of Liability</h2>
+		<h2 id="liability">10. Limitation of Liability</h2>
 		<p>
 			TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL STARSPACE GROUP, ITS
 			MEMBERS, CONTRIBUTORS, OR AFFILIATES BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
@@ -180,7 +215,7 @@
 	</section>
 
 	<section>
-		<h2>11. Indemnification</h2>
+		<h2 id="indemnification">11. Indemnification</h2>
 		<p>
 			You agree to indemnify, defend, and hold harmless Starspace Group and its members,
 			contributors, and affiliates from and against any claims, liabilities, damages, losses,
@@ -196,7 +231,7 @@
 	</section>
 
 	<section>
-		<h2>12. Termination</h2>
+		<h2 id="termination">12. Termination</h2>
 		<p>
 			We reserve the right to suspend or terminate your access to the Service at any time, with
 			or without cause, and with or without notice. Grounds for termination include, but are not
@@ -216,7 +251,7 @@
 	</section>
 
 	<section>
-		<h2>13. Privacy</h2>
+		<h2 id="privacy">13. Privacy</h2>
 		<p>
 			Your use of the Service is also governed by our <a href="/privacy">Privacy Policy</a>,
 			which describes how we collect, use, store, and protect your data. By using the Service,
@@ -225,7 +260,7 @@
 	</section>
 
 	<section>
-		<h2>14. Governing Law</h2>
+		<h2 id="governing-law">14. Governing Law</h2>
 		<p>
 			These Terms shall be governed by and construed in accordance with the laws of the United
 			States, without regard to conflict of law principles.
@@ -239,7 +274,7 @@
 	</section>
 
 	<section>
-		<h2>15. Dispute Resolution</h2>
+		<h2 id="disputes">15. Dispute Resolution</h2>
 		<p>
 			In the event of any dispute arising out of or relating to these Terms or the Service, the
 			parties agree to first attempt to resolve the dispute informally by contacting us. If the
@@ -254,7 +289,7 @@
 	</section>
 
 	<section>
-		<h2>16. Changes to Terms</h2>
+		<h2 id="changes">16. Changes to Terms</h2>
 		<p>
 			We may update these Terms from time to time. We will notify users of material changes by
 			updating the "Last updated" date at the top of this page, and we will make reasonable
@@ -268,7 +303,7 @@
 	</section>
 
 	<section>
-		<h2>17. General Provisions</h2>
+		<h2 id="general">17. General Provisions</h2>
 		<h3>17.1 Entire Agreement</h3>
 		<p>
 			These Terms, together with the Privacy Policy, constitute the entire agreement between you
@@ -298,7 +333,7 @@
 	</section>
 
 	<section>
-		<h2>18. Contact</h2>
+		<h2 id="contact">18. Contact</h2>
 		<p>
 			If you have any questions about these Terms, please contact us via:
 		</p>
@@ -309,72 +344,4 @@
 				<a href="mailto:legal@starspace.group">legal@starspace.group</a></li>
 		</ul>
 	</section>
-</div>
-
-<style>
-	.legal-page {
-		max-width: 740px;
-		margin: 0 auto;
-		padding: 2.5rem 1.25rem 4rem;
-	}
-
-	h1 {
-		font-size: 1.75rem;
-		font-weight: 700;
-		color: var(--color-text);
-		margin-bottom: 0.25rem;
-	}
-
-	.last-updated {
-		color: var(--color-text-muted);
-		font-size: 0.875rem;
-		margin-bottom: 2rem;
-	}
-
-	section {
-		margin-bottom: 1.75rem;
-	}
-
-	h2 {
-		font-size: 1.15rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-bottom: 0.5rem;
-	}
-
-	h3 {
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-top: 0.75rem;
-		margin-bottom: 0.35rem;
-	}
-
-	p, li {
-		color: var(--color-text-secondary);
-		line-height: 1.7;
-		font-size: 0.95rem;
-	}
-
-	ul {
-		padding-left: 1.5rem;
-		margin-top: 0.5rem;
-	}
-
-	.uppercase-list li {
-		text-transform: none;
-	}
-
-	li {
-		margin-bottom: 0.35rem;
-	}
-
-	a {
-		color: var(--color-primary);
-		text-decoration: none;
-	}
-
-	a:hover {
-		text-decoration: underline;
-	}
-</style>
+</LegalPage>

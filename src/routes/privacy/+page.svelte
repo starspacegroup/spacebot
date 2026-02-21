@@ -1,14 +1,46 @@
-<svelte:head>
-	<title>Privacy Policy – SpaceBot</title>
-	<meta name="description" content="SpaceBot Privacy Policy" />
-</svelte:head>
+<script>
+	import LegalPage from '$lib/components/LegalPage.svelte';
 
-<div class="legal-page">
-	<h1>Privacy Policy</h1>
-	<p class="last-updated">Last updated: February 21, 2026</p>
+	const toc = [
+		{ id: 'introduction', label: 'Introduction' },
+		{ id: 'data-controller', label: 'Data Controller' },
+		{ id: 'information-we-collect', label: 'Information We Collect' },
+		{ id: 'legal-basis', label: 'Legal Basis for Processing (GDPR)' },
+		{ id: 'how-we-use', label: 'How We Use Your Information' },
+		{ id: 'data-sharing', label: 'Data Sharing & Third-Party Services' },
+		{ id: 'international-transfers', label: 'International Data Transfers' },
+		{ id: 'data-retention', label: 'Data Retention' },
+		{ id: 'data-security', label: 'Data Storage & Security' },
+		{ id: 'your-rights', label: 'Your Rights' },
+		{ id: 'automated-decisions', label: 'Automated Decision-Making' },
+		{ id: 'children', label: 'Children\'s Privacy' },
+		{ id: 'do-not-track', label: 'Do Not Track' },
+		{ id: 'changes', label: 'Changes to This Policy' },
+		{ id: 'contact', label: 'Contact' },
+		{ id: 'changelog', label: 'Changelog' }
+	];
 
+	const versions = [
+		{ version: '1.0', date: 'February 21, 2026', current: true }
+	];
+
+	const changelog = [
+		{
+			version: '1.0',
+			date: 'February 21, 2026',
+			changes: ['Initial privacy policy']
+		}
+	];
+</script>
+
+<LegalPage
+	title="Privacy Policy"
+	{toc}
+	{versions}
+	{changelog}
+>
 	<section>
-		<h2>1. Introduction</h2>
+		<h2 id="introduction">1. Introduction</h2>
 		<p>
 			This Privacy Policy describes how Starspace Group ("Starspace", "we", "us", or "our"),
 			the operator of SpaceBot ("the Service"), collects, uses, stores, and protects information
@@ -26,7 +58,7 @@
 	</section>
 
 	<section>
-		<h2>2. Data Controller</h2>
+		<h2 id="data-controller">2. Data Controller</h2>
 		<p>
 			Starspace Group is the data controller responsible for the personal data processed through
 			the Service. For privacy inquiries, you may contact us via the methods described in the
@@ -35,7 +67,7 @@
 	</section>
 
 	<section>
-		<h2>3. Information We Collect</h2>
+		<h2 id="information-we-collect">3. Information We Collect</h2>
 
 		<h3>3.1 Information from Discord OAuth2</h3>
 		<p>When you log in via Discord OAuth2, we request the following scopes and receive:</p>
@@ -106,7 +138,7 @@
 	</section>
 
 	<section>
-		<h2>4. Legal Basis for Processing (GDPR)</h2>
+		<h2 id="legal-basis">4. Legal Basis for Processing (GDPR)</h2>
 		<p>If you are located in the European Economic Area (EEA), United Kingdom, or Switzerland, we process your personal data on the following legal bases:</p>
 		<ul>
 			<li><strong>Contract performance (Art. 6(1)(b) GDPR)</strong> &mdash; Processing necessary to provide the Service you have requested, including authentication and dashboard functionality</li>
@@ -116,7 +148,7 @@
 	</section>
 
 	<section>
-		<h2>5. How We Use Your Information</h2>
+		<h2 id="how-we-use">5. How We Use Your Information</h2>
 		<p>We use the information we collect to:</p>
 		<ul>
 			<li>Authenticate you and authorize access to your admin dashboard</li>
@@ -130,7 +162,7 @@
 	</section>
 
 	<section>
-		<h2>6. Data Sharing &amp; Third-Party Services</h2>
+		<h2 id="data-sharing">6. Data Sharing &amp; Third-Party Services</h2>
 		<p>
 			We do <strong>not</strong> sell, rent, trade, or otherwise share your personal information
 			with third parties for their marketing purposes.
@@ -153,7 +185,7 @@
 	</section>
 
 	<section>
-		<h2>7. International Data Transfers</h2>
+		<h2 id="international-transfers">7. International Data Transfers</h2>
 		<p>
 			The Service is hosted on Cloudflare's global network. Your data may be processed in
 			countries other than your country of residence, including the United States and other
@@ -165,7 +197,7 @@
 	</section>
 
 	<section>
-		<h2>8. Data Retention</h2>
+		<h2 id="data-retention">8. Data Retention</h2>
 		<ul>
 			<li><strong>Authentication data</strong> &mdash; Session cookies expire after 7 days. OAuth2 tokens are not stored server-side beyond the cookie.</li>
 			<li><strong>Event logs</strong> &mdash; Retained for as long as the server remains active on the Service. Server administrators may request deletion.</li>
@@ -180,7 +212,7 @@
 	</section>
 
 	<section>
-		<h2>9. Data Storage &amp; Security</h2>
+		<h2 id="data-security">9. Data Storage &amp; Security</h2>
 		<p>
 			Data is stored in Cloudflare D1 databases with encryption at rest and in transit. We
 			implement reasonable technical and organizational security measures including:
@@ -198,7 +230,7 @@
 	</section>
 
 	<section>
-		<h2>10. Your Rights</h2>
+		<h2 id="your-rights">10. Your Rights</h2>
 
 		<h3>10.1 General Rights (All Users)</h3>
 		<p>Regardless of your location, you have the right to:</p>
@@ -259,7 +291,7 @@
 	</section>
 
 	<section>
-		<h2>11. Automated Decision-Making</h2>
+		<h2 id="automated-decisions">11. Automated Decision-Making</h2>
 		<p>
 			The Service uses automated processing to execute automations and commands configured by
 			server administrators (e.g., auto-moderation rules, event-triggered actions). These
@@ -270,7 +302,7 @@
 	</section>
 
 	<section>
-		<h2>12. Children's Privacy</h2>
+		<h2 id="children">12. Children's Privacy</h2>
 		<p>
 			The Service is not directed at, and we do not knowingly collect personal information from,
 			children under the age of 13 (or the minimum age required in your jurisdiction). This aligns
@@ -287,7 +319,7 @@
 	</section>
 
 	<section>
-		<h2>13. Do Not Track</h2>
+		<h2 id="do-not-track">13. Do Not Track</h2>
 		<p>
 			We do not track users across third-party websites. The Service does not respond to "Do Not
 			Track" (DNT) browser signals because we do not engage in the type of cross-site tracking
@@ -296,7 +328,7 @@
 	</section>
 
 	<section>
-		<h2>14. Changes to This Policy</h2>
+		<h2 id="changes">14. Changes to This Policy</h2>
 		<p>
 			We may update this Privacy Policy from time to time. We will notify users of material
 			changes by updating the "Last updated" date at the top of this page. For significant
@@ -307,7 +339,7 @@
 	</section>
 
 	<section>
-		<h2>15. Contact</h2>
+		<h2 id="contact">15. Contact</h2>
 		<p>
 			If you have questions, concerns, or requests regarding this Privacy Policy or our data
 			practices, please contact us via:
@@ -323,68 +355,4 @@
 			with your local data protection supervisory authority.
 		</p>
 	</section>
-</div>
-
-<style>
-	.legal-page {
-		max-width: 740px;
-		margin: 0 auto;
-		padding: 2.5rem 1.25rem 4rem;
-	}
-
-	h1 {
-		font-size: 1.75rem;
-		font-weight: 700;
-		color: var(--color-text);
-		margin-bottom: 0.25rem;
-	}
-
-	.last-updated {
-		color: var(--color-text-muted);
-		font-size: 0.875rem;
-		margin-bottom: 2rem;
-	}
-
-	section {
-		margin-bottom: 1.75rem;
-	}
-
-	h2 {
-		font-size: 1.15rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-bottom: 0.5rem;
-	}
-
-	h3 {
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin-top: 0.75rem;
-		margin-bottom: 0.35rem;
-	}
-
-	p, li {
-		color: var(--color-text-secondary);
-		line-height: 1.7;
-		font-size: 0.95rem;
-	}
-
-	ul {
-		padding-left: 1.5rem;
-		margin-top: 0.5rem;
-	}
-
-	li {
-		margin-bottom: 0.35rem;
-	}
-
-	a {
-		color: var(--color-primary);
-		text-decoration: none;
-	}
-
-	a:hover {
-		text-decoration: underline;
-	}
-</style>
+</LegalPage>
