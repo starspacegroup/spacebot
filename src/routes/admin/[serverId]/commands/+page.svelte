@@ -128,7 +128,7 @@
 		</section>
 	{/if}
 	
-	<!-- Commands List -->
+	<!-- Custom Commands -->
 	<section class="commands-list">
 		{#if data.commands.length === 0}
 			<div class="empty-state-card">
@@ -242,6 +242,66 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- Built-in Commands -->
+	{#if data.builtInCommands?.filter(c => c.enabled).length > 0}
+		<section class="builtin-commands">
+			<h2 class="section-title">Built-in Commands</h2>
+			<p class="builtin-hint">These commands are managed globally and available on all servers.</p>
+			<div class="command-grid">
+				{#each data.builtInCommands.filter(c => c.enabled) as command}
+					{@const actionInfo = getActionInfo(command.action_type)}
+					{@const responseInfo = getResponseInfo(command.response_type)}
+					<div class="command-card builtin">
+						<div class="command-header">
+							<div class="command-name-row">
+								<span class="command-slash">/</span>
+								<span class="command-name">{command.name}</span>
+							</div>
+							<span class="builtin-badge">Built-in</span>
+						</div>
+						<div class="command-body">
+							<p class="command-description">{command.description}</p>
+							
+							{#if command.options && command.options.length > 0}
+								<div class="command-options">
+									<span class="options-label">Options:</span>
+									{#each command.options as option}
+										<span class="option-tag" class:required={option.required}>
+											{option.name}
+											{#if option.required}<span class="required-star">*</span>{/if}
+										</span>
+									{/each}
+								</div>
+							{/if}
+							
+							<div class="command-config">
+								<div class="config-item">
+									<span class="config-icon">{actionInfo.icon}</span>
+									<span class="config-label">{actionInfo.name}</span>
+								</div>
+								<div class="config-item">
+									<span class="config-icon">{command.ephemeral ? '👁️' : '📢'}</span>
+									<span class="config-label">{command.ephemeral ? 'Private' : 'Public'}</span>
+								</div>
+							</div>
+						</div>
+						
+						<div class="command-footer">
+							<div class="command-stats">
+								<span class="stat" title="Times used">
+									🔄 {command.use_count || 0}
+								</span>
+								<span class="stat" title="Last used">
+									🕐 {formatRelativeTime(command.last_used_at)}
+								</span>
+							</div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
 </div>
 
 <style>
@@ -364,6 +424,40 @@
 	.command-card:hover {
 		transform: translateY(-2px);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+	}
+
+	.command-card.builtin {
+		border-color: var(--accent-color, #5865F2);
+		border-style: dashed;
+	}
+
+	.builtin-badge {
+		font-size: 0.7rem;
+		padding: 0.2rem 0.5rem;
+		background: var(--accent-color, #5865F2);
+		color: #fff;
+		border-radius: 4px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.section-title {
+		font-size: 1rem;
+		color: var(--text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		margin-bottom: 1rem;
+	}
+
+	.builtin-commands {
+		margin-bottom: 2rem;
+	}
+
+	.builtin-hint {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		margin: -0.5rem 0 1rem;
 	}
 	
 	.command-card.disabled {

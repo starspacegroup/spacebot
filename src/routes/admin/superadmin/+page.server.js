@@ -11,6 +11,11 @@ import {
 	getGlobalVoiceActivityChart, 
 	getGlobalStatsSummary 
 } from "$lib/db/stats-aggregation.js";
+import {
+	getBuiltInCommands,
+	ACTION_TYPES,
+	RESPONSE_TYPES,
+} from "$lib/db/commands.js";
 
 /**
  * Get the list of available cron jobs
@@ -274,6 +279,7 @@ export async function load({ cookies, platform }) {
 		memberGrowthChart,
 		voiceActivityChart,
 		activitySummary,
+		builtInCommands,
 	] = await Promise.all([
 		getBotGuildsWithDetails(botToken),
 		getBotApplicationInfo(botToken),
@@ -283,6 +289,7 @@ export async function load({ cookies, platform }) {
 		getGlobalMemberGrowthChart(db, "30d"),
 		getGlobalVoiceActivityChart(db, "30d"),
 		getGlobalStatsSummary(db, "30d"),
+		db ? getBuiltInCommands(db) : [],
 	]);
 
 	// Build cron jobs with last run info
@@ -343,6 +350,9 @@ export async function load({ cookies, platform }) {
 		activitySummary,
 		cronJobs,
 		cronJobHistory: cronJobData.history,
+		builtInCommands,
+		actionTypes: ACTION_TYPES,
+		responseTypes: RESPONSE_TYPES,
 		user: {
 			id: userId,
 			username: cookies.get("discord_username") || "Superadmin",

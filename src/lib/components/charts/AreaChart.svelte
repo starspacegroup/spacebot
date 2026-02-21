@@ -262,6 +262,7 @@
 						filter="url(#{gradientId}-point-glow)"
 					/>
 					<!-- Inner point -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<circle 
 						cx={point.x} 
 						cy={point.y} 
@@ -283,6 +284,7 @@
 				/>
 				{#if showPoints}
 					{#each secondary.points as point}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<circle 
 							cx={point.x} 
 							cy={point.y} 

@@ -22,24 +22,38 @@
 	}
 	
 	// Track the server ID to detect when we navigate to a different server
+	// svelte-ignore state_referenced_locally
 	let lastServerId = $state(data.serverId);
 	
-	// Local state for form fields - initialized from data
+	// Local state for form fields - initialized from data, re-synced via $effect below.
+	// These are mutable form values that the user edits, so they must be $state, not $derived.
+	// svelte-ignore state_referenced_locally
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
+	// svelte-ignore state_referenced_locally
 	let welcomeEnabled = $state(data.settings?.welcomeEnabled || false);
+	// svelte-ignore state_referenced_locally
 	let welcomeChannelId = $state(data.settings?.welcomeChannelId || '');
+	// svelte-ignore state_referenced_locally
 	let welcomeMessage = $state(data.settings?.welcomeMessage || 'Welcome {user} to {server}!');
 	
 	// Permission settings state
+	// svelte-ignore state_referenced_locally
 	let viewDashboardPerm = $state(data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD');
+	// svelte-ignore state_referenced_locally
 	let viewLogsPerm = $state(data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD');
+	// svelte-ignore state_referenced_locally
 	let manageAutomationsPerm = $state(data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD');
+	// svelte-ignore state_referenced_locally
 	let manageCommandsPerm = $state(data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD');
 	
 	// Role overrides for permissions
+	// svelte-ignore state_referenced_locally
 	let viewDashboardRoles = $state(data.permissionSettings?.viewDashboard?.roles || []);
+	// svelte-ignore state_referenced_locally
 	let viewLogsRoles = $state(data.permissionSettings?.viewLogs?.roles || []);
+	// svelte-ignore state_referenced_locally
 	let manageAutomationsRoles = $state(data.permissionSettings?.manageAutomations?.roles || []);
+	// svelte-ignore state_referenced_locally
 	let manageCommandsRoles = $state(data.permissionSettings?.manageCommands?.roles || []);
 	
 	// Webhook state
@@ -434,10 +448,10 @@
 
 <!-- Webhook Modal -->
 {#if showWebhookModal}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="modal-overlay" onclick={closeWebhookModal} role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title">
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_interactive_supports_focus -->
+	<div class="modal-overlay" onclick={closeWebhookModal} role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title" tabindex="-1">
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
+		<div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h3 id="webhook-modal-title">{editingWebhook ? 'Edit Webhook' : 'Add Webhook'}</h3>
 				<button type="button" class="modal-close" onclick={closeWebhookModal}>×</button>

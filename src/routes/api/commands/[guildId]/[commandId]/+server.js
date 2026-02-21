@@ -16,6 +16,15 @@ import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
+/**
+ * Check if user is a superadmin
+ */
+function checkIsSuperAdmin(userId, platform) {
+  if (!userId) return false;
+  const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+  return adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(userId);
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, cookies, platform }) {
   const { guildId, commandId } = params;
@@ -63,6 +72,14 @@ export async function PATCH({ params, request, cookies, platform }) {
     const existing = await getCommand(db, id, guildId);
     if (!existing) {
       return json({ error: "Command not found" }, { status: 404 });
+    }
+
+    // Built-in commands require superadmin
+    if (existing.is_built_in) {
+      const userId = cookies.get("discord_user_id");
+      if (!checkIsSuperAdmin(userId, platform)) {
+        return json({ error: "Only superadmins can edit built-in commands" }, { status: 403 });
+      }
     }
 
     // Handle toggle action
@@ -134,6 +151,11 @@ export async function DELETE({ params, cookies, platform }) {
   const existing = await getCommand(db, id, guildId);
   if (!existing) {
     return json({ error: "Command not found" }, { status: 404 });
+  }
+
+  // Built-in commands cannot be deleted
+  if (existing.is_built_in) {
+    return json({ error: "Built-in commands cannot be deleted" }, { status: 403 });
   }
 
   const result = await deleteCommand(db, id, guildId);

@@ -48,10 +48,13 @@
 	}
 	
 	let actions = $state(parseExistingActions());
+	// svelte-ignore state_referenced_locally
 	let selectedResponseType = $state(data.command.response_type || 'message');
+	// svelte-ignore state_referenced_locally
 	let responseContent = $state(data.command.response_content || '');
 	let showDeleteConfirm = $state(false);
 	// Map 'default' from DB to 'defaultValue' for UI binding
+	// svelte-ignore state_referenced_locally
 	let options = $state((data.command.options || []).map(opt => ({
 		...opt,
 		defaultValue: opt.default || ''
@@ -68,7 +71,9 @@
 		return 'custom';
 	}
 	
+	// svelte-ignore state_referenced_locally
 	let selectedPermissionPreset = $state(getInitialPermissionPreset());
+	// svelte-ignore state_referenced_locally
 	let selectedCustomPermissions = $state(
 		data.command.default_member_permissions && getInitialPermissionPreset() === 'custom'
 			? [data.command.default_member_permissions]
@@ -302,7 +307,18 @@
 			}
 		};
 	}} class="command-form">
-		<input type="hidden" name="guild_id" value={selectedGuildId}>
+		<input type="hidden" name="guild_id" value={data.command.is_built_in ? '__built_in__' : selectedGuildId}>
+		<input type="hidden" name="is_built_in" value={data.command.is_built_in ? 'true' : 'false'}>
+		
+		{#if data.command.is_built_in}
+			<div class="builtin-notice">
+				<span class="builtin-notice-icon">🔒</span>
+				<div>
+					<strong>Built-in Command</strong>
+					<p>This is a built-in command. Changes apply across all servers.</p>
+				</div>
+			</div>
+		{/if}
 		
 		<!-- Basic Info Section -->
 		<section class="form-section">
@@ -389,7 +405,7 @@
 							</div>
 							<div class="option-fields">
 								<div class="form-group">
-									<label>Name</label>
+									<label>Name
 									<input 
 										type="text" 
 										name="option_name[]"
@@ -397,23 +413,26 @@
 										placeholder="option_name"
 										pattern="[a-zA-Z0-9_-]{1,32}"
 									/>
+									</label>
 								</div>
 								<div class="form-group">
-									<label>Description</label>
+									<label>Description
 									<input 
 										type="text" 
 										name="option_description[]"
 										bind:value={option.description}
 										placeholder="What is this option for?"
 									/>
+									</label>
 								</div>
 								<div class="form-group">
-									<label>Type</label>
+									<label>Type
 									<select name="option_type[]" bind:value={option.type}>
 										{#each data.commonOptionTypes as optType}
 											<option value={optType.value}>{optType.label}</option>
 										{/each}
 									</select>
+									</label>
 								</div>
 								<div class="form-group">
 									<label class="checkbox-label">
@@ -428,13 +447,14 @@
 								</div>
 								{#if !option.required}
 									<div class="form-group">
-										<label>Default Value</label>
+										<label>Default Value
 										<input 
 											type="text" 
 											name="option_default[]"
 											bind:value={option.defaultValue}
 											placeholder="Leave empty for no default"
 										/>
+										</label>
 										<p class="field-hint">Value used when user doesn't provide this option</p>
 									</div>
 								{/if}
@@ -802,6 +822,7 @@
 			
 			{#if selectedPermissionPreset === 'custom'}
 				<div class="custom-permissions">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label>Required Permissions (user must have at least one):</label>
 					<div class="permissions-grid">
 						{#each Object.entries(data.permissionFlags) as [key, perm]}
@@ -828,9 +849,13 @@
 		
 		<!-- Form Actions -->
 		<div class="form-actions">
-			<button type="button" class="btn btn-danger" onclick={() => showDeleteConfirm = true}>
-				🗑️ Delete Command
-			</button>
+			{#if !data.command.is_built_in}
+				<button type="button" class="btn btn-danger" onclick={() => showDeleteConfirm = true}>
+					🗑️ Delete Command
+				</button>
+			{:else}
+				<div></div>
+			{/if}
 			<div class="form-actions-right">
 				<a href="/admin/{selectedGuildId}/commands" class="btn btn-secondary">
 					Cancel
@@ -881,6 +906,27 @@
 		padding: 1.5rem;
 		max-width: 800px;
 		margin: 0 auto;
+	}
+	
+	.builtin-notice {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem 1.25rem;
+		background: color-mix(in srgb, var(--accent-color, #5865F2) 15%, transparent);
+		border: 1px solid var(--accent-color, #5865F2);
+		border-radius: 8px;
+		margin-bottom: 1.5rem;
+	}
+	
+	.builtin-notice-icon {
+		font-size: 1.5rem;
+	}
+	
+	.builtin-notice p {
+		margin: 0.25rem 0 0;
+		font-size: 0.85rem;
+		color: var(--text-muted);
 	}
 	
 	.back-link {
@@ -1118,45 +1164,6 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 0.75rem;
-	}
-	
-	/* Variables help */
-	.variables-help {
-		margin-top: 0.75rem;
-		padding: 0.75rem;
-		background: var(--bg-tertiary, #36393f);
-		border-radius: 8px;
-	}
-	
-	.variables-label {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		display: block;
-		margin-bottom: 0.5rem;
-	}
-	
-	.variables-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-	
-	.variables-list code {
-		padding: 0.125rem 0.5rem;
-		background: var(--bg-primary, #202225);
-		border-radius: 4px;
-		font-size: 0.75rem;
-		cursor: help;
-	}
-	
-	.variables-list code.option-var {
-		background: var(--color-success-soft);
-		border: 1px solid rgba(87, 242, 135, 0.3);
-	}
-	
-	.variables-list code.placeholder-var {
-		opacity: 0.5;
-		font-style: italic;
 	}
 	
 	/* Embed config */

@@ -203,6 +203,7 @@
 	
 	<!-- Bot Selector -->
 	<div class="selector-group">
+		<!-- svelte-ignore a11y_label_has_associated_control -->
 		<label class="selector-label">
 			<span class="label-icon">🤖</span>
 			Target Bot
@@ -269,6 +270,7 @@
 	<!-- Command Selector (only show if bot is selected) -->
 	{#if selectedBot && showCommandFilter}
 		<div class="selector-group">
+			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label class="selector-label">
 				<span class="label-icon">⚡</span>
 				Command <span class="optional">(optional)</span>
@@ -349,6 +351,7 @@
 	<!-- Result Filter (only show if command with detection is selected) -->
 	{#if selectedCommand && showResultFilter && hasResultDetection}
 		<div class="selector-group">
+			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label class="selector-label">
 				<span class="label-icon">✅</span>
 				Command Result
@@ -491,13 +494,7 @@
 		color: var(--text-primary, #fff);
 	}
 	
-	.cooldown-badge {
-		font-size: 0.75rem;
-		padding: 0.125rem 0.5rem;
-		background: var(--bg-tertiary, #333);
-		border-radius: 4px;
-		color: var(--text-secondary, #aaa);
-	}
+
 	
 	.clear-btn {
 		margin-left: auto;
@@ -635,25 +632,5 @@
 		color: var(--text-primary, #fff);
 	}
 	
-	.result-hint {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		border-radius: 6px;
-		font-size: 0.85rem;
-		margin-top: 0.5rem;
-	}
-	
-	.success-hint {
-		background: rgba(67, 181, 129, 0.1);
-		color: #43b581;
-		border: 1px solid rgba(67, 181, 129, 0.3);
-	}
-	
-	.failure-hint {
-		background: rgba(237, 66, 69, 0.1);
-		color: #ed4245;
-		border: 1px solid rgba(237, 66, 69, 0.3);
-	}
+
 </style>

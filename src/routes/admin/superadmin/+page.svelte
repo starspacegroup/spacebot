@@ -19,10 +19,29 @@
 	const botApp = $derived(data?.botApp ?? null);
 	const cronJobs = $derived(data?.cronJobs ?? []);
 	const cronJobHistory = $derived(data?.cronJobHistory ?? []);
+	const builtInCommands = $derived(data?.builtInCommands ?? []);
+	const actionTypes = $derived(data?.actionTypes ?? {});
+	const responseTypes = $derived(data?.responseTypes ?? {});
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
 	let jobResults = $state({});
+	
+	// Built-in commands state
+	let showNewCommandForm = $state(false);
+	let editingCommand = $state(null);
+	let commandSaving = $state(false);
+	let commandError = $state(null);
+	let commandSuccess = $state(null);
+	let newCommand = $state({
+		name: '',
+		description: '',
+		response_type: 'message',
+		response_content: '',
+		response_embed: null,
+		ephemeral: false,
+		enabled: true,
+	});
 	
 	// Format large numbers with commas
 	function formatNumber(num) {
@@ -85,6 +104,158 @@
 			jobResults[jobName] = { success: false, error: error.message };
 		} finally {
 			runningJobs[jobName] = false;
+		}
+	}
+	
+	// Reset new command form
+	function resetNewCommandForm() {
+		newCommand = {
+			name: '',
+			description: '',
+			response_type: 'message',
+			response_content: '',
+			response_embed: null,
+			ephemeral: false,
+			enabled: true,
+		};
+		showNewCommandForm = false;
+		commandError = null;
+	}
+	
+	// Start editing a built-in command
+	function startEditing(command) {
+		editingCommand = {
+			...command,
+			response_embed: command.response_embed ? JSON.parse(JSON.stringify(command.response_embed)) : null,
+		};
+		commandError = null;
+	}
+	
+	// Cancel editing
+	function cancelEditing() {
+		editingCommand = null;
+		commandError = null;
+	}
+	
+	// Create a new built-in command
+	async function createCommand() {
+		commandSaving = true;
+		commandError = null;
+		commandSuccess = null;
+		
+		try {
+			const response = await fetch('/api/commands/built-in', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(newCommand),
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				commandSuccess = `Command /${newCommand.name} created!`;
+				resetNewCommandForm();
+				// Reload page data
+				const { invalidateAll } = await import('$app/navigation');
+				await invalidateAll();
+			} else {
+				commandError = result.error || 'Failed to create command';
+			}
+		} catch (error) {
+			commandError = error.message;
+		} finally {
+			commandSaving = false;
+		}
+	}
+	
+	// Save edited built-in command
+	async function saveCommand() {
+		if (!editingCommand) return;
+		commandSaving = true;
+		commandError = null;
+		commandSuccess = null;
+		
+		try {
+			const response = await fetch(`/api/commands/built-in/${editingCommand.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					name: editingCommand.name,
+					description: editingCommand.description,
+					response_type: editingCommand.response_type,
+					response_content: editingCommand.response_content,
+					response_embed: editingCommand.response_embed,
+					ephemeral: editingCommand.ephemeral,
+					enabled: editingCommand.enabled,
+				}),
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				commandSuccess = `Command /${editingCommand.name} updated!`;
+				editingCommand = null;
+				const { invalidateAll } = await import('$app/navigation');
+				await invalidateAll();
+			} else {
+				commandError = result.error || 'Failed to update command';
+			}
+		} catch (error) {
+			commandError = error.message;
+		} finally {
+			commandSaving = false;
+		}
+	}
+	
+	// Toggle a built-in command enabled/disabled
+	async function toggleCommand(command) {
+		commandError = null;
+		commandSuccess = null;
+		
+		try {
+			const response = await fetch(`/api/commands/built-in/${command.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled: !command.enabled }),
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				commandSuccess = `/${command.name} ${command.enabled ? 'disabled' : 'enabled'}`;
+				const { invalidateAll } = await import('$app/navigation');
+				await invalidateAll();
+			} else {
+				commandError = result.error || 'Failed to toggle command';
+			}
+		} catch (error) {
+			commandError = error.message;
+		}
+	}
+	
+	// Delete a built-in command
+	async function deleteCommand(command) {
+		if (!confirm(`Are you sure you want to delete the /${command.name} built-in command? This cannot be undone.`)) return;
+		
+		commandError = null;
+		commandSuccess = null;
+		
+		try {
+			const response = await fetch(`/api/commands/built-in/${command.id}`, {
+				method: 'DELETE',
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				commandSuccess = `/${command.name} deleted`;
+				const { invalidateAll } = await import('$app/navigation');
+				await invalidateAll();
+			} else {
+				commandError = result.error || 'Failed to delete command';
+			}
+		} catch (error) {
+			commandError = error.message;
 		}
 	}
 </script>
@@ -207,6 +378,219 @@
 				<span class="stat-value">{formatNumber(summary.totalChannels)}</span>
 			</div>
 		</div>
+	</section>
+	
+	<!-- Built-in Commands -->
+	<section class="builtin-commands-section">
+		<h2 class="section-title">
+			<span class="section-icon">⚡</span>
+			Built-in Commands
+			<span class="section-subtitle">({builtInCommands.length} commands)</span>
+		</h2>
+		
+		{#if commandSuccess}
+			<div class="cmd-toast cmd-toast-success">
+				<span>✓</span> {commandSuccess}
+				<button class="cmd-toast-close" onclick={() => commandSuccess = null}>✕</button>
+			</div>
+		{/if}
+		
+		{#if commandError}
+			<div class="cmd-toast cmd-toast-error">
+				<span>✗</span> {commandError}
+				<button class="cmd-toast-close" onclick={() => commandError = null}>✕</button>
+			</div>
+		{/if}
+		
+		<div class="builtin-commands-grid">
+			{#each builtInCommands as command (command.id)}
+				{#if editingCommand?.id === command.id}
+					<!-- Editing Form -->
+					<div class="command-card editing">
+						<div class="command-edit-form">
+							<div class="form-row">
+								<span class="form-label">Name</span>
+								<div class="input-with-prefix">
+									<span class="input-prefix">/</span>
+									<input type="text" bind:value={editingCommand.name} class="form-input" placeholder="command-name" />
+								</div>
+							</div>
+							<div class="form-row">
+								<span class="form-label">Description</span>
+								<input type="text" bind:value={editingCommand.description} class="form-input" placeholder="What does this command do?" />
+							</div>
+							<div class="form-row">
+								<span class="form-label">Response Type</span>
+								<select bind:value={editingCommand.response_type} class="form-select">
+									{#each Object.entries(responseTypes) as [key, rt]}
+										<option value={key}>{rt.label}</option>
+									{/each}
+								</select>
+							</div>
+							{#if editingCommand.response_type === 'message'}
+								<div class="form-row">
+									<span class="form-label">Response Message</span>
+									<textarea bind:value={editingCommand.response_content} class="form-textarea" rows="3" placeholder="Response text..."></textarea>
+								</div>
+							{/if}
+							{#if editingCommand.response_type === 'embed'}
+								<div class="form-row">
+									<span class="form-label">Embed Title</span>
+									<input type="text" 
+										value={editingCommand.response_embed?.title ?? ''} 
+										oninput={(e) => {
+											if (!editingCommand.response_embed) editingCommand.response_embed = {};
+											editingCommand.response_embed.title = e.target.value;
+										}}
+										class="form-input" placeholder="Embed title" />
+								</div>
+								<div class="form-row">
+									<span class="form-label">Embed Description</span>
+									<textarea 
+										value={editingCommand.response_embed?.description ?? ''} 
+										oninput={(e) => {
+											if (!editingCommand.response_embed) editingCommand.response_embed = {};
+											editingCommand.response_embed.description = e.target.value;
+										}}
+										class="form-textarea" rows="3" placeholder="Embed description..."></textarea>
+								</div>
+							{/if}
+							<div class="form-row form-row-inline">
+								<label class="form-checkbox">
+									<input type="checkbox" bind:checked={editingCommand.ephemeral} />
+									<span>Ephemeral (only visible to user)</span>
+								</label>
+							</div>
+							<div class="form-actions">
+								<button class="btn btn-primary btn-sm" onclick={saveCommand} disabled={commandSaving}>
+									{commandSaving ? 'Saving...' : '💾 Save'}
+								</button>
+								<button class="btn btn-secondary btn-sm" onclick={cancelEditing}>
+									Cancel
+								</button>
+							</div>
+						</div>
+					</div>
+				{:else}
+					<!-- Command Card -->
+					<div class="command-card {command.enabled ? '' : 'disabled'}">
+						<div class="command-header">
+							<div class="command-name-row">
+								<span class="command-slash">/</span>
+								<span class="command-name">{command.name}</span>
+							</div>
+							<button 
+								class="toggle-btn {command.enabled ? 'enabled' : ''}"
+								title={command.enabled ? 'Disable' : 'Enable'}
+								onclick={() => toggleCommand(command)}
+							>
+								<span class="toggle-track">
+									<span class="toggle-thumb"></span>
+								</span>
+							</button>
+						</div>
+						<div class="command-body">
+							<p class="command-description">{command.description}</p>
+							<div class="command-meta">
+								<span class="meta-tag">
+									{responseTypes[command.response_type]?.label || command.response_type}
+								</span>
+								<span class="meta-tag">
+									{command.ephemeral ? '👁️ Private' : '📢 Public'}
+								</span>
+							</div>
+						</div>
+						<div class="command-footer">
+							<div class="command-stats">
+								<span class="stat-mini" title="Times used">🔄 {command.use_count || 0}</span>
+							</div>
+							<div class="command-actions">
+								<button class="btn btn-sm btn-secondary" onclick={() => startEditing(command)}>
+									✏️ Edit
+								</button>
+								<button class="btn btn-sm btn-danger" onclick={() => deleteCommand(command)}>
+									🗑️
+								</button>
+							</div>
+						</div>
+					</div>
+				{/if}
+			{/each}
+		</div>
+		
+		<!-- New Command Form -->
+		{#if showNewCommandForm}
+			<div class="new-command-card">
+				<h3>Create Built-in Command</h3>
+				<div class="command-edit-form">
+					<div class="form-row">
+						<span class="form-label">Name</span>
+						<div class="input-with-prefix">
+							<span class="input-prefix">/</span>
+							<input type="text" bind:value={newCommand.name} class="form-input" placeholder="command-name" />
+						</div>
+					</div>
+					<div class="form-row">
+						<span class="form-label">Description</span>
+						<input type="text" bind:value={newCommand.description} class="form-input" placeholder="What does this command do?" />
+					</div>
+					<div class="form-row">
+						<span class="form-label">Response Type</span>
+						<select bind:value={newCommand.response_type} class="form-select">
+							{#each Object.entries(responseTypes) as [key, rt]}
+								<option value={key}>{rt.label}</option>
+							{/each}
+						</select>
+					</div>
+					{#if newCommand.response_type === 'message'}
+						<div class="form-row">
+							<span class="form-label">Response Message</span>
+							<textarea bind:value={newCommand.response_content} class="form-textarea" rows="3" placeholder="Response text..."></textarea>
+						</div>
+					{/if}
+					{#if newCommand.response_type === 'embed'}
+						<div class="form-row">
+							<span class="form-label">Embed Title</span>
+							<input type="text" 
+								value={newCommand.response_embed?.title ?? ''} 
+								oninput={(e) => {
+									if (!newCommand.response_embed) newCommand.response_embed = {};
+									newCommand.response_embed.title = e.target.value;
+								}}
+								class="form-input" placeholder="Embed title" />
+						</div>
+						<div class="form-row">
+							<span class="form-label">Embed Description</span>
+							<textarea 
+								value={newCommand.response_embed?.description ?? ''} 
+								oninput={(e) => {
+									if (!newCommand.response_embed) newCommand.response_embed = {};
+									newCommand.response_embed.description = e.target.value;
+								}}
+								class="form-textarea" rows="3" placeholder="Embed description..."></textarea>
+						</div>
+					{/if}
+					<div class="form-row form-row-inline">
+						<label class="form-checkbox">
+							<input type="checkbox" bind:checked={newCommand.ephemeral} />
+							<span>Ephemeral (only visible to user)</span>
+						</label>
+					</div>
+					<div class="form-actions">
+						<button class="btn btn-primary btn-sm" onclick={createCommand} disabled={commandSaving}>
+							{commandSaving ? 'Creating...' : '➕ Create Command'}
+						</button>
+						<button class="btn btn-secondary btn-sm" onclick={resetNewCommandForm}>
+							Cancel
+						</button>
+					</div>
+				</div>
+			</div>
+		{:else}
+			<button class="btn btn-primary add-command-btn" onclick={() => showNewCommandForm = true}>
+				➕ Add Built-in Command
+			</button>
+		{/if}
 	</section>
 	
 	<!-- Cron Jobs -->
@@ -1434,5 +1818,300 @@
 			margin-left: 0.5rem;
 			margin-top: 0;
 		}
+	}
+	
+	/* Built-in Commands Section */
+	.builtin-commands-section {
+		margin-bottom: 2rem;
+	}
+	
+	.builtin-commands-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+	
+	.command-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		overflow: hidden;
+		transition: transform 0.2s, box-shadow 0.2s;
+	}
+	
+	.command-card:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	}
+	
+	.command-card.disabled {
+		opacity: 0.55;
+	}
+	
+	.command-card.editing {
+		border-color: var(--color-primary);
+		border-width: 2px;
+	}
+	
+	.command-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.75rem 1rem;
+		background: var(--color-surface-elevated);
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.command-name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.125rem;
+	}
+	
+	.command-slash {
+		color: var(--color-primary);
+		font-weight: 700;
+		font-size: 1.1rem;
+	}
+	
+	.command-name {
+		font-weight: 600;
+		font-size: 1rem;
+		color: var(--color-text);
+	}
+	
+	.toggle-btn {
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+	}
+	
+	.toggle-track {
+		display: block;
+		width: 40px;
+		height: 22px;
+		background: var(--color-surface-elevated);
+		border: 2px solid var(--color-border);
+		border-radius: 11px;
+		position: relative;
+		transition: background 0.2s, border-color 0.2s;
+	}
+	
+	.toggle-btn.enabled .toggle-track {
+		background: var(--color-primary);
+		border-color: var(--color-primary);
+	}
+	
+	.toggle-thumb {
+		position: absolute;
+		top: 1px;
+		left: 1px;
+		width: 16px;
+		height: 16px;
+		background: white;
+		border-radius: 50%;
+		transition: transform 0.2s;
+	}
+	
+	.toggle-btn.enabled .toggle-thumb {
+		transform: translateX(18px);
+	}
+	
+	.command-body {
+		padding: 0.75rem 1rem;
+	}
+	
+	.command-description {
+		margin: 0 0 0.5rem;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+	
+	.command-meta {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	
+	.meta-tag {
+		font-size: 0.7rem;
+		padding: 0.15rem 0.5rem;
+		background: var(--color-surface-elevated);
+		border-radius: var(--radius-sm);
+		color: var(--color-text-muted);
+	}
+	
+	.command-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem 1rem;
+		border-top: 1px solid var(--color-border);
+	}
+	
+	.command-stats {
+		display: flex;
+		gap: 0.75rem;
+	}
+	
+	.stat-mini {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+	
+	.command-actions {
+		display: flex;
+		gap: 0.375rem;
+	}
+	
+	/* Command Edit Form */
+	.command-edit-form {
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+	
+	.form-row {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+	
+	.form-row-inline {
+		flex-direction: row;
+		align-items: center;
+	}
+	
+	.form-label {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	
+	.form-input,
+	.form-select,
+	.form-textarea {
+		padding: 0.5rem 0.75rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text);
+		font-size: 0.9rem;
+		font-family: inherit;
+		width: 100%;
+	}
+	
+	.form-input:focus,
+	.form-select:focus,
+	.form-textarea:focus {
+		outline: none;
+		border-color: var(--color-primary);
+	}
+	
+	.form-textarea {
+		resize: vertical;
+		min-height: 60px;
+	}
+	
+	.input-with-prefix {
+		display: flex;
+		align-items: center;
+	}
+	
+	.input-prefix {
+		padding: 0.5rem 0.25rem 0.5rem 0.75rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-right: none;
+		border-radius: var(--radius-md) 0 0 var(--radius-md);
+		color: var(--color-primary);
+		font-weight: 700;
+		font-size: 1rem;
+	}
+	
+	.input-with-prefix .form-input {
+		border-radius: 0 var(--radius-md) var(--radius-md) 0;
+	}
+	
+	.form-checkbox {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		cursor: pointer;
+	}
+	
+	.form-checkbox input[type="checkbox"] {
+		width: 16px;
+		height: 16px;
+		accent-color: var(--color-primary);
+	}
+	
+	.form-actions {
+		display: flex;
+		gap: 0.5rem;
+		padding-top: 0.5rem;
+	}
+	
+	.new-command-card {
+		background: var(--color-surface);
+		border: 2px dashed var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem;
+		margin-top: 0.5rem;
+	}
+	
+	.new-command-card h3 {
+		margin: 0 0 1rem;
+		font-size: 1rem;
+		color: var(--color-text);
+	}
+	
+	.add-command-btn {
+		margin-top: 0.5rem;
+	}
+	
+	/* Toast Messages */
+	.cmd-toast {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-md);
+		margin-bottom: 1rem;
+		font-size: 0.9rem;
+	}
+	
+	.cmd-toast-success {
+		background: var(--color-success-bg, rgba(34, 197, 94, 0.1));
+		border: 1px solid var(--color-success, #22c55e);
+		color: var(--color-success, #22c55e);
+	}
+	
+	.cmd-toast-error {
+		background: var(--color-error-bg, rgba(239, 68, 68, 0.1));
+		border: 1px solid var(--color-error, #ef4444);
+		color: var(--color-error, #ef4444);
+	}
+	
+	.cmd-toast-close {
+		margin-left: auto;
+		background: none;
+		border: none;
+		color: inherit;
+		cursor: pointer;
+		font-size: 1rem;
+		padding: 0 0.25rem;
+		opacity: 0.7;
+	}
+	
+	.cmd-toast-close:hover {
+		opacity: 1;
 	}
 </style>

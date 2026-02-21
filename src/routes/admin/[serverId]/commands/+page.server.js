@@ -4,6 +4,7 @@ import {
   COMMAND_TEMPLATE_VARIABLES,
   COMMON_OPTION_TYPES,
   deleteCommand,
+  getBuiltInCommands,
   getCommandLogs,
   getGuildCommands,
   OPTION_TYPES,
@@ -31,11 +32,13 @@ export async function load({ cookies, platform, parent, url, params }) {
   const db = platform?.env?.DB;
 
   let commands = [];
+  let builtInCmds = [];
   let recentLogs = [];
 
   if (db) {
     try {
       commands = await getGuildCommands(db, guildId);
+      builtInCmds = await getBuiltInCommands(db);
 
       // Get recent command logs
       const logsResult = await getCommandLogs(db, guildId, { limit: 10 });
@@ -47,6 +50,8 @@ export async function load({ cookies, platform, parent, url, params }) {
 
   return {
     commands,
+    builtInCommands: builtInCmds,
+    isSuperAdmin: parentData.isSuperAdmin || false,
     total: commands.length,
     recentLogs,
     // Meta info for the UI

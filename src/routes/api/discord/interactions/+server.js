@@ -4,7 +4,6 @@ import {
 	InteractionType,
 	verifyKey,
 } from "discord-interactions";
-import { commands } from "$lib/discord/commands.js";
 import {
 	buildCommandContext,
 	getCommandByName,
@@ -13,10 +12,6 @@ import {
 } from "$lib/db/commands.js";
 import { executeAction, processTemplate } from "$lib/automation/engine.js";
 import { log } from "$lib/db/logger.js";
-
-// Track bot start time for uptime calculation
-const BOT_START_TIME = Date.now();
-const BOT_VERSION = "1.0.0";
 
 /**
  * Convert hex string to Uint8Array
@@ -138,7 +133,7 @@ export async function POST({ request, platform }) {
 		const { data } = body;
 		const guildId = body.guild_id;
 
-		// First, check for custom commands from database
+		// Look up command in database (includes both custom and built-in commands)
 		if (db && guildId) {
 			const customCommand = await getCommandByName(db, data.name, guildId);
 
@@ -181,122 +176,13 @@ export async function POST({ request, platform }) {
 			}
 		}
 
-		// Fall back to built-in commands
-		switch (data.name) {
-			case "ping":
-				return json({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						content: "Pong! 🏓",
-					},
-				});
-
-			case "info": {
-				const uptime = Date.now() - BOT_START_TIME;
-				const days = Math.floor(uptime / (1000 * 60 * 60 * 24));
-				const hours = Math.floor(
-					(uptime % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60),
-				);
-				const minutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
-				const seconds = Math.floor((uptime % (1000 * 60)) / 1000);
-
-				let uptimeStr = "";
-				if (days > 0) uptimeStr += `${days}d `;
-				if (hours > 0) uptimeStr += `${hours}h `;
-				if (minutes > 0) uptimeStr += `${minutes}m `;
-				uptimeStr += `${seconds}s`;
-
-				return json({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						embeds: [{
-							title: "📊 SpaceBot Info",
-							color: 0x5865F2, // Discord Blurple
-							fields: [
-								{
-									name: "⏱️ Uptime",
-									value: uptimeStr,
-									inline: true,
-								},
-								{
-									name: "🤖 Version",
-									value: `v${BOT_VERSION}`,
-									inline: true,
-								},
-								{
-									name: "⚡ Platform",
-									value: "Cloudflare Workers",
-									inline: true,
-								},
-								{
-									name: "📝 Commands",
-									value: `${commands.length} available`,
-									inline: true,
-								},
-								{
-									name: "🔧 Framework",
-									value: "SvelteKit",
-									inline: true,
-								},
-								{
-									name: "🌐 API Version",
-									value: "Discord API v10",
-									inline: true,
-								},
-							],
-							footer: {
-								text: "SpaceBot • Powered by Starspace",
-							},
-							timestamp: new Date().toISOString(),
-						}],
-					},
-				});
-			}
-
-			case "help": {
-				const commandList = commands.map((cmd) =>
-					`**/${cmd.name}** - ${cmd.description}`
-				).join("\n");
-
-				return json({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						embeds: [{
-							title: "🚀 SpaceBot Help",
-							description:
-								"Welcome to SpaceBot! Here are all the available commands:",
-							color: 0x57F287, // Discord Green
-							fields: [
-								{
-									name: "📋 Commands",
-									value: commandList,
-									inline: false,
-								},
-								{
-									name: "🔗 Links",
-									value: "[GitHub](https://github.com/starspacegroup/spacebot)",
-									inline: false,
-								},
-							],
-							footer: {
-								text: "Use /command to run a command",
-							},
-							thumbnail: {
-								url: "https://cdn.discordapp.com/embed/avatars/0.png",
-							},
-						}],
-					},
-				});
-			}
-
-			default:
-				return json({
-					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-					data: {
-						content: "Unknown command",
-					},
-				});
-		}
+		// No command found in database
+		return json({
+			type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+			data: {
+				content: "Unknown command",
+			},
+		});
 	}
 
 	// Type 3: MESSAGE_COMPONENT - Button clicks, select menus

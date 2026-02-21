@@ -415,6 +415,11 @@ export async function deleteCommand(db, id, guildId) {
     // Get command first to return discord_command_id for unregistration
     const command = await getCommand(db, id, guildId);
 
+    // Prevent deletion of built-in commands
+    if (command?.is_built_in) {
+      return { success: false, error: "Built-in commands cannot be deleted" };
+    }
+
     await db.prepare(`
       DELETE FROM commands WHERE id = ? AND guild_id = ?
     `).bind(id, guildId).run();
@@ -428,6 +433,7 @@ export async function deleteCommand(db, id, guildId) {
 
 /**
  * Get a single command by ID
+ * Checks both guild-specific and built-in commands
  * @param {D1Database} db
  * @param {number} id
  * @param {string} guildId
@@ -437,9 +443,17 @@ export async function getCommand(db, id, guildId) {
   if (!db) return null;
 
   try {
-    const result = await db.prepare(`
+    // Check guild-specific first
+    let result = await db.prepare(`
       SELECT * FROM commands WHERE id = ? AND guild_id = ?
     `).bind(id, guildId).first();
+
+    // Fall back to built-in commands
+    if (!result) {
+      result = await db.prepare(`
+        SELECT * FROM commands WHERE id = ? AND guild_id = '__built_in__'
+      `).bind(id).first();
+    }
 
     if (!result) return null;
 
@@ -452,6 +466,7 @@ export async function getCommand(db, id, guildId) {
 
 /**
  * Get a command by name for a guild
+ * Falls back to built-in commands if no guild-specific command is found
  * @param {D1Database} db
  * @param {string} name
  * @param {string} guildId
@@ -461,13 +476,21 @@ export async function getCommandByName(db, name, guildId) {
   if (!db) return null;
 
   try {
+    // First check guild-specific commands
     const result = await db.prepare(`
       SELECT * FROM commands WHERE name = ? AND guild_id = ? AND enabled = 1
     `).bind(name.toLowerCase(), guildId).first();
 
-    if (!result) return null;
+    if (result) return parseCommand(result);
 
-    return parseCommand(result);
+    // Fall back to built-in commands
+    const builtIn = await db.prepare(`
+      SELECT * FROM commands WHERE name = ? AND guild_id = '__built_in__' AND enabled = 1
+    `).bind(name.toLowerCase()).first();
+
+    if (builtIn) return parseCommand(builtIn);
+
+    return null;
   } catch (error) {
     log.error("Failed to get command by name:", error);
     return null;
@@ -658,6 +681,7 @@ function parseCommand(row) {
     registered: !!row.registered,
     dm_permission: !!row.dm_permission,
     require_voice: !!row.require_voice,
+    is_built_in: !!row.is_built_in,
     options: row.options ? JSON.parse(row.options) : [],
     action_config: row.action_config ? JSON.parse(row.action_config) : {},
     response_embed: row.response_embed ? JSON.parse(row.response_embed) : null,
@@ -680,6 +704,225 @@ function parseCommand(row) {
   }
 
   return parsed;
+}
+
+/**
+ * Sentinel guild_id for built-in commands
+ */
+export const BUILT_IN_GUILD_ID = "__built_in__";
+
+/**
+ * Get all built-in commands
+ * @param {D1Database} db
+ * @returns {Promise<Command[]>}
+ */
+export async function getBuiltInCommands(db) {
+  if (!db) return [];
+
+  try {
+    const { results } = await db.prepare(
+      "SELECT * FROM commands WHERE guild_id = ? ORDER BY name ASC"
+    ).bind(BUILT_IN_GUILD_ID).all();
+
+    return results.map(parseCommand);
+  } catch (error) {
+    log.error("Failed to get built-in commands:", error);
+    return [];
+  }
+}
+
+/**
+ * Get a single built-in command by ID
+ * @param {D1Database} db
+ * @param {number} id
+ * @returns {Promise<Command|null>}
+ */
+export async function getBuiltInCommand(db, id) {
+  if (!db) return null;
+
+  try {
+    const result = await db.prepare(
+      "SELECT * FROM commands WHERE id = ? AND guild_id = ?"
+    ).bind(id, BUILT_IN_GUILD_ID).first();
+
+    if (!result) return null;
+    return parseCommand(result);
+  } catch (error) {
+    log.error("Failed to get built-in command:", error);
+    return null;
+  }
+}
+
+/**
+ * Delete a built-in command (superadmin only)
+ * @param {D1Database} db
+ * @param {number} id
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function deleteBuiltInCommand(db, id) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  try {
+    const command = await getBuiltInCommand(db, id);
+    if (!command) {
+      return { success: false, error: "Built-in command not found" };
+    }
+
+    await db.prepare(
+      "DELETE FROM commands WHERE id = ? AND guild_id = ?"
+    ).bind(id, BUILT_IN_GUILD_ID).run();
+
+    return { success: true };
+  } catch (error) {
+    log.error("Failed to delete built-in command:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Create a built-in command (superadmin only)
+ * @param {D1Database} db
+ * @param {Object} command
+ * @returns {Promise<{success: boolean, id?: number, error?: string}>}
+ */
+export async function createBuiltInCommand(db, command) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  const nameRegex = /^[\w-]{1,32}$/;
+  if (!nameRegex.test(command.name)) {
+    return {
+      success: false,
+      error: "Command name must be 1-32 characters, lowercase, alphanumeric or hyphens",
+    };
+  }
+
+  try {
+    const result = await db.prepare(`
+      INSERT INTO commands (
+        guild_id, name, description, enabled, is_built_in,
+        options, ephemeral, defer,
+        action_type, action_config,
+        response_type, response_content, response_embed,
+        created_by
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      BUILT_IN_GUILD_ID,
+      command.name.toLowerCase(),
+      command.description || "No description",
+      command.enabled !== false ? 1 : 0,
+      command.options ? JSON.stringify(command.options) : null,
+      command.ephemeral ? 1 : 0,
+      command.defer ? 1 : 0,
+      command.action_type || "NONE",
+      JSON.stringify(command.action_config || {}),
+      command.response_type || "message",
+      command.response_content || null,
+      command.response_embed ? JSON.stringify(command.response_embed) : null,
+      command.created_by || "superadmin",
+    ).run();
+
+    return { success: true, id: result.meta?.last_row_id };
+  } catch (error) {
+    log.error("Failed to create built-in command:", error);
+    if (error.message?.includes("UNIQUE constraint")) {
+      return { success: false, error: "A command with this name already exists" };
+    }
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Default built-in command definitions for seeding
+ */
+export const BUILT_IN_COMMAND_DEFAULTS = [
+  {
+    name: "ping",
+    description: "Check if the bot is responsive",
+    response_type: "message",
+    response_content: "Pong! 🏓",
+    response_embed: null,
+  },
+  {
+    name: "info",
+    description: "View bot information and statistics",
+    response_type: "embed",
+    response_content: null,
+    response_embed: {
+      title: "📊 SpaceBot Info",
+      color: 0x5865F2,
+      fields: [
+        { name: "⚡ Platform", value: "Cloudflare Workers", inline: true },
+        { name: "🔧 Framework", value: "SvelteKit", inline: true },
+        { name: "🌐 API Version", value: "Discord API v10", inline: true },
+      ],
+      footer: { text: "SpaceBot • Powered by Starspace" },
+    },
+  },
+  {
+    name: "help",
+    description: "Get help with bot commands",
+    response_type: "embed",
+    response_content: null,
+    response_embed: {
+      title: "🚀 SpaceBot Help",
+      description:
+        "Welcome to SpaceBot! Use /ping to check if the bot is online, /info for bot details, and /help for this message. Custom commands are configured by your server admin.",
+      color: 0x57F287,
+      fields: [
+        {
+          name: "🔗 Links",
+          value: "[GitHub](https://github.com/starspacegroup/spacebot)",
+          inline: false,
+        },
+      ],
+      footer: { text: "Use /command to run a command" },
+    },
+  },
+];
+
+/**
+ * Ensure built-in commands exist in the database.
+ * Creates any missing built-in commands. Should be called during startup/sync.
+ * @param {D1Database} db
+ * @returns {Promise<void>}
+ */
+export async function ensureBuiltInCommands(db) {
+  if (!db) return;
+
+  try {
+    for (const cmd of BUILT_IN_COMMAND_DEFAULTS) {
+      const existing = await db.prepare(
+        "SELECT id FROM commands WHERE guild_id = ? AND name = ?"
+      ).bind(BUILT_IN_GUILD_ID, cmd.name).first();
+
+      if (!existing) {
+        await db.prepare(`
+          INSERT INTO commands (
+            guild_id, name, description, enabled, is_built_in,
+            options, ephemeral, defer,
+            action_type, action_config,
+            response_type, response_content, response_embed,
+            created_by
+          ) VALUES (?, ?, ?, 1, 1, NULL, 0, 0, 'NONE', '{}', ?, ?, ?, 'system')
+        `).bind(
+          BUILT_IN_GUILD_ID,
+          cmd.name,
+          cmd.description,
+          cmd.response_type,
+          cmd.response_content,
+          cmd.response_embed ? JSON.stringify(cmd.response_embed) : null,
+        ).run();
+
+        log.info(`Created built-in command: ${cmd.name}`);
+      }
+    }
+  } catch (error) {
+    log.error("Failed to ensure built-in commands:", error);
+  }
 }
 
 /**

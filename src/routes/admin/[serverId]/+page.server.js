@@ -1,4 +1,5 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
+import { getBuiltInCommands } from "$lib/db/commands.js";
 import { fail, redirect } from "@sveltejs/kit";
 import {
   getLogStats,
@@ -137,23 +138,26 @@ export async function load({ cookies, platform, parent, params }) {
   let memberGrowthChartData = [];
   let voiceActivityChartData = [];
   let activityChartData = [];
+  let builtInCmds = [];
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
-      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity] = await Promise.all([
+      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn] = await Promise.all([
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),
         getGuildStatistics(db, serverId),
         getLatestServerStats(db, serverId),
         getMemberGrowthChart(db, serverId, "30d"),
         getVoiceActivityChart(db, serverId, "30d"),
+        getBuiltInCommands(db),
       ]);
       logStats = stats;
       dbSettings = settings;
       memberGrowthChartData = memberGrowth || [];
       voiceActivityChartData = voiceActivity || [];
       activityChartData = guildStats?.timeSeries?.daily || [];
+      builtInCmds = builtIn || [];
       basicStats = {
         members: memberStats?.member_count || 0,
         humanMembers: memberStats?.human_count || 0,
@@ -194,7 +198,7 @@ export async function load({ cookies, platform, parent, params }) {
       users: 0,
       commandsUsed: 0,
     },
-    commands: commands.map((cmd) => ({
+    commands: (builtInCmds.length > 0 ? builtInCmds : commands).map((cmd) => ({
       name: cmd.name,
       description: cmd.description,
     })),

@@ -5,6 +5,7 @@ import {
   COMMAND_USER_SOURCES,
   COMMON_OPTION_TYPES,
   deleteCommand,
+  getBuiltInCommand,
   getCommand,
   OPTION_TYPES,
   PERMISSION_FLAGS,
@@ -17,7 +18,7 @@ import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, parent, params }) {
+export async function load({ cookies, platform, parent, params, url }) {
   // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
   if (!/^\d{17,20}$/.test(params.serverId)) {
     throw redirect(302, "/admin");
@@ -43,14 +44,26 @@ export async function load({ cookies, platform, parent, params }) {
   }
 
   try {
-    const command = await getCommand(
-      db,
-      commandId,
-      guildId,
-    );
+    const isBuiltIn = url?.searchParams?.get("builtin") === "true";
+    let command;
+
+    if (isBuiltIn) {
+      // Built-in commands require superadmin access
+      if (!parentData.isSuperAdmin) {
+        throw redirect(302, `/admin/${params.serverId}/commands`);
+      }
+      command = await getBuiltInCommand(db, commandId);
+    } else {
+      command = await getCommand(db, commandId, guildId);
+    }
 
     if (!command) {
       throw error(404, "Command not found");
+    }
+
+    // If it's a built-in command loaded via regular path, verify superadmin
+    if (command.is_built_in && !parentData.isSuperAdmin) {
+      throw redirect(302, `/admin/${params.serverId}/commands`);
     }
 
     // Load webhooks for this guild
@@ -84,7 +97,7 @@ export async function load({ cookies, platform, parent, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-  update: async ({ request, platform, params }) => {
+  update: async ({ request, platform, params, cookies }) => {
     const db = platform?.env?.DB;
     if (!db) {
       return fail(500, { error: "Database not available" });
@@ -93,9 +106,20 @@ export const actions = {
     const formData = await request.formData();
     const id = params.commandId;
     const guildId = formData.get("guild_id");
+    const isBuiltIn = formData.get("is_built_in") === "true";
 
     if (!id || !guildId) {
       return fail(400, { error: "Command ID and Guild ID are required" });
+    }
+
+    // Built-in commands require superadmin
+    if (isBuiltIn) {
+      const userId = cookies.get("discord_user_id");
+      const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+      const superAdminIdList = adminUserIds.split(",").map(id => id.trim()).filter(Boolean);
+      if (!superAdminIdList.includes(userId)) {
+        return fail(403, { error: "Only superadmins can edit built-in commands" });
+      }
     }
 
     // Parse form data
@@ -220,8 +244,9 @@ export const actions = {
         return fail(500, { error: result.error });
       }
 
-      // Auto-sync to Discord
-      await syncGuildCommands(db, guildId, platform?.env);
+      // Auto-sync to Discord (use the actual serverId for sync, not __built_in__)
+      const syncGuildId = isBuiltIn ? params.serverId : guildId;
+      await syncGuildCommands(db, syncGuildId, platform?.env);
 
       // Redirect back to commands list on success
       throw redirect(302, `/admin/${params.serverId}/commands?updated=true`);

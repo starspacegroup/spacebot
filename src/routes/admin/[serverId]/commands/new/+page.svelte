@@ -358,7 +358,7 @@
 							</div>
 							<div class="option-fields">
 								<div class="form-group">
-									<label>Name</label>
+									<label>Name
 									<input 
 										type="text" 
 										name="option_name[]"
@@ -366,23 +366,26 @@
 										placeholder="option_name"
 										pattern="[a-zA-Z0-9_-]{1,32}"
 									/>
+									</label>
 								</div>
 								<div class="form-group">
-									<label>Description</label>
+									<label>Description
 									<input 
 										type="text" 
 										name="option_description[]"
 										bind:value={option.description}
 										placeholder="What is this option for?"
 									/>
+									</label>
 								</div>
 								<div class="form-group">
-									<label>Type</label>
+									<label>Type
 									<select name="option_type[]" bind:value={option.type}>
 										{#each data.commonOptionTypes as optType}
 											<option value={optType.value}>{optType.label} - {optType.description}</option>
 										{/each}
 									</select>
+									</label>
 								</div>
 								<div class="form-group">
 									<label class="checkbox-label">
@@ -397,13 +400,14 @@
 								</div>
 								{#if !option.required}
 									<div class="form-group">
-										<label>Default Value</label>
+										<label>Default Value
 										<input 
 											type="text" 
 											name="option_default[]"
 											bind:value={option.defaultValue}
 											placeholder="Leave empty for no default"
 										/>
+										</label>
 										<p class="field-hint">Value used when user doesn't provide this option</p>
 									</div>
 								{/if}
@@ -804,6 +808,7 @@
 			
 			{#if selectedPermissionPreset === 'custom'}
 				<div class="custom-permissions">
+					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label>Required Permissions (user must have at least one):</label>
 					<div class="permissions-grid">
 						{#each Object.entries(data.permissionFlags) as [key, perm]}
@@ -1120,45 +1125,6 @@
 	
 	.required-star {
 		color: var(--color-danger);
-	}
-	
-	/* Variables help */
-	.variables-help {
-		margin-top: 0.75rem;
-		padding: 0.75rem;
-		background: var(--bg-tertiary, #36393f);
-		border-radius: 8px;
-	}
-	
-	.variables-label {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		display: block;
-		margin-bottom: 0.5rem;
-	}
-	
-	.variables-list {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-	
-	.variables-list code {
-		padding: 0.125rem 0.5rem;
-		background: var(--bg-primary, #202225);
-		border-radius: 4px;
-		font-size: 0.75rem;
-		cursor: help;
-	}
-	
-	.variables-list code.option-var {
-		background: var(--color-success-soft);
-		border: 1px solid rgba(87, 242, 135, 0.3);
-	}
-	
-	.variables-list code.placeholder-var {
-		opacity: 0.5;
-		font-style: italic;
 	}
 	
 	/* Embed config */

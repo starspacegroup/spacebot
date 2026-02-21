@@ -5,6 +5,8 @@
 
 import { log } from "../log.js";
 import {
+	ensureBuiltInCommands,
+	getBuiltInCommands,
 	getGuildCommands,
 	markCommandRegistered,
 	toDiscordCommand,
@@ -12,6 +14,10 @@ import {
 import { getEnabledGuildIntegrations } from "../db/integrations.js";
 import { getIntegrationCommands } from "../integrations/registry.js";
 
+/**
+ * Hardcoded built-in command definitions for initial registration (before DB is available).
+ * After DB seeding, built-in commands are read from the database.
+ */
 export const commands = [
 	{
 		name: "ping",
@@ -95,6 +101,16 @@ export async function syncGuildCommands(db, guildId, env) {
 	}
 
 	try {
+		// Ensure built-in commands exist in the database
+		await ensureBuiltInCommands(db);
+
+		// Get built-in commands from DB (editable by superadmin)
+		const builtInCommands = await getBuiltInCommands(db);
+		const builtInDiscord = builtInCommands
+			.filter(cmd => cmd.enabled)
+			.map(cmd => toDiscordCommand(cmd))
+			.flat();
+
 		// Get all enabled custom commands
 		const customCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
 
@@ -126,9 +142,9 @@ export async function syncGuildCommands(db, guildId, env) {
 			log.warn("syncGuildCommands: Failed to load integration commands:", err);
 		}
 
-		// Combine built-in, custom, and integration commands
+		// Combine built-in (from DB), custom, and integration commands
 		const allCommands = [
-			...commands,
+			...builtInDiscord,
 			...discordCommands.map(({ _dbId, ...cmd }) => cmd),
 			...integrationCommands,
 		];
