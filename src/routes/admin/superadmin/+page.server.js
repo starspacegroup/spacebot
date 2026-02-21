@@ -16,6 +16,7 @@ import {
 	ACTION_TYPES,
 	RESPONSE_TYPES,
 } from "$lib/db/commands.js";
+import { listIntegrations, createIntegrationToken, revokeIntegrationToken } from "$lib/db/integrations.js";
 
 /**
  * Get the list of available cron jobs
@@ -280,6 +281,7 @@ export async function load({ cookies, platform }) {
 		voiceActivityChart,
 		activitySummary,
 		builtInCommands,
+		integrations,
 	] = await Promise.all([
 		getBotGuildsWithDetails(botToken),
 		getBotApplicationInfo(botToken),
@@ -290,6 +292,7 @@ export async function load({ cookies, platform }) {
 		getGlobalVoiceActivityChart(db, "30d"),
 		getGlobalStatsSummary(db, "30d"),
 		db ? getBuiltInCommands(db) : [],
+		db ? listIntegrations(db) : [],
 	]);
 
 	// Build cron jobs with last run info
@@ -351,6 +354,7 @@ export async function load({ cookies, platform }) {
 		cronJobs,
 		cronJobHistory: cronJobData.history,
 		builtInCommands,
+		integrations,
 		actionTypes: ACTION_TYPES,
 		responseTypes: RESPONSE_TYPES,
 		user: {

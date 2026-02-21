@@ -127,10 +127,12 @@ export const BUILT_IN_INTEGRATIONS = [
       ],
 
       webhooks: {
-        on_enable: null,
-        on_disable: null,
-        command_handler: null,
+        on_enable: "https://game.starspace.group/api/spacebot/on-enable",
+        on_disable: "https://game.starspace.group/api/spacebot/on-disable",
+        command_handler: "https://game.starspace.group/api/spacebot/command",
       },
+
+      health_endpoint: "https://game.starspace.group/api/spacebot/health",
 
       config_schema: [],
     },

@@ -93,6 +93,13 @@
 							{:else}
 								<span class="status-badge status-disabled">Disabled</span>
 							{/if}
+							{#if integration.status === 'online'}
+								<span class="connection-badge connection-online" title="Integration is connected and responding">🟢 Online</span>
+							{:else if integration.status === 'offline'}
+								<span class="connection-badge connection-offline" title="Integration is not responding">🔴 Offline</span>
+							{:else}
+								<span class="connection-badge connection-unknown" title="Status unknown">⚪ Unknown</span>
+							{/if}
 						</div>
 					</div>
 
@@ -370,6 +377,10 @@
 
 	.card-status {
 		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.3rem;
 	}
 
 	.status-badge {
@@ -388,6 +399,25 @@
 
 	.status-disabled {
 		background: var(--color-surface-elevated);
+		color: var(--color-text-muted);
+	}
+
+	.connection-badge {
+		font-size: 0.65rem;
+		font-weight: 500;
+		padding: 0.15rem 0.5rem;
+		border-radius: 9999px;
+	}
+
+	.connection-online {
+		color: #22c55e;
+	}
+
+	.connection-offline {
+		color: #ef4444;
+	}
+
+	.connection-unknown {
 		color: var(--color-text-muted);
 	}
 

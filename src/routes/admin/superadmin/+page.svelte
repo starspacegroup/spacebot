@@ -20,6 +20,7 @@
 	const cronJobs = $derived(data?.cronJobs ?? []);
 	const cronJobHistory = $derived(data?.cronJobHistory ?? []);
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
+	const integrations = $derived(data?.integrations ?? []);
 	const actionTypes = $derived(data?.actionTypes ?? {});
 	const responseTypes = $derived(data?.responseTypes ?? {});
 	
@@ -257,6 +258,72 @@
 		} catch (error) {
 			commandError = error.message;
 		}
+	}
+	
+	// --- Integration token management ---
+	let generatingToken = $state({});
+	let generatedTokens = $state({});
+	let integrationError = $state(null);
+	let integrationSuccess = $state(null);
+	
+	async function generateToken(integration) {
+		generatingToken[integration.id] = true;
+		integrationError = null;
+		integrationSuccess = null;
+		
+		try {
+			const response = await fetch('/api/integrations/token', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ integrationId: integration.id, slug: integration.slug }),
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				generatedTokens[integration.id] = result.token;
+				integrationSuccess = `Token generated for ${integration.name}. Copy it now — it won't be shown again.`;
+			} else {
+				integrationError = result.error || 'Failed to generate token';
+			}
+		} catch (error) {
+			integrationError = error.message;
+		} finally {
+			generatingToken[integration.id] = false;
+		}
+	}
+	
+	async function revokeToken(integration) {
+		if (!confirm(`Revoke the token for ${integration.name}? The integration will no longer be able to authenticate.`)) return;
+		
+		integrationError = null;
+		integrationSuccess = null;
+		
+		try {
+			const response = await fetch('/api/integrations/token', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ integrationId: integration.id }),
+			});
+			
+			const result = await response.json();
+			
+			if (response.ok) {
+				integrationSuccess = `Token revoked for ${integration.name}`;
+				delete generatedTokens[integration.id];
+				const { invalidateAll } = await import('$app/navigation');
+				await invalidateAll();
+			} else {
+				integrationError = result.error || 'Failed to revoke token';
+			}
+		} catch (error) {
+			integrationError = error.message;
+		}
+	}
+	
+	function copyToken(token) {
+		navigator.clipboard.writeText(token);
+		integrationSuccess = 'Token copied to clipboard!';
 	}
 </script>
 
@@ -590,6 +657,118 @@
 			<button class="btn btn-primary add-command-btn" onclick={() => showNewCommandForm = true}>
 				➕ Add Built-in Command
 			</button>
+		{/if}
+	</section>
+	
+	<!-- Integration Management -->
+	<section class="integrations-management-section">
+		<h2 class="section-title">
+			<span class="section-icon">🔌</span>
+			Integrations
+			<span class="section-subtitle">({integrations.length} registered)</span>
+		</h2>
+		
+		{#if integrationSuccess}
+			<div class="cmd-toast cmd-toast-success">
+				<span>✓</span> {integrationSuccess}
+				<button class="cmd-toast-close" onclick={() => integrationSuccess = null}>✕</button>
+			</div>
+		{/if}
+		
+		{#if integrationError}
+			<div class="cmd-toast cmd-toast-error">
+				<span>✗</span> {integrationError}
+				<button class="cmd-toast-close" onclick={() => integrationError = null}>✕</button>
+			</div>
+		{/if}
+		
+		{#if integrations.length === 0}
+			<p class="empty-text">No integrations registered yet.</p>
+		{:else}
+			<div class="integrations-manage-grid">
+				{#each integrations as integration (integration.id)}
+					<div class="integration-manage-card">
+						<div class="integration-manage-header">
+							<span class="integration-manage-icon">{integration.icon || '📦'}</span>
+							<div class="integration-manage-info">
+								<h3>{integration.name}</h3>
+								<span class="integration-manage-slug">{integration.slug}</span>
+							</div>
+							<div class="integration-manage-status">
+								{#if integration.status === 'online'}
+									<span class="conn-badge conn-online">🟢 Online</span>
+								{:else if integration.status === 'offline'}
+									<span class="conn-badge conn-offline">🔴 Offline</span>
+								{:else}
+									<span class="conn-badge conn-unknown">⚪ Unknown</span>
+								{/if}
+							</div>
+						</div>
+						
+						<div class="integration-manage-details">
+							<div class="detail-row">
+								<span class="detail-label">Version</span>
+								<span class="detail-value">{integration.version || '—'}</span>
+							</div>
+							<div class="detail-row">
+								<span class="detail-label">Category</span>
+								<span class="detail-value">{integration.category}</span>
+							</div>
+							<div class="detail-row">
+								<span class="detail-label">Commands</span>
+								<span class="detail-value">{integration.manifest?.commands?.length || 0}</span>
+							</div>
+							<div class="detail-row">
+								<span class="detail-label">Last Heartbeat</span>
+								<span class="detail-value">{integration.last_heartbeat_at ? formatDate(integration.last_heartbeat_at) : 'Never'}</span>
+							</div>
+							{#if integration.manifest?.webhooks?.command_handler}
+								<div class="detail-row">
+									<span class="detail-label">Command Handler</span>
+									<span class="detail-value detail-url">{integration.manifest.webhooks.command_handler}</span>
+								</div>
+							{/if}
+						</div>
+						
+						<!-- Token Management -->
+						<div class="integration-token-section">
+							<h4>Integration Token</h4>
+							{#if generatedTokens[integration.id]}
+								<div class="token-display">
+									<code class="token-value">{generatedTokens[integration.id]}</code>
+									<button class="btn btn-sm btn-secondary" onclick={() => copyToken(generatedTokens[integration.id])}>
+										📋 Copy
+									</button>
+								</div>
+								<p class="token-warning">⚠️ Copy this token now. It won't be shown again after you leave this page.</p>
+							{:else if integration.token}
+								<p class="token-exists">✅ Token is set <span class="token-preview">({integration.token.substring(0, 15)}...)</span></p>
+								<div class="token-actions">
+									<button 
+										class="btn btn-sm btn-secondary" 
+										onclick={() => generateToken(integration)}
+										disabled={generatingToken[integration.id]}
+									>
+										{generatingToken[integration.id] ? 'Generating...' : '🔄 Regenerate'}
+									</button>
+									<button class="btn btn-sm btn-danger" onclick={() => revokeToken(integration)}>
+										🗑️ Revoke
+									</button>
+								</div>
+							{:else}
+								<p class="token-missing">No token set — the integration cannot authenticate.</p>
+								<button 
+									class="btn btn-sm btn-primary" 
+									onclick={() => generateToken(integration)}
+									disabled={generatingToken[integration.id]}
+								>
+									{generatingToken[integration.id] ? 'Generating...' : '🔑 Generate Token'}
+								</button>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
 		{/if}
 	</section>
 	
@@ -1818,6 +1997,181 @@
 			margin-left: 0.5rem;
 			margin-top: 0;
 		}
+	}
+	
+	/* Integration Management Section */
+	.integrations-management-section {
+		margin-bottom: 2rem;
+	}
+	
+	.integrations-manage-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+		gap: 1rem;
+	}
+	
+	.integration-manage-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		padding: 1.25rem;
+	}
+	
+	.integration-manage-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+	
+	.integration-manage-icon {
+		font-size: 1.5rem;
+		flex-shrink: 0;
+	}
+	
+	.integration-manage-info {
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.integration-manage-info h3 {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 600;
+	}
+	
+	.integration-manage-slug {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		font-family: monospace;
+	}
+	
+	.integration-manage-status {
+		flex-shrink: 0;
+	}
+	
+	.conn-badge {
+		font-size: 0.7rem;
+		font-weight: 500;
+		padding: 0.15rem 0.5rem;
+		border-radius: 9999px;
+	}
+	
+	.conn-online { color: #22c55e; }
+	.conn-offline { color: #ef4444; }
+	.conn-unknown { color: var(--color-text-muted); }
+	
+	.integration-manage-details {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.4rem;
+		margin-bottom: 1rem;
+		padding: 0.75rem;
+		background: var(--color-surface-elevated);
+		border-radius: 0.5rem;
+		font-size: 0.8rem;
+	}
+	
+	.detail-row {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+	
+	.detail-row:has(.detail-url) {
+		grid-column: 1 / -1;
+	}
+	
+	.detail-label {
+		font-size: 0.65rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		font-weight: 600;
+	}
+	
+	.detail-value {
+		font-weight: 500;
+	}
+	
+	.detail-url {
+		font-family: monospace;
+		font-size: 0.7rem;
+		word-break: break-all;
+		color: var(--color-primary);
+	}
+	
+	.integration-token-section {
+		border-top: 1px solid var(--color-border);
+		padding-top: 0.75rem;
+	}
+	
+	.integration-token-section h4 {
+		margin: 0 0 0.5rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+	
+	.token-display {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+	
+	.token-value {
+		flex: 1;
+		background: var(--color-surface-elevated);
+		padding: 0.4rem 0.6rem;
+		border-radius: 0.375rem;
+		font-size: 0.7rem;
+		word-break: break-all;
+		border: 1px solid var(--color-border);
+		user-select: all;
+	}
+	
+	.token-warning {
+		font-size: 0.75rem;
+		color: #f59e0b;
+		margin: 0;
+	}
+	
+	.token-exists {
+		font-size: 0.8rem;
+		margin: 0 0 0.5rem;
+		color: var(--color-text);
+	}
+	
+	.token-preview {
+		font-family: monospace;
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+	}
+	
+	.token-missing {
+		font-size: 0.8rem;
+		margin: 0 0 0.5rem;
+		color: var(--color-text-muted);
+	}
+	
+	.token-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+	
+	.btn-danger {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+	
+	.btn-danger:hover {
+		background: rgba(239, 68, 68, 0.25);
+	}
+	
+	.empty-text {
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
 	}
 	
 	/* Built-in Commands Section */

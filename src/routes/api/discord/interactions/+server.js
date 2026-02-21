@@ -209,6 +209,10 @@ export async function POST({ request, platform }) {
 /**
  * Handle a command that belongs to an enabled integration.
  * Returns a JSON response if matched, or null to fall through.
+ *
+ * If the integration has a `webhooks.command_handler` URL, the interaction
+ * payload is forwarded there and the response is relayed back to Discord.
+ * This allows external projects to handle their own commands.
  */
 async function handleIntegrationCommand(data, db, guildId) {
 	try {
@@ -219,14 +223,92 @@ async function handleIntegrationCommand(data, db, guildId) {
 			const matched = commands.find((cmd) => cmd.name === data.name);
 			if (!matched) continue;
 
-			// Determine subcommand (if any)
-			const subcommand = data.options?.find((o) => o.type === 1)?.name;
 			const manifest = integration.manifest || integration.manifest_json;
 
-			// --- StarSpace Game built-in handling ---
+			// If the integration has a command handler webhook, proxy the command
+			if (manifest?.webhooks?.command_handler) {
+				try {
+					const handlerUrl = manifest.webhooks.command_handler;
+					const payload = {
+						type: "command",
+						command: data.name,
+						options: data.options || [],
+						guild_id: guildId,
+						user: data.member?.user || data.user || null,
+						channel_id: data.channel_id || null,
+						integration_slug: integration.slug,
+					};
+
+					log.debug(
+						`[Interactions] Proxying /${data.name} to ${handlerUrl}`,
+					);
+
+					const webhookResponse = await fetch(handlerUrl, {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+							"X-SpaceBot-Integration": integration.slug,
+							"X-SpaceBot-Guild": guildId,
+						},
+						body: JSON.stringify(payload),
+						signal: AbortSignal.timeout(8_000), // 8s timeout (Discord allows ~15s)
+					});
+
+					if (webhookResponse.ok) {
+						const responseData = await webhookResponse.json();
+
+						// The external handler can return a Discord interaction response directly
+						if (responseData.type) {
+							return json(responseData);
+						}
+
+						// Or return a simplified response that we wrap
+						return json({
+							type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+							data: {
+								content: responseData.content || "Command executed.",
+								embeds: responseData.embeds || undefined,
+								components: responseData.components || undefined,
+								flags: responseData.ephemeral ? 64 : undefined,
+							},
+						});
+					}
+
+					log.warn(
+						`[Interactions] Integration webhook returned ${webhookResponse.status} for /${data.name}`,
+					);
+
+					return json({
+						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+						data: {
+							content: `⚠️ The **${integration.name || integration.slug}** integration failed to handle \`/${data.name}\`. It may be temporarily unavailable.`,
+							flags: 64, // ephemeral
+						},
+					});
+				} catch (err) {
+					log.error(
+						`[Interactions] Error proxying to integration ${integration.slug}:`,
+						err,
+					);
+
+					return json({
+						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+						data: {
+							content: `⚠️ The **${integration.name || integration.slug}** integration is not responding. Please try again later.`,
+							flags: 64,
+						},
+					});
+				}
+			}
+
+			// No webhook configured — check for built-in handling
+			const subcommand = data.options?.find((o) => o.type === 1)?.name;
+
+			// --- StarSpace Game fallback handling (no webhook) ---
 			if (integration.slug === "starspace-game") {
 				if (subcommand === "play") {
-					const homepage = manifest?.homepage || "https://game.starspace.group/";
+					const homepage =
+						manifest?.homepage || "https://game.starspace.group/";
 					return json({
 						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 						data: {
@@ -235,24 +317,19 @@ async function handleIntegrationCommand(data, db, guildId) {
 					});
 				}
 
-				// Other /game sub-commands are placeholders for now
 				return json({
 					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 					data: {
-						content: `The \`/game ${subcommand || ""}\` command is not yet available.`,
+						content: `The \`/game ${subcommand || ""}\` command requires the Game server to be online. It doesn't appear to be connected right now.`,
 					},
 				});
 			}
 
-			// Generic integration — webhook handler or fallback
-			if (manifest?.webhooks?.command_handler) {
-				// TODO: forward to external webhook
-			}
-
+			// Generic fallback — no webhook configured
 			return json({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
-					content: `Integration command \`/${data.name}\` is not fully configured yet.`,
+					content: `Integration command \`/${data.name}\` is not fully configured yet. The integration may need to connect to SpaceBot.`,
 				},
 			});
 		}

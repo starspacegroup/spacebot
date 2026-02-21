@@ -2,9 +2,11 @@
  * Integrations Database Module
  *
  * Handles CRUD operations for integrations and guild-integration state in D1.
+ * Also handles integration authentication tokens and heartbeat/status tracking.
  */
 
 import { log } from "./logger.js";
+import { generateIntegrationToken } from "../integrations/auth.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -325,6 +327,199 @@ export async function updateGuildIntegrationConfig(db, guildId, integrationId, c
     return { success: true };
   } catch (error) {
     log.error("[Integrations] Error updating integration config:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Integration tokens & status
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate and store a new token for an integration.
+ * Replaces any existing token.
+ *
+ * @param {D1Database} db
+ * @param {number} integrationId
+ * @param {string} slug
+ * @returns {Promise<{success: boolean, token?: string, error?: string}>}
+ */
+export async function createIntegrationToken(db, integrationId, slug) {
+  if (!db || !integrationId || !slug) {
+    return { success: false, error: "Missing required parameters" };
+  }
+
+  try {
+    const token = generateIntegrationToken(slug);
+    const now = new Date().toISOString();
+
+    await db
+      .prepare("UPDATE integrations SET token = ?, updated_at = ? WHERE id = ?")
+      .bind(token, now, integrationId)
+      .run();
+
+    log.info(`[Integrations] Generated token for integration ${slug}`);
+    return { success: true, token };
+  } catch (error) {
+    log.error("[Integrations] Error creating integration token:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Revoke (delete) an integration's token.
+ */
+export async function revokeIntegrationToken(db, integrationId) {
+  if (!db || !integrationId) {
+    return { success: false, error: "Missing required parameters" };
+  }
+
+  try {
+    const now = new Date().toISOString();
+    await db
+      .prepare("UPDATE integrations SET token = NULL, updated_at = ? WHERE id = ?")
+      .bind(now, integrationId)
+      .run();
+
+    log.info(`[Integrations] Revoked token for integration ${integrationId}`);
+    return { success: true };
+  } catch (error) {
+    log.error("[Integrations] Error revoking integration token:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Record a heartbeat from an integration.
+ * Updates last_heartbeat_at and sets status to 'online'.
+ */
+export async function recordHeartbeat(db, integrationId, metadata = {}) {
+  if (!db || !integrationId) {
+    return { success: false, error: "Missing required parameters" };
+  }
+
+  try {
+    const now = new Date().toISOString();
+
+    await db
+      .prepare(`
+        UPDATE integrations
+        SET status = 'online', last_heartbeat_at = ?, updated_at = ?
+        WHERE id = ?
+      `)
+      .bind(now, now, integrationId)
+      .run();
+
+    return { success: true, recorded_at: now };
+  } catch (error) {
+    log.error("[Integrations] Error recording heartbeat:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Update an integration's manifest via the sync API.
+ * Called when an external project pushes its manifest to SpaceBot.
+ *
+ * @param {D1Database} db
+ * @param {number} integrationId
+ * @param {object} manifest - The full manifest object
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function updateIntegrationManifest(db, integrationId, manifest) {
+  if (!db || !integrationId || !manifest) {
+    return { success: false, error: "Missing required parameters" };
+  }
+
+  try {
+    const now = new Date().toISOString();
+
+    await db
+      .prepare(`
+        UPDATE integrations
+        SET manifest_json = ?,
+            version = ?,
+            description = COALESCE(?, description),
+            health_endpoint = ?,
+            status = 'online',
+            last_heartbeat_at = ?,
+            updated_at = ?
+        WHERE id = ?
+      `)
+      .bind(
+        JSON.stringify(manifest),
+        manifest.version || "1.0.0",
+        manifest.description || null,
+        manifest.health_endpoint || null,
+        now,
+        now,
+        integrationId,
+      )
+      .run();
+
+    log.info(`[Integrations] Updated manifest for integration ${integrationId}`);
+    return { success: true };
+  } catch (error) {
+    log.error("[Integrations] Error updating manifest:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Get all guild IDs that have a specific integration enabled.
+ * Used to re-sync Discord commands after a manifest update.
+ */
+export async function getGuildsWithIntegration(db, integrationId) {
+  if (!db || !integrationId) return [];
+
+  try {
+    const { results } = await db
+      .prepare(
+        "SELECT guild_id FROM guild_integrations WHERE integration_id = ? AND enabled = 1",
+      )
+      .bind(integrationId)
+      .all();
+
+    return (results || []).map((r) => r.guild_id);
+  } catch (error) {
+    log.error("[Integrations] Error getting guilds with integration:", error);
+    return [];
+  }
+}
+
+/**
+ * Mark stale integrations as offline.
+ * Called periodically (e.g. via cron) to detect integrations that missed heartbeats.
+ *
+ * @param {D1Database} db
+ * @param {number} staleMinutes - Minutes without heartbeat before marking offline (default: 5)
+ */
+export async function markStaleIntegrationsOffline(db, staleMinutes = 5) {
+  if (!db) return { success: false, error: "No database" };
+
+  try {
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString();
+    const now = new Date().toISOString();
+
+    const result = await db
+      .prepare(`
+        UPDATE integrations
+        SET status = 'offline', updated_at = ?
+        WHERE status = 'online'
+          AND last_heartbeat_at IS NOT NULL
+          AND last_heartbeat_at < ?
+      `)
+      .bind(now, cutoff)
+      .run();
+
+    const changed = result.meta?.changes || 0;
+    if (changed > 0) {
+      log.info(`[Integrations] Marked ${changed} stale integration(s) as offline`);
+    }
+
+    return { success: true, marked_offline: changed };
+  } catch (error) {
+    log.error("[Integrations] Error marking stale integrations:", error);
     return { success: false, error: error.message };
   }
 }

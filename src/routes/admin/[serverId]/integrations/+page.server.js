@@ -2,6 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import {
   getGuildIntegrations,
+  getIntegrationById,
   enableGuildIntegration,
   disableGuildIntegration,
   updateGuildIntegrationConfig,
@@ -26,6 +27,42 @@ function checkIsSuperAdmin(userId, platform) {
     .map((id) => id.trim())
     .filter(Boolean);
   return superAdminIdList.includes(userId);
+}
+
+/**
+ * Fire a lifecycle webhook (on_enable / on_disable) for an integration.
+ * Fire-and-forget — failures are logged but don't block the action.
+ */
+async function fireLifecycleWebhook(db, integrationId, event, payload) {
+  try {
+    const integration = await getIntegrationById(db, integrationId);
+    if (!integration) return;
+
+    const manifest = integration.manifest;
+    if (!manifest?.webhooks) return;
+
+    const url = event === "integration.enabled"
+      ? manifest.webhooks.on_enable
+      : manifest.webhooks.on_disable;
+
+    if (!url) return;
+
+    log.info(`[Integrations] Firing ${event} webhook to ${url}`);
+
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SpaceBot-Integration": integration.slug,
+      },
+      body: JSON.stringify({ event, ...payload }),
+      signal: AbortSignal.timeout(10_000),
+    }).catch((err) => {
+      log.warn(`[Integrations] Lifecycle webhook failed for ${integration.slug}:`, err.message);
+    });
+  } catch (err) {
+    log.warn(`[Integrations] Error firing lifecycle webhook:`, err);
+  }
 }
 
 /** @type {import('./$types').PageServerLoad} */
@@ -125,6 +162,13 @@ export const actions = {
       log.error("[Integrations] Failed to sync commands after enable:", err);
     }
 
+    // Fire lifecycle webhook (fire-and-forget)
+    fireLifecycleWebhook(db, integrationId, "integration.enabled", {
+      guild_id: serverId,
+      enabled_by: userId,
+      config: {},
+    });
+
     return { success: true, message: "Integration enabled successfully" };
   },
 
@@ -170,6 +214,11 @@ export const actions = {
     } catch (err) {
       log.error("[Integrations] Failed to sync commands after disable:", err);
     }
+
+    // Fire lifecycle webhook (fire-and-forget)
+    fireLifecycleWebhook(db, integrationId, "integration.disabled", {
+      guild_id: serverId,
+    });
 
     return { success: true, message: "Integration disabled successfully" };
   },
