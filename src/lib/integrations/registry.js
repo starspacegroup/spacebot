@@ -115,19 +115,7 @@ export const BUILT_IN_INTEGRATIONS = [
                 },
               ],
             },
-            {
-              name: "link",
-              description: "Link your Discord account to your game profile",
-              type: 1,
-              options: [
-                {
-                  name: "username",
-                  description: "Your in-game username",
-                  type: 3,
-                  required: true,
-                },
-              ],
-            },
+
           ],
         },
       ],
