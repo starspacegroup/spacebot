@@ -13,6 +13,7 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"register-commands": "node scripts/register-commands.js",
+		"register-linked-role": "node scripts/register-linked-role-metadata.js",
 		"db:create": "wrangler d1 create spacebot-logs",
 		"db:migrate": "node scripts/migrate.js",
 		"db:migrate:local": "node scripts/migrate.js --local"
