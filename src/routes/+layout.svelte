@@ -4,6 +4,7 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import UserMenu from '$lib/components/UserMenu.svelte';
 	import ServerSelector from '$lib/components/ServerSelector.svelte';
+	import Footer from '$lib/components/Footer.svelte';
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
 	import { updated } from '$app/stores';
@@ -66,6 +67,8 @@
 	<main class="app-main">
 		{@render children()}
 	</main>
+	
+	<Footer />
 </div>
 
 <style>
