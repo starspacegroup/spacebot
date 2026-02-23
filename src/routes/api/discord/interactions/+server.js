@@ -180,7 +180,7 @@ export async function POST({ request, platform }) {
 
 		// Check if this is an integration command
 		if (db && guildId) {
-			const integrationResponse = await handleIntegrationCommand(data, db, guildId);
+			const integrationResponse = await handleIntegrationCommand(data, body, db, guildId);
 			if (integrationResponse) return integrationResponse;
 		}
 
@@ -214,7 +214,7 @@ export async function POST({ request, platform }) {
  * payload is forwarded there and the response is relayed back to Discord.
  * This allows external projects to handle their own commands.
  */
-async function handleIntegrationCommand(data, db, guildId) {
+async function handleIntegrationCommand(data, interaction, db, guildId) {
 	try {
 		const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
 
@@ -225,8 +225,8 @@ async function handleIntegrationCommand(data, db, guildId) {
 
 			const manifest = integration.manifest || integration.manifest_json;
 
-			// If the integration is offline, return immediately with a helpful message
-			if (integration.status === 'offline') {
+			// If the integration is offline or has never connected, return immediately
+			if (integration.status !== 'online') {
 				return json({
 					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 					data: {
@@ -245,8 +245,8 @@ async function handleIntegrationCommand(data, db, guildId) {
 						command: data.name,
 						options: data.options || [],
 						guild_id: guildId,
-						user: data.member?.user || data.user || null,
-						channel_id: data.channel_id || null,
+						user: interaction.member?.user || interaction.user || null,
+						channel_id: interaction.channel_id || null,
 						integration_slug: integration.slug,
 					};
 

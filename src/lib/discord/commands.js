@@ -127,17 +127,18 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
-		// Gather commands from enabled integrations (only if the integration is online)
+		// Gather commands from enabled integrations
+		// Register commands regardless of status so they remain available in Discord
+		// even if the integration is temporarily offline. The interaction handler
+		// will show an appropriate message if the integration cannot handle the command.
 		let integrationCommands = [];
 		try {
 			const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
 			for (const integration of enabledIntegrations) {
-				// Only register commands for integrations that have connected and are online
-				if (integration.status !== 'online') {
-					log.debug(`syncGuildCommands: Skipping ${integration.slug} commands (status: ${integration.status || 'unknown'})`);
-					continue;
-				}
 				const cmds = getIntegrationCommands(integration);
+				if (cmds.length > 0) {
+					log.debug(`syncGuildCommands: Adding ${cmds.length} command(s) from ${integration.slug} (status: ${integration.status || 'unknown'})`);
+				}
 				integrationCommands.push(...cmds);
 			}
 			if (integrationCommands.length > 0) {
