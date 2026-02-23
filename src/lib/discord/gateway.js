@@ -956,7 +956,7 @@ async function executeAutomationAction(automation, event) {
       const roleId = action_config.role_id;
       const userId = event.actor_id || event.target_id;
 
-      if (!roleId || !userId) throw new Error("Missing role or user ID");
+      if (!roleId || !userId) throw new Error(`Missing role or user ID (role_id: ${roleId || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
 
       const guild = await client.guilds.fetch(event.guild_id);
       if (!guild) throw new Error("Guild not found");
@@ -972,7 +972,7 @@ async function executeAutomationAction(automation, event) {
       const roleId = action_config.role_id;
       const userId = event.actor_id || event.target_id;
 
-      if (!roleId || !userId) throw new Error("Missing role or user ID");
+      if (!roleId || !userId) throw new Error(`Missing role or user ID (role_id: ${roleId || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
 
       const guild = await client.guilds.fetch(event.guild_id);
       if (!guild) throw new Error("Guild not found");

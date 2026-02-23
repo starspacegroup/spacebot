@@ -9,6 +9,19 @@
 	let showLogs = $state(false);
 	let showToast = $state(true);
 	let processingId = $state(null);
+	let expandedLogId = $state(null);
+	
+	function toggleLogExpand(logId) {
+		expandedLogId = expandedLogId === logId ? null : logId;
+	}
+	
+	// Format JSON data for display, filtering out noisy internal fields
+	function formatLogData(data) {
+		if (!data) return null;
+		// Clone to avoid mutating original
+		const cleaned = { ...data };
+		return cleaned;
+	}
 	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
@@ -112,16 +125,47 @@
 				<div class="logs-list">
 					{#each data.recentLogs as log}
 						<div class="log-item {log.success ? 'log-success' : 'log-error'}">
-							<div class="log-status">
-								{log.success ? '✓' : '✕'}
-							</div>
-							<div class="log-info">
-								<span class="log-name">{log.automation_name || `Automation #${log.automation_id}`}</span>
-								<span class="log-event">{log.trigger_event}</span>
-							</div>
-							<div class="log-time">{formatRelativeTime(log.created_at)}</div>
+							<button class="log-row" onclick={() => toggleLogExpand(log.id)} title="Click to expand details">
+								<div class="log-status">
+									{log.success ? '✓' : '✕'}
+								</div>
+								<div class="log-info">
+									<span class="log-name">{log.automation_name || `Automation #${log.automation_id}`}</span>
+									<span class="log-event">{log.trigger_event}</span>
+								</div>
+								<div class="log-time">{formatRelativeTime(log.created_at)}</div>
+								<div class="log-expand-icon">{expandedLogId === log.id ? '▼' : '▶'}</div>
+							</button>
 							{#if log.error_message}
 								<div class="log-error-msg">{log.error_message}</div>
+							{/if}
+							{#if expandedLogId === log.id}
+								<div class="log-details">
+									{#if log.execution_time_ms}
+										<div class="log-detail-row">
+											<span class="log-detail-label">Execution Time</span>
+											<span class="log-detail-value">{log.execution_time_ms}ms</span>
+										</div>
+									{/if}
+									{#if log.created_at}
+										<div class="log-detail-row">
+											<span class="log-detail-label">Timestamp</span>
+											<span class="log-detail-value">{new Date(log.created_at).toLocaleString()}</span>
+										</div>
+									{/if}
+									{#if log.trigger_data}
+										<div class="log-detail-section">
+											<span class="log-detail-label">Trigger Data</span>
+											<pre class="log-detail-json">{JSON.stringify(formatLogData(log.trigger_data), null, 2)}</pre>
+										</div>
+									{/if}
+									{#if log.action_result}
+										<div class="log-detail-section">
+											<span class="log-detail-label">Action Result</span>
+											<pre class="log-detail-json">{JSON.stringify(log.action_result, null, 2)}</pre>
+										</div>
+									{/if}
+								</div>
 							{/if}
 						</div>
 					{/each}
@@ -560,13 +604,29 @@
 	}
 	
 	.log-item {
-		display: grid;
-		grid-template-columns: auto 1fr auto;
-		gap: 1rem;
-		padding: 0.75rem 1rem;
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 8px;
+		overflow: hidden;
+	}
+	
+	.log-row {
+		display: grid;
+		grid-template-columns: auto 1fr auto auto;
+		gap: 1rem;
+		padding: 0.75rem 1rem;
 		align-items: center;
+		width: 100%;
+		background: none;
+		border: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+		text-align: left;
+		transition: background 0.15s;
+	}
+	
+	.log-row:hover {
+		background: color-mix(in srgb, var(--bg-tertiary, #36393f) 80%, white 5%);
 	}
 	
 	.log-status {
@@ -610,12 +670,65 @@
 	}
 	
 	.log-error-msg {
-		grid-column: 1 / -1;
 		font-size: 0.75rem;
 		color: var(--color-danger);
-		padding-top: 0.5rem;
+		padding: 0.5rem 1rem 0.75rem;
 		border-top: 1px solid var(--border-color, #40444b);
-		margin-top: 0.5rem;
+	}
+	
+	.log-expand-icon {
+		font-size: 0.625rem;
+		color: var(--text-muted);
+		transition: transform 0.15s;
+	}
+	
+	.log-details {
+		padding: 0.75rem 1rem 1rem;
+		border-top: 1px solid var(--border-color, #40444b);
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.log-detail-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 0.8rem;
+	}
+	
+	.log-detail-label {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-muted);
+	}
+	
+	.log-detail-value {
+		font-size: 0.8rem;
+		color: var(--text-secondary, #dcddde);
+	}
+	
+	.log-detail-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+	
+	.log-detail-json {
+		background: var(--bg-primary, #202225);
+		border-radius: 6px;
+		padding: 0.75rem;
+		font-size: 0.7rem;
+		font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+		margin: 0;
+		max-height: 300px;
+		overflow-y: auto;
+		color: var(--text-secondary, #dcddde);
 	}
 	
 
