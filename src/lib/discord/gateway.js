@@ -979,10 +979,13 @@ async function executeAutomationAction(automation, event) {
     }
 
     case "ADD_ROLE": {
-      const roleId = action_config.role_id;
-      const userId = event.actor_id || event.target_id;
+      // Support both legacy role_id (single) and new role_ids (comma-separated)
+      const roleIds = action_config.role_ids
+        ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
+        : action_config.role_id ? [action_config.role_id] : [];
+      const userId = resolveTargetUser(action_config, event);
 
-      if (!roleId || !userId) throw new Error(`Missing role or user ID (role_id: ${roleId || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
+      if (roleIds.length === 0 || !userId) throw new Error(`Missing role or user ID (role_ids: ${roleIds.join(',') || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
 
       const guild = await client.guilds.fetch(event.guild_id);
       if (!guild) throw new Error("Guild not found");
@@ -990,15 +993,20 @@ async function executeAutomationAction(automation, event) {
       const member = await guild.members.fetch(userId);
       if (!member) throw new Error("Member not found");
 
-      await member.roles.add(roleId);
-      return { userId, roleId };
+      for (const roleId of roleIds) {
+        await member.roles.add(roleId);
+      }
+      return { userId, rolesAdded: roleIds };
     }
 
     case "REMOVE_ROLE": {
-      const roleId = action_config.role_id;
-      const userId = event.actor_id || event.target_id;
+      // Support both legacy role_id (single) and new role_ids (comma-separated)
+      const roleIds = action_config.role_ids
+        ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
+        : action_config.role_id ? [action_config.role_id] : [];
+      const userId = resolveTargetUser(action_config, event);
 
-      if (!roleId || !userId) throw new Error(`Missing role or user ID (role_id: ${roleId || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
+      if (roleIds.length === 0 || !userId) throw new Error(`Missing role or user ID (role_ids: ${roleIds.join(',') || 'none'}, actor_id: ${event.actor_id || 'none'}, target_id: ${event.target_id || 'none'})`);
 
       const guild = await client.guilds.fetch(event.guild_id);
       if (!guild) throw new Error("Guild not found");
@@ -1006,8 +1014,10 @@ async function executeAutomationAction(automation, event) {
       const member = await guild.members.fetch(userId);
       if (!member) throw new Error("Member not found");
 
-      await member.roles.remove(roleId);
-      return { userId, roleId };
+      for (const roleId of roleIds) {
+        await member.roles.remove(roleId);
+      }
+      return { userId, rolesRemoved: roleIds };
     }
 
     case "KICK_MEMBER": {
