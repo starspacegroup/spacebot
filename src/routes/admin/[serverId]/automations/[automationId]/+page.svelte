@@ -301,6 +301,11 @@
 	// Check if SLASH_COMMAND_USE is selected (for special bot command filter UI)
 	const hasSlashCommandTrigger = $derived(selectedEventTypes.includes('SLASH_COMMAND_USE'));
 	
+	// Check if only voice events are selected (to filter channel selectors to voice channels)
+	const onlyVoiceEvents = $derived(
+		selectedEventTypes.length > 0 && selectedEventTypes.every(e => e.startsWith('VOICE_'))
+	);
+	
 	// Get filters applicable to the current event types (excluding bot-specific ones handled separately)
 	const applicableFilters = $derived.by(() => {
 		if (selectedEventTypes.length === 0) return {};

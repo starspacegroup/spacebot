@@ -275,6 +275,66 @@ export const ACTION_TYPES = {
     },
     applicableEvents: ["MESSAGE_CREATE", "MESSAGE_UPDATE"],
   },
+  SERVER_MUTE: {
+    name: "Server Mute",
+    description: "Server mute a member in voice",
+    icon: "🔇",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to server mute",
+      },
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
+  SERVER_UNMUTE: {
+    name: "Server Unmute",
+    description: "Remove server mute from a member in voice",
+    icon: "🔊",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to server unmute",
+      },
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
+  SERVER_DEAFEN: {
+    name: "Server Deafen",
+    description: "Server deafen a member in voice",
+    icon: "🔕",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to server deafen",
+      },
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
+  SERVER_UNDEAFEN: {
+    name: "Server Undeafen",
+    description: "Remove server deafen from a member in voice",
+    icon: "🔔",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Target User",
+        description: "Which user to server undeafen",
+      },
+      reason: { type: "text", label: "Reason", supportsVariables: true },
+    },
+  },
   CALL_WEBHOOK: {
     name: "Call Webhook",
     description: "Send data to an external webhook endpoint",

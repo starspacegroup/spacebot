@@ -827,6 +827,130 @@ export async function executeAction(automation, event, context, discord) {
         return { success: true, result: { timedOut: userId, duration } };
       }
 
+      case "SERVER_MUTE": {
+        const userId = resolveTargetUser(action_config, event);
+        const reason = processTemplate(
+          action_config.reason || "Automated action",
+          context,
+        );
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+          return { success: false, error: "Member not found" };
+        }
+
+        if (!member.voice.channelId) {
+          return { success: false, error: "Member is not in a voice channel" };
+        }
+
+        await member.voice.setMute(true, reason);
+        return { success: true, result: { muted: userId } };
+      }
+
+      case "SERVER_UNMUTE": {
+        const userId = resolveTargetUser(action_config, event);
+        const reason = processTemplate(
+          action_config.reason || "Automated action",
+          context,
+        );
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+          return { success: false, error: "Member not found" };
+        }
+
+        if (!member.voice.channelId) {
+          return { success: false, error: "Member is not in a voice channel" };
+        }
+
+        await member.voice.setMute(false, reason);
+        return { success: true, result: { unmuted: userId } };
+      }
+
+      case "SERVER_DEAFEN": {
+        const userId = resolveTargetUser(action_config, event);
+        const reason = processTemplate(
+          action_config.reason || "Automated action",
+          context,
+        );
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+          return { success: false, error: "Member not found" };
+        }
+
+        if (!member.voice.channelId) {
+          return { success: false, error: "Member is not in a voice channel" };
+        }
+
+        await member.voice.setDeaf(true, reason);
+        return { success: true, result: { deafened: userId } };
+      }
+
+      case "SERVER_UNDEAFEN": {
+        const userId = resolveTargetUser(action_config, event);
+        const reason = processTemplate(
+          action_config.reason || "Automated action",
+          context,
+        );
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+          return { success: false, error: "Member not found" };
+        }
+
+        if (!member.voice.channelId) {
+          return { success: false, error: "Member is not in a voice channel" };
+        }
+
+        await member.voice.setDeaf(false, reason);
+        return { success: true, result: { undeafened: userId } };
+      }
+
       case "LOG_TO_CHANNEL": {
         const channelId = action_config.channel_id;
         const customContent = action_config.content
