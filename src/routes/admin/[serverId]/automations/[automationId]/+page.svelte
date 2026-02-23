@@ -514,14 +514,26 @@
 						<div class="form-group">
 							<label for="filter_{filterKey}">{filterInfo.label}</label>
 							{#if filterInfo.type === 'channel'}
-								<ChannelSelector
-									channels={sharedChannels}
-									name="filter.{filterKey}"
-									placeholder={filterInfo.description}
-									value={automation.trigger_filters?.[filterKey] || (filterKey === 'channel_id' ? 'ALL' : '')}
-									multiple={true}
-									showAllOption={filterKey === 'channel_id'}
-								/>
+								{#if onlyVoiceEvents}
+									<ChannelSelector
+										guildId={data.selectedGuildId}
+										typeFilter="voice,stage"
+										name="filter.{filterKey}"
+										placeholder={filterInfo.description}
+										value={automation.trigger_filters?.[filterKey] || (filterKey === 'channel_id' ? 'ALL' : '')}
+										multiple={true}
+										showAllOption={filterKey === 'channel_id'}
+									/>
+								{:else}
+									<ChannelSelector
+										channels={sharedChannels}
+										name="filter.{filterKey}"
+										placeholder={filterInfo.description}
+										value={automation.trigger_filters?.[filterKey] || (filterKey === 'channel_id' ? 'ALL' : '')}
+										multiple={true}
+										showAllOption={filterKey === 'channel_id'}
+									/>
+								{/if}
 							{:else if filterInfo.type === 'role'}
 								<RoleSelector
 									roles={sharedRoles}

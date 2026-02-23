@@ -1587,6 +1587,7 @@ function setupEventHandlers(client, logFn) {
         mentionedUsers: mentionedUsers,
         isBot: message.author.bot || false,
         isOwnBot: message.author.id === message.client.user?.id,
+        actor_roles: message.member?.roles?.cache.map((r) => r.id) || [],
       },
     });
   });
@@ -1780,6 +1781,7 @@ function setupEventHandlers(client, logFn) {
           selfDeaf: newState.selfDeaf,
           streaming: newState.streaming,
           selfVideo: newState.selfVideo,
+          actor_roles: member.roles?.cache.map((r) => r.id) || [],
         },
       });
       return; // Don't check for state changes on initial join
@@ -1830,6 +1832,7 @@ function setupEventHandlers(client, logFn) {
           wasDeafened: oldState.selfDeaf,
           wasStreaming: oldState.streaming,
           hadVideo: oldState.selfVideo,
+          actor_roles: member.roles?.cache.map((r) => r.id) || [],
         },
       });
       return;
@@ -1880,6 +1883,7 @@ function setupEventHandlers(client, logFn) {
         details: {
           fromChannelId: oldState.channel.id,
           fromChannelName: oldState.channel.name,
+          actor_roles: member.roles?.cache.map((r) => r.id) || [],
         },
       });
     }
