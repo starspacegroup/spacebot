@@ -1154,6 +1154,86 @@ async function executeAutomationAction(automation, event) {
       break;
     }
 
+    case "SERVER_MUTE": {
+      const userId = resolveTargetUser(action_config, event);
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      if (!member.voice.channelId) {
+        throw new Error("Member is not in a voice channel");
+      }
+
+      await member.voice.setMute(true, reason);
+      break;
+    }
+
+    case "SERVER_UNMUTE": {
+      const userId = resolveTargetUser(action_config, event);
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      if (!member.voice.channelId) {
+        throw new Error("Member is not in a voice channel");
+      }
+
+      await member.voice.setMute(false, reason);
+      break;
+    }
+
+    case "SERVER_DEAFEN": {
+      const userId = resolveTargetUser(action_config, event);
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      if (!member.voice.channelId) {
+        throw new Error("Member is not in a voice channel");
+      }
+
+      await member.voice.setDeaf(true, reason);
+      break;
+    }
+
+    case "SERVER_UNDEAFEN": {
+      const userId = resolveTargetUser(action_config, event);
+      const reason = automation.processed_reason || action_config.reason || "Automated action";
+
+      if (!userId) throw new Error("Missing user ID");
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      const member = await guild.members.fetch(userId);
+      if (!member) throw new Error("Member not found");
+
+      if (!member.voice.channelId) {
+        throw new Error("Member is not in a voice channel");
+      }
+
+      await member.voice.setDeaf(false, reason);
+      break;
+    }
+
     default:
       throw new Error(`Unknown action type: ${action_type}`);
   }
