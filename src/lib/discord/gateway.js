@@ -644,31 +644,67 @@ async function processEventAutomations(event) {
         }
       }
       
-      try {
-        // Check if this automation has stacked actions
-        if (
-          automation.action_config?.actions &&
-          Array.isArray(automation.action_config.actions)
-        ) {
-          // Execute each stacked action in sequence
-          for (const action of automation.action_config.actions) {
-            const actionAutomation = {
+      // Build list of actions to execute
+      const actionsToExecute = [];
+      if (
+        automation.action_config?.actions &&
+        Array.isArray(automation.action_config.actions)
+      ) {
+        for (const action of automation.action_config.actions) {
+          actionsToExecute.push({
+            actionType: action.type,
+            actionConfig: action.config || {},
+            actionAutomation: {
               ...automation,
               action_type: action.type,
               action_config: action.config || {},
-              // Templates are already processed in the API response
               processed_content: action.config?.content,
               processed_reason: action.config?.reason,
               processed_thread_name: action.config?.thread_name,
-            };
-            await executeAutomationAction(actionAutomation, event);
-          }
-        } else {
-          // Legacy single action format
-          await executeAutomationAction(automation, event);
+            },
+          });
+        }
+      } else {
+        actionsToExecute.push({
+          actionType: automation.action_type,
+          actionConfig: automation.action_config || {},
+          actionAutomation: automation,
+        });
+      }
+
+      // Execute all actions and track per-action results
+      const actionResults = [];
+      let allSuccess = true;
+      let firstError = null;
+
+      for (let i = 0; i < actionsToExecute.length; i++) {
+        const { actionType, actionConfig, actionAutomation } = actionsToExecute[i];
+        const actionResult = {
+          actionIndex: i,
+          actionType,
+          actionConfig,
+        };
+
+        try {
+          const result = await executeAutomationAction(actionAutomation, event);
+          actionResult.success = true;
+          if (result !== undefined) actionResult.result = result;
+        } catch (error) {
+          actionResult.success = false;
+          actionResult.error = error.message;
+          allSuccess = false;
+          if (!firstError) firstError = error.message;
+          log.error(
+            `[Automation] ${automation.name} - action ${i + 1}/${actionsToExecute.length} (${actionType}) failed: ${error.message}`,
+          );
+          // Continue executing remaining actions even if one fails
         }
 
-        // Report success back to API
+        actionResults.push(actionResult);
+      }
+
+      // Report results back to API with per-action details
+      try {
         await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
           method: "POST",
           headers: {
@@ -679,30 +715,19 @@ async function processEventAutomations(event) {
             automation_id: automation.id,
             trigger_event: event.event_type,
             trigger_data: event,
-            success: true,
-            action_result: { executed: true },
+            success: allSuccess,
+            error_message: firstError,
+            action_result: actionResults,
           }),
         });
+      } catch (logError) {
+        log.error(`[Automation] Failed to log execution:`, logError.message);
+      }
 
-        log.info(`[Automation] ${automation.name} executed successfully`);
-      } catch (error) {
-        log.error(`[Automation] ${automation.name} failed:`, error.message);
-
-        // Report failure back to API
-        await fetch(`${API_BASE}/api/automations/${event.guild_id}/log`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-          },
-          body: JSON.stringify({
-            automation_id: automation.id,
-            trigger_event: event.event_type,
-            trigger_data: event,
-            success: false,
-            error_message: error.message,
-          }),
-        });
+      if (allSuccess) {
+        log.info(`[Automation] ${automation.name} - all ${actionsToExecute.length} action(s) executed successfully`);
+      } else {
+        log.error(`[Automation] ${automation.name} - completed with errors`);
       }
     }
   } catch (error) {
@@ -844,7 +869,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
-      break;
+      return { totalDeleted, channelsProcessed: channelsToProcess.length };
     }
 
     case "DELETE_MESSAGES": {
@@ -923,7 +948,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
-      break;
+      return { totalDeleted, channelsProcessed: channelsToProcess.length };
     }
 
     case "SEND_MESSAGE": {
@@ -939,17 +964,18 @@ async function executeAutomationAction(automation, event) {
       if (!channel) throw new Error("Channel not found");
 
       if (action_config.embed) {
-        await channel.send({
+        const msg = await channel.send({
           embeds: [{
             description: content,
             color: 0x5865F2,
             timestamp: new Date().toISOString(),
           }],
         });
+        return { messageId: msg.id, channelId, embed: true };
       } else {
-        await channel.send(content);
+        const msg = await channel.send(content);
+        return { messageId: msg.id, channelId };
       }
-      break;
     }
 
     case "ADD_ROLE": {
@@ -965,7 +991,7 @@ async function executeAutomationAction(automation, event) {
       if (!member) throw new Error("Member not found");
 
       await member.roles.add(roleId);
-      break;
+      return { userId, roleId };
     }
 
     case "REMOVE_ROLE": {
@@ -981,7 +1007,7 @@ async function executeAutomationAction(automation, event) {
       if (!member) throw new Error("Member not found");
 
       await member.roles.remove(roleId);
-      break;
+      return { userId, roleId };
     }
 
     case "KICK_MEMBER": {
@@ -998,7 +1024,7 @@ async function executeAutomationAction(automation, event) {
       if (!member) throw new Error("Member not found");
 
       await member.kick(reason);
-      break;
+      return { userId, reason };
     }
 
     case "BAN_MEMBER": {
@@ -1016,7 +1042,7 @@ async function executeAutomationAction(automation, event) {
         reason,
         deleteMessageSeconds: deleteDays * 24 * 60 * 60,
       });
-      break;
+      return { userId, reason, deleteDays };
     }
 
     case "TIMEOUT_MEMBER": {
@@ -1039,7 +1065,7 @@ async function executeAutomationAction(automation, event) {
       if (!member) throw new Error("Member not found");
 
       await member.timeout(duration, reason);
-      break;
+      return { userId, durationMinutes, reason };
     }
 
     case "LOG_TO_CHANNEL": {
@@ -1100,8 +1126,8 @@ async function executeAutomationAction(automation, event) {
         }
       }
 
-      await channel.send({ embeds: [embed] });
-      break;
+      const logMsg = await channel.send({ embeds: [embed] });
+      return { messageId: logMsg.id, channelId };
     }
 
     case "CREATE_THREAD": {
@@ -1117,11 +1143,11 @@ async function executeAutomationAction(automation, event) {
       const channel = await client.channels.fetch(channelId);
       if (!channel) throw new Error("Channel not found");
 
-      await channel.threads.create({
+      const thread = await channel.threads.create({
         name: threadName.substring(0, 100),
         autoArchiveDuration: autoArchive,
       });
-      break;
+      return { threadId: thread.id, threadName: threadName.substring(0, 100) };
     }
 
     case "ADD_REACTION": {
@@ -1151,7 +1177,7 @@ async function executeAutomationAction(automation, event) {
       // Handle custom emoji format (e.g., <:name:id> or just the emoji)
       await message.react(emoji.trim());
       log.info(`[Automation] Added reaction ${emoji} to message ${messageId}`);
-      break;
+      return { emoji, messageId, channelId };
     }
 
     case "SERVER_MUTE": {
@@ -1171,7 +1197,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       await member.voice.setMute(true, reason);
-      break;
+      return { userId, reason };
     }
 
     case "SERVER_UNMUTE": {
@@ -1191,7 +1217,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       await member.voice.setMute(false, reason);
-      break;
+      return { userId, reason };
     }
 
     case "SERVER_DEAFEN": {
@@ -1211,7 +1237,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       await member.voice.setDeaf(true, reason);
-      break;
+      return { userId, reason };
     }
 
     case "SERVER_UNDEAFEN": {
@@ -1231,7 +1257,7 @@ async function executeAutomationAction(automation, event) {
       }
 
       await member.voice.setDeaf(false, reason);
-      break;
+      return { userId, reason };
     }
 
     default:

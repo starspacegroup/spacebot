@@ -23,6 +23,38 @@
 		return cleaned;
 	}
 	
+	// Format trigger data for a cleaner display
+	function formatTriggerSummary(triggerData) {
+		if (!triggerData) return [];
+		const items = [];
+		if (triggerData.actor_name) items.push({ label: 'Actor', value: triggerData.actor_name, id: triggerData.actor_id });
+		if (triggerData.channel_name) items.push({ label: 'Channel', value: `#${triggerData.channel_name}`, id: triggerData.channel_id });
+		if (triggerData.target_name) items.push({ label: 'Target', value: triggerData.target_name, id: triggerData.target_id });
+		if (triggerData.event_type) items.push({ label: 'Event', value: triggerData.event_type });
+		return items;
+	}
+	
+	// Get human-readable action name
+	function getActionDisplayName(actionType) {
+		const info = data.actionTypes[actionType];
+		return info ? `${info.icon} ${info.name}` : actionType;
+	}
+	
+	// Summarize action config for display
+	function formatActionConfig(config) {
+		if (!config || Object.keys(config).length === 0) return null;
+		const displayPairs = [];
+		for (const [key, value] of Object.entries(config)) {
+			if (value === null || value === undefined || value === '') continue;
+			// Clean up the key name
+			const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+			const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+			// Truncate long values
+			displayPairs.push({ label, value: displayValue.length > 80 ? displayValue.slice(0, 77) + '...' : displayValue });
+		}
+		return displayPairs.length > 0 ? displayPairs : null;
+	}
+	
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
 	
@@ -141,29 +173,82 @@
 							{/if}
 							{#if expandedLogId === log.id}
 								<div class="log-details">
-									{#if log.execution_time_ms}
-										<div class="log-detail-row">
-											<span class="log-detail-label">Execution Time</span>
-											<span class="log-detail-value">{log.execution_time_ms}ms</span>
-										</div>
-									{/if}
-									{#if log.created_at}
-										<div class="log-detail-row">
-											<span class="log-detail-label">Timestamp</span>
-											<span class="log-detail-value">{new Date(log.created_at).toLocaleString()}</span>
-										</div>
-									{/if}
+									<div class="log-meta-row">
+										{#if log.execution_time_ms}
+											<span class="log-meta-item">⏱️ {log.execution_time_ms}ms</span>
+										{/if}
+										{#if log.created_at}
+											<span class="log-meta-item">📅 {new Date(log.created_at).toLocaleString()}</span>
+										{/if}
+									</div>
+									
 									{#if log.trigger_data}
-										<div class="log-detail-section">
-											<span class="log-detail-label">Trigger Data</span>
-											<pre class="log-detail-json">{JSON.stringify(formatLogData(log.trigger_data), null, 2)}</pre>
-										</div>
+										{@const summary = formatTriggerSummary(log.trigger_data)}
+										{#if summary.length > 0}
+											<div class="log-trigger-summary">
+												<span class="log-detail-label">Trigger</span>
+												<div class="trigger-summary-items">
+													{#each summary as item}
+														<span class="trigger-summary-item">
+															<span class="trigger-summary-key">{item.label}:</span>
+															<span class="trigger-summary-val">{item.value}</span>
+														</span>
+													{/each}
+												</div>
+											</div>
+										{/if}
 									{/if}
-									{#if log.action_result}
+									
+									<!-- Actions breakdown -->
+									{#if log.action_result && Array.isArray(log.action_result)}
+										<div class="log-actions-section">
+											<span class="log-detail-label">Actions ({log.action_result.length})</span>
+											<div class="log-actions-list">
+												{#each log.action_result as action, i}
+													<div class="log-action-item {action.success ? 'action-success' : 'action-error'}">
+														<div class="log-action-header">
+															<span class="action-status-dot">{action.success ? '✓' : '✕'}</span>
+															<span class="action-type-label">{getActionDisplayName(action.actionType)}</span>
+															<span class="action-index">#{i + 1}</span>
+														</div>
+														{#if action.actionConfig}
+															{@const configPairs = formatActionConfig(action.actionConfig)}
+															{#if configPairs}
+																<div class="action-config">
+																	{#each configPairs as pair}
+																		<div class="action-config-pair">
+																			<span class="config-key">{pair.label}</span>
+																			<span class="config-val">{pair.value}</span>
+																		</div>
+																	{/each}
+																</div>
+															{/if}
+														{/if}
+														{#if action.error}
+															<div class="action-error-msg">❌ {action.error}</div>
+														{/if}
+														{#if action.result}
+															<div class="action-result-data">
+																<pre class="action-result-json">{JSON.stringify(action.result, null, 2)}</pre>
+															</div>
+														{/if}
+													</div>
+												{/each}
+											</div>
+										</div>
+									{:else if log.action_result}
+										<!-- Fallback for legacy non-array action_result -->
 										<div class="log-detail-section">
 											<span class="log-detail-label">Action Result</span>
 											<pre class="log-detail-json">{JSON.stringify(log.action_result, null, 2)}</pre>
 										</div>
+									{/if}
+									
+									{#if log.trigger_data}
+										<details class="log-raw-details">
+											<summary class="log-raw-summary">Raw Trigger Data</summary>
+											<pre class="log-detail-json">{JSON.stringify(formatLogData(log.trigger_data), null, 2)}</pre>
+										</details>
 									{/if}
 								</div>
 							{/if}
@@ -690,24 +775,12 @@
 		gap: 0.5rem;
 	}
 	
-	.log-detail-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 0.8rem;
-	}
-	
 	.log-detail-label {
 		font-size: 0.7rem;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 		color: var(--text-muted);
-	}
-	
-	.log-detail-value {
-		font-size: 0.8rem;
-		color: var(--text-secondary, #dcddde);
 	}
 	
 	.log-detail-section {
@@ -731,6 +804,189 @@
 		color: var(--text-secondary, #dcddde);
 	}
 	
+	/* Log meta row */
+	.log-meta-row {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	
+	.log-meta-item {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+	
+	/* Trigger summary */
+	.log-trigger-summary {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+	
+	.trigger-summary-items {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	
+	.trigger-summary-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.2rem 0.5rem;
+		background: var(--bg-primary, #202225);
+		border-radius: 4px;
+		font-size: 0.75rem;
+	}
+	
+	.trigger-summary-key {
+		color: var(--text-muted);
+		font-weight: 600;
+	}
+	
+	.trigger-summary-val {
+		color: var(--text-secondary, #dcddde);
+	}
+	
+	/* Actions breakdown */
+	.log-actions-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.log-actions-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.log-action-item {
+		background: var(--bg-primary, #202225);
+		border-radius: 8px;
+		padding: 0.625rem 0.75rem;
+		border-left: 3px solid var(--text-muted);
+	}
+	
+	.log-action-item.action-success {
+		border-left-color: var(--color-success, #43b581);
+	}
+	
+	.log-action-item.action-error {
+		border-left-color: var(--color-danger, #f04747);
+	}
+	
+	.log-action-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+	
+	.action-status-dot {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.6rem;
+		font-weight: bold;
+		flex-shrink: 0;
+	}
+	
+	.action-success .action-status-dot {
+		background: var(--color-success, #43b581);
+		color: white;
+	}
+	
+	.action-error .action-status-dot {
+		background: var(--color-danger, #f04747);
+		color: white;
+	}
+	
+	.action-type-label {
+		flex: 1;
+	}
+	
+	.action-index {
+		font-size: 0.65rem;
+		color: var(--text-muted);
+		font-weight: 400;
+	}
+	
+	.action-config {
+		margin-top: 0.375rem;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 0.75rem;
+		padding-left: calc(18px + 0.5rem);
+	}
+	
+	.action-config-pair {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-size: 0.7rem;
+	}
+	
+	.config-key {
+		color: var(--text-muted);
+	}
+	
+	.config-val {
+		color: var(--text-secondary, #dcddde);
+		font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+		font-size: 0.65rem;
+	}
+	
+	.action-error-msg {
+		margin-top: 0.375rem;
+		padding-left: calc(18px + 0.5rem);
+		font-size: 0.75rem;
+		color: var(--color-danger, #f04747);
+	}
+	
+	.action-result-data {
+		margin-top: 0.375rem;
+		padding-left: calc(18px + 0.5rem);
+	}
+	
+	.action-result-json {
+		background: color-mix(in srgb, var(--bg-primary, #202225) 80%, var(--color-success, #43b581) 8%);
+		border-radius: 4px;
+		padding: 0.375rem 0.5rem;
+		font-size: 0.65rem;
+		font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+		margin: 0;
+		max-height: 150px;
+		overflow-y: auto;
+		color: var(--text-secondary, #dcddde);
+	}
+	
+	/* Raw trigger data collapsible */
+	.log-raw-details {
+		margin-top: 0.25rem;
+	}
+	
+	.log-raw-summary {
+		font-size: 0.7rem;
+		color: var(--text-muted);
+		cursor: pointer;
+		user-select: none;
+		padding: 0.25rem 0;
+	}
+	
+	.log-raw-summary:hover {
+		color: var(--text-secondary, #dcddde);
+	}
 
 	
 	/* Pagination */

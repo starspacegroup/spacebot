@@ -1259,6 +1259,7 @@ export async function processAutomations(
         actionResults.push({
           actionIndex: i,
           actionType: actionDef.action_type,
+          actionConfig: actionDef.action_config,
           ...result,
         });
 
