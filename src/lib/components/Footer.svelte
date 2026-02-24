@@ -4,7 +4,7 @@
 
 <footer class="app-footer">
 	<div class="footer-content">
-		<span class="footer-copy">&copy; {year} SpaceBot</span>
+		<span class="footer-copy">&copy; {year} SpaceBot by <a href="https://starspace.group" target="_blank" rel="noopener noreferrer">*Space</a></span>
 		<nav class="footer-links">
 			<a href="/terms">Terms of Service</a>
 			<a href="/privacy">Privacy Policy</a>
@@ -34,6 +34,16 @@
 	.footer-copy {
 		color: var(--color-text-muted);
 		font-size: 0.85rem;
+	}
+
+	.footer-copy a {
+		color: var(--color-text-secondary);
+		text-decoration: none;
+		transition: color var(--transition-fast);
+	}
+
+	.footer-copy a:hover {
+		color: var(--color-primary);
 	}
 
 	.footer-links {
