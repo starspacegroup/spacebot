@@ -903,9 +903,15 @@
 
 <style>
 	.automation-form-page {
-		padding: 1.5rem;
+		padding: 1rem;
 		max-width: 800px;
 		margin: 0 auto;
+	}
+	
+	@media (min-width: 640px) {
+		.automation-form-page {
+			padding: 1.5rem;
+		}
 	}
 	
 	.back-link {
@@ -924,15 +930,27 @@
 	}
 	
 	.page-header {
-		margin-bottom: 2rem;
+		margin-bottom: 1.5rem;
+	}
+	
+	@media (min-width: 640px) {
+		.page-header {
+			margin-bottom: 2rem;
+		}
 	}
 	
 	.page-header h1 {
-		font-size: 1.75rem;
+		font-size: 1.375rem;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		margin: 0;
+	}
+	
+	@media (min-width: 640px) {
+		.page-header h1 {
+			font-size: 1.75rem;
+		}
 	}
 	
 	.header-icon {
@@ -965,7 +983,13 @@
 	.form-section {
 		background: var(--bg-secondary, #2f3136);
 		border-radius: 12px;
-		padding: 1.5rem;
+		padding: 1rem;
+	}
+	
+	@media (min-width: 640px) {
+		.form-section {
+			padding: 1.5rem;
+		}
 	}
 	
 	.form-section h2 {
@@ -1100,20 +1124,37 @@
 	
 	.trigger-item {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: space-between;
-		padding: 0.75rem 1rem;
+		padding: 0.625rem 0.75rem;
 		background: var(--bg-tertiary, #36393f);
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
+		gap: 0.5rem;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-item {
+			align-items: center;
+			padding: 0.75rem 1rem;
+		}
 	}
 	
 	.trigger-info {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
+		align-items: flex-start;
+		gap: 0.5rem;
 		flex: 1;
 		min-width: 0;
+		flex-wrap: wrap;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-info {
+			align-items: center;
+			gap: 0.75rem;
+			flex-wrap: nowrap;
+		}
 	}
 	
 	.trigger-icon {
@@ -1123,15 +1164,30 @@
 	
 	.trigger-name {
 		font-weight: 500;
-		white-space: nowrap;
+		word-break: break-word;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-name {
+			white-space: nowrap;
+			word-break: normal;
+		}
 	}
 	
 	.trigger-description {
 		color: var(--text-muted);
-		font-size: 0.875rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		font-size: 0.8rem;
+		display: none;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-description {
+			display: block;
+			font-size: 0.875rem;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
 	}
 	
 	.trigger-picker {
@@ -1243,13 +1299,23 @@
 	
 	.trigger-option {
 		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 0.75rem;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.5rem 0.625rem;
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 6px;
 		cursor: pointer;
 		transition: all 0.2s;
+		flex-wrap: wrap;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-option {
+			align-items: center;
+			gap: 0.75rem;
+			padding: 0.5rem 0.75rem;
+			flex-wrap: nowrap;
+		}
 	}
 	
 	.trigger-option:hover {
@@ -1269,25 +1335,49 @@
 	
 	.trigger-option-name {
 		font-weight: 500;
-		font-size: 0.875rem;
-		white-space: nowrap;
+		font-size: 0.8rem;
+		word-break: break-word;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-option-name {
+			font-size: 0.875rem;
+			white-space: nowrap;
+			word-break: normal;
+		}
 	}
 	
 	.trigger-option-desc {
 		color: var(--text-muted);
-		font-size: 0.75rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		font-size: 0.7rem;
+		word-break: break-word;
+	}
+	
+	@media (min-width: 640px) {
+		.trigger-option-desc {
+			font-size: 0.75rem;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			word-break: normal;
+		}
 	}
 	
 	/* Stacked Actions Styles */
 	.section-header-row {
 		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 1rem;
+		flex-direction: column;
+		gap: 0.75rem;
 		margin-bottom: 1rem;
+	}
+	
+	@media (min-width: 480px) {
+		.section-header-row {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 1rem;
+		}
 	}
 	
 	.section-header-row h2 {
@@ -1311,10 +1401,17 @@
 	}
 	
 	.action-config {
-		margin-top: 1.25rem;
-		padding: 1.25rem;
+		margin-top: 1rem;
+		padding: 1rem;
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 8px;
+	}
+	
+	@media (min-width: 640px) {
+		.action-config {
+			margin-top: 1.25rem;
+			padding: 1.25rem;
+		}
 	}
 	
 	.action-config h3 {
@@ -1428,15 +1525,47 @@
 	
 	.form-actions {
 		display: flex;
-		justify-content: space-between;
-		align-items: center;
+		flex-direction: column-reverse;
 		gap: 0.75rem;
 		padding-top: 1rem;
 	}
 	
+	.form-actions .btn-danger {
+		width: 100%;
+		justify-content: center;
+	}
+	
 	.form-actions-right {
 		display: flex;
+		flex-direction: column;
 		gap: 0.75rem;
+		width: 100%;
+	}
+	
+	.form-actions-right .btn {
+		width: 100%;
+		justify-content: center;
+	}
+	
+	@media (min-width: 480px) {
+		.form-actions {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+		}
+		
+		.form-actions .btn-danger {
+			width: auto;
+		}
+		
+		.form-actions-right {
+			flex-direction: row;
+			width: auto;
+		}
+		
+		.form-actions-right .btn {
+			width: auto;
+		}
 	}
 	
 	/* Confirm Dialog */
@@ -1470,50 +1599,45 @@
 	
 	.confirm-actions {
 		display: flex;
-		justify-content: flex-end;
+		flex-direction: column;
 		gap: 0.75rem;
+	}
+	
+	.confirm-actions .btn {
+		width: 100%;
+		justify-content: center;
+	}
+	
+	@media (min-width: 480px) {
+		.confirm-actions {
+			flex-direction: row;
+			justify-content: flex-end;
+		}
+		
+		.confirm-actions .btn {
+			width: auto;
+		}
 	}
 	
 	.confirm-actions form {
 		margin: 0;
 	}
 	
-	/* Mobile Responsive */
+	.confirm-actions form .btn {
+		width: 100%;
+	}
+	
+	@media (min-width: 480px) {
+		.confirm-actions form .btn {
+			width: auto;
+		}
+	}
+	
+	/* Mobile Responsive - filters */
 	@media (max-width: 640px) {
-		.automation-form-page {
-			padding: 1rem;
-		}
-		
-		.form-section {
-			padding: 1rem;
-		}
-		
-		.form-actions {
-			flex-direction: column-reverse;
-		}
-		
-		.form-actions .btn-danger {
-			width: 100%;
-			justify-content: center;
-		}
-		
-		.form-actions-right {
-			width: 100%;
+		.current-filters {
 			flex-direction: column;
-		}
-		
-		.form-actions-right .btn {
-			width: 100%;
-			justify-content: center;
-		}
-		
-		.confirm-actions {
-			flex-direction: column;
-		}
-		
-		.confirm-actions .btn {
-			width: 100%;
-			justify-content: center;
+			align-items: flex-start;
 		}
 	}
 </style>
