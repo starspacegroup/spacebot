@@ -238,6 +238,11 @@
 		selectedEventTypes.length > 0 && selectedEventTypes.every(e => e.startsWith('VOICE_'))
 	);
 	
+	// Check if only VOICE_MOVE is selected (from/to replace generic channel filters)
+	const onlyVoiceMoveEvent = $derived(
+		selectedEventTypes.length > 0 && selectedEventTypes.every(e => e === 'VOICE_MOVE')
+	);
+	
 	// Get filters applicable to the current event type (excluding bot-specific ones handled separately)
 	const applicableFilters = $derived.by(() => {
 		if (selectedEventTypes.length === 0) return {};
@@ -245,6 +250,8 @@
 		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
 			// Skip bot command filters - they're handled by BotCommandSelector
 			if (['target_bot_id', 'command_name', 'command_result'].includes(filterKey)) continue;
+			// When only VOICE_MOVE is selected, hide generic channel filters (from/to replace them)
+			if (onlyVoiceMoveEvent && (filterKey === 'channel_id' || filterKey === 'not_channel_id')) continue;
 			if (filterAppliesToAnyEvent(filterInfo)) {
 				result[filterKey] = filterInfo;
 			}
@@ -452,15 +459,15 @@
 							<div class="form-group">
 								<label for="filter_{filterKey}">{filterInfo.label}</label>
 								{#if filterInfo.type === 'channel'}
-									{#if onlyVoiceEvents}
+									{#if onlyVoiceEvents || filterInfo.voiceOnly}
 										<ChannelSelector
 											guildId={data.selectedGuildId}
 											typeFilter="voice,stage"
 											name="filter.{filterKey}"
 											placeholder={filterInfo.description}
 											multiple={true}
-											showAllOption={filterKey === 'channel_id'}
-											value={filterKey === 'channel_id' ? 'ALL' : ''}
+											showAllOption={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey)}
+											value={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey) ? 'ALL' : ''}
 										/>
 									{:else}
 										<ChannelSelector
@@ -468,8 +475,8 @@
 											name="filter.{filterKey}"
 											placeholder={filterInfo.description}
 											multiple={true}
-											showAllOption={filterKey === 'channel_id'}
-											value={filterKey === 'channel_id' ? 'ALL' : ''}
+											showAllOption={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey)}
+											value={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey) ? 'ALL' : ''}
 										/>
 									{/if}
 								{:else if filterInfo.type === 'role'}

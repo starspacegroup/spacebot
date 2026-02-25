@@ -511,6 +511,20 @@ export const FILTER_TYPES = {
     default: "any",
     applicableEvents: ["MEMBER_UPDATE"],
   },
+  voice_from_channel_id: {
+    type: "channel",
+    label: "From Channel(s)",
+    description: "Only trigger when moved FROM this channel",
+    applicableEvents: ["VOICE_MOVE"],
+    voiceOnly: true,
+  },
+  voice_to_channel_id: {
+    type: "channel",
+    label: "To Channel(s)",
+    description: "Only trigger when moved TO this channel",
+    applicableEvents: ["VOICE_MOVE"],
+    voiceOnly: true,
+  },
 };
 
 /**

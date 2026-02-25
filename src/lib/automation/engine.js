@@ -320,6 +320,22 @@ export function matchesFilters(event, filters, context = {}) {
           }
         }
         break;
+
+      case "voice_from_channel_id":
+        // Filter VOICE_MOVE by source channel (where user moved FROM)
+        if (filterValue !== "ALL" && event.event_type === "VOICE_MOVE") {
+          const allowedFromChannels = filterValue.split(",").map((id) => id.trim());
+          if (!allowedFromChannels.includes(event.details?.fromChannelId)) return false;
+        }
+        break;
+
+      case "voice_to_channel_id":
+        // Filter VOICE_MOVE by destination channel (where user moved TO)
+        if (filterValue !== "ALL" && event.event_type === "VOICE_MOVE") {
+          const allowedToChannels = filterValue.split(",").map((id) => id.trim());
+          if (!allowedToChannels.includes(event.channel_id)) return false;
+        }
+        break;
     }
   }
 
