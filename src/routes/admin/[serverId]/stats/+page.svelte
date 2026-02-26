@@ -267,7 +267,7 @@
 			moderation: '#E74C3C',
 			interaction: '#1ABC9C',
 		};
-		return colors[category] || '#78716C';
+		return colors[category] || '#6E6A95';
 	}
 	
 	// Get category icon
@@ -1418,7 +1418,7 @@
 	
 	.master-bot-toggle input:checked + .toggle-switch::after {
 		left: 20px;
-		background: #1C1917;
+		background: #1B1730;
 	}
 	
 	.master-bot-toggle .toggle-label {
@@ -2424,7 +2424,7 @@
 	
 	.bot-toggle input:checked + .toggle-switch::after {
 		left: 18px;
-		background: #1C1917;
+		background: #1B1730;
 	}
 	
 	.toggle-label {
@@ -2497,7 +2497,7 @@
 	
 	.bot-toggle-sm input:checked + .toggle-switch-sm::after {
 		left: 14px;
-		background: #1C1917;
+		background: #1B1730;
 	}
 	
 	.toggle-label-sm {

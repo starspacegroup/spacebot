@@ -1353,7 +1353,7 @@
 	}
 	
 	.stat-purple {
-		border-left: 4px solid #8b5cf6;
+		border-left: 4px solid #A78BFA;
 	}
 	
 	.stat-green {
@@ -1465,7 +1465,7 @@
 		height: 32px;
 		border-radius: 50%;
 		background: var(--color-primary);
-		color: #1C1917;
+		color: var(--color-primary);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -2132,7 +2132,7 @@
 	
 	.token-warning {
 		font-size: 0.75rem;
-		color: #f59e0b;
+		color: var(--color-warning);
 		margin: 0;
 	}
 	

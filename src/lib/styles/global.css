@@ -1,12 +1,12 @@
 /* Global CSS Variables for theming */
-/* SpaceBot uses a space-inspired color palette with warm amber/orange accents */
+/* SpaceBot uses a cosmic purple/indigo palette derived from the avatar image */
 
 :root {
-	/* Brand colors - Space-themed amber/orange accent */
-	--color-accent: #D97706;
-	--color-accent-hover: #B45309;
-	--color-accent-light: #F59E0B;
-	--color-accent-soft: rgba(217, 119, 6, 0.15);
+	/* Brand colors - Cosmic violet/indigo accent */
+	--color-accent: #7C3AED;
+	--color-accent-hover: #6D28D9;
+	--color-accent-light: #A78BFA;
+	--color-accent-soft: rgba(124, 58, 237, 0.12);
 	
 	/* Discord brand colors (for Discord-specific UI) */
 	--discord-blurple: #5865F2;
@@ -38,34 +38,34 @@
 	--color-info-hover: #2563EB;
 	--color-info-soft: rgba(59, 130, 246, 0.15);
 	
-	/* Backgrounds */
-	--color-background: #FAFAF9;
-	--color-background-alt: #F5F5F4;
+	/* Backgrounds - Light with subtle purple tint */
+	--color-background: #F9F8FC;
+	--color-background-alt: #F0EEF8;
 	--color-surface: #FFFFFF;
-	--color-surface-elevated: #F5F5F4;
-	--color-surface-hover: #E7E5E4;
-	--color-surface-active: #D6D3D1;
+	--color-surface-elevated: #F3F1F9;
+	--color-surface-hover: #E8E5F3;
+	--color-surface-active: #DBD7ED;
 	
 	/* Text */
-	--color-text: #1C1917;
-	--color-text-secondary: #57534E;
-	--color-text-muted: #78716C;
-	--color-text-light: #A8A29E;
-	--color-text-inverse: #FAFAF9;
+	--color-text: #1B1730;
+	--color-text-secondary: #44406B;
+	--color-text-muted: #6E6A95;
+	--color-text-light: #9994B8;
+	--color-text-inverse: #F0EEF8;
 	
 	/* Borders */
-	--color-border: #D6D3D1;
-	--color-border-light: #E7E5E4;
-	--color-border-strong: #A8A29E;
+	--color-border: #D8D4EA;
+	--color-border-light: #E8E5F3;
+	--color-border-strong: #9994B8;
 	
 	/* Code/Mono backgrounds */
-	--color-code-bg: #F5F5F4;
+	--color-code-bg: #F3F1F9;
 	
 	/* Shadows */
-	--shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.05);
-	--shadow-md: 0 4px 6px rgba(28, 25, 23, 0.08);
-	--shadow-lg: 0 10px 15px rgba(28, 25, 23, 0.1);
-	--shadow-xl: 0 20px 25px rgba(28, 25, 23, 0.12);
+	--shadow-sm: 0 1px 2px rgba(27, 23, 48, 0.05);
+	--shadow-md: 0 4px 6px rgba(27, 23, 48, 0.08);
+	--shadow-lg: 0 10px 15px rgba(27, 23, 48, 0.1);
+	--shadow-xl: 0 20px 25px rgba(27, 23, 48, 0.12);
 	
 	/* Transitions */
 	--transition-fast: 0.15s ease;
@@ -94,12 +94,12 @@
 	--accent-hover: var(--color-primary-hover);
 }
 
-/* Dark theme - Space-inspired dark palette */
+/* Dark theme - Deep cosmic purple palette from avatar */
 [data-theme="dark"] {
-	--color-accent: #F59E0B;
-	--color-accent-hover: #FBBF24;
-	--color-accent-light: #FCD34D;
-	--color-accent-soft: rgba(245, 158, 11, 0.2);
+	--color-accent: #A78BFA;
+	--color-accent-hover: #C4B5FD;
+	--color-accent-light: #DDD6FE;
+	--color-accent-soft: rgba(167, 139, 250, 0.2);
 	
 	--color-primary: var(--color-accent);
 	--color-primary-hover: var(--color-accent-hover);
@@ -122,28 +122,28 @@
 	--color-info-hover: #3B82F6;
 	--color-info-soft: rgba(96, 165, 250, 0.2);
 	
-	/* Backgrounds - Deep space dark */
-	--color-background: #0C0A09;
-	--color-background-alt: #1C1917;
-	--color-surface: #1C1917;
-	--color-surface-elevated: #292524;
-	--color-surface-hover: #3F3A36;
-	--color-surface-active: #57534E;
+	/* Backgrounds - Deep cosmic purple (from avatar dominant colors) */
+	--color-background: #0D0B1A;
+	--color-background-alt: #161330;
+	--color-surface: #1A1735;
+	--color-surface-elevated: #242045;
+	--color-surface-hover: #302B58;
+	--color-surface-active: #3D376B;
 	
 	/* Text */
-	--color-text: #FAFAF9;
-	--color-text-secondary: #D6D3D1;
-	--color-text-muted: #A8A29E;
-	--color-text-light: #78716C;
-	--color-text-inverse: #1C1917;
+	--color-text: #F0EEF8;
+	--color-text-secondary: #CBC7E0;
+	--color-text-muted: #9994B8;
+	--color-text-light: #6E6A95;
+	--color-text-inverse: #1B1730;
 	
 	/* Borders */
-	--color-border: #3F3A36;
-	--color-border-light: #292524;
-	--color-border-strong: #57534E;
+	--color-border: #302B58;
+	--color-border-light: #242045;
+	--color-border-strong: #3D376B;
 	
 	/* Code/Mono backgrounds */
-	--color-code-bg: #292524;
+	--color-code-bg: #242045;
 	
 	/* Shadows - deeper in dark mode */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -296,7 +296,7 @@ pre code {
 	outline-offset: 2px;
 }
 
-/* Primary — amber brand with white text for readability */
+/* Primary — violet brand with white text for readability */
 .btn-primary {
 	background: var(--color-primary);
 	color: white;
@@ -309,15 +309,15 @@ pre code {
 }
 
 /*
- * In dark mode the accent is bright (#F59E0B) which gives poor
- * white-text contrast. Use the deeper amber (#D97706) for buttons.
+ * In dark mode the accent is lighter (#A78BFA). Use a deeper violet
+ * for button backgrounds to ensure white-text contrast.
  */
 [data-theme="dark"] .btn-primary {
-	background: #D97706;
+	background: #7C3AED;
 }
 
 [data-theme="dark"] .btn-primary:hover:not(:disabled) {
-	background: #B45309;
+	background: #6D28D9;
 }
 
 /* Secondary — surface color with border */
@@ -356,7 +356,7 @@ pre code {
 /* Warning — yellow/amber for caution actions */
 .btn-warning {
 	background: var(--color-warning);
-	color: #1C1917;
+	color: #1B1730;
 	font-weight: 600;
 }
 
@@ -378,7 +378,7 @@ pre code {
 /* Success */
 .btn-success {
 	background: var(--color-success);
-	color: #1C1917;
+	color: #1B1730;
 	font-weight: 600;
 }
 
