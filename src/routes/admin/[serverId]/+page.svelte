@@ -117,14 +117,6 @@
 					Server Management
 				</h2>
 				<div class="quick-links-grid">
-					<a href="/admin/{data.serverId}/logs" class="quick-link-card">
-						<div class="quick-link-icon">📊</div>
-						<div class="quick-link-info">
-							<span class="quick-link-title">Event Logs</span>
-							<span class="quick-link-desc">View all server activity logs</span>
-						</div>
-						<span class="quick-link-arrow">→</span>
-					</a>
 					<a href="/admin/{data.serverId}/automations" class="quick-link-card">
 						<div class="quick-link-icon">⚡</div>
 						<div class="quick-link-info">

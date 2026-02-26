@@ -514,11 +514,14 @@
 					<h1>📊 Statistics</h1>
 					<p class="subtitle">Comprehensive analytics for {data.guild?.name || 'your server'}</p>
 				</div>
-				<label class="master-bot-toggle">
-					<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
-					<span class="toggle-switch"></span>
-					<span class="toggle-label">🤖 Include Bots</span>
-				</label>
+				<div class="header-actions">
+					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm">📜 Event Logs</a>
+					<label class="master-bot-toggle">
+						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
+						<span class="toggle-switch"></span>
+						<span class="toggle-label">🤖 Include Bots</span>
+					</label>
+				</div>
 			</div>
 		</div>
 	</header>
@@ -1382,6 +1385,12 @@
 	}
 	
 	/* Master bot toggle */
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
 	.master-bot-toggle {
 		display: flex;
 		align-items: center;
