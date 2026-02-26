@@ -65,10 +65,11 @@
 		// Build smooth curve path using catmull-rom spline
 		const linePath = buildSmoothPath(points);
 		
-		// Area path
+		// Area path - strip the leading "M x y" from linePath to get just the curve/line commands
+		const curveCommands = linePath.replace(/^M\s+\S+\s+\S+/, '');
 		const areaPath = `M ${padding.left} ${padding.top + innerHeight} ` +
-			`L ${points[0]?.x || padding.left} ${points[0]?.y || padding.top + innerHeight} ` +
-			linePath.slice(linePath.indexOf('L') + 1) +
+			`L ${points[0]?.x || padding.left} ${points[0]?.y || padding.top + innerHeight}` +
+			curveCommands +
 			` L ${points[points.length - 1]?.x || padding.left} ${padding.top + innerHeight} Z`;
 		
 		// Grid lines (5 horizontal)
