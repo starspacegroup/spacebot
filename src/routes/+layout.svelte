@@ -7,6 +7,7 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
 	import { updated } from '$app/stores';
+	import { applyServerTheme, clearServerTheme, preloadGuildHues } from '$lib/server-theme.svelte.js';
 
 	let { children, data } = $props();
 	
@@ -38,6 +39,38 @@
 	
 	// Only show login button after initialization to prevent flash
 	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
+	
+	// Pre-extract hues for all admin guilds so switching servers is instant.
+	$effect(() => {
+		if (adminGuilds.length > 0) {
+			preloadGuildHues(adminGuilds);
+		}
+	});
+	
+	// Apply server-specific accent color when viewing a server's admin pages.
+	// Extracts the dominant color from the guild's Discord icon and uses it
+	// to tint the entire UI, giving each server a branded feel.
+	// Prefers stored guild metadata (from daily cron) over OAuth guild data.
+	$effect(() => {
+		const pathname = $page.url.pathname;
+		const match = pathname.match(/^\/admin\/(\d{17,20})/);
+		
+		if (match) {
+			const serverId = match[1];
+			// Prefer guild metadata from page data (stored by cron, has richer info)
+			const metadata = $page.data?.guildMetadata;
+			const guild = adminGuilds.find(g => g.id === serverId);
+			const iconHash = metadata?.icon || guild?.icon;
+			
+			if (iconHash) {
+				applyServerTheme(serverId, iconHash);
+			} else {
+				clearServerTheme();
+			}
+		} else {
+			clearServerTheme();
+		}
+	});
 </script>
 
 <svelte:head>

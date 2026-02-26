@@ -107,7 +107,8 @@ export async function load({ params, cookies, platform, parent }) {
       if ((!existingStats || existingStats.member_count === 0) && botToken) {
         // No valid stats exist - fetch current stats from Discord API and save
         log.info(`[Stats] No valid stats for guild ${serverId}, fetching from Discord...`);
-        const discordStats = await fetchGuildStatsFromDiscord(botToken, serverId);
+        const fetchResult = await fetchGuildStatsFromDiscord(botToken, serverId);
+        const discordStats = fetchResult?.stats;
         log.debug(`[Stats] Discord API returned:`, discordStats);
         if (discordStats && discordStats.member_count > 0) {
           const saveResult = await recordServerStats(db, serverId, discordStats);

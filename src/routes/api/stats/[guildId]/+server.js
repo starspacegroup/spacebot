@@ -130,10 +130,11 @@ export async function POST({ params, request, platform }) {
 
     // If no stats provided, fetch from Discord API
     if (!stats) {
-      stats = await fetchGuildStatsFromDiscord(botToken, guildId);
-      if (!stats) {
+      const fetchResult = await fetchGuildStatsFromDiscord(botToken, guildId);
+      if (!fetchResult) {
         return json({ error: "Failed to fetch guild stats from Discord" }, { status: 502 });
       }
+      stats = fetchResult.stats;
     }
 
     // Record the stats

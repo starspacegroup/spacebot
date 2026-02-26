@@ -1,5 +1,6 @@
 <script>
 	import { log } from '$lib/log.js';
+	import { goto } from '$app/navigation';
 	
 	let { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
@@ -24,7 +25,8 @@
 	}
 	
 	function selectGuild(guildId) {
-		window.location.href = `${basePath}/${guildId}`;
+		closeDropdown();
+		goto(`${basePath}/${guildId}`, { invalidateAll: true });
 	}
 	
 	function handleKeydown(event) {

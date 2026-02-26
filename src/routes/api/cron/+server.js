@@ -11,6 +11,7 @@ import { json } from "@sveltejs/kit";
 import { runStatsAggregation, cleanupOldData } from "$lib/db/stats-aggregation.js";
 import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "$lib/db/server-stats.js";
 import { refreshGuildCache } from "$lib/db/guild-cache.js";
+import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { log } from "$lib/log.js";
 
 /**
@@ -297,18 +298,34 @@ async function runDailyRefresh(db, botToken) {
     },
   };
 
-  // Refresh stats and cache from Discord for each guild
+  const metadataResults = { processed: 0, failed: 0 };
+
+  // Refresh stats, metadata, and cache from Discord for each guild
   for (const guild of guilds) {
     try {
-      // 1. Refresh basic server stats
-      const stats = await fetchGuildStatsFromDiscord(botToken, guild.id);
+      // 1. Refresh basic server stats + guild metadata
+      const fetchResult = await fetchGuildStatsFromDiscord(botToken, guild.id);
       
-      if (stats) {
-        const result = await recordServerStats(db, guild.id, stats);
+      if (fetchResult) {
+        // Record server stats
+        const result = await recordServerStats(db, guild.id, fetchResult.stats);
         if (result.success) {
           results.stats.processed++;
         } else {
           results.stats.failed++;
+        }
+
+        // Store comprehensive guild metadata (icon, banner, features, etc.)
+        try {
+          const metaResult = await upsertGuildMetadata(db, fetchResult.rawGuild);
+          if (metaResult.success) {
+            metadataResults.processed++;
+          } else {
+            metadataResults.failed++;
+          }
+        } catch (metaError) {
+          metadataResults.failed++;
+          log.warn(`[Cron API] Metadata upsert failed for ${guild.id}:`, metaError);
         }
       } else {
         results.stats.failed++;
@@ -351,8 +368,9 @@ async function runDailyRefresh(db, botToken) {
   // Cleanup old data
   results.prunedStats = await pruneOldStats(db);
   results.cleanup = await cleanupOldData(db);
+  results.metadata = metadataResults;
 
-  log.info(`[Cron API] Daily refresh complete: ${results.stats.processed} stats, ${results.cache.processed} caches (${results.cache.totalMembers} members, ${results.cache.totalRoles} roles)`);
+  log.info(`[Cron API] Daily refresh complete: ${results.stats.processed} stats, ${metadataResults.processed} metadata, ${results.cache.processed} caches (${results.cache.totalMembers} members, ${results.cache.totalRoles} roles)`);
 
   return results;
 }

@@ -109,10 +109,10 @@ export async function POST({ request, platform }) {
 
       try {
         // Fetch stats from Discord
-        const stats = await fetchGuildStatsFromDiscord(botToken, guild.id);
+        const fetchResult = await fetchGuildStatsFromDiscord(botToken, guild.id);
         
-        if (stats) {
-          const result = await recordServerStats(db, guild.id, stats);
+        if (fetchResult) {
+          const result = await recordServerStats(db, guild.id, fetchResult.stats);
           if (result.success) {
             results.processed++;
             statsSuccess = true;

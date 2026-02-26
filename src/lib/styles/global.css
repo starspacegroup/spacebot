@@ -1,14 +1,24 @@
 /* Global CSS Variables for theming */
-/* SpaceBot uses a cosmic purple/indigo palette derived from the avatar image */
+/* SpaceBot uses a monochrome palette derived from a single hue.
+   Change --hue and the ENTIRE UI shifts to match. */
+
+@property --hue {
+	syntax: '<number>';
+	inherits: true;
+	initial-value: 263;
+}
 
 :root {
-	/* Brand colors - Cosmic violet/indigo accent */
-	--color-accent: #7C3AED;
-	--color-accent-hover: #6D28D9;
-	--color-accent-light: #A78BFA;
-	--color-accent-soft: rgba(124, 58, 237, 0.12);
+	/* ===== Monochrome Hue — single source of truth for the palette ===== */
+	--hue: 263;
 	
-	/* Discord brand colors (for Discord-specific UI) */
+	/* Brand colors — vivid accent derived from --hue */
+	--color-accent: hsl(var(--hue), 80%, 55%);
+	--color-accent-hover: hsl(var(--hue), 82%, 47%);
+	--color-accent-light: hsl(var(--hue), 65%, 72%);
+	--color-accent-soft: hsla(var(--hue), 80%, 55%, 0.12);
+	
+	/* Discord brand colors (fixed — not affected by theme hue) */
 	--discord-blurple: #5865F2;
 	--discord-blurple-dark: #4752C4;
 	--discord-green: #57F287;
@@ -16,12 +26,18 @@
 	--discord-yellow: #FEE75C;
 	--discord-red: #ED4245;
 	
-	/* Light theme (default) */
+	/* Primary — aliases to accent */
 	--color-primary: var(--color-accent);
 	--color-primary-hover: var(--color-accent-hover);
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
 	
+	/* Buttons — same as accent in light mode */
+	--color-primary-button: var(--color-accent);
+	--color-primary-button-hover: var(--color-accent-hover);
+	--color-primary-button-text: white;
+	
+	/* Semantic status colors (fixed hues — must stay consistent for UX) */
 	--color-success: #22C55E;
 	--color-success-hover: #16A34A;
 	--color-success-soft: rgba(34, 197, 94, 0.15);
@@ -38,34 +54,34 @@
 	--color-info-hover: #2563EB;
 	--color-info-soft: rgba(59, 130, 246, 0.15);
 	
-	/* Backgrounds - Light with subtle purple tint */
-	--color-background: #F9F8FC;
-	--color-background-alt: #F0EEF8;
-	--color-surface: #FFFFFF;
-	--color-surface-elevated: #F3F1F9;
-	--color-surface-hover: #E8E5F3;
-	--color-surface-active: #DBD7ED;
+	/* Backgrounds — subtle tint of the hue */
+	--color-background: hsl(var(--hue), 30%, 97%);
+	--color-background-alt: hsl(var(--hue), 28%, 95%);
+	--color-surface: hsl(var(--hue), 15%, 99%);
+	--color-surface-elevated: hsl(var(--hue), 25%, 96%);
+	--color-surface-hover: hsl(var(--hue), 22%, 93%);
+	--color-surface-active: hsl(var(--hue), 22%, 89%);
 	
-	/* Text */
-	--color-text: #1B1730;
-	--color-text-secondary: #44406B;
-	--color-text-muted: #6E6A95;
-	--color-text-light: #9994B8;
-	--color-text-inverse: #F0EEF8;
+	/* Text — dark, tinted with the hue */
+	--color-text: hsl(var(--hue), 25%, 14%);
+	--color-text-secondary: hsl(var(--hue), 22%, 33%);
+	--color-text-muted: hsl(var(--hue), 15%, 50%);
+	--color-text-light: hsl(var(--hue), 12%, 66%);
+	--color-text-inverse: hsl(var(--hue), 25%, 95%);
 	
-	/* Borders */
-	--color-border: #D8D4EA;
-	--color-border-light: #E8E5F3;
-	--color-border-strong: #9994B8;
+	/* Borders — subtle hue tint */
+	--color-border: hsl(var(--hue), 20%, 87%);
+	--color-border-light: hsl(var(--hue), 22%, 92%);
+	--color-border-strong: hsl(var(--hue), 15%, 66%);
 	
 	/* Code/Mono backgrounds */
-	--color-code-bg: #F3F1F9;
+	--color-code-bg: hsl(var(--hue), 25%, 96%);
 	
-	/* Shadows */
-	--shadow-sm: 0 1px 2px rgba(27, 23, 48, 0.05);
-	--shadow-md: 0 4px 6px rgba(27, 23, 48, 0.08);
-	--shadow-lg: 0 10px 15px rgba(27, 23, 48, 0.1);
-	--shadow-xl: 0 20px 25px rgba(27, 23, 48, 0.12);
+	/* Shadows — tinted with hue */
+	--shadow-sm: 0 1px 2px hsla(var(--hue), 20%, 10%, 0.06);
+	--shadow-md: 0 4px 6px hsla(var(--hue), 20%, 10%, 0.09);
+	--shadow-lg: 0 10px 15px hsla(var(--hue), 20%, 10%, 0.11);
+	--shadow-xl: 0 20px 25px hsla(var(--hue), 20%, 10%, 0.13);
 	
 	/* Transitions */
 	--transition-fast: 0.15s ease;
@@ -94,17 +110,22 @@
 	--accent-hover: var(--color-primary-hover);
 }
 
-/* Dark theme - Deep cosmic purple palette from avatar */
+/* Dark theme — deep monochrome palette derived from --hue */
 [data-theme="dark"] {
-	--color-accent: #A78BFA;
-	--color-accent-hover: #C4B5FD;
-	--color-accent-light: #DDD6FE;
-	--color-accent-soft: rgba(167, 139, 250, 0.2);
+	--color-accent: hsl(var(--hue), 78%, 75%);
+	--color-accent-hover: hsl(var(--hue), 72%, 82%);
+	--color-accent-light: hsl(var(--hue), 65%, 86%);
+	--color-accent-soft: hsla(var(--hue), 78%, 75%, 0.2);
 	
 	--color-primary: var(--color-accent);
 	--color-primary-hover: var(--color-accent-hover);
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
+	
+	/* Button — darker shade for white-text contrast */
+	--color-primary-button: hsl(var(--hue), 80%, 48%);
+	--color-primary-button-hover: hsl(var(--hue), 82%, 40%);
+	--color-primary-button-text: white;
 	
 	--color-success: #4ADE80;
 	--color-success-hover: #22C55E;
@@ -122,34 +143,34 @@
 	--color-info-hover: #3B82F6;
 	--color-info-soft: rgba(96, 165, 250, 0.2);
 	
-	/* Backgrounds - Deep cosmic purple (from avatar dominant colors) */
-	--color-background: #0D0B1A;
-	--color-background-alt: #161330;
-	--color-surface: #1A1735;
-	--color-surface-elevated: #242045;
-	--color-surface-hover: #302B58;
-	--color-surface-active: #3D376B;
+	/* Backgrounds — deep tinted darks */
+	--color-background: hsl(var(--hue), 35%, 7%);
+	--color-background-alt: hsl(var(--hue), 38%, 13%);
+	--color-surface: hsl(var(--hue), 35%, 15%);
+	--color-surface-elevated: hsl(var(--hue), 32%, 20%);
+	--color-surface-hover: hsl(var(--hue), 28%, 26%);
+	--color-surface-active: hsl(var(--hue), 25%, 32%);
 	
-	/* Text */
-	--color-text: #F0EEF8;
-	--color-text-secondary: #CBC7E0;
-	--color-text-muted: #9994B8;
-	--color-text-light: #6E6A95;
-	--color-text-inverse: #1B1730;
+	/* Text — light, tinted with the hue */
+	--color-text: hsl(var(--hue), 25%, 95%);
+	--color-text-secondary: hsl(var(--hue), 18%, 83%);
+	--color-text-muted: hsl(var(--hue), 12%, 66%);
+	--color-text-light: hsl(var(--hue), 12%, 50%);
+	--color-text-inverse: hsl(var(--hue), 25%, 14%);
 	
 	/* Borders */
-	--color-border: #302B58;
-	--color-border-light: #242045;
-	--color-border-strong: #3D376B;
+	--color-border: hsl(var(--hue), 25%, 26%);
+	--color-border-light: hsl(var(--hue), 28%, 20%);
+	--color-border-strong: hsl(var(--hue), 22%, 32%);
 	
 	/* Code/Mono backgrounds */
-	--color-code-bg: #242045;
+	--color-code-bg: hsl(var(--hue), 30%, 20%);
 	
-	/* Shadows - deeper in dark mode */
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-	--shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
-	--shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
-	--shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6);
+	/* Shadows — deeper in dark mode */
+	--shadow-sm: 0 1px 2px hsla(0, 0%, 0%, 0.3);
+	--shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.4);
+	--shadow-lg: 0 10px 15px hsla(0, 0%, 0%, 0.5);
+	--shadow-xl: 0 20px 25px hsla(0, 0%, 0%, 0.6);
 	
 	/* Backwards-compatible aliases for old variable names */
 	--bg-primary: var(--color-background);
@@ -296,28 +317,17 @@ pre code {
 	outline-offset: 2px;
 }
 
-/* Primary — violet brand with white text for readability */
+/* Primary — uses --color-primary-button which is a darker shade in dark mode
+   to ensure white-text contrast (accent color is lighter for text/links). */
 .btn-primary {
-	background: var(--color-primary);
-	color: white;
+	background: var(--color-primary-button);
+	color: var(--color-primary-button-text);
 	font-weight: 600;
 	text-shadow: 0 1px 1px rgba(0, 0, 0, 0.12);
 }
 
 .btn-primary:hover:not(:disabled) {
-	background: var(--color-primary-hover);
-}
-
-/*
- * In dark mode the accent is lighter (#A78BFA). Use a deeper violet
- * for button backgrounds to ensure white-text contrast.
- */
-[data-theme="dark"] .btn-primary {
-	background: #7C3AED;
-}
-
-[data-theme="dark"] .btn-primary:hover:not(:disabled) {
-	background: #6D28D9;
+	background: var(--color-primary-button-hover);
 }
 
 /* Secondary — surface color with border */

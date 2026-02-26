@@ -1353,7 +1353,7 @@
 	}
 	
 	.stat-purple {
-		border-left: 4px solid #A78BFA;
+		border-left: 4px solid var(--color-accent-light);
 	}
 	
 	.stat-green {

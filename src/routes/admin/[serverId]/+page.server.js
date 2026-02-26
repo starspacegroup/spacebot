@@ -10,6 +10,7 @@ import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 import { getGuildStatistics } from "$lib/db/statistics.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
 import { getMemberGrowthChart, getVoiceActivityChart } from "$lib/db/stats-aggregation.js";
+import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -139,11 +140,12 @@ export async function load({ cookies, platform, parent, params }) {
   let voiceActivityChartData = [];
   let activityChartData = [];
   let builtInCmds = [];
+  let guildMetadata = null;
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
-      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn] = await Promise.all([
+      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn, metadata] = await Promise.all([
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),
         getGuildStatistics(db, serverId),
@@ -151,6 +153,7 @@ export async function load({ cookies, platform, parent, params }) {
         getMemberGrowthChart(db, serverId, "30d"),
         getVoiceActivityChart(db, serverId, "30d"),
         getBuiltInCommands(db),
+        getGuildMetadata(db, serverId),
       ]);
       logStats = stats;
       dbSettings = settings;
@@ -158,6 +161,7 @@ export async function load({ cookies, platform, parent, params }) {
       voiceActivityChartData = voiceActivity || [];
       activityChartData = guildStats?.timeSeries?.daily || [];
       builtInCmds = builtIn || [];
+      guildMetadata = metadata || null;
       basicStats = {
         members: memberStats?.member_count || 0,
         humanMembers: memberStats?.human_count || 0,
@@ -209,6 +213,7 @@ export async function load({ cookies, platform, parent, params }) {
     },
     serverId,
     guild,
+    guildMetadata,
     botInGuild,
     logStats,
     settings: {

@@ -1418,7 +1418,7 @@
 	
 	.master-bot-toggle input:checked + .toggle-switch::after {
 		left: 20px;
-		background: #1B1730;
+		background: var(--color-background);
 	}
 	
 	.master-bot-toggle .toggle-label {
@@ -2424,7 +2424,7 @@
 	
 	.bot-toggle input:checked + .toggle-switch::after {
 		left: 18px;
-		background: #1B1730;
+		background: var(--color-background);
 	}
 	
 	.toggle-label {
@@ -2497,7 +2497,7 @@
 	
 	.bot-toggle-sm input:checked + .toggle-switch-sm::after {
 		left: 14px;
-		background: #1B1730;
+		background: var(--color-background);
 	}
 	
 	.toggle-label-sm {

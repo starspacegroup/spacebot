@@ -373,7 +373,7 @@ export async function pruneOldStats(db, guildId = null) {
  * Fetch current guild stats from Discord API
  * @param {string} botToken - Bot token
  * @param {string} guildId - Guild ID
- * @returns {Promise<Object|null>} - Guild statistics
+ * @returns {Promise<{stats: Object, rawGuild: Object}|null>} - Guild stats + raw API response
  */
 export async function fetchGuildStatsFromDiscord(botToken, guildId) {
   if (!botToken || !guildId) return null;
@@ -415,15 +415,18 @@ export async function fetchGuildStatsFromDiscord(botToken, guildId) {
     log.debug(`[Stats] Fetched guild ${guildId}: ${memberCount} members, ${botCount ?? '?'} bots, ${humanCount ?? '?'} humans`);
 
     return {
-      member_count: memberCount,
-      online_count: guild.approximate_presence_count || null,
-      bot_count: botCount,
-      human_count: humanCount,
-      channel_count: null, // Would need separate API call
-      role_count: guild.roles?.length || null,
-      emoji_count: guild.emojis?.length || null,
-      boost_count: guild.premium_subscription_count || 0,
-      boost_level: guild.premium_tier || 0,
+      stats: {
+        member_count: memberCount,
+        online_count: guild.approximate_presence_count || null,
+        bot_count: botCount,
+        human_count: humanCount,
+        channel_count: null, // Would need separate API call
+        role_count: guild.roles?.length || null,
+        emoji_count: guild.emojis?.length || null,
+        boost_count: guild.premium_subscription_count || 0,
+        boost_level: guild.premium_tier || 0,
+      },
+      rawGuild: guild,
     };
   } catch (error) {
     log.error("Failed to fetch guild stats from Discord:", error);
