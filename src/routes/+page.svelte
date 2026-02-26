@@ -230,9 +230,9 @@
 	.hero-identity {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.5rem;
 		margin-bottom: 0.5rem;
-		font-size: 4.5rem;
+		font-size: 3rem;
 		line-height: 1;
 		background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
 		-webkit-background-clip: text;
@@ -242,8 +242,8 @@
 
 	@media (min-width: 900px) {
 		.hero-identity {
-			font-size: 6rem;
-			gap: 1rem;
+			font-size: 4rem;
+			gap: 0.75rem;
 		}
 	}
 
