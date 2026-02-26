@@ -7,14 +7,14 @@
 
 <svelte:head>
 	<title>SpaceBot – Discord Bot Platform</title>
-	<meta name="description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free forever." />
+	<meta name="description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
 </svelte:head>
 
 <div class="landing">
 	<!-- Hero Section -->
 	<section class="hero">
 		<div class="hero-content">
-			<h1><span class="selectable">🚀</span> SpaceBot</h1>
+			<h1 class="hero-identity"><img src="/logo.webp" alt="SpaceBot logo" class="hero-logo" /> SpaceBot</h1>
 			<p class="tagline">The powerful Discord bot platform you control</p>
 			<p class="description">
 				Custom commands, event-driven automations, an AI assistant, server analytics, webhooks, integrations, and a full REST API — all from a beautiful dashboard. <strong>100% open source.</strong>
@@ -98,19 +98,19 @@
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
 		<h2>Simple, transparent pricing</h2>
-		<p class="pricing-subtitle">Free forever. Pay only if you need full stats history.</p>
+		<p class="pricing-subtitle">Get started free with generous limits. Go unlimited for $9/mo.</p>
 		
 		<div class="pricing-grid">
 			<div class="pricing-card">
-				<div class="pricing-badge">Free Forever</div>
+				<div class="pricing-badge">Free</div>
 				<div class="pricing-price">
 					<span class="price-amount">$0</span>
 					<span class="price-period">/mo</span>
 				</div>
-				<p class="pricing-description">Everything you need to run your Discord server.</p>
+				<p class="pricing-description">Everything you need to get started.</p>
 				<ul class="pricing-features">
-					<li><span class="check">✓</span> Unlimited custom commands</li>
-					<li><span class="check">✓</span> Unlimited automations</li>
+					<li><span class="check">✓</span> Up to 3 custom commands</li>
+					<li><span class="check">✓</span> Up to 9 automations</li>
 					<li><span class="check">✓</span> AI assistant via DM</li>
 					<li><span class="check">✓</span> Event logs & search</li>
 					<li><span class="check">✓</span> Webhooks & integrations</li>
@@ -131,14 +131,12 @@
 					<span class="price-amount">$9</span>
 					<span class="price-period">/mo</span>
 				</div>
-				<p class="pricing-description">Unlock the full history of your server analytics.</p>
+				<p class="pricing-description">Unlimited commands, automations, and full stats history.</p>
 				<ul class="pricing-features">
 					<li><span class="check">✓</span> Everything in Free</li>
+					<li><span class="check-pro">✓</span> Unlimited custom commands</li>
+					<li><span class="check-pro">✓</span> Unlimited automations</li>
 					<li><span class="check-pro">✓</span> Unlimited server stats history</li>
-					<li><span class="check-pro">✓</span> Full analytics & trend data</li>
-					<li><span class="check-pro">✓</span> Member growth over time</li>
-					<li><span class="check-pro">✓</span> Activity & voice trends</li>
-					<li><span class="check-pro">✓</span> Priority support</li>
 				</ul>
 				{#if data.isLoggedIn}
 					<a href={adminUrl} class="btn btn-primary btn-block">Upgrade to Pro</a>
@@ -205,13 +203,56 @@
 		padding: 4rem 1rem 5rem;
 	}
 
-	.hero h1 {
-		font-size: 3.5rem;
+	@media (min-width: 900px) {
+		.hero {
+			display: flex;
+			align-items: center;
+			gap: 3rem;
+			text-align: left;
+		}
+
+		.hero-content {
+			flex: 1;
+			min-width: 0;
+		}
+
+		.description {
+			margin-left: 0;
+		}
+
+		.hero-screenshot {
+			flex: 1.2;
+			min-width: 0;
+			margin-top: 0;
+		}
+	}
+
+	.hero-identity {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.75rem;
 		margin-bottom: 0.5rem;
+		font-size: 4.5rem;
+		line-height: 1;
 		background: linear-gradient(135deg, var(--color-primary), #8b5cf6);
 		-webkit-background-clip: text;
 		-webkit-text-fill-color: transparent;
 		background-clip: text;
+	}
+
+	@media (min-width: 900px) {
+		.hero-identity {
+			font-size: 6rem;
+			gap: 1rem;
+		}
+	}
+
+	.hero-logo {
+		height: 1em;
+		width: 1em;
+		border-radius: 50%;
+		flex-shrink: 0;
+		object-fit: cover;
 	}
 
 	.tagline {
@@ -238,9 +279,6 @@
 
 	.hero-screenshot {
 		margin-top: 3rem;
-		max-width: 1000px;
-		margin-left: auto;
-		margin-right: auto;
 	}
 
 	.hero-screenshot img {
