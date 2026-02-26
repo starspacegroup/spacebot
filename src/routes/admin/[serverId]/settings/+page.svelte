@@ -3,6 +3,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import { TIMEZONE_OPTIONS, getTimezone, getTimezoneAbbreviation } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
 	
@@ -35,6 +36,36 @@
 	let welcomeChannelId = $state(data.settings?.welcomeChannelId || '');
 	// svelte-ignore state_referenced_locally
 	let welcomeMessage = $state(data.settings?.welcomeMessage || 'Welcome {user} to {server}!');
+	
+	// Timezone setting
+	// svelte-ignore state_referenced_locally
+	let timezone = $state(data.settings?.timezone || '');
+	
+	// Browser timezone detection
+	let browserTimezone = $state('');
+	let browserTime = $state('');
+	
+	$effect(() => {
+		try {
+			browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		} catch {
+			browserTimezone = 'Unknown';
+		}
+		
+		function tick() {
+			const tz = timezone || browserTimezone;
+			browserTime = new Date().toLocaleTimeString('en-US', {
+				hour: 'numeric',
+				minute: '2-digit',
+				second: '2-digit',
+				hour12: true,
+				timeZone: tz,
+			});
+		}
+		tick();
+		const interval = setInterval(tick, 1000);
+		return () => clearInterval(interval);
+	});
 	
 	// Permission settings state
 	// svelte-ignore state_referenced_locally
@@ -110,6 +141,7 @@
 		welcomeEnabled = data.settings?.welcomeEnabled || false;
 		welcomeChannelId = data.settings?.welcomeChannelId || '';
 		welcomeMessage = data.settings?.welcomeMessage || 'Welcome {user} to {server}!';
+		timezone = data.settings?.timezone || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
 		manageAutomationsPerm = data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
@@ -343,11 +375,47 @@
 							bind:value={welcomeMessage}
 							rows="3"
 							class="setting-textarea"
-							placeholder="Welcome {user} to {server}!"
+							placeholder={"Welcome {user} to {server}!"}
 							oninput={autoSave}
 						></textarea>
 					</div>
 				{/if}
+			</div>
+		</section>
+		
+		<!-- Timezone Settings -->
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">🌐</span>
+				Timezone
+			</h2>
+			
+			<div class="settings-card">
+				<div class="setting-row">
+					<div class="setting-info">
+						<label for="timezone" class="setting-label">Display Timezone</label>
+						<span class="setting-desc">All dates and times in the dashboard will be displayed in this timezone. Leave on "Browser Default" to use each viewer's local timezone.</span>
+						{#if browserTimezone}
+							<span class="setting-hint">
+								🕐 Your browser: <strong>{browserTimezone}</strong>{#if browserTime} — {browserTime}{/if}
+							</span>
+						{/if}
+					</div>
+					<div class="setting-control">
+						<select
+							id="timezone"
+							name="timezone"
+							bind:value={timezone}
+							class="permission-select"
+							onchange={autoSave}
+						>
+							<option value="">🌐 Browser Default</option>
+							{#each TIMEZONE_OPTIONS as tz}
+								<option value={tz.value}>{tz.label}</option>
+							{/each}
+						</select>
+					</div>
+				</div>
 			</div>
 		</section>
 		
@@ -836,6 +904,13 @@
 		display: block;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+	}
+	
+	.setting-hint {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
+		margin-top: 0.375rem;
 	}
 	
 	.setting-control {

@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
+	import { formatChartDate } from '$lib/timezone.js';
 
 	let { data, form } = $props();
 
@@ -12,7 +13,7 @@
 		(data.activityChartData || []).map(d => ({
 			date: d.period,
 			value: d.count,
-			label: new Date(d.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+			label: formatChartDate(d.period, data.timezone)
 		}))
 	);
 
@@ -20,7 +21,7 @@
 	const memberGrowthData = $derived(
 		(data.memberGrowthChartData || []).map(d => ({
 			date: d.date,
-			label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			label: formatChartDate(d.date, data.timezone),
 			values: [
 				{ label: 'Joined', value: d.joins || 0, color: '#22c55e' },
 				{ label: 'Left', value: d.leaves || 0, color: '#ef4444' }
@@ -33,7 +34,7 @@
 		(data.voiceActivityChartData || []).map(d => ({
 			date: d.date,
 			value: d.uniqueUsers || 0,
-			label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+			label: formatChartDate(d.date, data.timezone)
 		}))
 	);
 

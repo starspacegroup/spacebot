@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   welcome_message: "Welcome {user} to {server}!",
   excluded_channels: [],
   excluded_categories: [],
+  timezone: null,
   permission_settings: {
     viewDashboard: { permission: "MANAGE_GUILD", roles: [] },
     viewLogs: { permission: "MANAGE_GUILD", roles: [] },
@@ -62,6 +63,7 @@ export async function getGuildSettings(db, guildId) {
       welcome_message: result.welcome_message || DEFAULT_SETTINGS.welcome_message,
       excluded_channels: parseJSON(result.excluded_channels, []),
       excluded_categories: parseJSON(result.excluded_categories, []),
+      timezone: result.timezone || null,
       permission_settings: parseJSON(result.permission_settings, DEFAULT_SETTINGS.permission_settings),
       created_at: result.created_at,
       updated_at: result.updated_at,
@@ -110,6 +112,7 @@ export async function saveGuildSettings(db, guildId, settings) {
             welcome_message = ?,
             excluded_channels = ?,
             excluded_categories = ?,
+            timezone = ?,
             permission_settings = ?,
             updated_at = ?
           WHERE guild_id = ?
@@ -124,6 +127,7 @@ export async function saveGuildSettings(db, guildId, settings) {
           settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
           JSON.stringify(settings.excluded_channels || []),
           JSON.stringify(settings.excluded_categories || []),
+          settings.timezone || null,
           JSON.stringify(settings.permission_settings || DEFAULT_SETTINGS.permission_settings),
           now,
           guildId
@@ -138,9 +142,9 @@ export async function saveGuildSettings(db, guildId, settings) {
           INSERT INTO guild_settings (
             guild_id, prefix, logging_enabled, log_channel_id,
             moderation_role_id, welcome_enabled, welcome_channel_id, welcome_message,
-            excluded_channels, excluded_categories, permission_settings,
+            excluded_channels, excluded_categories, timezone, permission_settings,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .bind(
           guildId,
@@ -153,6 +157,7 @@ export async function saveGuildSettings(db, guildId, settings) {
           settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
           JSON.stringify(settings.excluded_channels || []),
           JSON.stringify(settings.excluded_categories || []),
+          settings.timezone || null,
           JSON.stringify(settings.permission_settings || DEFAULT_SETTINGS.permission_settings),
           now,
           now
@@ -203,6 +208,25 @@ function parseJSON(value, fallback) {
     return JSON.parse(value);
   } catch {
     return fallback;
+  }
+}
+
+/**
+ * Get just the timezone setting for a guild (lightweight query for layout)
+ * @param {D1Database} db - D1 database instance
+ * @param {string} guildId - The guild ID
+ * @returns {Promise<string|null>} - IANA timezone name or null
+ */
+export async function getGuildTimezone(db, guildId) {
+  if (!db || !guildId) return null;
+  try {
+    const result = await db
+      .prepare("SELECT timezone FROM guild_settings WHERE guild_id = ?")
+      .bind(guildId)
+      .first();
+    return result?.timezone || null;
+  } catch {
+    return null;
   }
 }
 

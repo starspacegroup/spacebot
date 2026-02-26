@@ -1,5 +1,6 @@
 <script>
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
+	import { formatChartDate, getTimezone, parseUTCDate } from '$lib/timezone.js';
 	
 	let { data } = $props();
 	
@@ -239,7 +240,8 @@
 	// Format relative time
 	function formatRelativeTime(dateStr) {
 		if (!dateStr) return 'Never';
-		const date = new Date(dateStr);
+		const date = parseUTCDate(dateStr);
+		if (!date) return dateStr;
 		const now = new Date();
 		const diffMs = now - date;
 		const diffMins = Math.floor(diffMs / 60000);
@@ -250,7 +252,7 @@
 		if (diffMins < 60) return `${diffMins}m ago`;
 		if (diffHours < 24) return `${diffHours}h ago`;
 		if (diffDays < 7) return `${diffDays}d ago`;
-		return date.toLocaleDateString();
+		return formatChartDate(dateStr, data.timezone);
 	}
 	
 	// Get color for category
@@ -313,7 +315,7 @@
 			...d,
 			display_count: d[countKey] || 0,
 			percentage: ((d[countKey] || 0) / maxCount) * 100,
-			label: new Date(d.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+			label: formatChartDate(d.period, data.timezone)
 		}));
 	});
 	
@@ -330,7 +332,7 @@
 		const processed = history.map(d => ({
 			...d,
 			member_count: d.member_count || 0,
-			label: new Date(d.period || d.last_recorded).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+			label: formatChartDate(d.period || d.last_recorded, data.timezone)
 		}));
 		
 		if (processed.length === 0) return { points: [], minValue: 0, maxValue: 0, range: 1 };
@@ -356,7 +358,7 @@
 		
 		return points.map(p => ({
 			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			label: formatChartDate(p.date, data.timezone),
 			values: [
 				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
 				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
@@ -387,7 +389,7 @@
 		
 		return points.map(p => ({
 			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			label: formatChartDate(p.date, data.timezone),
 			value: useHours ? (p.totalHours || 0) : (p.totalMinutes || 0),
 		}));
 	});
@@ -399,7 +401,7 @@
 		
 		return points.map(p => ({
 			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			label: formatChartDate(p.date, data.timezone),
 			value: p.uniqueUsers || 0,
 		}));
 	});
@@ -411,7 +413,7 @@
 		
 		return points.map(p => ({
 			date: p.date,
-			label: new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+			label: formatChartDate(p.date, data.timezone),
 			value: p.peakConcurrent || 0,
 		}));
 	});
@@ -432,7 +434,7 @@
 				const today = new Date().toISOString().split('T')[0];
 				return [{
 					date: today,
-					label: new Date(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+					label: formatChartDate(today, data.timezone),
 					value: currentCount,
 				}];
 			}
@@ -448,7 +450,7 @@
 			runningCount += (d.netChange || 0);
 			return {
 				date: d.date,
-				label: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				label: formatChartDate(d.date, data.timezone),
 				value: runningCount,
 			};
 		});
@@ -459,7 +461,7 @@
 		if (lastPoint && lastPoint.date < today) {
 			points.push({
 				date: today,
-				label: new Date(today).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				label: formatChartDate(today, data.timezone),
 				value: currentCount,
 			});
 		} else if (lastPoint && lastPoint.date === today) {

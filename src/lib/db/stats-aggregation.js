@@ -697,6 +697,16 @@ export async function getGlobalMemberGrowthChart(db, period = "30d") {
       netChange: row.net_change || 0,
     }));
 
+    // Add today's partial data from hourly aggregations
+    const today = getTodayDateString();
+    const todayStats = await getTodayPartialStats(db, null);
+    rawData.push({
+      date: today,
+      joins: todayStats.member_joins,
+      leaves: todayStats.member_leaves,
+      netChange: todayStats.member_net_change,
+    });
+
     return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 });
   } catch (error) {
     log.error("Failed to get global member growth chart:", error);
@@ -735,6 +745,17 @@ export async function getGlobalVoiceActivityChart(db, period = "30d") {
       totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
       uniqueUsers: row.unique_users || 0,
     }));
+
+    // Add today's partial data from hourly aggregations
+    const today = getTodayDateString();
+    const todayStats = await getTodayPartialStats(db, null);
+    const todaySeconds = todayStats.voice_total_seconds;
+    rawData.push({
+      date: today,
+      totalMinutes: Math.round(todaySeconds / 60),
+      totalHours: Math.round(todaySeconds / 3600 * 10) / 10,
+      uniqueUsers: todayStats.voice_unique_users,
+    });
 
     return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0 });
   } catch (error) {
@@ -797,6 +818,65 @@ export async function getGlobalStatsSummary(db, period = "30d") {
       totalMessages: 0,
       totalEvents: 0,
     };
+  }
+}
+
+/**
+ * Get today's date as YYYY-MM-DD string in UTC
+ * @returns {string}
+ */
+function getTodayDateString() {
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Get today's partial stats from hourly aggregations for a specific guild
+ * @param {D1Database} db
+ * @param {string|null} guildId - Guild ID, or null for global stats
+ * @returns {Promise<{voice_total_seconds: number, voice_unique_users: number, voice_peak_concurrent: number, member_joins: number, member_leaves: number, member_net_change: number, message_count: number, message_unique_users: number, total_events: number}>}
+ */
+async function getTodayPartialStats(db, guildId = null) {
+  const empty = {
+    voice_total_seconds: 0,
+    voice_unique_users: 0,
+    voice_peak_concurrent: 0,
+    member_joins: 0,
+    member_leaves: 0,
+    member_net_change: 0,
+    message_count: 0,
+    message_unique_users: 0,
+    total_events: 0,
+  };
+
+  try {
+    const guildFilter = guildId ? "AND guild_id = ?" : "";
+    const params = guildId
+      ? [guildId]
+      : [];
+
+    const result = await db.prepare(`
+      SELECT 
+        COALESCE(SUM(voice_total_seconds), 0) as voice_total_seconds,
+        COALESCE(MAX(voice_unique_users), 0) as voice_unique_users,
+        COALESCE(MAX(voice_peak_concurrent), 0) as voice_peak_concurrent,
+        COALESCE(SUM(member_joins), 0) as member_joins,
+        COALESCE(SUM(member_leaves), 0) as member_leaves,
+        COALESCE(SUM(member_net_change), 0) as member_net_change,
+        COALESCE(SUM(message_count), 0) as message_count,
+        COALESCE(MAX(message_unique_users), 0) as message_unique_users,
+        COALESCE(SUM(total_events), 0) as total_events
+      FROM aggregated_stats
+      WHERE period_type = 'hourly'
+        AND period_start >= strftime('%Y-%m-%d 00:00:00', 'now')
+        AND period_start < strftime('%Y-%m-%d 00:00:00', 'now', '+1 day')
+        ${guildFilter}
+    `).bind(...params).first();
+
+    if (!result) return empty;
+    return result;
+  } catch (error) {
+    log.error("Failed to get today's partial stats:", error);
+    return empty;
   }
 }
 
@@ -866,6 +946,16 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
       netChange: row.net_change || 0,
     }));
 
+    // Add today's partial data from hourly aggregations
+    const today = getTodayDateString();
+    const todayStats = await getTodayPartialStats(db, guildId);
+    rawData.push({
+      date: today,
+      joins: todayStats.member_joins,
+      leaves: todayStats.member_leaves,
+      netChange: todayStats.member_net_change,
+    });
+
     // Fill in missing dates with zero values so the chart is continuous
     return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 });
   } catch (error) {
@@ -908,6 +998,18 @@ export async function getVoiceActivityChart(db, guildId, period = "30d") {
       uniqueUsers: row.unique_users || 0,
       peakConcurrent: row.peak_concurrent || 0,
     }));
+
+    // Add today's partial data from hourly aggregations
+    const today = getTodayDateString();
+    const todayStats = await getTodayPartialStats(db, guildId);
+    const todaySeconds = todayStats.voice_total_seconds;
+    rawData.push({
+      date: today,
+      totalMinutes: Math.round(todaySeconds / 60),
+      totalHours: Math.round(todaySeconds / 3600 * 10) / 10,
+      uniqueUsers: todayStats.voice_unique_users,
+      peakConcurrent: todayStats.voice_peak_concurrent,
+    });
 
     // Fill in missing dates with zero values so the chart is continuous
     return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 });

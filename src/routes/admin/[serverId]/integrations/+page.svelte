@@ -1,6 +1,7 @@
 <script>
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
+	import { formatDateShort } from '$lib/timezone.js';
 
 	let { data, form } = $props();
 
@@ -226,7 +227,7 @@
 					{#if isEnabled && integration.enabled_at}
 						<div class="card-footer">
 							<span class="footer-text">
-								Enabled {new Date(integration.enabled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+								Enabled {formatDateShort(integration.enabled_at, data.timezone)}
 							</span>
 						</div>
 					{/if}

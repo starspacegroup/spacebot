@@ -1,4 +1,6 @@
 <script>
+	import { formatDate as tzFormatDate, formatChartDate } from '$lib/timezone.js';
+	
 	let { data } = $props();
 	
 	// Track if data has been loaded (not just default empty values)
@@ -52,20 +54,13 @@
 	// Format date
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
-		const date = new Date(dateStr);
-		return date.toLocaleDateString('en-US', {
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
+		return tzFormatDate(dateStr, null);
 	}
 	
 	// Format short date for charts
 	function formatShortDate(dateStr) {
 		if (!dateStr) return '';
-		const date = new Date(dateStr);
-		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+		return formatChartDate(dateStr, null);
 	}
 	
 	// Format duration in ms to human readable

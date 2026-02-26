@@ -9,7 +9,7 @@ import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 import { getGuildStatistics } from "$lib/db/statistics.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
-import { getMemberGrowthChart, getVoiceActivityChart } from "$lib/db/stats-aggregation.js";
+import { getMemberGrowthChart, getVoiceActivityChart, runStatsAggregation } from "$lib/db/stats-aggregation.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 // Track server start time for uptime calculation
@@ -145,6 +145,13 @@ export async function load({ cookies, platform, parent, params }) {
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
+      // Run stats aggregation to ensure today's hourly data is available for charts
+      try {
+        await runStatsAggregation(db, serverId);
+      } catch (aggError) {
+        log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
+      }
+
       const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn, metadata] = await Promise.all([
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),

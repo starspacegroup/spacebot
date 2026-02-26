@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
+	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
 	
@@ -96,7 +97,8 @@
 	// Format relative time
 	function formatRelativeTime(dateString) {
 		if (!dateString) return 'Never';
-		const date = new Date(dateString);
+		const date = parseUTCDate(dateString);
+		if (!date) return dateString;
 		const now = new Date();
 		const diffMs = now - date;
 		const diffSecs = Math.floor(diffMs / 1000);
@@ -109,7 +111,7 @@
 		if (diffHours < 24) return `${diffHours}h ago`;
 		if (diffDays < 7) return `${diffDays}d ago`;
 		
-		return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+		return formatChartDate(dateString, data.timezone);
 	}
 </script>
 
@@ -178,7 +180,7 @@
 											<span class="log-meta-item">⏱️ {log.execution_time_ms}ms</span>
 										{/if}
 										{#if log.created_at}
-											<span class="log-meta-item">📅 {new Date(log.created_at).toLocaleString()}</span>
+											<span class="log-meta-item">📅 {tzFormatDate(log.created_at, data.timezone)}</span>
 										{/if}
 									</div>
 									

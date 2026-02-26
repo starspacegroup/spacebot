@@ -78,6 +78,7 @@ export async function load({ cookies, platform, parent, params }) {
     welcomeChannelId: dbSettings.welcome_channel_id || null,
     welcomeChannelName: null, // Would need to fetch from Discord API
     welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
+    timezone: dbSettings.timezone || null,
   };
 
   // Permission settings - load from database or use defaults
@@ -157,6 +158,7 @@ export const actions = {
     const welcomeEnabled = formData.get("welcomeEnabled") === "on";
     const welcomeChannelId = formData.get("welcomeChannelId");
     const welcomeMessage = formData.get("welcomeMessage");
+    const timezone = formData.get("timezone") || null;
 
     // Permission settings
     const viewDashboardPerm = formData.get("viewDashboardPerm") || "MANAGE_GUILD";
@@ -187,6 +189,7 @@ export const actions = {
         welcome_enabled: welcomeEnabled,
         welcome_channel_id: welcomeChannelId || null,
         welcome_message: welcomeMessage || "Welcome {user} to {server}!",
+        timezone: timezone,
         permission_settings: {
           viewDashboard: { permission: viewDashboardPerm, roles: [] },
           viewLogs: { permission: viewLogsPerm, roles: [] },

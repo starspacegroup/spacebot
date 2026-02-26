@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
+	import { getTimezone, parseUTCDate } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
 	
@@ -236,7 +237,9 @@
 	
 	function formatDateTime(isoString) {
 		if (!isoString) return 'Not set';
-		const date = new Date(isoString);
+		const date = parseUTCDate(isoString);
+		if (!date) return isoString;
+		const tz = getTimezone(data.timezone);
 		return date.toLocaleDateString('en-US', {
 			weekday: 'short',
 			month: 'short',
@@ -244,12 +247,14 @@
 			hour: 'numeric',
 			minute: '2-digit',
 			hour12: true,
+			timeZone: tz,
 		});
 	}
 	
 	function formatRelativeTime(isoString) {
 		if (!isoString) return '';
-		const date = new Date(isoString);
+		const date = parseUTCDate(isoString);
+		if (!date) return isoString;
 		const now = new Date();
 		const diffMs = date - now;
 		const diffMins = Math.floor(diffMs / (1000 * 60));

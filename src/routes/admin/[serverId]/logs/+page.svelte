@@ -1,6 +1,7 @@
 <script>
 	import { onMount } from 'svelte';
 	import { log } from '$lib/log.js';
+	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
 	
 	let { data } = $props();
 	
@@ -174,14 +175,7 @@
 	}
 	
 	function formatDate(dateString) {
-		const date = new Date(dateString);
-		return new Intl.DateTimeFormat('en-US', {
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit'
-		}).format(date);
+		return tzFormatDate(dateString, data.timezone);
 	}
 	
 	function getEventIcon(category) {
@@ -494,7 +488,7 @@
 					<thead>
 						<tr>
 							<th class="sortable" onclick={toggleSortOrder}>
-								Time 
+								Time <span class="tz-label">({getTimezoneAbbreviation(data.timezone)})</span>
 								<span class="sort-indicator">{sortOrder === 'desc' ? '↓' : '↑'}</span>
 								<span class="sort-hint">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
 							</th>
@@ -1356,6 +1350,12 @@
 	.sort-indicator {
 		margin-left: 0.35rem;
 		font-weight: bold;
+	}
+	
+	.tz-label {
+		font-size: 0.75rem;
+		font-weight: normal;
+		opacity: 0.6;
 	}
 	
 	.sort-hint {

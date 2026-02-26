@@ -1,6 +1,7 @@
 <script>
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
+	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
 	
@@ -64,16 +65,13 @@
 	
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
-		const d = new Date(dateStr);
-		return d.toLocaleDateString('en-US', { 
-			year: 'numeric', month: 'short', day: 'numeric',
-			hour: '2-digit', minute: '2-digit'
-		});
+		return tzFormatDate(dateStr, data.timezone);
 	}
 	
 	function isExpired(expiresAt) {
 		if (!expiresAt) return false;
-		return new Date(expiresAt) < new Date();
+		const date = parseUTCDate(expiresAt);
+		return date ? date < new Date() : false;
 	}
 	
 	function getKeyStatus(key) {
