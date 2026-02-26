@@ -394,7 +394,7 @@
 		}));
 	});
 	
-	// Peak users chart data
+	// Peak unique voice users chart data
 	const peakUsersData = $derived.by(() => {
 		const points = data.voiceActivityChartData || [];
 		if (!points || points.length === 0) return [];
@@ -406,7 +406,7 @@
 		}));
 	});
 	
-	// Peak concurrent chart data
+	// Peak concurrent voice users chart data
 	const peakConcurrentData = $derived.by(() => {
 		const points = data.voiceActivityChartData || [];
 		if (!points || points.length === 0) return [];
@@ -417,6 +417,8 @@
 			value: p.peakConcurrent || 0,
 		}));
 	});
+	
+
 	
 	// Derive member count history from current count + aggregated net changes
 	let showBotsInMemberChart = $state(false);
@@ -482,8 +484,16 @@
 		const useHours = totalMinutes > 120;
 		const uniqueUsers = points.reduce((max, p) => Math.max(max, p.uniqueUsers || 0), 0);
 		const peakConcurrent = points.reduce((max, p) => Math.max(max, p.peakConcurrent || 0), 0);
+		const activePoints = points.filter(p => (p.uniqueUsers || 0) > 0);
+		const avgUniqueUsers = activePoints.length > 0
+			? Math.round(activePoints.reduce((sum, p) => sum + (p.avgUniqueUsers || p.uniqueUsers || 0), 0) / activePoints.length * 10) / 10
+			: 0;
+		const activeConcurrentPoints = points.filter(p => (p.peakConcurrent || 0) > 0);
+		const avgConcurrent = activeConcurrentPoints.length > 0
+			? Math.round(activeConcurrentPoints.reduce((sum, p) => sum + (p.avgConcurrent || p.peakConcurrent || 0), 0) / activeConcurrentPoints.length * 10) / 10
+			: 0;
 		
-		return { totalMinutes, totalHours, useHours, uniqueUsers, peakConcurrent };
+		return { totalMinutes, totalHours, useHours, uniqueUsers, peakConcurrent, avgUniqueUsers, avgConcurrent };
 	});
 </script>
 
@@ -691,10 +701,11 @@
 				</ChartCard>
 				
 				<ChartCard 
-					title="Peak Users" 
+					title="Peak Unique Voice Users" 
 					icon="👥"
 					stats={voiceActivityStats ? [
-						{ icon: '👥', value: formatNumber(voiceActivityStats.uniqueUsers || 0), label: 'Max Peak', color: '#5865F2' },
+						{ icon: '👥', value: formatNumber(voiceActivityStats.uniqueUsers || 0), label: 'Peak Unique', color: '#5865F2' },
+						{ icon: '👤', value: voiceActivityStats.avgUniqueUsers || 0, label: 'Avg Unique', color: '#9B84EE' },
 					] : []}
 				>
 					<AreaChart 
@@ -702,16 +713,17 @@
 						color="#5865F2"
 						gradientId="peakUsersGradient"
 						unit=""
-						title="Peak Users"
-						emptyMessage="No peak users data yet."
+						title="Peak Unique Voice Users"
+						emptyMessage="No unique voice user data yet."
 					/>
 				</ChartCard>
 				
 				<ChartCard 
-					title="Peak Concurrent" 
+					title="Peak Concurrent Voice Users" 
 					icon="📊"
 					stats={voiceActivityStats ? [
-						{ icon: '📊', value: formatNumber(voiceActivityStats.peakConcurrent || 0), label: 'Max Concurrent', color: '#57F287' },
+						{ icon: '📊', value: formatNumber(voiceActivityStats.peakConcurrent || 0), label: 'Peak Concurrent', color: '#57F287' },
+						{ icon: '📉', value: voiceActivityStats.avgConcurrent || 0, label: 'Avg Concurrent', color: '#2ECC71' },
 					] : []}
 				>
 					<AreaChart 
@@ -719,7 +731,7 @@
 						color="#57F287"
 						gradientId="peakConcurrentGradient"
 						unit=""
-						title="Peak Concurrent"
+						title="Peak Concurrent Voice Users"
 						emptyMessage="No peak concurrent data yet."
 					/>
 				</ChartCard>

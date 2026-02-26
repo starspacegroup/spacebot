@@ -225,6 +225,18 @@ async function buildHourlyStats(db, guildId) {
       ).first();
 
       // Calculate peak concurrent voice users
+      // First get the baseline: how many users were already in VC at the start of this period
+      const baseline = await db.prepare(`
+        SELECT COUNT(*) as count
+        FROM voice_sessions
+        WHERE guild_id = ?
+          AND joined_at < ?
+          AND (left_at IS NULL OR left_at >= ?)
+      `).bind(guildId, period.period_start, period.period_start).first();
+
+      const baselineCount = baseline?.count || 0;
+
+      // Then layer on join/leave deltas within the period to find the true peak
       const peakConcurrent = await db.prepare(`
         WITH voice_events AS (
           SELECT 
@@ -243,12 +255,12 @@ async function buildHourlyStats(db, guildId) {
         running_count AS (
           SELECT 
             event_time,
-            SUM(delta) OVER (ORDER BY event_time ROWS UNBOUNDED PRECEDING) as concurrent
+            ? + SUM(delta) OVER (ORDER BY event_time ROWS UNBOUNDED PRECEDING) as concurrent
           FROM voice_events
         )
-        SELECT COALESCE(MAX(concurrent), 0) as peak
+        SELECT COALESCE(MAX(concurrent), ?) as peak
         FROM running_count
-      `).bind(guildId, period.period_start, period.period_end).first();
+      `).bind(guildId, period.period_start, period.period_end, baselineCount, baselineCount).first();
 
       // Aggregate message activity
       const messageStats = await db.prepare(`

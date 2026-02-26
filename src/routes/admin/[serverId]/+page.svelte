@@ -235,7 +235,7 @@
 						subtitle="Last 30 days"
 						icon="🎙️"
 						stats={[
-							{ value: peakVoiceUsers, label: 'Peak Users' },
+							{ value: peakVoiceUsers, label: 'Peak Unique Voice Users' },
 						]}
 					>
 						<AreaChart
