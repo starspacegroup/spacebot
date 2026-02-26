@@ -5,6 +5,7 @@
  */
 
 import { log } from "../log.js";
+import { getTimezoneOffsetSQL } from "../timezone.js";
 
 /**
  * @typedef {Object} AggregationResult
@@ -822,11 +823,23 @@ export async function getGlobalStatsSummary(db, period = "30d") {
 }
 
 /**
- * Get today's date as YYYY-MM-DD string in UTC
+ * Get today's date as YYYY-MM-DD string, adjusted for timezone
+ * @param {string|null} timezone - IANA timezone name
  * @returns {string}
  */
-function getTodayDateString() {
-  return new Date().toISOString().split('T')[0];
+function getTodayDateString(timezone = null) {
+  if (!timezone) return new Date().toISOString().split('T')[0];
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    return parts; // en-CA gives YYYY-MM-DD format
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
 }
 
 /**
@@ -885,10 +898,12 @@ async function getTodayPartialStats(db, guildId = null) {
  * @param {Array<Object>} data - Array of objects with a 'date' property (YYYY-MM-DD)
  * @param {number} days - Number of days to cover
  * @param {Object} defaults - Default values for missing days
+ * @param {string|null} timezone - IANA timezone name for "today" calculation
  * @returns {Array<Object>} - Data with gaps filled
  */
-function fillDateGaps(data, days, defaults = {}) {
-  const today = new Date();
+function fillDateGaps(data, days, defaults = {}, timezone = null) {
+  const todayStr = getTodayDateString(timezone);
+  const today = new Date(todayStr + 'T00:00:00Z');
   const dateMap = new Map();
   
   // Index existing data by date
@@ -899,7 +914,7 @@ function fillDateGaps(data, days, defaults = {}) {
   const filled = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today);
-    d.setDate(d.getDate() - i);
+    d.setUTCDate(d.getUTCDate() - i);
     const dateStr = d.toISOString().split('T')[0];
     
     if (dateMap.has(dateStr)) {
@@ -919,16 +934,17 @@ function fillDateGaps(data, days, defaults = {}) {
  * @param {'7d'|'30d'} period
  * @returns {Promise<Array<{date: string, joins: number, leaves: number, netChange: number}>>}
  */
-export async function getMemberGrowthChart(db, guildId, period = "30d") {
+export async function getMemberGrowthChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
 
   const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
     const result = await db.prepare(`
       SELECT 
-        date(period_start) as date,
+        date(datetime(period_start, '${tzOffset}')) as date,
         member_joins as joins,
         member_leaves as leaves,
         member_net_change as net_change
@@ -947,7 +963,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
     }));
 
     // Add today's partial data from hourly aggregations
-    const today = getTodayDateString();
+    const today = getTodayDateString(timezone);
     const todayStats = await getTodayPartialStats(db, guildId);
     rawData.push({
       date: today,
@@ -957,7 +973,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
     });
 
     // Fill in missing dates with zero values so the chart is continuous
-    return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 });
+    return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 }, timezone);
   } catch (error) {
     log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
     return [];
@@ -971,16 +987,17 @@ export async function getMemberGrowthChart(db, guildId, period = "30d") {
  * @param {'7d'|'30d'} period
  * @returns {Promise<Array<{date: string, totalMinutes: number, totalHours: number, uniqueUsers: number}>>}
  */
-export async function getVoiceActivityChart(db, guildId, period = "30d") {
+export async function getVoiceActivityChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
 
   const days = period === "7d" ? 7 : 30;
   const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
     const result = await db.prepare(`
       SELECT 
-        date(period_start) as date,
+        date(datetime(period_start, '${tzOffset}')) as date,
         voice_total_seconds as total_seconds,
         voice_unique_users as unique_users,
         voice_peak_concurrent as peak_concurrent
@@ -1000,7 +1017,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d") {
     }));
 
     // Add today's partial data from hourly aggregations
-    const today = getTodayDateString();
+    const today = getTodayDateString(timezone);
     const todayStats = await getTodayPartialStats(db, guildId);
     const todaySeconds = todayStats.voice_total_seconds;
     rawData.push({
@@ -1012,7 +1029,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d") {
     });
 
     // Fill in missing dates with zero values so the chart is continuous
-    return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 });
+    return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 }, timezone);
   } catch (error) {
     log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
     return [];

@@ -131,6 +131,8 @@ export async function load({ params, cookies, platform, parent }) {
       }
 
       // Now fetch all statistics including aggregated data
+      const timezone = parentData.timezone || null;
+
       [
         statistics, 
         heatmapData, 
@@ -147,25 +149,25 @@ export async function load({ params, cookies, platform, parent }) {
         topVideoUsers,
         topScreenshareUsers,
       ] = await Promise.all([
-        getGuildStatistics(db, serverId),
-        getActivityHeatmap(db, serverId),
-        getCategoryTrends(db, serverId),
+        getGuildStatistics(db, serverId, timezone),
+        getActivityHeatmap(db, serverId, timezone),
+        getCategoryTrends(db, serverId, timezone),
         getRecentAutomationExecutions(db, serverId, 15),
-        getAutomationExecutionHistory(db, serverId),
+        getAutomationExecutionHistory(db, serverId, timezone),
         // Member stats from server_stats
         Promise.all([
           getLatestServerStats(db, serverId),
           getMemberCountChanges(db, serverId),
           getPeakMemberCount(db, serverId, "30d"),
         ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
-        getServerStatsHistory(db, serverId, { period: "30d", granularity: "daily" }),
+        getServerStatsHistory(db, serverId, { period: "30d", granularity: "daily", timezone }),
         // Aggregated voice activity
         getVoiceActivitySummary(db, serverId, "7d"),
         // Aggregated member growth
         getMemberGrowthSummary(db, serverId, "7d"),
         // Chart data for beautiful graphs
-        getMemberGrowthChart(db, serverId, "30d"),
-        getVoiceActivityChart(db, serverId, "30d"),
+        getMemberGrowthChart(db, serverId, "30d", timezone),
+        getVoiceActivityChart(db, serverId, "30d", timezone),
         // Top users for voice, video, and screenshare
         getTopVoiceUsers(db, serverId, 10),
         getTopVideoUsers(db, serverId, 10),

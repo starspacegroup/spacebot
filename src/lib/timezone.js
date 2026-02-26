@@ -97,12 +97,26 @@ export function formatDateFull(dateString, serverTimezone = null) {
 
 /**
  * Format a date for chart axis labels: "Feb 25"
- * @param {string} dateString - ISO/UTC date string (can be just YYYY-MM-DD)
+ * 
+ * Date-only strings (YYYY-MM-DD) are treated as calendar dates that have
+ * already been timezone-adjusted by server-side queries. They are parsed
+ * directly to avoid double-conversion.
+ * 
+ * Full datetime strings are still parsed as UTC and formatted with the
+ * configured timezone (for use as a fallback e.g. in formatRelativeTime).
+ * 
+ * @param {string} dateString - Date string (YYYY-MM-DD or full datetime)
  * @param {string|null} serverTimezone - Server timezone override
  * @returns {string}
  */
 export function formatChartDate(dateString, serverTimezone = null) {
   if (!dateString) return '';
+  // Date-only strings are already timezone-adjusted by the server
+  const dateOnlyMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[parseInt(dateOnlyMatch[2], 10) - 1]} ${parseInt(dateOnlyMatch[3], 10)}`;
+  }
   const date = parseUTCDate(dateString);
   if (!date) return dateString;
   const tz = getTimezone(serverTimezone);
@@ -173,6 +187,87 @@ export function getTimezoneAbbreviation(serverTimezone = null) {
     return tzPart?.value || tz;
   } catch {
     return tz;
+  }
+}
+
+/**
+ * Get today's date as YYYY-MM-DD in the configured timezone.
+ * Use this on the frontend instead of `new Date().toISOString().split('T')[0]`
+ * which gives UTC today and may be off by a day.
+ * 
+ * @param {string|null} serverTimezone - Server timezone override (IANA name)
+ * @returns {string} - Date string in YYYY-MM-DD format
+ */
+export function getTodayLocal(serverTimezone = null) {
+  const tz = getTimezone(serverTimezone);
+  try {
+    // en-CA locale gives YYYY-MM-DD format
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
+/**
+ * Get the current UTC offset in hours for a given IANA timezone.
+ * 
+ * This is used server-side to shift UTC timestamps in SQLite queries
+ * so that date grouping (day, hour) matches the user's timezone.
+ * 
+ * Note: This returns the offset at the CURRENT time, which may differ
+ * from the offset at the time of a historical event due to DST. For daily
+ * grouping this is close enough; for hourly heatmaps the ±1h DST error
+ * is acceptable.
+ * 
+ * @param {string|null} timezone - IANA timezone name (e.g. 'America/New_York')
+ * @returns {string} - SQLite-compatible offset string like '+5 hours' or '-4 hours'
+ */
+export function getTimezoneOffsetSQL(timezone) {
+  if (!timezone) return '+0 hours';
+  try {
+    // Compare the formatted hour in UTC vs the target timezone to derive offset
+    const now = new Date();
+    const utcStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'UTC',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now);
+    const tzStr = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now);
+
+    // Parse the formatted dates to compare
+    const parseFormatted = (str) => {
+      // Format: "MM/DD/YYYY, HH:MM"
+      const [datePart, timePart] = str.split(', ');
+      const [month, day, year] = datePart.split('/').map(Number);
+      const [hour, minute] = timePart.split(':').map(Number);
+      return new Date(Date.UTC(year, month - 1, day, hour === 24 ? 0 : hour, minute));
+    };
+
+    const utcParsed = parseFormatted(utcStr);
+    const tzParsed = parseFormatted(tzStr);
+    const diffMs = tzParsed - utcParsed;
+    const diffMinutes = Math.round(diffMs / 60000);
+
+    // Handle half-hour offsets (e.g. India +5:30)
+    if (diffMinutes % 60 !== 0) {
+      const sign = diffMinutes >= 0 ? '+' : '-';
+      return `${sign}${Math.abs(diffMinutes)} minutes`;
+    }
+
+    const diffHours = diffMinutes / 60;
+    const sign = diffHours >= 0 ? '+' : '-';
+    return `${sign}${Math.abs(diffHours)} hours`;
+  } catch {
+    return '+0 hours';
   }
 }
 

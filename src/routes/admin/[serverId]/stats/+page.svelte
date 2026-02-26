@@ -1,6 +1,6 @@
 <script>
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
-	import { formatChartDate, getTimezone, parseUTCDate } from '$lib/timezone.js';
+	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	
 	let { data } = $props();
 	
@@ -431,7 +431,7 @@
 		if (!currentCount || growthData.length === 0) {
 			// Even with no growth data, show at least today's point from server_stats
 			if (currentCount > 0) {
-				const today = new Date().toISOString().split('T')[0];
+				const today = getTodayLocal(data.timezone);
 				return [{
 					date: today,
 					label: formatChartDate(today, data.timezone),
@@ -456,15 +456,15 @@
 		});
 		
 		// Ensure today is always represented with the actual current count
-		const today = new Date().toISOString().split('T')[0];
+		const todayForChart = getTodayLocal(data.timezone);
 		const lastPoint = points[points.length - 1];
-		if (lastPoint && lastPoint.date < today) {
+		if (lastPoint && lastPoint.date < todayForChart) {
 			points.push({
-				date: today,
-				label: formatChartDate(today, data.timezone),
+				date: todayForChart,
+				label: formatChartDate(todayForChart, data.timezone),
 				value: currentCount,
 			});
-		} else if (lastPoint && lastPoint.date === today) {
+		} else if (lastPoint && lastPoint.date === todayForChart) {
 			// Override today's derived value with the authoritative current count
 			lastPoint.value = currentCount;
 		}

@@ -4,6 +4,7 @@
  */
 
 import { log } from "../log.js";
+import { getTimezoneOffsetSQL } from "../timezone.js";
 
 /**
  * @typedef {Object} ServerStats
@@ -164,7 +165,7 @@ export async function getLatestServerStats(db, guildId) {
 export async function getServerStatsHistory(db, guildId, options = {}) {
   if (!db) return [];
 
-  const { period = "7d", granularity = "auto" } = options;
+  const { period = "7d", granularity = "auto", timezone = null } = options;
 
   // Calculate time range
   const periodMap = {
@@ -195,17 +196,19 @@ export async function getServerStatsHistory(db, guildId, options = {}) {
     groupFormat = formatMap[granularity] || "%Y-%m-%d";
   }
 
+  const tzOffset = getTimezoneOffsetSQL(timezone);
+
   try {
     const result = await db.prepare(`
       SELECT 
-        strftime('${groupFormat}', recorded_at) as period,
+        strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}')) as period,
         ROUND(AVG(member_count)) as member_count,
         ROUND(AVG(online_count)) as online_count,
         ROUND(AVG(bot_count)) as bot_count,
         MAX(recorded_at) as last_recorded
       FROM server_stats 
       WHERE guild_id = ? AND recorded_at >= datetime('now', ?)
-      GROUP BY strftime('${groupFormat}', recorded_at)
+      GROUP BY strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}'))
       ORDER BY period ASC
     `).bind(guildId, timeRange).all();
 

@@ -155,10 +155,10 @@ export async function load({ cookies, platform, parent, params }) {
       const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn, metadata] = await Promise.all([
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),
-        getGuildStatistics(db, serverId),
+        getGuildStatistics(db, serverId, parentData.timezone || null),
         getLatestServerStats(db, serverId),
-        getMemberGrowthChart(db, serverId, "30d"),
-        getVoiceActivityChart(db, serverId, "30d"),
+        getMemberGrowthChart(db, serverId, "30d", parentData.timezone || null),
+        getVoiceActivityChart(db, serverId, "30d", parentData.timezone || null),
         getBuiltInCommands(db),
         getGuildMetadata(db, serverId),
       ]);

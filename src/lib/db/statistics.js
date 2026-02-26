@@ -4,6 +4,7 @@
  */
 
 import { log } from "../log.js";
+import { getTimezoneOffsetSQL } from "../timezone.js";
 
 /**
  * Get comprehensive statistics for a guild
@@ -11,7 +12,7 @@ import { log } from "../log.js";
  * @param {string} guildId - Guild ID
  * @returns {Promise<Object>} - Comprehensive statistics object
  */
-export async function getGuildStatistics(db, guildId) {
+export async function getGuildStatistics(db, guildId, timezone = null) {
   if (!db) {
     return getEmptyStats();
   }
@@ -30,7 +31,7 @@ export async function getGuildStatistics(db, guildId) {
       getEventStatistics(db, guildId),
       getAutomationStatistics(db, guildId),
       getCommandStatistics(db, guildId),
-      getTimeSeriesData(db, guildId),
+      getTimeSeriesData(db, guildId, timezone),
       getTopActors(db, guildId),
       getTopChannels(db, guildId),
       getAutomationPerformance(db, guildId),
@@ -301,7 +302,7 @@ async function getCommandStatistics(db, guildId) {
 /**
  * Get time series data for charts
  */
-async function getTimeSeriesData(db, guildId) {
+async function getTimeSeriesData(db, guildId, timezone = null) {
   const botFilter = `
     AND NOT (
       actor_is_bot = 1 
@@ -312,45 +313,47 @@ async function getTimeSeriesData(db, guildId) {
       OR LOWER(actor_name) LIKE '%dyno%'
     )
   `;
+
+  const tzOffset = getTimezoneOffsetSQL(timezone);
   
   const [hourlyResult, dailyResult, weeklyResult, dailyNonBotResult] = await Promise.all([
-    // Hourly (last 24 hours)
+    // Hourly (last 24 hours) - shift to local timezone
     db.prepare(`
       SELECT 
-        strftime('%Y-%m-%d %H:00', created_at) as period,
+        strftime('%Y-%m-%d %H:00', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-24 hours')
-      GROUP BY strftime('%Y-%m-%d %H:00', created_at)
+      GROUP BY strftime('%Y-%m-%d %H:00', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
     `).bind(guildId).all(),
     
-    // Daily (last 30 days)
+    // Daily (last 30 days) - shift to local timezone
     db.prepare(`
       SELECT 
-        strftime('%Y-%m-%d', created_at) as period,
+        strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
-      GROUP BY strftime('%Y-%m-%d', created_at)
+      GROUP BY strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
     `).bind(guildId).all(),
     
-    // Weekly (last 12 weeks)
+    // Weekly (last 12 weeks) - shift to local timezone
     db.prepare(`
       SELECT 
-        strftime('%Y-W%W', created_at) as period,
+        strftime('%Y-W%W', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-84 days')
-      GROUP BY strftime('%Y-W%W', created_at)
+      GROUP BY strftime('%Y-W%W', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
     `).bind(guildId).all(),
     
-    // Daily non-bot (last 30 days)
+    // Daily non-bot (last 30 days) - shift to local timezone
     db.prepare(`
       SELECT 
-        strftime('%Y-%m-%d', created_at) as period,
+        strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
@@ -362,7 +365,7 @@ async function getTimeSeriesData(db, guildId) {
           OR LOWER(actor_name) LIKE '%mee6%'
           OR LOWER(actor_name) LIKE '%dyno%'
         )
-      GROUP BY strftime('%Y-%m-%d', created_at)
+      GROUP BY strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
     `).bind(guildId).all(),
   ]);
@@ -469,18 +472,20 @@ async function getAutomationPerformance(db, guildId) {
  * @param {string} guildId - Guild ID
  * @returns {Promise<Object>} - Map of automation_id to array of daily execution counts
  */
-export async function getAutomationExecutionHistory(db, guildId) {
+export async function getAutomationExecutionHistory(db, guildId, timezone = null) {
   if (!db) return {};
+
+  const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
     const result = await db.prepare(`
       SELECT 
         automation_id,
-        DATE(created_at) as date,
+        DATE(datetime(created_at, '${tzOffset}')) as date,
         COUNT(*) as count
       FROM automation_logs
       WHERE guild_id = ? AND created_at >= datetime('now', '-14 days')
-      GROUP BY automation_id, DATE(created_at)
+      GROUP BY automation_id, DATE(datetime(created_at, '${tzOffset}'))
       ORDER BY automation_id, date ASC
     `).bind(guildId).all();
 
@@ -530,14 +535,16 @@ async function getCommandUsageStats(db, guildId) {
  * @param {string} guildId - Guild ID
  * @returns {Promise<Array>} - Heatmap data array
  */
-export async function getActivityHeatmap(db, guildId) {
+export async function getActivityHeatmap(db, guildId, timezone = null) {
   if (!db) return [];
+
+  const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
     const result = await db.prepare(`
       SELECT 
-        CAST(strftime('%w', created_at) AS INTEGER) as day_of_week,
-        CAST(strftime('%H', created_at) AS INTEGER) as hour,
+        CAST(strftime('%w', datetime(created_at, '${tzOffset}')) AS INTEGER) as day_of_week,
+        CAST(strftime('%H', datetime(created_at, '${tzOffset}')) AS INTEGER) as hour,
         COUNT(*) as count,
         SUM(CASE 
           WHEN actor_is_bot = 1 THEN 0
@@ -567,18 +574,20 @@ export async function getActivityHeatmap(db, guildId) {
  * @param {string} guildId - Guild ID
  * @returns {Promise<Array>} - Category trends
  */
-export async function getCategoryTrends(db, guildId) {
+export async function getCategoryTrends(db, guildId, timezone = null) {
   if (!db) return [];
+
+  const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
     const result = await db.prepare(`
       SELECT 
         event_category,
-        strftime('%Y-%m-%d', created_at) as date,
+        strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as date,
         COUNT(*) as count
       FROM event_logs 
       WHERE guild_id = ? AND created_at >= datetime('now', '-14 days')
-      GROUP BY event_category, date
+      GROUP BY event_category, strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY date ASC, event_category
     `).bind(guildId).all();
 
