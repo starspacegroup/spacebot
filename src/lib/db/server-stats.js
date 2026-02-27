@@ -235,7 +235,7 @@ export async function getMemberCountChanges(db, guildId) {
   }
 
   try {
-    const [current, dayAgo, weekAgo, monthAgo] = await Promise.all([
+    const [current, dayAgo, weekAgo, monthStart, earliest] = await Promise.all([
       // Current count
       db.prepare(`
         SELECT member_count, human_count, bot_count FROM server_stats 
@@ -260,11 +260,19 @@ export async function getMemberCountChanges(db, guildId) {
         LIMIT 1
       `).bind(guildId).first(),
 
-      // 30 days ago
+      // Start of current calendar month (latest record at or before the 1st)
       db.prepare(`
         SELECT member_count, human_count FROM server_stats 
-        WHERE guild_id = ? AND recorded_at <= datetime('now', '-30 days')
+        WHERE guild_id = ? AND recorded_at <= datetime('now', 'start of month')
         ORDER BY recorded_at DESC
+        LIMIT 1
+      `).bind(guildId).first(),
+
+      // Earliest record (fallback when no baseline exists for a period)
+      db.prepare(`
+        SELECT member_count, human_count FROM server_stats 
+        WHERE guild_id = ?
+        ORDER BY recorded_at ASC
         LIMIT 1
       `).bind(guildId).first(),
     ]);
@@ -272,6 +280,9 @@ export async function getMemberCountChanges(db, guildId) {
     const currentCount = current?.member_count || 0;
     const currentHuman = current?.human_count;
     const currentBotCount = current?.bot_count;
+
+    // For "This Month": use start-of-month baseline, fall back to earliest record
+    const monthAgo = monthStart || earliest;
 
     return {
       // Total member counts (including bots)
