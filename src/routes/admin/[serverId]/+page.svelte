@@ -8,15 +8,6 @@
 
 	let showToast = $state(true);
 
-	// Transform activity data for the area chart (events per day)
-	const activityData = $derived(
-		(data.activityChartData || []).map(d => ({
-			date: d.period,
-			value: d.count,
-			label: formatChartDate(d.period, data.timezone)
-		}))
-	);
-
 	// Transform member growth data for the bar chart (joins vs leaves)
 	const memberGrowthData = $derived(
 		(data.memberGrowthChartData || []).map(d => ({
@@ -39,7 +30,6 @@
 	);
 
 	// Summary stats derived from chart data
-	const activityTotal = $derived(activityData.reduce((sum, d) => sum + d.value, 0));
 	const memberJoins = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[0]?.value || 0), 0));
 	const memberLeaves = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[1]?.value || 0), 0));
 	const peakVoiceUsers = $derived(Math.max(...voiceData.map(d => d.value), 0));
@@ -165,51 +155,14 @@
 					</a>
 				</div>
 
-				<!-- Key numbers -->
-				{#if data.basicStats}
-					<div class="stats-highlights">
-						<div class="highlight-card">
-							<span class="highlight-value">{data.basicStats.members.toLocaleString()}</span>
-							<span class="highlight-label">Members</span>
-						</div>
-						<div class="highlight-card">
-							<span class="highlight-value">{data.basicStats.eventsToday.toLocaleString()}</span>
-							<span class="highlight-label">Events Today</span>
-						</div>
-						<div class="highlight-card">
-							<span class="highlight-value">{data.basicStats.totalEvents.toLocaleString()}</span>
-							<span class="highlight-label">Total Events</span>
-						</div>
-					</div>
-				{/if}
-
 				<!-- Charts grid -->
 				<div class="charts-grid">
-					<div class="chart-wide">
-						<ChartCard
-							title="Server Activity"
-							subtitle="Last 30 days"
-							icon="📊"
-							stats={[
-								{ value: activityTotal.toLocaleString(), label: 'Total Events' },
-							]}
-						>
-							<AreaChart
-								data={activityData}
-								color="#5865F2"
-								gradientId="dashActivity"
-								title="Server Activity"
-								emptyMessage="No activity data yet"
-								showPoints={false}
-							/>
-						</ChartCard>
-					</div>
-
 					<ChartCard
 						title="Member Growth"
 						subtitle="Last 30 days"
 						icon="👥"
 						stats={[
+							{ value: data.basicStats?.members?.toLocaleString() ?? '—', label: 'Members' },
 							{ value: `+${memberJoins}`, label: 'Joined', color: '#22c55e' },
 							{ value: `-${memberLeaves}`, label: 'Left', color: '#ef4444' },
 							{ value: (memberJoins - memberLeaves >= 0 ? '+' : '') + (memberJoins - memberLeaves), label: 'Net', color: memberJoins - memberLeaves >= 0 ? '#22c55e' : '#ef4444' },
@@ -588,43 +541,6 @@
 		padding: 0.4rem 0.75rem;
 	}
 
-	.stats-highlights {
-		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 0.75rem;
-		margin-bottom: 1.25rem;
-	}
-
-	.highlight-card {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.2rem;
-		padding: 0.875rem 0.5rem;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-	}
-
-	.highlight-value {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-
-	@media (max-width: 639px) {
-		.highlight-value {
-			font-size: 1.2rem;
-		}
-	}
-
-	.highlight-label {
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
 	.charts-grid {
 		display: grid;
 		grid-template-columns: 1fr;
@@ -635,10 +551,6 @@
 		.charts-grid {
 			grid-template-columns: 1fr 1fr;
 		}
-	}
-
-	.chart-wide {
-		grid-column: 1 / -1;
 	}
 
 	/* Server Settings Section - Admin Only */
