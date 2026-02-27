@@ -98,7 +98,7 @@
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
 		<h2>Simple, transparent pricing</h2>
-		<p class="pricing-subtitle">Get started free with generous limits. Go unlimited for $9/mo.</p>
+		<p class="pricing-subtitle">Get started free with generous limits. Go unlimited for $3/server/mo.</p>
 		
 		<div class="pricing-grid">
 			<div class="pricing-card">
@@ -109,6 +109,8 @@
 				</div>
 				<p class="pricing-description">Everything you need to get started.</p>
 				<ul class="pricing-features">
+					<li><span class="check">✓</span> Unlimited servers</li>
+					<li><span class="check">✓</span> Unlimited members per server</li>
 					<li><span class="check">✓</span> Up to 3 custom commands</li>
 					<li><span class="check">✓</span> Up to 9 automations</li>
 					<li><span class="check">✓</span> AI assistant via DM</li>
@@ -128,8 +130,8 @@
 			<div class="pricing-card pricing-card-featured">
 				<div class="pricing-badge pricing-badge-featured">Pro</div>
 				<div class="pricing-price">
-					<span class="price-amount">$9</span>
-					<span class="price-period">/mo</span>
+					<span class="price-amount">$3</span>
+					<span class="price-period">/server/mo</span>
 				</div>
 				<p class="pricing-description">Unlimited commands, automations, and full stats history.</p>
 				<ul class="pricing-features">
