@@ -37,6 +37,7 @@ import { log } from "../log.js";
  * @property {string|null} rules_channel_id
  * @property {string|null} public_updates_channel_id
  * @property {string|null} safety_alerts_channel_id
+ * @property {string|null} tag
  * @property {boolean} widget_enabled
  * @property {string|null} widget_channel_id
  * @property {string} fetched_at
@@ -64,7 +65,7 @@ export async function upsertGuildMetadata(db, guild) {
         premium_tier, premium_subscription_count,
         approximate_member_count, approximate_presence_count,
         max_members, max_presences,
-        features,
+        features, tag,
         system_channel_id, system_channel_flags,
         rules_channel_id, public_updates_channel_id, safety_alerts_channel_id,
         widget_enabled, widget_channel_id,
@@ -77,7 +78,7 @@ export async function upsertGuildMetadata(db, guild) {
         ?, ?,
         ?, ?,
         ?, ?,
-        ?,
+        ?, ?,
         ?, ?,
         ?, ?, ?,
         ?, ?,
@@ -105,6 +106,7 @@ export async function upsertGuildMetadata(db, guild) {
         max_members = excluded.max_members,
         max_presences = excluded.max_presences,
         features = excluded.features,
+        tag = excluded.tag,
         system_channel_id = excluded.system_channel_id,
         system_channel_flags = excluded.system_channel_flags,
         rules_channel_id = excluded.rules_channel_id,
@@ -137,6 +139,7 @@ export async function upsertGuildMetadata(db, guild) {
       guild.max_members ?? null,
       guild.max_presences ?? null,
       JSON.stringify(guild.features || []),
+      guild.clan?.tag ?? guild.tag ?? null,
       guild.system_channel_id ?? null,
       guild.system_channel_flags ?? 0,
       guild.rules_channel_id ?? null,

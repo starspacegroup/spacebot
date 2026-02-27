@@ -27,6 +27,7 @@ import {
   runStatsAggregation,
 } from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
+import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -96,6 +97,7 @@ export async function load({ params, cookies, platform, parent }) {
   let topVoiceUsers = [];
   let topVideoUsers = [];
   let topScreenshareUsers = [];
+  let guildMetadata = null;
 
   if (db) {
     try {
@@ -173,6 +175,12 @@ export async function load({ params, cookies, platform, parent }) {
         getTopVideoUsers(db, serverId, 10),
         getTopScreenshareUsers(db, serverId, 10),
       ]);
+      // Fetch guild metadata for boost features display
+      try {
+        guildMetadata = await getGuildMetadata(db, serverId);
+      } catch (metaError) {
+        log.warn(`[Stats] Failed to fetch guild metadata for ${serverId}:`, metaError);
+      }
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
     }
@@ -195,6 +203,7 @@ export async function load({ params, cookies, platform, parent }) {
     topVoiceUsers,
     topVideoUsers,
     topScreenshareUsers,
+    guildMetadata,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,

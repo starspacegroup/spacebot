@@ -656,8 +656,6 @@
 					stats={[
 						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (data.memberStats?.latest?.member_count || 0) : (data.memberStats?.latest?.human_count ?? data.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
 						{ icon: '🟢', value: formatNumber(data.memberStats?.latest?.online_count || 0), label: 'Online Now', color: '#57F287' },
-						{ icon: '🏷️', value: formatNumber(data.memberStats?.latest?.role_count || 0), label: 'Roles', color: '#EB459E' },
-						...(data.memberStats?.latest?.boost_count > 0 ? [{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: `Boosts (Lvl ${data.memberStats.latest.boost_level})`, color: '#F47FFF' }] : []),
 					]}
 				>
 					{#snippet headerAction()}
@@ -676,6 +674,59 @@
 					/>
 				</ChartCard>
 			</section>
+			
+			<!-- Roles & Boosts -->
+			<div class="server-info-grid">
+				<ChartCard
+					title="Roles"
+					icon="🏷️"
+					stats={[
+						{ icon: '🏷️', value: formatNumber(data.memberStats?.latest?.role_count || 0), label: 'Total Roles', color: '#EB459E' },
+					]}
+				/>
+				{#if data.memberStats?.latest?.boost_count > 0}
+					<ChartCard
+						title="Server Boosts"
+						icon="💎"
+						stats={[
+							{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: 'Boosts', color: '#F47FFF' },
+							{ icon: '🏆', value: `Level ${data.memberStats.latest.boost_level}`, label: 'Boost Tier', color: '#F47FFF' },
+						]}
+					>
+						{@const boostLevel = data.memberStats.latest.boost_level || 0}
+						{@const meta = data.guildMetadata}
+						{@const boostFeatures = [
+							{ name: 'Server Tag', unlockLevel: 0, icon: '🏷️', active: !!(meta?.features?.includes('GUILD_TAGS')), detail: meta?.tag || null },
+							{ name: 'Server Banner', unlockLevel: 1, icon: '🖼️', active: !!(meta?.banner) },
+							{ name: 'Invite Splash', unlockLevel: 1, icon: '💦', active: !!(meta?.splash) },
+							{ name: 'Animated Server Icon', unlockLevel: 1, icon: '✨', active: !!(meta?.features?.includes('ANIMATED_ICON')) },
+							{ name: '128kbps Audio', unlockLevel: 1, icon: '🔊', active: boostLevel >= 1 },
+							{ name: 'Custom Stickers', unlockLevel: 1, icon: '🎨', active: boostLevel >= 1 },
+							{ name: '256kbps Audio', unlockLevel: 2, icon: '🔊', active: boostLevel >= 2 },
+							{ name: 'Server Banner (50MB)', unlockLevel: 2, icon: '📤', active: boostLevel >= 2 },
+							{ name: '384kbps Audio', unlockLevel: 3, icon: '🔊', active: boostLevel >= 3 },
+							{ name: 'Vanity URL', unlockLevel: 3, icon: '🔗', active: !!(meta?.vanity_url_code) },
+						]}
+						<ul class="boost-features">
+							{#each boostFeatures as feature}
+								<li class="boost-feature" class:active={feature.active} class:locked={boostLevel < feature.unlockLevel}>
+									<span class="feature-icon">{feature.icon}</span>
+									<span class="feature-name">{feature.name}</span>
+									{#if feature.detail}
+										<span class="feature-detail">{feature.detail}</span>
+									{:else if boostLevel < feature.unlockLevel}
+										<span class="feature-badge locked">Lvl {feature.unlockLevel}</span>
+									{:else if feature.active}
+										<span class="feature-badge active">✓</span>
+									{:else}
+										<span class="feature-badge inactive">Not set</span>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					</ChartCard>
+				{/if}
+			</div>
 		{/if}
 		
 		<!-- Voice Activity Charts Section -->
@@ -1695,6 +1746,91 @@
 	/* Chart Section */
 	.chart-section {
 		margin-bottom: 2rem;
+	}
+	
+	.server-info-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 1.5rem;
+		margin-top: 1.5rem;
+	}
+	
+	@media (max-width: 768px) {
+		.server-info-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+	
+	.boost-features {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+	
+	.boost-feature {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.35rem 0.5rem;
+		border-radius: var(--radius-sm, 6px);
+		font-size: 0.85rem;
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
+		transition: opacity 0.15s;
+	}
+	
+	.boost-feature.active {
+		color: var(--color-text, #fff);
+	}
+	
+	.boost-feature.locked {
+		opacity: 0.4;
+	}
+	
+	.feature-icon {
+		font-size: 1rem;
+		flex-shrink: 0;
+		width: 1.25rem;
+		text-align: center;
+	}
+	
+	.feature-name {
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.feature-detail {
+		font-size: 0.75rem;
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
+		font-family: monospace;
+	}
+	
+	.feature-badge {
+		font-size: 0.65rem;
+		padding: 0.1rem 0.4rem;
+		border-radius: 3px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		flex-shrink: 0;
+	}
+	
+	.feature-badge.active {
+		background: rgba(87, 242, 135, 0.15);
+		color: #57F287;
+	}
+	
+	.feature-badge.locked {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.35));
+	}
+	
+	.feature-badge.inactive {
+		background: rgba(255, 255, 255, 0.06);
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.4));
+		font-weight: 400;
 	}
 	
 	.voice-charts-grid {
