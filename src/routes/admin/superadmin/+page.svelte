@@ -336,8 +336,8 @@
 				</h1>
 				<p class="header-subtitle">Global bot statistics and management</p>
 			</div>
-			<a href="/admin" class="btn btn-secondary">
-				← Back to Dashboard
+			<a href="/admin" class="btn btn-secondary btn-sm">
+				← Dashboard
 			</a>
 		</div>
 	</header>
