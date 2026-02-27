@@ -157,7 +157,7 @@ export async function load({ params, cookies, platform, parent }) {
         // Member stats from server_stats
         Promise.all([
           getLatestServerStats(db, serverId),
-          getMemberCountChanges(db, serverId),
+          getMemberCountChanges(db, serverId, timezone),
           getPeakMemberCount(db, serverId, "30d"),
         ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
         getServerStatsHistory(db, serverId, { period: "30d", granularity: "daily", timezone }),

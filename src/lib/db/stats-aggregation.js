@@ -878,7 +878,8 @@ async function getTodayPartialStats(db, guildId = null) {
       ? [guildId]
       : [];
 
-    const result = await db.prepare(`
+    // Get stats from completed hourly aggregations for today
+    const aggregated = await db.prepare(`
       SELECT 
         COALESCE(SUM(voice_total_seconds), 0) as voice_total_seconds,
         COALESCE(MAX(voice_unique_users), 0) as voice_unique_users,
@@ -896,7 +897,28 @@ async function getTodayPartialStats(db, guildId = null) {
         ${guildFilter}
     `).bind(...params).first();
 
-    if (!result) return empty;
+    // Also count raw events from the current (incomplete) hour that haven't
+    // been aggregated yet, so the chart stays in sync with the overview card.
+    const currentHour = await db.prepare(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END), 0) as member_joins,
+        COALESCE(SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END), 0) as member_leaves,
+        COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
+        COUNT(*) as total_events
+      FROM event_logs
+      WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+        ${guildFilter}
+    `).bind(...params).first();
+
+    const result = aggregated || empty;
+    if (currentHour) {
+      result.member_joins += currentHour.member_joins || 0;
+      result.member_leaves += currentHour.member_leaves || 0;
+      result.member_net_change = result.member_joins - result.member_leaves;
+      result.message_count += currentHour.message_count || 0;
+      result.total_events += currentHour.total_events || 0;
+    }
+
     return result;
   } catch (error) {
     log.error("Failed to get today's partial stats:", error);

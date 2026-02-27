@@ -223,9 +223,10 @@ export async function getServerStatsHistory(db, guildId, options = {}) {
  * Get member count change statistics
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID
+ * @param {string|null} [timezone] - IANA timezone name for calendar-based boundaries
  * @returns {Promise<Object>} - Change statistics including human (non-bot) counts
  */
-export async function getMemberCountChanges(db, guildId) {
+export async function getMemberCountChanges(db, guildId, timezone = null) {
   if (!db) {
     return { 
       current: 0, day: 0, week: 0, month: 0,
@@ -235,7 +236,53 @@ export async function getMemberCountChanges(db, guildId) {
   }
 
   try {
-    const [current, dayAgo, weekAgo, monthStart, earliest] = await Promise.all([
+    // Compute timezone-aware UTC boundary timestamps in JS so "Today" means
+    // "since midnight in the server's local timezone"
+    const now = new Date();
+    const tz = timezone || 'UTC';
+
+    // Helper: get a date's local components in the target timezone
+    const localParts = (date) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).formatToParts(date);
+      const get = (type) => parts.find(p => p.type === type)?.value;
+      return { year: get('year'), month: get('month'), day: get('day'), hour: get('hour') };
+    };
+
+    // Helper: given a local "YYYY-MM-DD HH:mm:ss" in the target tz, find the
+    // equivalent UTC ISO string by computing the offset at that instant
+    const localToUTC = (localStr) => {
+      // Use the timezone offset approach: format the same instant in UTC and TZ,
+      // derive offset, then shift
+      const probe = new Date(localStr + 'Z'); // treat as UTC first (rough estimate)
+      const utcStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).format(probe);
+      const tzStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).format(probe);
+      const parseStr = (s) => new Date(s.replace(', ', 'T') + 'Z');
+      const offsetMs = parseStr(tzStr) - parseStr(utcStr);
+      return new Date(probe.getTime() - offsetMs).toISOString().replace('T', ' ').slice(0, 19);
+    };
+
+    const { year, month, day } = localParts(now);
+    // Start of today in the server's timezone → UTC
+    const todayStartUTC = localToUTC(`${year}-${month}-${day} 00:00:00`);
+    // Start of 7 days ago in the server's timezone
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const p7 = localParts(sevenDaysAgo);
+    const weekStartUTC = localToUTC(`${p7.year}-${p7.month}-${p7.day} 00:00:00`);
+    // Start of current calendar month in the server's timezone
+    const monthStartUTC = localToUTC(`${year}-${month}-01 00:00:00`);
+
+    const [current, dayAgo, weekAgo, monthAgoRow, earliest] = await Promise.all([
       // Current count
       db.prepare(`
         SELECT member_count, human_count, bot_count FROM server_stats 
@@ -244,29 +291,29 @@ export async function getMemberCountChanges(db, guildId) {
         LIMIT 1
       `).bind(guildId).first(),
 
-      // 24 hours ago
+      // Latest record before start of today (local tz)
       db.prepare(`
         SELECT member_count, human_count FROM server_stats 
-        WHERE guild_id = ? AND recorded_at <= datetime('now', '-1 day')
+        WHERE guild_id = ? AND recorded_at <= ?
         ORDER BY recorded_at DESC
         LIMIT 1
-      `).bind(guildId).first(),
+      `).bind(guildId, todayStartUTC).first(),
 
-      // 7 days ago
+      // Latest record before start of 7 days ago (local tz)
       db.prepare(`
         SELECT member_count, human_count FROM server_stats 
-        WHERE guild_id = ? AND recorded_at <= datetime('now', '-7 days')
+        WHERE guild_id = ? AND recorded_at <= ?
         ORDER BY recorded_at DESC
         LIMIT 1
-      `).bind(guildId).first(),
+      `).bind(guildId, weekStartUTC).first(),
 
-      // Start of current calendar month (latest record at or before the 1st)
+      // Latest record before start of this month (local tz)
       db.prepare(`
         SELECT member_count, human_count FROM server_stats 
-        WHERE guild_id = ? AND recorded_at <= datetime('now', 'start of month')
+        WHERE guild_id = ? AND recorded_at <= ?
         ORDER BY recorded_at DESC
         LIMIT 1
-      `).bind(guildId).first(),
+      `).bind(guildId, monthStartUTC).first(),
 
       // Earliest record (fallback when no baseline exists for a period)
       db.prepare(`
@@ -282,7 +329,7 @@ export async function getMemberCountChanges(db, guildId) {
     const currentBotCount = current?.bot_count;
 
     // For "This Month": use start-of-month baseline, fall back to earliest record
-    const monthAgo = monthStart || earliest;
+    const monthAgo = monthAgoRow || earliest;
 
     return {
       // Total member counts (including bots)
