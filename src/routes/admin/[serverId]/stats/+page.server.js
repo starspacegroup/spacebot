@@ -28,6 +28,7 @@ import {
 } from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
+import { getRolesFromCache } from "$lib/db/guild-cache.js";
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -98,6 +99,7 @@ export async function load({ params, cookies, platform, parent }) {
   let topVideoUsers = [];
   let topScreenshareUsers = [];
   let guildMetadata = null;
+  let cachedRoles = [];
 
   if (db) {
     try {
@@ -181,6 +183,12 @@ export async function load({ params, cookies, platform, parent }) {
       } catch (metaError) {
         log.warn(`[Stats] Failed to fetch guild metadata for ${serverId}:`, metaError);
       }
+      // Fetch cached roles for roles panel
+      try {
+        cachedRoles = await getRolesFromCache(db, serverId);
+      } catch (rolesError) {
+        log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
+      }
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
     }
@@ -204,6 +212,7 @@ export async function load({ params, cookies, platform, parent }) {
     topVideoUsers,
     topScreenshareUsers,
     guildMetadata,
+    cachedRoles,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,
