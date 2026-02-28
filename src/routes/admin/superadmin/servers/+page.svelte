@@ -295,7 +295,7 @@
 						<th>Server</th>
 						<th>Plan</th>
 						<th class="numeric">Members</th>
-						<th class="numeric">Cmds</th>
+						<th class="numeric">Commands</th>
 						<th class="numeric">Automations</th>
 						<th>Expires</th>
 						<th>Actions</th>
@@ -329,8 +329,18 @@
 								</span>
 							</td>
 							<td class="numeric">{formatNumber(server.approximate_member_count)}</td>
-							<td class="numeric">{formatLimit(planData.max_commands ?? planTiers.free?.max_commands)}</td>
-							<td class="numeric">{formatLimit(planData.max_automations ?? planTiers.free?.max_automations)}</td>
+							<td class="numeric">
+								<span class="usage-counts">
+									<span class="usage-active" title="{server.usage.commands_active} active / {server.usage.commands_total} total">{server.usage.commands_active}</span><span class="usage-sep">/</span><span class="usage-total">{server.usage.commands_total}</span>
+									<span class="usage-limit">of {formatLimit(server.plan ? planData.max_commands : planTiers.free?.max_commands)}</span>
+								</span>
+							</td>
+							<td class="numeric">
+								<span class="usage-counts">
+									<span class="usage-active" title="{server.usage.automations_active} active / {server.usage.automations_total} total">{server.usage.automations_active}</span><span class="usage-sep">/</span><span class="usage-total">{server.usage.automations_total}</span>
+									<span class="usage-limit">of {formatLimit(server.plan ? planData.max_automations : planTiers.free?.max_automations)}</span>
+								</span>
+							</td>
 							<td class="date-cell">
 								{#if planData.expires_at}
 									{formatDate(planData.expires_at)}
@@ -529,6 +539,31 @@
 	.badge-pro { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 	.badge-enterprise { background: rgba(234, 179, 8, 0.2); color: #facc15; }
 	
+	/* Usage counts */
+	.usage-counts {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.15rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.usage-active {
+		color: var(--text-primary, #fff);
+		font-weight: 600;
+	}
+	.usage-sep {
+		color: var(--text-secondary, #555);
+		font-size: 0.8em;
+	}
+	.usage-total {
+		color: var(--text-secondary, #aaa);
+		font-size: 0.85em;
+	}
+	.usage-limit {
+		color: var(--text-secondary, #555);
+		font-size: 0.75em;
+		margin-left: 0.25rem;
+	}
+
 	.date-cell { font-size: 0.85rem; color: var(--text-secondary, #aaa); }
 	.text-muted { color: var(--text-secondary, #666); }
 	
