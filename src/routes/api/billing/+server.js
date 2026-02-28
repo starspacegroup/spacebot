@@ -59,14 +59,16 @@ export async function POST({ request, cookies, platform, url }) {
   const plan = await getServerPlan(db, guildId);
 
   const origin = url.origin;
-  const billingUrl = `${origin}/admin/${guildId}/billing`;
+  const billingUrl = `${origin}/admin/${guildId}/account`;
 
   try {
     switch (action) {
       case "checkout": {
         // Create Stripe Checkout session for upgrading to Pro
-        if (plan.plan === "pro" && plan.stripe_status === "active") {
-          return json({ error: "Server is already on the Pro plan" }, { status: 400 });
+        // Only block if there's an active Stripe subscription already.
+        // Allow checkout if Pro was granted by a superadmin (no subscription).
+        if (plan.stripe_subscription_id && plan.stripe_status === "active") {
+          return json({ error: "Server already has an active Pro subscription" }, { status: 400 });
         }
 
         let customerId = plan.stripe_customer_id;

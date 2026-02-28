@@ -140,11 +140,11 @@
 						<span class="quick-link-arrow">→</span>
 					</a>
 					{#if data.hasFullAdminAccess}
-						<a href="/admin/{data.serverId}/billing" class="quick-link-card">
-							<div class="quick-link-icon">💳</div>
+						<a href="/admin/{data.serverId}/account" class="quick-link-card">
+							<div class="quick-link-icon">⚙️</div>
 							<div class="quick-link-info">
-								<span class="quick-link-title">Billing & Plan</span>
-								<span class="quick-link-desc">Manage subscription and upgrade</span>
+								<span class="quick-link-title">Account & Billing</span>
+								<span class="quick-link-desc">Manage plan, usage, and subscription</span>
 							</div>
 							<span class="quick-link-arrow">→</span>
 						</a>
