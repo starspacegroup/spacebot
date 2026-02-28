@@ -30,6 +30,7 @@ export const PLAN_TIERS = {
     log_retention_days: null, // unlimited
     stats_retention_days: null,
     price_cents: 300, // $3/mo
+    price_cents_yearly: 3000, // $30/yr (save ~17%)
   },
   enterprise: {
     label: "Enterprise",
@@ -210,4 +211,175 @@ export async function checkPlanLimit(db, guildId, feature, currentCount) {
     limit,
     current: currentCount,
   };
+}
+
+// ─── Stripe-related helpers ─────────────────────────────────────────────────
+
+/**
+ * Update Stripe billing fields on a server plan (called from webhook handler).
+ *
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {object} stripeData
+ * @param {string} [stripeData.stripe_customer_id]
+ * @param {string} [stripeData.stripe_subscription_id]
+ * @param {string} [stripeData.stripe_status]
+ * @param {string} [stripeData.stripe_current_period_end]
+ * @param {string} [stripeData.upgraded_by]
+ * @param {string} [stripeData.plan] - Plan tier to set (e.g. 'pro')
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function updateStripeBilling(db, guildId, stripeData) {
+  if (!db || !guildId) {
+    return { success: false, error: "Missing database or guild ID" };
+  }
+
+  try {
+    // First ensure a row exists
+    const existingPlan = await getServerPlan(db, guildId);
+    const tier = stripeData.plan || existingPlan.plan || "free";
+    const defaults = PLAN_TIERS[tier] || PLAN_TIERS.free;
+
+    await db
+      .prepare(`
+        INSERT INTO server_plans (
+          guild_id, plan,
+          max_commands, max_automations, max_api_keys, max_webhooks,
+          log_retention_days, stats_retention_days,
+          price_cents,
+          stripe_customer_id, stripe_subscription_id, stripe_status,
+          stripe_current_period_end, upgraded_by,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(guild_id) DO UPDATE SET
+          plan = excluded.plan,
+          max_commands = excluded.max_commands,
+          max_automations = excluded.max_automations,
+          max_api_keys = excluded.max_api_keys,
+          max_webhooks = excluded.max_webhooks,
+          log_retention_days = excluded.log_retention_days,
+          stats_retention_days = excluded.stats_retention_days,
+          price_cents = excluded.price_cents,
+          stripe_customer_id = COALESCE(excluded.stripe_customer_id, server_plans.stripe_customer_id),
+          stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, server_plans.stripe_subscription_id),
+          stripe_status = COALESCE(excluded.stripe_status, server_plans.stripe_status),
+          stripe_current_period_end = COALESCE(excluded.stripe_current_period_end, server_plans.stripe_current_period_end),
+          upgraded_by = COALESCE(excluded.upgraded_by, server_plans.upgraded_by),
+          updated_at = datetime('now')
+      `)
+      .bind(
+        guildId,
+        tier,
+        defaults.max_commands,
+        defaults.max_automations,
+        defaults.max_api_keys,
+        defaults.max_webhooks,
+        defaults.log_retention_days,
+        defaults.stats_retention_days,
+        defaults.price_cents,
+        stripeData.stripe_customer_id || null,
+        stripeData.stripe_subscription_id || null,
+        stripeData.stripe_status || null,
+        stripeData.stripe_current_period_end || null,
+        stripeData.upgraded_by || null,
+      )
+      .run();
+
+    log.info(`[ServerPlans] Updated Stripe billing for guild ${guildId}: status=${stripeData.stripe_status}, plan=${tier}`);
+    return { success: true };
+  } catch (error) {
+    log.error("[ServerPlans] Error updating Stripe billing:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Find a server plan by Stripe subscription ID.
+ *
+ * @param {D1Database} db
+ * @param {string} subscriptionId
+ * @returns {Promise<object|null>}
+ */
+export async function getPlanBySubscriptionId(db, subscriptionId) {
+  if (!db || !subscriptionId) return null;
+
+  try {
+    return await db
+      .prepare("SELECT * FROM server_plans WHERE stripe_subscription_id = ?")
+      .bind(subscriptionId)
+      .first();
+  } catch (error) {
+    log.error("[ServerPlans] Error finding plan by subscription:", error);
+    return null;
+  }
+}
+
+/**
+ * Find a server plan by Stripe customer ID.
+ *
+ * @param {D1Database} db
+ * @param {string} customerId
+ * @returns {Promise<object|null>}
+ */
+export async function getPlanByCustomerId(db, customerId) {
+  if (!db || !customerId) return null;
+
+  try {
+    return await db
+      .prepare("SELECT * FROM server_plans WHERE stripe_customer_id = ?")
+      .bind(customerId)
+      .first();
+  } catch (error) {
+    log.error("[ServerPlans] Error finding plan by customer:", error);
+    return null;
+  }
+}
+
+/**
+ * Downgrade a guild to free plan (called when subscription is canceled/expired).
+ *
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export async function downgradeToFree(db, guildId) {
+  if (!db || !guildId) {
+    return { success: false, error: "Missing database or guild ID" };
+  }
+
+  const freeDefaults = PLAN_TIERS.free;
+
+  try {
+    await db
+      .prepare(`
+        UPDATE server_plans SET
+          plan = 'free',
+          max_commands = ?,
+          max_automations = ?,
+          max_api_keys = ?,
+          max_webhooks = ?,
+          log_retention_days = ?,
+          stats_retention_days = ?,
+          price_cents = 0,
+          stripe_status = 'canceled',
+          updated_at = datetime('now')
+        WHERE guild_id = ?
+      `)
+      .bind(
+        freeDefaults.max_commands,
+        freeDefaults.max_automations,
+        freeDefaults.max_api_keys,
+        freeDefaults.max_webhooks,
+        freeDefaults.log_retention_days,
+        freeDefaults.stats_retention_days,
+        guildId,
+      )
+      .run();
+
+    log.info(`[ServerPlans] Downgraded guild ${guildId} to free plan`);
+    return { success: true };
+  } catch (error) {
+    log.error("[ServerPlans] Error downgrading to free:", error);
+    return { success: false, error: error.message || String(error) };
+  }
 }

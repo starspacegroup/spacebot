@@ -1,0 +1,868 @@
+<script>
+	import Toast from '$lib/components/Toast.svelte';
+	
+	let { data } = $props();
+	
+	// URL params for post-checkout feedback
+	const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+	const checkoutStatus = urlParams?.get('status');
+	
+	let toastMessage = $state(
+		checkoutStatus === 'success' ? 'Welcome to Pro! Your upgrade is being processed.' :
+		checkoutStatus === 'canceled' ? 'Checkout was canceled. No charges were made.' :
+		null
+	);
+	let toastSuccess = $state(checkoutStatus === 'success');
+	let showToast = $state(!!checkoutStatus);
+	
+	let loading = $state(false);
+	let error = $state(null);
+	let billingInterval = $state('monthly'); // 'monthly' | 'yearly'
+	
+	const plan = $derived(data.plan);
+	const isProActive = $derived(
+		plan.plan === 'pro' && ['active', 'trialing'].includes(plan.stripe_status)
+	);
+	const isCanceling = $derived(
+		plan.plan === 'pro' && plan.stripe_status === 'canceling'
+	);
+	const isPastDue = $derived(plan.stripe_status === 'past_due');
+	
+	// Derived pricing based on selected interval
+	const monthlyPrice = $derived(data.planTiers.pro.price_cents);
+	const yearlyPrice = $derived(data.planTiers.pro.price_cents_yearly);
+	const yearlyMonthlyEquiv = $derived(Math.round(yearlyPrice / 12));
+	const yearlySavingsPercent = $derived(Math.round((1 - yearlyPrice / (monthlyPrice * 12)) * 100));
+	
+	// Format price
+	function formatPrice(cents) {
+		if (!cents) return 'Free';
+		return `$${(cents / 100).toFixed(2)}`;
+	}
+	
+	// Format date
+	function formatDate(dateStr) {
+		if (!dateStr) return 'N/A';
+		return new Date(dateStr).toLocaleDateString('en-US', {
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+		});
+	}
+	
+	async function billingAction(action) {
+		loading = true;
+		error = null;
+		
+		try {
+			const payload = {
+				action,
+				guildId: data.serverId,
+				guildName: data.guild?.name || data.serverId,
+			};
+			
+			// Include billing interval for checkout
+			if (action === 'checkout') {
+				payload.interval = billingInterval;
+			}
+			
+			const res = await fetch('/api/billing', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload),
+			});
+			
+			const result = await res.json();
+			
+			if (!res.ok) {
+				error = result.error || 'Something went wrong';
+				return;
+			}
+			
+			// Redirect to Stripe for checkout/portal
+			if (result.url) {
+				window.location.href = result.url;
+				return;
+			}
+			
+			// Success for cancel/reactivate — reload page
+			if (result.success) {
+				toastMessage = action === 'cancel' 
+					? 'Subscription will cancel at the end of the billing period.'
+					: 'Subscription reactivated!';
+				toastSuccess = action === 'reactivate';
+				showToast = true;
+				// Reload to get fresh data
+				setTimeout(() => window.location.reload(), 1500);
+			}
+		} catch (err) {
+			error = 'Network error. Please try again.';
+		} finally {
+			loading = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Billing - {data.guild?.name || 'Server'} | SpaceBot</title>
+</svelte:head>
+
+<div class="billing-page">
+	{#if showToast && toastMessage}
+		<Toast message={toastMessage} success={toastSuccess} onDismiss={() => showToast = false} />
+	{/if}
+	
+	<header class="page-header">
+		<a href="/admin/{data.serverId}" class="back-link">&#8592; Back to Dashboard</a>
+		<div class="header-content">
+			<h1>
+				<span class="header-icon">💳</span>
+				Billing &amp; Plan
+			</h1>
+			<p class="header-desc">Manage your subscription for {data.guild?.name || 'this server'}</p>
+		</div>
+	</header>
+	
+	{#if error}
+		<div class="alert alert-error">
+			<span class="alert-icon">⚠️</span>
+			{error}
+		</div>
+	{/if}
+	
+	{#if isPastDue}
+		<div class="alert alert-warning">
+			<span class="alert-icon">⚠️</span>
+			<div>
+				<strong>Payment past due.</strong> Your last payment failed. Please update your payment method to keep Pro features.
+				<button class="alert-action" onclick={() => billingAction('portal')} disabled={loading}>
+					Update Payment Method
+				</button>
+			</div>
+		</div>
+	{/if}
+	
+	<!-- Current Plan Status -->
+	<section class="plan-status-section">
+		<div class="plan-status-card">
+			<div class="plan-badge-row">
+				<span class="plan-badge" class:pro={plan.plan === 'pro'} class:free={plan.plan === 'free'}>
+					{plan.plan === 'pro' ? '⚡ Pro' : '🆓 Free'}
+				</span>
+				{#if isCanceling}
+					<span class="status-tag canceling">Cancels {formatDate(plan.stripe_current_period_end)}</span>
+				{:else if isProActive}
+					<span class="status-tag active">Active</span>
+				{:else if isPastDue}
+					<span class="status-tag past-due">Past Due</span>
+				{/if}
+			</div>
+			
+			{#if isProActive || isCanceling}
+				<div class="plan-details">
+					<div class="detail-row">
+						<span class="detail-label">Price</span>
+						<span class="detail-value">{formatPrice(plan.price_cents)}{plan.price_cents === data.planTiers.pro.price_cents_yearly ? '/yr' : '/mo'}</span>
+					</div>
+					{#if plan.stripe_current_period_end}
+						<div class="detail-row">
+							<span class="detail-label">{isCanceling ? 'Access until' : 'Next billing date'}</span>
+							<span class="detail-value">{formatDate(plan.stripe_current_period_end)}</span>
+						</div>
+					{/if}
+				</div>
+			{/if}
+			
+			<div class="plan-actions">
+				{#if isProActive}
+					<button class="btn btn-secondary" onclick={() => billingAction('portal')} disabled={loading}>
+						{loading ? 'Loading...' : 'Manage Payment Method'}
+					</button>
+					<button class="btn btn-danger-outline" onclick={() => billingAction('cancel')} disabled={loading}>
+						{loading ? 'Loading...' : 'Cancel Subscription'}
+					</button>
+				{:else if isCanceling}
+					<button class="btn btn-primary" onclick={() => billingAction('reactivate')} disabled={loading}>
+						{loading ? 'Loading...' : 'Reactivate Subscription'}
+					</button>
+					<button class="btn btn-secondary" onclick={() => billingAction('portal')} disabled={loading}>
+						{loading ? 'Loading...' : 'Billing Portal'}
+					</button>
+				{:else if isPastDue}
+					<button class="btn btn-primary" onclick={() => billingAction('portal')} disabled={loading}>
+						{loading ? 'Loading...' : 'Fix Payment'}
+					</button>
+				{/if}
+			</div>
+		</div>
+	</section>
+	
+	<!-- Plan Comparison -->
+	<section class="plans-section">
+		<div class="plans-header">
+			<h2>Choose Your Plan</h2>
+			<div class="interval-toggle">
+				<button 
+					class="interval-btn" 
+					class:active={billingInterval === 'monthly'}
+					onclick={() => billingInterval = 'monthly'}
+				>
+					Monthly
+				</button>
+				<button 
+					class="interval-btn" 
+					class:active={billingInterval === 'yearly'}
+					onclick={() => billingInterval = 'yearly'}
+				>
+					Yearly
+					{#if yearlySavingsPercent > 0}
+						<span class="save-badge">Save {yearlySavingsPercent}%</span>
+					{/if}
+				</button>
+			</div>
+		</div>
+		
+		<div class="plans-grid">
+			<!-- Free Plan -->
+			<div class="plan-card" class:current={plan.plan === 'free' && !isCanceling}>
+				{#if plan.plan === 'free' && !isCanceling}
+					<div class="current-label">Current Plan</div>
+				{/if}
+				<div class="plan-card-header">
+					<h3>Free</h3>
+					<div class="plan-price">
+						<span class="price-amount">$0</span>
+						<span class="price-period">/mo</span>
+					</div>
+				</div>
+				<ul class="plan-features">
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.max_commands} custom commands</li>
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.max_automations} automations</li>
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.max_api_keys} API keys</li>
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.max_webhooks} webhooks</li>
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.log_retention_days}-day log retention</li>
+					<li><span class="feature-icon">✓</span> {data.planTiers.free.stats_retention_days}-day stats retention</li>
+				</ul>
+				{#if plan.plan !== 'free' || isCanceling}
+					<div class="plan-card-footer">
+						<span class="plan-note">
+							{#if isCanceling}
+								Reverts to Free after cancellation
+							{:else}
+								Included features
+							{/if}
+						</span>
+					</div>
+				{/if}
+			</div>
+			
+			<!-- Pro Plan -->
+			<div class="plan-card pro" class:current={plan.plan === 'pro' && !isCanceling}>
+				{#if plan.plan === 'pro' && !isCanceling}
+					<div class="current-label">Current Plan</div>
+				{:else}
+					<div class="recommended-label">Recommended</div>
+				{/if}
+				<div class="plan-card-header">
+					<h3>Pro</h3>
+					{#if billingInterval === 'yearly'}
+						<div class="plan-price">
+							<span class="price-amount">{formatPrice(yearlyPrice)}</span>
+							<span class="price-period">/yr</span>
+						</div>
+						<div class="price-equiv">{formatPrice(yearlyMonthlyEquiv)}/mo equivalent</div>
+					{:else}
+						<div class="plan-price">
+							<span class="price-amount">{formatPrice(monthlyPrice)}</span>
+							<span class="price-period">/mo</span>
+						</div>
+					{/if}
+				</div>
+				<ul class="plan-features">
+					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> commands</li>
+					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> automations</li>
+					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_api_keys} API keys</li>
+					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_webhooks} webhooks</li>
+					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> log retention</li>
+					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> stats retention</li>
+					<li><span class="feature-icon pro">★</span> Priority support</li>
+				</ul>
+				{#if plan.plan !== 'pro' || isCanceling}
+					<div class="plan-card-footer">
+						{#if data.stripeConfigured}
+							<button 
+								class="btn btn-primary btn-lg btn-full" 
+								onclick={() => billingAction('checkout')} 
+								disabled={loading}
+							>
+								{loading ? 'Redirecting to Stripe...' : 'Upgrade to Pro'}
+							</button>
+						{:else}
+							<span class="plan-note">Payment processing is not configured yet. Contact an admin.</span>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		</div>
+	</section>
+	
+	<!-- FAQ Section -->
+	<section class="faq-section">
+		<h2>Frequently Asked Questions</h2>
+		<div class="faq-list">
+			<details class="faq-item">
+				<summary>What happens to my data if I downgrade?</summary>
+				<p>Your existing data is kept but new features will be limited by the Free plan's caps. For example, you won't be able to create new commands beyond the free limit, but existing ones will continue to work.</p>
+			</details>
+			<details class="faq-item">
+				<summary>Can I cancel anytime?</summary>
+				<p>Yes! Whether you choose monthly or yearly billing, there's no lock-in. When you cancel, you keep Pro features until the end of your current billing period.</p>
+			</details>
+			<details class="faq-item">
+				<summary>Can I switch between monthly and yearly?</summary>
+				<p>Yes! You can switch billing intervals from the Stripe Billing Portal. If you switch from monthly to yearly mid-cycle, Stripe will prorate the difference.</p>
+			</details>
+			<details class="faq-item">
+				<summary>How does billing work?</summary>
+				<p>Payments are handled securely through Stripe. We never see or store your card details. You'll receive email receipts for each payment.</p>
+			</details>
+			<details class="faq-item">
+				<summary>What if my payment fails?</summary>
+				<p>Stripe will automatically retry failed payments. You'll receive email notifications and can update your payment method from the Billing Portal. Your Pro features remain active during the retry period.</p>
+			</details>
+		</div>
+	</section>
+</div>
+
+<style>
+	.billing-page {
+		max-width: 800px;
+		margin: 0 auto;
+		padding: 0 1rem 3rem;
+	}
+	
+	/* Page Header */
+	.page-header {
+		margin-bottom: 1.5rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.back-link {
+		display: inline-block;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		text-decoration: none;
+		margin-bottom: 0.75rem;
+		transition: color var(--transition-fast);
+	}
+	
+	.back-link:hover {
+		color: var(--color-primary);
+	}
+	
+	.header-content h1 {
+		font-size: 1.5rem;
+		font-weight: 700;
+		margin: 0 0 0.25rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--color-text);
+	}
+	
+	.header-icon {
+		font-size: 1.5rem;
+	}
+	
+	.header-desc {
+		margin: 0;
+		color: var(--color-text-muted);
+		font-size: 0.9rem;
+	}
+	
+	/* Alerts */
+	.alert {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 1rem 1.25rem;
+		border-radius: var(--radius-md);
+		margin-bottom: 1.5rem;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+	
+	.alert-error {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border: 1px solid var(--color-danger);
+	}
+	
+	.alert-warning {
+		background: var(--color-warning-soft);
+		color: var(--color-warning);
+		border: 1px solid var(--color-warning);
+	}
+	
+	.alert-icon {
+		flex-shrink: 0;
+		font-size: 1.1rem;
+	}
+	
+	.alert-action {
+		display: inline-block;
+		margin-top: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		background: var(--color-warning);
+		color: white;
+		border: none;
+		border-radius: var(--radius-sm);
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: opacity var(--transition-fast);
+	}
+	
+	.alert-action:hover {
+		opacity: 0.85;
+	}
+	
+	/* Plan Status Section */
+	.plan-status-section {
+		margin-bottom: 2rem;
+	}
+	
+	.plan-status-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.5rem;
+		box-shadow: var(--shadow-sm);
+	}
+	
+	.plan-badge-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+	
+	.plan-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.875rem;
+		border-radius: var(--radius-full);
+		font-weight: 700;
+		font-size: 0.9rem;
+	}
+	
+	.plan-badge.free {
+		background: var(--color-surface-elevated);
+		color: var(--color-text-secondary);
+		border: 1px solid var(--color-border);
+	}
+	
+	.plan-badge.pro {
+		background: linear-gradient(135deg, var(--color-primary), var(--color-accent-hover));
+		color: white;
+	}
+	
+	.status-tag {
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 0.2rem 0.6rem;
+		border-radius: var(--radius-full);
+	}
+	
+	.status-tag.active {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+	}
+	
+	.status-tag.canceling {
+		background: var(--color-warning-soft);
+		color: var(--color-warning);
+	}
+	
+	.status-tag.past-due {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+	}
+	
+	.plan-details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1.25rem;
+		padding: 0.75rem 1rem;
+		background: var(--color-surface-elevated);
+		border-radius: var(--radius-md);
+	}
+	
+	.detail-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 0.875rem;
+	}
+	
+	.detail-label {
+		color: var(--color-text-muted);
+	}
+	
+	.detail-value {
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	
+	.plan-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+	}
+	
+	/* Buttons */
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
+		padding: 0.5rem 1rem;
+		border-radius: var(--radius-md);
+		font-size: 0.875rem;
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		border: 1px solid transparent;
+		text-decoration: none;
+	}
+	
+	.btn:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+	
+	.btn-primary {
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
+		border-color: var(--color-primary-button);
+	}
+	
+	.btn-primary:hover:not(:disabled) {
+		background: var(--color-primary-button-hover);
+		border-color: var(--color-primary-button-hover);
+	}
+	
+	.btn-secondary {
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		border-color: var(--color-border);
+	}
+	
+	.btn-secondary:hover:not(:disabled) {
+		background: var(--color-surface-hover);
+		border-color: var(--color-border-strong);
+	}
+	
+	.btn-danger-outline {
+		background: transparent;
+		color: var(--color-danger);
+		border-color: var(--color-danger);
+	}
+	
+	.btn-danger-outline:hover:not(:disabled) {
+		background: var(--color-danger-soft);
+	}
+	
+	.btn-lg {
+		padding: 0.75rem 1.5rem;
+		font-size: 1rem;
+	}
+	
+	.btn-full {
+		width: 100%;
+	}
+	
+	/* Plans Grid */
+	.plans-section {
+		margin-bottom: 2rem;
+	}
+	
+	.plans-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+	
+	.plans-section h2 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		margin: 0;
+		color: var(--color-text);
+	}
+	
+	/* Interval Toggle */
+	.interval-toggle {
+		display: flex;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+		padding: 3px;
+		gap: 2px;
+	}
+	
+	.interval-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.875rem;
+		border: none;
+		border-radius: var(--radius-full);
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 0.8rem;
+		font-weight: 600;
+		font-family: inherit;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		white-space: nowrap;
+	}
+	
+	.interval-btn:hover {
+		color: var(--color-text);
+	}
+	
+	.interval-btn.active {
+		background: var(--color-primary);
+		color: white;
+		box-shadow: var(--shadow-sm);
+	}
+	
+	.save-badge {
+		display: inline-block;
+		padding: 0.1rem 0.4rem;
+		border-radius: var(--radius-full);
+		background: var(--color-success);
+		color: white;
+		font-size: 0.65rem;
+		font-weight: 700;
+		line-height: 1.3;
+	}
+	
+	.interval-btn.active .save-badge {
+		background: rgba(255, 255, 255, 0.25);
+		color: white;
+	}
+	
+	.price-equiv {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin-top: 0.125rem;
+	}
+	
+	.plans-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+	}
+	
+	@media (max-width: 600px) {
+		.plans-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+	
+	.plan-card {
+		position: relative;
+		background: var(--color-surface);
+		border: 2px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.5rem;
+		display: flex;
+		flex-direction: column;
+		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+	
+	.plan-card:hover {
+		border-color: var(--color-border-strong);
+	}
+	
+	.plan-card.pro {
+		border-color: var(--color-primary);
+	}
+	
+	.plan-card.pro:hover {
+		box-shadow: 0 0 0 1px var(--color-primary), var(--shadow-md);
+	}
+	
+	.plan-card.current {
+		border-color: var(--color-success);
+		background: var(--color-success-soft);
+	}
+	
+	.current-label,
+	.recommended-label {
+		position: absolute;
+		top: -0.6rem;
+		left: 1rem;
+		padding: 0.1rem 0.6rem;
+		border-radius: var(--radius-full);
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	
+	.current-label {
+		background: var(--color-success);
+		color: white;
+	}
+	
+	.recommended-label {
+		background: var(--color-primary);
+		color: white;
+	}
+	
+	.plan-card-header {
+		margin-bottom: 1rem;
+	}
+	
+	.plan-card-header h3 {
+		font-size: 1.1rem;
+		font-weight: 700;
+		margin: 0 0 0.375rem;
+		color: var(--color-text);
+	}
+	
+	.plan-price {
+		display: flex;
+		align-items: baseline;
+		gap: 0.125rem;
+	}
+	
+	.price-amount {
+		font-size: 1.75rem;
+		font-weight: 800;
+		color: var(--color-text);
+	}
+	
+	.price-period {
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+	}
+	
+	/* Plan Features */
+	.plan-features {
+		list-style: none;
+		padding: 0;
+		margin: 0 0 1rem;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.plan-features li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+	}
+	
+	.feature-icon {
+		flex-shrink: 0;
+		width: 1.25rem;
+		text-align: center;
+		color: var(--color-success);
+		font-weight: 700;
+	}
+	
+	.feature-icon.pro {
+		color: var(--color-primary);
+	}
+	
+	.plan-card-footer {
+		margin-top: auto;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-border-light);
+	}
+	
+	.plan-note {
+		display: block;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		text-align: center;
+	}
+	
+	/* FAQ Section */
+	.faq-section {
+		margin-bottom: 2rem;
+	}
+	
+	.faq-section h2 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		margin: 0 0 1rem;
+		color: var(--color-text);
+	}
+	
+	.faq-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	
+	.faq-item {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		overflow: hidden;
+	}
+	
+	.faq-item summary {
+		padding: 0.875rem 1rem;
+		font-weight: 600;
+		font-size: 0.9rem;
+		cursor: pointer;
+		color: var(--color-text);
+		transition: background var(--transition-fast);
+		list-style: none;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.faq-item summary::before {
+		content: '▸';
+		transition: transform var(--transition-fast);
+		flex-shrink: 0;
+		color: var(--color-text-muted);
+	}
+	
+	.faq-item[open] summary::before {
+		transform: rotate(90deg);
+	}
+	
+	.faq-item summary:hover {
+		background: var(--color-surface-elevated);
+	}
+	
+	.faq-item summary::-webkit-details-marker {
+		display: none;
+	}
+	
+	.faq-item p {
+		margin: 0;
+		padding: 0 1rem 1rem 2rem;
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+	}
+</style>
