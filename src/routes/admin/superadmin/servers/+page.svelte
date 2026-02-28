@@ -453,13 +453,15 @@
 	/* Table */
 	.table-wrapper {
 		overflow-x: auto;
+		overflow: hidden;
 		border-radius: 0.75rem;
 		border: 1px solid var(--border-color, #333);
 	}
 	
 	.data-table {
 		width: 100%;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
 		font-size: 0.9rem;
 	}
 	
@@ -468,6 +470,10 @@
 		padding: 0.75rem 1rem;
 		text-align: left;
 		border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.06));
+	}
+	
+	.data-table tbody tr:last-child td {
+		border-bottom: none;
 	}
 	
 	.data-table th {

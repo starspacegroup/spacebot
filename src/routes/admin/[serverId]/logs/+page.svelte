@@ -1110,13 +1110,15 @@
 	/* Logs Table */
 	.logs-table-container {
 		overflow-x: auto;
+		overflow: hidden;
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 	}
 	
 	.logs-table {
 		width: 100%;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
 		font-size: 0.875rem;
 	}
 	
@@ -1135,6 +1137,10 @@
 		padding: 0.75rem 1rem;
 		border-bottom: 1px solid var(--color-border-light);
 		vertical-align: top;
+	}
+	
+	.logs-table tbody tr:last-child td {
+		border-bottom: none;
 	}
 	
 	.logs-table tr:hover td {

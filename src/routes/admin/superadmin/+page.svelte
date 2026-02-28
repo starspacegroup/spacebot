@@ -336,9 +336,6 @@
 				</h1>
 				<p class="header-subtitle">Global bot statistics and management</p>
 			</div>
-			<a href="/admin" class="btn btn-secondary btn-sm">
-				← Dashboard
-			</a>
 		</div>
 	</header>
 	
@@ -1381,6 +1378,7 @@
 	
 	.servers-table-wrapper {
 		overflow-x: auto;
+		overflow: hidden;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
@@ -1389,7 +1387,8 @@
 	
 	.servers-table {
 		width: 100%;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
 		font-size: 0.8rem;
 		min-width: 500px;
 	}
@@ -1882,6 +1881,7 @@
 	
 	.history-table-wrapper {
 		overflow-x: auto;
+		overflow: hidden;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
@@ -1889,7 +1889,8 @@
 	
 	.history-table {
 		width: 100%;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
 		font-size: 0.75rem;
 	}
 	

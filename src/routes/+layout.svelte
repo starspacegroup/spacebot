@@ -87,7 +87,7 @@
 			SpaceBot
 		</a>
 		<nav class="nav">
-			{#if $page.url.pathname.startsWith('/admin') && adminGuilds.length > 0}
+			{#if $page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
 				<ServerSelector 
 					guilds={adminGuilds} 
 					selectedGuildId={selectedGuildId}
