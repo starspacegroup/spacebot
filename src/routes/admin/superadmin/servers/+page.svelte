@@ -306,21 +306,23 @@
 						{@const plan = server.plan?.plan || 'free'}
 						{@const planData = server.plan || {}}
 						<tr>
-							<td class="server-cell">
-								{#if server.icon}
-									<img 
-										src="https://cdn.discordapp.com/icons/{server.guild_id}/{server.icon}.png?size=32" 
-										alt=""
-										class="server-icon"
-									/>
-								{:else}
-									<div class="server-icon-placeholder">
-										{server.name?.charAt(0).toUpperCase() || '?'}
+							<td>
+								<div class="server-cell">
+									{#if server.icon}
+										<img 
+											src="https://cdn.discordapp.com/icons/{server.guild_id}/{server.icon}.png?size=32" 
+											alt=""
+											class="server-icon"
+										/>
+									{:else}
+										<div class="server-icon-placeholder">
+											{server.name?.charAt(0).toUpperCase() || '?'}
+										</div>
+									{/if}
+									<div class="server-info">
+										<span class="server-name">{server.name}</span>
+										<span class="server-id">{server.guild_id}</span>
 									</div>
-								{/if}
-								<div class="server-info">
-									<span class="server-name">{server.name}</span>
-									<span class="server-id">{server.guild_id}</span>
 								</div>
 							</td>
 							<td>
@@ -348,18 +350,20 @@
 									<span class="text-muted">—</span>
 								{/if}
 							</td>
-							<td class="actions-cell">
-								<button class="btn btn-sm btn-secondary" onclick={() => startEditPlan(server)}>
-									Edit Plan
-								</button>
-								{#if plan !== 'free'}
-									<button class="btn btn-sm btn-danger" onclick={() => resetPlan(server)}>
-										Reset
+							<td>
+								<div class="actions-cell">
+									<button class="btn btn-sm btn-secondary" onclick={() => startEditPlan(server)}>
+										Edit Plan
 									</button>
-								{/if}
-								<a href="/admin/{server.guild_id}" class="btn btn-sm btn-secondary">
-									Manage
-								</a>
+									{#if plan !== 'free'}
+										<button class="btn btn-sm btn-danger" onclick={() => resetPlan(server)}>
+											Reset
+										</button>
+									{/if}
+									<a href="/admin/{server.guild_id}" class="btn btn-sm btn-secondary">
+										Manage
+									</a>
+								</div>
 							</td>
 						</tr>
 					{/each}
@@ -485,7 +489,7 @@
 	
 	/* Server cell */
 	.server-cell {
-		display: flex;
+		display: inline-flex;
 		align-items: center;
 		gap: 0.75rem;
 	}
@@ -568,7 +572,7 @@
 	.text-muted { color: var(--text-secondary, #666); }
 	
 	.actions-cell {
-		display: flex;
+		display: inline-flex;
 		gap: 0.5rem;
 		flex-wrap: wrap;
 	}
