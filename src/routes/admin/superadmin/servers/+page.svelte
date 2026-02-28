@@ -307,7 +307,7 @@
 						{@const planData = server.plan || {}}
 						<tr>
 							<td>
-								<div class="server-cell">
+								<a href="/admin/{server.guild_id}" class="server-cell">
 									{#if server.icon}
 										<img 
 											src="https://cdn.discordapp.com/icons/{server.guild_id}/{server.icon}.png?size=32" 
@@ -323,7 +323,7 @@
 										<span class="server-name">{server.name}</span>
 										<span class="server-id">{server.guild_id}</span>
 									</div>
-								</div>
+								</a>
 							</td>
 							<td>
 								<span class="plan-badge {getPlanBadgeClass(plan)}">
@@ -492,6 +492,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.75rem;
+		text-decoration: none;
+		color: inherit;
+	}
+	.server-cell:hover .server-name {
+		color: var(--accent-color, #818cf8);
 	}
 	
 	.server-icon {
