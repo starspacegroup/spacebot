@@ -21,7 +21,12 @@
 	
 	const plan = $derived(data.plan);
 	const billingHistory = $derived(data.billingHistory || []);
-	const usage = $derived(data.usage || { commands: 0, automations: 0, apiKeys: 0, webhooks: 0 });
+	const usage = $derived(data.usage || {
+		commands: 0, commandsActive: 0, commandsInactive: 0,
+		automations: 0, automationsActive: 0, automationsInactive: 0,
+		apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
+		webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
+	});
 	const isProActive = $derived(
 		plan.plan === 'pro' && ['active', 'trialing'].includes(plan.stripe_status)
 	);
@@ -50,6 +55,8 @@
 		if (!max) return `${used} / ∞`;
 		return `${used} / ${max}`;
 	}
+	
+
 	
 	function usageStatus(used, max) {
 		if (!max) return 'ok'; // unlimited
@@ -355,8 +362,8 @@
 					{#if plan.max_commands}
 						<div class="usage-bar">
 							<div 
-								class="usage-bar-fill {usageStatus(usage.commands, plan.max_commands)}" 
-								style="width: {usagePercent(usage.commands, plan.max_commands)}%"
+								class="usage-bar-fill {usageStatus(usage.commandsActive, plan.max_commands)}" 
+								style="width: {usagePercent(usage.commandsActive, plan.max_commands)}%"
 							></div>
 						</div>
 					{:else}
@@ -364,8 +371,13 @@
 							<div class="usage-bar-fill unlimited" style="width: 100%"></div>
 						</div>
 					{/if}
-					<span class="usage-count">{usageLabel(usage.commands, plan.max_commands)}</span>
+					<span class="usage-count">{usageLabel(usage.commandsActive, plan.max_commands)}</span>
 				</div>
+				{#if usage.commandsInactive > 0}
+					<div class="usage-detail">
+						<span class="detail-inactive">+{usage.commandsInactive} disabled</span>
+					</div>
+				{/if}
 			</div>
 			
 			<div class="usage-card">
@@ -377,8 +389,8 @@
 					{#if plan.max_automations}
 						<div class="usage-bar">
 							<div 
-								class="usage-bar-fill {usageStatus(usage.automations, plan.max_automations)}" 
-								style="width: {usagePercent(usage.automations, plan.max_automations)}%"
+								class="usage-bar-fill {usageStatus(usage.automationsActive, plan.max_automations)}" 
+								style="width: {usagePercent(usage.automationsActive, plan.max_automations)}%"
 							></div>
 						</div>
 					{:else}
@@ -386,8 +398,13 @@
 							<div class="usage-bar-fill unlimited" style="width: 100%"></div>
 						</div>
 					{/if}
-					<span class="usage-count">{usageLabel(usage.automations, plan.max_automations)}</span>
+					<span class="usage-count">{usageLabel(usage.automationsActive, plan.max_automations)}</span>
 				</div>
+				{#if usage.automationsInactive > 0}
+					<div class="usage-detail">
+						<span class="detail-inactive">+{usage.automationsInactive} disabled</span>
+					</div>
+				{/if}
 			</div>
 			
 			<div class="usage-card">
@@ -421,8 +438,8 @@
 					{#if plan.max_webhooks}
 						<div class="usage-bar">
 							<div 
-								class="usage-bar-fill {usageStatus(usage.webhooks, plan.max_webhooks)}" 
-								style="width: {usagePercent(usage.webhooks, plan.max_webhooks)}%"
+								class="usage-bar-fill {usageStatus(usage.webhooksActive, plan.max_webhooks)}" 
+								style="width: {usagePercent(usage.webhooksActive, plan.max_webhooks)}%"
 							></div>
 						</div>
 					{:else}
@@ -430,7 +447,7 @@
 							<div class="usage-bar-fill unlimited" style="width: 100%"></div>
 						</div>
 					{/if}
-					<span class="usage-count">{usageLabel(usage.webhooks, plan.max_webhooks)}</span>
+					<span class="usage-count">{usageLabel(usage.webhooksActive, plan.max_webhooks)}</span>
 				</div>
 			</div>
 		</div>
@@ -457,12 +474,24 @@
 			<a href="/admin/{data.serverId}/commands" class="manage-card">
 				<span class="manage-icon">⌨️</span>
 				<span class="manage-label">Commands</span>
-				<span class="manage-count">{usage.commands}</span>
+				{#if usage.commands > 0}
+					<span class="manage-summary">
+						<span class="summary-active">{usage.commandsActive}</span> active{#if usage.commandsInactive > 0}<span class="summary-muted">, {usage.commandsInactive} off</span>{/if}
+					</span>
+				{:else}
+					<span class="manage-count">0</span>
+				{/if}
 			</a>
 			<a href="/admin/{data.serverId}/automations" class="manage-card">
 				<span class="manage-icon">🤖</span>
 				<span class="manage-label">Automations</span>
-				<span class="manage-count">{usage.automations}</span>
+				{#if usage.automations > 0}
+					<span class="manage-summary">
+						<span class="summary-active">{usage.automationsActive}</span> active{#if usage.automationsInactive > 0}<span class="summary-muted">, {usage.automationsInactive} off</span>{/if}
+					</span>
+				{:else}
+					<span class="manage-count">0</span>
+				{/if}
 			</a>
 			<a href="/admin/{data.serverId}/api-keys" class="manage-card">
 				<span class="manage-icon">🔑</span>
@@ -1131,6 +1160,28 @@
 		text-align: right;
 	}
 	
+	.usage-detail {
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		margin-top: 0.35rem;
+		font-size: 0.7rem;
+	}
+	
+	.detail-active {
+		color: #22c55e;
+	}
+	
+	.detail-inactive {
+		color: var(--color-text-muted);
+		opacity: 0.7;
+	}
+	
+	.detail-sep {
+		color: var(--color-text-muted);
+		opacity: 0.4;
+	}
+	
 	.retention-info {
 		display: flex;
 		gap: 1.5rem;
@@ -1217,6 +1268,20 @@
 		background: var(--color-surface-elevated);
 		padding: 0.1rem 0.4rem;
 		border-radius: var(--radius-full);
+	}
+	
+	.manage-summary {
+		font-size: 0.675rem;
+		color: var(--color-text-muted);
+	}
+	
+	.summary-active {
+		color: #22c55e;
+		font-weight: 600;
+	}
+	
+	.summary-muted {
+		opacity: 0.7;
 	}
 	
 	/* Plans Grid */

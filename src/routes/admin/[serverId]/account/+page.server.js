@@ -19,26 +19,45 @@ function checkIsSuperAdmin(userId, platform) {
  */
 async function getUsageCounts(db, guildId) {
   if (!db || !guildId) {
-    return { commands: 0, automations: 0, apiKeys: 0, webhooks: 0 };
+    return {
+      commands: 0, commandsActive: 0, commandsInactive: 0,
+      automations: 0, automationsActive: 0, automationsInactive: 0,
+      apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
+      webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
+    };
   }
 
   try {
     const [commandsResult, automationsResult, apiKeysResult, webhooksResult] = await Promise.all([
-      db.prepare("SELECT COUNT(*) as count FROM commands WHERE guild_id = ?").bind(guildId).first(),
-      db.prepare("SELECT COUNT(*) as count FROM automations WHERE guild_id = ?").bind(guildId).first(),
-      db.prepare("SELECT COUNT(*) as count FROM api_keys WHERE guild_id = ? AND revoked_at IS NULL").bind(guildId).first(),
-      db.prepare("SELECT COUNT(*) as count FROM webhooks WHERE guild_id = ?").bind(guildId).first(),
+      db.prepare("SELECT COUNT(*) as count, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as active FROM commands WHERE guild_id = ?").bind(guildId).first(),
+      db.prepare("SELECT COUNT(*) as count, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as active FROM automations WHERE guild_id = ?").bind(guildId).first(),
+      db.prepare("SELECT COUNT(*) as count, SUM(CASE WHEN revoked = 0 THEN 1 ELSE 0 END) as active FROM api_keys WHERE guild_id = ?").bind(guildId).first(),
+      db.prepare("SELECT COUNT(*) as count, SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as active FROM webhooks WHERE guild_id = ?").bind(guildId).first(),
     ]);
 
+    const cmds = commandsResult?.count || 0;
+    const cmdsActive = commandsResult?.active || 0;
+    const autos = automationsResult?.count || 0;
+    const autosActive = automationsResult?.active || 0;
+    const keys = apiKeysResult?.count || 0;
+    const keysActive = apiKeysResult?.active || 0;
+    const hooks = webhooksResult?.count || 0;
+    const hooksActive = webhooksResult?.active || 0;
+
     return {
-      commands: commandsResult?.count || 0,
-      automations: automationsResult?.count || 0,
-      apiKeys: apiKeysResult?.count || 0,
-      webhooks: webhooksResult?.count || 0,
+      commands: cmds, commandsActive: cmdsActive, commandsInactive: cmds - cmdsActive,
+      automations: autos, automationsActive: autosActive, automationsInactive: autos - autosActive,
+      apiKeys: keysActive, apiKeysActive: keysActive, apiKeysRevoked: keys - keysActive,
+      webhooks: hooks, webhooksActive: hooksActive, webhooksInactive: hooks - hooksActive,
     };
   } catch (error) {
     log.warn("[Account] Failed to fetch usage counts for guild", guildId, error?.message);
-    return { commands: 0, automations: 0, apiKeys: 0, webhooks: 0 };
+    return {
+      commands: 0, commandsActive: 0, commandsInactive: 0,
+      automations: 0, automationsActive: 0, automationsInactive: 0,
+      apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
+      webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
+    };
   }
 }
 
