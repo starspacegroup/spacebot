@@ -20,6 +20,7 @@
 	let billingInterval = $state('monthly'); // 'monthly' | 'yearly'
 	
 	const plan = $derived(data.plan);
+	const billingHistory = $derived(data.billingHistory || []);
 	const isProActive = $derived(
 		plan.plan === 'pro' && ['active', 'trialing'].includes(plan.stripe_status)
 	);
@@ -50,6 +51,83 @@
 		});
 	}
 	
+	// Billing history helpers
+	function getEventIcon(eventType) {
+		switch (eventType) {
+			case 'checkout_completed': return '🎉';
+			case 'plan_upgrade': return '⬆️';
+			case 'plan_downgrade': return '⬇️';
+			case 'admin_edit': return '🔧';
+			case 'payment_success': return '✅';
+			case 'payment_failed': return '❌';
+			case 'subscription_canceled': return '⏸️';
+			case 'subscription_reactivated': return '▶️';
+			case 'subscription_renewed': return '🔄';
+			case 'plan_reset': return '↩️';
+			default: return '📋';
+		}
+	}
+	
+	function getEventLabel(eventType) {
+		switch (eventType) {
+			case 'checkout_completed': return 'Upgrade';
+			case 'plan_upgrade': return 'Plan Upgrade';
+			case 'plan_downgrade': return 'Downgrade';
+			case 'admin_edit': return 'Admin Edit';
+			case 'payment_success': return 'Payment';
+			case 'payment_failed': return 'Payment Failed';
+			case 'subscription_canceled': return 'Canceled';
+			case 'subscription_reactivated': return 'Reactivated';
+			case 'subscription_renewed': return 'Renewed';
+			case 'plan_reset': return 'Plan Reset';
+			default: return 'Event';
+		}
+	}
+	
+	function getEventBadgeClass(eventType) {
+		switch (eventType) {
+			case 'checkout_completed':
+			case 'plan_upgrade':
+			case 'payment_success':
+			case 'subscription_renewed':
+				return 'badge-success';
+			case 'payment_failed':
+			case 'plan_downgrade':
+				return 'badge-danger';
+			case 'subscription_canceled':
+				return 'badge-warning';
+			case 'admin_edit':
+			case 'plan_reset':
+				return 'badge-admin';
+			case 'subscription_reactivated':
+				return 'badge-info';
+			default:
+				return 'badge-neutral';
+		}
+	}
+	
+	function getEventDotClass(eventType) {
+		switch (eventType) {
+			case 'checkout_completed':
+			case 'plan_upgrade':
+			case 'payment_success':
+			case 'subscription_renewed':
+				return 'dot-success';
+			case 'payment_failed':
+			case 'plan_downgrade':
+				return 'dot-danger';
+			case 'subscription_canceled':
+				return 'dot-warning';
+			case 'admin_edit':
+			case 'plan_reset':
+				return 'dot-admin';
+			case 'subscription_reactivated':
+				return 'dot-info';
+			default:
+				return 'dot-neutral';
+		}
+	}
+
 	async function billingAction(action) {
 		loading = true;
 		error = null;
@@ -164,10 +242,22 @@
 						<span class="detail-label">Price</span>
 						<span class="detail-value">{formatPrice(plan.price_cents)}{plan.price_cents === data.planTiers.pro.price_cents_yearly ? '/yr' : '/mo'}</span>
 					</div>
-					{#if plan.stripe_current_period_end}
+					{#if data.nextBillingDate}
 						<div class="detail-row">
 							<span class="detail-label">{isCanceling ? 'Access until' : 'Next billing date'}</span>
-							<span class="detail-value">{formatDate(plan.stripe_current_period_end)}</span>
+							<span class="detail-value">{formatDate(data.nextBillingDate)}</span>
+						</div>
+					{/if}
+					{#if data.nextBillingAmount && !isCanceling}
+						<div class="detail-row">
+							<span class="detail-label">Next charge</span>
+							<span class="detail-value">{formatPrice(data.nextBillingAmount)}{data.billingInterval === 'year' ? '/yr' : '/mo'}</span>
+						</div>
+					{/if}
+					{#if data.billingInterval}
+						<div class="detail-row">
+							<span class="detail-label">Billing cycle</span>
+							<span class="detail-value">{data.billingInterval === 'year' ? 'Yearly' : 'Monthly'}</span>
 						</div>
 					{/if}
 				</div>
@@ -304,6 +394,63 @@
 				{/if}
 			</div>
 		</div>
+	</section>
+	
+	<!-- Billing History -->
+	<section class="history-section">
+		<h2>Billing History</h2>
+		{#if billingHistory.length === 0}
+			<div class="history-empty">
+				<span class="empty-icon">📋</span>
+				<p>No billing events yet. History will appear here as plan changes and payments occur.</p>
+			</div>
+		{:else}
+			<div class="history-timeline">
+				{#each billingHistory as event}
+					<div class="history-event" class:admin-event={event.event_type === 'admin_edit' || event.event_type === 'plan_reset'}>
+						<div class="event-indicator">
+							<span class="event-dot {getEventDotClass(event.event_type)}"></span>
+							<span class="event-line"></span>
+						</div>
+						<div class="event-content">
+							<div class="event-header">
+								<span class="event-badge {getEventBadgeClass(event.event_type)}">
+									{getEventIcon(event.event_type)} {getEventLabel(event.event_type)}
+								</span>
+								<time class="event-date">{formatDate(event.created_at)}</time>
+							</div>
+							<p class="event-description">{event.description}</p>
+							{#if event.amount_cents}
+								<span class="event-amount">{formatPrice(event.amount_cents)}</span>
+							{/if}
+							{#if event.plan_before && event.plan_after && event.plan_before !== event.plan_after}
+								<div class="event-plan-change">
+									<span class="plan-pill-sm {event.plan_before}">{event.plan_before}</span>
+									<span class="arrow">→</span>
+									<span class="plan-pill-sm {event.plan_after}">{event.plan_after}</span>
+								</div>
+							{/if}
+							{#if event.actor_name}
+								<span class="event-actor">by {event.actor_name}</span>
+							{/if}
+							{#if event.event_type === 'admin_edit' && event.details?.changes?.length}
+								<details class="event-changes">
+									<summary>View changes</summary>
+									<ul>
+										{#each event.details.changes as change}
+											<li>{change}</li>
+										{/each}
+									</ul>
+								</details>
+							{/if}
+						</div>
+					</div>
+				{/each}
+			</div>
+			{#if data.billingHistoryTotal > billingHistory.length}
+				<p class="history-more">Showing {billingHistory.length} of {data.billingHistoryTotal} events</p>
+			{/if}
+		{/if}
 	</section>
 	
 	<!-- FAQ Section -->
@@ -811,6 +958,251 @@
 		font-weight: 600;
 		margin: 0 0 1rem;
 		color: var(--color-text);
+	}
+
+	/* Billing History Section */
+	.history-section {
+		margin-bottom: 2rem;
+	}
+	
+	.history-section h2 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		margin: 0 0 1rem;
+		color: var(--color-text);
+	}
+	
+	.history-empty {
+		text-align: center;
+		padding: 2rem 1rem;
+		background: var(--color-surface);
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+	
+	.empty-icon {
+		font-size: 2rem;
+		display: block;
+		margin-bottom: 0.5rem;
+	}
+	
+	.history-empty p {
+		margin: 0;
+		color: var(--color-text-muted);
+		font-size: 0.875rem;
+	}
+	
+	.history-timeline {
+		display: flex;
+		flex-direction: column;
+	}
+	
+	.history-event {
+		display: flex;
+		gap: 0.75rem;
+		position: relative;
+	}
+	
+	.history-event.admin-event .event-content {
+		border-left: 2px solid var(--color-warning);
+	}
+	
+	.event-indicator {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		flex-shrink: 0;
+		width: 1rem;
+		padding-top: 0.375rem;
+	}
+	
+	.event-dot {
+		width: 0.625rem;
+		height: 0.625rem;
+		border-radius: 50%;
+		flex-shrink: 0;
+		z-index: 1;
+	}
+	
+	.dot-success { background: var(--color-success); }
+	.dot-danger { background: var(--color-danger); }
+	.dot-warning { background: var(--color-warning); }
+	.dot-admin { background: var(--color-primary); }
+	.dot-info { background: var(--color-accent, #3b82f6); }
+	.dot-neutral { background: var(--color-text-muted); }
+	
+	.event-line {
+		width: 2px;
+		flex: 1;
+		background: var(--color-border);
+		margin-top: 0.25rem;
+	}
+	
+	.history-event:last-child .event-line {
+		display: none;
+	}
+	
+	.event-content {
+		flex: 1;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.75rem 1rem;
+		margin-bottom: 0.5rem;
+	}
+	
+	.event-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.375rem;
+		flex-wrap: wrap;
+	}
+	
+	.event-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.15rem 0.5rem;
+		border-radius: var(--radius-full);
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+	
+	.badge-success {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+	}
+	
+	.badge-danger {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+	}
+	
+	.badge-warning {
+		background: var(--color-warning-soft);
+		color: var(--color-warning);
+	}
+	
+	.badge-admin {
+		background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+		color: var(--color-primary);
+	}
+	
+	.badge-info {
+		background: color-mix(in srgb, var(--color-accent, #3b82f6) 15%, transparent);
+		color: var(--color-accent, #3b82f6);
+	}
+	
+	.badge-neutral {
+		background: var(--color-surface-elevated);
+		color: var(--color-text-muted);
+	}
+	
+	.event-date {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		white-space: nowrap;
+	}
+	
+	.event-description {
+		margin: 0 0 0.25rem;
+		font-size: 0.85rem;
+		color: var(--color-text-secondary);
+		line-height: 1.4;
+	}
+	
+	.event-amount {
+		display: inline-block;
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--color-text);
+		margin-right: 0.5rem;
+	}
+	
+	.event-plan-change {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		margin-top: 0.25rem;
+		font-size: 0.8rem;
+	}
+	
+	.plan-pill-sm {
+		display: inline-block;
+		padding: 0.1rem 0.4rem;
+		border-radius: var(--radius-full);
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: capitalize;
+	}
+	
+	.plan-pill-sm.free {
+		background: var(--color-surface-elevated);
+		color: var(--color-text-muted);
+		border: 1px solid var(--color-border);
+	}
+	
+	.plan-pill-sm.pro {
+		background: linear-gradient(135deg, var(--color-primary), var(--color-accent-hover));
+		color: white;
+	}
+	
+	.plan-pill-sm.enterprise {
+		background: var(--color-warning);
+		color: white;
+	}
+	
+	.event-plan-change .arrow {
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+	}
+	
+	.event-actor {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin-top: 0.25rem;
+		font-style: italic;
+	}
+	
+	.event-changes {
+		margin-top: 0.375rem;
+		font-size: 0.8rem;
+	}
+	
+	.event-changes summary {
+		cursor: pointer;
+		color: var(--color-primary);
+		font-weight: 600;
+		font-size: 0.75rem;
+		user-select: none;
+	}
+	
+	.event-changes summary:hover {
+		text-decoration: underline;
+	}
+	
+	.event-changes ul {
+		margin: 0.25rem 0 0;
+		padding-left: 1.25rem;
+		color: var(--color-text-secondary);
+		font-size: 0.75rem;
+		line-height: 1.6;
+	}
+	
+	.event-changes li {
+		font-family: var(--font-mono, monospace);
+	}
+	
+	.history-more {
+		text-align: center;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin-top: 0.75rem;
 	}
 	
 	.faq-list {

@@ -1,7 +1,9 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
+import { getBillingHistory } from "$lib/db/billing-history.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
+import { getSubscription } from "$lib/stripe.js";
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -45,8 +47,37 @@ export async function load({ cookies, platform, parent, params }) {
   const db = platform?.env?.DB;
   const plan = db ? await getServerPlan(db, serverId) : { plan: "free", ...PLAN_TIERS.free };
 
+  // Fetch billing history
+  const { events: billingHistory, total: billingHistoryTotal } = db
+    ? await getBillingHistory(db, serverId, { limit: 50 })
+    : { events: [], total: 0 };
+
   // Check if Stripe is configured
   const stripeConfigured = !!(platform?.env?.STRIPE_SECRET_KEY || process.env?.STRIPE_SECRET_KEY);
+
+  // Fetch upcoming billing details from Stripe subscription if active
+  let nextBillingDate = plan.stripe_current_period_end || null;
+  let nextBillingAmount = null;
+  let billingInterval = null;
+
+  if (plan.stripe_subscription_id && stripeConfigured && ["active", "trialing"].includes(plan.stripe_status)) {
+    try {
+      const sub = await getSubscription(platform, plan.stripe_subscription_id);
+      if (sub) {
+        nextBillingDate = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : nextBillingDate;
+        // Get the amount from the subscription's plan
+        const item = sub.items?.data?.[0];
+        if (item?.price) {
+          nextBillingAmount = item.price.unit_amount || null;
+          billingInterval = item.price.recurring?.interval || null;
+        }
+      }
+    } catch (err) {
+      log.warn(`[Billing] Failed to fetch Stripe subscription for guild ${serverId}:`, err.message);
+    }
+  }
 
   return {
     serverId,
@@ -55,5 +86,10 @@ export async function load({ cookies, platform, parent, params }) {
     planTiers: PLAN_TIERS,
     stripeConfigured,
     isSuperAdmin,
+    billingHistory,
+    billingHistoryTotal,
+    nextBillingDate,
+    nextBillingAmount,
+    billingInterval,
   };
 }

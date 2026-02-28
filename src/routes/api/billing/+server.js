@@ -18,6 +18,7 @@ import {
   createCustomer,
   StripeError,
 } from "$lib/stripe.js";
+import { addBillingEvent, BILLING_EVENT_TYPES } from "$lib/db/billing-history.js";
 
 /**
  * Check if user is a superadmin
@@ -146,6 +147,16 @@ export async function POST({ request, cookies, platform, url }) {
           .bind(sub.cancel_at_period_end ? "canceling" : sub.status, guildId)
           .run();
 
+        // Log cancellation
+        await addBillingEvent(db, {
+          guild_id: guildId,
+          event_type: BILLING_EVENT_TYPES.SUBSCRIPTION_CANCELED,
+          description: `Subscription set to cancel at end of billing period`,
+          actor_id: userId,
+          plan_before: "pro",
+          plan_after: "pro",
+        });
+
         return json({ success: true, cancel_at_period_end: sub.cancel_at_period_end });
       }
 
@@ -166,6 +177,16 @@ export async function POST({ request, cookies, platform, url }) {
           `)
           .bind(sub.status, guildId)
           .run();
+
+        // Log reactivation
+        await addBillingEvent(db, {
+          guild_id: guildId,
+          event_type: BILLING_EVENT_TYPES.SUBSCRIPTION_REACTIVATED,
+          description: `Subscription reactivated`,
+          actor_id: userId,
+          plan_before: "pro",
+          plan_after: "pro",
+        });
 
         return json({ success: true, status: sub.status });
       }

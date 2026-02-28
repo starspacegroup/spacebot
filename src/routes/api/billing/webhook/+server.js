@@ -16,6 +16,7 @@ import {
   getPlanBySubscriptionId,
   downgradeToFree,
 } from "$lib/db/server-plans.js";
+import { addBillingEvent, BILLING_EVENT_TYPES } from "$lib/db/billing-history.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform }) {
@@ -69,6 +70,19 @@ export async function POST({ request, platform }) {
           upgraded_by: userId || null,
         });
 
+        // Log to billing history
+        const amountPaid = session.amount_total || null;
+        await addBillingEvent(db, {
+          guild_id: guildId,
+          event_type: BILLING_EVENT_TYPES.CHECKOUT_COMPLETED,
+          description: `Upgraded to Pro plan`,
+          details: { subscription_id: subscriptionId, customer_id: customerId, interval: session.metadata?.interval },
+          actor_id: userId || null,
+          amount_cents: amountPaid,
+          plan_before: "free",
+          plan_after: "pro",
+        });
+
         log.info(`[StripeWebhook] Guild ${guildId} upgraded to Pro by user ${userId}`);
         break;
       }
@@ -111,6 +125,17 @@ export async function POST({ request, platform }) {
         }
 
         await downgradeToFree(db, targetGuildId);
+
+        // Log subscription deletion / downgrade
+        await addBillingEvent(db, {
+          guild_id: targetGuildId,
+          event_type: BILLING_EVENT_TYPES.PLAN_DOWNGRADE,
+          description: `Subscription ended — downgraded to free plan`,
+          details: { subscription_id: subscription.id },
+          plan_before: "pro",
+          plan_after: "free",
+        });
+
         log.info(`[StripeWebhook] Guild ${targetGuildId} downgraded to Free (subscription deleted)`);
         break;
       }
@@ -124,13 +149,27 @@ export async function POST({ request, platform }) {
 
         const existingPlan = await getPlanBySubscriptionId(db, subscriptionId);
         if (existingPlan) {
+          const periodEnd = invoice.lines?.data?.[0]?.period?.end
+            ? new Date(invoice.lines.data[0].period.end * 1000).toISOString()
+            : null;
+
           await updateStripeBilling(db, existingPlan.guild_id, {
             plan: "pro",
             stripe_status: "active",
-            stripe_current_period_end: invoice.lines?.data?.[0]?.period?.end
-              ? new Date(invoice.lines.data[0].period.end * 1000).toISOString()
-              : null,
+            stripe_current_period_end: periodEnd,
           });
+
+          // Log successful payment
+          await addBillingEvent(db, {
+            guild_id: existingPlan.guild_id,
+            event_type: BILLING_EVENT_TYPES.SUBSCRIPTION_RENEWED,
+            description: `Subscription renewed successfully`,
+            details: { invoice_id: invoice.id, period_end: periodEnd },
+            amount_cents: invoice.amount_paid || null,
+            plan_before: "pro",
+            plan_after: "pro",
+          });
+
           log.info(`[StripeWebhook] Guild ${existingPlan.guild_id} subscription renewed`);
         }
         break;
@@ -148,6 +187,18 @@ export async function POST({ request, platform }) {
           await updateStripeBilling(db, existingPlan.guild_id, {
             stripe_status: "past_due",
           });
+
+          // Log failed payment
+          await addBillingEvent(db, {
+            guild_id: existingPlan.guild_id,
+            event_type: BILLING_EVENT_TYPES.PAYMENT_FAILED,
+            description: `Payment failed — subscription marked past due`,
+            details: { invoice_id: invoice.id },
+            amount_cents: invoice.amount_due || null,
+            plan_before: "pro",
+            plan_after: "pro",
+          });
+
           log.warn(`[StripeWebhook] Guild ${existingPlan.guild_id} payment failed — marked past_due`);
         }
         break;
