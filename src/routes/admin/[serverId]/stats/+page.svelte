@@ -689,7 +689,6 @@
 					icon="👥"
 					stats={[
 						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (data.memberStats?.latest?.member_count || 0) : (data.memberStats?.latest?.human_count ?? data.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
-						{ icon: '🟢', value: formatNumber(data.memberStats?.latest?.online_count || 0), label: 'Online Now', color: '#57F287' },
 					]}
 				>
 					{#snippet headerAction()}
