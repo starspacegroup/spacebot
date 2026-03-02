@@ -168,6 +168,7 @@
 				action,
 				guildId: data.serverId,
 				guildName: data.guild?.name || data.serverId,
+				returnUrl: window.location.href.split('?')[0],
 			};
 			
 			// Include billing interval for checkout

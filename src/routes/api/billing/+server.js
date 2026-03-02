@@ -48,7 +48,7 @@ export async function POST({ request, cookies, platform, url }) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { action, guildId, guildName, interval } = body;
+  const { action, guildId, guildName, interval, returnUrl } = body;
 
   if (!guildId) {
     return json({ error: "Missing guildId" }, { status: 400 });
@@ -58,8 +58,9 @@ export async function POST({ request, cookies, platform, url }) {
   // The billing page already enforces this, but we double-check here
   const plan = await getServerPlan(db, guildId);
 
-  const origin = url.origin;
-  const billingUrl = `${origin}/admin/${guildId}/account`;
+  // Use the client-provided returnUrl (the page the user is on) so Stripe redirects
+  // back to the correct origin, even behind tunnels/proxies. Fall back to server origin.
+  const billingUrl = returnUrl || `${url.origin}/admin/${guildId}/account`;
 
   try {
     switch (action) {

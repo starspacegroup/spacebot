@@ -157,10 +157,22 @@
 	const optionVariables = $derived(
 		options
 			.filter(opt => opt.name)
-			.map(opt => ({
-				name: `option.${opt.name.toLowerCase().replace(/\s+/g, '_')}`,
-				desc: opt.description || `Value of ${opt.name} option`
-			}))
+			.flatMap(opt => {
+				const optName = opt.name.toLowerCase().replace(/\s+/g, '_');
+				const vars = [{
+					name: `option.${optName}`,
+					desc: opt.description || `Value of ${opt.name} option`
+				}];
+				// Add _mention variant for user, role, and channel type options
+				if (opt.type === 6) { // USER
+					vars.push({ name: `option.${optName}_mention`, desc: `Mention the ${opt.name} user` });
+				} else if (opt.type === 7) { // CHANNEL
+					vars.push({ name: `option.${optName}_mention`, desc: `Mention the ${opt.name} channel` });
+				} else if (opt.type === 8) { // ROLE
+					vars.push({ name: `option.${optName}_mention`, desc: `Mention the ${opt.name} role` });
+				}
+				return vars;
+			})
 	);
 	
 	// Combined template variables for DiscordMessageEditor (base + option variables)
