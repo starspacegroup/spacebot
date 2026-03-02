@@ -645,28 +645,26 @@
 							</div>
 						{/if}
 						
-						<div class="form-row">
-							<div class="form-group">
-								<label for="create-start">Start Time *</label>
-								<input 
-									type="datetime-local" 
-									id="create-start" 
-									name="scheduledStartTime" 
-									bind:value={createStartTime}
-									required 
-								/>
-							</div>
-							
-							<div class="form-group">
-								<label for="create-end">End Time {createEntityType === 3 ? '*' : ''}</label>
-								<input 
-									type="datetime-local" 
-									id="create-end" 
-									name="scheduledEndTime" 
-									bind:value={createEndTime}
-									required={createEntityType === 3}
-								/>
-							</div>
+						<div class="form-group">
+							<label for="create-start">Start Time *</label>
+							<input 
+								type="datetime-local" 
+								id="create-start" 
+								name="scheduledStartTime" 
+								bind:value={createStartTime}
+								required 
+							/>
+						</div>
+						
+						<div class="form-group">
+							<label for="create-end">End Time {createEntityType === 3 ? '*' : ''}</label>
+							<input 
+								type="datetime-local" 
+								id="create-end" 
+								name="scheduledEndTime" 
+								bind:value={createEndTime}
+								required={createEntityType === 3}
+							/>
 						</div>
 						
 						<!-- Recurrence Options -->
@@ -987,26 +985,24 @@
 								<p class="section-hint">Change the time for just this occurrence</p>
 							{/if}
 							
-							<div class="form-row">
-								<div class="form-group">
-									<label for="edit-start">Start Time</label>
-									<input 
-										type="datetime-local" 
-										id="edit-start" 
-										name="scheduledStartTime" 
-										bind:value={editStartTime}
-									/>
-								</div>
-								
-								<div class="form-group">
-									<label for="edit-end">End Time</label>
-									<input 
-										type="datetime-local" 
-										id="edit-end" 
-										name="scheduledEndTime" 
-										bind:value={editEndTime}
-									/>
-								</div>
+							<div class="form-group">
+								<label for="edit-start">Start Time</label>
+								<input 
+									type="datetime-local" 
+									id="edit-start" 
+									name="scheduledStartTime" 
+									bind:value={editStartTime}
+								/>
+							</div>
+							
+							<div class="form-group">
+								<label for="edit-end">End Time</label>
+								<input 
+									type="datetime-local" 
+									id="edit-end" 
+									name="scheduledEndTime" 
+									bind:value={editEndTime}
+								/>
 							</div>
 						</div>
 						
@@ -1766,10 +1762,12 @@
 		border-color: var(--color-primary);
 	}
 	
-	/* Datetime inputs on mobile - ensure they fit */
+	/* Datetime inputs - ensure they fit within grid cells */
 	.form-group input[type="datetime-local"] {
 		min-width: 0;
+		max-width: 100%;
 		font-size: 14px;
+		box-sizing: border-box;
 	}
 	
 	@media (min-width: 640px) {
