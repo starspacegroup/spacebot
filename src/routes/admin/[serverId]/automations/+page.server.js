@@ -12,6 +12,7 @@ import {
   updateAutomation,
 } from "$lib/db/automations.js";
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, url, params }) {
@@ -138,11 +139,17 @@ export const actions = {
     }
 
     try {
+      // Check plan limits — if over quota, create as disabled
+      const activeResult = await getAutomations(db, guildId, { enabled: true, limit: 1000 });
+      const activeCount = activeResult.automations?.length || 0;
+      const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount);
+      const enabledByDefault = planCheck.allowed;
+
       const result = await createAutomation(db, {
         guild_id: guildId,
         name,
         description: description || null,
-        enabled: true,
+        enabled: enabledByDefault,
         trigger_event: triggerEvent,
         trigger_filters: Object.keys(triggerFilters).length > 0
           ? triggerFilters
@@ -158,8 +165,11 @@ export const actions = {
 
       return {
         success: true,
-        message: "Automation created successfully!",
+        message: enabledByDefault
+          ? "Automation created successfully!"
+          : "Automation created but disabled — you've reached your plan's active limit. Upgrade or disable another automation to enable it.",
         id: result.id,
+        createdDisabled: !enabledByDefault,
       };
     } catch (error) {
       log.error("Create automation error:", error);
@@ -244,6 +254,22 @@ export const actions = {
 
     if (!id || !guildId) {
       return fail(400, { error: "Automation ID and Guild ID are required" });
+    }
+
+    // If enabling, check plan limits
+    if (enabled) {
+      try {
+        const activeResult = await getAutomations(db, guildId, { enabled: true, limit: 1000 });
+        const activeCount = activeResult.automations?.length || 0;
+        const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount);
+        if (!planCheck.allowed) {
+          return fail(403, {
+            error: `Automation limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another automation first.`,
+          });
+        }
+      } catch (err) {
+        log.warn("Plan limit check failed, allowing toggle:", err);
+      }
     }
 
     try {

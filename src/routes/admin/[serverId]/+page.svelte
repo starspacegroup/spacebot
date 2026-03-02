@@ -112,6 +112,13 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Automations</span>
 							<span class="quick-link-desc">Set up automatic actions on events</span>
+							{#if data.featureCounts?.automations}
+								{@const fc = data.featureCounts.automations}
+								{@const limit = data.planLimits?.max_automations}
+								<span class="quick-link-usage" class:at-limit={limit !== null && fc.active >= limit}>
+									<span class="usage-count">{fc.active}{limit !== null ? `/${limit}` : ''}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} disabled</span>{/if}
+								</span>
+							{/if}
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
@@ -120,6 +127,13 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Slash Commands</span>
 							<span class="quick-link-desc">Create custom slash commands</span>
+							{#if data.featureCounts?.commands}
+								{@const fc = data.featureCounts.commands}
+								{@const limit = data.planLimits?.max_commands}
+								<span class="quick-link-usage" class:at-limit={limit !== null && fc.active >= limit}>
+									<span class="usage-count">{fc.active}{limit !== null ? `/${limit}` : ''}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} disabled</span>{/if}
+								</span>
+							{/if}
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
@@ -136,6 +150,12 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Integrations</span>
 							<span class="quick-link-desc">Connect external apps and services</span>
+							{#if data.featureCounts?.integrations}
+								{@const fc = data.featureCounts.integrations}
+								<span class="quick-link-usage">
+									<span class="usage-count">{fc.active}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} available</span>{/if}
+								</span>
+							{/if}
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
@@ -145,6 +165,11 @@
 							<div class="quick-link-info">
 								<span class="quick-link-title">Account & Billing</span>
 								<span class="quick-link-desc">Manage plan, usage, and subscription</span>
+								{#if data.planLimits?.plan}
+									<span class="quick-link-usage">
+										<span class="usage-plan-badge plan-{data.planLimits.plan}">{data.planLimits.plan}</span> plan
+									</span>
+								{/if}
 							</div>
 							<span class="quick-link-arrow">→</span>
 						</a>
@@ -503,6 +528,45 @@
 	.quick-link-desc {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+	}
+
+	.quick-link-usage {
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		margin-top: 0.15rem;
+	}
+
+	.quick-link-usage .usage-count {
+		font-weight: 600;
+		color: var(--color-primary);
+	}
+
+	.quick-link-usage.at-limit .usage-count {
+		color: var(--color-warning, #f59e0b);
+	}
+
+	.quick-link-usage .usage-inactive {
+		opacity: 0.7;
+	}
+
+	.usage-plan-badge {
+		font-weight: 600;
+		text-transform: capitalize;
+	}
+
+	.usage-plan-badge.plan-free {
+		color: var(--color-text-muted);
+	}
+
+	.usage-plan-badge.plan-pro {
+		color: var(--color-primary);
+	}
+
+	.usage-plan-badge.plan-enterprise {
+		color: #f59e0b;
 	}
 	
 	.quick-link-arrow {

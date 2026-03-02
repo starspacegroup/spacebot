@@ -10,11 +10,13 @@ import {
   ACTION_TYPES,
   deleteCommand,
   getCommand,
+  getGuildCommands,
   updateCommand,
 } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /**
  * Check if user is a superadmin
@@ -84,6 +86,18 @@ export async function PATCH({ params, request, cookies, platform }) {
 
     // Handle toggle action
     if (body.action === "toggle") {
+      // If enabling, check plan limits
+      if (body.enabled) {
+        try {
+          const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+          const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCommands.length);
+          if (!planCheck.allowed) {
+            return json({ error: `Command limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another command first.` }, { status: 403 });
+          }
+        } catch (err) {
+          log.warn("Plan limit check failed, allowing toggle:", err);
+        }
+      }
       const result = await updateCommand(db, id, { enabled: body.enabled });
       if (!result.success) {
         return json({ error: "Failed to toggle command" }, { status: 500 });

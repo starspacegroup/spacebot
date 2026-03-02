@@ -9,11 +9,13 @@ import { json } from "@sveltejs/kit";
 import {
   deleteAutomation,
   getAutomation,
+  getAutomations,
   toggleAutomation,
   updateAutomation,
 } from "$lib/db/automations.js";
 import { EVENT_TYPES, log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, cookies, platform }) {
@@ -66,6 +68,19 @@ export async function PATCH({ params, request, cookies, platform }) {
 
     // Handle toggle action
     if (body.action === "toggle") {
+      // If enabling, check plan limits
+      if (body.enabled) {
+        try {
+          const activeResult = await getAutomations(db, guildId, { enabled: true, limit: 1000 });
+          const activeCount = activeResult.automations?.length || 0;
+          const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount);
+          if (!planCheck.allowed) {
+            return json({ error: `Automation limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another automation first.` }, { status: 403 });
+          }
+        } catch (err) {
+          log.warn("Plan limit check failed, allowing toggle:", err);
+        }
+      }
       const result = await toggleAutomation(db, automationId, guildId, body.enabled);
       if (!result.success) {
         return json({ error: "Failed to toggle automation" }, { status: 500 });

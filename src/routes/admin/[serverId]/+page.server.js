@@ -1,5 +1,5 @@
 import { commands, registerCommands } from "$lib/discord/commands.js";
-import { getBuiltInCommands } from "$lib/db/commands.js";
+import { getBuiltInCommands, getGuildCommands } from "$lib/db/commands.js";
 import { fail, redirect } from "@sveltejs/kit";
 import {
   getLogStats,
@@ -11,6 +11,9 @@ import { getGuildStatistics } from "$lib/db/statistics.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
 import { getMemberGrowthChart, getVoiceActivityChart, runStatsAggregation } from "$lib/db/stats-aggregation.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
+import { getAutomations } from "$lib/db/automations.js";
+import { getGuildIntegrations } from "$lib/db/integrations.js";
+import { getServerPlan } from "$lib/db/server-plans.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -141,6 +144,8 @@ export async function load({ cookies, platform, parent, params }) {
   let activityChartData = [];
   let builtInCmds = [];
   let guildMetadata = null;
+  let featureCounts = { automations: { active: 0, inactive: 0, total: 0 }, commands: { active: 0, inactive: 0, total: 0 }, integrations: { active: 0, inactive: 0, total: 0 } };
+  let planLimits = { max_automations: 9, max_commands: 3 };
 
   const db = platform?.env?.DB;
   if (db && botInGuild) {
@@ -152,7 +157,7 @@ export async function load({ cookies, platform, parent, params }) {
         log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
       }
 
-      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn, metadata] = await Promise.all([
+      const [stats, settings, guildStats, memberStats, memberGrowth, voiceActivity, builtIn, metadata, automationsResult, guildCommands, guildIntegrations, serverPlan] = await Promise.all([
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),
         getGuildStatistics(db, serverId, parentData.timezone || null),
@@ -161,7 +166,27 @@ export async function load({ cookies, platform, parent, params }) {
         getVoiceActivityChart(db, serverId, "30d", parentData.timezone || null),
         getBuiltInCommands(db),
         getGuildMetadata(db, serverId),
+        getAutomations(db, serverId, { limit: 1000 }),
+        getGuildCommands(db, serverId),
+        getGuildIntegrations(db, serverId),
+        getServerPlan(db, serverId),
       ]);
+
+      // Compute feature counts
+      const allAutomations = automationsResult.automations || [];
+      const activeAutomations = allAutomations.filter(a => a.enabled).length;
+      const activeCommands = guildCommands.filter(c => c.enabled).length;
+      const enabledIntegrations = guildIntegrations.filter(i => i.guild_enabled).length;
+      featureCounts = {
+        automations: { active: activeAutomations, inactive: allAutomations.length - activeAutomations, total: allAutomations.length },
+        commands: { active: activeCommands, inactive: guildCommands.length - activeCommands, total: guildCommands.length },
+        integrations: { active: enabledIntegrations, inactive: guildIntegrations.filter(i => !i.guild_enabled && (i.connected_at || i.guild_enabled)).length, total: guildIntegrations.filter(i => i.connected_at || i.guild_enabled).length },
+      };
+      planLimits = {
+        max_automations: serverPlan.max_automations,
+        max_commands: serverPlan.max_commands,
+        plan: serverPlan.plan || 'free',
+      };
       logStats = stats;
       dbSettings = settings;
       memberGrowthChartData = memberGrowth || [];
@@ -234,6 +259,8 @@ export async function load({ cookies, platform, parent, params }) {
     memberGrowthChartData,
     voiceActivityChartData,
     activityChartData,
+    featureCounts,
+    planLimits,
   };
 }
 

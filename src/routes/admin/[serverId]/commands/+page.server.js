@@ -13,6 +13,7 @@ import {
 } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, url, params }) {
@@ -78,6 +79,22 @@ export const actions = {
 
     if (!id || !guildId) {
       return fail(400, { error: "Command ID and Guild ID are required" });
+    }
+
+    // If enabling, check plan limits
+    if (enabled) {
+      try {
+        const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+        const activeCount = activeCommands.length;
+        const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCount);
+        if (!planCheck.allowed) {
+          return fail(403, {
+            error: `Command limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another command first.`,
+          });
+        }
+      } catch (err) {
+        log.warn("Plan limit check failed, allowing toggle:", err);
+      }
     }
 
     try {

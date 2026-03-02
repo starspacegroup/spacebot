@@ -4,10 +4,12 @@ import {
   AUTOMATION_USER_SOURCES,
   createAutomation,
   FILTER_TYPES,
+  getAutomations,
   TEMPLATE_VARIABLES,
 } from "$lib/db/automations.js";
 import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
@@ -114,11 +116,17 @@ export const actions = {
     const primaryAction = actions[0];
 
     try {
+      // Check plan limits — if over quota, create as disabled
+      const activeResult = await getAutomations(db, guildId, { enabled: true, limit: 1000 });
+      const activeCount = activeResult.automations?.length || 0;
+      const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount);
+      const enabledByDefault = planCheck.allowed;
+
       const result = await createAutomation(db, {
         guild_id: guildId,
         name,
         description: description || null,
-        enabled: true,
+        enabled: enabledByDefault,
         trigger_events: allTriggers,
         trigger_filters: Object.keys(triggerFilters).length > 0
           ? triggerFilters
@@ -132,8 +140,9 @@ export const actions = {
         return fail(500, { error: result.error });
       }
 
-      // Redirect back to automations list on success
-      throw redirect(302, `/admin/${params.serverId}/automations?created=true`);
+      // Redirect back to automations list on success (note if created disabled due to quota)
+      const createdParam = enabledByDefault ? 'created=true' : 'created=disabled';
+      throw redirect(302, `/admin/${params.serverId}/automations?${createdParam}`);
     } catch (error) {
       // Re-throw redirects
       if (error.status === 302) throw error;

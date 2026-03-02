@@ -14,6 +14,7 @@ import {
 } from "$lib/db/automations.js";
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, url, cookies, platform }) {
@@ -140,6 +141,25 @@ export async function POST({ params, request, cookies, platform }) {
       action_config: body.action_config,
       created_by: userId,
     });
+
+    // If the automation was requested as enabled, check plan limits
+    // and disable if over quota
+    if (body.enabled !== false && result.success) {
+      try {
+        const activeResult = await getAutomations(db, guildId, { enabled: true, limit: 1000 });
+        const activeCount = activeResult.automations?.length || 0;
+        // activeCount already includes the newly created one since it was created as enabled
+        // We check if it exceeds the limit (> limit, not >= limit)
+        const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount - 1);
+        if (!planCheck.allowed) {
+          // Disable the newly created automation via a quick update
+          await db.prepare('UPDATE automations SET enabled = 0 WHERE id = ?').bind(result.id).run();
+          return json({ success: true, id: result.id, disabled_by_quota: true, message: `Created but disabled — active automation limit reached (${planCheck.limit})` }, { status: 201 });
+        }
+      } catch (quotaErr) {
+        log.warn("[API] Plan limit check failed for automation:", quotaErr);
+      }
+    }
 
     if (!result.success) {
       return json({ error: result.error }, { status: 500 });

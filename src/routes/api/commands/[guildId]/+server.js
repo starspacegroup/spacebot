@@ -17,6 +17,7 @@ import {
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, url, cookies, platform }) {
@@ -111,11 +112,25 @@ export async function POST({ params, request, cookies, platform }) {
       // Continue without user ID
     }
 
+    // Check plan limits — if over quota, create as disabled
+    let enabledByDefault = body.enabled !== false;
+    if (enabledByDefault) {
+      try {
+        const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+        const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCommands.length);
+        if (!planCheck.allowed) {
+          enabledByDefault = false;
+        }
+      } catch (quotaErr) {
+        log.warn("[API] Plan limit check failed for command:", quotaErr);
+      }
+    }
+
     const result = await createCommand(db, {
       guild_id: guildId,
       name: body.name.toLowerCase(),
       description: body.description,
-      enabled: body.enabled !== false,
+      enabled: enabledByDefault,
       options: body.options || [],
       ephemeral: body.ephemeral || false,
       defer: body.defer || false,
@@ -134,7 +149,7 @@ export async function POST({ params, request, cookies, platform }) {
     // Auto-sync to Discord
     await syncGuildCommands(db, guildId, platform?.env);
 
-    return json({ success: true, id: result.id }, { status: 201 });
+    return json({ success: true, id: result.id, disabled_by_quota: !enabledByDefault && body.enabled !== false }, { status: 201 });
   } catch (error) {
     log.error("Create command error:", error);
     return json({ error: "Failed to create command" }, { status: 500 });

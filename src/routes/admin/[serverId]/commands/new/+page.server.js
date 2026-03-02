@@ -5,6 +5,7 @@ import {
   COMMAND_USER_SOURCES,
   COMMON_OPTION_TYPES,
   createCommand,
+  getGuildCommands,
   OPTION_TYPES,
   PERMISSION_FLAGS,
   PERMISSION_PRESETS,
@@ -13,6 +14,7 @@ import {
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { getGuildWebhooks } from "$lib/db/webhooks.js";
 import { log } from "$lib/db/logger.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
@@ -179,12 +181,18 @@ export const actions = {
     try {
       // Parse permissions
       const defaultMemberPermissions = formData.get("default_member_permissions") || null;
-      
+
+      // Check plan limits — if over quota, create as disabled
+      const allCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+      const activeCount = allCommands.length;
+      const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCount);
+      const enabledByDefault = planCheck.allowed;
+
       const result = await createCommand(db, {
         guild_id: guildId,
         name: name.toLowerCase(),
         description,
-        enabled: true,
+        enabled: enabledByDefault,
         options: options.length > 0 ? options : [],
         ephemeral,
         defer,
@@ -207,8 +215,9 @@ export const actions = {
       // Auto-sync to Discord
       await syncGuildCommands(db, guildId, platform?.env);
 
-      // Redirect back to commands list on success
-      throw redirect(302, `/admin/${params.serverId}/commands?created=true`);
+      // Redirect back to commands list on success (note if created disabled due to quota)
+      const createdParam = enabledByDefault ? 'created=true' : 'created=disabled';
+      throw redirect(302, `/admin/${params.serverId}/commands?${createdParam}`);
     } catch (error) {
       // Re-throw redirects
       if (error.status === 302) throw error;
