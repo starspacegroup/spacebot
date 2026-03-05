@@ -349,12 +349,18 @@ export function matchesFilters(event, filters, context = {}) {
  * @returns {Object}
  */
 export function buildContext(event, guildInfo = {}) {
+  // For events that only have a target (e.g. VOICE_SERVER_MUTE, VOICE_SERVER_DEAFEN,
+  // VOICE_STAGE_SUPPRESS) where the actor (moderator) is unknown, fall back to target
+  // so {user.mention} etc. still resolve to the affected user.
+  const userId = event.actor_id || event.target_id;
+  const userName = event.actor_name || event.target_name;
+
   return {
     user: {
-      id: event.actor_id,
-      name: event.actor_name?.split("#")[0] || event.actor_name,
-      tag: event.actor_name,
-      mention: event.actor_id ? `<@${event.actor_id}>` : "",
+      id: userId,
+      name: userName?.split("#")[0] || userName,
+      tag: userName,
+      mention: userId ? `<@${userId}>` : "",
     },
     target: {
       id: event.target_id,
