@@ -11,6 +11,19 @@
 
 	let { children, data } = $props();
 	
+	// Detect the user's browser timezone and store it in a cookie so
+	// server-side code (SQL date grouping, etc.) can use the viewer's timezone.
+	$effect(() => {
+		try {
+			const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+			if (tz && document.cookie.indexOf('user_timezone=' + tz) === -1) {
+				document.cookie = `user_timezone=${encodeURIComponent(tz)};path=/;max-age=${60 * 60 * 24 * 365};samesite=lax`;
+			}
+		} catch {
+			// Intl API not available — cookie won't be set; server falls back to UTC
+		}
+	});
+	
 	// Force a full page reload when the app version changes.
 	// This prevents stale client-side route manifests from loading
 	// the wrong page component (e.g. showing logs page at /integrations).
