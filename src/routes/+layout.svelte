@@ -4,6 +4,8 @@
 	import UserMenu from '$lib/components/UserMenu.svelte';
 	import ServerSelector from '$lib/components/ServerSelector.svelte';
 	import Footer from '$lib/components/Footer.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
 	import { updated } from '$app/stores';
@@ -99,6 +101,10 @@
 			<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
 			SpaceBot
 		</a>
+		<button class="palette-trigger" onclick={() => commandPalette.open()} aria-label="Open command palette">
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+			<span class="palette-trigger-key">{typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '') ? '⌘' : 'Ctrl+'}K</span>
+		</button>
 		<nav class="nav">
 			{#if $page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
 				<ServerSelector 
@@ -120,6 +126,14 @@
 	</main>
 	
 	<Footer />
+	
+	<CommandPalette
+		{isLoggedIn}
+		{user}
+		{adminGuilds}
+		{selectedGuildId}
+		{isSuperAdmin}
+	/>
 </div>
 
 <style>
@@ -130,6 +144,7 @@
 	}
 	
 	.app-header {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -191,5 +206,45 @@
 	
 	.app-main {
 		flex: 1;
+	}
+	
+	.palette-trigger {
+		position: absolute;
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.3rem 0.625rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+		cursor: pointer;
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
+		font-family: inherit;
+		transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+		white-space: nowrap;
+	}
+	
+	.palette-trigger:hover {
+		border-color: var(--color-primary);
+		color: var(--color-text);
+		background: var(--color-surface-hover);
+	}
+	
+	.palette-trigger-key {
+		font-size: 0.675rem;
+		opacity: 0.7;
+	}
+	
+	@media (max-width: 640px) {
+		.palette-trigger {
+			position: static;
+			transform: none;
+		}
+		.palette-trigger-key {
+			display: none;
+		}
 	}
 </style>
