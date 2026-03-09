@@ -7,15 +7,9 @@
  */
 
 import { log } from "../log.js";
-import { existsSync, readdirSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
 
-// Dynamic import for better-sqlite3 (only loaded when needed)
+// Dynamic import for better-sqlite3 (only loaded when needed, not available on Workers)
 let Database = null;
-
-// Get __dirname equivalent for ES modules
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * MCP Client class that connects to D1 database via Cloudflare API or local SQLite
@@ -54,11 +48,18 @@ export class MCPClient {
     if (this.localDb) return this.localDb;
     
     try {
+      // Dynamic imports for Node.js builtins - these are only available in local/gateway mode,
+      // not in Cloudflare Workers. Importing them at the top level breaks the Pages build.
+      const { existsSync, readdirSync } = await import("node:fs");
+      const { join, dirname } = await import("node:path");
+      const { fileURLToPath } = await import("node:url");
+
       if (!Database) {
         const betterSqlite3 = await import("better-sqlite3");
         Database = betterSqlite3.default;
       }
       
+      const __dirname = dirname(fileURLToPath(import.meta.url));
       const wranglerDbPath = join(__dirname, "../../../.wrangler/state/v3/d1/miniflare-D1DatabaseObject");
       
       if (!existsSync(wranglerDbPath)) {
