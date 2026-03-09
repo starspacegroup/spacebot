@@ -50,12 +50,16 @@ export class MCPClient {
     try {
       // Dynamic imports for Node.js builtins - these are only available in local/gateway mode,
       // not in Cloudflare Workers. Importing them at the top level breaks the Pages build.
-      const { existsSync, readdirSync } = await import("node:fs");
-      const { join, dirname } = await import("node:path");
-      const { fileURLToPath } = await import("node:url");
+      // @vite-ignore preserves the "node:" prefix so wrangler's nodejs_compat handles them.
+      const { existsSync, readdirSync } = await import(/* @vite-ignore */ "node:fs");
+      const { join, dirname } = await import(/* @vite-ignore */ "node:path");
+      const { fileURLToPath } = await import(/* @vite-ignore */ "node:url");
 
       if (!Database) {
-        const betterSqlite3 = await import("better-sqlite3");
+        // Build the specifier at runtime so no bundler (Vite or esbuild) can resolve it.
+        // This package is Node.js-only and never executes on Cloudflare Workers.
+        const bs3 = ["better", "sqlite3"].join("-");
+        const betterSqlite3 = await import(/* @vite-ignore */ bs3);
         Database = betterSqlite3.default;
       }
       

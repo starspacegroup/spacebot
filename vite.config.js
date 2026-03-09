@@ -62,14 +62,6 @@ function staleDepsFix() {
 
 export default defineConfig({
 	plugins: [excludeNativeModules(), staleDepsFix(), sveltekit()],
-	ssr: {
-		// Force Vite to process better-sqlite3 through its build pipeline (and our
-		// excludeNativeModules plugin) instead of leaving it as an external import.
-		// Without this, Vite externalizes it during the SSR build, our resolveId
-		// hook never fires, and the adapter-cloudflare/wrangler esbuild step tries
-		// to resolve the real package — pulling in fs, path, bindings, etc.
-		noExternal: ['better-sqlite3'],
-	},
 	optimizeDeps: {
 		// Pre-bundle Svelte runtime deps at startup so they're ready instantly.
 		// Without this, Vite discovers and optimizes lazily on first request,
