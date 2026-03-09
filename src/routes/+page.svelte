@@ -3,6 +3,8 @@
 	
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
+
+	let billingInterval = $state('monthly');
 </script>
 
 <svelte:head>
@@ -99,7 +101,12 @@
 	<section id="pricing" class="pricing">
 		<h2>Full-featured, for everyone</h2>
 		<p class="pricing-subtitle">We believe powerful tools shouldn't be expensive. Get everything you need for free — go unlimited for the price of a coffee.</p>
-		
+
+		<div class="billing-toggle">
+			<button class="billing-option" class:active={billingInterval === 'monthly'} onclick={() => billingInterval = 'monthly'}>Monthly</button>
+			<button class="billing-option" class:active={billingInterval === 'yearly'} onclick={() => billingInterval = 'yearly'}>Yearly <span class="billing-save">Save 17%</span></button>
+		</div>
+
 		<div class="pricing-grid">
 			<div class="pricing-card">
 				<div class="pricing-badge">Free</div>
@@ -130,8 +137,14 @@
 			<div class="pricing-card pricing-card-featured">
 				<div class="pricing-badge pricing-badge-featured">Pro</div>
 				<div class="pricing-price">
-					<span class="price-amount">$3</span>
-					<span class="price-period">/server/mo</span>
+					{#if billingInterval === 'yearly'}
+						<span class="price-amount">$2.50</span>
+						<span class="price-period">/server/mo</span>
+						<div class="price-billed-note">Billed $30/server/year</div>
+					{:else}
+						<span class="price-amount">$3</span>
+						<span class="price-period">/server/mo</span>
+					{/if}
 				</div>
 				<p class="pricing-description">Unlimited commands, automations, and full stats history.</p>
 				<ul class="pricing-features">
@@ -197,7 +210,7 @@
 		{#if data.isLoggedIn}
 			<a href={adminUrl} class="btn btn-primary btn-large">Go to Dashboard</a>
 		{:else}
-			<a href="/login" class="btn btn-primary btn-large">Login with Discord</a>
+			<a href="/login" class="btn btn-primary btn-large"><svg class="discord-icon" width="20" height="16" viewBox="0 0 71 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg> Login with Discord</a>
 		{/if}
 	</section>
 </div>
@@ -396,7 +409,59 @@
 	.pricing-subtitle {
 		font-size: 1.125rem;
 		color: var(--color-text-muted);
-		margin-bottom: 3rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.billing-toggle {
+		display: inline-flex;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full, 9999px);
+		padding: 0.25rem;
+		margin-bottom: 2.5rem;
+		gap: 0.25rem;
+	}
+
+	.billing-option {
+		padding: 0.5rem 1.25rem;
+		border-radius: var(--radius-full, 9999px);
+		border: none;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 0.9rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.billing-option:hover {
+		color: var(--color-text);
+	}
+
+	.billing-option.active {
+		background: var(--color-primary);
+		color: white;
+	}
+
+	.billing-save {
+		font-size: 0.75rem;
+		font-weight: 700;
+		background: rgba(255, 255, 255, 0.15);
+		padding: 0.15rem 0.5rem;
+		border-radius: var(--radius-full, 9999px);
+	}
+
+	.billing-option.active .billing-save {
+		background: rgba(255, 255, 255, 0.25);
+	}
+
+	.price-billed-note {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin-top: 0.25rem;
 	}
 
 	.pricing-grid {
