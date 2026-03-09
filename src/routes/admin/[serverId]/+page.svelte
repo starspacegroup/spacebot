@@ -167,6 +167,14 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
+					<a href="/admin/{data.serverId}/chat" class="quick-link-card">
+						<div class="quick-link-icon">🤖</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">AI Assistant</span>
+							<span class="quick-link-desc">Chat with SpaceBot about this server</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
 					{#if data.hasFullAdminAccess}
 						<a href="/admin/{data.serverId}/account" class="quick-link-card">
 							<div class="quick-link-icon">⚙️</div>

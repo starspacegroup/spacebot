@@ -97,8 +97,8 @@
 
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
-		<h2>Simple, transparent pricing</h2>
-		<p class="pricing-subtitle">Get started free with generous limits. Go unlimited for $3/server/mo.</p>
+		<h2>Full-featured, for everyone</h2>
+		<p class="pricing-subtitle">We believe powerful tools shouldn't be expensive. Get everything you need for free — go unlimited for the price of a coffee.</p>
 		
 		<div class="pricing-grid">
 			<div class="pricing-card">
@@ -145,6 +145,16 @@
 				{:else}
 					<a href="/login" class="btn btn-primary btn-block">Get Started</a>
 				{/if}
+			</div>
+		</div>
+
+		<div class="pricing-enterprise-banner">
+			<div class="pricing-enterprise-inner">
+				<div class="pricing-enterprise-text">
+					<h3>Enterprise</h3>
+					<p>Need white-label branding or a dedicated isolated database? Let's talk.</p>
+				</div>
+				<a href="mailto:enterprise@starspace.group" class="btn btn-secondary">Contact Us</a>
 			</div>
 		</div>
 	</section>
@@ -432,6 +442,39 @@
 		color: var(--color-primary);
 	}
 
+	.pricing-enterprise-banner {
+		max-width: 720px;
+		margin: 2rem auto 0;
+	}
+
+	.pricing-enterprise-inner {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1.5rem;
+		background: var(--color-surface);
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1.5rem 2rem;
+		text-align: left;
+	}
+
+	.pricing-enterprise-text h3 {
+		font-size: 1rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		margin-bottom: 0.25rem;
+	}
+
+	.pricing-enterprise-text p {
+		color: var(--color-text-secondary);
+		font-size: 0.95rem;
+		margin: 0;
+		line-height: 1.5;
+	}
+
 	.pricing-price {
 		margin-bottom: 0.75rem;
 	}
@@ -591,6 +634,11 @@
 
 		.steps {
 			grid-template-columns: 1fr;
+		}
+
+		.pricing-enterprise-inner {
+			flex-direction: column;
+			text-align: center;
 		}
 	}
 </style>

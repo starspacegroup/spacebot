@@ -75,6 +75,7 @@
 			{ label: 'API Keys',           icon: '🔑', path: '/api-keys',                desc: 'Manage REST API access keys',           keywords: ['api', 'tokens', 'keys', 'rest', 'access'] },
 			{ label: 'Server Settings',    icon: '⚙️', path: '/settings',                desc: 'Bot and server configuration',          keywords: ['config', 'configure', 'preferences'] },
 			{ label: 'Import & Export',    icon: '📦', path: '/import-export',            desc: 'Share or back up automations & commands', keywords: ['backup', 'share', 'transfer', 'migrate'] },
+			{ label: 'AI Assistant',       icon: '🤖', path: '/chat',                   desc: 'Chat with SpaceBot about this server',  keywords: ['chat', 'ai', 'assistant', 'dm', 'message', 'ask', 'help'] },
 			{ label: 'Account & Billing',  icon: '💳', path: '/account',                 desc: 'Plan, usage, and subscription',         keywords: ['billing', 'plan', 'subscription', 'payment', 'upgrade'] },
 		];
 		

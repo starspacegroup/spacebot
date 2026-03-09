@@ -95,7 +95,7 @@
 	<link rel="manifest" href="/site.webmanifest" />
 </svelte:head>
 
-<div class="app-layout">
+<div class="app-layout" class:chat-page={$page.url.pathname.endsWith('/chat')}>
 	<header class="app-header">
 		<a href="/" class="logo">
 			<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
@@ -125,7 +125,9 @@
 		{@render children()}
 	</main>
 	
-	<Footer />
+	{#if !$page.url.pathname.endsWith('/chat')}
+		<Footer />
+	{/if}
 	
 	<CommandPalette
 		{isLoggedIn}
@@ -206,6 +208,19 @@
 	
 	.app-main {
 		flex: 1;
+		min-height: 0;
+	}
+
+	.chat-page {
+		height: 100dvh;
+		max-height: 100dvh;
+		overflow: hidden;
+	}
+
+	.chat-page .app-main {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 	
 	.palette-trigger {
