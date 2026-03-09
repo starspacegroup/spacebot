@@ -89,6 +89,59 @@
 		}
 	}
 	
+	// ── Stats export ─────────────────────────────────────
+	const totalStatsRecords = $derived(
+		(data.statsCounts?.server_stats || 0) +
+		(data.statsCounts?.aggregated_stats || 0) +
+		(data.statsCounts?.voice_sessions || 0)
+	);
+	
+	async function exportStats() {
+		exporting = true;
+		try {
+			const response = await fetch(`/api/stats/${selectedGuildId}/export`);
+			if (!response.ok) {
+				const d = await response.json();
+				throw new Error(d.error || 'Export failed');
+			}
+			const d = await response.json();
+			const total = (d.counts?.server_stats || 0) + (d.counts?.aggregated_stats || 0) + (d.counts?.voice_sessions || 0);
+			downloadJson(d, `spacebot-stats-export.json`);
+			exportToast = { message: `Exported ${total} stats record${total !== 1 ? 's' : ''}`, success: true };
+		} catch (error) {
+			exportToast = { message: `Export failed: ${error.message}`, success: false };
+		} finally {
+			exporting = false;
+		}
+	}
+	
+	// ── Export all ──────────────────────────────────────
+	const totalExportableItems = $derived(automationCount + commandCount + totalStatsRecords);
+	
+	async function exportAll() {
+		exporting = true;
+		try {
+			const response = await fetch(`/api/export/${selectedGuildId}`);
+			if (!response.ok) {
+				const d = await response.json();
+				throw new Error(d.error || 'Export failed');
+			}
+			const d = await response.json();
+			const counts = d.counts || {};
+			const parts = [];
+			if (counts.automations) parts.push(`${counts.automations} automation${counts.automations !== 1 ? 's' : ''}`);
+			if (counts.commands) parts.push(`${counts.commands} command${counts.commands !== 1 ? 's' : ''}`);
+			const statsTotal = (counts.server_stats || 0) + (counts.aggregated_stats || 0) + (counts.voice_sessions || 0);
+			if (statsTotal) parts.push(`${statsTotal} stats record${statsTotal !== 1 ? 's' : ''}`);
+			downloadJson(d, `spacebot-backup.json`);
+			exportToast = { message: `Exported ${parts.join(', ') || 'backup'}`, success: true };
+		} catch (error) {
+			exportToast = { message: `Export failed: ${error.message}`, success: false };
+		} finally {
+			exporting = false;
+		}
+	}
+	
 	function downloadJson(data, filename) {
 		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
 		const url = URL.createObjectURL(blob);
@@ -158,17 +211,26 @@
 			
 			// Determine type from format field
 			let type;
+			let apiPath;
 			if (parsed.format === 'spacebot-automations') {
 				type = 'automations';
+				apiPath = `/api/automations/${selectedGuildId}/import`;
 			} else if (parsed.format === 'spacebot-commands') {
 				type = 'commands';
+				apiPath = `/api/commands/${selectedGuildId}/import`;
+			} else if (parsed.format === 'spacebot-stats') {
+				type = 'stats';
+				apiPath = `/api/stats/${selectedGuildId}/import`;
+			} else if (parsed.format === 'spacebot-backup') {
+				type = 'backup';
+				apiPath = `/api/import/${selectedGuildId}`;
 			} else {
 				importError = "Invalid file format. This doesn't appear to be a SpaceBot export file.";
 				importing = false;
 				return;
 			}
 			
-			const response = await fetch(`/api/${type}/${selectedGuildId}/import`, {
+			const response = await fetch(apiPath, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: text,
@@ -178,9 +240,7 @@
 			
 			if (response.ok || response.status === 207) {
 				importResult = { ...result, type };
-				if (result.imported > 0) {
-					await invalidateAll();
-				}
+				await invalidateAll();
 			} else {
 				importError = result.error || 'Import failed';
 			}
@@ -214,7 +274,7 @@
 				<span class="header-icon">📦</span>
 				Import & Export
 			</h1>
-			<p class="header-subtitle">Share automations and commands between servers or with other users</p>
+			<p class="header-subtitle">Share automations, commands, and stats data between servers or back them up</p>
 		</div>
 	</header>
 	
@@ -222,8 +282,28 @@
 	<section class="section-card">
 		<div class="section-header">
 			<h2><span class="section-icon">📤</span> Export</h2>
-			<p class="section-desc">Download automations or commands as a JSON file to share or back up</p>
+			<p class="section-desc">Download automations, commands, or stats as a JSON file to share or back up</p>
 		</div>
+		
+		<!-- Export All -->
+		{#if totalExportableItems > 0}
+			<div class="export-all-bar">
+				<div class="export-all-info">
+					<span class="export-all-icon">💾</span>
+					<div>
+						<strong>Full Backup</strong>
+						<span class="export-all-desc">Export everything in one file — automations, commands, settings & stats</span>
+					</div>
+				</div>
+				<button 
+					class="btn btn-primary" 
+					disabled={exporting} 
+					onclick={exportAll}
+				>
+					Export All Data
+				</button>
+			</div>
+		{/if}
 		
 		<!-- Automations Export -->
 		<div class="export-group">
@@ -330,13 +410,50 @@
 				</div>
 			{/if}
 		</div>
+		
+		<!-- Stats Export -->
+		<div class="export-group">
+			<div class="export-group-header">
+				<h3>📊 Stats Data</h3>
+				{#if totalStatsRecords > 0}
+					<div class="export-group-actions">
+						<button 
+							class="btn btn-sm btn-primary" 
+							disabled={exporting} 
+							onclick={exportStats}
+						>
+							Export All ({totalStatsRecords})
+						</button>
+					</div>
+				{/if}
+			</div>
+			
+			{#if totalStatsRecords === 0}
+				<p class="empty-message">No stats data to export</p>
+			{:else}
+				<div class="stats-summary">
+					<div class="stats-summary-item">
+						<span class="stats-summary-count">{data.statsCounts.server_stats}</span>
+						<span class="stats-summary-label">Server snapshots</span>
+					</div>
+					<div class="stats-summary-item">
+						<span class="stats-summary-count">{data.statsCounts.aggregated_stats}</span>
+						<span class="stats-summary-label">Aggregated periods</span>
+					</div>
+					<div class="stats-summary-item">
+						<span class="stats-summary-count">{data.statsCounts.voice_sessions}</span>
+						<span class="stats-summary-label">Voice sessions</span>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</section>
 	
 	<!-- Import Section -->
 	<section class="section-card">
 		<div class="section-header">
 			<h2><span class="section-icon">📥</span> Import</h2>
-			<p class="section-desc">Upload a SpaceBot export file to import automations or commands</p>
+			<p class="section-desc">Upload a SpaceBot export file to import automations, commands, or stats data</p>
 		</div>
 		
 		{#if !importResult}
@@ -380,21 +497,107 @@
 			<div class="import-notes">
 				<h4>Notes:</h4>
 				<ul>
-					<li>Accepts both automation and command export files — the format is auto-detected</li>
-					<li>Server-specific references (channels, roles, users) are <strong>automatically cleared</strong> during import — you'll see which items need configuration</li>
-					<li>All items are imported as <strong>disabled</strong> — enable them after reviewing</li>
+					<li>Accepts full backups, or individual automation, command, and stats export files — the format is auto-detected</li>
+					<li>Server-specific references (channels, roles, users) are <strong>automatically cleared</strong> during import for automations/commands</li>
+					<li>Automations and commands are imported as <strong>disabled</strong> — enable them after reviewing</li>
 					<li>Commands with duplicate names will fail — rename existing commands first</li>
+					<li>Stats data is imported with duplicate prevention — existing records are preserved</li>
 				</ul>
 			</div>
 		{:else}
 			<!-- Import Results -->
 			<div class="import-results">
-				<div class="result-summary {importResult.failed > 0 ? 'partial' : 'success'}">
-					<span class="result-icon">{importResult.failed > 0 ? '⚠️' : '✅'}</span>
+				<div class="result-summary {(importResult.failed > 0 || !importResult.success) ? 'partial' : 'success'}">
+					<span class="result-icon">{(importResult.failed > 0 || !importResult.success) ? '⚠️' : '✅'}</span>
 					<p>{importResult.message}</p>
 				</div>
 				
-				{#if importResult.results?.length > 0}
+				{#if importResult.type === 'backup' && importResult.results}
+					<!-- Unified backup import results -->
+					{@const r = importResult.results}
+					
+					{#if r.automations?.results?.length > 0}
+						<div class="backup-result-section">
+							<h4>⚡ Automations ({r.automations.imported} imported{r.automations.failed > 0 ? `, ${r.automations.failed} failed` : ''})</h4>
+							<div class="result-details">
+								{#each r.automations.results as result}
+									<div class="result-item {result.success ? 'success' : 'error'}">
+										<span class="result-status">{result.success ? '✓' : '✕'}</span>
+										<span class="result-name">{result.name}</span>
+										{#if result.error}
+											<span class="result-error">{result.error}</span>
+										{/if}
+										{#if result.success && result.needs_configuration}
+											<span class="result-needs-config">⚠ needs: {result.needs_configuration}</span>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+					
+					{#if r.commands?.results?.length > 0}
+						<div class="backup-result-section">
+							<h4>💬 Commands ({r.commands.imported} imported{r.commands.failed > 0 ? `, ${r.commands.failed} failed` : ''})</h4>
+							<div class="result-details">
+								{#each r.commands.results as result}
+									<div class="result-item {result.success ? 'success' : 'error'}">
+										<span class="result-status">{result.success ? '✓' : '✕'}</span>
+										<span class="result-name">/{result.name}</span>
+										{#if result.error}
+											<span class="result-error">{result.error}</span>
+										{/if}
+										{#if result.success && result.needs_configuration}
+											<span class="result-needs-config">⚠ needs: {result.needs_configuration}</span>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+					
+					{#if r.settings?.imported}
+						<div class="backup-result-section">
+							<h4>⚙️ Settings</h4>
+							<p class="backup-result-note">Server settings restored</p>
+						</div>
+					{/if}
+					
+					{#if r.stats}
+						<div class="backup-result-section">
+							<h4>📊 Stats Data</h4>
+							<div class="stats-import-results">
+								<div class="stats-import-row">
+									<span class="stats-import-label">Server snapshots:</span>
+									<span>{r.stats.server_stats?.imported || 0} / {r.stats.server_stats?.total || 0}</span>
+								</div>
+								<div class="stats-import-row">
+									<span class="stats-import-label">Aggregated periods:</span>
+									<span>{r.stats.aggregated_stats?.imported || 0} / {r.stats.aggregated_stats?.total || 0}</span>
+								</div>
+								<div class="stats-import-row">
+									<span class="stats-import-label">Voice sessions:</span>
+									<span>{r.stats.voice_sessions?.imported || 0} / {r.stats.voice_sessions?.total || 0}</span>
+								</div>
+							</div>
+						</div>
+					{/if}
+				{:else if importResult.type === 'stats' && importResult.results}
+					<div class="stats-import-results">
+						<div class="stats-import-row">
+							<span class="stats-import-label">Server snapshots:</span>
+							<span>{importResult.results.server_stats?.imported || 0} / {importResult.results.server_stats?.total || 0}</span>
+						</div>
+						<div class="stats-import-row">
+							<span class="stats-import-label">Aggregated periods:</span>
+							<span>{importResult.results.aggregated_stats?.imported || 0} / {importResult.results.aggregated_stats?.total || 0}</span>
+						</div>
+						<div class="stats-import-row">
+							<span class="stats-import-label">Voice sessions:</span>
+							<span>{importResult.results.voice_sessions?.imported || 0} / {importResult.results.voice_sessions?.total || 0}</span>
+						</div>
+					</div>
+				{:else if importResult.results?.length > 0}
 					<div class="result-details">
 						{#each importResult.results as result}
 							<div class="result-item {result.success ? 'success' : 'error'}">
@@ -416,9 +619,13 @@
 						<a href="/admin/{selectedGuildId}/automations" class="btn btn-secondary">
 							Go to Automations
 						</a>
-					{:else}
+					{:else if importResult.type === 'commands'}
 						<a href="/admin/{selectedGuildId}/commands" class="btn btn-secondary">
 							Go to Commands
+						</a>
+					{:else if importResult.type === 'stats' || importResult.type === 'backup'}
+						<a href="/admin/{selectedGuildId}/stats" class="btn btn-secondary">
+							Go to Stats
 						</a>
 					{/if}
 					<button class="btn btn-primary" onclick={resetImport}>Import Another</button>
@@ -832,6 +1039,118 @@
 		padding: 0.375rem 0.75rem;
 	}
 	
+	/* Stats summary */
+	.stats-summary {
+		display: flex;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
+	.stats-summary-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.75rem 1.25rem;
+		background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+		border-radius: 8px;
+		flex: 1;
+		min-width: 100px;
+	}
+	
+	.stats-summary-count {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--text-primary, #fff);
+	}
+	
+	.stats-summary-label {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+	
+	/* Stats import results */
+	.stats-import-results {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 8px;
+		padding: 1rem;
+	}
+	
+	.stats-import-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 0.875rem;
+		padding: 0.25rem 0;
+	}
+	
+	.stats-import-label {
+		color: var(--text-muted);
+	}
+	
+	/* Export All bar */
+	.export-all-bar {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		background: var(--bg-tertiary, #36393f);
+		border: 1px solid var(--accent-color, #5865F2);
+		border-radius: 8px;
+		padding: 1rem 1.25rem;
+		margin-bottom: 1rem;
+		gap: 1rem;
+	}
+	
+	.export-all-info {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+	
+	.export-all-icon {
+		font-size: 1.5rem;
+		flex-shrink: 0;
+	}
+	
+	.export-all-info strong {
+		display: block;
+		font-size: 0.9375rem;
+		margin-bottom: 0.125rem;
+	}
+	
+	.export-all-desc {
+		display: block;
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+	
+	/* Backup import result sections */
+	.backup-result-section {
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+		padding: 0.75rem 1rem;
+	}
+	
+	.backup-result-section h4 {
+		margin: 0 0 0.5rem;
+		font-size: 0.875rem;
+	}
+	
+	.backup-result-section .result-details {
+		border: none;
+		border-radius: 0;
+	}
+	
+	.backup-result-note {
+		margin: 0;
+		font-size: 0.875rem;
+		color: var(--text-muted);
+	}
+	
 	@media (max-width: 600px) {
 		.export-group-header {
 			flex-direction: column;
@@ -844,6 +1163,20 @@
 		
 		.export-group-actions .btn {
 			flex: 1;
+		}
+		
+		.export-all-bar {
+			flex-direction: column;
+			text-align: center;
+		}
+		
+		.export-all-info {
+			flex-direction: column;
+			text-align: center;
+		}
+		
+		.export-all-bar .btn {
+			width: 100%;
 		}
 		
 		.result-item {

@@ -20,6 +20,7 @@ export async function load({ platform, parent, params }) {
 
   let automations = [];
   let commands = [];
+  let statsCounts = { server_stats: 0, aggregated_stats: 0, voice_sessions: 0 };
 
   if (db) {
     try {
@@ -35,11 +36,27 @@ export async function load({ platform, parent, params }) {
     } catch (error) {
       log.error("Failed to fetch commands for export:", error);
     }
+
+    try {
+      const [ssCount, asCount, vsCount] = await Promise.all([
+        db.prepare("SELECT COUNT(*) as count FROM server_stats WHERE guild_id = ?").bind(guildId).first(),
+        db.prepare("SELECT COUNT(*) as count FROM aggregated_stats WHERE guild_id = ?").bind(guildId).first(),
+        db.prepare("SELECT COUNT(*) as count FROM voice_sessions WHERE guild_id = ?").bind(guildId).first(),
+      ]);
+      statsCounts = {
+        server_stats: ssCount?.count || 0,
+        aggregated_stats: asCount?.count || 0,
+        voice_sessions: vsCount?.count || 0,
+      };
+    } catch (error) {
+      log.error("Failed to fetch stats counts for export:", error);
+    }
   }
 
   return {
     automations,
     commands,
+    statsCounts,
     selectedGuildId: guildId,
   };
 }
