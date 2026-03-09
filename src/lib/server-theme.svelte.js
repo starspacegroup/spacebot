@@ -189,7 +189,7 @@ async function extractDominantHue(imageUrl) {
 
 /**
  * Apply a hue to the CSS custom properties.
- * Also checks whether button text should be dark for bright accent hues.
+ * Computes a safe button background lightness so white text always has ≥ 4.5:1 contrast.
  * @param {number} hue - Hue angle (0-360)
  */
 function applyHue(hue) {
@@ -198,19 +198,29 @@ function applyHue(hue) {
   const root = document.documentElement;
   root.style.setProperty("--hue", String(hue));
 
-  // --- Contrast check for button text ---
-  // Light-mode accent: hsl(hue, 80%, 55%)
-  // If the accent is too bright for white text, switch to dark text.
-  // WCAG AA requires contrast >= 4.5:1. White luminance = 1.0.
+  // --- Compute safe button lightness for white-text contrast ---
+  // WCAG AA requires contrast >= 4.5:1 with white (luminance = 1.0).
   // Contrast = 1.05 / (L + 0.05) >= 4.5  →  L <= 0.183
-  const accentLum = getRelativeLuminance(hue, 80, 55);
-  if (accentLum > 0.18) {
-    root.style.setProperty("--color-primary-button-text", "var(--color-text)");
-  } else {
-    root.style.removeProperty("--color-primary-button-text");
+  // Binary-search for the highest lightness that satisfies this.
+  const SAT = 85;
+  let lo = 20, hi = 55;
+  while (hi - lo > 0.5) {
+    const mid = (lo + hi) / 2;
+    if (getRelativeLuminance(hue, SAT, mid) <= 0.183) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
   }
+  const safeLightness = Math.floor(lo);
+  const safeHoverLightness = Math.max(safeLightness - 6, 18);
 
-  console.log(`[ServerTheme] Applied --hue: ${hue} (accent lum: ${accentLum.toFixed(3)}, btn-text: ${accentLum > 0.18 ? "dark" : "white"})`);
+  root.style.setProperty("--color-primary-button", `hsl(${hue}, ${SAT}%, ${safeLightness}%)`);
+  root.style.setProperty("--color-primary-button-hover", `hsl(${hue}, ${SAT + 2}%, ${safeHoverLightness}%)`);
+  // Button text is always white since background is now guaranteed dark enough
+  root.style.removeProperty("--color-primary-button-text");
+
+  console.log(`[ServerTheme] Applied --hue: ${hue} (safe btn lightness: ${safeLightness}%)`);
 }
 
 /**
@@ -221,6 +231,8 @@ function clearHue() {
 
   const root = document.documentElement;
   root.style.removeProperty("--hue");
+  root.style.removeProperty("--color-primary-button");
+  root.style.removeProperty("--color-primary-button-hover");
   root.style.removeProperty("--color-primary-button-text");
 
   // Remove legacy injected <style> from the old implementation

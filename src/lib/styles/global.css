@@ -32,9 +32,9 @@
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
 	
-	/* Buttons — same as accent in light mode */
-	--color-primary-button: var(--color-accent);
-	--color-primary-button-hover: var(--color-accent-hover);
+	/* Buttons — darker shade to guarantee white-text contrast across ALL hues */
+	--color-primary-button: hsl(var(--hue), 85%, 42%);
+	--color-primary-button-hover: hsl(var(--hue), 87%, 36%);
 	--color-primary-button-text: white;
 	
 	/* Semantic status colors (fixed hues — must stay consistent for UX) */

@@ -148,8 +148,8 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.75rem 1.5rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		font-weight: 600;
@@ -157,8 +157,8 @@
 	}
 	
 	.dashboard-btn:hover {
-		background: var(--color-primary-hover);
-		color: white;
+		background: var(--color-primary-button-hover);
+		color: var(--color-primary-button-text);
 	}
 	
 	.discord-btn {
@@ -166,8 +166,8 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 1rem 2rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		font-weight: 600;
@@ -176,8 +176,8 @@
 	}
 	
 	.discord-btn:hover {
-		background: var(--color-primary-hover);
-		color: white;
+		background: var(--color-primary-button-hover);
+		color: var(--color-primary-button-text);
 	}
 	
 	.info {
@@ -221,8 +221,8 @@
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.75rem 1.5rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		font-weight: 600;
@@ -230,8 +230,8 @@
 	}
 	
 	.install-btn:hover {
-		background: var(--color-primary-hover);
-		color: white;
+		background: var(--color-primary-button-hover);
+		color: var(--color-primary-button-text);
 	}
 	
 	.install-note {

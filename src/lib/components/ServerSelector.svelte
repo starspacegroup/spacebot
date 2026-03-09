@@ -164,8 +164,8 @@
 		width: 24px;
 		height: 24px;
 		border-radius: 50%;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -268,8 +268,8 @@
 		gap: 0.375rem;
 		padding: 0.375rem 0.75rem;
 		border-radius: var(--radius-md);
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		font-size: 0.875rem;
 		font-weight: 500;
 		text-decoration: none;
@@ -277,8 +277,8 @@
 	}
 	
 	.add-server-link:hover {
-		background: var(--color-primary-hover);
-		color: white;
+		background: var(--color-primary-button-hover);
+		color: var(--color-primary-button-text);
 	}
 	
 	.add-icon-small {
@@ -297,8 +297,8 @@
 		width: 24px;
 		height: 24px;
 		border-radius: 50%;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		display: flex;
 		align-items: center;
 		justify-content: center;

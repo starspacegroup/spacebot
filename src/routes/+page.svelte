@@ -563,8 +563,8 @@
 	.step-number {
 		width: 3rem;
 		height: 3rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		border-radius: 50%;
 		display: flex;
 		align-items: center;

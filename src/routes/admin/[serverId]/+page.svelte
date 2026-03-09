@@ -424,8 +424,8 @@
 		width: 48px;
 		height: 48px;
 		border-radius: 50%;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		display: flex;
 		align-items: center;
 		justify-content: center;

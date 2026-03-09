@@ -1828,8 +1828,8 @@
 		padding: 0.25rem 0.5rem;
 		font-size: 0.7rem;
 		font-weight: 600;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		border-radius: var(--radius-sm);
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
@@ -2034,9 +2034,9 @@
 	}
 	
 	.weekday-btn.selected {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		border-color: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 	}
 	
 	@media (min-width: 640px) {
@@ -2154,8 +2154,8 @@
 	}
 	
 	.image-change-btn:hover {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 	}
 	
 	/* Edit Choice Modal Styles */

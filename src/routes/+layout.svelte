@@ -194,16 +194,16 @@
 	.nav-btn {
 		padding: 0.5rem 1rem;
 		border-radius: var(--radius-sm);
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		text-decoration: none;
 		font-weight: 500;
 		transition: background var(--transition-fast);
 	}
 	
 	.nav-btn:hover {
-		background: var(--color-primary-hover);
-		color: white;
+		background: var(--color-primary-button-hover);
+		color: var(--color-primary-button-text);
 	}
 	
 	.app-main {

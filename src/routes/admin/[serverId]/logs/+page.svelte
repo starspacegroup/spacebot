@@ -749,9 +749,9 @@
 	}
 	
 	.refresh-btn.active {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		border-color: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		font-weight: 600;
 	}
 	

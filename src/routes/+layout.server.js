@@ -101,8 +101,8 @@ export async function load({ cookies, platform, url }) {
     discriminator: cookies.get("discord_discriminator") || "0",
   };
 
-  // Only fetch guilds if we're on an admin page
-  const isAdminPage = url.pathname.startsWith("/admin");
+  // Fetch guilds for admin pages and pages that need guild data (e.g. /account)
+  const isAdminPage = url.pathname.startsWith("/admin") || url.pathname.startsWith("/account");
   let adminGuilds = [];
   let selectedGuildId = null;
 

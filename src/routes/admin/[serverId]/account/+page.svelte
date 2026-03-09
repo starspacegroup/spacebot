@@ -930,8 +930,8 @@
 	}
 	
 	.plan-badge.pro {
-		background: linear-gradient(135deg, var(--color-primary), var(--color-accent-hover));
-		color: white;
+		background: linear-gradient(135deg, var(--color-primary-button), var(--color-primary-button-hover));
+		color: var(--color-primary-button-text);
 	}
 	
 	.status-tag {
@@ -1335,8 +1335,8 @@
 	}
 	
 	.interval-btn.active {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		box-shadow: var(--shadow-sm);
 	}
 	
@@ -1421,8 +1421,8 @@
 	}
 	
 	.recommended-label {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 	}
 	
 	.plan-card-header {
@@ -1682,8 +1682,8 @@
 	}
 	
 	.plan-pill-sm.pro {
-		background: linear-gradient(135deg, var(--color-primary), var(--color-accent-hover));
-		color: white;
+		background: linear-gradient(135deg, var(--color-primary-button), var(--color-primary-button-hover));
+		color: var(--color-primary-button-text);
 	}
 	
 	.plan-pill-sm.enterprise {

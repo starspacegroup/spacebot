@@ -595,7 +595,7 @@
 	<div class="message {msg.role}" class:error={msg.error}>
 		<div class="message-avatar">
 			{#if msg.role === 'assistant'}
-				<div class="avatar-bot">🤖</div>
+				<img src="/logo.webp" alt="SpaceBot" class="avatar-img" />
 			{:else if msg.author?.avatar}
 				<img
 					src="https://cdn.discordapp.com/avatars/{msg.author.id}/{msg.author.avatar}.png?size=64"
@@ -678,8 +678,8 @@
 		justify-content: center;
 		gap: 0.5rem;
 		padding: 0.6rem 1rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		border: none;
 		border-radius: var(--radius-md, 0.375rem);
 		font-size: 0.85rem;
@@ -751,8 +751,8 @@
 	}
 
 	.session-item.active {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 	}
 
 	.session-item.active .session-sub {
@@ -1202,8 +1202,8 @@
 	}
 
 	.send-btn {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		border: none;
 		border-radius: 50%;
 		width: 30px;

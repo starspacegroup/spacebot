@@ -8,6 +8,9 @@
  */
 
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AuditLogEvent,
   Client,
@@ -2681,9 +2684,29 @@ function setupEventHandlers(client, logFn) {
 
   // ===== CLIENT EVENTS =====
 
-  client.on(Events.ClientReady, (c) => {
+  client.on(Events.ClientReady, async (c) => {
     log.info(`✅ Discord Gateway Bot is online as ${c.user.tag}`);
     log.info(`📊 Watching ${c.guilds.cache.size} guilds`);
+
+    // Set bot avatar to the app logo if not already set
+    try {
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      const logoPath = path.resolve(__dirname, "../../../static/favicon-512.png");
+      if (fs.existsSync(logoPath)) {
+        const logoData = fs.readFileSync(logoPath);
+        await c.user.setAvatar(logoData);
+        log.info("🖼️ Bot avatar updated to app logo");
+      } else {
+        log.warn("⚠️ Logo file not found at", logoPath);
+      }
+    } catch (err) {
+      // Ignore if avatar is already set (rate limit) or other non-critical errors
+      if (err.code === 50035 || err.status === 429) {
+        log.debug("Bot avatar already up to date or rate limited, skipping");
+      } else {
+        log.warn("⚠️ Failed to set bot avatar:", err.message);
+      }
+    }
   });
 
   client.on(Events.Error, (error) => {
