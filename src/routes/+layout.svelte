@@ -115,7 +115,8 @@
 			{#if isLoggedIn && user}
 				<UserMenu user={user} selectedGuildId={selectedGuildId} isSuperAdmin={isSuperAdmin} />
 			{:else if showLoginButton}
-				<a href="/login" class="nav-btn">Login</a>
+				<a href="/#pricing" class="nav-link">Pricing</a>
+				<a href="/api/auth/discord" class="nav-btn"><svg class="discord-icon" width="16" height="16" viewBox="0 0 71 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg> Login</a>
 			{/if}
 			<ThemeToggle />
 		</nav>
@@ -191,7 +192,22 @@
 		}
 	}
 	
+	.nav-link {
+		color: var(--color-text-secondary);
+		text-decoration: none;
+		font-weight: 500;
+		font-size: 0.875rem;
+		transition: color var(--transition-fast);
+	}
+
+	.nav-link:hover {
+		color: var(--color-text);
+	}
+
 	.nav-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
 		padding: 0.5rem 1rem;
 		border-radius: var(--radius-sm);
 		background: var(--color-primary-button);
