@@ -16,6 +16,34 @@ import path from "node:path";
  * is requesting. The browser will get the right content and on next navigation
  * SvelteKit's version check will force a full reload if needed.
  */
+/**
+ * Vite plugin that stubs out native Node.js modules during production builds.
+ *
+ * Problem: mcp-client.js dynamically imports better-sqlite3 for local gateway
+ * usage. Even though the import is dynamic and gated behind runtime conditions,
+ * Vite still bundles it — pulling in fs, path, util, and native bindings that
+ * cause Wrangler's esbuild to fail with "Could not resolve" errors.
+ *
+ * Fix: During builds only, intercept the better-sqlite3 import and replace it
+ * with a stub module. The code paths that use it are never reached on Workers.
+ */
+function excludeNativeModules() {
+	return {
+		name: 'exclude-native-modules',
+		apply: 'build',
+		resolveId(source) {
+			if (source === 'better-sqlite3') {
+				return '\0virtual:better-sqlite3-stub';
+			}
+		},
+		load(id) {
+			if (id === '\0virtual:better-sqlite3-stub') {
+				return 'export default class Database { constructor() { throw new Error("better-sqlite3 is not available in Cloudflare Workers"); } }';
+			}
+		}
+	};
+}
+
 function staleDepsFix() {
 	return {
 		name: 'stale-deps-fix',
@@ -33,7 +61,7 @@ function staleDepsFix() {
 }
 
 export default defineConfig({
-	plugins: [staleDepsFix(), sveltekit()],
+	plugins: [excludeNativeModules(), staleDepsFix(), sveltekit()],
 	optimizeDeps: {
 		// Pre-bundle Svelte runtime deps at startup so they're ready instantly.
 		// Without this, Vite discovers and optimizes lazily on first request,
