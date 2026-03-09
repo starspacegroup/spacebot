@@ -403,7 +403,7 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 		gap: 2rem;
-		max-width: 720px;
+		max-width: 900px;
 		margin: 0 auto;
 	}
 
@@ -443,7 +443,7 @@
 	}
 
 	.pricing-enterprise-banner {
-		max-width: 720px;
+		max-width: 900px;
 		margin: 2rem auto 0;
 	}
 
