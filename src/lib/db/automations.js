@@ -525,6 +525,70 @@ export const FILTER_TYPES = {
     applicableEvents: ["VOICE_MOVE"],
     voiceOnly: true,
   },
+  // GitHub-specific filters (for GITHUB_* events)
+  github_repo: {
+    type: "text",
+    label: "Repository",
+    description: "Filter by repository name (e.g. owner/repo)",
+    applicableEvents: ["GITHUB_"],
+  },
+  github_action: {
+    type: "select",
+    label: "Action",
+    description: "Filter by the specific action (e.g. opened, closed, merged)",
+    options: [
+      { value: "any", label: "Any Action" },
+      { value: "opened", label: "Opened" },
+      { value: "closed", label: "Closed" },
+      { value: "merged", label: "Merged" },
+      { value: "reopened", label: "Reopened" },
+      { value: "created", label: "Created" },
+      { value: "deleted", label: "Deleted" },
+      { value: "edited", label: "Edited" },
+      { value: "published", label: "Published" },
+      { value: "completed", label: "Completed" },
+    ],
+    default: "any",
+    applicableEvents: [
+      "GITHUB_PULL_REQUEST",
+      "GITHUB_ISSUES",
+      "GITHUB_ISSUE_COMMENT",
+      "GITHUB_RELEASE",
+      "GITHUB_STAR",
+      "GITHUB_WORKFLOW_RUN",
+    ],
+  },
+  github_branch: {
+    type: "text",
+    label: "Branch",
+    description: "Filter by branch name",
+    applicableEvents: ["GITHUB_PUSH", "GITHUB_WORKFLOW_RUN"],
+  },
+  github_workflow_conclusion: {
+    type: "select",
+    label: "Workflow Conclusion",
+    description: "Filter by workflow run result",
+    options: [
+      { value: "any", label: "Any Conclusion" },
+      { value: "success", label: "✅ Success" },
+      { value: "failure", label: "❌ Failure" },
+      { value: "cancelled", label: "🚫 Cancelled" },
+    ],
+    default: "any",
+    applicableEvents: ["GITHUB_WORKFLOW_RUN"],
+  },
+  github_repo_visibility: {
+    type: "select",
+    label: "Repository Visibility",
+    description: "Filter by whether the repository is public or private",
+    options: [
+      { value: "any", label: "Any Visibility" },
+      { value: "public", label: "🌐 Public" },
+      { value: "private", label: "🔒 Private" },
+    ],
+    default: "any",
+    applicableEvents: ["GITHUB_"],
+  },
 };
 
 /**
@@ -589,6 +653,16 @@ export const TEMPLATE_VARIABLES = {
   "trigger.event": "Event type that triggered",
   "trigger.category": "Event category",
   "trigger.time": "When the event occurred",
+  // GitHub-specific variables (available for GITHUB_* events)
+  "details.repo": "GitHub repository (owner/repo)",
+  "details.branch": "Branch name",
+  "details.action": "GitHub action (opened, closed, merged, etc.)",
+  "details.title": "PR/Issue title",
+  "details.number": "PR/Issue number",
+  "details.url": "URL to the PR/Issue/Release",
+  "details.sender": "GitHub username who triggered the event",
+  "details.conclusion": "Workflow run conclusion (success, failure, etc.)",
+  "details.tag": "Release tag name",
 };
 
 /**

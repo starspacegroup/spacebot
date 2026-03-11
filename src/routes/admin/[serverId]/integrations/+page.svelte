@@ -120,6 +120,54 @@
 
 					{#if isExpanded}
 						<div class="card-details">
+							{#if integration.slug === 'github' && isEnabled}
+								<div class="detail-section">
+									<h4>Setup Instructions</h4>
+									<p class="setup-instructions">Add this webhook URL to your GitHub repository settings under <strong>Settings → Webhooks → Add webhook</strong>:</p>
+									<div class="copyable-field">
+										<code class="copyable-value">{window?.location?.origin || 'https://spacebot.starspace.group'}/api/v1/integrations/github/webhook/{data.serverId}</code>
+										<button class="btn-copy" onclick={(e) => {
+											const url = `${window.location.origin}/api/v1/integrations/github/webhook/${data.serverId}`;
+											navigator.clipboard.writeText(url);
+											e.target.textContent = '✓ Copied';
+											setTimeout(() => e.target.textContent = 'Copy', 2000);
+										}}>Copy</button>
+									</div>
+
+									{#if integration.guild_config?.webhook_secret}
+										<p class="setup-instructions" style="margin-top: 0.75rem;">Set the <strong>Secret</strong> in GitHub to:</p>
+										<div class="copyable-field">
+											<code class="copyable-value secret">{integration.guild_config.webhook_secret}</code>
+											<button class="btn-copy" onclick={(e) => {
+												navigator.clipboard.writeText(integration.guild_config.webhook_secret);
+												e.target.textContent = '✓ Copied';
+												setTimeout(() => e.target.textContent = 'Copy', 2000);
+											}}>Copy</button>
+										</div>
+									{/if}
+
+									<p class="setup-instructions" style="margin-top: 0.75rem;">Set <strong>Content type</strong> to <code>application/json</code>. Choose which events to send, or select "Send me everything".</p>
+
+									<div class="github-events-info">
+										<h4 style="margin-top: 1rem;">Available Events for Automations</h4>
+										<div class="github-events-list">
+											<span class="github-event-tag">🔀 Push</span>
+											<span class="github-event-tag">🔃 Pull Request</span>
+											<span class="github-event-tag">🐛 Issues</span>
+											<span class="github-event-tag">💬 Issue Comment</span>
+											<span class="github-event-tag">🏷️ Release</span>
+											<span class="github-event-tag">⭐ Star</span>
+											<span class="github-event-tag">🍴 Fork</span>
+											<span class="github-event-tag">⚙️ Workflow Run</span>
+										</div>
+									</div>
+								</div>
+							{:else if integration.slug === 'github' && !isEnabled}
+								<div class="detail-section">
+									<p class="setup-instructions">Enable this integration to get a webhook URL and secret for your GitHub repository. Once connected, you can create automations that trigger on GitHub events like pushes, pull requests, issues, and more.</p>
+								</div>
+							{/if}
+
 							{#if integration.manifest?.commands?.length}
 								<div class="detail-section">
 									<h4>Commands</h4>
@@ -679,5 +727,77 @@
 			flex-direction: column;
 			align-items: flex-start;
 		}
+	}
+
+	/* GitHub Setup */
+	.setup-instructions {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+		margin: 0 0 0.5rem 0;
+		line-height: 1.5;
+	}
+
+	.setup-instructions code {
+		font-size: 0.8rem;
+		padding: 0.1rem 0.3rem;
+		background: var(--color-surface);
+		border-radius: var(--radius-sm);
+		color: var(--color-text);
+	}
+
+	.copyable-field {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.5rem 0.75rem;
+		overflow-x: auto;
+	}
+
+	.copyable-value {
+		flex: 1;
+		font-family: 'JetBrains Mono', 'Fira Code', monospace;
+		font-size: 0.8rem;
+		color: var(--color-text);
+		word-break: break-all;
+	}
+
+	.copyable-value.secret {
+		color: var(--color-primary);
+	}
+
+	.btn-copy {
+		flex-shrink: 0;
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 0.3rem 0.6rem;
+		background: var(--color-primary);
+		color: white;
+		border: none;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+
+	.btn-copy:hover {
+		opacity: 0.85;
+	}
+
+	.github-events-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.5rem;
+	}
+
+	.github-event-tag {
+		font-size: 0.75rem;
+		padding: 0.2rem 0.6rem;
+		background: rgba(36, 41, 46, 0.1);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-text-muted);
 	}
 </style>

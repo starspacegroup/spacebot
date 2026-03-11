@@ -491,6 +491,31 @@ export async function getGuildsWithIntegration(db, integrationId) {
 }
 
 /**
+ * Get all guilds with a specific integration enabled, including their config.
+ * Used by built-in integrations (e.g. GitHub) that need per-guild config.
+ */
+export async function getGuildsWithIntegrationConfig(db, integrationId) {
+  if (!db || !integrationId) return [];
+
+  try {
+    const { results } = await db
+      .prepare(
+        "SELECT guild_id, config FROM guild_integrations WHERE integration_id = ? AND enabled = 1",
+      )
+      .bind(integrationId)
+      .all();
+
+    return (results || []).map((r) => ({
+      guild_id: r.guild_id,
+      config: parseJSON(r.config, {}),
+    }));
+  } catch (error) {
+    log.error("[Integrations] Error getting guilds with integration config:", error);
+    return [];
+  }
+}
+
+/**
  * Mark stale integrations as offline.
  * Called periodically (e.g. via cron) to detect integrations that missed heartbeats.
  *

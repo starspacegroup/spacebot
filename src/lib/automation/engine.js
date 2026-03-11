@@ -336,6 +336,40 @@ export function matchesFilters(event, filters, context = {}) {
           if (!allowedToChannels.includes(event.channel_id)) return false;
         }
         break;
+
+      // GitHub-specific filters
+      case "github_repo":
+        if (filterValue && event.details?.repo) {
+          if (event.details.repo.toLowerCase() !== filterValue.toLowerCase()) return false;
+        }
+        break;
+
+      case "github_action":
+        if (filterValue && filterValue !== "any") {
+          if (event.details?.action !== filterValue) return false;
+        }
+        break;
+
+      case "github_branch":
+        if (filterValue) {
+          const branch = event.details?.branch || event.details?.head_branch;
+          if (!branch || branch.toLowerCase() !== filterValue.toLowerCase()) return false;
+        }
+        break;
+
+      case "github_workflow_conclusion":
+        if (filterValue && filterValue !== "any") {
+          if (event.details?.conclusion !== filterValue) return false;
+        }
+        break;
+
+      case "github_repo_visibility":
+        if (filterValue && filterValue !== "any") {
+          const isPrivate = event.details?.repo_private === true;
+          if (filterValue === "public" && isPrivate) return false;
+          if (filterValue === "private" && !isPrivate) return false;
+        }
+        break;
     }
   }
 

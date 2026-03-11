@@ -10,6 +10,7 @@ import {
 import { seedBuiltInIntegrations } from "$lib/integrations/registry.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
+import { generateWebhookSecret } from "$lib/integrations/github.js";
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -152,11 +153,19 @@ export const actions = {
       `[Integrations] Enabling integration ${integrationId} for server ${serverId}`,
     );
 
+    // For the GitHub integration, auto-generate a webhook secret
+    const integration = await getIntegrationById(db, integrationId);
+    let config = {};
+    if (integration?.slug === "github") {
+      config.webhook_secret = generateWebhookSecret();
+    }
+
     const result = await enableGuildIntegration(
       db,
       serverId,
       integrationId,
       userId,
+      config,
     );
 
     if (!result.success) {

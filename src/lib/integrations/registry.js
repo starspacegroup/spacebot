@@ -89,11 +89,50 @@ export const BUILT_IN_INTEGRATIONS = [
       config_schema: [],
     },
   },
+  {
+    slug: "github",
+    name: "GitHub",
+    description:
+      "Receive GitHub repository events in your Discord server. Get notified about pushes, pull requests, issues, releases, and more — and trigger automations based on GitHub activity.",
+    icon: "🐙",
+    author: "*Space",
+    version: "1.0.0",
+    category: "utility",
+    is_official: true,
+    manifest_json: {
+      name: "GitHub",
+      slug: "github",
+      version: "1.0.0",
+      description:
+        "Receive GitHub repository events and trigger automations from GitHub activity.",
+      author: "*Space",
+      author_url: "https://starspace.group",
+      icon: "🐙",
+      category: "utility",
+
+      // GitHub integration is built-in — it receives webhooks directly
+      // from GitHub rather than using an external command handler.
+      // No Discord slash commands; events flow into the automation engine.
+      commands: [],
+      webhooks: {},
+      config_schema: [
+        {
+          key: "webhook_secret",
+          label: "Webhook Secret",
+          type: "string",
+          required: false,
+          description: "A secret to verify incoming GitHub webhooks (auto-generated if empty)",
+        },
+      ],
+    },
+  },
 ];
 
 /**
  * Seed the built-in integrations into the database.
  * Safe to call multiple times — uses upsert.
+ * Built-in integrations that don't use external heartbeats are marked
+ * as connected immediately so they appear in the guild integrations list.
  */
 export async function seedBuiltInIntegrations(db) {
   if (!db) {
@@ -105,6 +144,21 @@ export async function seedBuiltInIntegrations(db) {
     const result = await upsertIntegration(db, integration);
     if (result.success) {
       log.debug(`[IntegrationRegistry] Seeded integration: ${integration.slug}`);
+
+      // Mark built-in integrations without a manifest_url as connected,
+      // since they receive events directly (e.g. GitHub webhooks).
+      if (!integration.manifest_url && result.id) {
+        try {
+          await db
+            .prepare(
+              "UPDATE integrations SET connected_at = COALESCE(connected_at, ?), status = 'online' WHERE id = ?",
+            )
+            .bind(new Date().toISOString(), result.id)
+            .run();
+        } catch (err) {
+          log.debug(`[IntegrationRegistry] Could not set connected_at for ${integration.slug}: ${err.message}`);
+        }
+      }
     } else {
       log.error(`[IntegrationRegistry] Failed to seed ${integration.slug}:`, result.error);
     }

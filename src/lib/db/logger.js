@@ -433,6 +433,12 @@ export const EVENT_CATEGORIES = {
     color: "#7289DA",
     icon: "📅",
   },
+  github: {
+    name: "GitHub",
+    description: "GitHub repository activity",
+    color: "#24292e",
+    icon: "🐙",
+  },
 };
 
 /**
@@ -641,5 +647,39 @@ export const EVENT_TYPES = {
   SCHEDULED_EVENT_USER_REMOVE: {
     category: "event",
     description: "User unsubscribed from scheduled event",
+  },
+
+  // GitHub events (via GitHub integration webhook)
+  GITHUB_PUSH: {
+    category: "github",
+    description: "Code was pushed to a repository",
+  },
+  GITHUB_PULL_REQUEST: {
+    category: "github",
+    description: "Pull request was opened, closed, or merged",
+  },
+  GITHUB_ISSUES: {
+    category: "github",
+    description: "Issue was opened, closed, or updated",
+  },
+  GITHUB_ISSUE_COMMENT: {
+    category: "github",
+    description: "Comment was added to an issue or pull request",
+  },
+  GITHUB_RELEASE: {
+    category: "github",
+    description: "A release was published",
+  },
+  GITHUB_STAR: {
+    category: "github",
+    description: "Repository was starred or unstarred",
+  },
+  GITHUB_FORK: {
+    category: "github",
+    description: "Repository was forked",
+  },
+  GITHUB_WORKFLOW_RUN: {
+    category: "github",
+    description: "GitHub Actions workflow completed",
   },
 };
