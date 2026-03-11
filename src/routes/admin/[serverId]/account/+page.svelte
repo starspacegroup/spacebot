@@ -383,7 +383,7 @@
 			
 			<div class="usage-card">
 				<div class="usage-header">
-					<span class="usage-icon">🤖</span>
+					<span class="usage-icon"><img src="/logo.webp" alt="" class="inline-logo" /></span>
 					<span class="usage-title">Automations</span>
 				</div>
 				<div class="usage-bar-container">
@@ -484,7 +484,7 @@
 				{/if}
 			</a>
 			<a href="/admin/{data.serverId}/automations" class="manage-card">
-				<span class="manage-icon">🤖</span>
+				<span class="manage-icon"><img src="/logo.webp" alt="" class="inline-logo" /></span>
 				<span class="manage-label">Automations</span>
 				{#if usage.automations > 0}
 					<span class="manage-summary">
@@ -1792,4 +1792,6 @@
 		color: var(--color-text-secondary);
 		line-height: 1.6;
 	}
+
+	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
 </style>

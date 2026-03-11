@@ -42,7 +42,7 @@
 		
 		<div class="feature-grid">
 			<div class="feature-card">
-				<span class="feature-icon">🤖</span>
+				<span class="feature-icon"><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span>
 				<h3>Custom Slash Commands</h3>
 				<p>Create unlimited commands with parameters, permissions, and rich responses — including embeds, context menus, and voice-only commands. No coding required.</p>
 			</div>

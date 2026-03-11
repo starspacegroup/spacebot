@@ -357,7 +357,7 @@
 						class="bot-avatar"
 					/>
 				{:else}
-					<div class="bot-avatar-placeholder">🤖</div>
+					<div class="bot-avatar-placeholder"><img src="/logo.webp" alt="SpaceBot" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>
 				{/if}
 				<div class="bot-details">
 					<h2>{botApp.name}</h2>
@@ -949,7 +949,7 @@
 			</div>
 		{:else}
 			<div class="empty-state">
-				<div class="empty-icon">🤖</div>
+				<div class="empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 				<p>The bot is not in any servers yet.</p>
 			</div>
 		{/if}
@@ -2464,4 +2464,6 @@
 	.cmd-toast-close:hover {
 		opacity: 1;
 	}
+
+	.bot-logo-lg { height: 3rem; width: auto; border-radius: 8px; }
 </style>

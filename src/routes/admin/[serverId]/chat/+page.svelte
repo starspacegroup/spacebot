@@ -460,7 +460,7 @@
 	<div class="chat-main">
 		{#if !data.aiEnabled}
 			<div class="chat-disabled">
-				<div class="chat-disabled-icon">🤖</div>
+				<div class="chat-disabled-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 				<h2>AI Chat Not Available</h2>
 				<p>AI features are not configured for this instance.</p>
 			</div>
@@ -475,7 +475,7 @@
 						<h1>💬 Discord DM History</h1>
 						<p class="chat-header-sub">Previous messages with the bot via Discord DM</p>
 					{:else if activeSession}
-						<h1>🤖 {activeSession.title}</h1>
+						<h1><img src="/logo.webp" alt="" class="inline-logo" /> {activeSession.title}</h1>
 						<p class="chat-header-sub">
 							{#if data.guild?.name}
 								Chatting about <strong>{data.guild.name}</strong>
@@ -484,7 +484,7 @@
 							{/if}
 						</p>
 					{:else}
-						<h1>🤖 AI Assistant</h1>
+						<h1><img src="/logo.webp" alt="" class="inline-logo" /> AI Assistant</h1>
 						<p class="chat-header-sub">Start a new chat or view history</p>
 					{/if}
 				</div>
@@ -526,7 +526,7 @@
 				{:else if !activeSession}
 					<!-- No session selected -->
 					<div class="chat-empty">
-						<div class="chat-empty-icon">🤖</div>
+						<div class="chat-empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 						<h3>SpaceBot AI Assistant</h3>
 						<p>Ask about your server stats, manage automations, query logs, or get help — all in natural language.</p>
 						<div class="chat-suggestions">
@@ -1301,5 +1301,20 @@
 		.chat-input-area {
 			padding: 0.75rem 1.5rem;
 		}
+	}
+
+	/* Bot logo replacements */
+	.inline-logo {
+		height: 1.2em;
+		width: auto;
+		vertical-align: middle;
+		margin-right: 0.15em;
+		border-radius: 4px;
+	}
+
+	.bot-logo-lg {
+		height: 3rem;
+		width: auto;
+		border-radius: 8px;
 	}
 </style>

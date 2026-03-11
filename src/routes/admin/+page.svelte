@@ -25,7 +25,7 @@
 				{#if data.user}
 					<p class="hint">If you're a server admin, make sure the bot is added to your server first.</p>
 					<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
-						<span class="btn-icon">🤖</span>
+						<span class="btn-icon"><img src="/logo.webp" alt="" class="inline-logo" /></span>
 						Add Bot to a Server
 					</a>
 				{:else}
@@ -81,13 +81,13 @@
 			<div class="add-server-section">
 				<p>Don't see your server?</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-secondary">
-					<span>🤖</span>
+					<span><img src="/logo.webp" alt="" class="inline-logo" /></span>
 					Add Bot to Another Server
 				</a>
 			</div>
 		{:else}
 			<div class="empty-state-card">
-				<div class="empty-icon">🤖</div>
+				<div class="empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 				<h2>No Servers Found</h2>
 				<p>Add the bot to a server where you're an admin to get started.</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
@@ -364,5 +364,8 @@
 		color: var(--color-text-muted);
 		margin: 0 0 1.5rem;
 	}
+
+	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
+	.bot-logo-lg { height: 3rem; width: auto; border-radius: 8px; }
 	
 </style>

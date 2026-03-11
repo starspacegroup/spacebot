@@ -140,7 +140,7 @@
 
 	{#if data.adminGuilds.length === 0}
 		<div class="empty-state">
-			<div class="empty-icon">🤖</div>
+			<div class="empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 			<h2>No Servers Found</h2>
 			<p>Add SpaceBot to a server first, then come back to upgrade.</p>
 			<a href="/api/auth/discord?flow=install&return_to={encodeURIComponent('/admin/upgrade?interval=' + data.interval)}" class="btn btn-primary btn-lg">
@@ -153,7 +153,7 @@
 	<div class="add-new-section">
 		<p>Don't see your server?</p>
 		<a href="/api/auth/discord?flow=install&return_to={encodeURIComponent('/admin/upgrade?interval=' + data.interval)}" class="btn btn-secondary">
-			<span>🤖</span>
+			<span><img src="/logo.webp" alt="" class="inline-logo" /></span>
 			Add Bot to Another Server
 		</a>
 	</div>
@@ -417,4 +417,7 @@
 	.back-link a:hover {
 		color: var(--color-primary);
 	}
+
+	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
+	.bot-logo-lg { height: 3rem; width: auto; border-radius: 8px; }
 </style>

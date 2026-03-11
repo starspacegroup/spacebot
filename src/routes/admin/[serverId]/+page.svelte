@@ -54,7 +54,7 @@
 				{#if data.user}
 					<p class="hint">If you're a server admin, make sure the bot is added to your server first.</p>
 					<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
-						<span class="btn-icon">🤖</span>
+						<span class="btn-icon"><img src="/logo.webp" alt="" class="inline-logo" /></span>
 						Add Bot to a Server
 					</a>
 				{:else}
@@ -168,7 +168,7 @@
 						<span class="quick-link-arrow">→</span>
 					</a>
 					<a href="/admin/{data.serverId}/chat" class="quick-link-card">
-						<div class="quick-link-icon">🤖</div>
+						<div class="quick-link-icon"><img src="/logo.webp" alt="" class="inline-logo" /></div>
 						<div class="quick-link-info">
 							<span class="quick-link-title">AI Assistant</span>
 							<span class="quick-link-desc">Chat with SpaceBot about this server</span>
@@ -756,4 +756,6 @@
 		display: flex;
 		justify-content: flex-end;
 	}
+
+	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
 </style>
