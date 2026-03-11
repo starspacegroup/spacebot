@@ -981,6 +981,31 @@ async function executeAutomationAction(automation, event) {
       }
     }
 
+    case "SEND_DM": {
+      const userId = resolveTargetUser(action_config, event);
+      const content = automation.processed_content || action_config.content;
+
+      if (!userId) throw new Error("Missing target user");
+      if (!content) throw new Error("Missing message content");
+
+      const user = await client.users.fetch(userId);
+      if (!user) throw new Error("User not found");
+
+      if (action_config.embed) {
+        await user.send({
+          embeds: [{
+            description: content,
+            color: 0x5865F2,
+            timestamp: new Date().toISOString(),
+          }],
+        });
+        return { dmSent: true, userId, embed: true };
+      } else {
+        await user.send(content);
+        return { dmSent: true, userId };
+      }
+    }
+
     case "ADD_ROLE": {
       // Support both legacy role_id (single) and new role_ids (comma-separated)
       const roleIds = action_config.role_ids
