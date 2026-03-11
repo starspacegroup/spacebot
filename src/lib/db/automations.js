@@ -112,6 +112,8 @@ export const ACTION_TYPES = {
         supportsVariables: true,
       },
       embed: { type: "boolean", default: false, label: "Send as embed" },
+      embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
+      embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
     },
   },
   SEND_DM: {
@@ -133,6 +135,8 @@ export const ACTION_TYPES = {
         supportsVariables: true,
       },
       embed: { type: "boolean", default: false, label: "Send as embed" },
+      embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
+      embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
     },
   },
   ADD_ROLE: {

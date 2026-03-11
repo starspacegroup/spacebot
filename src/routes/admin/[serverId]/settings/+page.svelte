@@ -3,6 +3,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
 	import { TIMEZONE_OPTIONS, getTimezone, getTimezoneAbbreviation } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
@@ -36,6 +37,39 @@
 	let welcomeChannelId = $state(data.settings?.welcomeChannelId || '');
 	// svelte-ignore state_referenced_locally
 	let welcomeMessage = $state(data.settings?.welcomeMessage || 'Welcome {user} to {server}!');
+	
+	// Log embed color settings per category
+	const defaultEmbedColors = {
+		message: '#3498db',
+		member: '#2ecc71',
+		guild: '#9b59b6',
+		channel: '#e67e22',
+		role: '#f1c40f',
+		moderation: '#e74c3c',
+		voice: '#1abc9c',
+		reaction: '#ff6b6b',
+		interaction: '#5865f2',
+		emoji: '#f1c40f',
+		invite: '#3498db',
+		thread: '#2ecc71',
+		event: '#7289da',
+		github: '#24292e',
+	};
+	// svelte-ignore state_referenced_locally
+	let logEmbedColors = $state({ ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) });
+	
+	// Serialize embed colors for hidden form input
+	const logEmbedColorsJson = $derived(JSON.stringify(logEmbedColors));
+	
+	function resetEmbedColor(category) {
+		logEmbedColors[category] = defaultEmbedColors[category] || '#95a5a6';
+		autoSave();
+	}
+	
+	function resetAllEmbedColors() {
+		logEmbedColors = { ...defaultEmbedColors };
+		autoSave();
+	}
 	
 	// Timezone setting
 	// svelte-ignore state_referenced_locally
@@ -141,6 +175,7 @@
 		welcomeEnabled = data.settings?.welcomeEnabled || false;
 		welcomeChannelId = data.settings?.welcomeChannelId || '';
 		welcomeMessage = data.settings?.welcomeMessage || 'Welcome {user} to {server}!';
+		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		timezone = data.settings?.timezone || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
@@ -318,6 +353,46 @@
 					</div>
 				</div>
 			</div>
+
+			{#if loggingChannelId}
+				<div class="settings-card embed-colors-card">
+					<div class="embed-colors-header">
+						<div class="setting-info">
+							<span class="setting-label">Embed Colors</span>
+							<span class="setting-desc">Customize the left sidebar color of log embeds per event category</span>
+						</div>
+						<button type="button" class="btn btn-sm btn-secondary" onclick={resetAllEmbedColors}>
+							Reset All
+						</button>
+					</div>
+					<div class="embed-colors-grid">
+						{#each Object.entries(EVENT_CATEGORIES) as [key, category]}
+							<div class="embed-color-item">
+								<div class="embed-color-preview" style="background-color: {logEmbedColors[key] || defaultEmbedColors[key] || '#95a5a6'}"></div>
+								<div class="embed-color-info">
+									<span class="embed-color-icon">{category.icon}</span>
+									<span class="embed-color-name">{category.name}</span>
+								</div>
+								<div class="embed-color-controls">
+									<input
+										type="color"
+										value={logEmbedColors[key] || defaultEmbedColors[key] || '#95a5a6'}
+										oninput={(e) => { logEmbedColors[key] = e.target.value; }}
+										onchange={autoSave}
+										class="color-picker"
+									/>
+									{#if logEmbedColors[key] !== defaultEmbedColors[key]}
+										<button type="button" class="btn-icon btn-reset-color" onclick={() => resetEmbedColor(key)} title="Reset to default">
+											↩
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+			<input type="hidden" name="logEmbedColors" value={logEmbedColorsJson} />
 		</section>
 		
 		<!-- Welcome Messages -->
@@ -1307,5 +1382,115 @@
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		margin: 0 0 1rem;
+	}
+
+	/* Embed Colors */
+	.embed-colors-card {
+		margin-top: 0.75rem;
+	}
+
+	.embed-colors-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: 1rem;
+	}
+
+	.embed-colors-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.embed-color-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		transition: border-color 0.2s;
+	}
+
+	.embed-color-item:hover {
+		border-color: var(--color-primary);
+	}
+
+	.embed-color-preview {
+		width: 4px;
+		height: 32px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.embed-color-info {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.embed-color-icon {
+		font-size: 0.875rem;
+		flex-shrink: 0;
+	}
+
+	.embed-color-name {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: var(--color-text);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.embed-color-controls {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex-shrink: 0;
+	}
+
+	.color-picker {
+		width: 28px;
+		height: 28px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 1px;
+		cursor: pointer;
+		background: transparent;
+	}
+
+	.color-picker::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+
+	.color-picker::-webkit-color-swatch {
+		border: none;
+		border-radius: 3px;
+	}
+
+	.btn-reset-color {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		color: var(--color-text-muted);
+		cursor: pointer;
+		padding: 0.2rem 0.35rem;
+		font-size: 0.75rem;
+		line-height: 1;
+		transition: color 0.2s, border-color 0.2s;
+	}
+
+	.btn-reset-color:hover {
+		color: var(--color-text);
+		border-color: var(--color-primary);
+	}
+
+	.btn-sm {
+		font-size: 0.75rem;
+		padding: 0.35rem 0.625rem;
 	}
 </style>

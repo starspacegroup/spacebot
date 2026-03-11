@@ -93,6 +93,46 @@
 	function getActionInfo(actionType) {
 		return data.actionTypes[actionType] || { name: actionType, icon: '⚡', description: '' };
 	}
+
+	// Collapse triggers: if all events in a category are selected, show "CATEGORY *" instead
+	function collapseTriggers(triggers) {
+		// Group triggers by category
+		const byCategory = {};
+		for (const trigger of triggers) {
+			const cat = getEventCategory(trigger);
+			if (!byCategory[cat]) byCategory[cat] = [];
+			byCategory[cat].push(trigger);
+		}
+
+		// Count total events per category from the full event type list
+		const totalPerCategory = {};
+		for (const [eventType, info] of Object.entries(data.eventTypes)) {
+			const cat = info.category || 'other';
+			totalPerCategory[cat] = (totalPerCategory[cat] || 0) + 1;
+		}
+
+		const result = [];
+		const handledCategories = new Set();
+
+		for (const [cat, catTriggers] of Object.entries(byCategory)) {
+			if (totalPerCategory[cat] && catTriggers.length >= totalPerCategory[cat]) {
+				// All events in this category are selected — collapse
+				const catInfo = getCategoryInfo(cat);
+				result.push({ label: `${cat.toUpperCase()} *`, category: cat, collapsed: true });
+				handledCategories.add(cat);
+			}
+		}
+
+		// Add individual triggers for non-collapsed categories
+		for (const trigger of triggers) {
+			const cat = getEventCategory(trigger);
+			if (!handledCategories.has(cat)) {
+				result.push({ label: trigger.replace(/_/g, ' '), category: cat, collapsed: false });
+			}
+		}
+
+		return result;
+	}
 	
 	// Format relative time
 	function formatRelativeTime(dateString) {
@@ -277,29 +317,18 @@
 			<div class="automation-grid">
 				{#each data.automations as automation}
 					{@const triggers = automation.trigger_events || (automation.trigger_event ? [automation.trigger_event] : [])}
-					{@const primaryTrigger = triggers[0] || automation.trigger_event}
-					{@const category = getEventCategory(primaryTrigger)}
-					{@const categoryInfo = getCategoryInfo(category)}
+					{@const displayTriggers = collapseTriggers(triggers)}
 					{@const actionInfo = getActionInfo(automation.action_type)}
 					<div class="automation-card {automation.enabled ? '' : 'disabled'}">
 						<div class="automation-header">
 							<div class="automation-triggers">
-								{#if triggers.length <= 2}
-									{#each triggers as trigger}
-										{@const triggerCategory = getEventCategory(trigger)}
-										{@const triggerCategoryInfo = getCategoryInfo(triggerCategory)}
-										<div class="automation-trigger" style="--category-color: {triggerCategoryInfo.color}">
-											<span class="trigger-icon">{triggerCategoryInfo.icon}</span>
-											<span class="trigger-event">{trigger.replace(/_/g, ' ')}</span>
-										</div>
-									{/each}
-								{:else}
-									<div class="automation-trigger" style="--category-color: {categoryInfo.color}">
-										<span class="trigger-icon">{categoryInfo.icon}</span>
-										<span class="trigger-event">{primaryTrigger.replace(/_/g, ' ')}</span>
+								{#each displayTriggers as trigger}
+									{@const triggerCategoryInfo = getCategoryInfo(trigger.category)}
+									<div class="automation-trigger" style="--category-color: {triggerCategoryInfo.color}">
+										<span class="trigger-icon">{triggerCategoryInfo.icon}</span>
+										<span class="trigger-event">{trigger.label}</span>
 									</div>
-									<div class="trigger-count">+{triggers.length - 1} more</div>
-								{/if}
+								{/each}
 							</div>
 							<form method="POST" action="?/toggle" use:enhance={() => {
 								processingId = automation.id;
@@ -613,12 +642,13 @@
 		gap: 0.375rem;
 		padding: 0.25rem 0.5rem;
 		background: color-mix(in srgb, var(--category-color) 20%, transparent);
+		border: 1px solid color-mix(in srgb, var(--category-color) 30%, transparent);
 		border-radius: 6px;
 		font-size: 0.675rem;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
-		color: var(--category-color);
+		color: color-mix(in srgb, var(--category-color) 60%, white);
 		overflow: hidden;
 	}
 	
@@ -634,14 +664,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	
-	.trigger-count {
-		font-size: 0.75rem;
-		color: var(--text-muted);
-		padding: 0.25rem 0.5rem;
-		background: var(--bg-primary, #202225);
-		border-radius: 4px;
 	}
 	
 	.trigger-icon {

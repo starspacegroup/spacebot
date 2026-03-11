@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   welcome_message: "Welcome {user} to {server}!",
   excluded_channels: [],
   excluded_categories: [],
+  log_embed_colors: {},
   timezone: null,
   permission_settings: {
     viewDashboard: { permission: "MANAGE_GUILD", roles: [] },
@@ -63,6 +64,7 @@ export async function getGuildSettings(db, guildId) {
       welcome_message: result.welcome_message || DEFAULT_SETTINGS.welcome_message,
       excluded_channels: parseJSON(result.excluded_channels, []),
       excluded_categories: parseJSON(result.excluded_categories, []),
+      log_embed_colors: parseJSON(result.log_embed_colors, {}),
       timezone: result.timezone || null,
       permission_settings: parseJSON(result.permission_settings, DEFAULT_SETTINGS.permission_settings),
       created_at: result.created_at,
@@ -112,6 +114,7 @@ export async function saveGuildSettings(db, guildId, settings) {
             welcome_message = ?,
             excluded_channels = ?,
             excluded_categories = ?,
+            log_embed_colors = ?,
             timezone = ?,
             permission_settings = ?,
             updated_at = ?
@@ -127,6 +130,7 @@ export async function saveGuildSettings(db, guildId, settings) {
           settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
           JSON.stringify(settings.excluded_channels || []),
           JSON.stringify(settings.excluded_categories || []),
+          JSON.stringify(settings.log_embed_colors || {}),
           settings.timezone || null,
           JSON.stringify(settings.permission_settings || DEFAULT_SETTINGS.permission_settings),
           now,
@@ -142,9 +146,9 @@ export async function saveGuildSettings(db, guildId, settings) {
           INSERT INTO guild_settings (
             guild_id, prefix, logging_enabled, log_channel_id,
             moderation_role_id, welcome_enabled, welcome_channel_id, welcome_message,
-            excluded_channels, excluded_categories, timezone, permission_settings,
+            excluded_channels, excluded_categories, log_embed_colors, timezone, permission_settings,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         .bind(
           guildId,
@@ -157,6 +161,7 @@ export async function saveGuildSettings(db, guildId, settings) {
           settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
           JSON.stringify(settings.excluded_channels || []),
           JSON.stringify(settings.excluded_categories || []),
+          JSON.stringify(settings.log_embed_colors || {}),
           settings.timezone || null,
           JSON.stringify(settings.permission_settings || DEFAULT_SETTINGS.permission_settings),
           now,

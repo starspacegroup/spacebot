@@ -149,6 +149,59 @@ export function processTemplate(template, context) {
 }
 
 /**
+ * Resolve embed color from config, evaluating conditional color rules against context
+ * @param {Object} actionConfig - The action configuration
+ * @param {Object} context - Variable context (same as template variables)
+ * @returns {number} - Discord color integer
+ */
+function resolveEmbedColor(actionConfig, context) {
+  const defaultColor = actionConfig.embed_color && /^#[0-9a-fA-F]{6}$/.test(actionConfig.embed_color)
+    ? parseInt(actionConfig.embed_color.slice(1), 16)
+    : 0x5865F2;
+
+  let rules = actionConfig.embed_color_rules;
+  if (!rules || !Array.isArray(rules)) {
+    // Try parsing if stored as JSON string
+    if (typeof rules === 'string') {
+      try { rules = JSON.parse(rules); } catch { return defaultColor; }
+    } else {
+      return defaultColor;
+    }
+  }
+
+  for (const rule of rules) {
+    if (!rule.variable || !rule.color || !rule.operator) continue;
+    if (!/^#[0-9a-fA-F]{6}$/.test(rule.color)) continue;
+
+    // Resolve the variable value from context using dot-path
+    const parts = rule.variable.split(".");
+    let actual = context;
+    for (const part of parts) {
+      if (actual === undefined || actual === null) { actual = undefined; break; }
+      actual = actual[part];
+    }
+    if (actual === undefined || actual === null) continue;
+    const actualStr = String(actual).toLowerCase();
+    const expected = (rule.value || "").toLowerCase();
+
+    let match = false;
+    switch (rule.operator) {
+      case "equals": match = actualStr === expected; break;
+      case "contains": match = actualStr.includes(expected); break;
+      case "starts_with": match = actualStr.startsWith(expected); break;
+      case "ends_with": match = actualStr.endsWith(expected); break;
+      case "not_equals": match = actualStr !== expected; break;
+    }
+
+    if (match) {
+      return parseInt(rule.color.slice(1), 16);
+    }
+  }
+
+  return defaultColor;
+}
+
+/**
  * Check if an event matches the automation's filters
  * @param {Object} event - The event data
  * @param {Object} filters - The filter conditions
@@ -686,10 +739,11 @@ export async function executeAction(automation, event, context, discord) {
         }
 
         if (action_config.embed) {
+          const embedColor = resolveEmbedColor(action_config, context);
           await channel.send({
             embeds: [{
               description: content,
-              color: 0x5865F2,
+              color: embedColor,
               timestamp: new Date().toISOString(),
             }],
           });
@@ -720,10 +774,11 @@ export async function executeAction(automation, event, context, discord) {
 
         try {
           if (action_config.embed) {
+            const embedColor = resolveEmbedColor(action_config, context);
             await user.send({
               embeds: [{
                 description: content,
-                color: 0x5865F2,
+                color: embedColor,
                 timestamp: new Date().toISOString(),
               }],
             });

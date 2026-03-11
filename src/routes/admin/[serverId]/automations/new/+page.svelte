@@ -147,6 +147,33 @@
 	function getActionConfigSchema(actionType) {
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
+
+	// Color rules helpers for embed conditional colors
+	function getColorRules(action, configKey) {
+		try {
+			const v = action.config[configKey];
+			if (Array.isArray(v)) return v;
+			if (typeof v === 'string' && v) return JSON.parse(v);
+		} catch {}
+		return [];
+	}
+
+	function updateColorRule(action, configKey, ruleIndex, field, value) {
+		const rules = getColorRules(action, configKey);
+		rules[ruleIndex] = { ...rules[ruleIndex], [field]: value };
+		action.config[configKey] = [...rules];
+	}
+
+	function removeColorRule(action, configKey, ruleIndex) {
+		const rules = getColorRules(action, configKey);
+		rules.splice(ruleIndex, 1);
+		action.config[configKey] = [...rules];
+	}
+
+	function addColorRule(action, configKey) {
+		const rules = getColorRules(action, configKey);
+		action.config[configKey] = [...rules, { variable: '', operator: 'equals', value: '', color: '#57F287' }];
+	}
 	
 	// Initialize config values when action type changes to avoid undefined bind errors
 	function initializeActionConfig(actionIndex, actionType) {
@@ -590,6 +617,7 @@
 								<div class="action-config">
 									<h3>Configure Action</h3>
 									{#each Object.entries(schema) as [configKey, config]}
+										{#if !config.showWhen || action.config[config.showWhen] === 'true' || action.config[config.showWhen] === true}
 										<div class="form-group">
 											<label for="config_{index}_{configKey}">
 												{config.label}
@@ -638,6 +666,83 @@
 													/>
 													<span>Enable</span>
 												</label>
+											{:else if config.type === 'color'}
+												<div class="color-picker-row">
+													<input
+														type="color"
+														id="config_{index}_{configKey}"
+														name="action_config.{index}.{configKey}"
+														value={action.config[configKey] || config.default || '#5865F2'}
+														oninput={(e) => { action.config[configKey] = e.target.value; }}
+														class="color-input"
+													/>
+													<span class="color-value">{action.config[configKey] || config.default || '#5865F2'}</span>
+												</div>
+											{:else if config.type === 'color_rules'}
+												<input type="hidden" name="action_config.{index}.{configKey}" value={JSON.stringify(getColorRules(action, configKey))} />
+												<div class="color-rules">
+													{#each getColorRules(action, configKey) as rule, ruleIndex}
+														<div class="color-rule-row">
+															<input
+																type="color"
+																class="color-rule-picker"
+																value={rule.color || '#5865F2'}
+																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', e.target.value)}
+															/>
+															<span class="color-rule-word">If</span>
+															<select
+																class="color-rule-field"
+																value={rule.variable || ''}
+																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', e.target.value)}
+															>
+																<option value="" disabled>pick a field...</option>
+																<optgroup label="Trigger">
+																	<option value="trigger.event">event type</option>
+																	<option value="trigger.category">event category</option>
+																</optgroup>
+																<optgroup label="Actor">
+																	<option value="user.name">actor name</option>
+																	<option value="user.id">actor id</option>
+																</optgroup>
+																<optgroup label="Channel">
+																	<option value="channel.name">channel name</option>
+																</optgroup>
+																<optgroup label="Details">
+																	<option value="details.action">action</option>
+																	<option value="details.conclusion">conclusion</option>
+																	<option value="details.repo">repo</option>
+																	<option value="details.branch">branch</option>
+																	<option value="details.status">status</option>
+																</optgroup>
+															</select>
+															<select
+																class="color-rule-op"
+																value={rule.operator || 'equals'}
+																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', e.target.value)}
+															>
+																<option value="equals">is</option>
+																<option value="not_equals">is not</option>
+																<option value="contains">contains</option>
+																<option value="starts_with">starts with</option>
+																<option value="ends_with">ends with</option>
+															</select>
+															<input
+																type="text"
+																class="color-rule-value"
+																placeholder="value..."
+																value={rule.value || ''}
+																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+															/>
+															<button type="button" class="btn-remove-rule" title="Remove rule" onclick={() => removeColorRule(action, configKey, ruleIndex)}>✕</button>
+														</div>
+													{/each}
+													{#if getColorRules(action, configKey).length === 0}
+														<p class="color-rules-hint">No rules yet. Add a rule to change the embed color based on event data.</p>
+													{/if}
+													<button type="button" class="btn btn-sm btn-add-rule" onclick={() => addColorRule(action, configKey)}>
+														+ Add color rule
+													</button>
+												</div>
 											{:else if config.type === 'channel_multi'}
 												<ChannelSelector
 													channels={sharedChannels}
@@ -774,6 +879,7 @@
 												/>
 											{/if}
 										</div>
+									{/if}
 									{/each}
 								</div>
 							{/if}
@@ -1441,5 +1547,137 @@
 			flex-direction: column;
 			align-items: flex-start;
 		}
+	}
+
+	/* Color Picker */
+	.color-picker-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.color-input {
+		width: 40px;
+		height: 34px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 2px;
+		cursor: pointer;
+		background: transparent;
+	}
+
+	.color-input::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+
+	.color-input::-webkit-color-swatch {
+		border: none;
+		border-radius: 3px;
+	}
+
+	.color-value {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		font-family: monospace;
+	}
+
+	.color-rules {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.color-rule-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		flex-wrap: wrap;
+	}
+
+	.color-rule-picker {
+		width: 32px;
+		height: 32px;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 2px;
+		cursor: pointer;
+		background: transparent;
+		flex-shrink: 0;
+	}
+
+	.color-rule-picker::-webkit-color-swatch-wrapper {
+		padding: 0;
+	}
+
+	.color-rule-picker::-webkit-color-swatch {
+		border: none;
+		border-radius: 3px;
+	}
+
+	.color-rule-word {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+
+	.color-rule-field {
+		padding: 0.3rem 0.5rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-primary);
+		color: var(--color-text-primary);
+	}
+
+	.color-rule-op {
+		padding: 0.3rem 0.5rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-primary);
+		color: var(--color-text-primary);
+	}
+
+	.color-rule-value {
+		padding: 0.3rem 0.5rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-bg-primary);
+		color: var(--color-text-primary);
+		flex: 1;
+		min-width: 80px;
+	}
+
+	.btn-remove-rule {
+		background: none;
+		border: none;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 0.875rem;
+		padding: 0.25rem;
+		line-height: 1;
+		flex-shrink: 0;
+	}
+
+	.btn-remove-rule:hover {
+		color: var(--color-danger);
+	}
+
+	.color-rules-hint {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin: 0;
+		font-style: italic;
+	}
+
+	.btn-add-rule {
+		align-self: flex-start;
+		font-size: 0.8rem;
+		padding: 0.35rem 0.75rem;
 	}
 </style>

@@ -79,6 +79,7 @@ export async function load({ cookies, platform, parent, params }) {
     welcomeChannelName: null, // Would need to fetch from Discord API
     welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
     timezone: dbSettings.timezone || null,
+    logEmbedColors: dbSettings.log_embed_colors || {},
   };
 
   // Permission settings - load from database or use defaults
@@ -160,6 +161,23 @@ export const actions = {
     const welcomeMessage = formData.get("welcomeMessage");
     const timezone = formData.get("timezone") || null;
 
+    // Log embed colors (JSON string from hidden input)
+    let logEmbedColors = {};
+    const logEmbedColorsRaw = formData.get("logEmbedColors");
+    if (logEmbedColorsRaw) {
+      try {
+        const parsed = JSON.parse(logEmbedColorsRaw);
+        // Validate: only allow hex color values per category
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
+            logEmbedColors[key] = value;
+          }
+        }
+      } catch {
+        // Invalid JSON, ignore and use empty
+      }
+    }
+
     // Permission settings
     const viewDashboardPerm = formData.get("viewDashboardPerm") || "MANAGE_GUILD";
     const viewLogsPerm = formData.get("viewLogsPerm") || "MANAGE_GUILD";
@@ -186,6 +204,7 @@ export const actions = {
       await saveGuildSettings(db, serverId, {
         logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
         log_channel_id: loggingChannelId || null,
+        log_embed_colors: logEmbedColors,
         welcome_enabled: welcomeEnabled,
         welcome_channel_id: welcomeChannelId || null,
         welcome_message: welcomeMessage || "Welcome {user} to {server}!",

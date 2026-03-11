@@ -6,10 +6,11 @@ import { updateMemberCount } from "$lib/db/server-stats.js";
 /**
  * Format an event for Discord channel logging
  * @param {Object} event - The event data
+ * @param {Object} [customColors] - Optional custom color overrides per category (hex strings)
  * @returns {Object} - Discord embed object
  */
-function formatEventEmbed(event) {
-  const colors = {
+function formatEventEmbed(event, customColors = {}) {
+  const defaultColors = {
     message: 0x3498db,    // Blue
     member: 0x2ecc71,     // Green
     guild: 0x9b59b6,      // Purple
@@ -21,7 +22,14 @@ function formatEventEmbed(event) {
     interaction: 0x5865F2,// Discord Blurple
   };
 
-  const icons = {
+  // Check if there's a custom color for this category
+  const customHex = customColors[event.event_category];
+  let color;
+  if (customHex && /^#[0-9a-fA-F]{6}$/.test(customHex)) {
+    color = parseInt(customHex.slice(1), 16);
+  } else {
+    color = defaultColors[event.event_category] || 0x95a5a6;
+  }
     MESSAGE_CREATE: "💬",
     MESSAGE_DELETE: "🗑️",
     MESSAGE_UPDATE: "✏️",
@@ -45,7 +53,6 @@ function formatEventEmbed(event) {
   };
 
   const icon = icons[event.event_type] || "📋";
-  const color = colors[event.event_category] || 0x95a5a6;
   
   // Build description
   let description = "";
@@ -95,12 +102,13 @@ function formatEventEmbed(event) {
  * @param {string} channelId - The channel ID to send to
  * @param {Object} event - The event data
  * @param {string} botToken - The bot token for authorization
+ * @param {Object} [customColors] - Optional custom color overrides per category
  */
-async function sendLogToChannel(channelId, event, botToken) {
+async function sendLogToChannel(channelId, event, botToken, customColors = {}) {
   if (!channelId || !botToken) return;
 
   try {
-    const embed = formatEventEmbed(event);
+    const embed = formatEventEmbed(event, customColors);
     
     const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
       method: "POST",
@@ -199,7 +207,7 @@ export async function POST({ request, platform }) {
             log.debug("[Discord Log] Skipping log for own bot message in log channel to prevent loop");
           } else {
             // Don't await - send asynchronously to not slow down the response
-            sendLogToChannel(settings.log_channel_id, event, botToken);
+            sendLogToChannel(settings.log_channel_id, event, botToken, settings.log_embed_colors);
           }
         }
       } catch (settingsError) {
