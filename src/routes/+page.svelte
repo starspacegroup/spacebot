@@ -154,9 +154,9 @@
 					<li><span class="check-pro">✓</span> Unlimited server stats history</li>
 				</ul>
 				{#if data.isLoggedIn}
-					<a href={adminUrl} class="btn btn-primary btn-block">Upgrade to Pro</a>
+					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Upgrade to Pro</a>
 				{:else}
-					<a href="/login" class="btn btn-primary btn-block">Get Started</a>
+					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Get Started</a>
 				{/if}
 			</div>
 		</div>

@@ -17,7 +17,7 @@
 	
 	let loading = $state(false);
 	let error = $state(null);
-	let billingInterval = $state('monthly'); // 'monthly' | 'yearly'
+	let billingInterval = $state('monthly');
 	
 	const plan = $derived(data.plan);
 	const billingHistory = $derived(data.billingHistory || []);
