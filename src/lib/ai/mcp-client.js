@@ -1718,6 +1718,269 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
   }
 
   /**
+   * Preview an automation without creating it
+   * @param {string} guildId - The guild ID
+   * @param {Object} automationData - Automation data to preview
+   * @returns {Object} - Preview of the automation
+   */
+  previewAutomation(guildId, automationData) {
+    const errors = [];
+
+    if (!automationData.name) {
+      errors.push("Automation name is required");
+    }
+    if (!automationData.trigger_events || automationData.trigger_events.length === 0) {
+      errors.push("At least one trigger event is required");
+    }
+    if (!automationData.action_type) {
+      errors.push("Action type is required");
+    }
+    if (!automationData.action_config || Object.keys(automationData.action_config).length === 0) {
+      errors.push("Action config is required");
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      preview: {
+        name: automationData.name || "(no name)",
+        description: automationData.description || "(no description)",
+        trigger_events: automationData.trigger_events || [],
+        action_type: automationData.action_type || "(none)",
+        action_config: automationData.action_config || {},
+        enabled: automationData.enabled !== false,
+      },
+      guildId,
+    };
+  }
+
+  /**
+   * Create an automation in the D1 database
+   * @param {string} guildId - The guild ID
+   * @param {Object} automationData - Automation data
+   * @param {string} [userId] - ID of the user creating the automation
+   * @returns {Promise<Object>} - Created automation
+   */
+  async createAutomation(guildId, automationData, userId = null) {
+    const triggerEvents = automationData.trigger_events || [];
+    const primaryTrigger = triggerEvents[0] || null;
+
+    // Generate a random public_id
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    let publicId = '';
+    for (let i = 0; i < 12; i++) {
+      publicId += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    const sql = `INSERT INTO automations (
+      guild_id, name, description, enabled,
+      trigger_event, trigger_events, trigger_filters,
+      action_type, action_config,
+      created_by, public_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    const params = [
+      guildId,
+      automationData.name,
+      automationData.description || null,
+      automationData.enabled !== false ? 1 : 0,
+      primaryTrigger,
+      JSON.stringify(triggerEvents),
+      automationData.trigger_filters ? JSON.stringify(automationData.trigger_filters) : null,
+      automationData.action_type,
+      JSON.stringify(automationData.action_config || {}),
+      userId || null,
+      publicId,
+    ];
+
+    const result = await this.executeD1Query(sql, params);
+
+    return {
+      success: true,
+      id: result.meta?.last_row_id,
+      publicId,
+      name: automationData.name,
+      trigger_events: triggerEvents,
+      action_type: automationData.action_type,
+      enabled: automationData.enabled !== false,
+    };
+  }
+
+  /**
+   * Preview a command without creating it
+   * @param {string} guildId - The guild ID
+   * @param {Object} commandData - Command data to preview
+   * @returns {Object} - Preview of the command
+   */
+  previewCommand(guildId, commandData) {
+    const errors = [];
+
+    if (!commandData.name) {
+      errors.push("Command name is required");
+    } else {
+      const nameRegex = /^[\w-]{1,32}$/;
+      if (!nameRegex.test(commandData.name)) {
+        errors.push("Command name must be 1-32 characters, lowercase, alphanumeric or hyphens");
+      }
+    }
+    if (!commandData.description) {
+      errors.push("Command description is required");
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      preview: {
+        name: commandData.name ? commandData.name.toLowerCase() : "(no name)",
+        description: commandData.description || "(no description)",
+        response_type: commandData.response_type || "message",
+        response_content: commandData.response_content || null,
+        action_type: commandData.action_type || "NONE",
+        action_config: commandData.action_config || {},
+        options: commandData.options || [],
+        ephemeral: commandData.ephemeral || false,
+        enabled: commandData.enabled !== false,
+      },
+      guildId,
+    };
+  }
+
+  /**
+   * Create a command in the D1 database
+   * @param {string} guildId - The guild ID
+   * @param {Object} commandData - Command data
+   * @param {string} [userId] - ID of the user creating the command
+   * @returns {Promise<Object>} - Created command
+   */
+  async createCommand(guildId, commandData, userId = null) {
+    const sql = `INSERT INTO commands (
+      guild_id, name, description, enabled,
+      options, ephemeral, defer,
+      action_type, action_config,
+      response_type, response_content, response_embed,
+      default_member_permissions, dm_permission,
+      context_menu_user, require_voice,
+      created_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+    const params = [
+      guildId,
+      commandData.name.toLowerCase(),
+      commandData.description || "No description",
+      commandData.enabled !== false ? 1 : 0,
+      commandData.options ? JSON.stringify(commandData.options) : null,
+      commandData.ephemeral ? 1 : 0,
+      commandData.defer ? 1 : 0,
+      commandData.action_type || "NONE",
+      JSON.stringify(commandData.action_config || {}),
+      commandData.response_type || "message",
+      commandData.response_content || null,
+      commandData.response_embed ? JSON.stringify(commandData.response_embed) : null,
+      commandData.default_member_permissions || null,
+      0, // dm_permission
+      commandData.context_menu_user ? 1 : 0,
+      commandData.require_voice ? 1 : 0,
+      userId || null,
+    ];
+
+    const result = await this.executeD1Query(sql, params);
+
+    return {
+      success: true,
+      id: result.meta?.last_row_id,
+      name: commandData.name.toLowerCase(),
+      description: commandData.description,
+      enabled: commandData.enabled !== false,
+    };
+  }
+
+  /**
+   * Sync guild commands with Discord after creating/modifying commands
+   * @param {string} guildId - The guild ID
+   * @param {Object} env - Environment variables
+   * @returns {Promise<Object>} - Sync result
+   */
+  async syncGuildCommandsWithDiscord(guildId, env = {}) {
+    const botToken = this.discordBotToken;
+    const clientId = env.DISCORD_CLIENT_ID;
+
+    if (!botToken || !clientId) {
+      log.warn("[MCP] Cannot sync commands: missing bot token or client ID");
+      return { success: false, error: "Bot configuration not available for command sync" };
+    }
+
+    // Fetch all enabled commands for this guild from D1
+    const commandsResult = await this.executeD1Query(
+      "SELECT * FROM commands WHERE guild_id = ? AND enabled = 1 AND is_built_in = 0 ORDER BY name ASC",
+      [guildId]
+    );
+
+    // Also fetch enabled built-in commands
+    const builtInResult = await this.executeD1Query(
+      "SELECT * FROM commands WHERE is_built_in = 1 AND enabled = 1 ORDER BY name ASC"
+    );
+
+    // Convert to Discord command format
+    const toDiscordFormat = (cmd) => {
+      const discordCmd = {
+        name: cmd.name,
+        description: cmd.description || "No description",
+        type: cmd.context_menu_user ? 2 : 1, // 2 = USER context menu, 1 = CHAT_INPUT
+      };
+
+      // Add options if present and it's a chat input command
+      if (!cmd.context_menu_user && cmd.options) {
+        const options = typeof cmd.options === 'string' ? JSON.parse(cmd.options) : cmd.options;
+        if (options && options.length > 0) {
+          discordCmd.options = options.map(opt => ({
+            name: opt.name,
+            description: opt.description || "No description",
+            type: opt.type || 3,
+            required: opt.required || false,
+            choices: opt.choices || undefined,
+          }));
+        }
+      }
+
+      // Add permission restrictions
+      if (cmd.default_member_permissions) {
+        discordCmd.default_member_permissions = cmd.default_member_permissions;
+      }
+
+      return discordCmd;
+    };
+
+    const allCommands = [
+      ...builtInResult.results.map(toDiscordFormat),
+      ...commandsResult.results.map(toDiscordFormat),
+    ];
+
+    // Bulk-overwrite guild commands
+    const url = `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bot ${botToken}`,
+      },
+      body: JSON.stringify(allCommands),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Discord command sync failed: ${response.status} - ${errorData.message || 'Unknown error'}`);
+    }
+
+    const registeredCommands = await response.json();
+    log.info(`[MCP] Synced ${registeredCommands.length} commands with Discord for guild ${guildId}`);
+
+    return {
+      success: true,
+      registeredCount: registeredCommands.length,
+    };
+  }
+
+  /**
    * Execute a tool by name with the given arguments
    * This is the main entry point for AI tool calling
    */
@@ -1977,6 +2240,86 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             ),
           };
 
+        case "preview_automation":
+          return {
+            success: true,
+            data: this.previewAutomation(args.guildId, {
+              name: args.name,
+              description: args.description,
+              trigger_events: args.trigger_events,
+              action_type: args.action_type,
+              action_config: args.action_config,
+              trigger_filters: args.trigger_filters,
+              enabled: args.enabled,
+            }),
+            requiresConfirmation: true,
+            confirmationTool: "confirm_automation",
+          };
+
+        case "confirm_automation":
+          return {
+            success: true,
+            data: await this.createAutomation(args.guildId, {
+              name: args.name,
+              description: args.description,
+              trigger_events: args.trigger_events,
+              action_type: args.action_type,
+              action_config: args.action_config,
+              trigger_filters: args.trigger_filters,
+              enabled: args.enabled,
+            }, args.userId),
+          };
+
+        case "preview_command":
+          return {
+            success: true,
+            data: this.previewCommand(args.guildId, {
+              name: args.name,
+              description: args.description,
+              response_type: args.response_type,
+              response_content: args.response_content,
+              response_embed: args.response_embed,
+              action_type: args.action_type,
+              action_config: args.action_config,
+              options: args.options,
+              ephemeral: args.ephemeral,
+              default_member_permissions: args.default_member_permissions,
+              enabled: args.enabled,
+            }),
+            requiresConfirmation: true,
+            confirmationTool: "confirm_command",
+          };
+
+        case "confirm_command": {
+          const createResult = await this.createCommand(args.guildId, {
+            name: args.name,
+            description: args.description,
+            response_type: args.response_type,
+            response_content: args.response_content,
+            response_embed: args.response_embed,
+            action_type: args.action_type,
+            action_config: args.action_config,
+            options: args.options,
+            ephemeral: args.ephemeral,
+            default_member_permissions: args.default_member_permissions,
+            context_menu_user: args.context_menu_user,
+            require_voice: args.require_voice,
+            enabled: args.enabled,
+          }, args.userId);
+
+          // Auto-sync commands with Discord
+          try {
+            await this.syncGuildCommandsWithDiscord(args.guildId, args._env || {});
+            createResult.synced = true;
+          } catch (syncError) {
+            log.warn(`[MCP] Command created but sync failed: ${syncError.message}`);
+            createResult.synced = false;
+            createResult.syncError = syncError.message;
+          }
+
+          return { success: true, data: createResult };
+        }
+
         default:
           return { success: false, error: `Unknown tool: ${toolName}` };
       }
@@ -2235,6 +2578,74 @@ export const MCP_TOOLS = [
       generateImages: "boolean (optional) - Set to true to auto-generate AI images",
     },
   },
+  // Automation creation tools - ALWAYS preview first
+  {
+    name: "preview_automation",
+    description: "**ALWAYS USE THIS FIRST** before creating an automation. Shows the user what automation will be created and asks for confirmation. Returns a preview with validation errors if any. The user must confirm before the automation is actually created.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - Name for the automation",
+      description: "string (optional) - Description of what the automation does",
+      trigger_events: "string[] (required) - Array of event types that trigger this automation. Valid events: MEMBER_JOIN, MEMBER_LEAVE, MEMBER_BAN, MEMBER_UNBAN, MEMBER_KICK, MEMBER_TIMEOUT, MESSAGE_CREATE, MESSAGE_UPDATE, MESSAGE_DELETE, VOICE_JOIN, VOICE_LEAVE, VOICE_MOVE, REACTION_ADD, REACTION_REMOVE, ROLE_CREATE, ROLE_UPDATE, ROLE_DELETE, CHANNEL_CREATE, CHANNEL_UPDATE, CHANNEL_DELETE, INVITE_CREATE, INVITE_DELETE, COMMAND_USED, VOICE_SERVER_MUTE, VOICE_SERVER_UNMUTE, VOICE_SERVER_DEAFEN, VOICE_SERVER_UNDEAFEN, VOICE_STREAM_START, VOICE_STREAM_STOP",
+      action_type: "string (required) - The action to perform. Valid types: SEND_MESSAGE, SEND_DM, ADD_ROLE, REMOVE_ROLE, KICK_MEMBER, BAN_MEMBER, TIMEOUT_MEMBER, LOG_TO_CHANNEL, CREATE_THREAD, ADD_REACTION, SERVER_MUTE, SERVER_UNMUTE, SERVER_DEAFEN, SERVER_UNDEAFEN, DELETE_USER_MESSAGES, DELETE_MESSAGES, CALL_WEBHOOK",
+      action_config: "object (required) - Configuration for the action. Structure depends on action_type. For SEND_MESSAGE: {channel_id, content}. For SEND_DM: {target_user, content}. For ADD_ROLE/REMOVE_ROLE: {target_user, role_id}. For LOG_TO_CHANNEL: {channel_id, content}. For KICK_MEMBER/BAN_MEMBER: {target_user, reason}. For TIMEOUT_MEMBER: {target_user, duration_minutes}. For ADD_REACTION: {emoji}. Use 'actor' for target_user to target the user who triggered the event.",
+      trigger_filters: "object (optional) - Conditions that must be met. Example: {channel_id: '123'} to only trigger in a specific channel, {actor_has_role: 'roleId'} to only trigger for users with a role",
+      enabled: "boolean (optional) - Whether to enable the automation (default: true)",
+    },
+  },
+  {
+    name: "confirm_automation",
+    description: "Create an automation AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - Name for the automation",
+      description: "string (optional) - Description of what the automation does",
+      trigger_events: "string[] (required) - Array of trigger event types",
+      action_type: "string (required) - The action to perform",
+      action_config: "object (required) - Configuration for the action",
+      trigger_filters: "object (optional) - Conditions that must be met",
+      enabled: "boolean (optional) - Whether to enable the automation (default: true)",
+      userId: "string (optional) - Discord user ID of the creator",
+    },
+  },
+  // Command creation tools - ALWAYS preview first
+  {
+    name: "preview_command",
+    description: "**ALWAYS USE THIS FIRST** before creating a slash command. Shows the user what command will be created and asks for confirmation. Returns a preview with validation errors if any. The user must confirm before the command is actually created and synced to Discord.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - Command name (lowercase, 1-32 chars, alphanumeric/hyphens only, no spaces). Example: 'hello', 'server-info', 'give-role'",
+      description: "string (required) - Short description shown in Discord's command menu (max 100 chars)",
+      response_type: "string (optional) - How the bot responds: 'message' (plain text), 'embed' (rich embed), 'action_only' (no visible response, just runs the action). Default: 'message'",
+      response_content: "string (optional) - The response message template. Can use template variables: {user.name}, {user.mention}, {guild.name}, {channel.name}, {option.<name>} for option values",
+      response_embed: "object (optional) - Embed configuration for response_type='embed'. Example: {title: 'Hello!', description: 'Welcome {user.mention}', color: '#5865F2'}",
+      action_type: "string (optional) - Action to perform when command is used. Same types as automations: SEND_MESSAGE, SEND_DM, ADD_ROLE, REMOVE_ROLE, KICK_MEMBER, BAN_MEMBER, TIMEOUT_MEMBER, LOG_TO_CHANNEL, etc. Default: 'NONE'",
+      action_config: "object (optional) - Configuration for the action (same structure as automation action_config)",
+      options: "array (optional) - Slash command parameters/options. Each option: {name: 'string', description: 'string', type: number, required: boolean, choices?: [{name, value}]}. Types: 3=Text, 4=Integer, 5=Boolean, 6=User, 7=Channel, 8=Role, 10=Number",
+      ephemeral: "boolean (optional) - If true, response is only visible to the user who ran the command (default: false)",
+      default_member_permissions: "string (optional) - Discord permission bitfield to restrict who can use the command. '8' = Admin only, '32' = Manage Server, null = everyone",
+      enabled: "boolean (optional) - Whether to enable the command (default: true)",
+    },
+  },
+  {
+    name: "confirm_command",
+    description: "Create a slash command AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation. The command will be auto-synced to Discord so it appears in the / menu.",
+    parameters: {
+      guildId: "string (required) - The Discord server ID",
+      name: "string (required) - Command name (lowercase, alphanumeric/hyphens)",
+      description: "string (required) - Command description",
+      response_type: "string (optional) - 'message', 'embed', or 'action_only'. Default: 'message'",
+      response_content: "string (optional) - Response template text",
+      response_embed: "object (optional) - Embed configuration",
+      action_type: "string (optional) - Action to perform. Default: 'NONE'",
+      action_config: "object (optional) - Action configuration",
+      options: "array (optional) - Slash command options/parameters",
+      ephemeral: "boolean (optional) - Only visible to command user",
+      default_member_permissions: "string (optional) - Permission restriction",
+      enabled: "boolean (optional) - Whether to enable (default: true)",
+      userId: "string (optional) - Discord user ID of the creator",
+    },
+  },
 ];
 
 /**
@@ -2254,6 +2665,36 @@ export function formatToolsForPrompt() {
   prompt += `5. **Wait for user response:** Do NOT create events until the user explicitly confirms.\n`;
   prompt += `6. **Create after confirmation:** Only after user says "yes", "confirm", "looks good", etc., use \`confirm_scheduled_event\` or \`confirm_multiple_scheduled_events\`.\n\n`;
   prompt += `**NEVER use create_scheduled_event or create_multiple_scheduled_events directly.** Always preview first!\n\n`;
+  
+  // Add automation creation workflow
+  prompt += `## ⚠️ AUTOMATION CREATION WORKFLOW - PREVIEW FIRST!\n\n`;
+  prompt += `**IMPORTANT:** When creating automations, follow this workflow:\n\n`;
+  prompt += `1. **If user mentions a channel or role by NAME:** First call \`get_text_channels\` or \`get_members_with_role\` to resolve the ID. DO NOT explain - just call the tool.\n`;
+  prompt += `2. **ALWAYS use preview_automation first:** Show the user what will be created.\n`;
+  prompt += `3. **Show the preview:** Display the automation name, trigger events, action type, and config clearly.\n`;
+  prompt += `4. **Ask for confirmation:** Ask "Does this look correct? Say 'yes' to create it, or tell me what to change."\n`;
+  prompt += `5. **Create after confirmation:** Only after user confirms, use \`confirm_automation\`.\n\n`;
+  prompt += `**Common automation patterns:**\n`;
+  prompt += `- Welcome message: trigger=MEMBER_JOIN, action=SEND_MESSAGE or SEND_DM\n`;
+  prompt += `- Auto-role on join: trigger=MEMBER_JOIN, action=ADD_ROLE, config={target_user: "actor", role_id: "..."}\n`;
+  prompt += `- Log joins to channel: trigger=MEMBER_JOIN, action=LOG_TO_CHANNEL, config={channel_id: "...", content: "{user.mention} joined!"}\n`;
+  prompt += `- Anti-spam: trigger=MESSAGE_CREATE, action=TIMEOUT_MEMBER, with filters\n\n`;
+  prompt += `**For action_config target_user values:** Use "actor" to target the user who triggered the event.\n\n`;
+  
+  // Add command creation workflow
+  prompt += `## ⚠️ SLASH COMMAND CREATION WORKFLOW - PREVIEW FIRST!\n\n`;
+  prompt += `**IMPORTANT:** When creating slash commands, follow this workflow:\n\n`;
+  prompt += `1. **ALWAYS use preview_command first:** Show the user what command will be created.\n`;
+  prompt += `2. **Show the preview:** Display command name, description, response, options, and any actions.\n`;
+  prompt += `3. **Ask for confirmation:** Ask "Does this look correct? Say 'yes' to create it."\n`;
+  prompt += `4. **Create after confirmation:** Only after user confirms, use \`confirm_command\`. The command will auto-sync to Discord.\n\n`;
+  prompt += `**Common command patterns:**\n`;
+  prompt += `- Simple response: name="hello", description="Say hello", response_content="Hello {user.mention}! 👋"\n`;
+  prompt += `- Give role: name="join-team", description="Join a team role", action_type="ADD_ROLE", action_config={target_user: "actor", role_id: "..."}, response_content="You've been given the role!"\n`;
+  prompt += `- Info embed: name="server-info", description="Server information", response_type="embed", response_embed={title: "{guild.name}", description: "Welcome to our server!"}\n`;
+  prompt += `- With options: name="say", description="Bot says something", options=[{name: "message", description: "What to say", type: 3, required: true}], response_content="{option.message}"\n`;
+  prompt += `- Ephemeral: name="secret", description="Secret info", ephemeral=true, response_content="Only you see this"\n`;
+  prompt += `- Admin only: name="kick", description="Kick a user", default_member_permissions="2", action_type="KICK_MEMBER"\n\n`;
   
   for (const tool of MCP_TOOLS) {
     prompt += `### ${tool.name}\n${tool.description}\n`;
@@ -2285,7 +2726,39 @@ export function formatToolsForPrompt() {
 
 6. **Tool results are your ONLY source of truth**: Only cite numbers, names, and details that appear in tool results.
 
-7. **PREVIEW BEFORE CREATE**: When creating scheduled events, ALWAYS preview first, show the user what will be created, and wait for confirmation.
+7. **PREVIEW BEFORE CREATE**: When creating scheduled events, automations, or commands, ALWAYS preview first, show the user what will be created, and wait for confirmation.
+
+## EXAMPLE: Create an Automation (CORRECT)
+
+User: "Create a welcome message automation that sends a DM to new members"
+You: \`\`\`tool
+{"tool": "preview_automation", "args": {"guildId": "123", "name": "Welcome DM", "description": "Send a welcome DM to new members", "trigger_events": ["MEMBER_JOIN"], "action_type": "SEND_DM", "action_config": {"target_user": "actor", "content": "Welcome to the server, {user.name}! 🎉 We're glad to have you here."}}}
+\`\`\`
+
+(Shows preview, user confirms)
+You: \`\`\`tool
+{"tool": "confirm_automation", "args": {"guildId": "123", "name": "Welcome DM", "description": "Send a welcome DM to new members", "trigger_events": ["MEMBER_JOIN"], "action_type": "SEND_DM", "action_config": {"target_user": "actor", "content": "Welcome to the server, {user.name}! 🎉 We're glad to have you here."}}}
+\`\`\`
+
+## EXAMPLE: Create a Slash Command (CORRECT)
+
+User: "Make a /hello command that greets the user"
+You: \`\`\`tool
+{"tool": "preview_command", "args": {"guildId": "123", "name": "hello", "description": "Say hello to the bot", "response_type": "message", "response_content": "Hey there, {user.mention}! 👋 Hope you're having a great day!"}}
+\`\`\`
+
+(Shows preview, user confirms)
+You: \`\`\`tool
+{"tool": "confirm_command", "args": {"guildId": "123", "name": "hello", "description": "Say hello to the bot", "response_type": "message", "response_content": "Hey there, {user.mention}! 👋 Hope you're having a great day!"}}
+\`\`\`
+
+## EXAMPLE: Command with Options and Action (CORRECT)
+
+User: "Create a /give-role command that lets admins assign a role to a user"
+Step 1 - Preview:
+\`\`\`tool
+{"tool": "preview_command", "args": {"guildId": "123", "name": "give-role", "description": "Assign a role to a user", "options": [{"name": "user", "description": "The user to give the role to", "type": 6, "required": true}, {"name": "role", "description": "The role to assign", "type": 8, "required": true}], "action_type": "ADD_ROLE", "action_config": {"target_user": "option:user", "role_id": "option:role"}, "response_content": "✅ Gave {option.role} to {option.user}!", "default_member_permissions": "8"}}
+\`\`\`
 
 ## EXAMPLE: Voice Channel Events (CORRECT)
 

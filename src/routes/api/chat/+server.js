@@ -129,6 +129,8 @@ export async function POST({ request, cookies, platform }) {
     CLOUDFLARE_AI_GATEWAY_ID: getEnv("CLOUDFLARE_AI_GATEWAY_ID", platform),
     CLOUDFLARE_AI_MODEL: getEnv("CLOUDFLARE_AI_MODEL", platform),
     DISCORD_BOT_TOKEN: getEnv("DISCORD_BOT_TOKEN", platform),
+    DISCORD_CLIENT_ID: getEnv("DISCORD_CLIENT_ID", platform),
+    DB: platform?.env?.DB,
   };
 
   if (!isAIEnabled(env)) {

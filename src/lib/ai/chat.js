@@ -323,7 +323,7 @@ function parseToolCalls(response) {
 /**
  * Execute tool calls and return results
  */
-async function executeToolCalls(toolCalls, env) {
+async function executeToolCalls(toolCalls, env, userId = null) {
   const mcpClient = getMCPClient(env);
   
   if (!mcpClient.isConfigured()) {
@@ -342,6 +342,7 @@ async function executeToolCalls(toolCalls, env) {
     const argsWithEnv = {
       ...call.args,
       _env: env, // Internal parameter for Cloudflare AI access
+      userId: call.args.userId || userId, // User ID for creation attribution
     };
     
     const result = await mcpClient.executeTool(call.tool, argsWithEnv);
@@ -587,7 +588,7 @@ export async function generateChatResponse(options, env) {
       console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
       
       // Execute the tools
-      const results = await executeToolCalls(toolCalls, env);
+      const results = await executeToolCalls(toolCalls, env, userId);
       console.log("[AI] Tool results:", JSON.stringify(results, null, 2));
       toolsUsed.push(...toolCalls.map(t => t.tool));
       
