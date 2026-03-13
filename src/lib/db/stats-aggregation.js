@@ -927,6 +927,76 @@ async function getTodayPartialStats(db, guildId = null) {
 }
 
 /**
+ * Get partial stats for the current (incomplete) UTC hour.
+ * Captures raw events and active voice sessions not yet in hourly aggregations.
+ * @param {D1Database} db
+ * @param {string|null} guildId - Guild ID, or null for global stats
+ * @returns {Promise<Object>}
+ */
+async function getCurrentHourPartialStats(db, guildId = null) {
+  const empty = {
+    voice_total_seconds: 0,
+    voice_unique_users: 0,
+    voice_peak_concurrent: 0,
+    member_joins: 0,
+    member_leaves: 0,
+    member_net_change: 0,
+    message_count: 0,
+    message_unique_users: 0,
+    total_events: 0,
+  };
+
+  try {
+    const guildFilter = guildId ? "AND guild_id = ?" : "";
+    const params = guildId ? [guildId] : [];
+
+    // Count raw events from the current (incomplete) hour
+    const currentHour = await db.prepare(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END), 0) as member_joins,
+        COALESCE(SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END), 0) as member_leaves,
+        COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
+        COUNT(*) as total_events
+      FROM event_logs
+      WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+        ${guildFilter}
+    `).bind(...params).first();
+
+    // Voice time from sessions active during the current hour
+    const voiceStats = await db.prepare(`
+      SELECT 
+        COUNT(DISTINCT user_id) as unique_users,
+        COALESCE(SUM(
+          CAST(
+            (julianday(COALESCE(left_at, datetime('now'))) - 
+             julianday(MAX(joined_at, strftime('%Y-%m-%d %H:00:00', 'now')))) 
+            * 86400 
+          AS INTEGER)
+        ), 0) as total_seconds
+      FROM voice_sessions
+      WHERE joined_at < datetime('now')
+        AND (left_at IS NULL OR left_at > strftime('%Y-%m-%d %H:00:00', 'now'))
+        ${guildFilter}
+    `).bind(...params).first();
+
+    return {
+      voice_total_seconds: Math.max(voiceStats?.total_seconds || 0, 0),
+      voice_unique_users: voiceStats?.unique_users || 0,
+      voice_peak_concurrent: 0,
+      member_joins: currentHour?.member_joins || 0,
+      member_leaves: currentHour?.member_leaves || 0,
+      member_net_change: (currentHour?.member_joins || 0) - (currentHour?.member_leaves || 0),
+      message_count: currentHour?.message_count || 0,
+      message_unique_users: 0,
+      total_events: currentHour?.total_events || 0,
+    };
+  } catch (error) {
+    log.error("Failed to get current hour partial stats:", error);
+    return empty;
+  }
+}
+
+/**
  * Fill date gaps in chart data, ensuring every day in the range has an entry
  * @param {Array<Object>} data - Array of objects with a 'date' property (YYYY-MM-DD)
  * @param {number} days - Number of days to cover
@@ -975,16 +1045,20 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
+    // Use hourly records grouped by local date for proper timezone alignment.
+    // Daily records cover UTC days so shifting their labels doesn't realign
+    // the underlying data to local calendar days.
     const result = await db.prepare(`
       SELECT 
         date(datetime(period_start, '${tzOffset}')) as date,
-        member_joins as joins,
-        member_leaves as leaves,
-        member_net_change as net_change
+        SUM(member_joins) as joins,
+        SUM(member_leaves) as leaves,
+        SUM(member_net_change) as net_change
       FROM aggregated_stats
       WHERE guild_id = ?
-        AND period_type = 'daily'
+        AND period_type = 'hourly'
         AND period_start >= datetime('now', ?)
+      GROUP BY date
       ORDER BY date ASC
     `).bind(guildId, timeRange).all();
 
@@ -995,15 +1069,22 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
       netChange: row.net_change || 0,
     }));
 
-    // Add today's partial data from hourly aggregations
+    // Add the current (incomplete) hour's data to today's local date
     const today = getTodayDateString(timezone);
-    const todayStats = await getTodayPartialStats(db, guildId);
-    rawData.push({
-      date: today,
-      joins: todayStats.member_joins,
-      leaves: todayStats.member_leaves,
-      netChange: todayStats.member_net_change,
-    });
+    const partial = await getCurrentHourPartialStats(db, guildId);
+    const existingToday = rawData.find(r => r.date === today);
+    if (existingToday) {
+      existingToday.joins += partial.member_joins;
+      existingToday.leaves += partial.member_leaves;
+      existingToday.netChange = existingToday.joins - existingToday.leaves;
+    } else {
+      rawData.push({
+        date: today,
+        joins: partial.member_joins,
+        leaves: partial.member_leaves,
+        netChange: partial.member_net_change,
+      });
+    }
 
     // Fill in missing dates with zero values so the chart is continuous
     return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 }, timezone);
@@ -1028,16 +1109,20 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
+    // Use hourly records grouped by local date for proper timezone alignment.
+    // Daily records cover UTC days so shifting their labels doesn't realign
+    // the underlying data to local calendar days.
     const result = await db.prepare(`
       SELECT 
         date(datetime(period_start, '${tzOffset}')) as date,
-        voice_total_seconds as total_seconds,
-        voice_unique_users as unique_users,
-        voice_peak_concurrent as peak_concurrent
+        SUM(voice_total_seconds) as total_seconds,
+        MAX(voice_unique_users) as unique_users,
+        MAX(voice_peak_concurrent) as peak_concurrent
       FROM aggregated_stats
       WHERE guild_id = ?
-        AND period_type = 'daily'
+        AND period_type = 'hourly'
         AND period_start >= datetime('now', ?)
+      GROUP BY date
       ORDER BY date ASC
     `).bind(guildId, timeRange).all();
 
@@ -1049,17 +1134,24 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
       peakConcurrent: row.peak_concurrent || 0,
     }));
 
-    // Add today's partial data from hourly aggregations
+    // Add the current (incomplete) hour's data to today's local date
     const today = getTodayDateString(timezone);
-    const todayStats = await getTodayPartialStats(db, guildId);
-    const todaySeconds = todayStats.voice_total_seconds;
-    rawData.push({
-      date: today,
-      totalMinutes: Math.round(todaySeconds / 60),
-      totalHours: Math.round(todaySeconds / 3600 * 10) / 10,
-      uniqueUsers: todayStats.voice_unique_users,
-      peakConcurrent: todayStats.voice_peak_concurrent,
-    });
+    const partial = await getCurrentHourPartialStats(db, guildId);
+    const existingToday = rawData.find(r => r.date === today);
+    if (existingToday) {
+      const totalSeconds = (existingToday.totalMinutes * 60) + partial.voice_total_seconds;
+      existingToday.totalMinutes = Math.round(totalSeconds / 60);
+      existingToday.totalHours = Math.round(totalSeconds / 3600 * 10) / 10;
+      existingToday.uniqueUsers = Math.max(existingToday.uniqueUsers, partial.voice_unique_users);
+    } else {
+      rawData.push({
+        date: today,
+        totalMinutes: Math.round(partial.voice_total_seconds / 60),
+        totalHours: Math.round(partial.voice_total_seconds / 3600 * 10) / 10,
+        uniqueUsers: partial.voice_unique_users,
+        peakConcurrent: partial.voice_peak_concurrent,
+      });
+    }
 
     // Fill in missing dates with zero values so the chart is continuous
     return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 }, timezone);
