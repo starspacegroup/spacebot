@@ -308,7 +308,7 @@
 							{#if action.type && Object.keys(schema).length > 0}
 								<div class="flow-config">
 									{#each Object.entries(schema) as [configKey, config]}
-										{#if !config.showWhen || action.config[config.showWhen] === 'true' || action.config[config.showWhen] === true}
+										{#if (!config.showWhen || action.config[config.showWhen] === 'true' || action.config[config.showWhen] === true) && (!config.hideWhen || (action.config[config.hideWhen] !== 'true' && action.config[config.hideWhen] !== true))}
 											<!-- Skip button_rows type - handled by parent -->
 											{#if config.type === 'button_rows'}
 												<!-- Button rows are handled by ButtonEditor in the parent -->

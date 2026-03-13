@@ -973,8 +973,37 @@ async function executeAutomationAction(automation, event) {
     }
 
     case "SEND_MESSAGE": {
-      const channelId = action_config.channel_id;
       const content = automation.processed_content || action_config.content;
+
+      // Ephemeral: send as interaction followup visible only to the user
+      if (action_config.ephemeral && event.application_id && event.interaction_token) {
+        if (!content) throw new Error("Missing message content");
+        const payload = { flags: 64 };
+        if (action_config.embed) {
+          payload.embeds = [{
+            description: content,
+            color: 0x5865F2,
+            timestamp: new Date().toISOString(),
+          }];
+        } else {
+          payload.content = content;
+        }
+        const res = await fetch(
+          `https://discord.com/api/v10/webhooks/${event.application_id}/${event.interaction_token}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Failed to send ephemeral followup: ${res.status} ${errText}`);
+        }
+        return { sent: true, ephemeral: true };
+      }
+
+      const channelId = action_config.channel_id;
 
       log.debug(`[SEND_MESSAGE] channelId: ${channelId}, content: ${content}`);
       log.debug(`[SEND_MESSAGE] action_config:`, JSON.stringify(action_config));
@@ -1014,10 +1043,7 @@ async function executeAutomationAction(automation, event) {
     }
 
     case "SEND_MESSAGE_WITH_BUTTONS": {
-      const channelId = action_config.channel_id;
       const content = automation.processed_content || action_config.content;
-
-      if (!channelId || !content) throw new Error("Missing channel or content");
 
       // Build button components
       const { buildButtonComponents } = await import("../automation/engine.js");
@@ -1026,6 +1052,38 @@ async function executeAutomationAction(automation, event) {
         event.guild_id,
         automation.id
       );
+
+      // Ephemeral: send as interaction followup visible only to the user
+      if (action_config.ephemeral && event.application_id && event.interaction_token) {
+        if (!content) throw new Error("Missing message content");
+        const payload = { flags: 64, components: buttonComponents };
+        if (action_config.embed) {
+          payload.embeds = [{
+            description: content,
+            color: 0x5865F2,
+            timestamp: new Date().toISOString(),
+          }];
+        } else {
+          payload.content = content;
+        }
+        const res = await fetch(
+          `https://discord.com/api/v10/webhooks/${event.application_id}/${event.interaction_token}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          },
+        );
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Failed to send ephemeral followup: ${res.status} ${errText}`);
+        }
+        return { sent: true, ephemeral: true, buttonsAttached: buttonComponents.length };
+      }
+
+      const channelId = action_config.channel_id;
+
+      if (!channelId || !content) throw new Error("Missing channel or content");
 
       // Schedule for later if configured
       if (action_config.send_later && action_config.send_later_delay) {
@@ -2496,6 +2554,9 @@ function setupEventHandlers(client, logFn) {
                 channel_name: interaction.channel?.name,
                 event_type: "BUTTON_CLICK",
                 details: { customId, buttonLabel: data.buttonLabel },
+                application_id: interaction.applicationId || interaction.client?.application?.id,
+                interaction_token: interaction.token,
+                _bot_token: process.env.DISCORD_BOT_TOKEN,
               };
 
               let allSuccess = true;

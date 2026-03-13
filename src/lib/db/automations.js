@@ -104,7 +104,8 @@ export const ACTION_TYPES = {
     description: "Send a message to a channel",
     icon: "💬",
     configSchema: {
-      channel_id: { type: "channel", required: true, label: "Channel" },
+      ephemeral: { type: "boolean", default: false, label: "Ephemeral (only visible to the user)" },
+      channel_id: { type: "channel", required: true, label: "Channel", hideWhen: "ephemeral" },
       content: {
         type: "text",
         required: true,
@@ -114,7 +115,7 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
-      send_later: { type: "boolean", default: false, label: "Schedule for later" },
+      send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
   },
@@ -123,7 +124,8 @@ export const ACTION_TYPES = {
     description: "Send a message with interactive buttons that trigger actions when clicked",
     icon: "🔘",
     configSchema: {
-      channel_id: { type: "channel", required: true, label: "Channel" },
+      ephemeral: { type: "boolean", default: false, label: "Ephemeral (only visible to the user)" },
+      channel_id: { type: "channel", required: true, label: "Channel", hideWhen: "ephemeral" },
       content: {
         type: "text",
         required: true,
@@ -133,7 +135,7 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
-      send_later: { type: "boolean", default: false, label: "Schedule for later" },
+      send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
       buttons: {
         type: "button_rows",

@@ -463,6 +463,9 @@ async function handleCustomCommand(command, interaction, db, platform) {
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {}, // Store all option values by name
+			application_id: interaction.application_id,
+			interaction_token: interaction.token,
+			_bot_token: platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN,
 		};
 
 		// Add voice channel info to event if available
@@ -671,6 +674,9 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {},
+			application_id: applicationId,
+			interaction_token: interactionToken,
+			_bot_token: botToken,
 		};
 
 		if (voiceState) {

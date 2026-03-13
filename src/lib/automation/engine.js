@@ -150,6 +150,25 @@ export function processTemplate(template, context) {
 }
 
 /**
+ * Send an ephemeral followup message via the Discord interaction webhook
+ */
+async function sendInteractionFollowup(applicationId, interactionToken, payload, botToken) {
+  const res = await fetch(
+    `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to send ephemeral followup: ${res.status} ${errText}`);
+  }
+  return res.json();
+}
+
+/**
  * Resolve embed color from config, evaluating conditional color rules against context
  * @param {Object} actionConfig - The action configuration
  * @param {Object} context - Variable context (same as template variables)
@@ -734,9 +753,29 @@ export async function executeAction(automation, event, context, discord, db = nu
       }
 
       case "SEND_MESSAGE": {
-        const channelId = action_config.channel_id;
         const content = processTemplate(action_config.content, context);
 
+        // Ephemeral: send as interaction followup visible only to the user
+        if (action_config.ephemeral && event.application_id && event.interaction_token) {
+          if (!content) {
+            return { success: false, error: "Missing message content" };
+          }
+          const payload = { flags: 64 };
+          if (action_config.embed) {
+            const embedColor = resolveEmbedColor(action_config, context);
+            payload.embeds = [{
+              description: content,
+              color: embedColor,
+              timestamp: new Date().toISOString(),
+            }];
+          } else {
+            payload.content = content;
+          }
+          await sendInteractionFollowup(event.application_id, event.interaction_token, payload, event._bot_token);
+          return { success: true, result: { sent: true, ephemeral: true } };
+        }
+
+        const channelId = action_config.channel_id;
         if (!channelId || !content) {
           return { success: false, error: "Missing channel or content" };
         }
@@ -783,16 +822,36 @@ export async function executeAction(automation, event, context, discord, db = nu
       }
 
       case "SEND_MESSAGE_WITH_BUTTONS": {
-        const channelId = action_config.channel_id;
         const content = processTemplate(action_config.content, context);
-
-        if (!channelId || !content) {
-          return { success: false, error: "Missing channel or content" };
-        }
 
         // Build button components from config
         const buttonRows = action_config.buttons || [];
         const components = buildButtonComponents(buttonRows, event.guild_id, automation.id);
+
+        // Ephemeral: send as interaction followup visible only to the user
+        if (action_config.ephemeral && event.application_id && event.interaction_token) {
+          if (!content) {
+            return { success: false, error: "Missing message content" };
+          }
+          const payload = { flags: 64, components };
+          if (action_config.embed) {
+            const embedColor = resolveEmbedColor(action_config, context);
+            payload.embeds = [{
+              description: content,
+              color: embedColor,
+              timestamp: new Date().toISOString(),
+            }];
+          } else {
+            payload.content = content;
+          }
+          await sendInteractionFollowup(event.application_id, event.interaction_token, payload, event._bot_token);
+          return { success: true, result: { sent: true, ephemeral: true, buttonsAttached: components.length } };
+        }
+
+        const channelId = action_config.channel_id;
+        if (!channelId || !content) {
+          return { success: false, error: "Missing channel or content" };
+        }
 
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
