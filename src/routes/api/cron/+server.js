@@ -12,6 +12,7 @@ import { runStatsAggregation, cleanupOldData } from "$lib/db/stats-aggregation.j
 import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "$lib/db/server-stats.js";
 import { refreshGuildCache } from "$lib/db/guild-cache.js";
 import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
+import { processScheduledMessages } from "$lib/db/scheduled-messages.js";
 import { log } from "$lib/log.js";
 
 /**
@@ -62,6 +63,13 @@ function getCronJobDefinitions() {
       cronPattern: null,
       schedule: "Manual only",
       dangerous: true,
+    },
+    {
+      name: "send_scheduled_messages",
+      displayName: "Send Scheduled Messages",
+      description: "Processes and sends messages that were scheduled for later delivery.",
+      cronPattern: "* * * * *",
+      schedule: "Every minute",
     },
   ];
 }
@@ -603,6 +611,11 @@ export async function POST({ request, cookies, platform }) {
       result = await runCacheRefresh(db, botToken);
     } else if (jobName === 'rebuild_stats') {
       result = await runRebuildStats(db);
+    } else if (jobName === 'send_scheduled_messages') {
+      if (!botToken) {
+        throw new Error("Bot token not configured");
+      }
+      result = await processScheduledMessages(db, botToken);
     }
 
     const duration = Date.now() - startTime;

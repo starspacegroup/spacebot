@@ -188,6 +188,23 @@
 	function isOptionReference(value) {
 		return typeof value === 'string' && value.startsWith('option:');
 	}
+
+	/**
+	 * Format a delay value for display
+	 * Supports: 5m, 1h, 2d, or custom like "30mc" (custom minutes)
+	 */
+	function formatDelay(value) {
+		if (!value) return '';
+		const isCustom = value.endsWith('c');
+		const clean = isCustom ? value.slice(0, -1) : value;
+		const match = clean.match(/^(\d+)(m|h|d)$/);
+		if (!match) return value;
+		const num = parseInt(match[1]);
+		const unit = match[2];
+		const labels = { m: 'minute', h: 'hour', d: 'day' };
+		const label = labels[unit] || unit;
+		return `${num} ${label}${num !== 1 ? 's' : ''}`;
+	}
 </script>
 
 <div class="flow-builder" class:compact ontouchmove={handleTouchMove} ontouchend={handleTouchEnd}>
@@ -502,6 +519,68 @@
 															placeholder="Webhook ID"
 															class="flow-input"
 														/>
+													{:else if config.type === 'delay'}
+														<div class="flow-delay-picker">
+															<div class="delay-presets">
+																{#each [
+																	{ value: '5m', label: '5 min' },
+																	{ value: '15m', label: '15 min' },
+																	{ value: '30m', label: '30 min' },
+																	{ value: '1h', label: '1 hour' },
+																	{ value: '2h', label: '2 hours' },
+																	{ value: '6h', label: '6 hours' },
+																	{ value: '12h', label: '12 hours' },
+																	{ value: '1d', label: '1 day' },
+																	{ value: '3d', label: '3 days' },
+																	{ value: '7d', label: '7 days' },
+																] as preset}
+																	<button
+																		type="button"
+																		class="delay-preset-btn"
+																		class:active={action.config[configKey] === preset.value}
+																		onclick={() => { action.config[configKey] = preset.value; }}
+																	>{preset.label}</button>
+																{/each}
+															</div>
+															<div class="delay-custom">
+																<span class="delay-or">or</span>
+																<input
+																	type="number"
+																	min="1"
+																	max="10080"
+																	placeholder="Custom"
+																	class="flow-input delay-custom-input"
+																	value={action.config[configKey]?.endsWith?.('c') ? action.config[configKey].slice(0, -1) : ''}
+																	oninput={(e) => {
+																		const v = e.target.value;
+																		if (v) {
+																			const unit = action.config[configKey + '_unit'] || 'm';
+																			action.config[configKey] = v + unit + 'c';
+																		} else {
+																			action.config[configKey] = '';
+																		}
+																	}}
+																/>
+																<select
+																	class="flow-select delay-unit-select"
+																	value={action.config[configKey + '_unit'] || 'm'}
+																	onchange={(e) => {
+																		action.config[configKey + '_unit'] = e.target.value;
+																		const numPart = action.config[configKey]?.replace?.(/[^0-9]/g, '');
+																		if (numPart) {
+																			action.config[configKey] = numPart + e.target.value + 'c';
+																		}
+																	}}
+																>
+																	<option value="m">minutes</option>
+																	<option value="h">hours</option>
+																	<option value="d">days</option>
+																</select>
+															</div>
+															{#if action.config[configKey]}
+																<span class="delay-preview">⏱ Message will be sent {formatDelay(action.config[configKey])} after trigger</span>
+															{/if}
+														</div>
 													{:else}
 														<input 
 															type="text"
@@ -980,5 +1059,76 @@
 		.color-rule-field, .color-rule-op, .color-rule-value {
 			width: 100%;
 		}
+
+		.delay-presets {
+			gap: 0.25rem !important;
+		}
+
+		.delay-preset-btn {
+			padding: 0.25rem 0.5rem !important;
+			font-size: 0.7rem !important;
+		}
+	}
+
+	/* Delay Picker */
+	.flow-delay-picker {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.delay-presets {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+	}
+
+	.delay-preset-btn {
+		padding: 0.3rem 0.65rem;
+		border: 1px solid var(--color-border);
+		border-radius: 0.35rem;
+		background: var(--color-surface);
+		color: var(--color-text);
+		font-size: 0.78rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.delay-preset-btn:hover {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+
+	.delay-preset-btn.active {
+		border-color: var(--color-primary);
+		background: var(--color-primary-soft);
+		color: var(--color-primary);
+		font-weight: 600;
+	}
+
+	.delay-custom {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+	}
+
+	.delay-or {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.delay-custom-input {
+		width: 5rem;
+	}
+
+	.delay-unit-select {
+		width: auto;
+		min-width: 5.5rem;
+	}
+
+	.delay-preview {
+		font-size: 0.75rem;
+		color: var(--color-primary);
+		font-weight: 500;
 	}
 </style>

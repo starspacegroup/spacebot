@@ -8,6 +8,7 @@ import {
   logAutomationExecution,
 } from "../db/automations.js";
 import { getWebhook, callWebhook } from "../db/webhooks.js";
+import { createScheduledMessage, parseDelay } from "../db/scheduled-messages.js";
 import { log } from "../log.js";
 import { detectCommandResult, getBot } from "../discord/bots.js";
 
@@ -487,9 +488,10 @@ export function buildContext(event, guildInfo = {}) {
  * @param {Object} event - The event that triggered this
  * @param {Object} context - Variable context
  * @param {Object} discord - Discord client or API interface
+ * @param {D1Database} [db] - Database for scheduled messages
  * @returns {Promise<{success: boolean, result?: any, error?: string}>}
  */
-export async function executeAction(automation, event, context, discord) {
+export async function executeAction(automation, event, context, discord, db = null) {
   const { action_type, action_config } = automation;
 
   try {
@@ -739,6 +741,24 @@ export async function executeAction(automation, event, context, discord) {
           return { success: false, error: "Missing channel or content" };
         }
 
+        // Schedule for later if configured
+        if (action_config.send_later && action_config.send_later_delay && db) {
+          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const result = await createScheduledMessage(db, {
+            guild_id: event.guild_id,
+            channel_id: channelId,
+            action_type: "SEND_MESSAGE",
+            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor },
+            delay: action_config.send_later_delay,
+            created_by: event.actor_id,
+            source_automation_id: automation.id,
+          });
+          if (result.success) {
+            return { success: true, result: { scheduled: true, send_at: result.send_at } };
+          }
+          return { success: false, error: result.error || "Failed to schedule message" };
+        }
+
         const channel = await discord.channels.fetch(channelId).catch(() =>
           null
         );
@@ -770,16 +790,39 @@ export async function executeAction(automation, event, context, discord) {
           return { success: false, error: "Missing channel or content" };
         }
 
+        // Build button components from config
+        const buttonRows = action_config.buttons || [];
+        const components = buildButtonComponents(buttonRows, event.guild_id, automation.id);
+
+        // Schedule for later if configured
+        if (action_config.send_later && action_config.send_later_delay && db) {
+          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const result = await createScheduledMessage(db, {
+            guild_id: event.guild_id,
+            channel_id: channelId,
+            action_type: "SEND_MESSAGE_WITH_BUTTONS",
+            message_payload: {
+              content,
+              embed: !!action_config.embed,
+              embed_color: embedColor,
+              components,
+            },
+            delay: action_config.send_later_delay,
+            created_by: event.actor_id,
+            source_automation_id: automation.id,
+          });
+          if (result.success) {
+            return { success: true, result: { scheduled: true, send_at: result.send_at, buttonsAttached: components.length } };
+          }
+          return { success: false, error: result.error || "Failed to schedule message" };
+        }
+
         const channel = await discord.channels.fetch(channelId).catch(() =>
           null
         );
         if (!channel) {
           return { success: false, error: "Channel not found" };
         }
-
-        // Build button components from config
-        const buttonRows = action_config.buttons || [];
-        const components = buildButtonComponents(buttonRows, event.guild_id, automation.id);
 
         const messagePayload = { components };
 
@@ -808,6 +851,24 @@ export async function executeAction(automation, event, context, discord) {
 
         if (!content) {
           return { success: false, error: "Missing message content" };
+        }
+
+        // Schedule for later if configured
+        if (action_config.send_later && action_config.send_later_delay && db) {
+          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const result = await createScheduledMessage(db, {
+            guild_id: event.guild_id,
+            target_user_id: userId,
+            action_type: "SEND_DM",
+            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor },
+            delay: action_config.send_later_delay,
+            created_by: event.actor_id,
+            source_automation_id: automation.id,
+          });
+          if (result.success) {
+            return { success: true, result: { scheduled: true, send_at: result.send_at, userId } };
+          }
+          return { success: false, error: result.error || "Failed to schedule DM" };
         }
 
         // Fetch the user and send a DM
@@ -1410,6 +1471,7 @@ export async function processAutomations(
           event,
           context,
           discord,
+          db,
         );
         actionResults.push({
           actionIndex: i,

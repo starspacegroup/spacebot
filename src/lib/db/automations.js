@@ -114,6 +114,8 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      send_later: { type: "boolean", default: false, label: "Schedule for later" },
+      send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
   },
   SEND_MESSAGE_WITH_BUTTONS: {
@@ -131,6 +133,8 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      send_later: { type: "boolean", default: false, label: "Schedule for later" },
+      send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
       buttons: {
         type: "button_rows",
         required: true,
@@ -160,6 +164,8 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      send_later: { type: "boolean", default: false, label: "Schedule for later" },
+      send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
   },
   ADD_ROLE: {

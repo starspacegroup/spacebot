@@ -513,6 +513,7 @@ async function handleCustomCommand(command, interaction, db, platform) {
 					event,
 					context,
 					discord,
+					db,
 				);
 				results.push(result);
 				// Stop on first failure
@@ -709,6 +710,7 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 					event,
 					context,
 					discord,
+					db,
 				);
 				results.push(result);
 				if (!result.success) {

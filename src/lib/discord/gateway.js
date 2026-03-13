@@ -751,6 +751,24 @@ async function executeAutomationAction(automation, event) {
     throw new Error("Discord client not available");
   }
 
+  // Helper to schedule a message via API instead of sending immediately
+  async function scheduleMessageViaAPI(params) {
+    const url = `${API_BASE}/api/scheduled-messages`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to schedule message: ${errorText}`);
+    }
+    return await response.json();
+  }
+
   switch (action_type) {
     case "DELETE_USER_MESSAGES": {
       // Enhanced version that supports multiple channels
@@ -963,6 +981,20 @@ async function executeAutomationAction(automation, event) {
 
       if (!channelId || !content) throw new Error(`Missing channel or content - channelId: ${channelId}, content: ${content}`);
 
+      // Schedule for later if configured
+      if (action_config.send_later && action_config.send_later_delay) {
+        const result = await scheduleMessageViaAPI({
+          guild_id: event.guild_id,
+          channel_id: channelId,
+          action_type: "SEND_MESSAGE",
+          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null },
+          delay: action_config.send_later_delay,
+          created_by: event.actor_id,
+          source_automation_id: automation.id,
+        });
+        return { scheduled: true, send_at: result.send_at };
+      }
+
       const channel = await client.channels.fetch(channelId);
       if (!channel) throw new Error("Channel not found");
 
@@ -987,9 +1019,6 @@ async function executeAutomationAction(automation, event) {
 
       if (!channelId || !content) throw new Error("Missing channel or content");
 
-      const channel = await client.channels.fetch(channelId);
-      if (!channel) throw new Error("Channel not found");
-
       // Build button components
       const { buildButtonComponents } = await import("../automation/engine.js");
       const buttonComponents = buildButtonComponents(
@@ -997,6 +1026,24 @@ async function executeAutomationAction(automation, event) {
         event.guild_id,
         automation.id
       );
+
+      // Schedule for later if configured
+      if (action_config.send_later && action_config.send_later_delay) {
+        const messagePayload = { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null, components: buttonComponents };
+        const result = await scheduleMessageViaAPI({
+          guild_id: event.guild_id,
+          channel_id: channelId,
+          action_type: "SEND_MESSAGE_WITH_BUTTONS",
+          message_payload: messagePayload,
+          delay: action_config.send_later_delay,
+          created_by: event.actor_id,
+          source_automation_id: automation.id,
+        });
+        return { scheduled: true, send_at: result.send_at, buttonsAttached: buttonComponents.length };
+      }
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
 
       const messagePayload = { components: buttonComponents };
 
@@ -1020,6 +1067,20 @@ async function executeAutomationAction(automation, event) {
 
       if (!userId) throw new Error("Missing target user");
       if (!content) throw new Error("Missing message content");
+
+      // Schedule for later if configured
+      if (action_config.send_later && action_config.send_later_delay) {
+        const result = await scheduleMessageViaAPI({
+          guild_id: event.guild_id,
+          target_user_id: userId,
+          action_type: "SEND_DM",
+          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null },
+          delay: action_config.send_later_delay,
+          created_by: event.actor_id,
+          source_automation_id: automation.id,
+        });
+        return { scheduled: true, send_at: result.send_at, userId };
+      }
 
       const user = await client.users.fetch(userId);
       if (!user) throw new Error("User not found");
