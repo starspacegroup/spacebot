@@ -4,6 +4,7 @@
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
+	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { log } from '$lib/log.js';
 	
 	let { data, form } = $props();
@@ -792,6 +793,17 @@
 												{#if config.description}
 													<p class="field-hint">{config.description}</p>
 												{/if}
+											{:else if config.type === 'button_rows'}
+												<input type="hidden" name="action_config.{index}.{configKey}" value={JSON.stringify(action.config[configKey] || [])} />
+												<ButtonEditor
+													bind:value={action.config[configKey]}
+													actionTypes={data.actionTypes}
+													templateVariables={commandTemplateVariables}
+													channels={sharedChannels}
+													roles={sharedRoles}
+													guildId={selectedGuildId}
+													userSources={availableUserSources()}
+												/>
 											{:else}
 												<input 
 													type="text" 

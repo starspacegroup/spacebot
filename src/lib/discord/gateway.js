@@ -981,6 +981,39 @@ async function executeAutomationAction(automation, event) {
       }
     }
 
+    case "SEND_MESSAGE_WITH_BUTTONS": {
+      const channelId = action_config.channel_id;
+      const content = automation.processed_content || action_config.content;
+
+      if (!channelId || !content) throw new Error("Missing channel or content");
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      // Build button components
+      const { buildButtonComponents } = await import("../automation/engine.js");
+      const buttonComponents = buildButtonComponents(
+        action_config.buttons || [],
+        event.guild_id,
+        automation.id
+      );
+
+      const messagePayload = { components: buttonComponents };
+
+      if (action_config.embed) {
+        messagePayload.embeds = [{
+          description: content,
+          color: 0x5865F2,
+          timestamp: new Date().toISOString(),
+        }];
+      } else {
+        messagePayload.content = content;
+      }
+
+      const msg = await channel.send(messagePayload);
+      return { messageId: msg.id, channelId, buttonsAttached: buttonComponents.length };
+    }
+
     case "SEND_DM": {
       const userId = resolveTargetUser(action_config, event);
       const content = automation.processed_content || action_config.content;
@@ -2350,6 +2383,9 @@ function setupEventHandlers(client, logFn) {
         },
       });
     } else if (interaction.isButton()) {
+      const customId = interaction.customId;
+      
+      // Log the button click event
       await logFn({
         guild_id: interaction.guild.id,
         event_type: "BUTTON_CLICK",
@@ -2359,9 +2395,77 @@ function setupEventHandlers(client, logFn) {
         channel_id: interaction.channel?.id,
         channel_name: interaction.channel?.name,
         details: {
-          customId: interaction.customId,
+          customId,
+          messageId: interaction.message?.id,
         },
       });
+
+      // Handle SpaceBot button actions (custom_id format: sb_{guildId}_{sourceId}_{buttonId})
+      if (customId.startsWith("sb_")) {
+        try {
+          // Defer the reply while we process actions
+          await interaction.deferReply({ ephemeral: true }).catch(() => {});
+          
+          const response = await fetch(`${API_BASE}/api/buttons/${interaction.guild.id}/click`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+            },
+            body: JSON.stringify({
+              custom_id: customId,
+              user_id: interaction.user.id,
+              user_name: interaction.user.tag,
+              channel_id: interaction.channel?.id,
+              message_id: interaction.message?.id,
+              guild_id: interaction.guild.id,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Execute the button's action sequence
+            if (data.actions && data.actions.length > 0) {
+              const event = {
+                guild_id: interaction.guild.id,
+                actor_id: interaction.user.id,
+                actor_name: interaction.user.tag,
+                channel_id: interaction.channel?.id,
+                channel_name: interaction.channel?.name,
+                event_type: "BUTTON_CLICK",
+                details: { customId, buttonLabel: data.buttonLabel },
+              };
+
+              let allSuccess = true;
+              for (const action of data.actions) {
+                try {
+                  await executeAutomationAction({
+                    id: data.sourceId,
+                    name: data.sourceName || "Button Action",
+                    action_type: action.type,
+                    action_config: action.config || {},
+                  }, event);
+                } catch (err) {
+                  allSuccess = false;
+                  log.error(`[Button] Action ${action.type} failed:`, err.message);
+                }
+              }
+
+              await interaction.editReply({
+                content: allSuccess ? "✅ Action completed!" : "⚠️ Some actions had errors.",
+              }).catch(() => {});
+            } else {
+              await interaction.editReply({ content: "✅ Button clicked!" }).catch(() => {});
+            }
+          } else {
+            await interaction.editReply({ content: "❌ Failed to process button action." }).catch(() => {});
+          }
+        } catch (err) {
+          log.error("[Button] Error handling button click:", err.message);
+          await interaction.editReply({ content: "❌ An error occurred." }).catch(() => {});
+        }
+      }
     } else if (interaction.isModalSubmit()) {
       await logFn({
         guild_id: interaction.guild.id,

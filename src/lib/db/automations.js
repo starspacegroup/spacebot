@@ -116,6 +116,29 @@ export const ACTION_TYPES = {
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
     },
   },
+  SEND_MESSAGE_WITH_BUTTONS: {
+    name: "Send Message with Buttons",
+    description: "Send a message with interactive buttons that trigger actions when clicked",
+    icon: "🔘",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Channel" },
+      content: {
+        type: "text",
+        required: true,
+        label: "Message content",
+        supportsVariables: true,
+      },
+      embed: { type: "boolean", default: false, label: "Send as embed" },
+      embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
+      embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      buttons: {
+        type: "button_rows",
+        required: true,
+        label: "Buttons",
+        description: "Configure buttons and their click actions",
+      },
+    },
+  },
   SEND_DM: {
     name: "Send DM",
     description: "Send a direct message to a user",
@@ -592,6 +615,13 @@ export const FILTER_TYPES = {
     ],
     default: "any",
     applicableEvents: ["GITHUB_"],
+  },
+  // Button click filters
+  button_custom_id: {
+    type: "text",
+    label: "Button ID",
+    description: "Filter by the button's custom ID (supports comma-separated list)",
+    applicableEvents: ["BUTTON_CLICK"],
   },
 };
 

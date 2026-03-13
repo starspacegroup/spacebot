@@ -7,6 +7,7 @@
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
+	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { fetchChannelsWithCache, fetchRolesWithCache, fetchEmojisWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
 	
@@ -869,6 +870,18 @@
 												{#if config.description}
 													<p class="field-hint">{config.description}</p>
 												{/if}
+											{:else if config.type === 'button_rows'}
+												<input type="hidden" name="action_config.{index}.{configKey}" value={JSON.stringify(action.config[configKey] || [])} />
+												<ButtonEditor
+													bind:value={action.config[configKey]}
+													actionTypes={data.actionTypes}
+													templateVariables={data.templateVariables}
+													channels={sharedChannels}
+													roles={sharedRoles}
+													emojis={sharedEmojis}
+													guildId={selectedGuildId}
+													userSources={availableUserSources()}
+												/>
 											{:else}
 												<input 
 													type="text" 

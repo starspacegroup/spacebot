@@ -423,6 +423,14 @@ export function matchesFilters(event, filters, context = {}) {
           if (filterValue === "private" && !isPrivate) return false;
         }
         break;
+
+      case "button_custom_id":
+        // Filter BUTTON_CLICK events by button custom ID (comma-separated list)
+        if (filterValue) {
+          const allowedIds = filterValue.split(",").map((id) => id.trim());
+          if (!allowedIds.includes(event.details?.customId)) return false;
+        }
+        break;
     }
   }
 
@@ -752,6 +760,42 @@ export async function executeAction(automation, event, context, discord) {
         }
 
         return { success: true, result: { sent: true } };
+      }
+
+      case "SEND_MESSAGE_WITH_BUTTONS": {
+        const channelId = action_config.channel_id;
+        const content = processTemplate(action_config.content, context);
+
+        if (!channelId || !content) {
+          return { success: false, error: "Missing channel or content" };
+        }
+
+        const channel = await discord.channels.fetch(channelId).catch(() =>
+          null
+        );
+        if (!channel) {
+          return { success: false, error: "Channel not found" };
+        }
+
+        // Build button components from config
+        const buttonRows = action_config.buttons || [];
+        const components = buildButtonComponents(buttonRows, event.guild_id, automation.id);
+
+        const messagePayload = { components };
+
+        if (action_config.embed) {
+          const embedColor = resolveEmbedColor(action_config, context);
+          messagePayload.embeds = [{
+            description: content,
+            color: embedColor,
+            timestamp: new Date().toISOString(),
+          }];
+        } else {
+          messagePayload.content = content;
+        }
+
+        await channel.send(messagePayload);
+        return { success: true, result: { sent: true, buttonsAttached: components.length } };
       }
 
       case "SEND_DM": {
@@ -1429,6 +1473,87 @@ export async function processAutomations(
   }
 
   return { executed, errors };
+}
+
+/**
+ * Discord button styles mapping
+ */
+const BUTTON_STYLES = {
+  primary: 1,
+  secondary: 2,
+  success: 3,
+  danger: 4,
+  link: 5,
+};
+
+/**
+ * Build Discord message components (action rows with buttons) from button config
+ * Custom IDs encode: sb_{guildId}_{automationId}_{buttonId}
+ * This allows the gateway to route button clicks to the right action sequence
+ * @param {Array} buttonRows - Array of row arrays, each containing button configs
+ * @param {string} guildId - Guild ID for routing
+ * @param {number|string} sourceId - Automation or command ID
+ * @returns {Array} Discord API components array
+ */
+export function buildButtonComponents(buttonRows, guildId, sourceId) {
+  if (!buttonRows || !Array.isArray(buttonRows)) return [];
+
+  const components = [];
+  // buttonRows is an array of rows, each row is an array of buttons
+  const rows = Array.isArray(buttonRows[0]) ? buttonRows : [buttonRows];
+
+  for (const row of rows.slice(0, 5)) { // Max 5 action rows
+    const actionRow = {
+      type: 1, // ACTION_ROW
+      components: [],
+    };
+
+    for (const btn of row.slice(0, 5)) { // Max 5 buttons per row
+      if (!btn || !btn.label) continue;
+
+      const style = typeof btn.style === 'number'
+        ? btn.style
+        : (BUTTON_STYLES[btn.style] || 2);
+
+      const button = {
+        type: 2, // BUTTON
+        style,
+        label: btn.label,
+      };
+
+      if (btn.emoji) {
+        // Handle both unicode emoji and custom emoji format
+        if (btn.emoji.includes(':')) {
+          const match = btn.emoji.match(/<?(a)?:(\w+):(\d+)>?/);
+          if (match) {
+            button.emoji = { name: match[2], id: match[3], animated: !!match[1] };
+          }
+        } else {
+          button.emoji = { name: btn.emoji };
+        }
+      }
+
+      if (style === 5 && btn.url) {
+        // Link buttons use URL instead of custom_id
+        button.url = btn.url;
+      } else {
+        // Interactive buttons use custom_id for routing
+        button.custom_id = `sb_${guildId}_${sourceId}_${btn.id || btn.label.replace(/\s+/g, '_').toLowerCase()}`;
+      }
+
+      if (btn.disabled) {
+        button.disabled = true;
+      }
+
+      actionRow.components.push(button);
+    }
+
+    if (actionRow.components.length > 0) {
+      components.push(actionRow);
+    }
+  }
+
+  return components;
 }
 
 /**
