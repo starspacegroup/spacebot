@@ -137,7 +137,7 @@
 									{#if integration.guild_config?.webhook_secret}
 										<p class="setup-instructions" style="margin-top: 0.75rem;">Set the <strong>Secret</strong> in GitHub to:</p>
 										<div class="copyable-field">
-											<code class="copyable-value secret">{integration.guild_config.webhook_secret}</code>
+											<code class="copyable-value secret">{'•'.repeat(integration.guild_config.webhook_secret.length)}</code>
 											<button class="btn-copy" onclick={(e) => {
 												navigator.clipboard.writeText(integration.guild_config.webhook_secret);
 												e.target.textContent = '✓ Copied';
@@ -765,7 +765,9 @@
 	}
 
 	.copyable-value.secret {
-		color: var(--color-primary);
+		color: var(--color-text-muted);
+		user-select: none;
+		letter-spacing: -0.05em;
 	}
 
 	.btn-copy {

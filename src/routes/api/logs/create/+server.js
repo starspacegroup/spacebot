@@ -30,6 +30,8 @@ function formatEventEmbed(event, customColors = {}) {
   } else {
     color = defaultColors[event.event_category] || 0x95a5a6;
   }
+
+  const icons = {
     MESSAGE_CREATE: "💬",
     MESSAGE_DELETE: "🗑️",
     MESSAGE_UPDATE: "✏️",
