@@ -166,6 +166,16 @@
 		});
 		
 		commands.push({
+			id: 'nav-docs',
+			label: 'Documentation',
+			description: 'Guides and feature reference',
+			icon: '📖',
+			group: 'Navigation',
+			action: () => goto('/docs'),
+			keywords: ['docs', 'documentation', 'help', 'guide', 'manual', 'reference', 'how to']
+		});
+		
+		commands.push({
 			id: 'action-github',
 			label: 'View on GitHub',
 			description: 'Open the source code repository',
