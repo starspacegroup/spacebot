@@ -207,12 +207,16 @@ Cloudflare Pages automatically deploys your site when you push to the configured
 
 ## Gateway Bot (Production)
 
-The Discord gateway bot runs as a separate long-lived process on your server, managed by **PM2** using **Bun** as the runtime.
+The Discord gateway bot and Cloudflare production tunnel run as long-lived processes on your server, managed by **PM2** using **Bun** as the runtime. The startup script automatically installs missing dependencies (cloudflared, pm2).
 
 ### Prerequisites
 
 - [Bun](https://bun.sh/) installed (`curl -fsSL https://bun.sh/install | bash`)
-- [PM2](https://pm2.keymetrics.io/) installed globally (`bun add -g pm2`)
+- On Windows: [winget](https://learn.microsoft.com/en-us/windows/package-manager/) (for auto-installing cloudflared)
+- On macOS: [Homebrew](https://brew.sh/) (for auto-installing cloudflared)
+- On Linux: `apt` with `lsb_release` (for auto-installing cloudflared)
+
+PM2 and cloudflared are installed automatically by the startup script if not already present.
 
 ### Install Dependencies
 
@@ -229,23 +233,41 @@ DISCORD_BOT_TOKEN=your_bot_token
 API_BASE=https://your-production-url.pages.dev
 ```
 
-### Start the Gateway
+### Production Tunnel Setup (One-Time)
+
+The production environment uses a Cloudflare tunnel to expose the server at `https://spacebot-prod.starspace.group`.
 
 ```bash
-# Start with PM2
-npm run gateway
+# Authenticate with Cloudflare (one-time)
+cloudflared tunnel login
 
-# Or directly:
-pm2 start ecosystem.config.cjs
+# Create the tunnel
+cloudflared tunnel create spacebot-prod
+
+# Configure DNS routing
+cloudflared tunnel route dns spacebot-prod spacebot-prod.starspace.group
 ```
+
+Then create or update `~/.cloudflared/config.yml` to include the `spacebot-prod` tunnel configuration, pointing to your local production service (e.g., `http://localhost:4269`).
+
+### Start Production
+
+```bash
+npm run gateway
+```
+
+This runs `scripts/prod-start.js` which:
+1. Checks for `cloudflared` and installs it if missing
+2. Checks for `pm2` and installs it if missing
+3. Starts both `spacebot-gateway` and `spacebot-tunnel` via PM2
 
 ### PM2 Commands
 
 ```bash
 npm run gateway:status    # Check process status
 npm run gateway:logs      # Tail live logs
-npm run gateway:restart   # Restart the gateway
-npm run gateway:stop      # Stop the gateway
+npm run gateway:restart   # Restart all services
+npm run gateway:stop      # Stop all services
 ```
 
 ### PM2 Startup (Auto-start on Reboot)

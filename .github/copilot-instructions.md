@@ -30,6 +30,7 @@ The dev server is **always** running on these URLs:
 
 - **Local:** `http://localhost:4269`
 - **Tunnel:** `https://spacebot-dev.starspace.group` (via cloudflared tunnel, always running)
+- **Production Tunnel:** `https://spacebot-prod.starspace.group` (via cloudflared tunnel, for production environment)
 
 When testing or debugging with browser dev tools, always use port **4269** for localhost. Both URLs should be tested when investigating issues.
 

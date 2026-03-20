@@ -22,5 +22,23 @@ module.exports = {
       // Watch (disabled in production — enable for dev if desired)
       watch: false,
     },
+    {
+      name: "spacebot-tunnel",
+      script: "cloudflared",
+      args: "tunnel run spacebot-prod",
+      // Restart policy
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 5000,
+      // Logging
+      error_file: "logs/tunnel-error.log",
+      out_file: "logs/tunnel-out.log",
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      // Graceful shutdown
+      kill_timeout: 10000,
+      listen_timeout: 30000,
+      watch: false,
+    },
   ],
 };
