@@ -16,6 +16,10 @@
 			<span class="nav-icon">👥</span>
 			Users
 		</a>
+		<a href="/admin/superadmin/gateway" class="nav-link">
+			<span class="nav-icon">📡</span>
+			Gateway
+		</a>
 	</nav>
 	{@render children()}
 </div>

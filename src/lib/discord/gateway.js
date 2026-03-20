@@ -2958,6 +2958,9 @@ function setupEventHandlers(client, logFn) {
         log.warn("⚠️ Failed to set bot avatar:", err.message);
       }
     }
+
+    // Start gateway benchmark reporting (every 60 seconds)
+    startBenchmarkReporting(c);
   });
 
   client.on(Events.Error, (error) => {
@@ -2967,6 +2970,65 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.Warn, (warning) => {
     log.warn("Discord client warning:", warning);
   });
+}
+
+// Benchmark reporting interval reference
+let benchmarkInterval = null;
+
+/**
+ * Start periodic gateway benchmark reporting
+ * Captures WebSocket heartbeat latency and connection metrics every 60 seconds
+ * @param {Client} client - The discord.js client
+ */
+function startBenchmarkReporting(client) {
+  // Clear any existing interval
+  if (benchmarkInterval) clearInterval(benchmarkInterval);
+
+  const reportBenchmark = async () => {
+    try {
+      const ping = client.ws.ping; // Heartbeat ACK round-trip in ms (-1 if not yet measured)
+      const guildCount = client.guilds.cache.size;
+      const uptimeMs = client.uptime || 0;
+      const gatewayUrl = client.ws.gateway || null;
+
+      // Determine connection status
+      let status = "connected";
+      if (ping === -1) status = "measuring";
+      if (!client.ws.shards.size) status = "disconnected";
+
+      const payload = {
+        heartbeat_latency_ms: ping >= 0 ? ping : null,
+        gateway_url: gatewayUrl,
+        shard_id: 0,
+        guild_count: guildCount,
+        uptime_seconds: Math.floor(uptimeMs / 1000),
+        status,
+      };
+
+      const url = `${API_BASE}/api/gateway/benchmark`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        log.debug(`[Benchmark] Failed to report: ${response.status}`);
+      } else {
+        log.debug(`[Benchmark] Reported latency: ${ping}ms, guilds: ${guildCount}`);
+      }
+    } catch (error) {
+      log.debug(`[Benchmark] Report error: ${error.message}`);
+    }
+  };
+
+  // Report immediately, then every 60 seconds
+  reportBenchmark();
+  benchmarkInterval = setInterval(reportBenchmark, 60_000);
+  log.info("📡 Gateway benchmark reporting started (60s interval)");
 }
 
 /**
