@@ -26,9 +26,11 @@
 		"@sveltejs/adapter-cloudflare": "^7.2.6",
 		"@sveltejs/kit": "^2.49.1",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
-		"better-sqlite3": "^12.6.2",
 		"svelte": "^5.45.6",
 		"vite": "^7.2.6"
+	},
+	"optionalDependencies": {
+		"better-sqlite3": "^12.6.2"
 	},
 	"dependencies": {
 		"@discordjs/rest": "^2.6.0",

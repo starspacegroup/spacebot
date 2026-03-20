@@ -8,8 +8,10 @@
 
 import { log } from "../log.js";
 
-// Dynamic import for better-sqlite3 (only loaded when needed, not available on Workers)
+// Dynamic import for SQLite (only loaded when needed, not available on Workers)
+// Uses bun:sqlite when running under Bun, falls back to better-sqlite3 for Node.js
 let Database = null;
+const isBun = typeof globalThis.Bun !== "undefined";
 
 /**
  * MCP Client class that connects to D1 database via Cloudflare API or local SQLite
@@ -56,11 +58,17 @@ export class MCPClient {
       const { fileURLToPath } = await import(/* @vite-ignore */ "node:url");
 
       if (!Database) {
-        // Build the specifier at runtime so no bundler (Vite or esbuild) can resolve it.
-        // This package is Node.js-only and never executes on Cloudflare Workers.
-        const bs3 = ["better", "sqlite3"].join("-");
-        const betterSqlite3 = await import(/* @vite-ignore */ bs3);
-        Database = betterSqlite3.default;
+        if (isBun) {
+          // Bun has built-in SQLite support
+          const bunSqlite = await import(/* @vite-ignore */ "bun:sqlite");
+          Database = bunSqlite.Database;
+        } else {
+          // Build the specifier at runtime so no bundler (Vite or esbuild) can resolve it.
+          // This package is Node.js-only and never executes on Cloudflare Workers.
+          const bs3 = ["better", "sqlite3"].join("-");
+          const betterSqlite3 = await import(/* @vite-ignore */ bs3);
+          Database = betterSqlite3.default;
+        }
       }
       
       const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -153,7 +161,7 @@ export class MCPClient {
     const db = await this.initLocalDb();
     
     try {
-      // Replace ? placeholders with $1, $2, etc. for better-sqlite3 if needed
+      // Replace ? placeholders with $1, $2, etc. for better-sqlite3/bun:sqlite if needed
       const stmt = db.prepare(sql);
       const results = stmt.all(...params);
       
