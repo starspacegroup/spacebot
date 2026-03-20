@@ -131,7 +131,7 @@ async function getBotGuildsWithDetails(botToken) {
 	if (!botToken) return [];
 
 	try {
-		const response = await fetch("https://discord.com/api/v10/users/@me/guilds", {
+		const response = await fetch("https://discord.com/api/v10/users/@me/guilds?with_counts=true", {
 			headers: {
 				Authorization: `Bot ${botToken}`,
 			},

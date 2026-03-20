@@ -922,7 +922,8 @@
 									</div>
 								</td>
 								<td class="numeric">
-									{formatNumber(guild.stats?.member_count || guild.approximate_member_count || '—')}
+									{@const memberCount = guild.stats?.member_count || guild.approximate_member_count}
+									{memberCount ? formatNumber(memberCount) : '—'}
 								</td>
 								<td class="numeric">
 									{guild.stats?.channel_count || '—'}
