@@ -6,6 +6,7 @@ module.exports = {
       interpreter: "bun",
       env: {
         NODE_ENV: "production",
+        API_BASE: "https://spacebot.starspace.group",
       },
       // Restart policy
       max_restarts: 10,
