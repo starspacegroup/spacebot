@@ -95,6 +95,6 @@ run('pm2 start ecosystem.config.cjs', 'pm2 start');
 
 console.log('\n✅ Production services started.');
 console.log('   • spacebot-gateway  — Discord gateway bot');
-console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot-prod.starspace.group)\n');
+console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot.starspace.group)\n');
 console.log('   Run "npm run gateway:status" to check status.');
 console.log('   Run "npm run gateway:logs" to view logs.\n');

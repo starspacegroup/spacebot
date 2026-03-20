@@ -25,7 +25,7 @@ module.exports = {
     {
       name: "spacebot-tunnel",
       script: "cloudflared",
-      args: "tunnel run spacebot-prod",
+      args: "tunnel run spacebot",
       // Restart policy
       max_restarts: 10,
       min_uptime: "10s",

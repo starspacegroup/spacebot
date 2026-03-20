@@ -235,20 +235,20 @@ API_BASE=https://your-production-url.pages.dev
 
 ### Production Tunnel Setup (One-Time)
 
-The production environment uses a Cloudflare tunnel to expose the server at `https://spacebot-prod.starspace.group`.
+The production environment uses a Cloudflare tunnel to expose the server at `https://spacebot.starspace.group`.
 
 ```bash
 # Authenticate with Cloudflare (one-time)
 cloudflared tunnel login
 
 # Create the tunnel
-cloudflared tunnel create spacebot-prod
+cloudflared tunnel create spacebot
 
 # Configure DNS routing
-cloudflared tunnel route dns spacebot-prod spacebot-prod.starspace.group
+cloudflared tunnel route dns spacebot spacebot.starspace.group
 ```
 
-Then create or update `~/.cloudflared/config.yml` to include the `spacebot-prod` tunnel configuration, pointing to your local production service (e.g., `http://localhost:4269`).
+Then create or update `~/.cloudflared/config.yml` to include the `spacebot` tunnel configuration, pointing to your local production service (e.g., `http://localhost:4269`).
 
 ### Start Production
 
