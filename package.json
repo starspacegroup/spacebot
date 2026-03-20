@@ -26,7 +26,9 @@
 		"gateway:latency": "node scripts/gateway-latency.js",
 		"gateway:latency:history": "node scripts/gateway-latency.js --history",
 		"db:push": "node scripts/push-data.js --confirm",
-		"db:push:dry": "node scripts/push-data.js"
+		"db:push:dry": "node scripts/push-data.js",
+		"secrets:setup": "node scripts/setup-secrets.js --confirm",
+		"secrets:setup:dry": "node scripts/setup-secrets.js"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.21.2",

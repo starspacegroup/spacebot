@@ -224,7 +224,11 @@ PM2 and cloudflared are installed automatically by the startup script if not alr
 bun install
 ```
 
-### Environment Variables
+### Environment Variables & Secrets
+
+Secrets can be managed two ways:
+
+**Option A: `.env` file (simple, single-server)**
 
 Ensure a `.env` file exists in the project root with at least:
 
@@ -232,6 +236,26 @@ Ensure a `.env` file exists in the project root with at least:
 DISCORD_BOT_TOKEN=your_bot_token
 API_BASE=https://your-production-url.pages.dev
 ```
+
+**Option B: GCP Secret Manager (scalable, multi-instance)**
+
+For production on GCP, secrets are loaded from Secret Manager automatically:
+
+```bash
+# 1. Enable the API
+gcloud services enable secretmanager.googleapis.com
+
+# 2. Grant your VM's service account access
+gcloud projects add-iam-policy-binding YOUR_PROJECT \
+  --member="serviceAccount:YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+
+# 3. Push secrets from your local .env to GCP (dry run first)
+npm run secrets:setup:dry
+npm run secrets:setup
+```
+
+When running on a GCP instance, secrets are fetched from Secret Manager at startup. If GCP is unavailable (e.g., local dev), it falls back to `.env` / `process.env` automatically.
 
 ### Production Tunnel Setup (One-Time)
 

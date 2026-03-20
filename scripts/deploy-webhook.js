@@ -21,9 +21,14 @@
 import { createServer } from 'http';
 import { execSync } from 'child_process';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { loadSecrets, getSecret } from '../src/lib/secrets.js';
 
-const PORT = process.env.DEPLOY_WEBHOOK_PORT || 9090;
-const SECRET = process.env.DEPLOY_WEBHOOK_SECRET;
+// Load dotenv first, then override with GCP secrets if available
+import 'dotenv/config';
+await loadSecrets();
+
+const PORT = getSecret('DEPLOY_WEBHOOK_PORT') || 9090;
+const SECRET = getSecret('DEPLOY_WEBHOOK_SECRET');
 const BRANCH = 'main';
 
 if (!SECRET) {

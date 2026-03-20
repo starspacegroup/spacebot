@@ -10,6 +10,11 @@
 
 import { execSync, spawnSync } from 'child_process';
 import { platform } from 'os';
+import { loadSecrets, getSecret } from '../src/lib/secrets.js';
+
+// Load dotenv first, then GCP secrets
+import 'dotenv/config';
+await loadSecrets();
 
 const os = platform();
 
@@ -37,8 +42,8 @@ const WEBHOOK_URL = 'https://spacebot.starspace.group/deploy';
 const GITHUB_REPO = 'starspacegroup/spacebot';
 
 async function setupGitHubWebhook() {
-	const token = process.env.GITHUB_TOKEN;
-	const secret = process.env.DEPLOY_WEBHOOK_SECRET;
+	const token = getSecret('GITHUB_TOKEN');
+	const secret = getSecret('DEPLOY_WEBHOOK_SECRET');
 
 	if (!token || !secret) {
 		console.log('\n⏭️  Skipping GitHub webhook setup (GITHUB_TOKEN or DEPLOY_WEBHOOK_SECRET not set).');
