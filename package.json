@@ -24,7 +24,9 @@
 		"db:migrate": "node scripts/migrate.js",
 		"db:migrate:local": "node scripts/migrate.js --local",
 		"gateway:latency": "node scripts/gateway-latency.js",
-		"gateway:latency:history": "node scripts/gateway-latency.js --history"
+		"gateway:latency:history": "node scripts/gateway-latency.js --history",
+		"db:push": "node scripts/push-data.js --confirm",
+		"db:push:dry": "node scripts/push-data.js"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.21.2",
