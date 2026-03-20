@@ -97,6 +97,11 @@ export const COMMAND_TEMPLATE_VARIABLES = {
   "voice_channel.mention": "Mention the user's voice channel (require voice only)",
   "guild.id": "Server ID",
   "guild.name": "Server name",
+  "guild.member_count": "Total member count",
+  "guild.human_count": "Human (non-bot) member count",
+  "guild.bot_count": "Bot count",
+  "guild.boost_count": "Number of boosts",
+  "guild.boost_level": "Server boost level (0-3)",
   "option.<name>": "Value of the option with that name",
 };
 
@@ -1007,6 +1012,11 @@ export function buildCommandContext(interaction, guildInfo = {}, voiceState = nu
     guild: {
       id: interaction.guild_id,
       name: guildInfo.name || "Unknown Server",
+      member_count: guildInfo.member_count ?? "",
+      human_count: guildInfo.human_count ?? "",
+      bot_count: guildInfo.bot_count ?? "",
+      boost_count: guildInfo.boost_count ?? "",
+      boost_level: guildInfo.boost_level ?? "",
     },
     option: {},
   };

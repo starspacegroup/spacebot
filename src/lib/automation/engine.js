@@ -491,6 +491,11 @@ export function buildContext(event, guildInfo = {}) {
     guild: {
       id: event.guild_id,
       name: guildInfo.name || "Unknown Server",
+      member_count: guildInfo.member_count ?? "",
+      human_count: guildInfo.human_count ?? "",
+      bot_count: guildInfo.bot_count ?? "",
+      boost_count: guildInfo.boost_count ?? "",
+      boost_level: guildInfo.boost_level ?? "",
     },
     trigger: {
       event: event.event_type,

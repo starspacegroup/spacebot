@@ -12,6 +12,8 @@ import {
 import { log } from "$lib/db/logger.js";
 import { matchesFilters, processTemplate, buildContext } from "$lib/automation/engine.js";
 import { getMemberFromCache } from "$lib/db/guild-cache.js";
+import { getLatestServerStats } from "$lib/db/server-stats.js";
+import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 /**
  * Verify bot authorization
@@ -90,7 +92,21 @@ export async function POST({ params, request, platform }) {
     }
 
     // Build context for template processing
-    const context = buildContext(event);
+    // Build guild info from DB for template variables
+    const [guildMeta, guildStats] = await Promise.all([
+      getGuildMetadata(db, guildId).catch(() => null),
+      getLatestServerStats(db, guildId).catch(() => null),
+    ]);
+    const guildInfo = {
+      name: guildMeta?.name || "Unknown Server",
+      member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
+      human_count: guildStats?.human_count ?? null,
+      bot_count: guildStats?.bot_count ?? null,
+      boost_count: guildStats?.boost_count ?? guildMeta?.premium_subscription_count ?? null,
+      boost_level: guildStats?.boost_level ?? guildMeta?.premium_tier ?? null,
+    };
+
+    const context = buildContext(event, guildInfo);
 
     // Build filter context with actor/target roles for role-based filters
     const filterContext = {};

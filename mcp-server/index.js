@@ -171,6 +171,11 @@ const TEMPLATE_VARIABLES = {
   "channel.mention": "Mention the channel (#channel)",
   "guild.id": "Server ID",
   "guild.name": "Server name",
+  "guild.member_count": "Total member count",
+  "guild.human_count": "Human (non-bot) member count",
+  "guild.bot_count": "Bot count",
+  "guild.boost_count": "Number of boosts",
+  "guild.boost_level": "Server boost level (0-3)",
   "trigger.event": "Event type that triggered",
 };
 

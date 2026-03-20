@@ -14,6 +14,8 @@ import { executeAction, processTemplate } from "$lib/automation/engine.js";
 import { log } from "$lib/db/logger.js";
 import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
 import { getIntegrationCommands } from "$lib/integrations/registry.js";
+import { getLatestServerStats } from "$lib/db/server-stats.js";
+import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 /**
  * Convert hex string to Uint8Array
@@ -414,7 +416,20 @@ async function handleCustomCommand(command, interaction, db, platform) {
 		}
 	}
 
-	const context = buildCommandContext(interaction, {}, voiceState);
+	const [guildMeta, guildStats] = await Promise.all([
+		getGuildMetadata(db, guildId).catch(() => null),
+		getLatestServerStats(db, guildId).catch(() => null),
+	]);
+	const guildInfo = {
+		name: guildMeta?.name || "Unknown Server",
+		member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
+		human_count: guildStats?.human_count ?? null,
+		bot_count: guildStats?.bot_count ?? null,
+		boost_count: guildStats?.boost_count ?? guildMeta?.premium_subscription_count ?? null,
+		boost_level: guildStats?.boost_level ?? guildMeta?.premium_tier ?? null,
+	};
+
+	const context = buildCommandContext(interaction, guildInfo, voiceState);
 
 	// Record usage
 	await recordCommandUse(db, command.id);
@@ -645,7 +660,20 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 			}
 		}
 
-		const context = buildCommandContext(interaction, {}, voiceState);
+		const [guildMeta, guildStats] = await Promise.all([
+			getGuildMetadata(db, guildId).catch(() => null),
+			getLatestServerStats(db, guildId).catch(() => null),
+		]);
+		const guildInfo = {
+			name: guildMeta?.name || "Unknown Server",
+			member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
+			human_count: guildStats?.human_count ?? null,
+			bot_count: guildStats?.bot_count ?? null,
+			boost_count: guildStats?.boost_count ?? guildMeta?.premium_subscription_count ?? null,
+			boost_level: guildStats?.boost_level ?? guildMeta?.premium_tier ?? null,
+		};
+
+		const context = buildCommandContext(interaction, guildInfo, voiceState);
 
 		// Record usage
 		await recordCommandUse(db, command.id);

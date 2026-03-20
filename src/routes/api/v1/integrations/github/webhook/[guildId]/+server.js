@@ -17,6 +17,8 @@ import { getIntegrationBySlug, getGuildsWithIntegrationConfig } from "$lib/db/in
 import { verifyGitHubSignature, parseGitHubEvent } from "$lib/integrations/github.js";
 import { processAutomations } from "$lib/automation/engine.js";
 import { createDiscordRestClient } from "$lib/discord/rest-client.js";
+import { getLatestServerStats } from "$lib/db/server-stats.js";
+import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, request, platform }) {
@@ -102,7 +104,19 @@ export async function POST({ params, request, platform }) {
   try {
     const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
     const discord = botToken ? createDiscordRestClient(botToken) : null;
-    const result = await processAutomations(event, db, discord, {}, {});
+    const [guildMeta, guildStats] = await Promise.all([
+      getGuildMetadata(db, guildId).catch(() => null),
+      getLatestServerStats(db, guildId).catch(() => null),
+    ]);
+    const guildInfo = {
+      name: guildMeta?.name || "Unknown Server",
+      member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
+      human_count: guildStats?.human_count ?? null,
+      bot_count: guildStats?.bot_count ?? null,
+      boost_count: guildStats?.boost_count ?? guildMeta?.premium_subscription_count ?? null,
+      boost_level: guildStats?.boost_level ?? guildMeta?.premium_tier ?? null,
+    };
+    const result = await processAutomations(event, db, discord, guildInfo, {});
     log.debug(
       `[GitHub] Automations processed: ${result.executed} executed, ${result.errors} errors`,
     );
