@@ -16,7 +16,9 @@
 		"register-linked-role": "node scripts/register-linked-role-metadata.js",
 		"db:create": "wrangler d1 create spacebot-logs",
 		"db:migrate": "node scripts/migrate.js",
-		"db:migrate:local": "node scripts/migrate.js --local"
+		"db:migrate:local": "node scripts/migrate.js --local",
+		"gateway:latency": "node scripts/gateway-latency.js",
+		"gateway:latency:history": "node scripts/gateway-latency.js --history"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.21.2",

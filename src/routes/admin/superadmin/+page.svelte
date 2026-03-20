@@ -1378,7 +1378,6 @@
 	
 	.servers-table-wrapper {
 		overflow-x: auto;
-		overflow: hidden;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
@@ -1881,10 +1880,10 @@
 	
 	.history-table-wrapper {
 		overflow-x: auto;
-		overflow: hidden;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
+		-webkit-overflow-scrolling: touch;
 	}
 	
 	.history-table {
@@ -2002,8 +2001,14 @@
 	
 	.integrations-manage-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+		grid-template-columns: 1fr;
 		gap: 1rem;
+	}
+
+	@media (min-width: 640px) {
+		.integrations-manage-grid {
+			grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		}
 	}
 	
 	.integration-manage-card {
@@ -2177,9 +2182,15 @@
 	
 	.builtin-commands-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+		grid-template-columns: 1fr;
 		gap: 1rem;
 		margin-bottom: 1rem;
+	}
+
+	@media (min-width: 640px) {
+		.builtin-commands-grid {
+			grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+		}
 	}
 	
 	.command-card {
