@@ -259,7 +259,38 @@ npm run gateway
 This runs `scripts/prod-start.js` which:
 1. Checks for `cloudflared` and installs it if missing
 2. Checks for `pm2` and installs it if missing
-3. Starts both `spacebot-gateway` and `spacebot-tunnel` via PM2
+3. Starts `spacebot-gateway`, `spacebot-tunnel`, and `spacebot-deploy` via PM2
+
+### Auto-Deploy on Push
+
+The `spacebot-deploy` PM2 process runs a webhook listener on port 9090. When you push to `main`, GitHub sends a webhook and the server automatically:
+
+1. `git pull origin main`
+2. `npm install` (if `package.json` changed)
+3. `npm run db:migrate` (if migration files changed)
+4. `pm2 restart spacebot-gateway`
+
+**Setup (one-time):**
+
+1. Set `DEPLOY_WEBHOOK_SECRET` in your environment (e.g., in `.env` or PM2 env config):
+   ```bash
+   export DEPLOY_WEBHOOK_SECRET="your-secret-here"
+   ```
+
+2. Add a route in your cloudflared config (`~/.cloudflared/config.yml`) to forward deploy requests to the webhook:
+   ```yaml
+   ingress:
+     - hostname: spacebot.starspace.group
+       path: /deploy
+       service: http://localhost:9090
+     # ... other routes ...
+   ```
+
+3. Add a GitHub webhook at **Settings > Webhooks** for the `spacebot` repo:
+   - **Payload URL:** `https://spacebot.starspace.group/deploy`
+   - **Content type:** `application/json`
+   - **Secret:** same value as `DEPLOY_WEBHOOK_SECRET`
+   - **Events:** Just the `push` event
 
 ### PM2 Commands
 
@@ -285,6 +316,8 @@ This ensures the gateway bot restarts automatically if the server reboots.
 PM2 writes logs to the `logs/` directory:
 - `logs/gateway-out.log` — Standard output
 - `logs/gateway-error.log` — Errors
+- `logs/deploy-out.log` — Deploy webhook logs
+- `logs/deploy-error.log` — Deploy webhook errors
 
 ### Monitoring
 

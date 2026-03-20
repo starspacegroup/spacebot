@@ -1,6 +1,7 @@
 /**
  * Production Startup Script
  * Ensures all dependencies (cloudflared, pm2) are installed,
+ * sets up the GitHub deploy webhook if needed,
  * then starts the gateway and tunnel via PM2.
  *
  * Usage:
@@ -29,6 +30,99 @@ function run(cmd, label) {
 	} catch (err) {
 		console.error(`\n❌ Failed: ${label || cmd}`);
 		process.exit(1);
+	}
+}
+
+const WEBHOOK_URL = 'https://spacebot.starspace.group/deploy';
+const GITHUB_REPO = 'starspacegroup/spacebot';
+
+async function setupGitHubWebhook() {
+	const token = process.env.GITHUB_TOKEN;
+	const secret = process.env.DEPLOY_WEBHOOK_SECRET;
+
+	if (!token || !secret) {
+		console.log('\n⏭️  Skipping GitHub webhook setup (GITHUB_TOKEN or DEPLOY_WEBHOOK_SECRET not set).');
+		return;
+	}
+
+	console.log('\n🔗 Checking GitHub deploy webhook...');
+
+	try {
+		// List existing webhooks
+		const listRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/hooks`, {
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: 'application/vnd.github+json',
+				'X-GitHub-Api-Version': '2022-11-28',
+			},
+		});
+
+		if (!listRes.ok) {
+			console.log(`  ⚠️  Could not list webhooks (${listRes.status}). Skipping.`);
+			return;
+		}
+
+		const hooks = await listRes.json();
+		const existing = hooks.find(h => h.config?.url === WEBHOOK_URL);
+
+		if (existing) {
+			console.log(`  ✅ Deploy webhook already exists (id: ${existing.id}).`);
+
+			// Update the secret in case it changed
+			const updateRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/hooks/${existing.id}`, {
+				method: 'PATCH',
+				headers: {
+					Authorization: `Bearer ${token}`,
+					Accept: 'application/vnd.github+json',
+					'Content-Type': 'application/json',
+					'X-GitHub-Api-Version': '2022-11-28',
+				},
+				body: JSON.stringify({
+					config: {
+						url: WEBHOOK_URL,
+						content_type: 'json',
+						secret,
+					},
+					active: true,
+				}),
+			});
+
+			if (updateRes.ok) {
+				console.log('  ✅ Webhook secret synced.');
+			}
+			return;
+		}
+
+		// Create webhook
+		const createRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/hooks`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: 'application/vnd.github+json',
+				'Content-Type': 'application/json',
+				'X-GitHub-Api-Version': '2022-11-28',
+			},
+			body: JSON.stringify({
+				name: 'web',
+				active: true,
+				events: ['push'],
+				config: {
+					url: WEBHOOK_URL,
+					content_type: 'json',
+					secret,
+				},
+			}),
+		});
+
+		if (createRes.ok) {
+			const hook = await createRes.json();
+			console.log(`  ✅ Deploy webhook created (id: ${hook.id}).`);
+		} else {
+			const errBody = await createRes.text();
+			console.log(`  ⚠️  Failed to create webhook (${createRes.status}): ${errBody}`);
+		}
+	} catch (err) {
+		console.log(`  ⚠️  Webhook setup error: ${err.message}. Skipping.`);
 	}
 }
 
@@ -93,8 +187,12 @@ if (commandExists('pm2')) {
 console.log('\n🚀 Starting production services via PM2...\n');
 run('pm2 start ecosystem.config.cjs', 'pm2 start');
 
+// --- Set up GitHub deploy webhook ---
+await setupGitHubWebhook();
+
 console.log('\n✅ Production services started.');
 console.log('   • spacebot-gateway  — Discord gateway bot');
-console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot.starspace.group)\n');
+console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot.starspace.group)');
+console.log('   • spacebot-deploy   — Auto-deploy webhook (port 9090)\n');
 console.log('   Run "npm run gateway:status" to check status.');
 console.log('   Run "npm run gateway:logs" to view logs.\n');
