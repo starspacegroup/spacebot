@@ -190,6 +190,15 @@ if (commandExists('pm2')) {
 
 // --- Start everything via PM2 ---
 console.log('\n🚀 Starting production services via PM2...\n');
+
+// Clean up any stale PM2 process entries to avoid "Process not found" crashes
+try {
+	execSync('pm2 delete ecosystem.config.cjs', { stdio: 'pipe' });
+	console.log('  🧹 Cleared previous PM2 processes.');
+} catch {
+	// No existing processes to delete — that's fine
+}
+
 run('pm2 start ecosystem.config.cjs', 'pm2 start');
 
 // --- Set up GitHub deploy webhook ---
