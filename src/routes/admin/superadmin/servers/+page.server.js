@@ -10,6 +10,29 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /**
+ * Get all guilds the bot is in from the Discord API
+ */
+async function getBotGuilds(botToken) {
+	if (!botToken) return [];
+
+	try {
+		const response = await fetch("https://discord.com/api/v10/users/@me/guilds?with_counts=true", {
+			headers: { Authorization: `Bot ${botToken}` },
+		});
+
+		if (!response.ok) {
+			log.warn(`[Superadmin Servers] Failed to fetch bot guilds: ${response.status}`);
+			return [];
+		}
+
+		return await response.json();
+	} catch (error) {
+		log.error("[Superadmin Servers] Failed to fetch bot guilds:", error);
+		return [];
+	}
+}
+
+/**
  * Get per-guild usage counts for commands and automations.
  * Returns a Map of guild_id -> { commands_total, commands_active, automations_total, automations_active }
  */
@@ -65,20 +88,47 @@ export async function load({ cookies, platform }) {
 	}
 
 	const db = platform?.env?.DB;
+	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
-	const [allMetadata, allPlans, usageMap] = await Promise.all([
+	const [botGuilds, allMetadata, allPlans, usageMap] = await Promise.all([
+		getBotGuilds(botToken),
 		db ? getAllGuildMetadata(db) : [],
 		db ? getAllServerPlans(db) : [],
 		db ? getGuildUsageCounts(db) : new Map(),
 	]);
 
-	// Build plan map
+	// Build lookup maps
 	const planMap = new Map(allPlans.map((p) => [p.guild_id, p]));
+	const metadataMap = new Map(allMetadata.map((m) => [m.guild_id, m]));
 
-	// Merge servers with plans and usage counts
-	const servers = allMetadata.map((guild) => {
+	// Start with all guilds the bot is in (from Discord API)
+	const seenGuildIds = new Set();
+	const servers = [];
+
+	for (const apiGuild of botGuilds) {
+		seenGuildIds.add(apiGuild.id);
+		const meta = metadataMap.get(apiGuild.id);
+		const usage = usageMap.get(apiGuild.id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
+		servers.push({
+			guild_id: apiGuild.id,
+			name: meta?.name || apiGuild.name,
+			icon: meta?.icon ?? apiGuild.icon,
+			owner_id: meta?.owner_id || (apiGuild.owner ? apiGuild.owner_id : null),
+			approximate_member_count: meta?.approximate_member_count || apiGuild.approximate_member_count || 0,
+			premium_tier: meta?.premium_tier ?? 0,
+			premium_subscription_count: meta?.premium_subscription_count ?? 0,
+			features: meta?.features || apiGuild.features || [],
+			fetched_at: meta?.fetched_at || null,
+			plan: planMap.get(apiGuild.id) || null,
+			usage,
+		});
+	}
+
+	// Also include any metadata-only guilds not in the API response (e.g. bot was removed)
+	for (const guild of allMetadata) {
+		if (seenGuildIds.has(guild.guild_id)) continue;
 		const usage = usageMap.get(guild.guild_id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
-		return {
+		servers.push({
 			guild_id: guild.guild_id,
 			name: guild.name,
 			icon: guild.icon,
@@ -90,8 +140,8 @@ export async function load({ cookies, platform }) {
 			fetched_at: guild.fetched_at,
 			plan: planMap.get(guild.guild_id) || null,
 			usage,
-		};
-	});
+		});
+	}
 
 	// Sort by member count descending
 	servers.sort((a, b) => (b.approximate_member_count || 0) - (a.approximate_member_count || 0));
