@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "spacebot-gateway",
-      script: "src/lib/discord/gateway.js",
+      script: "src/lib/discord/gateway-launcher.cjs",
       interpreter: "bun",
       env: {
         NODE_ENV: "production",
