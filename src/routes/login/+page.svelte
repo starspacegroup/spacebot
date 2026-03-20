@@ -18,16 +18,35 @@
 </script>
 
 <div class="login-container">
-	<h1>Login</h1>
-	<p>Sign in with Discord to access your dashboard</p>
-	
-	{#if error}
+	{#if error && data.isLoggedIn}
+		<h1>Authorization Cancelled</h1>
+		<p>The authorization request was not completed</p>
+		
 		<div class="error-banner">
 			{errorMessages[error] || 'An error occurred. Please try again.'}
 		</div>
+
+		<div class="logged-in-card">
+			<p class="logged-in-message">You're still signed in — no changes were made.</p>
+			{#if data.isAdmin}
+				<a href={adminUrl} class="dashboard-btn">Go to Dashboard</a>
+			{:else}
+				<a href="/" class="dashboard-btn">Go to Home</a>
+			{/if}
+		</div>
+	{:else if error}
+		<h1>Login</h1>
+		<p>Sign in with Discord to access your dashboard</p>
+
+		<div class="error-banner">
+			{errorMessages[error] || 'An error occurred. Please try again.'}
+		</div>
+	{:else}
+		<h1>Login</h1>
+		<p>Sign in with Discord to access your dashboard</p>
 	{/if}
 	
-	{#if data.isLoggedIn}
+	{#if data.isLoggedIn && !error}
 		<div class="logged-in-card">
 			<svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" class="check-icon">
 				<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
@@ -39,7 +58,7 @@
 				<a href="/" class="dashboard-btn">Go to Home</a>
 			{/if}
 		</div>
-	{:else}
+	{:else if !data.isLoggedIn}
 		<div class="login-card">
 			<a href="/api/auth/discord{urlParams?.get('return_to') ? '?return_to=' + encodeURIComponent(urlParams.get('return_to')) : ''}" class="discord-btn">
 				<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
@@ -72,7 +91,7 @@
 		</div>
 	{/if}
 	
-	{#if data.isLoggedIn && data.isAdmin}
+	{#if data.isLoggedIn && data.isAdmin && !error}
 		<div class="install-card">
 			<h2>Add Bot to Server</h2>
 			<p class="install-info">
