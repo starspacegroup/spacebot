@@ -7,16 +7,20 @@
 	const serverStats = $derived(data?.stats ?? null);
 	const serverChartData = $derived(data?.chartData ?? []);
 	const recentSnapshots = $derived(data?.recentSnapshots ?? []);
+	const serverBenchmarkInterval = $derived(data?.benchmarkInterval ?? 60);
 
 	// Mutable state for client-side fetched data (overrides server data)
 	let fetchedStats = $state(null);
 	let fetchedChartData = $state(null);
 	let selectedRange = $state('24h');
 	let loading = $state(false);
+	let fetchedInterval = $state(null);
+	let savingInterval = $state(false);
 
 	// Use fetched data if available, otherwise fall back to server data
 	const stats = $derived(fetchedStats ?? serverStats);
 	const chartData = $derived(fetchedChartData ?? serverChartData);
+	const benchmarkInterval = $derived(fetchedInterval ?? serverBenchmarkInterval);
 
 	const ranges = [
 		{ value: '1h', label: '1 Hour' },
@@ -24,6 +28,14 @@
 		{ value: '24h', label: '24 Hours' },
 		{ value: '7d', label: '7 Days' },
 		{ value: '30d', label: '30 Days' },
+	];
+
+	const intervalOptions = [
+		{ value: 30, label: '30 seconds' },
+		{ value: 60, label: '1 minute' },
+		{ value: 120, label: '2 minutes' },
+		{ value: 300, label: '5 minutes' },
+		{ value: 600, label: '10 minutes' },
 	];
 
 	// Format date
@@ -89,11 +101,33 @@
 				const result = await response.json();
 				fetchedStats = result.stats;
 				fetchedChartData = result.chartData;
+				if (result.benchmarkInterval) {
+					fetchedInterval = result.benchmarkInterval;
+				}
 			}
 		} catch (error) {
 			console.error('Failed to fetch benchmark data:', error);
 		} finally {
 			loading = false;
+		}
+	}
+
+	// Update the benchmark check interval
+	async function updateInterval(newInterval) {
+		savingInterval = true;
+		try {
+			const response = await fetch('/api/gateway/benchmark', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ benchmark_interval_seconds: newInterval }),
+			});
+			if (response.ok) {
+				fetchedInterval = newInterval;
+			}
+		} catch (error) {
+			console.error('Failed to update interval:', error);
+		} finally {
+			savingInterval = false;
 		}
 	}
 
@@ -206,6 +240,29 @@
 		</div>
 	</section>
 
+	<!-- Check Interval Setting -->
+	<section class="stats-section">
+		<h2 class="section-title">
+			<span class="section-icon">⏱️</span>
+			Check Interval
+		</h2>
+		<div class="interval-picker">
+			<p class="interval-description">How often the gateway reports latency data. Takes effect on the next check cycle.</p>
+			<div class="interval-options">
+				{#each intervalOptions as opt}
+					<button
+						class="range-btn"
+						class:active={benchmarkInterval === opt.value}
+						onclick={() => updateInterval(opt.value)}
+						disabled={savingInterval}
+					>
+						{opt.label}
+					</button>
+				{/each}
+			</div>
+		</div>
+	</section>
+
 	<!-- Range Selector -->
 	<section class="stats-section">
 		<div class="range-header">
@@ -288,7 +345,7 @@
 			{:else if chartData.length === 0}
 				<div class="chart-empty">
 					<p>No benchmark data available for this range.</p>
-					<p class="chart-empty-hint">The gateway process reports latency every 60 seconds.</p>
+					<p class="chart-empty-hint">The gateway process reports latency every {benchmarkInterval} seconds.</p>
 				</div>
 			{:else}
 				<div class="chart-empty">
@@ -649,6 +706,30 @@
 	.range-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	/* Interval picker */
+	.interval-picker {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		padding: 1rem;
+	}
+
+	.interval-description {
+		color: var(--color-text-muted);
+		font-size: 0.8rem;
+		margin: 0 0 0.75rem;
+	}
+
+	.interval-options {
+		display: flex;
+		gap: 0.25rem;
+		flex-wrap: wrap;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.25rem;
 	}
 
 	/* Chart */

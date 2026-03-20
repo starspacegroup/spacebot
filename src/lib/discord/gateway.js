@@ -2977,10 +2977,11 @@ function setupEventHandlers(client, logFn) {
 
 // Benchmark reporting interval reference
 let benchmarkInterval = null;
+let currentBenchmarkIntervalMs = 60_000;
 
 /**
  * Start periodic gateway benchmark reporting
- * Captures WebSocket heartbeat latency and connection metrics every 60 seconds
+ * Captures WebSocket heartbeat latency and connection metrics every N seconds
  * @param {Client} client - The discord.js client
  */
 function startBenchmarkReporting(client) {
@@ -3021,17 +3022,29 @@ function startBenchmarkReporting(client) {
       if (!response.ok) {
         log.debug(`[Benchmark] Failed to report: ${response.status}`);
       } else {
+        const result = await response.json();
         log.debug(`[Benchmark] Reported latency: ${ping}ms, guilds: ${guildCount}`);
+
+        // Adjust interval if the server tells us a different one
+        if (result.benchmark_interval_seconds) {
+          const newIntervalMs = result.benchmark_interval_seconds * 1000;
+          if (newIntervalMs !== currentBenchmarkIntervalMs) {
+            log.info(`[Benchmark] Interval changed: ${currentBenchmarkIntervalMs / 1000}s → ${result.benchmark_interval_seconds}s`);
+            currentBenchmarkIntervalMs = newIntervalMs;
+            clearInterval(benchmarkInterval);
+            benchmarkInterval = setInterval(reportBenchmark, currentBenchmarkIntervalMs);
+          }
+        }
       }
     } catch (error) {
       log.debug(`[Benchmark] Report error: ${error.message}`);
     }
   };
 
-  // Report immediately, then every 60 seconds
+  // Report immediately, then at the configured interval
   reportBenchmark();
-  benchmarkInterval = setInterval(reportBenchmark, 60_000);
-  log.info("📡 Gateway benchmark reporting started (60s interval)");
+  benchmarkInterval = setInterval(reportBenchmark, currentBenchmarkIntervalMs);
+  log.info(`📡 Gateway benchmark reporting started (${currentBenchmarkIntervalMs / 1000}s interval)`);
 }
 
 /**

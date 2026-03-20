@@ -7,7 +7,10 @@
 
 import { json } from "@sveltejs/kit";
 import { recordGatewayBenchmark, getBenchmarkStats, getBenchmarkChartData } from "$lib/db/gateway-benchmarks.js";
+import { getGlobalSetting, setGlobalSetting } from "$lib/db/global-settings.js";
 import { log } from "$lib/log.js";
+
+const DEFAULT_BENCHMARK_INTERVAL = 60;
 
 /**
  * Check if user is a superadmin
@@ -51,7 +54,11 @@ export async function POST({ request, platform }) {
 			return json({ error: result.error }, { status: 500 });
 		}
 
-		return json({ success: true });
+		// Return the current benchmark interval so the gateway can adjust
+		const intervalStr = await getGlobalSetting(db, "benchmark_interval_seconds", String(DEFAULT_BENCHMARK_INTERVAL));
+		const interval = parseInt(intervalStr, 10) || DEFAULT_BENCHMARK_INTERVAL;
+
+		return json({ success: true, benchmark_interval_seconds: interval });
 	} catch (error) {
 		log.error("[GatewayBenchmark API] POST error:", error);
 		return json({ error: "Invalid request body" }, { status: 400 });
@@ -78,14 +85,56 @@ export async function GET({ cookies, platform, url }) {
 	const safeRange = validRanges.includes(range) ? range : "24h";
 
 	try {
+		const intervalStr = await getGlobalSetting(db, "benchmark_interval_seconds", String(DEFAULT_BENCHMARK_INTERVAL));
+		const benchmarkInterval = parseInt(intervalStr, 10) || DEFAULT_BENCHMARK_INTERVAL;
+
 		const [stats, chartData] = await Promise.all([
 			getBenchmarkStats(db, safeRange),
 			getBenchmarkChartData(db, safeRange),
 		]);
 
-		return json({ stats, chartData, range: safeRange });
+		return json({ stats, chartData, range: safeRange, benchmarkInterval });
 	} catch (error) {
 		log.error("[GatewayBenchmark API] GET error:", error);
 		return json({ error: "Failed to fetch benchmark data" }, { status: 500 });
+	}
+}
+
+/**
+ * PATCH - Update benchmark settings (superadmin only)
+ */
+export async function PATCH({ request, cookies, platform }) {
+	const userId = cookies.get("discord_user_id");
+	if (!checkIsSuperAdmin(userId, platform)) {
+		return json({ error: "Unauthorized" }, { status: 401 });
+	}
+
+	const db = platform?.env?.DB;
+	if (!db) {
+		return json({ error: "Database not available" }, { status: 503 });
+	}
+
+	try {
+		const data = await request.json();
+		const validIntervals = [30, 60, 120, 300, 600];
+
+		if (data.benchmark_interval_seconds !== undefined) {
+			const interval = parseInt(data.benchmark_interval_seconds, 10);
+			if (!validIntervals.includes(interval)) {
+				return json({ error: "Invalid interval. Must be one of: " + validIntervals.join(", ") }, { status: 400 });
+			}
+
+			const result = await setGlobalSetting(db, "benchmark_interval_seconds", String(interval));
+			if (!result.success) {
+				return json({ error: result.error }, { status: 500 });
+			}
+
+			return json({ success: true, benchmark_interval_seconds: interval });
+		}
+
+		return json({ error: "No valid settings provided" }, { status: 400 });
+	} catch (error) {
+		log.error("[GatewayBenchmark API] PATCH error:", error);
+		return json({ error: "Invalid request body" }, { status: 400 });
 	}
 }

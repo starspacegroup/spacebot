@@ -7,6 +7,7 @@
 
 import { redirect } from "@sveltejs/kit";
 import { getBenchmarkStats, getBenchmarkChartData, getRecentBenchmarks } from "$lib/db/gateway-benchmarks.js";
+import { getGlobalSetting } from "$lib/db/global-settings.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform }) {
@@ -17,10 +18,11 @@ export async function load({ cookies, platform }) {
 
 	const defaultRange = "24h";
 
-	const [stats, chartData, recentSnapshots] = await Promise.all([
+	const [stats, chartData, recentSnapshots, intervalStr] = await Promise.all([
 		getBenchmarkStats(db, defaultRange),
 		getBenchmarkChartData(db, defaultRange),
 		getRecentBenchmarks(db, 10),
+		getGlobalSetting(db, "benchmark_interval_seconds", "60"),
 	]);
 
 	return {
@@ -28,5 +30,6 @@ export async function load({ cookies, platform }) {
 		chartData,
 		recentSnapshots,
 		range: defaultRange,
+		benchmarkInterval: parseInt(intervalStr, 10) || 60,
 	};
 }
