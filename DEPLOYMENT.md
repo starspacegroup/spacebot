@@ -205,6 +205,72 @@ Cloudflare Pages automatically deploys your site when you push to the configured
 4. Update DNS records as instructed
 5. Update Discord OAuth redirect URL with your custom domain
 
+## Gateway Bot (Production)
+
+The Discord gateway bot runs as a separate long-lived process on your server, managed by **PM2** using **Bun** as the runtime.
+
+### Prerequisites
+
+- [Bun](https://bun.sh/) installed (`curl -fsSL https://bun.sh/install | bash`)
+- [PM2](https://pm2.keymetrics.io/) installed globally (`bun add -g pm2`)
+
+### Install Dependencies
+
+```bash
+bun install
+```
+
+### Environment Variables
+
+Ensure a `.env` file exists in the project root with at least:
+
+```
+DISCORD_BOT_TOKEN=your_bot_token
+API_BASE=https://your-production-url.pages.dev
+```
+
+### Start the Gateway
+
+```bash
+# Start with PM2
+npm run gateway
+
+# Or directly:
+pm2 start ecosystem.config.cjs
+```
+
+### PM2 Commands
+
+```bash
+npm run gateway:status    # Check process status
+npm run gateway:logs      # Tail live logs
+npm run gateway:restart   # Restart the gateway
+npm run gateway:stop      # Stop the gateway
+```
+
+### PM2 Startup (Auto-start on Reboot)
+
+```bash
+pm2 startup
+# Follow the printed command, then:
+pm2 save
+```
+
+This ensures the gateway bot restarts automatically if the server reboots.
+
+### Log Files
+
+PM2 writes logs to the `logs/` directory:
+- `logs/gateway-out.log` — Standard output
+- `logs/gateway-error.log` — Errors
+
+### Monitoring
+
+```bash
+pm2 monit              # Real-time dashboard
+pm2 describe spacebot-gateway  # Detailed process info
+```
+
 ## Security Best Practices
 
 - ✅ Never commit `.env` files to Git

@@ -4,7 +4,8 @@
  * Processes automations when events are triggered
  *
  * This runs as a separate process alongside the SvelteKit app
- * Start with: node src/lib/discord/gateway.js
+ * Start with: bun src/lib/discord/gateway.js
+ * Production: pm2 start ecosystem.config.cjs
  */
 
 import "dotenv/config";
@@ -3056,6 +3057,20 @@ async function startBot() {
     process.exit(1);
   }
 }
+
+// Graceful shutdown for PM2 / process managers
+function gracefulShutdown(signal) {
+  log.info(`\n🛑 Received ${signal}, shutting down gracefully...`);
+  if (benchmarkInterval) clearInterval(benchmarkInterval);
+  if (discordClient) {
+    discordClient.destroy();
+    log.info("✅ Discord client destroyed");
+  }
+  process.exit(0);
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 // Start the bot if this file is run directly
 startBot();
