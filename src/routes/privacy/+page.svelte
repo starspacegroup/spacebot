@@ -348,7 +348,7 @@
 			<li><strong>GitHub:</strong>
 				<a href="https://github.com/starspacegroup/spacebot/issues" target="_blank" rel="noopener noreferrer">github.com/starspacegroup/spacebot/issues</a></li>
 			<li><strong>Email:</strong>
-				<a href="mailto:privacy@starspace.group">privacy@starspace.group</a></li>
+				<a href="mailto:spacebot@starspace.group">spacebot@starspace.group</a></li>
 		</ul>
 		<p>
 			For users in the EEA, UK, or Switzerland, you also have the right to lodge a complaint

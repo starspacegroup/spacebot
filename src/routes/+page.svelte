@@ -167,7 +167,7 @@
 					<h3>Enterprise</h3>
 					<p>Need white-label branding or a dedicated isolated database? Let's talk.</p>
 				</div>
-				<a href="mailto:enterprise@starspace.group" class="btn btn-secondary">Contact Us</a>
+				<a href="mailto:spacebot@starspace.group" class="btn btn-secondary">Contact Us</a>
 			</div>
 		</div>
 	</section>
