@@ -1457,8 +1457,8 @@
 		width: 32px;
 		height: 32px;
 		border-radius: 50%;
-		background: var(--color-primary);
-		color: var(--color-primary);
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		display: flex;
 		align-items: center;
 		justify-content: center;

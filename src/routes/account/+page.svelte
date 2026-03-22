@@ -1388,12 +1388,12 @@
 	}
 	
 	.btn-primary {
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 	}
 	
 	.btn-primary:hover {
-		background: var(--color-primary-hover);
+		background: var(--color-primary-button-hover);
 	}
 	
 	.btn-secondary {

@@ -32,7 +32,10 @@
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
 	
-	/* Buttons — darker shade to guarantee white-text contrast across ALL hues */
+	/* Buttons — darker shade to guarantee white-text contrast across ALL hues.
+	   ⚠️  ALWAYS use these for button/badge backgrounds with text on top.
+	   NEVER use --color-primary/--color-accent as a background with text —
+	   those are for text color, links, and decorative elements only. */
 	--color-primary-button: hsl(var(--hue), 85%, 42%);
 	--color-primary-button-hover: hsl(var(--hue), 87%, 36%);
 	--color-primary-button-text: white;
@@ -243,14 +246,14 @@ input, textarea, select, code, pre, kbd, samp,
 	background: var(--color-text-muted);
 }
 
-/* Link defaults — exclude .btn so button-links never flash the link color */
-a:not(.btn) {
+/* Link defaults — exclude buttons so button-links never flash the link color */
+a:not(.btn):not([class*="-btn"]):not([class*="btn-"]) {
 	color: var(--color-primary);
 	text-decoration: none;
 	transition: color var(--transition-fast);
 }
 
-a:not(.btn):hover {
+a:not(.btn):not([class*="-btn"]):not([class*="btn-"]):hover {
 	color: var(--color-primary-hover);
 }
 

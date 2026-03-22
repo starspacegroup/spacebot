@@ -775,8 +775,8 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		padding: 0.3rem 0.6rem;
-		background: var(--color-primary);
-		color: white;
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
 		border: none;
 		border-radius: var(--radius-sm);
 		cursor: pointer;
