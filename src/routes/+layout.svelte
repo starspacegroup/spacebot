@@ -93,6 +93,24 @@
 	<link rel="icon" href="/favicon-192.png" type="image/png" sizes="192x192" />
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<link rel="manifest" href="/site.webmanifest" />
+
+	<!-- Open Graph defaults (overridden per-page via svelte:head) -->
+	<meta property="og:site_name" content="SpaceBot" />
+	<meta property="og:type" content="website" />
+	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
+	<meta property="og:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations." />
+	<meta property="og:image" content="https://spacebot.starspace.group/api/og?page=home" />
+	<meta property="og:image:width" content="1200" />
+	<meta property="og:image:height" content="630" />
+	<meta property="og:url" content="https://spacebot.starspace.group" />
+
+	<!-- Twitter Card -->
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
+	<meta name="twitter:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations." />
+	<meta name="twitter:image" content="https://spacebot.starspace.group/api/og?page=home" />
+
+	<meta name="theme-color" content="#0D0B1A" />
 </svelte:head>
 
 <div class="app-layout" class:chat-page={$page.url.pathname.endsWith('/chat')}>

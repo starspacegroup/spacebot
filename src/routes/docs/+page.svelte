@@ -1,6 +1,13 @@
 <svelte:head>
 	<title>Documentation – SpaceBot</title>
 	<meta name="description" content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more." />
+	<meta property="og:title" content="Documentation – SpaceBot" />
+	<meta property="og:description" content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more." />
+	<meta property="og:url" content="https://spacebot.starspace.group/docs" />
+	<meta property="og:image" content="https://spacebot.starspace.group/api/og?page=docs" />
+	<meta name="twitter:title" content="Documentation – SpaceBot" />
+	<meta name="twitter:description" content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more." />
+	<meta name="twitter:image" content="https://spacebot.starspace.group/api/og?page=docs" />
 </svelte:head>
 
 <div class="docs-page">
