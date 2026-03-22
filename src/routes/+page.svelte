@@ -13,10 +13,10 @@
 	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
 	<meta property="og:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
 	<meta property="og:url" content="https://spacebot.starspace.group" />
-	<meta property="og:image" content="https://spacebot.starspace.group/api/og?page=home" />
+	<meta property="og:image" content="https://spacebot.starspace.group/og-home.png" />
 	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
 	<meta name="twitter:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/api/og?page=home" />
+	<meta name="twitter:image" content="https://spacebot.starspace.group/og-home.png" />
 </svelte:head>
 
 <div class="landing">
