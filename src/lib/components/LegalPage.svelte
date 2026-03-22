@@ -16,10 +16,10 @@
 	<meta name="description" content="SpaceBot {title}" />
 	<meta property="og:title" content="{title} – SpaceBot" />
 	<meta property="og:description" content="SpaceBot {title}" />
-	<meta property="og:image" content="https://spacebot.starspace.group/{title === 'Privacy Policy' ? 'og-privacy' : 'og-terms'}.png" />
+	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
 	<meta name="twitter:title" content="{title} – SpaceBot" />
 	<meta name="twitter:description" content="SpaceBot {title}" />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/{title === 'Privacy Policy' ? 'og-privacy' : 'og-terms'}.png" />
+	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
 <div class="legal-page">
