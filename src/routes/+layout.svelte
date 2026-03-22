@@ -99,7 +99,7 @@
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
 	<meta property="og:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations." />
-	<meta property="og:image" content="https://spacebot.starspace.group/api/og?page=home" />
+	<meta property="og:image" content="https://spacebot.starspace.group/og-home.png" />
 	<meta property="og:image:width" content="1200" />
 	<meta property="og:image:height" content="630" />
 	<meta property="og:url" content="https://spacebot.starspace.group" />
@@ -108,7 +108,7 @@
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
 	<meta name="twitter:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations." />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/api/og?page=home" />
+	<meta name="twitter:image" content="https://spacebot.starspace.group/og-home.png" />
 
 	<meta name="theme-color" content="#0D0B1A" />
 </svelte:head>
