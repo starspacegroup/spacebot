@@ -166,6 +166,27 @@
 					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Get Started</a>
 				{/if}
 			</div>
+
+			<div class="pricing-card">
+				<div class="pricing-badge">Ultimate</div>
+				<div class="pricing-price">
+					{#if billingInterval === 'yearly'}
+						<span class="price-amount">$35</span>
+						<span class="price-period">/server/mo</span>
+						<div class="price-billed-note">Billed $420/server/year</div>
+					{:else}
+						<span class="price-amount">$42</span>
+						<span class="price-period">/server/mo</span>
+					{/if}
+				</div>
+				<p class="pricing-description">Deep insights with advanced and comparative server stats.</p>
+				<ul class="pricing-features">
+					<li><span class="check">✓</span> Everything in Pro</li>
+					<li><span class="check-ultimate">✓</span> Advanced stats</li>
+					<li><span class="check-ultimate">✓</span> Comparative stats</li>
+				</ul>
+				<button class="btn btn-secondary btn-block" disabled>Coming Soon</button>
+			</div>
 		</div>
 
 		<div class="pricing-enterprise-banner">
@@ -473,9 +494,9 @@
 
 	.pricing-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 		gap: 2rem;
-		max-width: 900px;
+		max-width: 1100px;
 		margin: 0 auto;
 	}
 
@@ -515,7 +536,7 @@
 	}
 
 	.pricing-enterprise-banner {
-		max-width: 900px;
+		max-width: 1100px;
 		margin: 2rem auto 0;
 	}
 
@@ -594,6 +615,12 @@
 
 	.check-pro {
 		color: var(--color-primary);
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+
+	.check-ultimate {
+		color: var(--color-warning, #f59e0b);
 		font-weight: 700;
 		flex-shrink: 0;
 	}

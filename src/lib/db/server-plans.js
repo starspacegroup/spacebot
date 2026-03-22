@@ -32,6 +32,19 @@ export const PLAN_TIERS = {
     price_cents: 300, // $3/mo
     price_cents_yearly: 3000, // $30/yr (save ~17%)
   },
+  ultimate: {
+    label: "Ultimate",
+    max_commands: null,
+    max_automations: null,
+    max_api_keys: 10,
+    max_webhooks: 25,
+    log_retention_days: null,
+    stats_retention_days: null,
+    advanced_stats: true,
+    comparative_stats: true,
+    price_cents: 4200, // $42/mo
+    price_cents_yearly: 42000, // $420/yr
+  },
   enterprise: {
     label: "Enterprise",
     max_commands: null,
