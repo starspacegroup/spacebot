@@ -16,6 +16,7 @@ import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
 import { getIntegrationCommands } from "$lib/integrations/registry.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
+import { signWidgetUrl, WIDGET_TYPES } from "$lib/stats-widget.js";
 
 /**
  * Convert hex string to Uint8Array
@@ -136,6 +137,25 @@ export async function POST({ request, platform }) {
 	if (body.type === InteractionType.APPLICATION_COMMAND) {
 		const { data } = body;
 		const guildId = body.guild_id;
+
+		// Handle /stats built-in command (generates widget image)
+		if (data.name === "stats" && guildId) {
+			const applicationId = body.application_id;
+			const interactionToken = body.token;
+
+			const asyncWork = handleStatsCommand(body, platform, applicationId, interactionToken);
+
+			if (platform?.context?.waitUntil) {
+				platform.context.waitUntil(asyncWork);
+			} else {
+				asyncWork.catch(err => log.error("[Stats] Command error:", err));
+			}
+
+			return json({
+				type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+				data: {},
+			});
+		}
 
 		// Look up command in database (includes both custom and built-in commands)
 		if (db && guildId) {
@@ -786,6 +806,84 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 		log.error("[Command] Deferred command failed:", err);
 		await editOriginalResponse({
 			content: `❌ Command failed: ${err.message || "Unknown error"}`,
+		});
+	}
+}
+
+/**
+ * Handle the /stats built-in command.
+ * Generates a signed widget image URL and responds with an embed containing the chart.
+ */
+async function handleStatsCommand(interaction, platform, applicationId, interactionToken) {
+	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+	const publicKey = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
+	const guildId = interaction.guild_id;
+
+	async function editOriginal(data) {
+		try {
+			const res = await fetch(
+				`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+				{
+					method: "PATCH",
+					headers: {
+						"Authorization": `Bot ${botToken}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(data),
+				},
+			);
+			if (!res.ok) {
+				const errText = await res.text();
+				log.error("[Stats] Failed to edit response:", errText);
+			}
+		} catch (err) {
+			log.error("[Stats] Error editing response:", err);
+		}
+	}
+
+	try {
+		// Parse options
+		const options = interaction.data?.options || [];
+		const type = options.find(o => o.name === "type")?.value || "voice_time";
+		const period = options.find(o => o.name === "period")?.value || "30d";
+
+		const widgetInfo = WIDGET_TYPES[type];
+		if (!widgetInfo) {
+			await editOriginal({ content: "❌ Unknown stats type." });
+			return;
+		}
+
+		if (!publicKey) {
+			await editOriginal({ content: "❌ Server configuration error (missing public key)." });
+			return;
+		}
+
+		// Determine our app's origin for the widget URL
+		// In production: use the known production URL
+		// In dev: use the dev tunnel URL
+		const appUrl = platform?.env?.APP_URL || process.env.APP_URL || "https://spacebot.starspace.group";
+
+		// Generate a signed URL to the widget endpoint
+		const timestamp = Math.floor(Date.now() / 1000);
+		const sig = await signWidgetUrl(guildId, type, period, timestamp, publicKey);
+		const imageUrl = `${appUrl}/api/stats/${guildId}/widget?type=${type}&period=${period}&t=${timestamp}&sig=${sig}`;
+
+		const periodLabel = period === "7d" ? "Last 7 Days" : "Last 30 Days";
+
+		await editOriginal({
+			embeds: [{
+				title: `📊 ${widgetInfo.name}`,
+				description: `${widgetInfo.description} • ${periodLabel}`,
+				color: type === "voice_time" ? 0xFEE75C : type === "member_growth" ? 0x22c55e : 0x5865F2,
+				image: { url: imageUrl },
+				footer: { text: "SpaceBot Stats" },
+				timestamp: new Date().toISOString(),
+			}],
+		});
+	} catch (err) {
+		log.error("[Stats] Stats command failed:", err);
+		await editOriginal({
+			content: `❌ Failed to generate stats widget: ${err.message || "Unknown error"}`,
 		});
 	}
 }

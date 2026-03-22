@@ -34,6 +34,34 @@ export const commands = [
 		description: "Get help with bot commands",
 		type: 1, // CHAT_INPUT
 	},
+	{
+		name: "stats",
+		description: "Show a stats widget image for this server",
+		type: 1, // CHAT_INPUT
+		options: [
+			{
+				name: "type",
+				description: "Which stats to show",
+				type: 3, // STRING
+				required: false,
+				choices: [
+					{ name: "Voice Time", value: "voice_time" },
+					{ name: "Member Count", value: "member_count" },
+					{ name: "Member Growth", value: "member_growth" },
+				],
+			},
+			{
+				name: "period",
+				description: "Time period",
+				type: 3, // STRING
+				required: false,
+				choices: [
+					{ name: "Last 30 days", value: "30d" },
+					{ name: "Last 7 days", value: "7d" },
+				],
+			},
+		],
+	},
 ];
 
 /**

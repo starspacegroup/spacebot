@@ -887,6 +887,36 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
       footer: { text: "Use /command to run a command" },
     },
   },
+  {
+    name: "stats",
+    description: "Show a stats widget image for this server",
+    response_type: "action_only",
+    response_content: null,
+    response_embed: null,
+    options: [
+      {
+        name: "type",
+        description: "Which stats to show",
+        type: 3,
+        required: false,
+        choices: [
+          { name: "Voice Time", value: "voice_time" },
+          { name: "Member Count", value: "member_count" },
+          { name: "Member Growth", value: "member_growth" },
+        ],
+      },
+      {
+        name: "period",
+        description: "Time period",
+        type: 3,
+        required: false,
+        choices: [
+          { name: "Last 30 days", value: "30d" },
+          { name: "Last 7 days", value: "7d" },
+        ],
+      },
+    ],
+  },
 ];
 
 /**
@@ -912,11 +942,12 @@ export async function ensureBuiltInCommands(db) {
             action_type, action_config,
             response_type, response_content, response_embed,
             created_by
-          ) VALUES (?, ?, ?, 1, 1, NULL, 0, 0, 'NONE', '{}', ?, ?, ?, 'system')
+          ) VALUES (?, ?, ?, 1, 1, ?, 0, 0, 'NONE', '{}', ?, ?, ?, 'system')
         `).bind(
           BUILT_IN_GUILD_ID,
           cmd.name,
           cmd.description,
+          cmd.options ? JSON.stringify(cmd.options) : null,
           cmd.response_type,
           cmd.response_content,
           cmd.response_embed ? JSON.stringify(cmd.response_embed) : null,
