@@ -290,6 +290,7 @@
 		isOpen = true;
 		query = '';
 		selectedIndex = 0;
+		document.body.style.overflow = 'hidden';
 		await tick();
 		inputEl?.focus();
 	}
@@ -298,6 +299,7 @@
 	function close() {
 		isOpen = false;
 		query = '';
+		document.body.style.overflow = '';
 	}
 	
 	/** Execute the currently selected command */
@@ -356,6 +358,14 @@
 			close();
 		}
 	}
+
+	/** Forward wheel events anywhere on the backdrop to the palette list */
+	function handleWheel(e) {
+		if (listEl) {
+			e.preventDefault();
+			listEl.scrollTop += e.deltaY;
+		}
+	}
 	
 	/** Detect OS for showing correct shortcut key */
 	let isMac = $state(false);
@@ -370,7 +380,7 @@
 {#if isOpen}
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="palette-backdrop" onclick={handleBackdropClick}>
+	<div class="palette-backdrop" onclick={handleBackdropClick} onwheel={handleWheel}>
 		<div class="palette" role="dialog" aria-label="Command palette">
 			<div class="palette-header">
 				<svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
