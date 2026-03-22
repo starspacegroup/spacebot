@@ -167,7 +167,7 @@
 				{/if}
 			</div>
 
-			<div class="pricing-card">
+			<div class="pricing-card pricing-card-coming-soon">
 				<div class="pricing-badge">Ultimate</div>
 				<div class="pricing-price">
 					{#if billingInterval === 'yearly'}
@@ -498,6 +498,7 @@
 		gap: 2rem;
 		max-width: 1100px;
 		margin: 0 auto;
+		align-items: center;
 	}
 
 	.pricing-card {
@@ -519,6 +520,26 @@
 		border-color: var(--color-primary);
 		border-width: 2px;
 		box-shadow: var(--shadow-md);
+		padding: 3rem 2rem 3rem;
+		transform: scale(1.05);
+		z-index: 1;
+	}
+
+	.pricing-card-featured:hover {
+		transform: scale(1.05) translateY(-4px);
+	}
+
+	.pricing-card-coming-soon {
+		border: 3px dashed var(--color-border);
+		opacity: 0.55;
+		filter: grayscale(0.5);
+		background: color-mix(in srgb, var(--color-surface) 60%, transparent);
+	}
+
+	.pricing-card-coming-soon:hover {
+		transform: none;
+		box-shadow: none;
+		cursor: default;
 	}
 
 	.pricing-badge {
