@@ -117,7 +117,7 @@
 		<div class="pricing-grid">
 			<div class="pricing-card">
 				<div class="pricing-badge">Free</div>
-				<div class="pricing-price">
+				<div class="pricing-price" style="visibility: hidden;">
 					<span class="price-amount">$0</span>
 					<span class="price-period">/mo</span>
 				</div>
@@ -186,16 +186,6 @@
 					<li><span class="check-ultimate">✓</span> Comparative stats</li>
 				</ul>
 				<button class="btn btn-secondary btn-block" disabled>Coming Soon</button>
-			</div>
-		</div>
-
-		<div class="pricing-enterprise-banner">
-			<div class="pricing-enterprise-inner">
-				<div class="pricing-enterprise-text">
-					<h3>Enterprise</h3>
-					<p>Need white-label branding or a dedicated isolated database? Let's talk.</p>
-				</div>
-				<a href="mailto:spacebot@starspace.group" class="btn btn-secondary">Contact Us</a>
 			</div>
 		</div>
 	</section>
@@ -498,7 +488,6 @@
 		gap: 2rem;
 		max-width: 1100px;
 		margin: 0 auto;
-		align-items: center;
 	}
 
 	.pricing-card {
@@ -520,13 +509,9 @@
 		border-color: var(--color-primary);
 		border-width: 2px;
 		box-shadow: var(--shadow-md);
-		padding: 3rem 2rem 3rem;
-		transform: scale(1.05);
+		margin: -1.5rem 0;
+		padding: 4rem 2rem;
 		z-index: 1;
-	}
-
-	.pricing-card-featured:hover {
-		transform: scale(1.05) translateY(-4px);
 	}
 
 	.pricing-card-coming-soon {
