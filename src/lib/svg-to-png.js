@@ -86,3 +86,29 @@ export async function svgToPng(svgString, origin, options = {}) {
   const png = rendered.asPng();
   return png;
 }
+
+let cachedAvatarBase64 = null;
+
+/**
+ * Fetch the bot avatar PNG and return it as a data URI (cached in memory).
+ * @param {string} origin - Origin URL (e.g. http://localhost:4269)
+ * @returns {Promise<string|null>} data:image/png;base64,... or null on failure
+ */
+export async function getAvatarBase64(origin) {
+  if (cachedAvatarBase64) return cachedAvatarBase64;
+  try {
+    const resp = await fetch(`${origin}/favicon-192.png`);
+    if (!resp.ok) return null;
+    const buffer = await resp.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    cachedAvatarBase64 = `data:image/png;base64,${btoa(binary)}`;
+    return cachedAvatarBase64;
+  } catch {
+    return null;
+  }
+}

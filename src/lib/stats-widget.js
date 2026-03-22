@@ -11,6 +11,9 @@ const WIDGET_HEIGHT = 420;
 const PADDING = 28;
 const FONT = "'Inter', 'Segoe UI', system-ui, sans-serif";
 
+// Discord Clyde logo mark (24×24 viewBox)
+const DISCORD_LOGO_PATH = 'M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.36-.76-.54-1.09c-.01-.02-.04-.03-.07-.03c-1.5.26-2.93.71-4.27 1.33c-.01 0-.02.01-.03.02c-2.72 4.07-3.47 8.03-3.1 11.95c0 .02.01.04.03.05c1.8 1.32 3.53 2.12 5.24 2.65c.03.01.06 0 .07-.02c.4-.55.76-1.13 1.07-1.74c.02-.04 0-.08-.04-.09c-.57-.22-1.11-.48-1.64-.78c-.04-.02-.04-.08-.01-.11c.11-.08.22-.17.33-.25c.02-.02.05-.02.07-.01c3.44 1.57 7.15 1.57 10.55 0c.02-.01.05-.01.07.01c.11.09.22.17.33.26c.04.03.04.09-.01.11c-.52.31-1.07.56-1.64.78c-.04.01-.05.06-.04.09c.32.61.68 1.19 1.07 1.74c.03.01.06.02.09.01c1.72-.53 3.45-1.33 5.25-2.65c.02-.01.03-.03.03-.05c.44-4.53-.73-8.46-3.1-11.95c-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12c0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12c0 1.17-.83 2.12-1.89 2.12z';
+
 // Chart area within the widget
 const CHART = {
   left: PADDING + 50,   // room for Y-axis labels
@@ -52,7 +55,7 @@ function formatNumber(n) {
 
 // ----- SVG building blocks -----
 
-function svgDefs(gradientId, color) {
+function svgDefs(gradientId, color, options = {}) {
   return `
   <defs>
     <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
@@ -67,6 +70,7 @@ function svgDefs(gradientId, color) {
     <clipPath id="cardClip">
       <rect x="0" y="0" width="${WIDGET_WIDTH}" height="${WIDGET_HEIGHT}" rx="16" ry="16"/>
     </clipPath>
+    ${options.avatarBase64 ? `<clipPath id="wAvClip"><circle cx="${WIDGET_WIDTH - PADDING - 82}" cy="${PADDING + 16}" r="12"/></clipPath>` : ''}
   </defs>`;
 }
 
@@ -74,9 +78,16 @@ function svgBackground() {
   return `<rect width="${WIDGET_WIDTH}" height="${WIDGET_HEIGHT}" fill="#1e1e1e" rx="16" ry="16"/>`;
 }
 
-function svgHeader(title, stats, color) {
+function svgHeader(title, stats, color, options = {}) {
   // Title at top
   let svg = `<text x="${PADDING}" y="${PADDING + 24}" fill="#ffffff" font-size="18" font-weight="600" font-family="${FONT}">${esc(title)}</text>`;
+
+  // Branding: avatar + Discord logo + "SpaceBot" (top-right)
+  if (options.avatarBase64) {
+    svg += `<image href="${options.avatarBase64}" x="${WIDGET_WIDTH - PADDING - 94}" y="${PADDING + 4}" width="24" height="24" clip-path="url(#wAvClip)" preserveAspectRatio="xMidYMid slice"/>`;
+  }
+  svg += `<g transform="translate(${WIDGET_WIDTH - PADDING - 67}, ${PADDING + 8}) scale(0.65)"><path fill="#5865F2" d="${DISCORD_LOGO_PATH}"/></g>`;
+  svg += `<text x="${WIDGET_WIDTH - PADDING}" y="${PADDING + 22}" fill="rgba(255,255,255,0.3)" font-size="11" font-weight="500" font-family="${FONT}" text-anchor="end">SpaceBot</text>`;
 
   // Stats row
   if (stats && stats.length > 0) {
@@ -215,7 +226,7 @@ function svgBarChart(data, title) {
  * @param {Array} chartData - from getVoiceActivityChart()
  * @returns {string} Complete SVG string
  */
-export function voiceTimeWidget(chartData) {
+export function voiceTimeWidget(chartData, options = {}) {
   const points = chartData || [];
   const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
   const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
@@ -232,9 +243,9 @@ export function voiceTimeWidget(chartData) {
   }));
 
   return wrapSvg([
-    svgDefs('voiceGrad', color),
+    svgDefs('voiceGrad', color, options),
     svgBackground(),
-    svgHeader('Voice Time', [{ value: displayValue, label: displayLabel, color }], color),
+    svgHeader('Voice Time', [{ value: displayValue, label: displayLabel, color }], color, options),
     svgAreaChart(data, color, 'voiceGrad', unit),
   ]);
 }
@@ -245,7 +256,7 @@ export function voiceTimeWidget(chartData) {
  * @param {Array} growthData - from getMemberGrowthChart() 
  * @returns {string} Complete SVG string
  */
-export function memberCountWidget(currentCount, growthData) {
+export function memberCountWidget(currentCount, growthData, options = {}) {
   const color = '#5865F2';
   const points = growthData || [];
 
@@ -263,9 +274,9 @@ export function memberCountWidget(currentCount, growthData) {
   }
 
   return wrapSvg([
-    svgDefs('memberGrad', color),
+    svgDefs('memberGrad', color, options),
     svgBackground(),
-    svgHeader('Members', [{ value: formatNumber(currentCount || 0), label: 'Current Members', color }], color),
+    svgHeader('Members', [{ value: formatNumber(currentCount || 0), label: 'Current Members', color }], color, options),
     svgAreaChart(data, color, 'memberGrad', ''),
   ]);
 }
@@ -275,7 +286,7 @@ export function memberCountWidget(currentCount, growthData) {
  * @param {Array} growthData - from getMemberGrowthChart()
  * @returns {string} Complete SVG string
  */
-export function memberGrowthWidget(growthData) {
+export function memberGrowthWidget(growthData, options = {}) {
   const points = growthData || [];
   const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
   const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
@@ -296,13 +307,13 @@ export function memberGrowthWidget(growthData) {
   const netPrefix = netChange > 0 ? '+' : '';
 
   return wrapSvg([
-    svgDefs('growthGrad', joinColor),
+    svgDefs('growthGrad', joinColor, options),
     svgBackground(),
     svgHeader('Member Growth', [
       { value: `+${formatNumber(totalJoins)}`, label: 'Joined', color: joinColor },
       { value: `-${formatNumber(totalLeaves)}`, label: 'Left', color: leaveColor },
       { value: `${netPrefix}${formatNumber(netChange)}`, label: 'Net Change', color: netColor },
-    ], joinColor),
+    ], joinColor, options),
     svgBarChart(barData, 'Member Growth'),
     // Legend
     `<rect x="${WIDGET_WIDTH - PADDING - 160}" y="${CHART.labelsY - 6}" width="10" height="10" rx="2" fill="${joinColor}"/>` +
@@ -318,16 +329,16 @@ export function memberGrowthWidget(growthData) {
  * @param {Object} data - Stats data object  
  * @returns {string} Complete SVG string
  */
-export function generateWidget(type, data) {
+export function generateWidget(type, data, options = {}) {
   switch (type) {
     case 'voice_time':
-      return voiceTimeWidget(data.voiceActivityChartData);
+      return voiceTimeWidget(data.voiceActivityChartData, options);
     case 'member_count':
-      return memberCountWidget(data.currentMemberCount, data.memberGrowthChartData);
+      return memberCountWidget(data.currentMemberCount, data.memberGrowthChartData, options);
     case 'member_growth':
-      return memberGrowthWidget(data.memberGrowthChartData);
+      return memberGrowthWidget(data.memberGrowthChartData, options);
     default:
-      return voiceTimeWidget(data.voiceActivityChartData);
+      return voiceTimeWidget(data.voiceActivityChartData, options);
   }
 }
 

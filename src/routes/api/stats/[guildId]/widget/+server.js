@@ -15,7 +15,7 @@
 
 import { error } from '@sveltejs/kit';
 import { generateWidget, WIDGET_TYPES, signWidgetUrl } from '$lib/stats-widget.js';
-import { svgToPng } from '$lib/svg-to-png.js';
+import { svgToPng, getAvatarBase64 } from '$lib/svg-to-png.js';
 import { getVoiceActivityChart, runStatsAggregation } from '$lib/db/stats-aggregation.js';
 import { getMemberGrowthChart } from '$lib/db/stats-aggregation.js';
 import { getLatestServerStats } from '$lib/db/server-stats.js';
@@ -96,7 +96,8 @@ export async function GET({ params, url, platform }) {
     }
 
     // Generate SVG
-    const svg = generateWidget(type, widgetData);
+    const avatarBase64 = await getAvatarBase64(url.origin);
+    const svg = generateWidget(type, widgetData, { avatarBase64 });
 
     // Convert to PNG
     const origin = url.origin;
