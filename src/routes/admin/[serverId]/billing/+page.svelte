@@ -37,7 +37,7 @@
 	
 	// Format price
 	function formatPrice(cents) {
-		if (!cents) return 'Free';
+		if (!cents) return 'Starter';
 		return `$${(cents / 100).toFixed(2)}`;
 	}
 	
@@ -320,10 +320,9 @@
 					<div class="current-label">Current Plan</div>
 				{/if}
 				<div class="plan-card-header">
-					<h3>Free</h3>
+					<h3>Starter</h3>
 					<div class="plan-price">
-						<span class="price-amount">$0</span>
-						<span class="price-period">/mo</span>
+						<span class="price-amount">FREE</span>
 					</div>
 				</div>
 				<ul class="plan-features">
@@ -338,7 +337,7 @@
 					<div class="plan-card-footer">
 						<span class="plan-note">
 							{#if isCanceling}
-								Reverts to Free after cancellation
+								Reverts to Starter after cancellation
 							{:else}
 								Included features
 							{/if}

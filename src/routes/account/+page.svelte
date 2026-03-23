@@ -20,7 +20,7 @@
 	// Billing summary
 	const totalServers = $derived(serverPlans.length);
 	const proServers = $derived(serverPlans.filter(s => s.plan === 'pro').length);
-	const freeServers = $derived(serverPlans.filter(s => s.plan === 'free').length);
+	const starterServers = $derived(serverPlans.filter(s => s.plan === 'free').length);
 	const totalMonthlySpend = $derived(
 		serverPlans
 			.filter(s => s.stripeSubscriptionId) // Only count paid subscriptions
@@ -53,7 +53,7 @@
 	}
 	
 	function formatPrice(cents) {
-		if (!cents) return 'Free';
+		if (!cents) return 'Starter';
 		return `$${(cents / 100).toFixed(2)}`;
 	}
 	
@@ -62,7 +62,6 @@
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'badge-success';
 		if (stripeStatus === 'canceling') return 'badge-warning';
 		if (stripeStatus === 'past_due') return 'badge-danger';
-		if (plan === 'enterprise') return 'badge-info';
 		return 'badge-neutral';
 	}
 	
@@ -71,9 +70,8 @@
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'Active';
 		if (stripeStatus === 'canceling') return 'Canceling';
 		if (stripeStatus === 'past_due') return 'Past Due';
-		if (plan === 'enterprise') return 'Enterprise';
 		if (plan === 'pro') return 'Pro';
-		return 'Free';
+		return 'Starter';
 	}
 	
 	// Aggregate billing history from all servers, sorted by date (newest first)
@@ -312,9 +310,9 @@
 					<span class="stat-value">{proServers}</span>
 					<span class="stat-label">Pro</span>
 				</div>
-				<div class="stat-chip free">
-					<span class="stat-value">{freeServers}</span>
-					<span class="stat-label">Free</span>
+				<div class="stat-chip starter">
+					<span class="stat-value">{starterServers}</span>
+					<span class="stat-label">Starter</span>
 				</div>
 			</div>
 		</div>
@@ -362,7 +360,7 @@
 							</div>
 							<div class="server-plan-status">
 								<span class="plan-badge {server.plan}">
-									{server.plan === 'pro' ? '⚡ Pro' : server.plan === 'enterprise' ? '🏢 Enterprise' : '🆓 Free'}
+									{server.plan === 'pro' ? '⚡ Pro' : '🚀 Starter'}
 								</span>
 								{#if server.stripeStatus}
 									<span class="status-badge {getStatusBadgeClass(server.plan, server.stripeStatus)}">
@@ -377,7 +375,7 @@
 							{#if server.plan === 'pro' && !server.stripeSubscriptionId}
 								<div class="plan-detail">
 									<span class="plan-detail-label">Price</span>
-									<span class="plan-detail-value admin-granted-price">Free — granted by admin</span>
+									<span class="plan-detail-value admin-granted-price">Granted by admin</span>
 								</div>
 							{:else if server.priceCents}
 								<div class="plan-detail">
@@ -446,7 +444,7 @@
 					<thead>
 						<tr>
 							<th>Feature</th>
-							<th>Free</th>
+							<th>Starter</th>
 							<th class="highlight">Pro</th>
 						</tr>
 					</thead>
@@ -483,7 +481,7 @@
 						</tr>
 						<tr>
 							<td>Price</td>
-							<td>Free</td>
+							<td>FREE</td>
 							<td class="highlight">{formatPrice(planTiers.pro.price_cents)}/mo</td>
 						</tr>
 					</tbody>
@@ -833,7 +831,7 @@
 		background: var(--color-primary-soft);
 	}
 	
-	.stat-chip.free {
+	.stat-chip.starter {
 		border-color: var(--color-border);
 	}
 	
@@ -987,14 +985,10 @@
 		color: var(--color-primary);
 	}
 	
-	.plan-badge.free {
+	.plan-badge.free,
+	.plan-badge.starter {
 		background: var(--color-surface-hover, hsla(var(--hue), 10%, 50%, 0.1));
 		color: var(--color-text-muted);
-	}
-	
-	.plan-badge.enterprise {
-		background: hsla(210, 80%, 55%, 0.12);
-		color: hsl(210, 80%, 45%);
 	}
 	
 	.status-badge {

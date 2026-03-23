@@ -107,7 +107,7 @@
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
 		<h2>Full-featured, for everyone</h2>
-		<p class="pricing-subtitle">We believe powerful tools shouldn't be expensive. Get everything you need for free — go unlimited for the price of a coffee.</p>
+		<p class="pricing-subtitle">We believe powerful tools shouldn't be expensive. Get everything you need to start — go unlimited for the price of a coffee.</p>
 
 		<div class="billing-toggle">
 			<button class="billing-option" class:active={billingInterval === 'monthly'} onclick={() => billingInterval = 'monthly'}>Monthly</button>
@@ -116,10 +116,9 @@
 
 		<div class="pricing-grid">
 			<div class="pricing-card">
-				<div class="pricing-badge">Free</div>
-				<div class="pricing-price" style="visibility: hidden;">
-					<span class="price-amount">$0</span>
-					<span class="price-period">/mo</span>
+				<div class="pricing-badge">Starter</div>
+				<div class="pricing-price">
+					<span class="price-amount price-free">FREE</span>
 				</div>
 				<p class="pricing-description">Everything you need to get started.</p>
 				<ul class="pricing-features">
@@ -137,7 +136,7 @@
 				{#if data.isLoggedIn}
 					<a href={adminUrl} class="btn btn-secondary btn-block">Go to Dashboard</a>
 				{:else}
-					<a href="/login" class="btn btn-secondary btn-block">Get Started Free</a>
+					<a href="/login" class="btn btn-secondary btn-block">Get Started</a>
 				{/if}
 			</div>
 			
@@ -155,15 +154,15 @@
 				</div>
 				<p class="pricing-description">Unlimited commands, automations, and full stats history.</p>
 				<ul class="pricing-features">
-					<li><span class="check">✓</span> Everything in Free</li>
+					<li><span class="check">✓</span> Everything in Starter</li>
 					<li><span class="check-pro">✓</span> Unlimited custom commands</li>
 					<li><span class="check-pro">✓</span> Unlimited automations</li>
 					<li><span class="check-pro">✓</span> Unlimited server stats history</li>
 				</ul>
 				{#if data.isLoggedIn}
-					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Upgrade to Pro</a>
+					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Sign Up</a>
 				{:else}
-					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Get Started</a>
+					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Sign Up</a>
 				{/if}
 			</div>
 
@@ -583,6 +582,11 @@
 		font-weight: 800;
 		color: var(--color-text);
 		line-height: 1;
+	}
+
+	.price-amount.price-free {
+		font-weight: 800;
+		opacity: 0.67;
 	}
 
 	.price-period {

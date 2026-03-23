@@ -12,7 +12,7 @@ import { log } from "./logger.js";
  */
 export const PLAN_TIERS = {
   free: {
-    label: "Free",
+    label: "Starter",
     max_commands: 3,
     max_automations: 9,
     max_api_keys: 3,
@@ -44,16 +44,6 @@ export const PLAN_TIERS = {
     comparative_stats: true,
     price_cents: 4200, // $42/mo
     price_cents_yearly: 42000, // $420/yr
-  },
-  enterprise: {
-    label: "Enterprise",
-    max_commands: null,
-    max_automations: null,
-    max_api_keys: null,
-    max_webhooks: null,
-    log_retention_days: null,
-    stats_retention_days: null,
-    price_cents: 0, // custom pricing
   },
 };
 

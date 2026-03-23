@@ -31,7 +31,7 @@
 	
 	// Plan counts
 	const planCounts = $derived(() => {
-		const counts = { free: 0, pro: 0, enterprise: 0 };
+		const counts = { free: 0, pro: 0, ultimate: 0 };
 		for (const s of servers) {
 			const tier = s.plan?.plan || 'free';
 			if (counts[tier] !== undefined) counts[tier]++;
@@ -53,7 +53,7 @@
 	function getPlanBadgeClass(plan) {
 		switch (plan) {
 			case 'pro': return 'badge-pro';
-			case 'enterprise': return 'badge-enterprise';
+			case 'ultimate': return 'badge-ultimate';
 			default: return 'badge-free';
 		}
 	}
@@ -132,7 +132,7 @@
 	}
 	
 	async function resetPlan(server) {
-		if (!confirm(`Reset ${server.name} to the Free plan? This will remove any custom limits.`)) return;
+		if (!confirm(`Reset ${server.name} to the Starter plan? This will remove any custom limits.`)) return;
 		
 		try {
 			const response = await fetch(`/api/superadmin/servers/${server.guild_id}`, {
@@ -140,7 +140,7 @@
 			});
 			
 			if (response.ok) {
-				toast = { type: 'success', message: `${server.name} reset to Free plan` };
+				toast = { type: 'success', message: `${server.name} reset to Starter plan` };
 				await invalidateAll();
 			} else {
 				const result = await response.json();
@@ -185,13 +185,13 @@
 			All ({servers.length})
 		</button>
 		<button class="plan-pill plan-free {filterPlan === 'free' ? 'active' : ''}" onclick={() => filterPlan = 'free'}>
-			Free ({planCounts().free})
+			Starter ({planCounts().free})
 		</button>
 		<button class="plan-pill plan-pro {filterPlan === 'pro' ? 'active' : ''}" onclick={() => filterPlan = 'pro'}>
 			Pro ({planCounts().pro})
 		</button>
-		<button class="plan-pill plan-enterprise {filterPlan === 'enterprise' ? 'active' : ''}" onclick={() => filterPlan = 'enterprise'}>
-			Enterprise ({planCounts().enterprise})
+		<button class="plan-pill plan-ultimate {filterPlan === 'ultimate' ? 'active' : ''}" onclick={() => filterPlan = 'ultimate'}>
+			Ultimate ({planCounts().ultimate})
 		</button>
 	</div>
 	
@@ -327,7 +327,7 @@
 							</td>
 							<td>
 								<span class="plan-badge {getPlanBadgeClass(plan)}">
-									{planTiers[plan]?.label || 'Free'}
+									{planTiers[plan]?.label || 'Starter'}
 								</span>
 							</td>
 							<td class="numeric">{formatNumber(server.approximate_member_count)}</td>
@@ -647,7 +647,7 @@
 
 	.badge-free { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
 	.badge-pro { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
-	.badge-enterprise { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+	.badge-ultimate { background: rgba(234, 179, 8, 0.2); color: #facc15; }
 
 	/* Usage counts */
 	.usage-counts {
