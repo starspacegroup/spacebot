@@ -194,28 +194,77 @@
 		<h2>How It Works</h2>
 		
 		<div class="steps">
+			<!-- Step 1: Login -->
 			<div class="step">
-				<div class="step-number">1</div>
-				<h3>Login with Discord</h3>
-				<p>Securely authenticate with your Discord account to access the admin dashboard.</p>
+				<div class="step-card">
+					<div class="mock-discord-btn">
+						<svg width="20" height="15" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg>
+						Login
+					</div>
+				</div>
+				<span class="step-label">Login with Discord</span>
 			</div>
-			
+
+			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+			<!-- Step 2: Add Bot -->
 			<div class="step">
-				<div class="step-number">2</div>
-				<h3>Add Bot to Server</h3>
-				<p>Add SpaceBot to your Discord server with the required permissions.</p>
+				<div class="step-card">
+					<div class="mock-server-list">
+						<div class="mock-server-icon placeholder"></div>
+						<div class="mock-server-icon placeholder"></div>
+						<div class="mock-server-divider"></div>
+						<div class="mock-server-icon bot-icon">
+							<img src="/logo.webp" alt="" width="32" height="32" />
+						</div>
+					</div>
+				</div>
+				<span class="step-label">Add to Server</span>
 			</div>
-			
+
+			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+			<!-- Step 3: Create Commands -->
 			<div class="step">
-				<div class="step-number">3</div>
-				<h3>Create Commands & Automations</h3>
-				<p>Use the visual builder to create custom slash commands and event automations.</p>
+				<div class="step-card">
+					<div class="mock-chat">
+						<div class="mock-message">
+							<div class="mock-msg-avatar">
+								<img src="/logo.webp" alt="" width="24" height="24" />
+							</div>
+							<div class="mock-msg-body">
+								<span class="mock-msg-name">SpaceBot</span>
+								<span class="mock-msg-text">
+									<span class="mock-slash">/</span>hello world
+								</span>
+							</div>
+						</div>
+					</div>
+				</div>
+				<span class="step-label">Create Commands</span>
 			</div>
-			
+
+			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+			<!-- Step 4: Monitor -->
 			<div class="step">
-				<div class="step-number">4</div>
-				<h3>Monitor & Manage</h3>
-				<p>View logs, track analytics, and fine-tune your bot's behavior from the dashboard.</p>
+				<div class="step-card">
+					<div class="mock-dashboard">
+						<div class="mock-dash-header">
+							<img src="/logo.webp" alt="" width="16" height="16" class="mock-dash-logo" />
+							<span>Dashboard</span>
+						</div>
+						<div class="mock-bars">
+							<div class="mock-bar" style="height: 40%"></div>
+							<div class="mock-bar" style="height: 65%"></div>
+							<div class="mock-bar" style="height: 45%"></div>
+							<div class="mock-bar" style="height: 80%"></div>
+							<div class="mock-bar" style="height: 55%"></div>
+							<div class="mock-bar" style="height: 90%"></div>
+						</div>
+					</div>
+				</div>
+				<span class="step-label">Monitor & Manage</span>
 			</div>
 		</div>
 	</section>
@@ -663,10 +712,6 @@
 	/* How It Works Section */
 	.how-it-works {
 		padding: 4rem 0;
-		background: var(--color-surface);
-		margin: 0 -1.5rem;
-		padding-left: 1.5rem;
-		padding-right: 1.5rem;
 	}
 
 	.how-it-works h2 {
@@ -677,41 +722,218 @@
 	}
 
 	.steps {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-		gap: 2rem;
-		max-width: 1000px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		max-width: 1100px;
 		margin: 0 auto;
 	}
 
 	.step {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
 		text-align: center;
+		flex: 1;
+		min-width: 0;
 	}
 
-	.step-number {
-		width: 3rem;
-		height: 3rem;
-		background: var(--color-primary-button);
-		color: var(--color-primary-button-text);
-		border-radius: 50%;
+	.step-card {
+		width: 100%;
+		max-width: 180px;
+		aspect-ratio: 1;
+		background: #1e1f22;
+		border-radius: 12px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1.25rem;
-		font-weight: 700;
-		margin: 0 auto 1rem;
+		overflow: hidden;
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
+		border: 1px solid rgba(255,255,255,0.06);
 	}
 
-	.step h3 {
-		font-size: 1.125rem;
-		margin-bottom: 0.5rem;
-		color: var(--color-text);
+	.step:hover .step-card {
+		transform: translateY(-4px);
+		box-shadow: 0 8px 24px rgba(0,0,0,0.3);
 	}
 
-	.step p {
+	.step-label {
+		font-size: 0.85rem;
+		font-weight: 600;
 		color: var(--color-text-muted);
-		font-size: 0.95rem;
-		line-height: 1.5;
+	}
+
+	.step-connector {
+		display: flex;
+		align-items: center;
+		padding-bottom: 1.75rem;
+		flex-shrink: 0;
+	}
+
+	/* Mock Discord Button */
+	.mock-discord-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: #5865F2;
+		color: #fff;
+		padding: 0.6rem 1.2rem;
+		border-radius: 8px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	/* Mock Server List */
+	.mock-server-list {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 0;
+	}
+
+	.mock-server-icon {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.mock-server-icon.placeholder {
+		background: #2b2d31;
+	}
+
+	.mock-server-icon.bot-icon {
+		background: var(--color-primary-button);
+		box-shadow: 0 0 0 2px var(--color-primary-button);
+		animation: nonepulse 2s ease-in-out infinite;
+	}
+
+	.mock-server-icon.bot-icon img {
+		border-radius: 50%;
+	}
+
+	.mock-server-divider {
+		width: 24px;
+		height: 2px;
+		background: #2b2d31;
+		border-radius: 1px;
+	}
+
+	/* Mock Chat Message */
+	.mock-chat {
+		width: 100%;
+		padding: 12px;
+	}
+
+	.mock-message {
+		display: flex;
+		gap: 8px;
+		align-items: flex-start;
+	}
+
+	.mock-msg-avatar {
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.mock-msg-avatar img {
+		width: 100%;
+		height: 100%;
+	}
+
+	.mock-msg-body {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.mock-msg-name {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--color-primary-button);
+	}
+
+	.mock-msg-text {
+		font-size: 0.7rem;
+		color: #dbdee1;
+	}
+
+	.mock-slash {
+		color: #5865F2;
+		font-weight: 700;
+	}
+
+	/* Mock Dashboard */
+	.mock-dashboard {
+		width: 100%;
+		padding: 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		height: 100%;
+	}
+
+	.mock-dash-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.65rem;
+		font-weight: 600;
+		color: #b5bac1;
+	}
+
+	.mock-dash-logo {
+		border-radius: 4px;
+	}
+
+	.mock-bars {
+		display: flex;
+		align-items: flex-end;
+		gap: 4px;
+		flex: 1;
+		padding-bottom: 4px;
+	}
+
+	.mock-bar {
+		flex: 1;
+		background: var(--color-primary-button);
+		border-radius: 3px 3px 0 0;
+		min-height: 6px;
+		opacity: 0.7;
+	}
+
+	.mock-bar:nth-child(even) {
+		opacity: 0.5;
+	}
+
+	@media (max-width: 700px) {
+		.steps {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+
+		.step-connector {
+			padding-bottom: 0;
+		}
+
+		.step-connector svg {
+			transform: rotate(90deg);
+		}
+
+		.step-card {
+			max-width: 200px;
+		}
 	}
 
 	/* CTA Section */
