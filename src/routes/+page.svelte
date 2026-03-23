@@ -513,8 +513,15 @@
 		z-index: 1;
 	}
 
+	@media (min-width: 640px) {
+		.pricing-card-featured,
+		.pricing-card-coming-soon {
+			border-width: 9px;
+		}
+	}
+
 	.pricing-card-coming-soon {
-		border: 3px dashed var(--color-border);
+		border: 5px dashed var(--color-border);
 		opacity: 0.55;
 		filter: grayscale(0.5);
 		background: color-mix(in srgb, var(--color-surface) 60%, transparent);
