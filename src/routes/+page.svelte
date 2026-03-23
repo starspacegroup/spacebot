@@ -504,19 +504,30 @@
 		box-shadow: var(--shadow-lg);
 	}
 
+	.pricing-card-featured:hover {
+		box-shadow:
+			0 0 25px color-mix(in srgb, var(--color-primary) 50%, transparent),
+			0 0 50px color-mix(in srgb, var(--color-primary) 30%, transparent),
+			0 0 80px color-mix(in srgb, var(--color-primary) 15%, transparent);
+	}
+
 	.pricing-card-featured {
 		border-color: var(--color-primary);
-		border-width: 2px;
-		box-shadow: var(--shadow-md);
+		border-width: 1px;
+		box-shadow:
+			0 0 15px color-mix(in srgb, var(--color-primary) 40%, transparent),
+			0 0 30px color-mix(in srgb, var(--color-primary) 20%, transparent);
 		margin: -1.5rem 0;
 		padding: 4rem 2rem;
 		z-index: 1;
 	}
 
 	@media (min-width: 640px) {
-		.pricing-card-featured,
-		.pricing-card-coming-soon {
-			border-width: 9px;
+		.pricing-card-featured {
+			box-shadow:
+				0 0 20px color-mix(in srgb, var(--color-primary) 50%, transparent),
+				0 0 60px color-mix(in srgb, var(--color-primary) 30%, transparent),
+				0 0 100px color-mix(in srgb, var(--color-primary) 15%, transparent);
 		}
 	}
 
