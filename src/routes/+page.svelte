@@ -413,7 +413,7 @@
 
 	/* Pricing Section */
 	.pricing {
-		padding: 4rem 0;
+		padding: 6rem 0;
 		text-align: center;
 	}
 
@@ -434,8 +434,9 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-full, 9999px);
-		padding: 0.25rem;
-		margin-bottom: 2.5rem;
+		padding: 0.4rem;
+		margin-top: 0.5rem;
+		margin-bottom: 9rem;
 		gap: 0.25rem;
 	}
 
