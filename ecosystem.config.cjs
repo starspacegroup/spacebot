@@ -62,5 +62,28 @@ module.exports = {
       listen_timeout: 10000,
       watch: false,
     },
+    {
+      name: "spacebot-cron",
+      script: "scripts/cron.js",
+      interpreter: "node",
+      args: "--experimental-specifier-resolution=node",
+      env: {
+        NODE_ENV: "production",
+        API_BASE: "https://spacebot.starspace.group",
+      },
+      // Restart policy
+      max_restarts: 10,
+      min_uptime: "10s",
+      restart_delay: 5000,
+      // Logging
+      error_file: "logs/cron-error.log",
+      out_file: "logs/cron-out.log",
+      merge_logs: true,
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      // Graceful shutdown
+      kill_timeout: 5000,
+      listen_timeout: 10000,
+      watch: false,
+    },
   ],
 };

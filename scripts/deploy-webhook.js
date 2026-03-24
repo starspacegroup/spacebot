@@ -74,8 +74,8 @@ function deploy(changedFiles) {
 			run('npm run db:migrate');
 		}
 
-		// Restart only the gateway (not the tunnel or this webhook)
-		run('pm2 restart spacebot-gateway');
+		// Restart the gateway and cron scheduler (not the tunnel or this webhook)
+		run('pm2 restart spacebot-gateway spacebot-cron');
 
 		const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 		console.log(`✅ Deploy complete in ${elapsed}s\n`);

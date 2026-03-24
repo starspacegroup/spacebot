@@ -31,6 +31,22 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /**
+ * Check if the request has a valid cron secret or internal API key
+ */
+function checkBearerAuth(request, platform) {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader) return false;
+
+  const cronSecret = platform?.env?.CRON_SECRET || process.env.CRON_SECRET;
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
+
+  const internalKey = platform?.env?.INTERNAL_API_KEY || process.env.INTERNAL_API_KEY;
+  if (internalKey && authHeader === `Bearer ${internalKey}`) return true;
+
+  return false;
+}
+
+/**
  * Get the list of available cron jobs
  */
 function getCronJobDefinitions() {
@@ -563,9 +579,11 @@ export async function GET({ cookies, platform }) {
  * POST /api/cron - Manually trigger a cron job
  */
 export async function POST({ request, cookies, platform }) {
+  // Accept either superadmin cookie auth or bearer token auth (for cron scheduler)
   const userId = cookies.get("discord_user_id");
+  const isBearerAuth = checkBearerAuth(request, platform);
 
-  if (!checkIsSuperAdmin(userId, platform)) {
+  if (!isBearerAuth && !checkIsSuperAdmin(userId, platform)) {
     return json({ error: "Unauthorized" }, { status: 403 });
   }
 
@@ -589,7 +607,8 @@ export async function POST({ request, cookies, platform }) {
   }
 
   const startTime = Date.now();
-  const jobId = await recordJobStart(db, jobName, 'manual', userId);
+  const triggeredBy = isBearerAuth ? 'cron_scheduler' : 'manual';
+  const jobId = await recordJobStart(db, jobName, triggeredBy, isBearerAuth ? null : userId);
 
   try {
     let result;
