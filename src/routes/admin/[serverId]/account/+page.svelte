@@ -233,6 +233,15 @@
 		</div>
 	</header>
 	
+	{#if data.loadError}
+		<div class="alert alert-error">
+			<span class="alert-icon">⚠️</span>
+			<div>
+				<strong>Failed to load account data.</strong> Some information may be unavailable. Please try refreshing.
+			</div>
+		</div>
+	{/if}
+
 	{#if error}
 		<div class="alert alert-error">
 			<span class="alert-icon">⚠️</span>

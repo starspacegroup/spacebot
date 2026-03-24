@@ -6,26 +6,34 @@ import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { getSubscription } from "$lib/stripe.js";
 
 /**
+ * Safely get environment variable, works in both Node.js and Cloudflare Workers
+ */
+function getEnv(name, platform) {
+  return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
+
+/**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
  */
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+  const adminUserIds = getEnv("ADMIN_USER_IDS", platform) || "";
   return adminUserIds.split(",").map((id) => id.trim()).filter(Boolean).includes(userId);
 }
+
+/** Default usage counts */
+const DEFAULT_USAGE = {
+  commands: 0, commandsActive: 0, commandsInactive: 0,
+  automations: 0, automationsActive: 0, automationsInactive: 0,
+  apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
+  webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
+};
 
 /**
  * Get usage counts for the guild (commands, automations, API keys, webhooks)
  */
 async function getUsageCounts(db, guildId) {
-  if (!db || !guildId) {
-    return {
-      commands: 0, commandsActive: 0, commandsInactive: 0,
-      automations: 0, automationsActive: 0, automationsInactive: 0,
-      apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
-      webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
-    };
-  }
+  if (!db || !guildId) return { ...DEFAULT_USAGE };
 
   try {
     const [commandsResult, automationsResult, apiKeysResult, webhooksResult] = await Promise.all([
@@ -52,12 +60,7 @@ async function getUsageCounts(db, guildId) {
     };
   } catch (error) {
     log.warn("[Account] Failed to fetch usage counts for guild", guildId, error?.message);
-    return {
-      commands: 0, commandsActive: 0, commandsInactive: 0,
-      automations: 0, automationsActive: 0, automationsInactive: 0,
-      apiKeys: 0, apiKeysActive: 0, apiKeysRevoked: 0,
-      webhooks: 0, webhooksActive: 0, webhooksInactive: 0,
-    };
+    return { ...DEFAULT_USAGE };
   }
 }
 
@@ -91,58 +94,78 @@ export async function load({ cookies, platform, parent, params }) {
     throw redirect(302, `/admin/${serverId}`);
   }
 
-  const db = platform?.env?.DB;
-  const plan = db ? await getServerPlan(db, serverId) : { plan: "free", ...PLAN_TIERS.free };
+  // Wrap ALL data fetching in try-catch to prevent 500 on production
+  try {
+    const db = platform?.env?.DB;
+    const plan = db ? await getServerPlan(db, serverId) : { plan: "free", ...PLAN_TIERS.free };
 
-  // Fetch billing history and usage counts in parallel
-  const [billingHistoryResult, usage] = await Promise.all([
-    db
-      ? getBillingHistory(db, serverId, { limit: 50 })
-      : Promise.resolve({ events: [], total: 0 }),
-    getUsageCounts(db, serverId),
-  ]);
+    // Fetch billing history and usage counts in parallel
+    const [billingHistoryResult, usage] = await Promise.all([
+      db
+        ? getBillingHistory(db, serverId, { limit: 50 })
+        : Promise.resolve({ events: [], total: 0 }),
+      getUsageCounts(db, serverId),
+    ]);
 
-  const { events: billingHistory, total: billingHistoryTotal } = billingHistoryResult;
+    const { events: billingHistory, total: billingHistoryTotal } = billingHistoryResult;
 
-  // Check if Stripe is configured
-  const stripeConfigured = !!(platform?.env?.STRIPE_SECRET_KEY || process.env?.STRIPE_SECRET_KEY);
+    // Check if Stripe is configured
+    const stripeConfigured = !!(getEnv("STRIPE_SECRET_KEY", platform));
 
-  // Fetch upcoming billing details from Stripe subscription if active
-  let nextBillingDate = plan.stripe_current_period_end || null;
-  let nextBillingAmount = null;
-  let billingInterval = null;
+    // Fetch upcoming billing details from Stripe subscription if active
+    let nextBillingDate = plan.stripe_current_period_end || null;
+    let nextBillingAmount = null;
+    let billingInterval = null;
 
-  if (plan.stripe_subscription_id && stripeConfigured && ["active", "trialing"].includes(plan.stripe_status)) {
-    try {
-      const sub = await getSubscription(platform, plan.stripe_subscription_id);
-      if (sub) {
-        nextBillingDate = sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString()
-          : nextBillingDate;
-        // Get the amount from the subscription's plan
-        const item = sub.items?.data?.[0];
-        if (item?.price) {
-          nextBillingAmount = item.price.unit_amount || null;
-          billingInterval = item.price.recurring?.interval || null;
+    if (plan.stripe_subscription_id && stripeConfigured && ["active", "trialing"].includes(plan.stripe_status)) {
+      try {
+        const sub = await getSubscription(platform, plan.stripe_subscription_id);
+        if (sub) {
+          nextBillingDate = sub.current_period_end
+            ? new Date(sub.current_period_end * 1000).toISOString()
+            : nextBillingDate;
+          const item = sub.items?.data?.[0];
+          if (item?.price) {
+            nextBillingAmount = item.price.unit_amount || null;
+            billingInterval = item.price.recurring?.interval || null;
+          }
         }
+      } catch (err) {
+        log.warn(`[Account] Failed to fetch Stripe subscription for guild ${serverId}:`, err.message);
       }
-    } catch (err) {
-      log.warn(`[Account] Failed to fetch Stripe subscription for guild ${serverId}:`, err.message);
     }
-  }
 
-  return {
-    serverId,
-    guild,
-    plan,
-    planTiers: PLAN_TIERS,
-    stripeConfigured,
-    isSuperAdmin,
-    billingHistory,
-    billingHistoryTotal,
-    nextBillingDate,
-    nextBillingAmount,
-    billingInterval,
-    usage,
-  };
+    return {
+      serverId,
+      guild,
+      plan,
+      planTiers: PLAN_TIERS,
+      stripeConfigured,
+      isSuperAdmin,
+      billingHistory,
+      billingHistoryTotal,
+      nextBillingDate,
+      nextBillingAmount,
+      billingInterval,
+      usage,
+    };
+  } catch (err) {
+    // Catch-all to prevent 500 — log the actual error for diagnosis
+    log.error(`[Account] Unhandled error loading account page for guild ${serverId}:`, err?.message, err?.stack);
+    return {
+      serverId,
+      guild,
+      plan: { plan: "free", ...PLAN_TIERS.free },
+      planTiers: PLAN_TIERS,
+      stripeConfigured: false,
+      isSuperAdmin,
+      billingHistory: [],
+      billingHistoryTotal: 0,
+      nextBillingDate: null,
+      nextBillingAmount: null,
+      billingInterval: null,
+      usage: { ...DEFAULT_USAGE },
+      loadError: err?.message || "Failed to load account data",
+    };
+  }
 }
