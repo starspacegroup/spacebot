@@ -144,20 +144,20 @@
 				<div class="pricing-badge pricing-badge-featured">Pro</div>
 				<div class="pricing-price">
 					{#if billingInterval === 'yearly'}
-						<span class="price-amount">$2.50</span>
+						<span class="price-amount">$0.83</span>
 						<span class="price-period">/server/mo</span>
-						<div class="price-billed-note">Billed $30/server/year</div>
+						<div class="price-billed-note">Billed $10/server/year</div>
 					{:else}
-						<span class="price-amount">$3</span>
+						<span class="price-amount">$1</span>
 						<span class="price-period">/server/mo</span>
 					{/if}
 				</div>
-				<p class="pricing-description">Unlimited commands, automations, and full stats history.</p>
+				<p class="pricing-description">Unlimited commands, automations, and 1 year of stats history.</p>
 				<ul class="pricing-features">
 					<li><span class="check">✓</span> Everything in Starter</li>
 					<li><span class="check-pro">✓</span> Unlimited custom commands</li>
 					<li><span class="check-pro">✓</span> Unlimited automations</li>
-					<li><span class="check-pro">✓</span> Unlimited server stats history</li>
+					<li><span class="check-pro">✓</span> 1 year server stats history</li>
 				</ul>
 				{#if data.isLoggedIn}
 					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Sign Up</a>

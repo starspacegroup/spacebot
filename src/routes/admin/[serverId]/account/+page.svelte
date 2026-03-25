@@ -469,7 +469,7 @@
 			</div>
 			<div class="retention-item">
 				<span class="retention-label">Stats Retention</span>
-				<span class="retention-value">{plan.stats_retention_days ? `${plan.stats_retention_days} days` : 'Unlimited'}</span>
+				<span class="retention-value">{plan.stats_retention_days ? (plan.stats_retention_days >= 365 ? `${Math.round(plan.stats_retention_days / 365)} years` : `${plan.stats_retention_days} days`) : 'Unlimited'}</span>
 			</div>
 		</div>
 	</section>
@@ -609,7 +609,7 @@
 					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_api_keys} API keys</li>
 					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_webhooks} webhooks</li>
 					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> log retention</li>
-					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> stats retention</li>
+					<li><span class="feature-icon pro">★</span> <strong>1 year</strong> stats retention</li>
 					<li><span class="feature-icon pro">★</span> Priority support</li>
 				</ul>
 				{#if plan.plan !== 'pro' || isCanceling || isAdminGrantedPro}

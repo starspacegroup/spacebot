@@ -54,7 +54,7 @@
 		<h1>Upgrade to Pro</h1>
 		<p class="upgrade-subtitle">
 			Select a server to upgrade to Pro
-			({data.interval === 'yearly' ? '$2.50/mo billed yearly' : '$3/server/mo'})
+			({data.interval === 'yearly' ? '$0.83/mo billed yearly' : '$1/server/mo'})
 		</p>
 	</header>
 

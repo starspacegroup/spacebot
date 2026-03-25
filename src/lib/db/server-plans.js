@@ -28,9 +28,9 @@ export const PLAN_TIERS = {
     max_api_keys: 10,
     max_webhooks: 25,
     log_retention_days: null, // unlimited
-    stats_retention_days: null,
-    price_cents: 300, // $3/mo
-    price_cents_yearly: 3000, // $30/yr (save ~17%)
+    stats_retention_days: 365, // 1 year
+    price_cents: 100, // $1/mo
+    price_cents_yearly: 1000, // $10/yr (save ~17%)
   },
   ultimate: {
     label: "Ultimate",

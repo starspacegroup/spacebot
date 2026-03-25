@@ -374,7 +374,7 @@
 					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_api_keys} API keys</li>
 					<li><span class="feature-icon pro">★</span> {data.planTiers.pro.max_webhooks} webhooks</li>
 					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> log retention</li>
-					<li><span class="feature-icon pro">★</span> <strong>Unlimited</strong> stats retention</li>
+					<li><span class="feature-icon pro">★</span> <strong>1 year</strong> stats retention</li>
 					<li><span class="feature-icon pro">★</span> Priority support</li>
 				</ul>
 				{#if plan.plan !== 'pro' || isCanceling}
