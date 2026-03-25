@@ -126,7 +126,7 @@
 					<li><span class="check">✓</span> Unlimited members per server</li>
 					<li><span class="check">✓</span> Up to 3 custom commands</li>
 					<li><span class="check">✓</span> Up to 9 automations</li>
-					<li><span class="check">✓</span> AI assistant via DM</li>
+					<li><span class="check">✓</span> AI assistant</li>
 					<li><span class="check">✓</span> Event logs & search</li>
 					<li><span class="check">✓</span> Webhooks & integrations</li>
 					<li><span class="check">✓</span> REST API & API keys</li>
