@@ -50,7 +50,7 @@ Enter the following build configuration:
 
 - **Project name**: `spacebot` (or your preferred name)
 - **Production branch**: `main` (or your default branch)
-- **Build command**: `npm run build`
+- **Build command**: `bun run db:migrate && bun run build`
 - **Build output directory**: `.svelte-kit/cloudflare`
 - **Root directory**: `/` (leave empty)
 
@@ -65,6 +65,9 @@ Click on **Environment variables** and add the following:
 | `DISCORD_CLIENT_SECRET` | Your Discord client secret | From OAuth2 settings |
 | `DISCORD_BOT_TOKEN` | Your Discord bot token | From Bot settings |
 | `ADMIN_USER_IDS` | Your Discord user ID(s) | Comma-separated list for multiple admins |
+| `CLOUDFLARE_API_TOKEN` | Your Cloudflare API token | Needs D1 edit permissions for auto-migrations |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID | Required for D1 migrations during build |
+| `BUN_VERSION` | `1.2` | Tells Cloudflare Pages to use Bun as the runtime |
 
 **How to get your Discord User ID:**
 1. Enable Developer Mode in Discord (User Settings → Advanced → Developer Mode)
@@ -163,6 +166,8 @@ Cloudflare Pages automatically deploys your site when you push to the configured
 
 - **Push to main branch** → Deploys to production
 - **Push to other branches** → Creates preview deployments
+
+Database migrations run automatically during every build (before the SvelteKit build step). The migration runner is idempotent — already-applied migrations are skipped. If a migration fails, the build will fail and the deploy will be blocked.
 
 ## Troubleshooting
 
