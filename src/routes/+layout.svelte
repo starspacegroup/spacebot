@@ -113,7 +113,7 @@
 
 <div class="app-layout" class:chat-page={$page.url.pathname.endsWith('/chat')}>
 	<header class="app-header">
-		<a href="/" class="logo">
+		<a href={isLoggedIn ? '/admin' : '/'} class="logo">
 			<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
 			SpaceBot
 		</a>
