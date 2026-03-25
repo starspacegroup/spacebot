@@ -36,6 +36,9 @@ export class MCPClient {
     if (this.useLocalDb) {
       return true; // Local DB doesn't need API credentials
     }
+    if (this.d1Database) {
+      return true; // D1 binding available directly (Cloudflare Pages/Workers)
+    }
     const configured = Boolean(this.accountId && this.apiToken);
     if (!configured) {
       log.warn(`[MCP] Client not configured - accountId: ${this.accountId ? 'SET' : 'MISSING'}, apiToken: ${this.apiToken ? 'SET' : 'MISSING'}`);
@@ -128,6 +131,11 @@ export class MCPClient {
     if (this.useLocalDb) {
       return this.executeLocalQuery(sql, params);
     }
+
+    // Use D1 binding directly if available (Cloudflare Pages/Workers)
+    if (this.d1Database) {
+      return this.executeD1BindingQuery(sql, params);
+    }
     
     if (!this.isConfigured()) {
       throw new Error("MCP Client not configured: Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN");
@@ -152,6 +160,22 @@ export class MCPClient {
     }
 
     return data.result[0];
+  }
+
+  /**
+   * Execute a query using the D1 binding directly (Cloudflare Pages/Workers)
+   */
+  async executeD1BindingQuery(sql, params = []) {
+    try {
+      const stmt = this.d1Database.prepare(sql).bind(...params);
+      const result = await stmt.all();
+      return {
+        results: result.results || [],
+        success: true,
+      };
+    } catch (error) {
+      throw new Error(`D1 binding query failed: ${error.message}`);
+    }
   }
 
   /**

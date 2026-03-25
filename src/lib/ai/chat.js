@@ -272,8 +272,18 @@ function buildSystemPrompt(context = {}) {
     prompt += "- Automation names, configurations, or execution history\n";
     prompt += "- Custom command details or usage logs\n";
     prompt += "- Server settings\n\n";
-    prompt += "When the user asks about ANY of the above, your ONLY valid response is:\n";
-    prompt += "\"I don't have access to look up that data right now. Please check the SpaceBot dashboard at [your-dashboard-url] to see your server's logs, automations, and settings.\"\n\n";
+    
+    const dashboardBase = "https://spacebot.starspace.group";
+    const serverPath = context.selectedGuildId ? `/admin/${context.selectedGuildId}` : "";
+    
+    prompt += "When the user asks about ANY of the above, tell them you can't look up that data right now and direct them to the appropriate dashboard page.\n";
+    prompt += "Use the most relevant link based on their question:\n";
+    prompt += `- Stats/activity/members/growth → ${dashboardBase}${serverPath}/stats\n`;
+    prompt += `- Event logs/message history → ${dashboardBase}${serverPath}/logs\n`;
+    prompt += `- Automations → ${dashboardBase}${serverPath}/automations\n`;
+    prompt += `- Commands → ${dashboardBase}${serverPath}/commands\n`;
+    prompt += `- Server settings → ${dashboardBase}${serverPath}/settings\n`;
+    prompt += `- General/unclear → ${dashboardBase}${serverPath}\n\n`;
     prompt += "DO NOT attempt to guess, estimate, or fabricate any data. You literally have no information about their server's data.";
   }
   
