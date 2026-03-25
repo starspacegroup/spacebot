@@ -16,6 +16,7 @@
 	let loading = $state(false);
 	let fetchedInterval = $state(null);
 	let savingInterval = $state(false);
+	let toast = $state(null);
 
 	// Use fetched data if available, otherwise fall back to server data
 	const stats = $derived(fetchedStats ?? serverStats);
@@ -114,7 +115,9 @@
 
 	// Update the benchmark check interval
 	async function updateInterval(newInterval) {
+		if (newInterval === benchmarkInterval) return;
 		savingInterval = true;
+		toast = null;
 		try {
 			const response = await fetch('/api/gateway/benchmark', {
 				method: 'PATCH',
@@ -123,9 +126,13 @@
 			});
 			if (response.ok) {
 				fetchedInterval = newInterval;
+				toast = { type: 'success', message: 'Check interval updated' };
+			} else {
+				const result = await response.json().catch(() => ({}));
+				toast = { type: 'error', message: result.error || `Failed to update interval (${response.status})` };
 			}
 		} catch (error) {
-			console.error('Failed to update interval:', error);
+			toast = { type: 'error', message: error.message || 'Failed to update interval' };
 		} finally {
 			savingInterval = false;
 		}
@@ -246,11 +253,18 @@
 			<span class="section-icon">⏱️</span>
 			Check Interval
 		</h2>
+		{#if toast}
+			<div class="toast toast-{toast.type}">
+				<span>{toast.type === 'success' ? '✓' : '✗'}</span> {toast.message}
+				<button type="button" class="toast-close" onclick={() => toast = null}>✕</button>
+			</div>
+		{/if}
 		<div class="interval-picker">
 			<p class="interval-description">How often the gateway reports latency data. Takes effect on the next check cycle.</p>
 			<div class="interval-options">
 				{#each intervalOptions as opt}
 					<button
+						type="button"
 						class="range-btn"
 						class:active={benchmarkInterval === opt.value}
 						onclick={() => updateInterval(opt.value)}
@@ -707,6 +721,20 @@
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
+
+	/* Toast */
+	.toast {
+		padding: 0.75rem 1rem;
+		border-radius: var(--radius-md);
+		margin-bottom: 0.75rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.85rem;
+	}
+	.toast-success { background: var(--color-success-soft); color: var(--color-success); border: 1px solid rgba(34, 197, 94, 0.3); }
+	.toast-error { background: var(--color-danger-soft); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.3); }
+	.toast-close { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; }
 
 	/* Interval picker */
 	.interval-picker {
