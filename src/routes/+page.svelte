@@ -183,6 +183,7 @@
 					<li><span class="check">✓</span> Everything in Pro</li>
 					<li><span class="check-ultimate">✓</span> Advanced stats</li>
 					<li><span class="check-ultimate">✓</span> Comparative stats</li>
+					<li><span class="check-ultimate">✓</span> Unlimited stats history</li>
 				</ul>
 				<button class="btn btn-secondary btn-block" disabled>Coming Soon</button>
 			</div>
