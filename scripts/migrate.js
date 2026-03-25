@@ -8,6 +8,7 @@
  *   node scripts/migrate.js --local # Run against local D1
  */
 
+import "dotenv/config";
 import { execSync } from "child_process";
 import { readdirSync } from "fs";
 import { dirname, join } from "path";
