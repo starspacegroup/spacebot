@@ -54,6 +54,20 @@
 	
 	// Serialize embed colors for hidden form input
 	const logEmbedColorsJson = $derived(JSON.stringify(logEmbedColors));
+
+	// Excluded categories state
+	// svelte-ignore state_referenced_locally
+	let excludedCategories = $state(data.settings?.excludedCategories || []);
+	const excludedCategoriesJson = $derived(JSON.stringify(excludedCategories));
+
+	function toggleCategory(key) {
+		if (excludedCategories.includes(key)) {
+			excludedCategories = excludedCategories.filter(c => c !== key);
+		} else {
+			excludedCategories = [...excludedCategories, key];
+		}
+		autoSave();
+	}
 	
 	function resetEmbedColor(category) {
 		logEmbedColors[category] = defaultEmbedColors[category] || '#95a5a6';
@@ -167,6 +181,7 @@
 		// Always sync from data - the form enhance uses invalidateAll which reloads data
 		loggingChannelId = data.settings?.loggingChannelId || '';
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
+		excludedCategories = data.settings?.excludedCategories || [];
 		timezone = data.settings?.timezone || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
@@ -346,6 +361,30 @@
 			</div>
 
 			{#if loggingChannelId}
+				<div class="settings-card log-categories-card">
+					<div class="setting-info">
+						<span class="setting-label">Event Categories</span>
+						<span class="setting-desc">Choose which types of events to log. Disabled categories will not be recorded.</span>
+					</div>
+					<div class="category-toggles-grid">
+						{#each Object.entries(EVENT_CATEGORIES) as [key, category]}
+							<button
+								type="button"
+								class="category-toggle"
+								class:excluded={excludedCategories.includes(key)}
+								onclick={() => toggleCategory(key)}
+								title={category.description}
+							>
+								<span class="category-toggle-icon">{category.icon}</span>
+								<span class="category-toggle-name">{category.name}</span>
+								<span class="category-toggle-status">{excludedCategories.includes(key) ? 'Off' : 'On'}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
+
+			{#if loggingChannelId}
 				<div class="settings-card embed-colors-card">
 					<div class="embed-colors-header">
 						<div class="setting-info">
@@ -384,6 +423,7 @@
 				</div>
 			{/if}
 			<input type="hidden" name="logEmbedColors" value={logEmbedColorsJson} />
+		<input type="hidden" name="excludedCategories" value={excludedCategoriesJson} />
 		</section>
 		
 		<!-- Timezone Settings -->
@@ -1315,6 +1355,78 @@
 	/* Embed Colors */
 	.embed-colors-card {
 		margin-top: 0.75rem;
+	}
+
+	/* Log Categories */
+	.log-categories-card {
+		margin-top: 0.75rem;
+	}
+
+	.log-categories-card .setting-info {
+		margin-bottom: 0.75rem;
+	}
+
+	.category-toggles-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.category-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		cursor: pointer;
+		transition: all 0.2s;
+		color: var(--color-text);
+		font-family: inherit;
+		font-size: 0.8rem;
+	}
+
+	.category-toggle:hover {
+		border-color: var(--color-primary);
+	}
+
+	.category-toggle.excluded {
+		opacity: 0.5;
+		background: var(--color-surface);
+	}
+
+	.category-toggle-icon {
+		font-size: 0.875rem;
+		flex-shrink: 0;
+	}
+
+	.category-toggle-name {
+		flex: 1;
+		text-align: left;
+		font-weight: 500;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.category-toggle-status {
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		padding: 0.125rem 0.375rem;
+		border-radius: var(--radius-sm);
+		flex-shrink: 0;
+	}
+
+	.category-toggle:not(.excluded) .category-toggle-status {
+		background: rgba(46, 204, 113, 0.15);
+		color: #2ecc71;
+	}
+
+	.category-toggle.excluded .category-toggle-status {
+		background: rgba(231, 76, 60, 0.15);
+		color: #e74c3c;
 	}
 
 	.embed-colors-header {

@@ -76,6 +76,7 @@ export async function load({ cookies, platform, parent, params }) {
     moderationRoleId: dbSettings.moderation_role_id || null,
     timezone: dbSettings.timezone || null,
     logEmbedColors: dbSettings.log_embed_colors || {},
+    excludedCategories: dbSettings.excluded_categories || [],
   };
 
   // Permission settings - load from database or use defaults
@@ -154,6 +155,20 @@ export const actions = {
     const loggingChannelId = formData.get("loggingChannelId");
     const timezone = formData.get("timezone") || null;
 
+    // Excluded log categories (JSON string from hidden input)
+    let excludedCategories = [];
+    const excludedCategoriesRaw = formData.get("excludedCategories");
+    if (excludedCategoriesRaw) {
+      try {
+        const parsed = JSON.parse(excludedCategoriesRaw);
+        if (Array.isArray(parsed)) {
+          excludedCategories = parsed.filter(c => typeof c === 'string');
+        }
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
+
     // Log embed colors (JSON string from hidden input)
     let logEmbedColors = {};
     const logEmbedColorsRaw = formData.get("logEmbedColors");
@@ -196,6 +211,7 @@ export const actions = {
         logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
         log_channel_id: loggingChannelId || null,
         log_embed_colors: logEmbedColors,
+        excluded_categories: excludedCategories,
         timezone: timezone,
         permission_settings: {
           viewDashboard: { permission: viewDashboardPerm, roles: [] },
