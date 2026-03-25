@@ -74,10 +74,6 @@ export async function load({ cookies, platform, parent, params }) {
     loggingChannelId: dbSettings.log_channel_id || null,
     loggingChannelName: null, // Would need to fetch from Discord API
     moderationRoleId: dbSettings.moderation_role_id || null,
-    welcomeEnabled: dbSettings.welcome_enabled || false,
-    welcomeChannelId: dbSettings.welcome_channel_id || null,
-    welcomeChannelName: null, // Would need to fetch from Discord API
-    welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
     timezone: dbSettings.timezone || null,
     logEmbedColors: dbSettings.log_embed_colors || {},
   };
@@ -156,9 +152,6 @@ export const actions = {
 
     const formData = await request.formData();
     const loggingChannelId = formData.get("loggingChannelId");
-    const welcomeEnabled = formData.get("welcomeEnabled") === "on";
-    const welcomeChannelId = formData.get("welcomeChannelId");
-    const welcomeMessage = formData.get("welcomeMessage");
     const timezone = formData.get("timezone") || null;
 
     // Log embed colors (JSON string from hidden input)
@@ -186,8 +179,6 @@ export const actions = {
 
     log.info(`[Settings] Updating settings for server ${serverId}:`, {
       loggingChannelId,
-      welcomeEnabled,
-      welcomeChannelId,
       viewDashboardPerm,
       viewLogsPerm,
       manageAutomationsPerm,
@@ -205,9 +196,6 @@ export const actions = {
         logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
         log_channel_id: loggingChannelId || null,
         log_embed_colors: logEmbedColors,
-        welcome_enabled: welcomeEnabled,
-        welcome_channel_id: welcomeChannelId || null,
-        welcome_message: welcomeMessage || "Welcome {user} to {server}!",
         timezone: timezone,
         permission_settings: {
           viewDashboard: { permission: viewDashboardPerm, roles: [] },

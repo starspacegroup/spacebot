@@ -576,9 +576,6 @@ export class MCPClient {
       logging_enabled: true,
       log_channel_id: null,
       moderation_role_id: null,
-      welcome_enabled: false,
-      welcome_channel_id: null,
-      welcome_message: "Welcome {user} to {server}!",
       excluded_channels: [],
       excluded_categories: [],
       permission_settings: {
@@ -600,9 +597,6 @@ export class MCPClient {
       logging_enabled: Boolean(settings.logging_enabled),
       log_channel_id: settings.log_channel_id || null,
       moderation_role_id: settings.moderation_role_id || null,
-      welcome_enabled: Boolean(settings.welcome_enabled),
-      welcome_channel_id: settings.welcome_channel_id || null,
-      welcome_message: settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
       excluded_channels: settings.excluded_channels ? JSON.parse(settings.excluded_channels) : [],
       excluded_categories: settings.excluded_categories ? JSON.parse(settings.excluded_categories) : [],
       permission_settings: settings.permission_settings ? 
@@ -2707,7 +2701,7 @@ export function formatToolsForPrompt() {
   prompt += `4. **Ask for confirmation:** Ask "Does this look correct? Say 'yes' to create it, or tell me what to change."\n`;
   prompt += `5. **Create after confirmation:** Only after user confirms, use \`confirm_automation\`.\n\n`;
   prompt += `**Common automation patterns:**\n`;
-  prompt += `- Welcome message: trigger=MEMBER_JOIN, action=SEND_MESSAGE or SEND_DM\n`;
+  prompt += `- Greet on join: trigger=MEMBER_JOIN, action=SEND_MESSAGE or SEND_DM\n`;
   prompt += `- Auto-role on join: trigger=MEMBER_JOIN, action=ADD_ROLE, config={target_user: "actor", role_id: "..."}\n`;
   prompt += `- Log joins to channel: trigger=MEMBER_JOIN, action=LOG_TO_CHANNEL, config={channel_id: "...", content: "{user.mention} joined!"}\n`;
   prompt += `- Anti-spam: trigger=MESSAGE_CREATE, action=TIMEOUT_MEMBER, with filters\n\n`;

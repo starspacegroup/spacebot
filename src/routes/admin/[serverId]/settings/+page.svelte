@@ -31,12 +31,6 @@
 	// These are mutable form values that the user edits, so they must be $state, not $derived.
 	// svelte-ignore state_referenced_locally
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
-	// svelte-ignore state_referenced_locally
-	let welcomeEnabled = $state(data.settings?.welcomeEnabled || false);
-	// svelte-ignore state_referenced_locally
-	let welcomeChannelId = $state(data.settings?.welcomeChannelId || '');
-	// svelte-ignore state_referenced_locally
-	let welcomeMessage = $state(data.settings?.welcomeMessage || 'Welcome {user} to {server}!');
 	
 	// Log embed color settings per category
 	const defaultEmbedColors = {
@@ -172,9 +166,6 @@
 		
 		// Always sync from data - the form enhance uses invalidateAll which reloads data
 		loggingChannelId = data.settings?.loggingChannelId || '';
-		welcomeEnabled = data.settings?.welcomeEnabled || false;
-		welcomeChannelId = data.settings?.welcomeChannelId || '';
-		welcomeMessage = data.settings?.welcomeMessage || 'Welcome {user} to {server}!';
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		timezone = data.settings?.timezone || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
@@ -393,69 +384,6 @@
 				</div>
 			{/if}
 			<input type="hidden" name="logEmbedColors" value={logEmbedColorsJson} />
-		</section>
-		
-		<!-- Welcome Messages -->
-		<section class="settings-section">
-			<h2>
-				<span class="section-icon">👋</span>
-				Welcome Messages
-			</h2>
-			
-			<div class="settings-card">
-				<div class="setting-row">
-					<div class="setting-info">
-						<label for="welcomeEnabled" class="setting-label">Enable Welcome Messages</label>
-						<span class="setting-desc">Automatically greet new members when they join</span>
-					</div>
-					<label class="toggle">
-						<input 
-							type="checkbox" 
-							id="welcomeEnabled" 
-							name="welcomeEnabled"
-							bind:checked={welcomeEnabled}
-							onchange={autoSave}
-						/>
-						<span class="toggle-slider"></span>
-					</label>
-				</div>
-				
-				{#if welcomeEnabled}
-					<div class="setting-row">
-						<div class="setting-info">
-							<span class="setting-label">Welcome Channel</span>
-							<span class="setting-desc">Channel where welcome messages will be sent</span>
-						</div>
-						<div class="setting-control">
-							<ChannelSelector 
-								guildId={data.serverId}
-								bind:value={welcomeChannelId}
-								name="welcomeChannelId"
-								placeholder="Select a channel..."
-								onchange={autoSave}
-							/>
-						</div>
-					</div>
-					
-					<div class="setting-row column">
-						<div class="setting-info">
-							<label for="welcomeMessage" class="setting-label">Welcome Message</label>
-							<span class="setting-desc">
-								Use {'{user}'} for the member's mention and {'{server}'} for the server name
-							</span>
-						</div>
-						<textarea 
-							id="welcomeMessage" 
-							name="welcomeMessage"
-							bind:value={welcomeMessage}
-							rows="3"
-							class="setting-textarea"
-							placeholder={"Welcome {user} to {server}!"}
-							oninput={autoSave}
-						></textarea>
-					</div>
-				{/if}
-			</div>
 		</section>
 		
 		<!-- Timezone Settings -->

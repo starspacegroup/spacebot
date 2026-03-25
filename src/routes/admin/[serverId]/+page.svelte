@@ -269,13 +269,7 @@
 									<span class="setting-value">Not configured</span>
 								{/if}
 							</div>
-							<div class="setting-item">
-								<div class="setting-info">
-									<span class="setting-label">Welcome Messages</span>
-									<span class="setting-desc">Greet new members automatically</span>
-								</div>
-								<span class="setting-value" class:setting-disabled={!data.settings?.welcomeEnabled}>{data.settings?.welcomeEnabled ? 'Enabled' : 'Disabled'}</span>
-							</div>
+
 						</div>
 						<div class="settings-actions">
 							<a href="/admin/{data.serverId}/settings" class="btn btn-secondary">

@@ -456,9 +456,6 @@ async function getGuildSettings(guildId) {
     logging_enabled: true,
     log_channel_id: null,
     moderation_role_id: null,
-    welcome_enabled: false,
-    welcome_channel_id: null,
-    welcome_message: "Welcome {user} to {server}!",
     excluded_channels: [],
     excluded_categories: [],
     permission_settings: {
@@ -480,9 +477,6 @@ async function getGuildSettings(guildId) {
     logging_enabled: Boolean(settings.logging_enabled),
     log_channel_id: settings.log_channel_id || null,
     moderation_role_id: settings.moderation_role_id || null,
-    welcome_enabled: Boolean(settings.welcome_enabled),
-    welcome_channel_id: settings.welcome_channel_id || null,
-    welcome_message: settings.welcome_message || DEFAULT_SETTINGS.welcome_message,
     excluded_channels: settings.excluded_channels ? JSON.parse(settings.excluded_channels) : [],
     excluded_categories: settings.excluded_categories ? JSON.parse(settings.excluded_categories) : [],
     permission_settings: settings.permission_settings ? 

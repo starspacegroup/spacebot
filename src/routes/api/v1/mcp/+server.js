@@ -111,7 +111,7 @@ const MCP_TOOLS = [
   },
   {
     name: "get_server_settings",
-    description: "Get current server settings including logging, welcome messages, and permissions.",
+    description: "Get current server settings including logging and permissions.",
     inputSchema: {
       type: "object",
       properties: {},

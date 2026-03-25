@@ -251,9 +251,7 @@ export async function load({ cookies, platform, parent, params }) {
     settings: {
       loggingChannelId: dbSettings.log_channel_id || null,
       loggingChannelName,
-      welcomeEnabled: dbSettings.welcome_enabled || false,
-      welcomeChannelId: dbSettings.welcome_channel_id || null,
-      welcomeMessage: dbSettings.welcome_message || "Welcome {user} to {server}!",
+
     },
     basicStats,
     memberGrowthChartData,
