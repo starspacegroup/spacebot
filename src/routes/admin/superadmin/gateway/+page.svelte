@@ -37,6 +37,13 @@
 		{ value: 120, label: '2 minutes' },
 		{ value: 300, label: '5 minutes' },
 		{ value: 600, label: '10 minutes' },
+		{ value: 1800, label: '30 minutes' },
+		{ value: 3600, label: '1 hour' },
+		{ value: 7200, label: '2 hours' },
+		{ value: 14400, label: '4 hours' },
+		{ value: 28800, label: '8 hours' },
+		{ value: 43200, label: '12 hours' },
+		{ value: 86400, label: '24 hours' },
 	];
 
 	// Format date
