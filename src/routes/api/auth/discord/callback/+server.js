@@ -119,20 +119,24 @@ export async function GET({ request, url, cookies, platform }) {
 		const userData = await userResponse.json();
 		console.log('[OAuth Callback] User info received:', userData.username);
 
-		// Track user login in the database (non-blocking)
+		// Track user login in the database
 		const db = platform?.env?.DB;
 		if (db) {
 			const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
 			const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(userData.id);
-			upsertUser(db, {
-				id: userData.id,
-				username: userData.username,
-				global_name: userData.global_name || null,
-				avatar: userData.avatar || null,
-				discriminator: userData.discriminator || "0",
-				email: userData.email || null,
-				is_superadmin: isSuperAdmin,
-			}).catch(err => log.error("[OAuth] Failed to track user login:", err));
+			try {
+				await upsertUser(db, {
+					id: userData.id,
+					username: userData.username,
+					global_name: userData.global_name || null,
+					avatar: userData.avatar || null,
+					discriminator: userData.discriminator || "0",
+					email: userData.email || null,
+					is_superadmin: isSuperAdmin,
+				});
+			} catch (err) {
+				log.error("[OAuth] Failed to track user login:", err);
+			}
 		}
 
 		// Determine if we're on a secure connection (behind proxy/tunnel counts as secure)
