@@ -144,11 +144,11 @@
 				<div class="pricing-badge pricing-badge-featured">Pro</div>
 				<div class="pricing-price">
 					{#if billingInterval === 'yearly'}
-						<span class="price-amount">$0.83</span>
+						<span class="price-amount">$2.50</span>
 						<span class="price-period">/server/mo</span>
-						<div class="price-billed-note">Billed $10/server/year</div>
+						<div class="price-billed-note">Billed $30/server/year</div>
 					{:else}
-						<span class="price-amount">$1</span>
+						<span class="price-amount">$3</span>
 						<span class="price-period">/server/mo</span>
 					{/if}
 				</div>
