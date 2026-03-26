@@ -72,8 +72,9 @@ You have TWO sources of data:
 - Boost level
 
 **Use get_voice_activity tool for:**
+- Voice hours/time spent in voice chat (use days=1 for today)
 - Historical voice stats (last X days)
-- Top voice users, most popular voice channels
+- Top voice users by time spent, most popular voice channels
 - Total voice joins over time
 
 **Use get_activity_summary tool for:**

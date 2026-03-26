@@ -271,7 +271,7 @@ export class MCPClient {
     const { days = 7 } = options;
     const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    const [joinCount, uniqueUsers, topUsers, topChannels] = await Promise.all([
+    const [joinCount, uniqueUsers, topUsers, topChannels, voiceSessions] = await Promise.all([
       // Total voice joins
       this.executeD1Query(
         `SELECT COUNT(*) as count FROM event_logs 
@@ -298,13 +298,74 @@ export class MCPClient {
          GROUP BY channel_id ORDER BY join_count DESC LIMIT 10`,
         [guildId, sinceDate]
       ),
+      // Voice join/leave pairs for duration calculation
+      this.executeD1Query(
+        `SELECT actor_id, actor_name, event_type, created_at FROM event_logs 
+         WHERE guild_id = ? AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE') AND created_at >= ?
+         ORDER BY actor_id, created_at`,
+        [guildId, sinceDate]
+      ),
     ]);
 
+    // Calculate voice hours from join/leave pairs
+    let totalMinutes = 0;
+    const userMinutes = {};
+    const sessions = voiceSessions.results || [];
+    
+    // Group events by user and pair joins with leaves
+    const userEvents = {};
+    for (const event of sessions) {
+      if (!userEvents[event.actor_id]) {
+        userEvents[event.actor_id] = { name: event.actor_name, events: [] };
+      }
+      userEvents[event.actor_id].events.push(event);
+    }
+    
+    const now = Date.now();
+    for (const [userId, userData] of Object.entries(userEvents)) {
+      let userTotal = 0;
+      let pendingJoin = null;
+      
+      for (const event of userData.events) {
+        if (event.event_type === 'VOICE_JOIN') {
+          pendingJoin = new Date(event.created_at).getTime();
+        } else if (event.event_type === 'VOICE_LEAVE' && pendingJoin) {
+          const leaveTime = new Date(event.created_at).getTime();
+          userTotal += (leaveTime - pendingJoin) / 60000; // Convert ms to minutes
+          pendingJoin = null;
+        }
+      }
+      
+      // If user is still in voice (join without leave), count up to now
+      if (pendingJoin) {
+        userTotal += (now - pendingJoin) / 60000;
+      }
+      
+      userMinutes[userId] = { name: userData.name, minutes: Math.round(userTotal) };
+      totalMinutes += userTotal;
+    }
+    
+    // Build top users by time spent
+    const topUsersByTime = Object.entries(userMinutes)
+      .map(([id, data]) => ({
+        actor_name: data.name,
+        actor_id: id,
+        hours: Math.round(data.minutes / 60 * 10) / 10,
+        minutes: data.minutes,
+      }))
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 10);
+
+    const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+
     return {
-      period: `Last ${days} days`,
+      period: `Last ${days} day${days !== 1 ? 's' : ''}`,
+      totalVoiceHours: totalHours,
+      totalVoiceMinutes: Math.round(totalMinutes),
       totalVoiceJoins: joinCount.results[0]?.count || 0,
       uniqueUsersInVoice: uniqueUsers.results[0]?.count || 0,
-      topVoiceUsers: topUsers.results,
+      topVoiceUsersByTime: topUsersByTime,
+      topVoiceUsersByJoins: topUsers.results,
       topVoiceChannels: topChannels.results,
     };
   }
@@ -2380,10 +2441,10 @@ export const MCP_TOOLS = [
   },
   {
     name: "get_voice_activity",
-    description: "Get voice chat activity statistics for a server over a time period. Shows total voice joins, unique users, top voice users, and most popular voice channels.",
+    description: "Get voice chat activity statistics for a server over a time period. Shows total voice hours, total voice joins, unique users, top voice users by time spent and by joins, and most popular voice channels. Use days=1 for today's stats.",
     parameters: {
       guildId: "string (required) - The Discord server ID",
-      days: "number (optional) - Number of days to look back (default: 7)",
+      days: "number (optional) - Number of days to look back (default: 7). Use 1 for today.",
     },
   },
   {
