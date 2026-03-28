@@ -462,7 +462,7 @@ async function handleCustomCommand(command, interaction, db, platform) {
 	// If command requires voice channel, check the user's voice state
 	let voiceState = null;
 	if (command.require_voice) {
-		const token = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+		const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 		if (token && guildId && userId) {
 			try {
 				const vsRes = await fetch(
@@ -522,8 +522,8 @@ async function handleCustomCommand(command, interaction, db, platform) {
 	};
 
 	const context = buildCommandContext(interaction, guildInfo, voiceState);
-	context.widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
-	context.widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
+	context.widget_signing_secret = getEnv(platform, 'DISCORD_PUBLIC_KEY');
+	context.widget_origin = getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? "http://localhost:4269";
 
 	// Record usage
 	await recordCommandUse(db, command.id);
@@ -574,7 +574,7 @@ async function handleCustomCommand(command, interaction, db, platform) {
 			options: {}, // Store all option values by name
 			application_id: interaction.application_id,
 			interaction_token: interaction.token,
-			_bot_token: platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN,
+			_bot_token: getEnv(platform, 'DISCORD_BOT_TOKEN'),
 		};
 
 		// Add voice channel info to event if available
@@ -687,7 +687,7 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 
 	log.debug(`[Command] Executing deferred command: ${command.name}`);
 
-	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+	const botToken = getEnv(platform, 'DISCORD_BOT_TOKEN');
 
 	// Helper to edit the deferred response
 	async function editOriginalResponse(data) {
@@ -769,8 +769,8 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 		};
 
 		const context = buildCommandContext(interaction, guildInfo, voiceState);
-		context.widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
-		context.widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
+		context.widget_signing_secret = getEnv(platform, 'DISCORD_PUBLIC_KEY');
+		context.widget_origin = getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? "http://localhost:4269";
 
 		// Record usage
 		await recordCommandUse(db, command.id);
@@ -1319,8 +1319,7 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
  * Complex actions may need the full discord.js gateway client
  */
 function createRESTClient(platform) {
-	const token = platform?.env?.DISCORD_BOT_TOKEN ||
-		process.env.DISCORD_BOT_TOKEN;
+	const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 
 	if (!token) {
 		log.warn("No bot token available for REST client");

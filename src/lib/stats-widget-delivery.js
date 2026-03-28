@@ -11,7 +11,8 @@ const VALID_PERIODS = new Set(["7d", "30d"]);
  * @returns {string}
  */
 export function resolveWidgetOrigin() {
-  return process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
+  const env = typeof process !== 'undefined' ? process.env : {};
+  return env.APP_URL || env.API_BASE || "http://localhost:4269";
 }
 
 /**

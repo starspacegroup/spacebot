@@ -990,7 +990,7 @@ export async function executeAction(automation, event, context, discord, db = nu
           return { success: false, error: "Channel not found" };
         }
 
-        const signingSecret = context.widget_signing_secret || process.env.DISCORD_PUBLIC_KEY;
+        const signingSecret = context.widget_signing_secret || (typeof process !== 'undefined' ? process.env?.DISCORD_PUBLIC_KEY : undefined);
         const origin = context.widget_origin || resolveWidgetOrigin();
 
         const { pngData, filename, widgetInfo, periodLabel } =
