@@ -13,6 +13,7 @@
 
 import { json } from "@sveltejs/kit";
 import { listIntegrations, getIntegrationBySlug } from "$lib/db/integrations.js";
+import { seedBuiltInIntegrations } from "$lib/integrations/registry.js";
 import { log } from "$lib/db/logger.js";
 
 /** @type {import('./$types').RequestHandler} */
@@ -20,6 +21,12 @@ export async function GET({ platform, url }) {
   const db = platform?.env?.DB;
   if (!db) {
     return json({ error: "Database not available" }, { status: 500 });
+  }
+
+  try {
+    await seedBuiltInIntegrations(db);
+  } catch (error) {
+    log.warn("[IntegrationStatus] Failed to seed built-in integrations:", error);
   }
 
   const slug = url.searchParams.get("slug");

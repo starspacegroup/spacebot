@@ -15,6 +15,7 @@ import { json } from "@sveltejs/kit";
 import { log, logEvent } from "$lib/db/logger.js";
 import { getIntegrationBySlug, getGuildsWithIntegrationConfig } from "$lib/db/integrations.js";
 import { verifyGitHubSignature, parseGitHubEvent } from "$lib/integrations/github.js";
+import { seedBuiltInIntegrations } from "$lib/integrations/registry.js";
 import { processAutomations } from "$lib/automation/engine.js";
 import { createDiscordRestClient } from "$lib/discord/rest-client.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
@@ -31,6 +32,14 @@ export async function POST({ params, request, platform }) {
   const db = platform?.env?.DB;
   if (!db) {
     return json({ error: "Service unavailable" }, { status: 503 });
+  }
+
+  // Ensure built-in integrations are present before lookup.
+  // This keeps webhook handling working even if no admin page has been visited.
+  try {
+    await seedBuiltInIntegrations(db);
+  } catch (err) {
+    log.warn(`[GitHub] Failed to seed built-in integrations: ${err.message}`);
   }
 
   // Read the raw body for signature verification
