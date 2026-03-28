@@ -1013,7 +1013,7 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
   },
   {
     name: "stats",
-    description: "Show a server stats chart image",
+    description: "Show server stats charts and voice leaderboards",
     response_type: "action_only",
     response_content: null,
     response_embed: null,
@@ -1024,6 +1024,7 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
         type: 3,
         required: false,
         choices: [
+          { name: "Voice Leaderboard", value: "voice_leaderboard" },
           { name: "Voice Time", value: "voice_time" },
           { name: "Voice Users", value: "voice_users" },
           { name: "Voice Peak", value: "voice_peak" },

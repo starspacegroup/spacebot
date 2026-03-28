@@ -638,10 +638,13 @@ export async function getRecentAutomationExecutions(db, guildId, limit = 10) {
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID
  * @param {number} limit - Number of results
+ * @param {'7d'|'30d'} period - Time range to evaluate
  * @returns {Promise<Array>} - Top voice users
  */
-export async function getTopVoiceUsers(db, guildId, limit = 20) {
+export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") {
   if (!db) return [];
+
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
 
   try {
     const result = await db.prepare(`
@@ -658,7 +661,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20) {
         WHERE guild_id = ?
           AND actor_id IS NOT NULL
           AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
-          AND created_at >= datetime('now', '-30 days')
+          AND created_at >= datetime('now', ?)
       )
       SELECT
         actor_id,
@@ -679,7 +682,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20) {
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, limit).all();
+    `).bind(guildId, timeRange, limit).all();
 
     return result.results || [];
   } catch (error) {

@@ -36,7 +36,7 @@ export const commands = [
 	},
 	{
 		name: "stats",
-		description: "Show a stats widget image for this server",
+		description: "Show server stats charts and voice leaderboards",
 		type: 1, // CHAT_INPUT
 		options: [
 			{
@@ -45,6 +45,7 @@ export const commands = [
 				type: 3, // STRING
 				required: false,
 				choices: [
+					{ name: "Voice Leaderboard", value: "voice_leaderboard" },
 					{ name: "Voice Time", value: "voice_time" },
 					{ name: "Voice Users", value: "voice_users" },
 					{ name: "Voice Peak", value: "voice_peak" },

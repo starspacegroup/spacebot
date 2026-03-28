@@ -22,6 +22,7 @@ import {
 	getVoiceActivityChart,
 	runStatsAggregation,
 } from "$lib/db/stats-aggregation.js";
+import { getTopVoiceUsers } from "$lib/db/statistics.js";
 import { WIDGET_TYPES } from "$lib/stats-widget.js";
 
 /**
@@ -1158,6 +1159,22 @@ async function createQuickChartUrl(chartConfig) {
 	return `https://quickchart.io/chart?width=900&height=420&devicePixelRatio=2&bkg=%230f172a&format=png&c=${encoded}`;
 }
 
+function formatLeaderboardDuration(totalSeconds) {
+	const clamped = Math.max(0, Number(totalSeconds) || 0);
+	const hours = Math.floor(clamped / 3600);
+	const minutes = Math.floor((clamped % 3600) / 60);
+
+	if (hours > 0) {
+		return `${hours}h ${minutes}m`;
+	}
+
+	return `${minutes}m`;
+}
+
+function getStatsPeriodLabel(period) {
+	return period === "7d" ? "Last 7 Days" : "Last 30 Days";
+}
+
 /**
  * Handle the /stats built-in command.
  * Builds a QuickChart image from server stats data and responds with an embed containing the chart.
@@ -1194,9 +1211,11 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 		const options = interaction.data?.options || [];
 		const type = options.find(o => o.name === "type")?.value || "voice_time";
 		const period = options.find(o => o.name === "period")?.value || "30d";
+		const periodLabel = getStatsPeriodLabel(period);
+		const isVoiceLeaderboard = type === "voice_leaderboard";
 
-		const widgetInfo = WIDGET_TYPES[type];
-		if (!widgetInfo) {
+		const widgetInfo = isVoiceLeaderboard ? null : WIDGET_TYPES[type];
+		if (!isVoiceLeaderboard && !widgetInfo) {
 			await editOriginal({ content: "❌ Unknown stats type." });
 			return;
 		}
@@ -1215,6 +1234,40 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 		await runStatsAggregation(db, guildId).catch((err) => {
 			log.warn(`[Stats] Aggregation failed for ${guildId}:`, err);
 		});
+
+		if (isVoiceLeaderboard) {
+			const leaderboardRows = await getTopVoiceUsers(db, guildId, 10, period);
+
+			if (!leaderboardRows.length) {
+				await editOriginal({
+					content: "ℹ️ Not enough voice history data yet. Try again after more voice activity has been logged.",
+				});
+				return;
+			}
+
+			const topLines = leaderboardRows.map((row, index) => {
+				const userLabel = row.actor_id
+					? `<@${row.actor_id}>`
+					: (row.actor_name || "Unknown User");
+				const duration = formatLeaderboardDuration(row.total_seconds);
+				return `${index + 1}. ${userLabel} - ${duration}`;
+			});
+
+			await editOriginal({
+				embeds: [{
+					title: "🎙️ Voice Chat Leaderboard",
+					description: `${periodLabel}`,
+					color: 0x57F287,
+					fields: [{
+						name: "Top Voice Time",
+						value: topLines.join("\n"),
+					}],
+					footer: { text: "SpaceBot Stats" },
+					timestamp: new Date().toISOString(),
+				}],
+			});
+			return;
+		}
 
 		let chartRows = [];
 		if (type === "voice_time" || type === "voice_users" || type === "voice_peak") {
@@ -1241,8 +1294,6 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 		const latestMemberCount = latest?.human_count ?? latest?.member_count ?? null;
 		const chartConfig = buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMemberCount);
 		const imageUrl = await createQuickChartUrl(chartConfig);
-
-		const periodLabel = period === "7d" ? "Last 7 Days" : "Last 30 Days";
 
 		await editOriginal({
 			embeds: [{
