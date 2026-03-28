@@ -46,8 +46,15 @@ export const commands = [
 				required: false,
 				choices: [
 					{ name: "Voice Time", value: "voice_time" },
+					{ name: "Voice Users", value: "voice_users" },
+					{ name: "Voice Peak", value: "voice_peak" },
 					{ name: "Member Count", value: "member_count" },
 					{ name: "Member Growth", value: "member_growth" },
+					{ name: "Member Joins", value: "member_joins" },
+					{ name: "Member Leaves", value: "member_leaves" },
+					{ name: "Member Net Change", value: "member_net_change" },
+					{ name: "Message Count", value: "message_count" },
+					{ name: "Message Authors", value: "message_users" },
 				],
 			},
 			{

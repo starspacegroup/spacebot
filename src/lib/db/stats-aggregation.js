@@ -904,6 +904,7 @@ async function getTodayPartialStats(db, guildId = null) {
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END), 0) as member_joins,
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END), 0) as member_leaves,
         COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
+        COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'MESSAGE_CREATE' THEN actor_id END), 0) as message_unique_users,
         COUNT(*) as total_events
       FROM event_logs
       WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
@@ -916,6 +917,10 @@ async function getTodayPartialStats(db, guildId = null) {
       result.member_leaves += currentHour.member_leaves || 0;
       result.member_net_change = result.member_joins - result.member_leaves;
       result.message_count += currentHour.message_count || 0;
+      result.message_unique_users = Math.max(
+        result.message_unique_users || 0,
+        currentHour.message_unique_users || 0,
+      );
       result.total_events += currentHour.total_events || 0;
     }
 
@@ -956,6 +961,7 @@ async function getCurrentHourPartialStats(db, guildId = null) {
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END), 0) as member_joins,
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END), 0) as member_leaves,
         COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
+        COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'MESSAGE_CREATE' THEN actor_id END), 0) as message_unique_users,
         COUNT(*) as total_events
       FROM event_logs
       WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
@@ -987,7 +993,7 @@ async function getCurrentHourPartialStats(db, guildId = null) {
       member_leaves: currentHour?.member_leaves || 0,
       member_net_change: (currentHour?.member_joins || 0) - (currentHour?.member_leaves || 0),
       message_count: currentHour?.message_count || 0,
-      message_unique_users: 0,
+      message_unique_users: currentHour?.message_unique_users || 0,
       total_events: currentHour?.total_events || 0,
     };
   } catch (error) {
@@ -1157,6 +1163,69 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
     return fillDateGaps(rawData, days, { totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 }, timezone);
   } catch (error) {
     log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get message activity chart data for a specific server.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {'7d'|'30d'} period
+ * @returns {Promise<Array<{date: string, messageCount: number, messageUniqueUsers: number}>>}
+ */
+export async function getMessageActivityChart(db, guildId, period = "30d", timezone = null) {
+  if (!db || !guildId) return [];
+
+  const days = period === "7d" ? 7 : 30;
+  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const tzOffset = getTimezoneOffsetSQL(timezone);
+
+  try {
+    const result = await db.prepare(`
+      SELECT
+        date(datetime(period_start, '${tzOffset}')) as date,
+        SUM(message_count) as message_count,
+        MAX(message_unique_users) as message_unique_users
+      FROM aggregated_stats
+      WHERE guild_id = ?
+        AND period_type = 'hourly'
+        AND period_start >= datetime('now', ?)
+      GROUP BY date
+      ORDER BY date ASC
+    `).bind(guildId, timeRange).all();
+
+    const rawData = (result.results || []).map((row) => ({
+      date: row.date,
+      messageCount: row.message_count || 0,
+      messageUniqueUsers: row.message_unique_users || 0,
+    }));
+
+    const today = getTodayDateString(timezone);
+    const partial = await getCurrentHourPartialStats(db, guildId);
+    const existingToday = rawData.find((r) => r.date === today);
+    if (existingToday) {
+      existingToday.messageCount += partial.message_count || 0;
+      existingToday.messageUniqueUsers = Math.max(
+        existingToday.messageUniqueUsers || 0,
+        partial.message_unique_users || 0,
+      );
+    } else {
+      rawData.push({
+        date: today,
+        messageCount: partial.message_count || 0,
+        messageUniqueUsers: partial.message_unique_users || 0,
+      });
+    }
+
+    return fillDateGaps(
+      rawData,
+      days,
+      { messageCount: 0, messageUniqueUsers: 0 },
+      timezone,
+    );
+  } catch (error) {
+    log.error(`Failed to get message activity chart for guild ${guildId}:`, error);
     return [];
   }
 }

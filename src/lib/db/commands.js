@@ -901,8 +901,15 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
         required: false,
         choices: [
           { name: "Voice Time", value: "voice_time" },
+          { name: "Voice Users", value: "voice_users" },
+          { name: "Voice Peak", value: "voice_peak" },
           { name: "Member Count", value: "member_count" },
           { name: "Member Growth", value: "member_growth" },
+          { name: "Member Joins", value: "member_joins" },
+          { name: "Member Leaves", value: "member_leaves" },
+          { name: "Member Net Change", value: "member_net_change" },
+          { name: "Message Count", value: "message_count" },
+          { name: "Message Authors", value: "message_users" },
         ],
       },
       {
@@ -954,6 +961,17 @@ export async function ensureBuiltInCommands(db) {
         ).run();
 
         log.info(`Created built-in command: ${cmd.name}`);
+      } else if (cmd.name === "stats") {
+        // Keep built-in /stats choices current when new widget types are added.
+        await db.prepare(`
+          UPDATE commands
+          SET options = ?, description = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(
+          cmd.options ? JSON.stringify(cmd.options) : null,
+          cmd.description,
+          existing.id,
+        ).run();
       }
     }
   } catch (error) {

@@ -174,8 +174,15 @@ export const ACTION_TYPES = {
         label: "Widget Type",
         options: [
           { value: "voice_time", label: "Voice Time" },
+          { value: "voice_users", label: "Voice Users" },
+          { value: "voice_peak", label: "Voice Peak" },
           { value: "member_count", label: "Member Count" },
           { value: "member_growth", label: "Member Growth" },
+          { value: "member_joins", label: "Member Joins" },
+          { value: "member_leaves", label: "Member Leaves" },
+          { value: "member_net_change", label: "Member Net Change" },
+          { value: "message_count", label: "Message Count" },
+          { value: "message_users", label: "Message Authors" },
         ],
       },
       period: {

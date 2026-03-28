@@ -324,6 +324,178 @@ export function memberGrowthWidget(growthData, options = {}) {
 }
 
 /**
+ * Generate a Voice Users widget SVG.
+ * @param {Array} voiceData - from getVoiceActivityChart()
+ * @returns {string}
+ */
+export function voiceUsersWidget(voiceData, options = {}) {
+  const points = voiceData || [];
+  const maxUsers = Math.max(0, ...points.map((p) => p.uniqueUsers || 0));
+  const avgUsers = points.length
+    ? Math.round(points.reduce((sum, p) => sum + (p.uniqueUsers || 0), 0) / points.length)
+    : 0;
+  const color = '#22c55e';
+
+  const data = points.map((p) => ({ date: p.date, value: p.uniqueUsers || 0 }));
+
+  return wrapSvg([
+    svgDefs('voiceUsersGrad', color, options),
+    svgBackground(),
+    svgHeader('Voice Users', [
+      { value: formatNumber(maxUsers), label: 'Peak Users', color },
+      { value: formatNumber(avgUsers), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'voiceUsersGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Voice Peak widget SVG.
+ * @param {Array} voiceData - from getVoiceActivityChart()
+ * @returns {string}
+ */
+export function voicePeakWidget(voiceData, options = {}) {
+  const points = voiceData || [];
+  const peak = Math.max(0, ...points.map((p) => p.peakConcurrent || 0));
+  const total = points.reduce((sum, p) => sum + (p.peakConcurrent || 0), 0);
+  const avg = points.length ? Math.round(total / points.length) : 0;
+  const color = '#f97316';
+
+  const data = points.map((p) => ({ date: p.date, value: p.peakConcurrent || 0 }));
+
+  return wrapSvg([
+    svgDefs('voicePeakGrad', color, options),
+    svgBackground(),
+    svgHeader('Voice Peak', [
+      { value: formatNumber(peak), label: 'Highest Concurrent', color },
+      { value: formatNumber(avg), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'voicePeakGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Member Joins widget SVG.
+ * @param {Array} growthData - from getMemberGrowthChart()
+ * @returns {string}
+ */
+export function memberJoinsWidget(growthData, options = {}) {
+  const points = growthData || [];
+  const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
+  const avgJoins = points.length ? Math.round((totalJoins / points.length) * 10) / 10 : 0;
+  const color = '#22c55e';
+
+  const data = points.map((p) => ({ date: p.date, value: p.joins || 0 }));
+
+  return wrapSvg([
+    svgDefs('joinsGrad', color, options),
+    svgBackground(),
+    svgHeader('Member Joins', [
+      { value: `+${formatNumber(totalJoins)}`, label: 'Total Joined', color },
+      { value: formatNumber(avgJoins), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'joinsGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Member Leaves widget SVG.
+ * @param {Array} growthData - from getMemberGrowthChart()
+ * @returns {string}
+ */
+export function memberLeavesWidget(growthData, options = {}) {
+  const points = growthData || [];
+  const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
+  const avgLeaves = points.length ? Math.round((totalLeaves / points.length) * 10) / 10 : 0;
+  const color = '#ef4444';
+
+  const data = points.map((p) => ({ date: p.date, value: p.leaves || 0 }));
+
+  return wrapSvg([
+    svgDefs('leavesGrad', color, options),
+    svgBackground(),
+    svgHeader('Member Leaves', [
+      { value: `-${formatNumber(totalLeaves)}`, label: 'Total Left', color },
+      { value: formatNumber(avgLeaves), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'leavesGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Member Net Change widget SVG.
+ * @param {Array} growthData - from getMemberGrowthChart()
+ * @returns {string}
+ */
+export function memberNetChangeWidget(growthData, options = {}) {
+  const points = growthData || [];
+  const totalNet = points.reduce((sum, p) => sum + (p.netChange || 0), 0);
+  const color = totalNet >= 0 ? '#22c55e' : '#ef4444';
+  const prefix = totalNet > 0 ? '+' : '';
+
+  const data = points.map((p) => ({ date: p.date, value: p.netChange || 0 }));
+
+  return wrapSvg([
+    svgDefs('netGrad', color, options),
+    svgBackground(),
+    svgHeader('Member Net Change', [
+      { value: `${prefix}${formatNumber(totalNet)}`, label: 'Total Net', color },
+    ], color, options),
+    svgAreaChart(data, color, 'netGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Message Count widget SVG.
+ * @param {Array} messageData - from getMessageActivityChart()
+ * @returns {string}
+ */
+export function messageCountWidget(messageData, options = {}) {
+  const points = messageData || [];
+  const totalMessages = points.reduce((sum, p) => sum + (p.messageCount || 0), 0);
+  const avgMessages = points.length ? Math.round(totalMessages / points.length) : 0;
+  const color = '#38bdf8';
+
+  const data = points.map((p) => ({ date: p.date, value: p.messageCount || 0 }));
+
+  return wrapSvg([
+    svgDefs('messageGrad', color, options),
+    svgBackground(),
+    svgHeader('Messages', [
+      { value: formatNumber(totalMessages), label: 'Total Messages', color },
+      { value: formatNumber(avgMessages), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'messageGrad', ''),
+  ]);
+}
+
+/**
+ * Generate a Message Authors widget SVG.
+ * @param {Array} messageData - from getMessageActivityChart()
+ * @returns {string}
+ */
+export function messageUsersWidget(messageData, options = {}) {
+  const points = messageData || [];
+  const peakAuthors = Math.max(0, ...points.map((p) => p.messageUniqueUsers || 0));
+  const avgAuthors = points.length
+    ? Math.round(points.reduce((sum, p) => sum + (p.messageUniqueUsers || 0), 0) / points.length)
+    : 0;
+  const color = '#a855f7';
+
+  const data = points.map((p) => ({ date: p.date, value: p.messageUniqueUsers || 0 }));
+
+  return wrapSvg([
+    svgDefs('messageUsersGrad', color, options),
+    svgBackground(),
+    svgHeader('Message Authors', [
+      { value: formatNumber(peakAuthors), label: 'Peak Daily Authors', color },
+      { value: formatNumber(avgAuthors), label: 'Daily Average', color: '#ffffff' },
+    ], color, options),
+    svgAreaChart(data, color, 'messageUsersGrad', ''),
+  ]);
+}
+
+/**
  * Generate a widget SVG for any supported type.
  * @param {string} type - Widget type: voice_time, member_count, member_growth
  * @param {Object} data - Stats data object  
@@ -333,10 +505,24 @@ export function generateWidget(type, data, options = {}) {
   switch (type) {
     case 'voice_time':
       return voiceTimeWidget(data.voiceActivityChartData, options);
+    case 'voice_users':
+      return voiceUsersWidget(data.voiceActivityChartData, options);
+    case 'voice_peak':
+      return voicePeakWidget(data.voiceActivityChartData, options);
     case 'member_count':
       return memberCountWidget(data.currentMemberCount, data.memberGrowthChartData, options);
     case 'member_growth':
       return memberGrowthWidget(data.memberGrowthChartData, options);
+    case 'member_joins':
+      return memberJoinsWidget(data.memberGrowthChartData, options);
+    case 'member_leaves':
+      return memberLeavesWidget(data.memberGrowthChartData, options);
+    case 'member_net_change':
+      return memberNetChangeWidget(data.memberGrowthChartData, options);
+    case 'message_count':
+      return messageCountWidget(data.messageActivityChartData, options);
+    case 'message_users':
+      return messageUsersWidget(data.messageActivityChartData, options);
     default:
       return voiceTimeWidget(data.voiceActivityChartData, options);
   }
@@ -356,9 +542,16 @@ function wrapSvg(fragments) {
 
 /** Available widget types and their display names */
 export const WIDGET_TYPES = {
-  voice_time: { name: 'Voice Time', description: 'Voice channel activity over time' },
-  member_count: { name: 'Member Count', description: 'Total members over time' },
-  member_growth: { name: 'Member Growth', description: 'Daily joins and leaves' },
+  voice_time: { name: 'Voice Time', description: 'Voice channel activity over time', color: 0xFEE75C },
+  voice_users: { name: 'Voice Users', description: 'Unique voice users by day', color: 0x22c55e },
+  voice_peak: { name: 'Voice Peak', description: 'Peak concurrent voice users by day', color: 0xf97316 },
+  member_count: { name: 'Member Count', description: 'Total members over time', color: 0x5865F2 },
+  member_growth: { name: 'Member Growth', description: 'Daily joins and leaves', color: 0x22c55e },
+  member_joins: { name: 'Member Joins', description: 'Daily member joins', color: 0x22c55e },
+  member_leaves: { name: 'Member Leaves', description: 'Daily member leaves', color: 0xef4444 },
+  member_net_change: { name: 'Member Net Change', description: 'Daily net member change', color: 0x22c55e },
+  message_count: { name: 'Message Count', description: 'Daily messages sent', color: 0x38bdf8 },
+  message_users: { name: 'Message Authors', description: 'Daily unique message authors', color: 0xa855f7 },
 };
 
 /**

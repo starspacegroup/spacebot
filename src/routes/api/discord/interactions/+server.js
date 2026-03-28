@@ -878,7 +878,7 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 			embeds: [{
 				title: `📊 ${widgetInfo.name}`,
 				description: `${widgetInfo.description} • ${periodLabel}`,
-				color: type === "voice_time" ? 0xFEE75C : type === "member_growth" ? 0x22c55e : 0x5865F2,
+				color: widgetInfo.color || 0x5865F2,
 				image: { url: imageUrl },
 				footer: { text: "SpaceBot Stats" },
 				timestamp: new Date().toISOString(),
