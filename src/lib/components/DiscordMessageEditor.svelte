@@ -385,7 +385,11 @@
 		html = html.replace(/`([^`\n]+)`/g, '<code class="preview-code">$1</code>');
 		
 		// Links [text](url) - must be before other bracket handling
-		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="preview-link" href="$2" target="_blank" rel="noopener">$1</a>');
+		// Strip any <span> tags from the URL part (template variables get wrapped in spans earlier)
+		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, rawUrl) => {
+			const url = rawUrl.replace(/<[^>]+>/g, '');
+			return `<a class="preview-link" href="${url}" target="_blank" rel="noopener">${text}</a>`;
+		});
 		
 		// Bold (must be before italic)
 		html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
