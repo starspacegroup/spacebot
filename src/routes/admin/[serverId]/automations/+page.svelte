@@ -648,7 +648,9 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
-		color: color-mix(in srgb, var(--category-color) 60%, white);
+		/* Mix with --color-text so light categories stay readable in light mode
+		   and dark categories stay readable in dark mode */
+		color: color-mix(in srgb, var(--category-color) 40%, var(--color-text));
 		overflow: hidden;
 	}
 	
