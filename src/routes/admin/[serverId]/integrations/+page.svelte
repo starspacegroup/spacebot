@@ -159,6 +159,7 @@
 											<span class="github-event-tag">⭐ Star</span>
 											<span class="github-event-tag">🍴 Fork</span>
 											<span class="github-event-tag">⚙️ Workflow Run</span>
+											<span class="github-event-tag">🧩 Workflow Job</span>
 										</div>
 									</div>
 								</div>

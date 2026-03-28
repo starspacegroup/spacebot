@@ -16,6 +16,7 @@
  *   star               → GITHUB_STAR
  *   fork               → GITHUB_FORK
  *   workflow_run       → GITHUB_WORKFLOW_RUN
+ *   workflow_job       → GITHUB_WORKFLOW_JOB
  *   check_run          → GITHUB_CHECK_RUN
  *   check_suite        → GITHUB_CHECK_SUITE
  *   deployment_status  → GITHUB_DEPLOYMENT_STATUS
@@ -35,6 +36,7 @@ export const GITHUB_EVENT_MAP = {
   star: "GITHUB_STAR",
   fork: "GITHUB_FORK",
   workflow_run: "GITHUB_WORKFLOW_RUN",
+  workflow_job: "GITHUB_WORKFLOW_JOB",
   check_run: "GITHUB_CHECK_RUN",
   check_suite: "GITHUB_CHECK_SUITE",
   deployment_status: "GITHUB_DEPLOYMENT_STATUS",
@@ -321,6 +323,31 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
           },
         },
         summary: `Workflow "${run?.name}" ${run?.conclusion || payload.action} on ${repo?.full_name}`,
+      };
+    }
+
+    case "workflow_job": {
+      const job = payload.workflow_job;
+      return {
+        event: {
+          ...base,
+          details: {
+            action: payload.action, // queued, in_progress, completed
+            repo: repo?.full_name,
+            repo_url: repo?.html_url,
+            repo_private: repo?.private || false,
+            title: job?.name,
+            url: job?.html_url,
+            workflow_job_name: job?.name,
+            status: job?.status,
+            conclusion: job?.conclusion, // success, failure, cancelled, skipped, etc.
+            branch: job?.head_branch,
+            sender: sender?.login,
+            sender_url: sender?.html_url,
+            sender_avatar_url: sender?.avatar_url || null,
+          },
+        },
+        summary: `Workflow job "${job?.name}" ${job?.conclusion || job?.status || payload.action} on ${repo?.full_name}`,
       };
     }
 

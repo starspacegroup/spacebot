@@ -682,6 +682,10 @@ export const EVENT_TYPES = {
     category: "github",
     description: "GitHub Actions workflow completed",
   },
+  GITHUB_WORKFLOW_JOB: {
+    category: "github",
+    description: "A GitHub Actions workflow job changed status",
+  },
   GITHUB_CHECK_RUN: {
     category: "github",
     description: "A check run completed (e.g. CI, Cloudflare Pages)",
