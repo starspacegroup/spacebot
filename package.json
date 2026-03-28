@@ -28,7 +28,9 @@
 		"db:push": "node scripts/push-data.js --confirm",
 		"db:push:dry": "node scripts/push-data.js",
 		"secrets:setup": "node scripts/setup-secrets.js --confirm",
-		"secrets:setup:dry": "node scripts/setup-secrets.js"
+		"secrets:setup:dry": "node scripts/setup-secrets.js",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.21.2",
@@ -37,7 +39,8 @@
 		"@sveltejs/kit": "^2.49.1",
 		"@sveltejs/vite-plugin-svelte": "^6.2.1",
 		"svelte": "^5.45.6",
-		"vite": "^7.2.6"
+		"vite": "^7.2.6",
+		"vitest": "^4.1.2"
 	},
 	"optionalDependencies": {
 		"better-sqlite3": "^12.6.2"

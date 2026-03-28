@@ -62,6 +62,9 @@ function staleDepsFix() {
 
 export default defineConfig({
 	plugins: [excludeNativeModules(), staleDepsFix(), sveltekit()],
+	test: {
+		environment: 'node',
+	},
 	optimizeDeps: {
 		// Pre-bundle Svelte runtime deps at startup so they're ready instantly.
 		// Without this, Vite discovers and optimizes lazily on first request,
