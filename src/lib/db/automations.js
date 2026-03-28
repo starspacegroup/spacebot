@@ -115,6 +115,7 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
@@ -135,6 +136,7 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
       buttons: {
@@ -166,6 +168,7 @@ export const ACTION_TYPES = {
       embed: { type: "boolean", default: false, label: "Send as embed" },
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
+      embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
@@ -710,8 +713,10 @@ export const TEMPLATE_VARIABLES = {
   "details.number": "PR/Issue number",
   "details.url": "URL to the PR/Issue/Release",
   "details.sender": "GitHub username who triggered the event",
+  "details.sender_avatar_url": "GitHub avatar URL of the sender (use as embed thumbnail)",
   "details.conclusion": "Workflow run conclusion (success, failure, etc.)",
   "details.tag": "Release tag name",
+  "github_logo_url": "GitHub logo image URL (use as embed thumbnail)",
 };
 
 /**

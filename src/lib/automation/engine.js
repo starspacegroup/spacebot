@@ -503,6 +503,7 @@ export function buildContext(event, guildInfo = {}) {
       time: new Date().toISOString(),
     },
     details: event.details || {},
+    github_logo_url: "https://avatars.githubusercontent.com/u/9919?v=4",
   };
 }
 
@@ -768,11 +769,10 @@ export async function executeAction(automation, event, context, discord, db = nu
           const payload = { flags: 64 };
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            payload.embeds = [{
-              description: content,
-              color: embedColor,
-              timestamp: new Date().toISOString(),
-            }];
+            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            payload.embeds = [embed];
           } else {
             payload.content = content;
           }
@@ -788,11 +788,12 @@ export async function executeAction(automation, event, context, discord, db = nu
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
           const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
             action_type: "SEND_MESSAGE",
-            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor },
+            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor, ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}) },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
             source_automation_id: automation.id,
@@ -812,13 +813,10 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         if (action_config.embed) {
           const embedColor = resolveEmbedColor(action_config, context);
-          await channel.send({
-            embeds: [{
-              description: content,
-              color: embedColor,
-              timestamp: new Date().toISOString(),
-            }],
-          });
+          const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+          const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+          if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+          await channel.send({ embeds: [embed] });
         } else {
           await channel.send(content);
         }
@@ -841,11 +839,10 @@ export async function executeAction(automation, event, context, discord, db = nu
           const payload = { flags: 64, components };
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            payload.embeds = [{
-              description: content,
-              color: embedColor,
-              timestamp: new Date().toISOString(),
-            }];
+            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            payload.embeds = [embed];
           } else {
             payload.content = content;
           }
@@ -861,6 +858,7 @@ export async function executeAction(automation, event, context, discord, db = nu
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
           const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
@@ -869,6 +867,7 @@ export async function executeAction(automation, event, context, discord, db = nu
               content,
               embed: !!action_config.embed,
               embed_color: embedColor,
+              ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
               components,
             },
             delay: action_config.send_later_delay,
@@ -892,11 +891,10 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         if (action_config.embed) {
           const embedColor = resolveEmbedColor(action_config, context);
-          messagePayload.embeds = [{
-            description: content,
-            color: embedColor,
-            timestamp: new Date().toISOString(),
-          }];
+          const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+          const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+          if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+          messagePayload.embeds = [embed];
         } else {
           messagePayload.content = content;
         }
@@ -920,11 +918,12 @@ export async function executeAction(automation, event, context, discord, db = nu
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
           const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
+          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             target_user_id: userId,
             action_type: "SEND_DM",
-            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor },
+            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor, ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}) },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
             source_automation_id: automation.id,
@@ -944,13 +943,10 @@ export async function executeAction(automation, event, context, discord, db = nu
         try {
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            await user.send({
-              embeds: [{
-                description: content,
-                color: embedColor,
-                timestamp: new Date().toISOString(),
-              }],
-            });
+            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            await user.send({ embeds: [embed] });
           } else {
             await user.send(content);
           }

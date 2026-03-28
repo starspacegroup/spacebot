@@ -983,11 +983,9 @@ async function executeAutomationAction(automation, event) {
         if (!content) throw new Error("Missing message content");
         const payload = { flags: 64 };
         if (action_config.embed) {
-          payload.embeds = [{
-            description: content,
-            color: 0x5865F2,
-            timestamp: new Date().toISOString(),
-          }];
+          const embed = { description: content, color: 0x5865F2, timestamp: new Date().toISOString() };
+          if (action_config.embed_thumbnail_url) embed.thumbnail = { url: action_config.embed_thumbnail_url };
+          payload.embeds = [embed];
         } else {
           payload.content = content;
         }
@@ -1019,7 +1017,7 @@ async function executeAutomationAction(automation, event) {
           guild_id: event.guild_id,
           channel_id: channelId,
           action_type: "SEND_MESSAGE",
-          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null },
+          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null, ...(action_config.embed_thumbnail_url ? { embed_thumbnail_url: action_config.embed_thumbnail_url } : {}) },
           delay: action_config.send_later_delay,
           created_by: event.actor_id,
           source_automation_id: automation.id,
@@ -1036,6 +1034,7 @@ async function executeAutomationAction(automation, event) {
             description: content,
             color: 0x5865F2,
             timestamp: new Date().toISOString(),
+            ...(action_config.embed_thumbnail_url ? { thumbnail: { url: action_config.embed_thumbnail_url } } : {}),
           }],
         });
         return { messageId: msg.id, channelId, embed: true };
@@ -1061,11 +1060,9 @@ async function executeAutomationAction(automation, event) {
         if (!content) throw new Error("Missing message content");
         const payload = { flags: 64, components: buttonComponents };
         if (action_config.embed) {
-          payload.embeds = [{
-            description: content,
-            color: 0x5865F2,
-            timestamp: new Date().toISOString(),
-          }];
+          const embed = { description: content, color: 0x5865F2, timestamp: new Date().toISOString() };
+          if (action_config.embed_thumbnail_url) embed.thumbnail = { url: action_config.embed_thumbnail_url };
+          payload.embeds = [embed];
         } else {
           payload.content = content;
         }
@@ -1090,7 +1087,7 @@ async function executeAutomationAction(automation, event) {
 
       // Schedule for later if configured
       if (action_config.send_later && action_config.send_later_delay) {
-        const messagePayload = { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null, components: buttonComponents };
+        const messagePayload = { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null, ...(action_config.embed_thumbnail_url ? { embed_thumbnail_url: action_config.embed_thumbnail_url } : {}), components: buttonComponents };
         const result = await scheduleMessageViaAPI({
           guild_id: event.guild_id,
           channel_id: channelId,
@@ -1113,6 +1110,7 @@ async function executeAutomationAction(automation, event) {
           description: content,
           color: 0x5865F2,
           timestamp: new Date().toISOString(),
+          ...(action_config.embed_thumbnail_url ? { thumbnail: { url: action_config.embed_thumbnail_url } } : {}),
         }];
       } else {
         messagePayload.content = content;
@@ -1135,7 +1133,7 @@ async function executeAutomationAction(automation, event) {
           guild_id: event.guild_id,
           target_user_id: userId,
           action_type: "SEND_DM",
-          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null },
+          message_payload: { content, embed: !!action_config.embed, embed_color: action_config.embed ? 0x5865F2 : null, ...(action_config.embed_thumbnail_url ? { embed_thumbnail_url: action_config.embed_thumbnail_url } : {}) },
           delay: action_config.send_later_delay,
           created_by: event.actor_id,
           source_automation_id: automation.id,
@@ -1152,6 +1150,7 @@ async function executeAutomationAction(automation, event) {
             description: content,
             color: 0x5865F2,
             timestamp: new Date().toISOString(),
+            ...(action_config.embed_thumbnail_url ? { thumbnail: { url: action_config.embed_thumbnail_url } } : {}),
           }],
         });
         return { dmSent: true, userId, embed: true };

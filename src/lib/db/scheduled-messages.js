@@ -237,11 +237,13 @@ async function sendScheduledChannelMessage(botToken, channelId, payload) {
   const body = {};
 
   if (payload.embed) {
-    body.embeds = [{
+    const embed = {
       description: payload.content,
       color: payload.embed_color || 0x5865F2,
       timestamp: new Date().toISOString(),
-    }];
+    };
+    if (payload.embed_thumbnail_url) embed.thumbnail = { url: payload.embed_thumbnail_url };
+    body.embeds = [embed];
   } else {
     body.content = payload.content;
   }
