@@ -8,14 +8,17 @@
  * engine for matching automations.
  *
  * Supported GitHub events:
- *   push             → GITHUB_PUSH
- *   pull_request     → GITHUB_PULL_REQUEST
- *   issues           → GITHUB_ISSUES
- *   issue_comment    → GITHUB_ISSUE_COMMENT
- *   release          → GITHUB_RELEASE
- *   star             → GITHUB_STAR
- *   fork             → GITHUB_FORK
- *   workflow_run     → GITHUB_WORKFLOW_RUN
+ *   push               → GITHUB_PUSH
+ *   pull_request       → GITHUB_PULL_REQUEST
+ *   issues             → GITHUB_ISSUES
+ *   issue_comment      → GITHUB_ISSUE_COMMENT
+ *   release            → GITHUB_RELEASE
+ *   star               → GITHUB_STAR
+ *   fork               → GITHUB_FORK
+ *   workflow_run       → GITHUB_WORKFLOW_RUN
+ *   check_run          → GITHUB_CHECK_RUN
+ *   check_suite        → GITHUB_CHECK_SUITE
+ *   deployment_status  → GITHUB_DEPLOYMENT_STATUS
  */
 
 import { log } from "../log.js";
@@ -32,6 +35,9 @@ export const GITHUB_EVENT_MAP = {
   star: "GITHUB_STAR",
   fork: "GITHUB_FORK",
   workflow_run: "GITHUB_WORKFLOW_RUN",
+  check_run: "GITHUB_CHECK_RUN",
+  check_suite: "GITHUB_CHECK_SUITE",
+  deployment_status: "GITHUB_DEPLOYMENT_STATUS",
 };
 
 /**
@@ -307,6 +313,79 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
           },
         },
         summary: `Workflow "${run?.name}" ${run?.conclusion || payload.action} on ${repo?.full_name}`,
+      };
+    }
+
+    case "check_run": {
+      const run = payload.check_run;
+      return {
+        event: {
+          ...base,
+          details: {
+            action: payload.action, // created, completed, rerequested, etc.
+            repo: repo?.full_name,
+            repo_url: repo?.html_url,
+            repo_private: repo?.private || false,
+            title: run?.name,
+            url: run?.html_url,
+            check_name: run?.name,
+            status: run?.status,
+            conclusion: run?.conclusion, // success, failure, neutral, cancelled, etc.
+            branch: run?.check_suite?.head_branch,
+            sender: sender?.login,
+            sender_url: sender?.html_url,
+          },
+        },
+        summary: `Check "${run?.name}" ${run?.conclusion || run?.status} on ${repo?.full_name}`,
+      };
+    }
+
+    case "check_suite": {
+      const suite = payload.check_suite;
+      return {
+        event: {
+          ...base,
+          details: {
+            action: payload.action, // completed, requested, rerequested
+            repo: repo?.full_name,
+            repo_url: repo?.html_url,
+            repo_private: repo?.private || false,
+            url: repo?.html_url,
+            status: suite?.status,
+            conclusion: suite?.conclusion, // success, failure, neutral, cancelled, etc.
+            branch: suite?.head_branch,
+            app_name: suite?.app?.name || null,
+            sender: sender?.login,
+            sender_url: sender?.html_url,
+          },
+        },
+        summary: `Check suite ${suite?.conclusion || suite?.status} on ${suite?.head_branch} in ${repo?.full_name}`,
+      };
+    }
+
+    case "deployment_status": {
+      const deployment = payload.deployment;
+      const deployStatus = payload.deployment_status;
+      return {
+        event: {
+          ...base,
+          details: {
+            action: "deployment_status",
+            repo: repo?.full_name,
+            repo_url: repo?.html_url,
+            repo_private: repo?.private || false,
+            title: deployment?.task,
+            url: deployStatus?.target_url || deployStatus?.log_url || null,
+            environment: deployStatus?.environment || deployment?.environment,
+            state: deployStatus?.state, // pending, success, failure, error, inactive
+            conclusion: deployStatus?.state, // alias so the standard conclusion filter works
+            description: deployStatus?.description || null,
+            branch: deployment?.ref,
+            sender: sender?.login,
+            sender_url: sender?.html_url,
+          },
+        },
+        summary: `Deployment to ${deployStatus?.environment || deployment?.environment} ${deployStatus?.state} on ${repo?.full_name}`,
       };
     }
 

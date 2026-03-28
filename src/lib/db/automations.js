@@ -591,18 +591,20 @@ export const FILTER_TYPES = {
       "GITHUB_RELEASE",
       "GITHUB_STAR",
       "GITHUB_WORKFLOW_RUN",
+      "GITHUB_CHECK_RUN",
+      "GITHUB_CHECK_SUITE",
     ],
   },
   github_branch: {
     type: "text",
     label: "Branch",
     description: "Filter by branch name",
-    applicableEvents: ["GITHUB_PUSH", "GITHUB_WORKFLOW_RUN"],
+    applicableEvents: ["GITHUB_PUSH", "GITHUB_WORKFLOW_RUN", "GITHUB_CHECK_RUN", "GITHUB_CHECK_SUITE", "GITHUB_DEPLOYMENT_STATUS"],
   },
   github_workflow_conclusion: {
     type: "select",
-    label: "Workflow Conclusion",
-    description: "Filter by workflow run result",
+    label: "Conclusion / State",
+    description: "Filter by workflow run, check, or deployment result",
     options: [
       { value: "any", label: "Any Conclusion" },
       { value: "success", label: "✅ Success" },
@@ -610,7 +612,7 @@ export const FILTER_TYPES = {
       { value: "cancelled", label: "🚫 Cancelled" },
     ],
     default: "any",
-    applicableEvents: ["GITHUB_WORKFLOW_RUN"],
+    applicableEvents: ["GITHUB_WORKFLOW_RUN", "GITHUB_CHECK_RUN", "GITHUB_CHECK_SUITE", "GITHUB_DEPLOYMENT_STATUS"],
   },
   github_repo_visibility: {
     type: "select",

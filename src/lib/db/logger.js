@@ -682,4 +682,16 @@ export const EVENT_TYPES = {
     category: "github",
     description: "GitHub Actions workflow completed",
   },
+  GITHUB_CHECK_RUN: {
+    category: "github",
+    description: "A check run completed (e.g. CI, Cloudflare Pages)",
+  },
+  GITHUB_CHECK_SUITE: {
+    category: "github",
+    description: "A check suite completed",
+  },
+  GITHUB_DEPLOYMENT_STATUS: {
+    category: "github",
+    description: "A deployment status changed (e.g. Cloudflare Pages deploy)",
+  },
 };
