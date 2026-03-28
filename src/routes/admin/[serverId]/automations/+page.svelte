@@ -94,7 +94,7 @@
 		return data.actionTypes[actionType] || { name: actionType, icon: '⚡', description: '' };
 	}
 
-	// Collapse triggers: if all events in a category are selected, show "CATEGORY *" instead
+	// Collapse triggers: if all events in a category are selected, show "CATEGORY: *" instead
 	function collapseTriggers(triggers) {
 		// Group triggers by category
 		const byCategory = {};
@@ -118,7 +118,7 @@
 			if (totalPerCategory[cat] && catTriggers.length >= totalPerCategory[cat]) {
 				// All events in this category are selected — collapse
 				const catInfo = getCategoryInfo(cat);
-				result.push({ label: `${cat.toUpperCase()} *`, category: cat, collapsed: true });
+				result.push({ label: `${cat.toUpperCase()}: *`, category: cat, collapsed: true });
 				handledCategories.add(cat);
 			}
 		}
