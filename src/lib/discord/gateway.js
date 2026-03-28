@@ -26,6 +26,7 @@ import {
 import { log } from "../log.js";
 import { generateChatResponse, isAIEnabled } from "../ai/chat.js";
 import { resolveTargetUser } from "../automation/engine.js";
+import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-delivery.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
@@ -1118,6 +1119,43 @@ async function executeAutomationAction(automation, event) {
 
       const msg = await channel.send(messagePayload);
       return { messageId: msg.id, channelId, buttonsAttached: buttonComponents.length };
+    }
+
+    case "SEND_STATS_WIDGET_IMAGE": {
+      const channelId = action_config.channel_id;
+      const widgetType = action_config.widget_type || "voice_time";
+      const period = action_config.period || "30d";
+      const content = automation.processed_content || action_config.content || "";
+
+      if (!channelId) throw new Error("Missing channel");
+
+      const channel = await client.channels.fetch(channelId);
+      if (!channel) throw new Error("Channel not found");
+
+      const signingSecret = process.env.DISCORD_PUBLIC_KEY;
+      const origin = resolveWidgetOrigin();
+      const { pngData, filename, widgetInfo, periodLabel } = await fetchSignedWidgetPng({
+        guildId: event.guild_id,
+        type: widgetType,
+        period,
+        secret: signingSecret,
+        origin,
+      });
+
+      const payload = {
+        files: [{ attachment: pngData, name: filename }],
+      };
+      if (content) payload.content = content;
+
+      const msg = await channel.send(payload);
+      return {
+        messageId: msg?.id,
+        channelId,
+        widgetType,
+        widgetName: widgetInfo.name,
+        period,
+        periodLabel,
+      };
     }
 
     case "SEND_DM": {

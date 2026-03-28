@@ -147,6 +147,40 @@ export const ACTION_TYPES = {
       },
     },
   },
+  SEND_STATS_WIDGET_IMAGE: {
+    name: "Send Stats Widget Image",
+    description: "Send a stats widget chart image to a channel",
+    icon: "📊",
+    configSchema: {
+      channel_id: { type: "channel", required: true, label: "Channel" },
+      widget_type: {
+        type: "select",
+        required: true,
+        default: "voice_time",
+        label: "Widget Type",
+        options: [
+          { value: "voice_time", label: "Voice Time" },
+          { value: "member_count", label: "Member Count" },
+          { value: "member_growth", label: "Member Growth" },
+        ],
+      },
+      period: {
+        type: "select",
+        required: true,
+        default: "30d",
+        label: "Period",
+        options: [
+          { value: "7d", label: "Last 7 Days" },
+          { value: "30d", label: "Last 30 Days" },
+        ],
+      },
+      content: {
+        type: "text",
+        label: "Optional message",
+        supportsVariables: true,
+      },
+    },
+  },
   SEND_DM: {
     name: "Send DM",
     description: "Send a direct message to a user",

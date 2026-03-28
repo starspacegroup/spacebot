@@ -9,17 +9,19 @@
 const API_BASE = "https://discord.com/api/v10";
 
 async function discordFetch(botToken, path, options = {}) {
-  const { method = "GET", body, reason } = options;
+  const { method = "GET", body, reason, formData } = options;
   const headers = {
     Authorization: `Bot ${botToken}`,
-    "Content-Type": "application/json",
   };
+  if (!formData) {
+    headers["Content-Type"] = "application/json";
+  }
   if (reason) headers["X-Audit-Log-Reason"] = reason;
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body != null ? JSON.stringify(body) : undefined,
+    body: formData || (body != null ? JSON.stringify(body) : undefined),
   });
 
   if (!res.ok) {
@@ -40,6 +42,27 @@ function wrapChannel(token, data) {
     async send(payload) {
       const body =
         typeof payload === "string" ? { content: payload } : payload;
+
+      if (body?.files && Array.isArray(body.files) && body.files.length > 0) {
+        const { files, ...payloadBody } = body;
+        const formData = new FormData();
+        formData.append("payload_json", JSON.stringify(payloadBody));
+
+        files.forEach((file, index) => {
+          const attachment = file?.attachment;
+          const name = file?.name || `file-${index}.png`;
+          const blob = attachment instanceof Blob
+            ? attachment
+            : new Blob([attachment], { type: "image/png" });
+          formData.append(`files[${index}]`, blob, name);
+        });
+
+        return discordFetch(token, `/channels/${data.id}/messages`, {
+          method: "POST",
+          formData,
+        });
+      }
+
       return discordFetch(token, `/channels/${data.id}/messages`, {
         method: "POST",
         body,
@@ -236,6 +259,27 @@ export function createDiscordRestClient(botToken) {
             });
             const body =
               typeof payload === "string" ? { content: payload } : payload;
+
+            if (body?.files && Array.isArray(body.files) && body.files.length > 0) {
+              const { files, ...payloadBody } = body;
+              const formData = new FormData();
+              formData.append("payload_json", JSON.stringify(payloadBody));
+
+              files.forEach((file, index) => {
+                const attachment = file?.attachment;
+                const name = file?.name || `file-${index}.png`;
+                const blob = attachment instanceof Blob
+                  ? attachment
+                  : new Blob([attachment], { type: "image/png" });
+                formData.append(`files[${index}]`, blob, name);
+              });
+
+              return discordFetch(botToken, `/channels/${dm.id}/messages`, {
+                method: "POST",
+                formData,
+              });
+            }
+
             return discordFetch(botToken, `/channels/${dm.id}/messages`, {
               method: "POST",
               body,

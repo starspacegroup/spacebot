@@ -103,6 +103,8 @@ export async function POST({ params, request, platform }) {
   // Process automations for this event
   try {
     const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+    event._widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
+    event._widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
     const discord = botToken ? createDiscordRestClient(botToken) : null;
     const [guildMeta, guildStats] = await Promise.all([
       getGuildMetadata(db, guildId).catch(() => null),

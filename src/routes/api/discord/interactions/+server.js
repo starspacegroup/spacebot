@@ -450,6 +450,8 @@ async function handleCustomCommand(command, interaction, db, platform) {
 	};
 
 	const context = buildCommandContext(interaction, guildInfo, voiceState);
+	context.widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
+	context.widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
 
 	// Record usage
 	await recordCommandUse(db, command.id);
@@ -694,6 +696,8 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 		};
 
 		const context = buildCommandContext(interaction, guildInfo, voiceState);
+		context.widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
+		context.widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
 
 		// Record usage
 		await recordCommandUse(db, command.id);
@@ -990,6 +994,31 @@ function createRESTClient(platform) {
 					},
 					async send(content) {
 						const body = typeof content === "string" ? { content } : content;
+
+						if (body?.files && Array.isArray(body.files) && body.files.length > 0) {
+							const { files, ...payloadBody } = body;
+							const formData = new FormData();
+							formData.append("payload_json", JSON.stringify(payloadBody));
+
+							files.forEach((file, index) => {
+								const attachment = file?.attachment;
+								const name = file?.name || `file-${index}.png`;
+								const blob = attachment instanceof Blob
+									? attachment
+									: new Blob([attachment], { type: "image/png" });
+								formData.append(`files[${index}]`, blob, name);
+							});
+
+							const fileRes = await fetch(
+								`https://discord.com/api/v10/channels/${channelId}/messages`,
+								{
+									method: "POST",
+									headers: { "Authorization": headers.Authorization },
+									body: formData,
+								},
+							);
+							return fileRes.json();
+						}
 
 						const res = await fetch(
 							`https://discord.com/api/v10/channels/${channelId}/messages`,

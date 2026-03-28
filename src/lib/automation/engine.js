@@ -11,6 +11,7 @@ import { getWebhook, callWebhook } from "../db/webhooks.js";
 import { createScheduledMessage, parseDelay } from "../db/scheduled-messages.js";
 import { log } from "../log.js";
 import { detectCommandResult, getBot } from "../discord/bots.js";
+import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-delivery.js";
 
 /**
  * Resolve the target user ID from action config
@@ -116,6 +117,26 @@ export function resolveNumberValue(configValue, event, defaultValue = null) {
   }
 
   return defaultValue;
+}
+
+/**
+ * Send an image attachment to a channel-like object.
+ * Works with both discord.js channels and REST wrapper channels.
+ * @param {Object} channel
+ * @param {Uint8Array} pngData
+ * @param {string} filename
+ * @param {string} [content]
+ */
+async function sendChannelImage(channel, pngData, filename, content = "") {
+  const payload = {
+    files: [{ attachment: pngData, name: filename }],
+  };
+
+  if (content) {
+    payload.content = content;
+  }
+
+  await channel.send(payload);
 }
 
 /**
@@ -505,6 +526,8 @@ export function buildContext(event, guildInfo = {}) {
     github: event.details || {},
     details: event.details || {},
     github_logo_url: "https://avatars.githubusercontent.com/u/9919?v=4",
+    widget_signing_secret: event._widget_signing_secret,
+    widget_origin: event._widget_origin,
   };
 }
 
@@ -902,6 +925,49 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         await channel.send(messagePayload);
         return { success: true, result: { sent: true, buttonsAttached: components.length } };
+      }
+
+      case "SEND_STATS_WIDGET_IMAGE": {
+        const channelId = action_config.channel_id;
+        const widgetType = action_config.widget_type || "voice_time";
+        const period = action_config.period || "30d";
+        const content = action_config.content
+          ? processTemplate(action_config.content, context)
+          : "";
+
+        if (!channelId) {
+          return { success: false, error: "Missing channel" };
+        }
+
+        const channel = await discord.channels.fetch(channelId).catch(() => null);
+        if (!channel) {
+          return { success: false, error: "Channel not found" };
+        }
+
+        const signingSecret = context.widget_signing_secret || process.env.DISCORD_PUBLIC_KEY;
+        const origin = context.widget_origin || resolveWidgetOrigin();
+
+        const { pngData, filename, widgetInfo, periodLabel } =
+          await fetchSignedWidgetPng({
+            guildId: event.guild_id,
+            type: widgetType,
+            period,
+            secret: signingSecret,
+            origin,
+          });
+
+        await sendChannelImage(channel, pngData, filename, content);
+
+        return {
+          success: true,
+          result: {
+            sent: true,
+            widgetType,
+            widgetName: widgetInfo.name,
+            period,
+            periodLabel,
+          },
+        };
       }
 
       case "SEND_DM": {
