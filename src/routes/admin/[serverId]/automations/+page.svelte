@@ -871,12 +871,12 @@
 	
 	.log-success .log-status {
 		background: var(--color-success);
-		color: var(--color-text-inverse);
+		color: #1B1730;
 	}
 
 	.log-error .log-status {
 		background: var(--color-danger);
-		color: var(--color-text-inverse);
+		color: #1B1730;
 	}
 	
 	.log-info {

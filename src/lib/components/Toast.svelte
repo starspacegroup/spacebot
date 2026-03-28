@@ -82,12 +82,12 @@
 	
 	.toast-success {
 		background: var(--color-success, #43b581);
-		color: var(--color-text-inverse, #fff);
+		color: #1B1730;
 	}
 	
 	.toast-error {
 		background: var(--color-danger, #f04747);
-		color: var(--color-text-inverse, #fff);
+		color: #1B1730;
 	}
 	
 	.toast-icon {

@@ -406,10 +406,10 @@
 		color: var(--color-text-muted);
 	}
 	
-	/* Preview */
+	/* Preview — always use Discord's dark chat background so button colors render correctly */
 	.button-preview {
-		background: var(--color-surface-elevated);
-		border: 1px solid var(--color-border-light);
+		background: #313338;
+		border: 1px solid rgba(255, 255, 255, 0.06);
 		border-radius: 0.5rem;
 		padding: 0.75rem;
 	}
@@ -418,7 +418,7 @@
 		font-size: 0.65rem;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
+		color: #b5bac1;
 		margin-bottom: 0.5rem;
 	}
 	

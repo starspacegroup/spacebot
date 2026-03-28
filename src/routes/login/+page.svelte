@@ -286,7 +286,7 @@
 		gap: 0.75rem;
 		padding: 1rem 2rem;
 		background: var(--color-warning);
-		color: var(--color-text-inverse);
+		color: #1B1730;
 		text-decoration: none;
 		border-radius: var(--radius-md);
 		font-weight: 600;
@@ -297,7 +297,7 @@
 	
 	.dev-btn:hover {
 		background: var(--color-warning-hover);
-		color: var(--color-text-inverse);
+		color: #1B1730;
 		transform: scale(1.02);
 	}
 	
