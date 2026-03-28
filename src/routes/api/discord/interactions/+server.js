@@ -153,6 +153,10 @@ function getEnv(platform, name) {
 	return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
 }
 
+function getAppOrigin(request, platform) {
+	return getEnv(platform, "APP_URL") || new URL(request.url).origin;
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform }) {
 	log.debug("=== Discord Interaction Request Received ===");
@@ -207,8 +211,9 @@ export async function POST({ request, platform }) {
 		if (data.name === "stats" && guildId) {
 			const applicationId = body.application_id;
 			const interactionToken = body.token;
+			const appOrigin = getAppOrigin(request, platform);
 
-			const asyncWork = handleStatsCommand(body, platform, applicationId, interactionToken);
+			const asyncWork = handleStatsCommand(body, platform, applicationId, interactionToken, appOrigin);
 
 			if (platform?.context?.waitUntil) {
 				platform.context.waitUntil(asyncWork);
@@ -885,7 +890,7 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
  * Handle the /stats built-in command.
  * Generates a signed widget image URL and responds with an embed containing the chart.
  */
-async function handleStatsCommand(interaction, platform, applicationId, interactionToken) {
+async function handleStatsCommand(interaction, platform, applicationId, interactionToken, appUrl) {
 	const botToken = getEnv(platform, "DISCORD_BOT_TOKEN");
 	const publicKey = getEnv(platform, "DISCORD_PUBLIC_KEY");
 	const guildId = interaction.guild_id;
@@ -932,7 +937,6 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 		// Determine our app's origin for the widget URL
 		// In production: use the known production URL
 		// In dev: use the dev tunnel URL
-		const appUrl = getEnv(platform, "APP_URL") || "https://spacebot.starspace.group";
 
 		// Generate a signed URL to the widget endpoint
 		const timestamp = Math.floor(Date.now() / 1000);
