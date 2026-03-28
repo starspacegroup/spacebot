@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/log.js";
+import { upsertUser } from "$lib/db/users.js";
 
 /**
  * Dev Auth Bypass
@@ -89,7 +90,28 @@ export async function handle({ event, resolve }) {
   if (devAuthEnabled) {
     // Special /dev-login route for easy dev authentication
     if (url.pathname === "/dev-login") {
+      const devUser = getDevUser(platform);
       setDevAuthCookies(cookies, platform);
+
+      // Track dev user in the database so they appear in User Management
+      const db = platform?.env?.DB;
+      if (db) {
+        const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
+        const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
+        try {
+          await upsertUser(db, {
+            id: devUser.id,
+            username: devUser.username,
+            global_name: devUser.globalName || null,
+            avatar: devUser.avatar || null,
+            discriminator: devUser.discriminator || "0",
+            is_superadmin: isSuperAdmin,
+          });
+        } catch (err) {
+          log.error("[DevAuth] Failed to track dev user login:", err);
+        }
+      }
+
       const returnTo = url.searchParams.get("return_to") || "/admin";
       // Use SvelteKit's redirect to ensure cookies are properly sent
       throw redirect(302, returnTo);
@@ -113,7 +135,28 @@ export async function handle({ event, resolve }) {
     if (url.searchParams.get("dev_auth") === "true") {
       const userId = cookies.get("discord_user_id");
       if (!userId) {
+        const devUser = getDevUser(platform);
         setDevAuthCookies(cookies, platform);
+
+        // Track dev user in the database
+        const db = platform?.env?.DB;
+        if (db) {
+          const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
+          const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
+          try {
+            await upsertUser(db, {
+              id: devUser.id,
+              username: devUser.username,
+              global_name: devUser.globalName || null,
+              avatar: devUser.avatar || null,
+              discriminator: devUser.discriminator || "0",
+              is_superadmin: isSuperAdmin,
+            });
+          } catch (err) {
+            log.error("[DevAuth] Failed to track dev user login:", err);
+          }
+        }
+
         // Remove the dev_auth param and redirect
         const cleanUrl = new URL(url);
         cleanUrl.searchParams.delete("dev_auth");
