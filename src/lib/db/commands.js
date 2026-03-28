@@ -1013,7 +1013,7 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
   },
   {
     name: "stats",
-    description: "Show a stats widget image for this server",
+    description: "Show a server stats chart image",
     response_type: "action_only",
     response_content: null,
     response_embed: null,

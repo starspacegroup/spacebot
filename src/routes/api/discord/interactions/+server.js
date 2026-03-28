@@ -16,7 +16,13 @@ import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
 import { getIntegrationCommands } from "$lib/integrations/registry.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
-import { signWidgetUrl, WIDGET_TYPES } from "$lib/stats-widget.js";
+import {
+	getMemberGrowthChart,
+	getMessageActivityChart,
+	getVoiceActivityChart,
+	runStatsAggregation,
+} from "$lib/db/stats-aggregation.js";
+import { WIDGET_TYPES } from "$lib/stats-widget.js";
 
 /**
  * Convert hex string to Uint8Array
@@ -153,10 +159,6 @@ function getEnv(platform, name) {
 	return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
 }
 
-function getAppOrigin(request, platform) {
-	return getEnv(platform, "APP_URL") || new URL(request.url).origin;
-}
-
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform }) {
 	log.debug("=== Discord Interaction Request Received ===");
@@ -207,13 +209,12 @@ export async function POST({ request, platform }) {
 		const { data } = body;
 		const guildId = body.guild_id;
 
-		// Handle /stats built-in command (generates widget image)
+		// Handle /stats built-in command (generates chart image)
 		if (data.name === "stats" && guildId) {
 			const applicationId = body.application_id;
 			const interactionToken = body.token;
-			const appOrigin = getAppOrigin(request, platform);
 
-			const asyncWork = handleStatsCommand(body, platform, applicationId, interactionToken, appOrigin);
+			const asyncWork = handleStatsCommand(body, platform, applicationId, interactionToken);
 
 			if (platform?.context?.waitUntil) {
 				platform.context.waitUntil(asyncWork);
@@ -887,13 +888,284 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 }
 
 /**
- * Handle the /stats built-in command.
- * Generates a signed widget image URL and responds with an embed containing the chart.
+ * Convert YYYY-MM-DD into a compact month/day label for chart x-axis.
  */
-async function handleStatsCommand(interaction, platform, applicationId, interactionToken, appUrl) {
+function formatChartDateLabel(dateStr) {
+	const parsed = new Date(`${dateStr}T00:00:00Z`);
+	if (Number.isNaN(parsed.getTime())) return dateStr;
+	return `${parsed.getUTCMonth() + 1}/${parsed.getUTCDate()}`;
+}
+
+/**
+ * Build a QuickChart (Chart.js) config for the selected stats type.
+ */
+function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMemberCount = null) {
+	const labels = chartRows.map((row) => formatChartDateLabel(row.date));
+	const isSevenDay = period === "7d";
+	const pointRadius = isSevenDay ? 3 : 2;
+
+	const baseOptions = {
+		responsive: false,
+		maintainAspectRatio: false,
+		plugins: {
+			legend: {
+				labels: {
+					color: "#f8fafc",
+					font: { size: 12 },
+				},
+			},
+			title: {
+				display: true,
+				text: widgetInfo.name,
+				color: "#ffffff",
+				font: { size: 18, weight: "bold" },
+			},
+		},
+		scales: {
+			x: {
+				ticks: { color: "#cbd5e1", maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+				grid: { color: "rgba(148, 163, 184, 0.15)" },
+			},
+			y: {
+				beginAtZero: true,
+				ticks: { color: "#cbd5e1" },
+				grid: { color: "rgba(148, 163, 184, 0.15)" },
+			},
+		},
+	};
+
+	if (type === "voice_time") {
+		return {
+			type: "line",
+			data: {
+				labels,
+				datasets: [{
+					label: "Hours in Voice",
+					data: chartRows.map((row) => row.totalHours || 0),
+					borderColor: "#06b6d4",
+					backgroundColor: "rgba(6, 182, 212, 0.25)",
+					fill: true,
+					tension: 0.35,
+					pointRadius,
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "voice_users") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [{
+					label: "Unique Voice Users",
+					data: chartRows.map((row) => row.uniqueUsers || 0),
+					backgroundColor: "rgba(59, 130, 246, 0.8)",
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "voice_peak") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [{
+					label: "Peak Concurrent Voice",
+					data: chartRows.map((row) => row.peakConcurrent || 0),
+					backgroundColor: "rgba(14, 165, 233, 0.85)",
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "member_count") {
+		const latest = Number(latestMemberCount);
+		let running = Number.isFinite(latest) ? latest : 0;
+		const memberCounts = new Array(chartRows.length);
+
+		for (let i = chartRows.length - 1; i >= 0; i--) {
+			memberCounts[i] = Math.max(0, Math.round(running));
+			running -= Number(chartRows[i].netChange || 0);
+		}
+
+		return {
+			type: "line",
+			data: {
+				labels,
+				datasets: [{
+					label: "Estimated Member Count",
+					data: memberCounts,
+					borderColor: "#22c55e",
+					backgroundColor: "rgba(34, 197, 94, 0.25)",
+					fill: true,
+					tension: 0.25,
+					pointRadius,
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "member_growth") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [
+					{
+						label: "Joins",
+						data: chartRows.map((row) => row.joins || 0),
+						backgroundColor: "rgba(34, 197, 94, 0.85)",
+					},
+					{
+						label: "Leaves",
+						data: chartRows.map((row) => row.leaves || 0),
+						backgroundColor: "rgba(239, 68, 68, 0.85)",
+					},
+				],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "member_joins") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [{
+					label: "Member Joins",
+					data: chartRows.map((row) => row.joins || 0),
+					backgroundColor: "rgba(16, 185, 129, 0.85)",
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "member_leaves") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [{
+					label: "Member Leaves",
+					data: chartRows.map((row) => row.leaves || 0),
+					backgroundColor: "rgba(244, 63, 94, 0.85)",
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === "member_net_change") {
+		return {
+			type: "line",
+			data: {
+				labels,
+				datasets: [{
+					label: "Net Change",
+					data: chartRows.map((row) => row.netChange || 0),
+					borderColor: "#f59e0b",
+					backgroundColor: "rgba(245, 158, 11, 0.25)",
+					fill: true,
+					tension: 0.25,
+					pointRadius,
+				}],
+			},
+			options: {
+				...baseOptions,
+				scales: {
+					...baseOptions.scales,
+					y: {
+						...baseOptions.scales.y,
+						beginAtZero: false,
+					},
+				},
+			},
+		};
+	}
+
+	if (type === "message_count") {
+		return {
+			type: "bar",
+			data: {
+				labels,
+				datasets: [{
+					label: "Messages",
+					data: chartRows.map((row) => row.messageCount || 0),
+					backgroundColor: "rgba(168, 85, 247, 0.85)",
+				}],
+			},
+			options: baseOptions,
+		};
+	}
+
+	return {
+		type: "line",
+		data: {
+			labels,
+			datasets: [{
+				label: "Unique Message Authors",
+				data: chartRows.map((row) => row.messageUniqueUsers || 0),
+				borderColor: "#a855f7",
+				backgroundColor: "rgba(168, 85, 247, 0.25)",
+				fill: true,
+				tension: 0.3,
+				pointRadius,
+			}],
+		},
+		options: baseOptions,
+	};
+}
+
+/**
+ * Create a hosted QuickChart URL for an embed image.
+ */
+async function createQuickChartUrl(chartConfig) {
+	const payload = {
+		width: 900,
+		height: 420,
+		backgroundColor: "#0f172a",
+		devicePixelRatio: 2,
+		format: "png",
+		chart: chartConfig,
+	};
+
+	try {
+		const res = await fetch("https://quickchart.io/chart/create", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		});
+
+		if (res.ok) {
+			const body = await res.json();
+			if (body?.url) {
+				return body.url;
+			}
+		}
+	} catch (err) {
+		log.warn("[Stats] QuickChart short URL creation failed, using direct URL fallback:", err);
+	}
+
+	const encoded = encodeURIComponent(JSON.stringify(chartConfig));
+	return `https://quickchart.io/chart?width=900&height=420&devicePixelRatio=2&bkg=%230f172a&format=png&c=${encoded}`;
+}
+
+/**
+ * Handle the /stats built-in command.
+ * Builds a QuickChart image from server stats data and responds with an embed containing the chart.
+ */
+async function handleStatsCommand(interaction, platform, applicationId, interactionToken) {
 	const botToken = getEnv(platform, "DISCORD_BOT_TOKEN");
-	const publicKey = getEnv(platform, "DISCORD_PUBLIC_KEY");
 	const guildId = interaction.guild_id;
+	const db = platform?.env?.DB;
 
 	async function editOriginal(data) {
 		try {
@@ -929,19 +1201,46 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 			return;
 		}
 
-		if (!publicKey) {
-			await editOriginal({ content: "❌ Server configuration error (missing public key)." });
+		if (!db) {
+			await editOriginal({ content: "❌ Database not available." });
 			return;
 		}
 
-		// Determine our app's origin for the widget URL
-		// In production: use the known production URL
-		// In dev: use the dev tunnel URL
+		const [guildMeta, latest] = await Promise.all([
+			getGuildMetadata(db, guildId).catch(() => null),
+			getLatestServerStats(db, guildId).catch(() => null),
+		]);
 
-		// Generate a signed URL to the widget endpoint
-		const timestamp = Math.floor(Date.now() / 1000);
-		const sig = await signWidgetUrl(guildId, type, period, timestamp, publicKey);
-		const imageUrl = `${appUrl}/api/stats/${guildId}/widget?type=${type}&period=${period}&t=${timestamp}&sig=${sig}`;
+		const timezone = guildMeta?.timezone || null;
+		await runStatsAggregation(db, guildId).catch((err) => {
+			log.warn(`[Stats] Aggregation failed for ${guildId}:`, err);
+		});
+
+		let chartRows = [];
+		if (type === "voice_time" || type === "voice_users" || type === "voice_peak") {
+			chartRows = await getVoiceActivityChart(db, guildId, period, timezone);
+		} else if (
+			type === "member_count" ||
+			type === "member_growth" ||
+			type === "member_joins" ||
+			type === "member_leaves" ||
+			type === "member_net_change"
+		) {
+			chartRows = await getMemberGrowthChart(db, guildId, period, timezone);
+		} else if (type === "message_count" || type === "message_users") {
+			chartRows = await getMessageActivityChart(db, guildId, period, timezone);
+		}
+
+		if (!chartRows.length) {
+			await editOriginal({
+				content: "ℹ️ Not enough stats data yet. Try again after some server activity has been logged.",
+			});
+			return;
+		}
+
+		const latestMemberCount = latest?.human_count ?? latest?.member_count ?? null;
+		const chartConfig = buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMemberCount);
+		const imageUrl = await createQuickChartUrl(chartConfig);
 
 		const periodLabel = period === "7d" ? "Last 7 Days" : "Last 30 Days";
 
@@ -958,7 +1257,7 @@ async function handleStatsCommand(interaction, platform, applicationId, interact
 	} catch (err) {
 		log.error("[Stats] Stats command failed:", err);
 		await editOriginal({
-			content: `❌ Failed to generate stats widget: ${err.message || "Unknown error"}`,
+			content: `❌ Failed to generate stats chart: ${err.message || "Unknown error"}`,
 		});
 	}
 }
