@@ -864,6 +864,16 @@
 		width: 100%;
 		box-sizing: border-box;
 	}
+
+	.flow-select {
+		-webkit-appearance: none;
+		appearance: none;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23999' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M2.5 4.5L6 8l3.5-3.5'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 0.65rem center;
+		background-size: 0.75rem 0.75rem;
+		padding-right: 2rem;
+	}
 	
 	.flow-select:focus, .flow-input:focus, .flow-textarea:focus {
 		outline: none;
@@ -874,6 +884,11 @@
 	.flow-select-sm {
 		padding: 0.3rem 0.5rem;
 		font-size: 0.8rem;
+	}
+
+	.flow-select.flow-select-sm {
+		padding-right: 1.7rem;
+		background-position: right 0.5rem center;
 	}
 	
 	.flow-textarea {
