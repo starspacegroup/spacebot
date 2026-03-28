@@ -721,7 +721,9 @@
 													bind:value={action.config[configKey]}
 												>
 													{#each config.options as opt}
-														<option value={opt} selected={opt === config.default}>{opt}</option>
+														{@const optVal = typeof opt === 'object' ? opt.value : opt}
+														{@const optLabel = typeof opt === 'object' ? opt.label : opt}
+														<option value={optVal} selected={optVal === config.default}>{optLabel}</option>
 													{/each}
 												</select>
 											{:else if config.type === 'user_source'}

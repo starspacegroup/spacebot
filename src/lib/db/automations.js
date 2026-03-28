@@ -152,7 +152,21 @@ export const ACTION_TYPES = {
     description: "Send a stats widget chart image to a channel",
     icon: "📊",
     configSchema: {
-      channel_id: { type: "channel", required: true, label: "Channel" },
+      channel_source: {
+        type: "select",
+        required: true,
+        default: "configured",
+        label: "Send To",
+        options: [
+          { value: "configured", label: "Specific Channel" },
+          { value: "trigger", label: "Command/Trigger Channel" },
+        ],
+      },
+      channel_id: {
+        type: "channel",
+        required: false,
+        label: "Channel (when using Specific Channel)",
+      },
       widget_type: {
         type: "select",
         required: true,

@@ -1122,12 +1122,19 @@ async function executeAutomationAction(automation, event) {
     }
 
     case "SEND_STATS_WIDGET_IMAGE": {
-      const channelId = action_config.channel_id;
+      const channelSource = action_config.channel_source || "configured";
+      const channelId = channelSource === "trigger"
+        ? event.channel_id
+        : action_config.channel_id;
       const widgetType = action_config.widget_type || "voice_time";
       const period = action_config.period || "30d";
       const content = automation.processed_content || action_config.content || "";
 
-      if (!channelId) throw new Error("Missing channel");
+      if (!channelId) {
+        throw new Error(channelSource === "trigger"
+          ? "No trigger channel available for this event"
+          : "Missing channel");
+      }
 
       const channel = await client.channels.fetch(channelId);
       if (!channel) throw new Error("Channel not found");
