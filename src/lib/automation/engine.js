@@ -254,6 +254,12 @@ export function matchesFilters(event, filters, context = {}) {
     return true;
   }
 
+  const isAllSentinel = (value) => {
+    if (value === undefined || value === null) return true;
+    if (typeof value !== "string") return false;
+    return value.trim().toUpperCase() === "ALL";
+  };
+
   for (const [filterType, filterValue] of Object.entries(filters)) {
     switch (filterType) {
       case "channel_id":
@@ -274,7 +280,7 @@ export function matchesFilters(event, filters, context = {}) {
 
       case "actor_has_role":
         // "ALL" means match any role (no filter), comma-separated list for multiple roles
-        if (filterValue !== "ALL") {
+        if (!isAllSentinel(filterValue)) {
           const requiredRoles = filterValue.split(",").map((id) => id.trim());
           // Actor must have at least one of the specified roles
           if (
@@ -285,7 +291,7 @@ export function matchesFilters(event, filters, context = {}) {
 
       case "actor_missing_role":
         // "ALL" for actor_missing_role doesn't make sense, skip if set to ALL
-        if (filterValue !== "ALL") {
+        if (!isAllSentinel(filterValue)) {
           const blockedRoles = filterValue.split(",").map((id) => id.trim());
           // Actor must not have any of the specified roles
           if (blockedRoles.some((role) => context.actorRoles?.includes(role))) {
@@ -296,7 +302,7 @@ export function matchesFilters(event, filters, context = {}) {
 
       case "target_has_role":
         // "ALL" means match any role (no filter), comma-separated list for multiple roles
-        if (filterValue !== "ALL") {
+        if (!isAllSentinel(filterValue)) {
           const requiredRoles = filterValue.split(",").map((id) => id.trim());
           // Target must have at least one of the specified roles
           if (
