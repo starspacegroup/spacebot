@@ -170,12 +170,11 @@ export async function handle({ event, resolve }) {
 
   const response = await resolve(event);
 
-  // Add cache headers for HTML pages to ensure fresh content
+  // Add cache headers for dynamic content to ensure fresh data
   // Assets in /_app/ are already hashed and can be cached long-term
-  if (!url.pathname.startsWith('/_app/') && 
-      !url.pathname.startsWith('/api/') &&
-      response.headers.get('content-type')?.includes('text/html')) {
-    // For HTML pages: no-cache forces revalidation on each request
+  // /api/ routes manage their own cache headers
+  // All other routes (HTML pages + SvelteKit __data.json fetches) must not be cached
+  if (!url.pathname.startsWith('/_app/') && !url.pathname.startsWith('/api/')) {
     response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     response.headers.set('Pragma', 'no-cache');
     response.headers.set('Expires', '0');
