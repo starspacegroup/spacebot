@@ -116,7 +116,7 @@ export async function PATCH({ request, cookies, platform }) {
 
 	try {
 		const data = await request.json();
-		const validIntervals = [30, 60, 120, 300, 600];
+		const validIntervals = [30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400];
 
 		if (data.benchmark_interval_seconds !== undefined) {
 			const interval = parseInt(data.benchmark_interval_seconds, 10);
