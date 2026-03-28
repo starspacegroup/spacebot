@@ -254,6 +254,31 @@ export function matchesFilters(event, filters, context = {}) {
     return true;
   }
 
+  const normalize = (value) => {
+    if (value === undefined || value === null) return "";
+    return String(value).trim().toLowerCase();
+  };
+
+  const githubActionEvents = new Set([
+    "GITHUB_PULL_REQUEST",
+    "GITHUB_ISSUES",
+    "GITHUB_ISSUE_COMMENT",
+    "GITHUB_RELEASE",
+    "GITHUB_STAR",
+    "GITHUB_WORKFLOW_RUN",
+    "GITHUB_WORKFLOW_JOB",
+    "GITHUB_CHECK_RUN",
+    "GITHUB_CHECK_SUITE",
+  ]);
+
+  const githubConclusionEvents = new Set([
+    "GITHUB_WORKFLOW_RUN",
+    "GITHUB_WORKFLOW_JOB",
+    "GITHUB_CHECK_RUN",
+    "GITHUB_CHECK_SUITE",
+    "GITHUB_DEPLOYMENT_STATUS",
+  ]);
+
   const isAllSentinel = (value) => {
     if (value === undefined || value === null) return true;
     if (typeof value !== "string") return false;
@@ -440,26 +465,33 @@ export function matchesFilters(event, filters, context = {}) {
       // GitHub-specific filters
       case "github_repo":
         if (filterValue && event.details?.repo) {
-          if (event.details.repo.toLowerCase() !== filterValue.toLowerCase()) return false;
+          if (normalize(event.details.repo) !== normalize(filterValue)) return false;
         }
         break;
 
       case "github_action":
-        if (filterValue && filterValue !== "any") {
-          if (event.details?.action !== filterValue) return false;
+        // Only apply to GitHub event types that expose actionable action values.
+        // This prevents filters like "opened" from accidentally blocking GITHUB_PUSH.
+        if (filterValue && normalize(filterValue) !== "any" && githubActionEvents.has(event.event_type)) {
+          const expected = normalize(filterValue);
+          const actual = normalize(event.details?.action);
+          // Accept either "created" or "check_run.created" style values.
+          const actualSuffix = actual.includes(".") ? actual.split(".").pop() : actual;
+          if (actual !== expected && actualSuffix !== expected) return false;
         }
         break;
 
       case "github_branch":
         if (filterValue) {
           const branch = event.details?.branch || event.details?.head_branch;
-          if (!branch || branch.toLowerCase() !== filterValue.toLowerCase()) return false;
+          if (!branch || normalize(branch) !== normalize(filterValue)) return false;
         }
         break;
 
       case "github_workflow_conclusion":
-        if (filterValue && filterValue !== "any") {
-          if (event.details?.conclusion !== filterValue) return false;
+        // Only apply to workflow/check/deployment style events.
+        if (filterValue && normalize(filterValue) !== "any" && githubConclusionEvents.has(event.event_type)) {
+          if (normalize(event.details?.conclusion) !== normalize(filterValue)) return false;
         }
         break;
 
