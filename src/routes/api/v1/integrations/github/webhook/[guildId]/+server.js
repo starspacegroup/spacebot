@@ -48,6 +48,7 @@ export async function POST({ params, request, platform }) {
   // Get the GitHub integration record
   const integration = await getIntegrationBySlug(db, "github");
   if (!integration) {
+    log.warn(`[GitHub] Webhook rejected: github integration row missing (guild: ${guildId})`);
     return json({ error: "GitHub integration not found" }, { status: 404 });
   }
 
@@ -56,6 +57,7 @@ export async function POST({ params, request, platform }) {
   const guildConfig = guilds.find((g) => g.guild_id === guildId);
 
   if (!guildConfig) {
+    log.info(`[GitHub] Webhook rejected: integration not enabled for guild ${guildId}`);
     return json(
       { error: "GitHub integration not enabled for this server" },
       { status: 404 },
@@ -68,7 +70,7 @@ export async function POST({ params, request, platform }) {
     const signature = request.headers.get("X-Hub-Signature-256");
     const valid = await verifyGitHubSignature(rawBody, signature, webhookSecret);
     if (!valid) {
-      log.warn(`[GitHub] Invalid webhook signature for guild ${guildId}`);
+      log.warn(`[GitHub] Webhook rejected: invalid signature (guild: ${guildId})`);
       return json({ error: "Invalid signature" }, { status: 401 });
     }
   }
