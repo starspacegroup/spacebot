@@ -212,6 +212,51 @@ export const PERMISSION_PRESETS = {
 };
 
 /**
+ * Check whether a slash command name is already used in a guild or built-ins.
+ * Context menu user commands are excluded because Discord treats those separately.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {string} name
+ * @param {number} [excludeId]
+ * @returns {Promise<boolean>}
+ */
+async function isGuildOrBuiltInSlashCommandNameTaken(db, guildId, name, excludeId = null) {
+  const normalizedName = String(name || "").toLowerCase();
+  if (!normalizedName) return false;
+
+  try {
+    const query = excludeId === null
+      ? `
+        SELECT 1
+        FROM commands
+        WHERE lower(name) = ?
+          AND coalesce(context_menu_user, 0) = 0
+          AND (guild_id = ? OR guild_id = ?)
+        LIMIT 1
+      `
+      : `
+        SELECT 1
+        FROM commands
+        WHERE lower(name) = ?
+          AND coalesce(context_menu_user, 0) = 0
+          AND (guild_id = ? OR guild_id = ?)
+          AND id != ?
+        LIMIT 1
+      `;
+
+    const stmt = excludeId === null
+      ? db.prepare(query).bind(normalizedName, guildId, BUILT_IN_GUILD_ID)
+      : db.prepare(query).bind(normalizedName, guildId, BUILT_IN_GUILD_ID, excludeId);
+
+    const existing = await stmt.first();
+    return !!existing;
+  } catch (error) {
+    log.error("Failed to check guild slash command name overlap:", error);
+    throw error;
+  }
+}
+
+/**
  * Create a new command
  * @param {D1Database} db
  * @param {Partial<Command>} command
@@ -230,6 +275,25 @@ export async function createCommand(db, command) {
       error:
         "Command name must be 1-32 characters, lowercase, alphanumeric or hyphens",
     };
+  }
+
+  // Prevent slash command name overlap inside this server and built-ins.
+  if (!command.context_menu_user) {
+    try {
+      const taken = await isGuildOrBuiltInSlashCommandNameTaken(
+        db,
+        command.guild_id,
+        command.name,
+      );
+      if (taken) {
+        return {
+          success: false,
+          error: "A slash command with this name already exists in this server or built-in commands",
+        };
+      }
+    } catch (error) {
+      return { success: false, error: error.message || String(error) };
+    }
   }
 
   try {
@@ -289,6 +353,46 @@ export async function updateCommand(db, id, updates) {
   }
 
   try {
+    const existingRow = await db.prepare(`
+      SELECT id, guild_id, name, context_menu_user
+      FROM commands
+      WHERE id = ?
+      LIMIT 1
+    `).bind(id).first();
+
+    if (!existingRow) {
+      return { success: false, error: "Command not found" };
+    }
+
+    const existingIsContextMenu = !!existingRow.context_menu_user;
+    const finalName = updates.name !== undefined
+      ? updates.name.toLowerCase()
+      : String(existingRow.name || "").toLowerCase();
+    const finalIsContextMenu = updates.context_menu_user !== undefined
+      ? !!updates.context_menu_user
+      : existingIsContextMenu;
+    const shouldValidateGuildOverlap =
+      updates.name !== undefined ||
+      (updates.context_menu_user !== undefined &&
+        existingIsContextMenu &&
+        !finalIsContextMenu);
+
+    // Enforce uniqueness only for slash commands in the current server + built-ins.
+    if (shouldValidateGuildOverlap && !finalIsContextMenu) {
+      const taken = await isGuildOrBuiltInSlashCommandNameTaken(
+        db,
+        existingRow.guild_id,
+        finalName,
+        id,
+      );
+      if (taken) {
+        return {
+          success: false,
+          error: "A slash command with this name already exists in this server or built-in commands",
+        };
+      }
+    }
+
     const fields = [];
     const values = [];
 
@@ -807,6 +911,22 @@ export async function createBuiltInCommand(db, command) {
       success: false,
       error: "Command name must be 1-32 characters, lowercase, alphanumeric or hyphens",
     };
+  }
+
+  try {
+    const taken = await isGuildOrBuiltInSlashCommandNameTaken(
+      db,
+      BUILT_IN_GUILD_ID,
+      command.name,
+    );
+    if (taken) {
+      return {
+        success: false,
+        error: "A slash command with this name already exists in built-in commands",
+      };
+    }
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
   }
 
   try {
