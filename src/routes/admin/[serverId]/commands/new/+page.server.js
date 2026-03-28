@@ -152,9 +152,26 @@ export const actions = {
             actionConfig[configKey] = value;
           }
         }
+
+        const group = (formData.get(`action_group.${i}`) || "default")
+          .toString()
+          .trim() || "default";
+        const conditionMode = (formData.get(`action_condition_mode.${i}`) ||
+          "always").toString();
+        const conditionOption = (formData.get(`action_condition_option.${i}`) ||
+          "").toString().trim();
+        const conditionValue = (formData.get(`action_condition_value.${i}`) ||
+          "").toString();
+
         actions.push({
           type: actionTypes[i],
           config: actionConfig,
+          group,
+          condition: {
+            mode: conditionMode,
+            option: conditionOption,
+            value: conditionValue,
+          },
         });
       }
     }

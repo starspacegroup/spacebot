@@ -87,6 +87,68 @@ async function verifyDiscordRequest(request, publicKey) {
 	}
 }
 
+function normalizeConditionValue(value) {
+	if (value === undefined || value === null) return "";
+	if (typeof value === "boolean") return value ? "true" : "false";
+	return String(value).trim().toLowerCase();
+}
+
+function evaluateActionCondition(condition, event) {
+	if (!condition || !condition.mode || condition.mode === "always") {
+		return true;
+	}
+
+	const optionName = condition.option;
+	if (!optionName) {
+		return true;
+	}
+
+	const actual = normalizeConditionValue(event.options?.[optionName]);
+	const expected = normalizeConditionValue(condition.value);
+
+	if (condition.mode === "if_equals") {
+		return actual === expected;
+	}
+
+	if (condition.mode === "if_not_equals") {
+		return actual !== expected;
+	}
+
+	return true;
+}
+
+function filterActionsByConditions(actions, event) {
+	if (!Array.isArray(actions) || actions.length === 0) {
+		return [];
+	}
+
+	const groupConditions = new Map();
+	for (const action of actions) {
+		const groupName = (action.group || "default").trim() || "default";
+		const condition = action.condition;
+		if (
+			!groupConditions.has(groupName) && condition && condition.mode &&
+			condition.mode !== "always" && condition.option
+		) {
+			groupConditions.set(groupName, condition);
+		}
+	}
+
+	return actions.filter((action) => {
+		const groupName = (action.group || "default").trim() || "default";
+		const effectiveCondition = groupConditions.get(groupName) || action.condition;
+		const shouldRun = evaluateActionCondition(effectiveCondition, event);
+
+		if (!shouldRun) {
+			log.debug(
+				`[Command] Skipping action ${action.type} in group ${groupName} due to option condition mismatch`,
+			);
+		}
+
+		return shouldRun;
+	});
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform }) {
 	log.debug("=== Discord Interaction Request Received ===");
@@ -540,10 +602,11 @@ async function handleCustomCommand(command, interaction, db, platform) {
 			const actionsToExecute = command.actions && command.actions.length > 0
 				? command.actions
 				: [{ type: command.action_type, config: command.action_config || {} }];
+			const filteredActions = filterActionsByConditions(actionsToExecute, event);
 
 			// Execute each action in sequence
 			const results = [];
-			for (const action of actionsToExecute) {
+			for (const action of filteredActions) {
 				const result = await executeAction(
 					{
 						name: command.name,
@@ -756,9 +819,10 @@ async function handleDeferredCommand(command, interaction, db, platform, applica
 			const actionsToExecute = command.actions && command.actions.length > 0
 				? command.actions
 				: [{ type: command.action_type, config: command.action_config || {} }];
+			const filteredActions = filterActionsByConditions(actionsToExecute, event);
 
 			const results = [];
-			for (const action of actionsToExecute) {
+			for (const action of filteredActions) {
 				const result = await executeAction(
 					{
 						name: command.name,

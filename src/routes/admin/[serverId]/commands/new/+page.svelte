@@ -108,8 +108,48 @@
 	}
 
 	// Stacked actions management
+	function normalizeOptionName(name) {
+		return (name || '').toLowerCase().replace(/\s+/g, '_');
+	}
+
+	function withActionRoutingDefaults(action) {
+		return {
+			...action,
+			group: (action.group || 'default').trim() || 'default',
+			condition: {
+				mode: action.condition?.mode || 'always',
+				option: action.condition?.option || '',
+				value: action.condition?.value ?? ''
+			}
+		};
+	}
+
+	function getConditionChoices(optionName) {
+		const normalized = normalizeOptionName(optionName);
+		if (!normalized) return [];
+
+		const option = options.find((opt) => normalizeOptionName(opt.name) === normalized);
+		if (!option) return [];
+
+		if (option.type === 5) {
+			return [
+				{ value: 'true', label: 'True' },
+				{ value: 'false', label: 'False' }
+			];
+		}
+
+		if (option.choices && option.choices.length > 0) {
+			return option.choices.map((choice) => ({
+				value: String(choice.value ?? ''),
+				label: choice.name || String(choice.value ?? '')
+			}));
+		}
+
+		return [];
+	}
+
 	function addAction() {
-		actions = [...actions, { type: '', config: {} }];
+		actions = [...actions, withActionRoutingDefaults({ type: '', config: {} })];
 	}
 
 	function removeAction(index) {
@@ -733,6 +773,90 @@
 										🗑️
 									</button>
 								</div>
+							</div>
+
+							<div class="action-routing">
+								<div class="form-row">
+									<div class="form-group">
+										<label for="action_group_{index}">Action Group</label>
+										<input
+											type="text"
+											id="action_group_{index}"
+											name="action_group.{index}"
+											bind:value={action.group}
+											placeholder="default"
+										/>
+										<p class="field-hint">Actions with the same group share one option condition.</p>
+									</div>
+									<div class="form-group">
+										<label for="action_condition_mode_{index}">Run Condition</label>
+										<select
+											id="action_condition_mode_{index}"
+											name="action_condition_mode.{index}"
+											bind:value={action.condition.mode}
+											onchange={(e) => {
+												action.condition.mode = e.target.value;
+												if (action.condition.mode === 'always') {
+													action.condition.option = '';
+													action.condition.value = '';
+												}
+											}}
+										>
+											<option value="always">Always run</option>
+											<option value="if_equals">Run when option equals value</option>
+											<option value="if_not_equals">Run when option does not equal value</option>
+										</select>
+									</div>
+								</div>
+
+								{#if action.condition.mode !== 'always'}
+									<div class="form-row">
+										<div class="form-group">
+											<label for="action_condition_option_{index}">Command Option</label>
+											<select
+												id="action_condition_option_{index}"
+												name="action_condition_option.{index}"
+												bind:value={action.condition.option}
+												onchange={(e) => {
+													action.condition.option = e.target.value;
+													const choices = getConditionChoices(action.condition.option);
+													action.condition.value = choices.length > 0 ? choices[0].value : '';
+												}}
+											>
+												<option value="">Select an option...</option>
+												{#each options.filter((opt) => opt.name) as opt}
+													<option value={normalizeOptionName(opt.name)}>{opt.name}</option>
+												{/each}
+											</select>
+										</div>
+
+										{#if action.condition.option}
+											{@const conditionChoices = getConditionChoices(action.condition.option)}
+											<div class="form-group">
+												<label for="action_condition_value_{index}">Match Value</label>
+												{#if conditionChoices.length > 0}
+													<select
+														id="action_condition_value_{index}"
+														name="action_condition_value.{index}"
+														bind:value={action.condition.value}
+													>
+														{#each conditionChoices as choice}
+															<option value={choice.value}>{choice.label}</option>
+														{/each}
+													</select>
+												{:else}
+													<input
+														type="text"
+														id="action_condition_value_{index}"
+														name="action_condition_value.{index}"
+														bind:value={action.condition.value}
+														placeholder="Enter value"
+													/>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/if}
 							</div>
 							
 							<div class="form-group">
