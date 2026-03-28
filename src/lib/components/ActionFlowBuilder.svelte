@@ -458,9 +458,9 @@
 																			<option value="user.name">actor name</option>
 																			<option value="user.id">actor id</option>
 																		</optgroup>
-																		<optgroup label="Details">
-																			<option value="details.action">action</option>
-																			<option value="details.conclusion">conclusion</option>
+																		<optgroup label="GitHub">
+																			<option value="github.action">action</option>
+																			<option value="github.conclusion">conclusion</option>
 																		</optgroup>
 																	</select>
 																	<select

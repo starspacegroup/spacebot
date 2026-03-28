@@ -502,6 +502,7 @@ export function buildContext(event, guildInfo = {}) {
       category: event.event_category,
       time: new Date().toISOString(),
     },
+    github: event.details || {},
     details: event.details || {},
     github_logo_url: "https://avatars.githubusercontent.com/u/9919?v=4",
   };

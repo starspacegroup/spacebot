@@ -770,12 +770,12 @@
 																<optgroup label="Channel">
 																	<option value="channel.name">channel name</option>
 																</optgroup>
-																<optgroup label="Details">
-																	<option value="details.action">action</option>
-																	<option value="details.conclusion">conclusion</option>
-																	<option value="details.repo">repo</option>
-																	<option value="details.branch">branch</option>
-																	<option value="details.status">status</option>
+																<optgroup label="GitHub">
+																	<option value="github.action">action</option>
+																	<option value="github.conclusion">conclusion</option>
+																	<option value="github.repo">repo</option>
+																	<option value="github.branch">branch</option>
+																	<option value="github.status">status</option>
 																</optgroup>
 															</select>
 															<select
