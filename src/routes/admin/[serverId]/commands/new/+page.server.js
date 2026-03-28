@@ -89,16 +89,28 @@ export const actions = {
     const optionRequired = formData.getAll("option_required[]");
     const optionDefaults = formData.getAll("option_default[]");
 
+    // Helper to convert UI type values to Discord type values
+    const getDiscordType = (uiType) => {
+      const typeVal = parseInt(uiType) || 3;
+      // Map UI choice types to Discord types
+      if (typeVal === 103) return 3;  // CHOICE_TEXT → STRING
+      if (typeVal === 104) return 4;  // CHOICE_INTEGER → INTEGER
+      return typeVal;
+    };
+
     let defaultIndex = 0;
     for (let i = 0; i < optionNames.length; i++) {
       if (optionNames[i]) {
         const isRequired = optionRequired.includes(String(i));
+        let type = getDiscordType(optionTypes[i]);
+        
         const option = {
           name: optionNames[i].toLowerCase().replace(/\s+/g, "_"),
           description: optionDescs[i] || "No description",
-          type: parseInt(optionTypes[i]) || 3,
+          type: type,
           required: isRequired,
         };
+        
         // Only non-required options have default values in the form
         if (!isRequired && optionDefaults[defaultIndex]) {
           option.default = optionDefaults[defaultIndex];
@@ -106,6 +118,22 @@ export const actions = {
         if (!isRequired) {
           defaultIndex++;
         }
+        
+        // Parse choices if present
+        const choiceNames = formData.getAll(`option_choice_name[${i}][]`);
+        const choiceValues = formData.getAll(`option_choice_value[${i}][]`);
+        if (choiceNames.length > 0) {
+          option.choices = [];
+          for (let j = 0; j < choiceNames.length; j++) {
+            if (choiceNames[j] && choiceValues[j]) {
+              option.choices.push({
+                name: choiceNames[j],
+                value: type === 4 ? parseInt(choiceValues[j]) : choiceValues[j]
+              });
+            }
+          }
+        }
+        
         options.push(option);
       }
     }

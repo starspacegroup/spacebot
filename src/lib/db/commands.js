@@ -63,12 +63,16 @@ export const OPTION_TYPES = {
   MENTIONABLE: { value: 9, label: "Mentionable", description: "User or role" },
   NUMBER: { value: 10, label: "Number", description: "Decimal number" },
   ATTACHMENT: { value: 11, label: "Attachment", description: "File upload" },
+  CHOICE_TEXT: { value: 103, label: "Choice - Text", description: "Select from options", baseType: 3, isChoice: true },
+  CHOICE_INTEGER: { value: 104, label: "Choice - Whole number", description: "Select from options", baseType: 4, isChoice: true },
 };
 
 /**
  * Common option types for easy selection in UI
  */
 export const COMMON_OPTION_TYPES = [
+  OPTION_TYPES.CHOICE_TEXT,
+  OPTION_TYPES.CHOICE_INTEGER,
   OPTION_TYPES.STRING,
   OPTION_TYPES.INTEGER,
   OPTION_TYPES.NUMBER,

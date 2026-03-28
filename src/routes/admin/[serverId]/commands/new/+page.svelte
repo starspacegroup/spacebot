@@ -137,13 +137,144 @@
 			description: '',
 			type: 3, // STRING
 			required: false,
-			defaultValue: ''
+			defaultValue: '',
+			choices: []
 		}];
 	}
 	
 	// Remove an option
 	function removeOption(index) {
 		options = options.filter((_, i) => i !== index);
+	}
+	
+	// Check if option type has choices
+	function isChoiceType(type) {
+		const typeInfo = data.commonOptionTypes.find(t => t.value === type);
+		return typeInfo?.isChoice || false;
+	}
+	
+	// Add a choice to an option
+	function addChoice(optionIndex) {
+		options = options.map((opt, i) =>
+			i === optionIndex
+				? { ...opt, choices: [...(opt.choices || []), { name: '', value: '' }] }
+				: opt
+		);
+	}
+	
+	// Remove a choice from an option
+	function removeChoice(optionIndex, choiceIndex) {
+		options = options.map((opt, i) =>
+			i === optionIndex
+				? { ...opt, choices: opt.choices.filter((_, j) => j !== choiceIndex) }
+				: opt
+		);
+	}
+	
+	// Drag reorder state for choices
+	let dragState = $state({ optionIndex: -1, choiceIndex: -1, dropTarget: -1 });
+	
+	function choiceDragStart(optionIndex, choiceIndex, e) {
+		dragState = { optionIndex, choiceIndex, dropTarget: -1 };
+		if (e.dataTransfer) {
+			e.dataTransfer.effectAllowed = 'move';
+			e.dataTransfer.setData('text/plain', '');
+		}
+	}
+	
+	function choiceDragOver(optionIndex, choiceIndex, e) {
+		e.preventDefault();
+		if (dragState.optionIndex !== optionIndex) return;
+		if (dragState.choiceIndex === choiceIndex) return;
+		const rect = e.currentTarget.getBoundingClientRect();
+		const midY = rect.top + rect.height / 2;
+		const insertAt = e.clientY < midY ? choiceIndex : choiceIndex + 1;
+		if (insertAt !== dragState.dropTarget) {
+			dragState = { ...dragState, dropTarget: insertAt };
+		}
+	}
+	
+	function choiceDrop(optionIndex, e) {
+		e.preventDefault();
+		const { choiceIndex, dropTarget } = dragState;
+		if (dropTarget === -1 || dropTarget === choiceIndex || dropTarget === choiceIndex + 1) {
+			dragState = { optionIndex: -1, choiceIndex: -1, dropTarget: -1 };
+			return;
+		}
+		options = options.map((opt, i) => {
+			if (i === optionIndex) {
+				const newChoices = [...opt.choices];
+				const [moved] = newChoices.splice(choiceIndex, 1);
+				const adjustedTarget = dropTarget > choiceIndex ? dropTarget - 1 : dropTarget;
+				newChoices.splice(adjustedTarget, 0, moved);
+				return { ...opt, choices: newChoices };
+			}
+			return opt;
+		});
+		dragState = { optionIndex: -1, choiceIndex: -1, dropTarget: -1 };
+	}
+	
+	function choiceDragEnd() {
+		dragState = { optionIndex: -1, choiceIndex: -1, dropTarget: -1 };
+	}
+	
+	// Touch drag reorder for choices
+	let touchState = $state({ optionIndex: -1, choiceIndex: -1, dropTarget: -1 });
+	
+	function choiceTouchStart(optionIndex, choiceIndex, e) {
+		touchState = { optionIndex, choiceIndex, dropTarget: -1 };
+	}
+	
+	function choiceTouchMove(optionIndex, e) {
+		if (touchState.optionIndex !== optionIndex) return;
+		e.preventDefault();
+		const touch = e.touches[0];
+		const items = [...e.currentTarget.querySelectorAll('.choice-item')];
+		for (let idx = 0; idx < items.length; idx++) {
+			const rect = items[idx].getBoundingClientRect();
+			if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+				const midY = rect.top + rect.height / 2;
+				const insertAt = touch.clientY < midY ? idx : idx + 1;
+				if (insertAt !== touchState.dropTarget) {
+					touchState = { ...touchState, dropTarget: insertAt };
+				}
+				break;
+			}
+		}
+	}
+	
+	function choiceTouchEnd() {
+		const { optionIndex, choiceIndex, dropTarget } = touchState;
+		if (dropTarget !== -1 && dropTarget !== choiceIndex && dropTarget !== choiceIndex + 1) {
+			options = options.map((opt, i) => {
+				if (i === optionIndex) {
+					const newChoices = [...opt.choices];
+					const [moved] = newChoices.splice(choiceIndex, 1);
+					const adjustedTarget = dropTarget > choiceIndex ? dropTarget - 1 : dropTarget;
+					newChoices.splice(adjustedTarget, 0, moved);
+					return { ...opt, choices: newChoices };
+				}
+				return opt;
+			});
+		}
+		touchState = { optionIndex: -1, choiceIndex: -1, dropTarget: -1 };
+	}
+	
+	function getDropIndicator(optIndex, choiceIdx) {
+		const ds = dragState.optionIndex === optIndex ? dragState : 
+					touchState.optionIndex === optIndex ? touchState : null;
+		if (!ds || ds.dropTarget === -1) return 'none';
+		if (ds.dropTarget === ds.choiceIndex || ds.dropTarget === ds.choiceIndex + 1) return 'none';
+		if (ds.dropTarget === choiceIdx) return 'before';
+		return 'none';
+	}
+	
+	function showAfterIndicator(optIndex, lastIdx) {
+		const ds = dragState.optionIndex === optIndex ? dragState : 
+					touchState.optionIndex === optIndex ? touchState : null;
+		if (!ds || ds.dropTarget === -1) return false;
+		if (ds.dropTarget === ds.choiceIndex || ds.dropTarget === ds.choiceIndex + 1) return false;
+		return ds.dropTarget === lastIdx + 1;
 	}
 	
 	// Get option type label
@@ -362,45 +493,54 @@
 			{#if options.length > 0}
 				<div class="options-list">
 					{#each options as option, index}
-						<div class="option-item">
-							<div class="option-header">
-								<span class="option-number">Option {index + 1}</span>
-								<button type="button" class="btn btn-sm btn-danger" onclick={() => removeOption(index)}>
-									🗑️ Remove
-								</button>
-							</div>
-							<div class="option-fields">
-								<div class="form-group">
-									<label>Name
-									<input 
-										type="text" 
-										name="option_name[]"
-										bind:value={option.name}
-										placeholder="option_name"
-										pattern="[a-zA-Z0-9_-]{1,32}"
-									/>
-									</label>
+						<div class="option-card">
+							<div class="option-card-header">
+								<div class="option-card-title">
+									<span class="option-badge">{index + 1}</span>
+									<span class="option-name-display">{option.name || 'unnamed'}</span>
+									<span class="option-type-tag">{data.commonOptionTypes.find(t => t.value === option.type)?.label || 'Text'}</span>
+									{#if option.required}<span class="option-required-tag">Required</span>{/if}
 								</div>
-								<div class="form-group">
+								<button type="button" class="option-remove" onclick={() => removeOption(index)} title="Remove option">✕</button>
+							</div>
+							
+							<div class="option-card-body">
+								<div class="option-row">
+									<div class="option-field option-field-name">
+										<label>Name <span class="required">*</span>
+										<input 
+											type="text" 
+											name="option_name[]"
+											bind:value={option.name}
+											placeholder="option_name"
+											pattern="[a-zA-Z0-9_-]{'{1,32}'}"
+											required
+										/>
+										</label>
+									</div>
+									<div class="option-field option-field-type">
+										<label>Type
+										<select name="option_type[]" bind:value={option.type}>
+											{#each data.commonOptionTypes as optType}
+												<option value={optType.value}>{optType.label}</option>
+											{/each}
+										</select>
+										</label>
+									</div>
+								</div>
+								
+								<div class="option-field">
 									<label>Description
 									<input 
 										type="text" 
 										name="option_description[]"
 										bind:value={option.description}
-										placeholder="What is this option for?"
+										placeholder="What does this option do?"
 									/>
 									</label>
 								</div>
-								<div class="form-group">
-									<label>Type
-									<select name="option_type[]" bind:value={option.type}>
-										{#each data.commonOptionTypes as optType}
-											<option value={optType.value}>{optType.label} - {optType.description}</option>
-										{/each}
-									</select>
-									</label>
-								</div>
-								<div class="form-group">
+								
+								<div class="option-inline-row">
 									<label class="checkbox-label">
 										<input 
 											type="checkbox" 
@@ -410,18 +550,79 @@
 										/>
 										<span>Required</span>
 									</label>
+									{#if !option.required}
+										<div class="option-default-inline">
+											<label>Default:
+											<input 
+												type="text" 
+												name="option_default[]"
+												bind:value={option.defaultValue}
+												placeholder="none"
+											/>
+											</label>
+										</div>
+									{/if}
 								</div>
-								{#if !option.required}
-									<div class="form-group">
-										<label>Default Value
-										<input 
-											type="text" 
-											name="option_default[]"
-											bind:value={option.defaultValue}
-											placeholder="Leave empty for no default"
-										/>
-										</label>
-										<p class="field-hint">Value used when user doesn't provide this option</p>
+								
+								{#if isChoiceType(option.type)}
+									<div class="choices-section">
+										<div class="choices-header">
+											<span class="choices-label">Choices</span>
+											<button type="button" class="btn-add-choice" onclick={() => addChoice(index)}>+ Add</button>
+										</div>
+										{#if option.choices && option.choices.length > 0}
+											<div 
+												role="list"
+												class="choices-list" 
+												ondrop={(e) => choiceDrop(index, e)}
+												ondragover={(e) => e.preventDefault()}
+												ontouchmove={(e) => choiceTouchMove(index, e)}
+												ontouchend={choiceTouchEnd}
+											>
+												{#each option.choices as choice, choiceIndex}
+													{#if getDropIndicator(index, choiceIndex) === 'before'}
+														<div class="drop-indicator"></div>
+													{/if}
+													<div 
+														role="listitem"
+														class="choice-item"
+														class:dragging={dragState.optionIndex === index && dragState.choiceIndex === choiceIndex}
+														draggable="true"
+														ondragstart={(e) => choiceDragStart(index, choiceIndex, e)}
+														ondragover={(e) => choiceDragOver(index, choiceIndex, e)}
+														ondragend={choiceDragEnd}
+													>
+														<span 
+															class="drag-handle" 
+															ontouchstart={(e) => choiceTouchStart(index, choiceIndex, e)}
+															title="Drag to reorder"
+														>⠿</span>
+														<div class="choice-fields">
+															<input 
+																type="text" 
+																name="option_choice_name[{index}][]"
+																bind:value={choice.name}
+																placeholder="Display name"
+																required
+															/>
+															<input 
+																type="text" 
+																name="option_choice_value[{index}][]"
+																bind:value={choice.value}
+																placeholder="Value"
+																required
+															/>
+														</div>
+														<button type="button" class="choice-delete" onclick={() => removeChoice(index, choiceIndex)} title="Remove">✕</button>
+													</div>
+												{/each}
+												{#if showAfterIndicator(index, option.choices.length - 1)}
+													<div class="drop-indicator"></div>
+												{/if}
+											</div>
+										{:else}
+											<p class="choices-empty">No choices yet — add one above</p>
+										{/if}
 									</div>
 								{/if}
 							</div>
@@ -431,7 +632,7 @@
 			{/if}
 			
 			<button type="button" class="btn btn-secondary" onclick={addOption}>
-				➕ Add Option
+				+ Add Option
 			</button>
 			
 			{#if options.length > 0}
@@ -1092,32 +1293,167 @@
 	.options-list {
 		display: flex;
 		flex-direction: column;
-		gap: 1rem;
+		gap: 0.75rem;
 		margin-bottom: 1rem;
 	}
 	
-	.option-item {
+	.option-card {
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 8px;
-		padding: 1rem;
+		overflow: hidden;
+		border: 1px solid transparent;
+		transition: border-color 0.15s;
 	}
 	
-	.option-header {
+	.option-card:hover {
+		border-color: var(--border-color, #40444b);
+	}
+	
+	.option-card-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--bg-primary, #202225);
+		gap: 0.5rem;
 	}
 	
-	.option-number {
+	.option-card-title {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		flex: 1;
+		overflow: hidden;
+	}
+	
+	.option-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.375rem;
+		height: 1.375rem;
+		background: var(--accent-color, #5865F2);
+		border-radius: 50%;
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: white;
+		flex-shrink: 0;
+	}
+	
+	.option-name-display {
 		font-weight: 600;
+		font-size: 0.875rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		color: var(--text-primary);
+	}
+	
+	.option-type-tag {
+		font-size: 0.6875rem;
+		padding: 0.125rem 0.5rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 999px;
+		color: var(--text-muted);
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+	
+	.option-required-tag {
+		font-size: 0.6875rem;
+		padding: 0.125rem 0.5rem;
+		background: rgba(88, 101, 242, 0.15);
+		color: var(--accent-color, #5865F2);
+		border-radius: 999px;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+	
+	.option-remove {
+		background: none;
+		border: none;
+		color: var(--text-muted, #72767d);
+		cursor: pointer;
+		padding: 0.25rem 0.375rem;
+		font-size: 0.875rem;
+		line-height: 1;
+		border-radius: 4px;
+		transition: color 0.15s, background 0.15s;
+		flex-shrink: 0;
+	}
+	
+	.option-remove:hover {
+		color: var(--danger-color, #ed4245);
+		background: rgba(237, 66, 69, 0.1);
+	}
+	
+	.option-card-body {
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+	
+	.option-row {
+		display: flex;
+		gap: 0.625rem;
+	}
+	
+	.option-field {
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.option-field label {
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+	
+	.option-field input,
+	.option-field select {
+		margin-top: 0.25rem;
 		font-size: 0.875rem;
 	}
 	
-	.option-fields {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 0.75rem;
+	.option-field-name {
+		flex: 1.5;
+	}
+	
+	.option-field-type {
+		flex: 1;
+	}
+	
+	.option-inline-row {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+	
+	.option-inline-row .checkbox-label {
+		margin: 0;
+	}
+	
+	.option-default-inline {
+		flex: 1;
+		min-width: 120px;
+	}
+	
+	.option-default-inline label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+		color: var(--text-muted);
+	}
+	
+	.option-default-inline input {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.8125rem;
 	}
 	
 	.options-preview {
@@ -1225,10 +1561,25 @@
 	
 	/* Responsive */
 	@media (max-width: 640px) {
-		.form-row,
-		.option-fields {
+		.form-row {
 			grid-template-columns: 1fr;
 		}
+		
+		.option-row {
+			flex-direction: column;
+		}
+		
+		/* Better mobile touch targets */
+		.btn {
+			min-height: 48px;
+			font-size: 1rem;
+		}
+		
+		.btn-sm {
+			min-height: 44px;
+			padding: 0.5rem 0.75rem;
+		}
+		
 	}
 	
 	/* Permission styles */
@@ -1282,5 +1633,133 @@
 	.permission-desc {
 		font-size: 0.75rem;
 		color: var(--text-muted);
+	}
+	
+	/* Choices styles */
+	.choices-section {
+		border-top: 1px solid var(--border-color, #40444b);
+		padding-top: 0.625rem;
+		margin-top: 0.25rem;
+	}
+	
+	.choices-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.375rem;
+	}
+	
+	.choices-label {
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--text-muted);
+	}
+	
+	.btn-add-choice {
+		background: none;
+		border: none;
+		color: var(--accent-color, #5865F2);
+		cursor: pointer;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		padding: 0.125rem 0.375rem;
+		border-radius: 4px;
+		transition: background 0.15s;
+	}
+	
+	.btn-add-choice:hover {
+		background: rgba(88, 101, 242, 0.1);
+	}
+	
+	.choices-empty {
+		font-size: 0.75rem;
+		color: var(--text-muted);
+		margin: 0;
+		font-style: italic;
+	}
+	
+	.choices-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+		margin-bottom: 0.5rem;
+	}
+	
+	.choice-item {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.5rem;
+		background: var(--bg-tertiary, #36393f);
+		border-radius: 6px;
+		transition: opacity 0.15s, box-shadow 0.15s;
+	}
+	
+	.choice-item.dragging {
+		opacity: 0.4;
+	}
+	
+	.drop-indicator {
+		height: 2px;
+		background: var(--accent-color, #5865F2);
+		border-radius: 1px;
+		margin: -1px 0;
+		position: relative;
+		z-index: 1;
+		box-shadow: 0 0 4px var(--accent-color, #5865F2);
+	}
+	
+	.drag-handle {
+		cursor: grab;
+		color: var(--text-muted, #72767d);
+		font-size: 1rem;
+		line-height: 1;
+		padding: 0.25rem;
+		user-select: none;
+		touch-action: none;
+		flex-shrink: 0;
+	}
+	
+	.drag-handle:active { cursor: grabbing; }
+	
+	.choice-fields {
+		display: flex;
+		gap: 0.375rem;
+		flex: 1;
+		min-width: 0;
+	}
+	
+	.choice-fields input {
+		flex: 1;
+		min-width: 0;
+		margin: 0;
+		padding: 0.375rem 0.5rem;
+		font-size: 0.8125rem;
+		min-height: 36px;
+	}
+	
+	.choice-delete {
+		background: none;
+		border: none;
+		color: var(--text-muted, #72767d);
+		cursor: pointer;
+		padding: 0.25rem;
+		font-size: 0.875rem;
+		line-height: 1;
+		border-radius: 4px;
+		flex-shrink: 0;
+		transition: color 0.15s, background 0.15s;
+	}
+	
+	.choice-delete:hover {
+		color: var(--danger-color, #ed4245);
+		background: rgba(237, 66, 69, 0.1);
+	}
+
+	/* Mobile: stack fields vertically */
+	@media (max-width: 480px) {
+		.choice-fields {
+			flex-direction: column;
+		}
 	}
 </style>
