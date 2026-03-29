@@ -294,21 +294,49 @@
 	</section>
 
 	<!-- Built-in Commands -->
-	{#if data.builtInCommands?.filter(c => c.enabled).length > 0}
+	{#if data.builtInCommands?.length > 0}
 		<section class="builtin-commands">
 			<h2 class="section-title">Built-in Commands</h2>
-			<p class="builtin-hint">These commands are managed globally and available on all servers.</p>
+			<p class="builtin-hint">Built-ins are global commands with server-level enable/disable and permission overrides.</p>
 			<div class="command-grid">
-				{#each data.builtInCommands.filter(c => c.enabled) as command}
+				{#each data.builtInCommands as command}
 					{@const actionInfo = getActionInfo(command.action_type)}
 					{@const responseInfo = getResponseInfo(command.response_type)}
-					<div class="command-card builtin">
+					<div class="command-card builtin {command.enabled ? '' : 'disabled'}">
 						<div class="command-header">
 							<div class="command-name-row">
 								<span class="command-slash">/</span>
 								<span class="command-name">{command.name}</span>
 							</div>
-							<span class="builtin-badge">Built-in</span>
+							<div class="builtin-header-actions">
+								<span class="builtin-badge">Built-in</span>
+								<form method="POST" action="?/toggle" use:enhance={() => {
+									processingId = command.id;
+									return async ({ result }) => {
+										processingId = null;
+										if (result.type === 'success') {
+											await invalidateAll();
+										} else if (result.type === 'failure') {
+											form = result.data;
+										}
+									};
+								}}>
+									<input type="hidden" name="id" value={command.id}>
+									<input type="hidden" name="guild_id" value={selectedGuildId}>
+									<input type="hidden" name="is_built_in" value="true">
+									<input type="hidden" name="enabled" value={!command.enabled}>
+									<button
+										type="submit"
+										class="toggle-btn {command.enabled ? 'enabled' : ''}"
+										title={command.enabled ? 'Disable for this server' : 'Enable for this server'}
+										disabled={processingId === command.id}
+									>
+										<span class="toggle-track">
+											<span class="toggle-thumb"></span>
+										</span>
+									</button>
+								</form>
+							</div>
 						</div>
 						<div class="command-body">
 							<p class="command-description">{command.description}</p>
@@ -345,6 +373,11 @@
 								<span class="stat" title="Last used">
 									🕐 {formatRelativeTime(command.last_used_at)}
 								</span>
+							</div>
+							<div class="command-actions">
+								<a href="/admin/{selectedGuildId}/commands/{command.id}?builtin=true" class="btn btn-sm btn-secondary">
+									🔐 Permissions
+								</a>
 							</div>
 						</div>
 					</div>
@@ -490,6 +523,12 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.builtin-header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	.section-title {

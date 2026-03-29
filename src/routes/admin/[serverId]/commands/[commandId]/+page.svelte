@@ -508,15 +508,19 @@
 			}
 		};
 	}} class="command-form">
-		<input type="hidden" name="guild_id" value={data.command.is_built_in ? '__built_in__' : selectedGuildId}>
+		<input type="hidden" name="guild_id" value={selectedGuildId}>
 		<input type="hidden" name="is_built_in" value={data.command.is_built_in ? 'true' : 'false'}>
 		
 		{#if data.command.is_built_in}
 			<div class="builtin-notice">
-				<span class="builtin-notice-icon">🔒</span>
+				<span class="builtin-notice-icon">🔧</span>
 				<div>
 					<strong>Built-in Command</strong>
-					<p>This is a built-in command. Changes apply across all servers.</p>
+					{#if data.isSuperAdmin}
+						<p>This is a built-in command. As superadmin, your changes apply globally.</p>
+					{:else}
+						<p>This is a built-in command. On this page, your changes apply to this server's permissions only.</p>
+					{/if}
 				</div>
 			</div>
 		{/if}
@@ -1228,7 +1232,7 @@
 				</a>
 				<button type="submit" class="btn btn-primary">
 					<span>✓</span>
-					Save Changes
+					{data.command.is_built_in && !data.isSuperAdmin ? 'Save Permission Override' : 'Save Changes'}
 				</button>
 			</div>
 		</div>

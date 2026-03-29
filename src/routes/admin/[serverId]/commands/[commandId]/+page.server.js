@@ -1,16 +1,19 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 import {
   ACTION_TYPES,
+  BUILT_IN_GUILD_ID,
   COMMAND_TEMPLATE_VARIABLES,
   COMMAND_USER_SOURCES,
   COMMON_OPTION_TYPES,
   deleteCommand,
   getBuiltInCommand,
+  getBuiltInCommandForGuild,
   getCommand,
   OPTION_TYPES,
   PERMISSION_FLAGS,
   PERMISSION_PRESETS,
   RESPONSE_TYPES,
+  setBuiltInCommandOverride,
   updateCommand,
 } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
@@ -48,11 +51,7 @@ export async function load({ cookies, platform, parent, params, url }) {
     let command;
 
     if (isBuiltIn) {
-      // Built-in commands require superadmin access
-      if (!parentData.isSuperAdmin) {
-        throw redirect(302, `/admin/${params.serverId}/commands`);
-      }
-      command = await getBuiltInCommand(db, commandId);
+      command = await getBuiltInCommandForGuild(db, guildId, commandId);
     } else {
       command = await getCommand(db, commandId, guildId);
     }
@@ -61,8 +60,8 @@ export async function load({ cookies, platform, parent, params, url }) {
       throw error(404, "Command not found");
     }
 
-    // If it's a built-in command loaded via regular path, verify superadmin
-    if (command.is_built_in && !parentData.isSuperAdmin) {
+    // If it's a built-in command loaded via regular path, require explicit builtin query.
+    if (!isBuiltIn && command.is_built_in && !parentData.isSuperAdmin) {
       throw redirect(302, `/admin/${params.serverId}/commands`);
     }
 
@@ -77,6 +76,7 @@ export async function load({ cookies, platform, parent, params, url }) {
 
     return {
       command,
+      isSuperAdmin: parentData.isSuperAdmin || false,
       // Meta info for the UI
       actionTypes: ACTION_TYPES,
       optionTypes: OPTION_TYPES,
@@ -112,14 +112,34 @@ export const actions = {
       return fail(400, { error: "Command ID and Guild ID are required" });
     }
 
-    // Built-in commands require superadmin
+    const userId = cookies.get("discord_user_id");
+    const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+    const superAdminIdList = adminUserIds.split(",").map(id => id.trim()).filter(Boolean);
+    const isSuperAdmin = superAdminIdList.includes(userId);
+
+    // Built-in commands support per-guild permission overrides for server admins.
+    // Full built-in command editing remains superadmin-only.
     if (isBuiltIn) {
-      const userId = cookies.get("discord_user_id");
-      const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
-      const superAdminIdList = adminUserIds.split(",").map(id => id.trim()).filter(Boolean);
-      if (!superAdminIdList.includes(userId)) {
-        return fail(403, { error: "Only superadmins can edit built-in commands" });
+      const defaultMemberPermissions = formData.get("default_member_permissions") || null;
+
+      if (!isSuperAdmin) {
+        const result = await setBuiltInCommandOverride(
+          db,
+          params.serverId,
+          parseInt(id),
+          { default_member_permissions: defaultMemberPermissions },
+        );
+
+        if (!result.success) {
+          return fail(500, { error: result.error || "Failed to update built-in command permissions" });
+        }
+
+        await syncGuildCommands(db, params.serverId, platform?.env);
+        throw redirect(302, `/admin/${params.serverId}/commands?updated=true`);
       }
+
+      // Superadmins editing built-ins from this route should update the global command row.
+      formData.set("guild_id", BUILT_IN_GUILD_ID);
     }
 
     // Parse form data

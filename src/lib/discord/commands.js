@@ -6,7 +6,7 @@
 import { log } from "../log.js";
 import {
 	ensureBuiltInCommands,
-	getBuiltInCommands,
+	getBuiltInCommandsForGuild,
 	getGuildCommands,
 	markCommandRegistered,
 	toDiscordCommand,
@@ -140,8 +140,8 @@ export async function syncGuildCommands(db, guildId, env) {
 		// Ensure built-in commands exist in the database
 		await ensureBuiltInCommands(db);
 
-		// Get built-in commands from DB (editable by superadmin)
-		const builtInCommands = await getBuiltInCommands(db);
+		// Get built-in commands from DB with per-guild overrides applied.
+		const builtInCommands = await getBuiltInCommandsForGuild(db, guildId);
 		const builtInDiscord = builtInCommands
 			.filter(cmd => cmd.enabled)
 			.map(cmd => toDiscordCommand(cmd))

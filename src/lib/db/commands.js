@@ -8,6 +8,8 @@ import { ACTION_TYPES, COMMAND_USER_SOURCES } from "./automations.js";
 import { log } from "../log.js";
 
 // Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
+export const BUILT_IN_GUILD_ID = "__built_in__";
+
 export { ACTION_TYPES, COMMAND_USER_SOURCES };
 
 /**
@@ -598,8 +600,14 @@ export async function getCommandByName(db, name, guildId) {
 
     // Fall back to built-in commands
     const builtIn = await db.prepare(`
-      SELECT * FROM commands WHERE name = ? AND guild_id = '__built_in__' AND enabled = 1
-    `).bind(name.toLowerCase()).first();
+      SELECT c.*
+      FROM commands c
+      LEFT JOIN built_in_command_overrides o
+        ON o.command_id = c.id AND o.guild_id = ?
+      WHERE c.name = ?
+        AND c.guild_id = '__built_in__'
+        AND COALESCE(o.enabled, c.enabled) = 1
+    `).bind(guildId, name.toLowerCase()).first();
 
     if (builtIn) return parseCommand(builtIn);
 
@@ -820,11 +828,6 @@ function parseCommand(row) {
 }
 
 /**
- * Sentinel guild_id for built-in commands
- */
-export const BUILT_IN_GUILD_ID = "__built_in__";
-
-/**
  * Get all built-in commands
  * @param {D1Database} db
  * @returns {Promise<Command[]>}
@@ -864,6 +867,152 @@ export async function getBuiltInCommand(db, id) {
     log.error("Failed to get built-in command:", error);
     return null;
   }
+}
+
+function applyBuiltInOverride(command, override) {
+  if (!override) return command;
+
+  return {
+    ...command,
+    enabled: override.enabled === null || override.enabled === undefined
+      ? command.enabled
+      : !!override.enabled,
+    default_member_permissions:
+      override.default_member_permissions === null || override.default_member_permissions === undefined
+        ? command.default_member_permissions
+        : override.default_member_permissions,
+    has_guild_override: true,
+  };
+}
+
+/**
+ * Get all built-in command overrides for a guild.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<Map<number, {enabled: number|null, default_member_permissions: string|null}>>}
+ */
+export async function getBuiltInCommandOverrides(db, guildId) {
+  const overrides = new Map();
+  if (!db || !guildId) return overrides;
+
+  try {
+    const { results } = await db.prepare(`
+      SELECT command_id, enabled, default_member_permissions
+      FROM built_in_command_overrides
+      WHERE guild_id = ?
+    `).bind(guildId).all();
+
+    for (const row of results || []) {
+      overrides.set(Number(row.command_id), {
+        enabled: row.enabled,
+        default_member_permissions: row.default_member_permissions,
+      });
+    }
+
+    return overrides;
+  } catch (error) {
+    log.error("Failed to get built-in command overrides:", error);
+    return overrides;
+  }
+}
+
+/**
+ * Set or clear guild-specific override values for a built-in command.
+ * Passing null or undefined clears that override value.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {number} commandId
+ * @param {{enabled?: boolean|null, default_member_permissions?: string|null}} updates
+ */
+export async function setBuiltInCommandOverride(db, guildId, commandId, updates = {}) {
+  if (!db) {
+    return { success: false, error: "Database not available" };
+  }
+
+  try {
+    const command = await getBuiltInCommand(db, commandId);
+    if (!command) {
+      return { success: false, error: "Built-in command not found" };
+    }
+
+    const current = await db.prepare(`
+      SELECT enabled, default_member_permissions
+      FROM built_in_command_overrides
+      WHERE guild_id = ? AND command_id = ?
+    `).bind(guildId, commandId).first();
+
+    const nextEnabled = updates.enabled === undefined
+      ? (current?.enabled ?? null)
+      : (updates.enabled === null ? null : (updates.enabled ? 1 : 0));
+
+    const nextDefaultMemberPermissions = updates.default_member_permissions === undefined
+      ? (current?.default_member_permissions ?? null)
+      : (updates.default_member_permissions || null);
+
+    // If there are no override values left, remove the row entirely.
+    if (nextEnabled === null && nextDefaultMemberPermissions === null) {
+      await db.prepare(`
+        DELETE FROM built_in_command_overrides
+        WHERE guild_id = ? AND command_id = ?
+      `).bind(guildId, commandId).run();
+      return { success: true };
+    }
+
+    await db.prepare(`
+      INSERT INTO built_in_command_overrides (
+        guild_id, command_id, enabled, default_member_permissions, updated_at
+      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(guild_id, command_id)
+      DO UPDATE SET
+        enabled = excluded.enabled,
+        default_member_permissions = excluded.default_member_permissions,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      guildId,
+      commandId,
+      nextEnabled,
+      nextDefaultMemberPermissions,
+    ).run();
+
+    return { success: true };
+  } catch (error) {
+    log.error("Failed to set built-in command override:", error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
+/**
+ * Get all built-in commands with guild-specific override values applied.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<Command[]>}
+ */
+export async function getBuiltInCommandsForGuild(db, guildId) {
+  const builtInCommands = await getBuiltInCommands(db);
+  if (!guildId || builtInCommands.length === 0) return builtInCommands;
+
+  const overrideMap = await getBuiltInCommandOverrides(db, guildId);
+  return builtInCommands.map((command) => applyBuiltInOverride(command, overrideMap.get(command.id)));
+}
+
+/**
+ * Get one built-in command with guild-specific override values applied.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {number} id
+ * @returns {Promise<Command|null>}
+ */
+export async function getBuiltInCommandForGuild(db, guildId, id) {
+  const command = await getBuiltInCommand(db, id);
+  if (!command || !guildId) return command;
+
+  const override = await db.prepare(`
+    SELECT enabled, default_member_permissions
+    FROM built_in_command_overrides
+    WHERE guild_id = ? AND command_id = ?
+  `).bind(guildId, id).first();
+
+  return applyBuiltInOverride(command, override);
 }
 
 /**

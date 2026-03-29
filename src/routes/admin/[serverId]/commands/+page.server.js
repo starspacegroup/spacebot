@@ -4,11 +4,12 @@ import {
   COMMAND_TEMPLATE_VARIABLES,
   COMMON_OPTION_TYPES,
   deleteCommand,
-  getBuiltInCommands,
+  getBuiltInCommandsForGuild,
   getCommandLogs,
   getGuildCommands,
   OPTION_TYPES,
   RESPONSE_TYPES,
+  setBuiltInCommandOverride,
   updateCommand,
 } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
@@ -39,7 +40,7 @@ export async function load({ cookies, platform, parent, url, params }) {
   if (db) {
     try {
       commands = await getGuildCommands(db, guildId);
-      builtInCmds = await getBuiltInCommands(db);
+      builtInCmds = await getBuiltInCommandsForGuild(db, guildId);
 
       // Get recent command logs
       const logsResult = await getCommandLogs(db, guildId, { limit: 10 });
@@ -75,14 +76,15 @@ export const actions = {
     const formData = await request.formData();
     const id = formData.get("id");
     const guildId = formData.get("guild_id");
+    const isBuiltIn = formData.get("is_built_in") === "true";
     const enabled = formData.get("enabled") === "true";
 
     if (!id || !guildId) {
       return fail(400, { error: "Command ID and Guild ID are required" });
     }
 
-    // If enabling, check plan limits
-    if (enabled) {
+    // If enabling, check plan limits for custom commands only.
+    if (enabled && !isBuiltIn) {
       try {
         const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
         const activeCount = activeCommands.length;
@@ -98,10 +100,15 @@ export const actions = {
     }
 
     try {
-      const result = await updateCommand(db, parseInt(id), { enabled });
+      let result;
+      if (isBuiltIn) {
+        result = await setBuiltInCommandOverride(db, guildId, parseInt(id), { enabled });
+      } else {
+        result = await updateCommand(db, parseInt(id), { enabled });
+      }
 
       if (!result.success) {
-        return fail(500, { error: "Failed to toggle command" });
+        return fail(500, { error: result.error || "Failed to toggle command" });
       }
 
       // Auto-sync to Discord
