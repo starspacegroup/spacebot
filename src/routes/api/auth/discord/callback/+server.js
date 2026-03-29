@@ -247,10 +247,10 @@ export async function GET({ request, url, cookies, platform }) {
 
 			// TODO: Store guild installation info in database or KV storage
 
-			// Redirect to returnTo if set (e.g. upgrade flow), otherwise admin with install notice
+			// Redirect to returnTo if set (e.g. upgrade flow), otherwise the installed server dashboard
 			const installRedirect = flowData.returnTo && flowData.returnTo !== '/admin'
 				? flowData.returnTo
-				: `/admin?installed=${tokenData.guild.id}`;
+				: `/admin/${tokenData.guild.id}`;
 			throw redirect(302, installRedirect);
 		}
 
