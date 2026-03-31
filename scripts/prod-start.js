@@ -207,6 +207,7 @@ await setupGitHubWebhook();
 console.log('\n✅ Production services started.');
 console.log('   • spacebot-gateway  — Discord gateway bot');
 console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot.starspace.group)');
-console.log('   • spacebot-deploy   — Auto-deploy webhook (port 9090)\n');
+console.log('   • spacebot-deploy   — Auto-deploy webhook (port 9090)');
+console.log('   • spacebot-cron     — Scheduled job runner (/api/cron)\n');
 console.log('   Run "npm run gateway:status" to check status.');
 console.log('   Run "npm run gateway:logs" to view logs.\n');

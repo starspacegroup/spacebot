@@ -288,7 +288,16 @@ npm run gateway
 This runs `scripts/prod-start.js` which:
 1. Checks for `cloudflared` and installs it if missing
 2. Checks for `pm2` and installs it if missing
-3. Starts `spacebot-gateway`, `spacebot-tunnel`, and `spacebot-deploy` via PM2
+3. Starts `spacebot-gateway`, `spacebot-tunnel`, `spacebot-deploy`, and `spacebot-cron` via PM2
+
+`spacebot-cron` is required for scheduled jobs (hourly aggregation, daily refresh, and scheduled message delivery). The Discord gateway process does not run these cron jobs directly.
+
+After startup, verify all four processes are online:
+
+```bash
+pm2 status
+pm2 logs spacebot-cron --lines 50
+```
 
 ### Auto-Deploy on Push
 
@@ -297,7 +306,7 @@ The `spacebot-deploy` PM2 process runs a webhook listener on port 9090. When you
 1. `git pull origin main`
 2. `npm install` (if `package.json` changed)
 3. `npm run db:migrate` (if migration files changed)
-4. `pm2 restart spacebot-gateway`
+4. `pm2 restart spacebot-gateway spacebot-cron`
 
 **Setup (one-time):**
 
@@ -347,12 +356,15 @@ PM2 writes logs to the `logs/` directory:
 - `logs/gateway-error.log` — Errors
 - `logs/deploy-out.log` — Deploy webhook logs
 - `logs/deploy-error.log` — Deploy webhook errors
+- `logs/cron-out.log` — Scheduler logs
+- `logs/cron-error.log` — Scheduler errors
 
 ### Monitoring
 
 ```bash
 pm2 monit              # Real-time dashboard
 pm2 describe spacebot-gateway  # Detailed process info
+pm2 describe spacebot-cron     # Scheduler process info
 ```
 
 ## Security Best Practices
