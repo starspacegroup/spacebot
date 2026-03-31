@@ -1041,7 +1041,7 @@ function fillDateGaps(data, days, defaults = {}, timezone = null) {
  * @param {D1Database} db
  * @param {string} guildId
  * @param {'7d'|'30d'} period
- * @returns {Promise<Array<{date: string, joins: number, leaves: number, netChange: number}>>}
+ * @returns {Promise<Array<{date: string, joins: number, leaves: number, netChange: number, joinsHuman: number, leavesHuman: number, netChangeHuman: number}>>}
  */
 export async function getMemberGrowthChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
@@ -1073,27 +1073,70 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
       joins: row.joins || 0,
       leaves: row.leaves || 0,
       netChange: row.net_change || 0,
+      joinsHuman: 0,
+      leavesHuman: 0,
+      netChangeHuman: 0,
     }));
+
+    // Also compute human-only member deltas directly from event logs so
+    // charts can stay stable when bots join/leave.
+    const humanResult = await db.prepare(`
+      SELECT
+        date(datetime(created_at, '${tzOffset}')) as date,
+        SUM(CASE WHEN event_type = 'MEMBER_JOIN' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as joins_human,
+        SUM(CASE WHEN event_type = 'MEMBER_LEAVE' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as leaves_human
+      FROM event_logs
+      WHERE guild_id = ?
+        AND created_at >= datetime('now', ?)
+        AND event_type IN ('MEMBER_JOIN', 'MEMBER_LEAVE')
+      GROUP BY date
+      ORDER BY date ASC
+    `).bind(guildId, timeRange).all();
+
+    const rawByDate = new Map(rawData.map((row) => [row.date, row]));
+    for (const row of humanResult.results || []) {
+      const existing = rawByDate.get(row.date) || {
+        date: row.date,
+        joins: 0,
+        leaves: 0,
+        netChange: 0,
+        joinsHuman: 0,
+        leavesHuman: 0,
+        netChangeHuman: 0,
+      };
+      existing.joinsHuman = row.joins_human || 0;
+      existing.leavesHuman = row.leaves_human || 0;
+      existing.netChangeHuman = existing.joinsHuman - existing.leavesHuman;
+      rawByDate.set(row.date, existing);
+    }
 
     // Add the current (incomplete) hour's data to today's local date
     const today = getTodayDateString(timezone);
     const partial = await getCurrentHourPartialStats(db, guildId);
-    const existingToday = rawData.find(r => r.date === today);
+    const existingToday = rawByDate.get(today);
     if (existingToday) {
       existingToday.joins += partial.member_joins;
       existingToday.leaves += partial.member_leaves;
       existingToday.netChange = existingToday.joins - existingToday.leaves;
     } else {
-      rawData.push({
+      rawByDate.set(today, {
         date: today,
         joins: partial.member_joins,
         leaves: partial.member_leaves,
         netChange: partial.member_net_change,
+        joinsHuman: 0,
+        leavesHuman: 0,
+        netChangeHuman: 0,
       });
     }
 
     // Fill in missing dates with zero values so the chart is continuous
-    return fillDateGaps(rawData, days, { joins: 0, leaves: 0, netChange: 0 }, timezone);
+    return fillDateGaps(
+      Array.from(rawByDate.values()),
+      days,
+      { joins: 0, leaves: 0, netChange: 0, joinsHuman: 0, leavesHuman: 0, netChangeHuman: 0 },
+      timezone,
+    );
   } catch (error) {
     log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
     return [];
