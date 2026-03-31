@@ -483,7 +483,7 @@ export function matchesFilters(event, filters, context = {}) {
 
       case "github_branch":
         if (filterValue) {
-          const branch = event.details?.branch || event.details?.head_branch;
+          const branch = event.details?.branch || event.details?.head_branch || event.details?.base_branch;
           if (!branch || normalize(branch) !== normalize(filterValue)) return false;
         }
         break;
@@ -529,6 +529,38 @@ export function buildContext(event, guildInfo = {}) {
   const userId = event.actor_id || event.target_id;
   const userName = event.actor_name || event.target_name;
 
+  const githubDetails = event.details || {};
+  // Normalize common GitHub template fields so message templates remain useful
+  // across different webhook event shapes.
+  const github = {
+    ...githubDetails,
+    repo: githubDetails.repo || githubDetails.target_name || "",
+    branch:
+      githubDetails.branch ||
+      githubDetails.head_branch ||
+      githubDetails.base_branch ||
+      "",
+    title:
+      githubDetails.title ||
+      githubDetails.issue_title ||
+      githubDetails.workflow_name ||
+      githubDetails.workflow_job_name ||
+      githubDetails.check_name ||
+      githubDetails.name ||
+      githubDetails.repo ||
+      "",
+    url:
+      githubDetails.url ||
+      githubDetails.comment_url ||
+      githubDetails.issue_url ||
+      githubDetails.workflow_url ||
+      githubDetails.head_commit_url ||
+      githubDetails.repo_url ||
+      "",
+    sender: githubDetails.sender || event.actor_name || "",
+    action: githubDetails.action || "",
+  };
+
   return {
     user: {
       id: userId,
@@ -561,7 +593,7 @@ export function buildContext(event, guildInfo = {}) {
       category: event.event_category,
       time: new Date().toISOString(),
     },
-    github: event.details || {},
+    github,
     details: event.details || {},
     github_logo_url: "https://avatars.githubusercontent.com/u/9919?v=4",
     widget_signing_secret: event._widget_signing_secret,
