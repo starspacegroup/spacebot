@@ -29,6 +29,35 @@ import {
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { getRolesFromCache } from "$lib/db/guild-cache.js";
+import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
+
+const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
+
+function buildPeriodOptions(retentionDays) {
+  const allowedDays = retentionDays === null || retentionDays === undefined
+    ? PERIOD_PRESETS_DAYS
+    : PERIOD_PRESETS_DAYS.filter((days) => days <= retentionDays);
+
+  const normalizedDays = allowedDays.length > 0 ? allowedDays : [1];
+
+  return normalizedDays.map((days) => ({
+    days,
+    value: `${days}d`,
+    label: days === 1 ? "1 Day" : `${days} Days`,
+  }));
+}
+
+function normalizeSelectedPeriod(requestedPeriod, periodOptions) {
+  if (periodOptions.some((option) => option.value === requestedPeriod)) {
+    return requestedPeriod;
+  }
+
+  if (periodOptions.some((option) => option.value === "30d")) {
+    return "30d";
+  }
+
+  return periodOptions[periodOptions.length - 1]?.value || "1d";
+}
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
@@ -46,7 +75,7 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ params, cookies, platform, parent }) {
+export async function load({ params, cookies, platform, parent, url }) {
   const { serverId } = params;
 
   // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
@@ -82,6 +111,14 @@ export async function load({ params, cookies, platform, parent }) {
   // Get database and bot token
   const db = platform?.env?.DB;
   const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+
+  const plan = db
+    ? await getServerPlan(db, serverId)
+    : { plan: "free", ...PLAN_TIERS.free, guild_id: serverId };
+  const statsRetentionDays = plan?.stats_retention_days ?? PLAN_TIERS.free.stats_retention_days;
+  const periodOptions = buildPeriodOptions(statsRetentionDays);
+  const selectedPeriod = normalizeSelectedPeriod(url.searchParams.get("period"), periodOptions);
+  const selectedPeriodOption = periodOptions.find((option) => option.value === selectedPeriod) || periodOptions[0];
 
   // Fetch comprehensive statistics
   let statistics = null;
@@ -153,29 +190,29 @@ export async function load({ params, cookies, platform, parent }) {
         topVideoUsers,
         topScreenshareUsers,
       ] = await Promise.all([
-        getGuildStatistics(db, serverId, timezone),
-        getActivityHeatmap(db, serverId, timezone),
-        getCategoryTrends(db, serverId, timezone),
+        getGuildStatistics(db, serverId, timezone, selectedPeriod),
+        getActivityHeatmap(db, serverId, timezone, selectedPeriod),
+        getCategoryTrends(db, serverId, timezone, selectedPeriod),
         getRecentAutomationExecutions(db, serverId, 15),
         getAutomationExecutionHistory(db, serverId, timezone),
         // Member stats from server_stats
         Promise.all([
           getLatestServerStats(db, serverId),
           getMemberCountChanges(db, serverId, timezone),
-          getPeakMemberCount(db, serverId, "30d"),
+          getPeakMemberCount(db, serverId, selectedPeriod),
         ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
-        getServerStatsHistory(db, serverId, { period: "30d", granularity: "daily", timezone }),
+        getServerStatsHistory(db, serverId, { period: selectedPeriod, granularity: "daily", timezone }),
         // Aggregated voice activity
-        getVoiceActivitySummary(db, serverId, "7d"),
+        getVoiceActivitySummary(db, serverId, selectedPeriod),
         // Aggregated member growth
-        getMemberGrowthSummary(db, serverId, "7d"),
+        getMemberGrowthSummary(db, serverId, selectedPeriod),
         // Chart data for beautiful graphs
-        getMemberGrowthChart(db, serverId, "30d", timezone),
-        getVoiceActivityChart(db, serverId, "30d", timezone),
+        getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
+        getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
         // Top users for voice, video, and screenshare
-        getTopVoiceUsers(db, serverId, 10),
-        getTopVideoUsers(db, serverId, 10),
-        getTopScreenshareUsers(db, serverId, 10),
+        getTopVoiceUsers(db, serverId, 10, selectedPeriod),
+        getTopVideoUsers(db, serverId, 10, selectedPeriod),
+        getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
       ]);
       // Fetch guild metadata for boost features display
       try {
@@ -213,6 +250,12 @@ export async function load({ params, cookies, platform, parent }) {
     topScreenshareUsers,
     guildMetadata,
     cachedRoles,
+    plan,
+    statsRetentionDays,
+    periodOptions,
+    selectedPeriod,
+    selectedPeriodDays: selectedPeriodOption?.days || 1,
+    selectedPeriodLabel: selectedPeriodOption?.label || "1 Day",
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,

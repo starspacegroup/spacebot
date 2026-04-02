@@ -3,6 +3,13 @@
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	
 	let { data } = $props();
+	const periodOptions = $derived(data.periodOptions || []);
+	const selectedPeriod = $derived(data.selectedPeriod || '30d');
+	const selectedPeriodLabel = $derived(data.selectedPeriodLabel || '30 Days');
+
+	function periodHref(period) {
+		return `/admin/${data.serverId}/stats?period=${period}`;
+	}
 	
 	// Master toggle for all bot visibility
 	let showBotsGlobal = $state(false);
@@ -557,6 +564,25 @@
 					</label>
 				</div>
 			</div>
+			<div class="period-nav">
+				<div class="period-nav-label">
+					Range: {selectedPeriodLabel}
+					<span class="period-retention-note">
+						(Plan retention: {data.statsRetentionDays ? `${data.statsRetentionDays} days` : 'Unlimited'})
+					</span>
+				</div>
+				<div class="period-pills">
+					{#each periodOptions as option}
+						<a
+							href={periodHref(option.value)}
+							class="period-pill"
+							class:active={selectedPeriod === option.value}
+						>
+							{option.label}
+						</a>
+					{/each}
+				</div>
+			</div>
 		</div>
 	</header>
 
@@ -714,7 +740,7 @@
 			<h2 class="section-title">
 				<span class="section-icon">🎤</span>
 				Voice Channel Activity
-				<span class="section-subtitle">Last 30 Days</span>
+				<span class="section-subtitle">{selectedPeriodLabel}</span>
 			</h2>
 			<div class="voice-charts-grid">
 				<ChartCard 
@@ -776,7 +802,7 @@
 		<section class="chart-section">
 			<ChartCard 
 				title="Member Growth" 
-				subtitle="Last 30 Days"
+				subtitle={selectedPeriodLabel}
 				icon="📈"
 				stats={memberGrowthStats ? [
 					{ icon: '➕', value: `+${formatNumber(memberGrowthStats.totalJoins)}`, label: 'Joined', color: '#22c55e' },
@@ -930,7 +956,7 @@
 			<div class="section-header-row">
 				<h2 class="section-title">
 					<span class="section-icon">📈</span>
-					Activity (Last 30 Days)
+					Activity ({selectedPeriodLabel})
 				</h2>
 				<label class="bot-toggle">
 					<input type="checkbox" bind:checked={showBotsInActivityChart} />
@@ -963,7 +989,7 @@
 			<div class="section-header-row">
 				<h2 class="section-title">
 					<span class="section-icon">🗓️</span>
-					Activity Heatmap (Last 30 Days)
+					Activity Heatmap ({selectedPeriodLabel})
 				</h2>
 				<label class="bot-toggle">
 					<input type="checkbox" bind:checked={showBotsInHeatmap} />
@@ -1195,7 +1221,7 @@
 			<h2 class="section-title">
 				<span class="section-icon">🎙️</span>
 				Voice Activity Leaders
-				<span class="section-subtitle">Last 30 Days</span>
+				<span class="section-subtitle">{selectedPeriodLabel}</span>
 				<button class="time-unit-toggle" onclick={cycleTimeUnit} title="Click to cycle between hours, minutes, and seconds">
 					{voiceTimeUnit === 'hours' ? '🕐 hrs' : voiceTimeUnit === 'minutes' ? '⏱️ min' : '⏲️ sec'}
 				</button>
@@ -1512,6 +1538,61 @@
 		display: flex;
 		align-items: center;
 		gap: 1rem;
+	}
+
+	.period-nav {
+		margin-top: 0.75rem;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.period-nav-label {
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+	}
+
+	.period-retention-note {
+		margin-left: 0.5rem;
+		opacity: 0.8;
+	}
+
+	.period-pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.period-pill {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.35rem 0.7rem;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-surface);
+		color: var(--color-text-muted);
+		text-decoration: none;
+		font-size: 0.85rem;
+		transition: all var(--transition-fast);
+	}
+
+	.period-pill:hover {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+
+	.period-pill.active {
+		border-color: var(--color-primary);
+		background: var(--color-primary-soft);
+		color: var(--color-text);
+	}
+
+	@media (max-width: 767px) {
+		.period-nav {
+			align-items: flex-start;
+			flex-direction: column;
+		}
 	}
 
 	.master-bot-toggle {

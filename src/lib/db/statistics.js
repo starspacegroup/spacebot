@@ -6,13 +6,25 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+function parsePeriodDays(period, fallbackDays = 30) {
+  if (period === "24h") return 1;
+
+  const match = typeof period === "string" ? period.match(/^(\d+)d$/) : null;
+  if (!match) return fallbackDays;
+
+  const days = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(days) || days < 1) return fallbackDays;
+
+  return days;
+}
+
 /**
  * Get comprehensive statistics for a guild
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID
  * @returns {Promise<Object>} - Comprehensive statistics object
  */
-export async function getGuildStatistics(db, guildId, timezone = null) {
+export async function getGuildStatistics(db, guildId, timezone = null, period = "30d") {
   if (!db) {
     return getEmptyStats();
   }
@@ -31,7 +43,7 @@ export async function getGuildStatistics(db, guildId, timezone = null) {
       getEventStatistics(db, guildId),
       getAutomationStatistics(db, guildId),
       getCommandStatistics(db, guildId),
-      getTimeSeriesData(db, guildId, timezone),
+      getTimeSeriesData(db, guildId, timezone, period),
       getTopActors(db, guildId),
       getTopChannels(db, guildId),
       getAutomationPerformance(db, guildId),
@@ -302,18 +314,9 @@ async function getCommandStatistics(db, guildId) {
 /**
  * Get time series data for charts
  */
-async function getTimeSeriesData(db, guildId, timezone = null) {
-  const botFilter = `
-    AND NOT (
-      actor_is_bot = 1 
-      OR LOWER(actor_name) LIKE '%bot%'
-      OR LOWER(actor_name) LIKE '%disboard%'
-      OR LOWER(actor_name) LIKE '%github%'
-      OR LOWER(actor_name) LIKE '%mee6%'
-      OR LOWER(actor_name) LIKE '%dyno%'
-    )
-  `;
-
+async function getTimeSeriesData(db, guildId, timezone = null, period = "30d") {
+  const days = parsePeriodDays(period, 30);
+  const weeklyDays = Math.max(14, Math.min(days, 84));
   const tzOffset = getTimezoneOffsetSQL(timezone);
   
   const [hourlyResult, dailyResult, weeklyResult, dailyNonBotResult] = await Promise.all([
@@ -328,35 +331,35 @@ async function getTimeSeriesData(db, guildId, timezone = null) {
       ORDER BY period ASC
     `).bind(guildId).all(),
     
-    // Daily (last 30 days) - shift to local timezone
+    // Daily (selected range) - shift to local timezone
     db.prepare(`
       SELECT 
         strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
-      WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
+      WHERE guild_id = ? AND created_at >= datetime('now', ?)
       GROUP BY strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
-    `).bind(guildId).all(),
+    `).bind(guildId, `-${days} days`).all(),
     
-    // Weekly (last 12 weeks) - shift to local timezone
+    // Weekly (bounded selected range) - shift to local timezone
     db.prepare(`
       SELECT 
         strftime('%Y-W%W', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
-      WHERE guild_id = ? AND created_at >= datetime('now', '-84 days')
+      WHERE guild_id = ? AND created_at >= datetime('now', ?)
       GROUP BY strftime('%Y-W%W', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
-    `).bind(guildId).all(),
+    `).bind(guildId, `-${weeklyDays} days`).all(),
     
-    // Daily non-bot (last 30 days) - shift to local timezone
+    // Daily non-bot (selected range) - shift to local timezone
     db.prepare(`
       SELECT 
         strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as period,
         COUNT(*) as count
       FROM event_logs 
-      WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
+      WHERE guild_id = ? AND created_at >= datetime('now', ?)
         AND NOT (
           actor_is_bot = 1 
           OR LOWER(actor_name) LIKE '%bot%'
@@ -367,7 +370,7 @@ async function getTimeSeriesData(db, guildId, timezone = null) {
         )
       GROUP BY strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY period ASC
-    `).bind(guildId).all(),
+      `).bind(guildId, `-${days} days`).all(),
   ]);
 
   // Merge daily and dailyNonBot into array with both counts
@@ -535,9 +538,10 @@ async function getCommandUsageStats(db, guildId) {
  * @param {string} guildId - Guild ID
  * @returns {Promise<Array>} - Heatmap data array
  */
-export async function getActivityHeatmap(db, guildId, timezone = null) {
+export async function getActivityHeatmap(db, guildId, timezone = null, period = "30d") {
   if (!db) return [];
 
+  const days = parsePeriodDays(period, 30);
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
@@ -556,10 +560,10 @@ export async function getActivityHeatmap(db, guildId, timezone = null) {
           ELSE 1 
         END) as non_bot_count
       FROM event_logs 
-      WHERE guild_id = ? AND created_at >= datetime('now', '-30 days')
+      WHERE guild_id = ? AND created_at >= datetime('now', ?)
       GROUP BY day_of_week, hour
       ORDER BY day_of_week, hour
-    `).bind(guildId).all();
+    `).bind(guildId, `-${days} days`).all();
 
     return result.results || [];
   } catch (error) {
@@ -574,9 +578,10 @@ export async function getActivityHeatmap(db, guildId, timezone = null) {
  * @param {string} guildId - Guild ID
  * @returns {Promise<Array>} - Category trends
  */
-export async function getCategoryTrends(db, guildId, timezone = null) {
+export async function getCategoryTrends(db, guildId, timezone = null, period = "14d") {
   if (!db) return [];
 
+  const days = parsePeriodDays(period, 14);
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
@@ -586,10 +591,10 @@ export async function getCategoryTrends(db, guildId, timezone = null) {
         strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}')) as date,
         COUNT(*) as count
       FROM event_logs 
-      WHERE guild_id = ? AND created_at >= datetime('now', '-14 days')
+      WHERE guild_id = ? AND created_at >= datetime('now', ?)
       GROUP BY event_category, strftime('%Y-%m-%d', datetime(created_at, '${tzOffset}'))
       ORDER BY date ASC, event_category
-    `).bind(guildId).all();
+    `).bind(guildId, `-${days} days`).all();
 
     return result.results || [];
   } catch (error) {
@@ -644,7 +649,8 @@ export async function getRecentAutomationExecutions(db, guildId, limit = 10) {
 export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") {
   if (!db) return [];
 
-  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const days = parsePeriodDays(period, 30);
+  const timeRange = `-${days} days`;
 
   try {
     const result = await db.prepare(`
@@ -698,8 +704,11 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
  * @param {number} limit - Number of results
  * @returns {Promise<Array>} - Top video users
  */
-export async function getTopVideoUsers(db, guildId, limit = 20) {
+export async function getTopVideoUsers(db, guildId, limit = 20, period = "30d") {
   if (!db) return [];
+
+  const days = parsePeriodDays(period, 30);
+  const timeRange = `-${days} days`;
 
   try {
     const result = await db.prepare(`
@@ -716,7 +725,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
         WHERE guild_id = ?
           AND actor_id IS NOT NULL
           AND event_type IN ('VOICE_VIDEO_START', 'VOICE_VIDEO_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
-          AND created_at >= datetime('now', '-30 days')
+          AND created_at >= datetime('now', ?)
       )
       SELECT
         actor_id,
@@ -737,7 +746,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, limit).all();
+    `).bind(guildId, timeRange, limit).all();
 
     return result.results || [];
   } catch (error) {
@@ -753,8 +762,11 @@ export async function getTopVideoUsers(db, guildId, limit = 20) {
  * @param {number} limit - Number of results
  * @returns {Promise<Array>} - Top screenshare users
  */
-export async function getTopScreenshareUsers(db, guildId, limit = 20) {
+export async function getTopScreenshareUsers(db, guildId, limit = 20, period = "30d") {
   if (!db) return [];
+
+  const days = parsePeriodDays(period, 30);
+  const timeRange = `-${days} days`;
 
   try {
     const result = await db.prepare(`
@@ -771,7 +783,7 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20) {
         WHERE guild_id = ?
           AND actor_id IS NOT NULL
           AND event_type IN ('VOICE_STREAM_START', 'VOICE_STREAM_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
-          AND created_at >= datetime('now', '-30 days')
+          AND created_at >= datetime('now', ?)
       )
       SELECT
         actor_id,
@@ -792,7 +804,7 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20) {
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, limit).all();
+    `).bind(guildId, timeRange, limit).all();
 
     return result.results || [];
   } catch (error) {

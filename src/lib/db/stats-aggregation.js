@@ -7,6 +7,21 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+function getPeriodRange(period, fallbackDays = 30) {
+  if (period === "24h") {
+    return { days: 1, timeRange: "-1 day" };
+  }
+
+  const match = typeof period === "string" ? period.match(/^(\d+)d$/) : null;
+  const parsedDays = match ? Number.parseInt(match[1], 10) : Number.NaN;
+  const days = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : fallbackDays;
+
+  return {
+    days,
+    timeRange: `-${days} days`,
+  };
+}
+
 /**
  * @typedef {Object} AggregationResult
  * @property {boolean} success
@@ -544,12 +559,7 @@ export async function getVoiceActivitySummary(db, guildId, period = "7d") {
     return { totalSeconds: 0, totalMinutes: 0, totalHours: 0, uniqueUsers: 0, avgSessionMinutes: 0 };
   }
 
-  const periodMap = {
-    "24h": "-1 day",
-    "7d": "-7 days",
-    "30d": "-30 days",
-  };
-  const timeRange = periodMap[period] || "-7 days";
+  const { timeRange } = getPeriodRange(period, 7);
 
   try {
     // Get from aggregated stats if available
@@ -603,12 +613,7 @@ export async function getMemberGrowthSummary(db, guildId, period = "7d") {
     return { joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 };
   }
 
-  const periodMap = {
-    "24h": { sql: "-1 day", days: 1 },
-    "7d": { sql: "-7 days", days: 7 },
-    "30d": { sql: "-30 days", days: 30 },
-  };
-  const { sql: timeRange, days } = periodMap[period] || periodMap["7d"];
+  const { timeRange, days } = getPeriodRange(period, 7);
 
   try {
     const stats = await db.prepare(`
@@ -1046,8 +1051,7 @@ function fillDateGaps(data, days, defaults = {}, timezone = null) {
 export async function getMemberGrowthChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
 
-  const days = period === "7d" ? 7 : 30;
-  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const { days, timeRange } = getPeriodRange(period, 30);
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
@@ -1153,8 +1157,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
 export async function getVoiceActivityChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
 
-  const days = period === "7d" ? 7 : 30;
-  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const { days, timeRange } = getPeriodRange(period, 30);
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
@@ -1220,8 +1223,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
 export async function getMessageActivityChart(db, guildId, period = "30d", timezone = null) {
   if (!db || !guildId) return [];
 
-  const days = period === "7d" ? 7 : 30;
-  const timeRange = period === "7d" ? "-7 days" : "-30 days";
+  const { days, timeRange } = getPeriodRange(period, 30);
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {

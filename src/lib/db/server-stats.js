@@ -6,6 +6,29 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+function resolvePeriodWindow(period, fallbackDays = 7) {
+  if (period === "24h") {
+    return { days: 1, timeRange: "-1 day" };
+  }
+
+  if (period === "1y") {
+    return { days: 365, timeRange: "-365 days" };
+  }
+
+  if (period === "all") {
+    return { days: 36500, timeRange: "-100 years" };
+  }
+
+  const match = typeof period === "string" ? period.match(/^(\d+)d$/) : null;
+  const parsedDays = match ? Number.parseInt(match[1], 10) : Number.NaN;
+  const days = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : fallbackDays;
+
+  return {
+    days,
+    timeRange: `-${days} days`,
+  };
+}
+
 /**
  * @typedef {Object} ServerStats
  * @property {string} guild_id - The Discord guild ID
@@ -167,22 +190,14 @@ export async function getServerStatsHistory(db, guildId, options = {}) {
 
   const { period = "7d", granularity = "auto", timezone = null } = options;
 
-  // Calculate time range
-  const periodMap = {
-    "24h": "-1 day",
-    "7d": "-7 days",
-    "30d": "-30 days",
-    "90d": "-90 days",
-    "1y": "-365 days",
-  };
-  const timeRange = periodMap[period] || "-7 days";
+  const { days, timeRange } = resolvePeriodWindow(period, 7);
 
   // Determine granularity based on period if auto
   let groupFormat;
   if (granularity === "auto") {
-    if (period === "24h") {
+    if (days <= 2) {
       groupFormat = "%Y-%m-%d %H:00"; // Hourly
-    } else if (period === "7d" || period === "30d") {
+    } else if (days <= 60) {
       groupFormat = "%Y-%m-%d"; // Daily
     } else {
       groupFormat = "%Y-W%W"; // Weekly
@@ -373,15 +388,7 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
 export async function getPeakMemberCount(db, guildId, period = "all") {
   if (!db) return { peak: 0, peakDate: null };
 
-  const periodMap = {
-    "24h": "-1 day",
-    "7d": "-7 days",
-    "30d": "-30 days",
-    "90d": "-90 days",
-    "1y": "-365 days",
-    all: "-100 years",
-  };
-  const timeRange = periodMap[period] || "-100 years";
+  const { timeRange } = resolvePeriodWindow(period, 36500);
 
   try {
     const result = await db.prepare(`
