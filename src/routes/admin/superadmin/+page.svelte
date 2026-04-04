@@ -93,6 +93,34 @@
 		return `${(ms / 60000).toFixed(1)}m`;
 	}
 
+	async function parseJsonResponse(response, fallbackMessage) {
+		const contentType = (response.headers.get('content-type') || '').toLowerCase();
+		const isJson = contentType.includes('application/json');
+
+		if (!isJson) {
+			const body = await response.text();
+			const preview = body.replace(/\s+/g, ' ').trim().slice(0, 120);
+			const redirectSuffix = response.redirected ? ` after redirect to ${response.url}` : '';
+			const previewSuffix = preview ? ` Response starts with: ${preview}` : '';
+			throw new Error(
+				`${fallbackMessage}: expected JSON but received ${contentType || 'unknown content'} (${response.status})${redirectSuffix}.${previewSuffix}`
+			);
+		}
+
+		let result;
+		try {
+			result = await response.json();
+		} catch {
+			throw new Error(`${fallbackMessage}: invalid JSON response (${response.status})`);
+		}
+
+		if (!response.ok) {
+			throw new Error(result?.error || `${fallbackMessage} (${response.status})`);
+		}
+
+		return result;
+	}
+
 	async function refreshCronData() {
 		if (cronRefreshInFlight) return;
 
@@ -125,12 +153,7 @@
 
 		try {
 			const response = await fetch('/api/gateway/logs?limit=150');
-			const result = await response.json();
-
-			if (!response.ok) {
-				gatewayLogsError = result.error || 'Failed to load gateway logs';
-				return;
-			}
+			const result = await parseJsonResponse(response, 'Failed to load gateway logs');
 
 			gatewayLoggingEnabled = result.enabled === true;
 			gatewayLogs = result.logs || [];
@@ -152,13 +175,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ enabled }),
 			});
-
-			const result = await response.json();
-
-			if (!response.ok) {
-				gatewayLogsError = result.error || 'Failed to update gateway logging';
-				return;
-			}
+			const result = await parseJsonResponse(response, 'Failed to update gateway logging');
 
 			gatewayLoggingEnabled = result.enabled === true;
 			await refreshGatewayLogs({ silent: true });
