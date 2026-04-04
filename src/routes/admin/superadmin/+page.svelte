@@ -1,4 +1,5 @@
 <script>
+	import { onMount } from 'svelte';
 	import { formatDate as tzFormatDate, formatChartDate } from '$lib/timezone.js';
 	
 	let { data } = $props();
@@ -19,8 +20,8 @@
 		recentActivityByGuild: [] 
 	});
 	const botApp = $derived(data?.botApp ?? null);
-	const cronJobs = $derived(data?.cronJobs ?? []);
-	const cronJobHistory = $derived(data?.cronJobHistory ?? []);
+	let cronJobs = $state([]);
+	let cronJobHistory = $state([]);
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
 	const integrations = $derived(data?.integrations ?? []);
 	const actionTypes = $derived(data?.actionTypes ?? {});
@@ -29,6 +30,12 @@
 	// State for running cron jobs
 	let runningJobs = $state({});
 	let jobResults = $state({});
+	let cronRefreshInFlight = false;
+
+	$effect(() => {
+		cronJobs = data?.cronJobs ?? [];
+		cronJobHistory = data?.cronJobHistory ?? [];
+	});
 	
 	// Built-in commands state
 	let showNewCommandForm = $state(false);
@@ -70,6 +77,49 @@
 		if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
 		return `${(ms / 60000).toFixed(1)}m`;
 	}
+
+	async function refreshCronData() {
+		if (cronRefreshInFlight) return;
+
+		cronRefreshInFlight = true;
+
+		try {
+			const response = await fetch('/api/cron');
+			if (!response.ok) return;
+
+			const result = await response.json();
+			const existingJobNames = new Set((data?.cronJobs ?? []).map((job) => job.name));
+			const nextJobs = result.jobs ?? [];
+
+			cronJobs = existingJobNames.size
+				? nextJobs.filter((job) => existingJobNames.has(job.name))
+				: nextJobs;
+			cronJobHistory = result.history ?? [];
+		} catch {
+			// Keep the last known UI state if refresh fails.
+		} finally {
+			cronRefreshInFlight = false;
+		}
+	}
+
+	onMount(() => {
+		const intervalId = window.setInterval(() => {
+			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
+			const hasRunningRequest = Object.values(runningJobs).some(Boolean);
+
+			if (hasRunningHistory || hasRunningRequest) {
+				void refreshCronData();
+			}
+		}, 3000);
+
+		if (cronJobHistory.some((entry) => entry.status === 'running')) {
+			void refreshCronData();
+		}
+
+		return () => {
+			window.clearInterval(intervalId);
+		};
+	});
 	
 	// Run a cron job manually
 	async function runCronJob(jobName, dangerous = false) {
@@ -100,6 +150,7 @@
 			jobResults[jobName] = { success: false, error: error.message };
 		} finally {
 			runningJobs[jobName] = false;
+			await refreshCronData();
 		}
 	}
 	
