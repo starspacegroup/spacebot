@@ -112,12 +112,17 @@
 			}
 		}, 3000);
 
+		const backgroundIntervalId = window.setInterval(() => {
+			void refreshCronData();
+		}, 15000);
+
 		if (cronJobHistory.some((entry) => entry.status === 'running')) {
 			void refreshCronData();
 		}
 
 		return () => {
 			window.clearInterval(intervalId);
+			window.clearInterval(backgroundIntervalId);
 		};
 	});
 	

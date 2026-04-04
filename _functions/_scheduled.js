@@ -14,6 +14,69 @@
  * @param {D1Database} db
  * @returns {Promise<string[]>}
  */
+function getJobNameFromCronPattern(cronPattern) {
+  if (cronPattern === "0 * * * *") return "hourly_aggregation";
+  if (cronPattern === "0 0 * * *") return "daily_refresh";
+  return null;
+}
+
+async function recordJobStart(db, jobName, cronPattern) {
+  if (!db || !jobName) return null;
+
+  try {
+    const startedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const result = await db.prepare(`
+      INSERT INTO cron_job_history (job_name, cron_pattern, triggered_by, status, started_at)
+      VALUES (?, ?, 'cron', 'running', ?)
+    `).bind(jobName, cronPattern, startedAt).run();
+
+    if (result.meta?.last_row_id) {
+      return result.meta.last_row_id;
+    }
+
+    const insertedRow = await db.prepare(`
+      SELECT id
+      FROM cron_job_history
+      WHERE job_name = ?
+        AND cron_pattern = ?
+        AND triggered_by = 'cron'
+        AND status = 'running'
+        AND started_at = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `).bind(jobName, cronPattern, startedAt).first();
+
+    return insertedRow?.id || null;
+  } catch (error) {
+    console.error("[Scheduled] Failed to record job start:", error);
+    return null;
+  }
+}
+
+async function recordJobComplete(db, jobId, success, resultData, errorMessage = null, durationMs = null) {
+  if (!db || !jobId) return;
+
+  try {
+    await db.prepare(`
+      UPDATE cron_job_history
+      SET status = ?,
+          result_data = ?,
+          error_message = ?,
+          completed_at = datetime('now'),
+          duration_ms = ?
+      WHERE id = ?
+    `).bind(
+      success ? 'success' : 'failed',
+      resultData == null ? null : JSON.stringify(resultData),
+      errorMessage,
+      durationMs,
+      jobId,
+    ).run();
+  } catch (error) {
+    console.error("[Scheduled] Failed to record job completion:", error);
+  }
+}
+
 async function getGuildsWithLogs(db) {
   if (!db) return [];
 
@@ -575,6 +638,10 @@ async function runDailyRefresh(env) {
  */
 export async function onScheduled(event, env, ctx) {
   const cronPattern = event.cron;
+  const jobName = getJobNameFromCronPattern(cronPattern);
+  const db = env.DB;
+  const startTime = Date.now();
+  const jobId = await recordJobStart(db, jobName, cronPattern);
   
   console.log(`[Scheduled] Running cron job: ${cronPattern} at ${new Date().toISOString()}`);
 
@@ -582,16 +649,20 @@ export async function onScheduled(event, env, ctx) {
     if (cronPattern === "0 * * * *") {
       // Hourly job - aggregate stats
       const result = await runHourlyAggregation(env);
+      await recordJobComplete(db, jobId, true, result, null, Date.now() - startTime);
       console.log("[Scheduled] Hourly aggregation result:", JSON.stringify(result));
     } else if (cronPattern === "0 0 * * *") {
       // Daily job - also run aggregation first, then refresh and cleanup
       const aggregationResult = await runHourlyAggregation(env);
       const refreshResult = await runDailyRefresh(env);
+      await recordJobComplete(db, jobId, true, { aggregation: aggregationResult, refresh: refreshResult }, null, Date.now() - startTime);
       console.log("[Scheduled] Daily job results:", JSON.stringify({ aggregation: aggregationResult, refresh: refreshResult }));
     } else {
+      await recordJobComplete(db, jobId, false, null, `Unknown cron pattern: ${cronPattern}`, Date.now() - startTime);
       console.warn(`[Scheduled] Unknown cron pattern: ${cronPattern}`);
     }
   } catch (error) {
+    await recordJobComplete(db, jobId, false, null, error instanceof Error ? error.message : String(error), Date.now() - startTime);
     console.error(`[Scheduled] Cron job failed for ${cronPattern}:`, error);
     throw error;
   }
