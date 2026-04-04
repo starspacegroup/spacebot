@@ -1,6 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/log.js";
 import { upsertUser } from "$lib/db/users.js";
+import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
 
 /**
  * Dev Auth Bypass
@@ -167,6 +168,10 @@ export async function handle({ event, resolve }) {
 
   // Add dev auth status to event.locals for use in routes
   event.locals.devAuthEnabled = devAuthEnabled;
+
+  if (url.pathname === "/api/gateway/logs") {
+    return handleGatewayLogsApi(event);
+  }
 
   const response = await resolve(event);
 
