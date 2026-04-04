@@ -15,6 +15,8 @@ import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { processScheduledMessages } from "$lib/db/scheduled-messages.js";
 import { log } from "$lib/log.js";
 
+const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
+
 /**
  * Check if user is a superadmin
  */
@@ -121,6 +123,25 @@ async function getCronJobHistory(db, limit = 50) {
   }
 }
 
+async function markStaleRunningJobs(db) {
+  if (!db) return;
+
+  try {
+    await db.prepare(`
+      UPDATE cron_job_history
+      SET status = 'failed',
+          error_message = COALESCE(error_message, 'Job did not report completion before timeout'),
+          completed_at = datetime('now'),
+          duration_ms = CAST((julianday(datetime('now')) - julianday(started_at)) * 86400000 AS INTEGER)
+      WHERE status = 'running'
+        AND completed_at IS NULL
+        AND started_at < datetime('now', ?)
+    `).bind(`-${STALE_RUNNING_JOB_TIMEOUT_MINUTES} minutes`).run();
+  } catch (error) {
+    log.error("[Cron API] Failed to mark stale running jobs:", error);
+  }
+}
+
 /**
  * Get the last run time for each job
  */
@@ -169,17 +190,35 @@ async function recordJobStart(db, jobName, triggeredBy, userId = null) {
   if (!db) return null;
 
   try {
+    const startedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
     const result = await db.prepare(`
       INSERT INTO cron_job_history (job_name, cron_pattern, triggered_by, triggered_by_user_id, status, started_at)
-      VALUES (?, ?, ?, ?, 'running', datetime('now'))
+      VALUES (?, ?, ?, ?, 'running', ?)
     `).bind(
       jobName,
       getCronJobDefinitions().find(j => j.name === jobName)?.cronPattern || null,
       triggeredBy,
-      userId
+      userId,
+      startedAt
     ).run();
 
-    return result.meta?.last_row_id;
+    if (result.meta?.last_row_id) {
+      return result.meta.last_row_id;
+    }
+
+    const insertedRow = await db.prepare(`
+      SELECT id
+      FROM cron_job_history
+      WHERE job_name = ?
+        AND triggered_by = ?
+        AND status = 'running'
+        AND started_at = ?
+        AND ((triggered_by_user_id IS NULL AND ? IS NULL) OR triggered_by_user_id = ?)
+      ORDER BY id DESC
+      LIMIT 1
+    `).bind(jobName, triggeredBy, startedAt, userId, userId).first();
+
+    return insertedRow?.id || null;
   } catch (error) {
     log.error("[Cron API] Failed to record job start:", error);
     return null;
@@ -554,6 +593,8 @@ export async function GET({ cookies, platform }) {
   }
 
   const db = platform?.env?.DB;
+
+  await markStaleRunningJobs(db);
   
   const [history, lastRuns] = await Promise.all([
     getCronJobHistory(db, 50),

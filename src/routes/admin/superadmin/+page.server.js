@@ -18,6 +18,8 @@ import {
 } from "$lib/db/commands.js";
 import { listIntegrations, createIntegrationToken, revokeIntegrationToken } from "$lib/db/integrations.js";
 
+const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
+
 /**
  * Get the list of available cron jobs
  */
@@ -64,6 +66,17 @@ async function getCronJobData(db) {
 		if (!tableCheck) {
 			return { history: [], lastRuns: {} };
 		}
+
+		await db.prepare(`
+			UPDATE cron_job_history
+			SET status = 'failed',
+				error_message = COALESCE(error_message, 'Job did not report completion before timeout'),
+				completed_at = datetime('now'),
+				duration_ms = CAST((julianday(datetime('now')) - julianday(started_at)) * 86400000 AS INTEGER)
+			WHERE status = 'running'
+			  AND completed_at IS NULL
+			  AND started_at < datetime('now', ?)
+		`).bind(`-${STALE_RUNNING_JOB_TIMEOUT_MINUTES} minutes`).run();
 
 		// Get recent history
 		const historyResult = await db.prepare(`
