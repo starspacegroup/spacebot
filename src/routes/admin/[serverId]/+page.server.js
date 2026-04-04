@@ -8,7 +8,7 @@ import {
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
 import { getGuildStatistics } from "$lib/db/statistics.js";
-import { getLatestServerStats } from "$lib/db/server-stats.js";
+import { syncServerStatsIfStale } from "$lib/db/server-stats.js";
 import { getMemberGrowthChart, getVoiceActivityChart, runStatsAggregation } from "$lib/db/stats-aggregation.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { getAutomations } from "$lib/db/automations.js";
@@ -150,6 +150,8 @@ export async function load({ cookies, platform, parent, params }) {
   const db = platform?.env?.DB;
   if (db && botInGuild) {
     try {
+      const syncedStats = await syncServerStatsIfStale(db, serverId, botToken);
+
       // Run stats aggregation to ensure today's hourly data is available for charts
       try {
         await runStatsAggregation(db, serverId);
@@ -161,7 +163,7 @@ export async function load({ cookies, platform, parent, params }) {
         getLogStats(db, serverId),
         getGuildSettings(db, serverId),
         getGuildStatistics(db, serverId, parentData.timezone || null),
-        getLatestServerStats(db, serverId),
+        Promise.resolve(syncedStats.latest),
         getMemberGrowthChart(db, serverId, "30d", parentData.timezone || null),
         getVoiceActivityChart(db, serverId, "30d", parentData.timezone || null),
         getBuiltInCommands(db),

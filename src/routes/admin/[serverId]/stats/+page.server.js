@@ -15,8 +15,7 @@ import {
   getMemberCountChanges,
   getPeakMemberCount,
   getLatestServerStats,
-  fetchGuildStatsFromDiscord,
-  recordServerStats,
+  syncServerStatsIfStale,
 } from "$lib/db/server-stats.js";
 import {
   getVoiceActivitySummary,
@@ -140,24 +139,9 @@ export async function load({ params, cookies, platform, parent, url }) {
 
   if (db) {
     try {
-      // First, check if we have any member stats - if not, fetch from Discord
       const existingStats = await getLatestServerStats(db, serverId);
       log.debug(`[Stats] Existing stats for ${serverId}:`, existingStats);
-      
-      // Fetch from Discord if no stats exist OR if member_count is 0 (likely stale/placeholder data)
-      if ((!existingStats || existingStats.member_count === 0) && botToken) {
-        // No valid stats exist - fetch current stats from Discord API and save
-        log.info(`[Stats] No valid stats for guild ${serverId}, fetching from Discord...`);
-        const fetchResult = await fetchGuildStatsFromDiscord(botToken, serverId);
-        const discordStats = fetchResult?.stats;
-        log.debug(`[Stats] Discord API returned:`, discordStats);
-        if (discordStats && discordStats.member_count > 0) {
-          const saveResult = await recordServerStats(db, serverId, discordStats);
-          log.info(`[Stats] Recorded initial stats for guild ${serverId}: ${discordStats.member_count} members, result:`, saveResult);
-        } else {
-          log.warn(`[Stats] Discord API returned no valid member count for ${serverId}`);
-        }
-      }
+      const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
 
       // Run stats aggregation on-demand to ensure chart data exists
       // This is safe to run multiple times - it will only process new data
@@ -197,7 +181,7 @@ export async function load({ params, cookies, platform, parent, url }) {
         getAutomationExecutionHistory(db, serverId, timezone),
         // Member stats from server_stats
         Promise.all([
-          getLatestServerStats(db, serverId),
+          Promise.resolve(syncedStats.latest ?? existingStats),
           getMemberCountChanges(db, serverId, timezone),
           getPeakMemberCount(db, serverId, selectedPeriod),
         ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),

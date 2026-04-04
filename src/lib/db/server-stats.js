@@ -6,6 +6,23 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+const DEFAULT_STATS_REFRESH_MINUTES = 30;
+
+function parseRecordedAt(recordedAt) {
+  if (!recordedAt || typeof recordedAt !== "string") {
+    return Number.NaN;
+  }
+
+  const normalized = recordedAt.includes("T")
+    ? recordedAt
+    : recordedAt.replace(" ", "T");
+  const withTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(normalized)
+    ? normalized
+    : `${normalized}Z`;
+
+  return Date.parse(withTimezone);
+}
+
 function resolvePeriodWindow(period, fallbackDays = 7) {
   if (period === "24h") {
     return { days: 1, timeRange: "-1 day" };
@@ -173,6 +190,75 @@ export async function getLatestServerStats(db, guildId) {
   } catch (error) {
     log.error("Failed to get latest server stats:", error);
     return null;
+  }
+}
+
+/**
+ * Check whether the latest server stats snapshot is stale enough to refresh.
+ * @param {ServerStats|null} stats - Latest recorded stats snapshot
+ * @param {number} [maxAgeMinutes=30] - Maximum accepted age in minutes
+ * @returns {boolean}
+ */
+export function isServerStatsStale(stats, maxAgeMinutes = DEFAULT_STATS_REFRESH_MINUTES) {
+  if (!stats?.recorded_at) {
+    return true;
+  }
+
+  const recordedAtMs = parseRecordedAt(stats.recorded_at);
+  if (!Number.isFinite(recordedAtMs)) {
+    return true;
+  }
+
+  return Date.now() - recordedAtMs > maxAgeMinutes * 60 * 1000;
+}
+
+/**
+ * Refresh latest server stats from Discord when the stored snapshot is missing, empty, or stale.
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @param {string} botToken - Discord bot token
+ * @param {{ existingStats?: ServerStats|null, maxAgeMinutes?: number }} [options]
+ * @returns {Promise<{latest: ServerStats|null, refreshed: boolean, error?: string}>}
+ */
+export async function syncServerStatsIfStale(db, guildId, botToken, options = {}) {
+  if (!db) {
+    return { latest: null, refreshed: false, error: "Database not available" };
+  }
+
+  const {
+    existingStats = null,
+    maxAgeMinutes = DEFAULT_STATS_REFRESH_MINUTES,
+  } = options;
+
+  const latest = existingStats ?? await getLatestServerStats(db, guildId);
+  const shouldRefresh = !latest || latest.member_count === 0 || isServerStatsStale(latest, maxAgeMinutes);
+
+  if (!shouldRefresh || !botToken) {
+    return { latest, refreshed: false };
+  }
+
+  try {
+    log.info(`[Stats] Refreshing stale stats for guild ${guildId}`);
+    const fetchResult = await fetchGuildStatsFromDiscord(botToken, guildId);
+    const discordStats = fetchResult?.stats;
+
+    if (!discordStats || discordStats.member_count <= 0) {
+      log.warn(`[Stats] Discord API returned no valid member count for ${guildId}`);
+      return { latest, refreshed: false, error: "Discord API returned no valid member count" };
+    }
+
+    const saveResult = await recordServerStats(db, guildId, discordStats);
+    if (!saveResult.success) {
+      return { latest, refreshed: false, error: saveResult.error || "Failed to record server stats" };
+    }
+
+    return {
+      latest: await getLatestServerStats(db, guildId),
+      refreshed: true,
+    };
+  } catch (error) {
+    log.warn(`[Stats] Failed to refresh stale stats for guild ${guildId}:`, error);
+    return { latest, refreshed: false, error: error.message || String(error) };
   }
 }
 
