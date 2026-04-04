@@ -366,6 +366,7 @@
 		return points.map(p => ({
 			date: p.date,
 			label: formatChartDate(p.date, data.timezone),
+			hasData: p.hasData !== false,
 			values: [
 				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
 				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
@@ -398,6 +399,7 @@
 			date: p.date,
 			label: formatChartDate(p.date, data.timezone),
 			value: useHours ? (p.totalHours || 0) : (p.totalMinutes || 0),
+			hasData: p.hasData !== false,
 		}));
 	});
 	
@@ -410,6 +412,7 @@
 			date: p.date,
 			label: formatChartDate(p.date, data.timezone),
 			value: p.uniqueUsers || 0,
+			hasData: p.hasData !== false,
 		}));
 	});
 	
@@ -422,6 +425,7 @@
 			date: p.date,
 			label: formatChartDate(p.date, data.timezone),
 			value: p.peakConcurrent || 0,
+			hasData: p.hasData !== false,
 		}));
 	});
 	
@@ -445,6 +449,7 @@
 					date: today,
 					label: formatChartDate(today, data.timezone),
 					value: currentCount,
+					hasData: true,
 				}];
 			}
 			return [];
@@ -461,6 +466,7 @@
 				date: d.date,
 				label: formatChartDate(d.date, data.timezone),
 				value: runningCount,
+				hasData: d.hasData !== false,
 			};
 		});
 		
@@ -472,10 +478,12 @@
 				date: todayForChart,
 				label: formatChartDate(todayForChart, data.timezone),
 				value: currentCount,
+				hasData: true,
 			});
 		} else if (lastPoint && lastPoint.date === todayForChart) {
 			// Override today's derived value with the authoritative current count
 			lastPoint.value = currentCount;
+			lastPoint.hasData = true;
 		}
 		
 		return points;

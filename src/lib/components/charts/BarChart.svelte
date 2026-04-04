@@ -1,7 +1,7 @@
 <script>
 	/**
 	 * Beautiful, responsive bar chart component
-	 * @type {{ data: Array<{date: string, values: {label: string, value: number, color: string}[]}>, title?: string, emptyMessage?: string, height?: string, showLegend?: boolean }}
+	 * @type {{ data: Array<{date: string, label?: string, hasData?: boolean, values: {label: string, value: number, color: string}[]}>, title?: string, emptyMessage?: string, height?: string, showLegend?: boolean }}
 	 */
 	let { 
 		data = [], 
@@ -12,7 +12,8 @@
 	} = $props();
 	
 	// Tooltip state
-	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', items: [] });
+	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', items: [], hasData: true });
+	const missingBarColor = 'rgba(148, 163, 184, 0.55)';
 	
 	function showTooltip(event, group) {
 		const rect = event.currentTarget.closest('svg').getBoundingClientRect();
@@ -23,7 +24,8 @@
 			x: svgX,
 			y: svgY,
 			date: group.label || formatDate(group.date),
-			items: group.bars.map(b => ({ label: b.label, value: b.value, color: b.color }))
+			items: group.bars.map(b => ({ label: b.label, value: b.value, color: b.color })),
+			hasData: group.hasData !== false,
 		};
 	}
 	
@@ -131,6 +133,9 @@
 					</div>
 				{/if}
 			{/each}
+			{#if !tooltip.hasData}
+				<div class="tooltip-note">No recorded data for this point</div>
+			{/if}
 		</div>
 	{/if}
 	{#if chartData && chartData.bars.length > 0}
@@ -184,10 +189,11 @@
 						y={bar.y}
 						width={bar.width}
 						height={Math.max(bar.height, 0)}
-						fill={bar.color}
+						fill={group.hasData === false ? missingBarColor : bar.color}
 						rx="3"
 						ry="3"
 						class="bar"
+						class:missing-data={group.hasData === false}
 						filter="url(#bar-glow-{barIndex})"
 						onmouseenter={(e) => showTooltip(e, group)}
 						onmouseleave={hideTooltip}
@@ -283,6 +289,10 @@
 	.bar:hover {
 		opacity: 0.85;
 	}
+
+	.bar.missing-data {
+		opacity: 0.8;
+	}
 	
 	.chart-tooltip {
 		position: absolute;
@@ -308,6 +318,12 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
+	}
+
+	.tooltip-note {
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+		font-size: 0.75rem;
+		margin-top: 0.25rem;
 	}
 	
 	.tooltip-color {

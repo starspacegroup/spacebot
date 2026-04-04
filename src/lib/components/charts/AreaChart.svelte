@@ -1,7 +1,7 @@
 <script>
 	/**
 	 * Beautiful, responsive area chart component with optional secondary lines
-	 * @type {{ data: Array<{date: string, value: number, label?: string}>, color?: string, gradientId?: string, unit?: string, title?: string, emptyMessage?: string, showPoints?: boolean, height?: string, secondaryLines?: Array<{key: string, color: string, label: string, unit?: string}> }}
+	 * @type {{ data: Array<{date: string, value: number, label?: string, hasData?: boolean}>, color?: string, gradientId?: string, unit?: string, title?: string, emptyMessage?: string, showPoints?: boolean, height?: string, secondaryLines?: Array<{key: string, color: string, label: string, unit?: string}> }}
 	 */
 	let { 
 		data = [], 
@@ -16,7 +16,8 @@
 	} = $props();
 	
 	// Tooltip state
-	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', value: '', label: '' });
+	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', value: '', label: '', hasData: true });
+	const missingPointColor = 'rgba(148, 163, 184, 0.7)';
 	
 	function showTooltip(event, point, labelOverride = null, unitOverride = null) {
 		const rect = event.currentTarget.closest('svg').getBoundingClientRect();
@@ -28,7 +29,8 @@
 			y: svgY,
 			date: point.label || formatDate(point.date),
 			value: point.value.toLocaleString() + (unitOverride ?? unit),
-			label: labelOverride
+			label: labelOverride,
+			hasData: point.hasData !== false
 		};
 	}
 	
@@ -169,6 +171,9 @@
 			{#if tooltip.label}<div class="tooltip-label">{tooltip.label}</div>{/if}
 			<div class="tooltip-date">{tooltip.date}</div>
 			<div class="tooltip-value">{tooltip.value}</div>
+			{#if !tooltip.hasData}
+				<div class="tooltip-note">No recorded data for this point</div>
+			{/if}
 		</div>
 	{/if}
 	{#if chartData && chartData.points.length > 0}
@@ -245,6 +250,8 @@
 						cy={point.y} 
 						r="6" 
 						class="point-glow"
+						class:missing-data={point.hasData === false}
+						style:fill={point.hasData === false ? missingPointColor : null}
 						filter="url(#{gradientId}-point-glow)"
 					/>
 					<!-- Inner point -->
@@ -254,6 +261,8 @@
 						cy={point.y} 
 						r="4" 
 						class="chart-point"
+						class:missing-data={point.hasData === false}
+						style:fill={point.hasData === false ? missingPointColor : null}
 						onmouseenter={(e) => showTooltip(e, point)}
 						onmouseleave={hideTooltip}
 					/>
@@ -357,6 +366,12 @@
 		font-weight: 600;
 		font-size: 1rem;
 	}
+
+	.tooltip-note {
+		color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
+		font-size: 0.75rem;
+		margin-top: 0.2rem;
+	}
 	
 	.area-chart {
 		display: block;
@@ -414,6 +429,10 @@
 		fill: var(--chart-color);
 		opacity: 0.3;
 	}
+
+	.point-glow.missing-data {
+		opacity: 0.18;
+	}
 	
 	.chart-point {
 		fill: var(--chart-color);
@@ -425,6 +444,10 @@
 	
 	.chart-point:hover {
 		r: 6;
+	}
+
+	.chart-point.missing-data {
+		stroke: rgba(203, 213, 225, 0.45);
 	}
 	
 	.secondary-line {

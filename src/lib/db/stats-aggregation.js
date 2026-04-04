@@ -1022,7 +1022,7 @@ function fillDateGaps(data, days, defaults = {}, timezone = null) {
   
   // Index existing data by date
   for (const row of data) {
-    dateMap.set(row.date, row);
+    dateMap.set(row.date, { ...row, hasData: row.hasData !== false });
   }
   
   const filled = [];
@@ -1034,7 +1034,7 @@ function fillDateGaps(data, days, defaults = {}, timezone = null) {
     if (dateMap.has(dateStr)) {
       filled.push(dateMap.get(dateStr));
     } else {
-      filled.push({ date: dateStr, ...defaults });
+      filled.push({ date: dateStr, ...defaults, hasData: false });
     }
   }
   
@@ -1080,6 +1080,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
       joinsHuman: 0,
       leavesHuman: 0,
       netChangeHuman: 0,
+      hasData: true,
     }));
 
     // Also compute human-only member deltas directly from event logs so
@@ -1107,10 +1108,12 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
         joinsHuman: 0,
         leavesHuman: 0,
         netChangeHuman: 0,
+        hasData: true,
       };
       existing.joinsHuman = row.joins_human || 0;
       existing.leavesHuman = row.leaves_human || 0;
       existing.netChangeHuman = existing.joinsHuman - existing.leavesHuman;
+      existing.hasData = true;
       rawByDate.set(row.date, existing);
     }
 
@@ -1131,6 +1134,7 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
         joinsHuman: 0,
         leavesHuman: 0,
         netChangeHuman: 0,
+        hasData: true,
       });
     }
 
@@ -1184,6 +1188,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
       totalHours: Math.round((row.total_seconds || 0) / 3600 * 10) / 10,
       uniqueUsers: row.unique_users || 0,
       peakConcurrent: row.peak_concurrent || 0,
+      hasData: true,
     }));
 
     // Add the current (incomplete) hour's data to today's local date
@@ -1202,6 +1207,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
         totalHours: Math.round(partial.voice_total_seconds / 3600 * 10) / 10,
         uniqueUsers: partial.voice_unique_users,
         peakConcurrent: partial.voice_peak_concurrent,
+        hasData: true,
       });
     }
 
@@ -1244,6 +1250,7 @@ export async function getMessageActivityChart(db, guildId, period = "30d", timez
       date: row.date,
       messageCount: row.message_count || 0,
       messageUniqueUsers: row.message_unique_users || 0,
+      hasData: true,
     }));
 
     const today = getTodayDateString(timezone);
@@ -1260,6 +1267,7 @@ export async function getMessageActivityChart(db, guildId, period = "30d", timez
         date: today,
         messageCount: partial.message_count || 0,
         messageUniqueUsers: partial.message_unique_users || 0,
+        hasData: true,
       });
     }
 
