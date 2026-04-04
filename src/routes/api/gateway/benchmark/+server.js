@@ -21,6 +21,12 @@ function checkIsSuperAdmin(userId, platform) {
 	return adminUserIds.split(",").map((id) => id.trim()).filter(Boolean).includes(userId);
 }
 
+function checkIsBotRequest(request, platform) {
+	const authHeader = request.headers.get("Authorization");
+	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+	return Boolean(botToken) && authHeader === `Bot ${botToken}`;
+}
+
 /**
  * POST - Record gateway benchmark data from the gateway process
  * Authenticated via bot token
@@ -69,15 +75,18 @@ export async function POST({ request, platform }) {
  * GET - Retrieve benchmark data for the superadmin dashboard
  * Authenticated via superadmin cookie
  */
-export async function GET({ cookies, platform, url }) {
-	const userId = cookies.get("discord_user_id");
-	if (!checkIsSuperAdmin(userId, platform)) {
-		return json({ error: "Unauthorized" }, { status: 401 });
-	}
-
+export async function GET({ request, cookies, platform, url }) {
 	const db = platform?.env?.DB;
 	if (!db) {
 		return json({ error: "Database not available" }, { status: 503 });
+	}
+
+	const isBotRequest = checkIsBotRequest(request, platform);
+	if (!isBotRequest) {
+		const userId = cookies.get("discord_user_id");
+		if (!checkIsSuperAdmin(userId, platform)) {
+			return json({ error: "Unauthorized" }, { status: 401 });
+		}
 	}
 
 	const range = url.searchParams.get("range") || "24h";
@@ -87,6 +96,10 @@ export async function GET({ cookies, platform, url }) {
 	try {
 		const intervalStr = await getGlobalSetting(db, "benchmark_interval_seconds", String(DEFAULT_BENCHMARK_INTERVAL));
 		const benchmarkInterval = parseInt(intervalStr, 10) || DEFAULT_BENCHMARK_INTERVAL;
+
+		if (isBotRequest) {
+			return json({ success: true, benchmark_interval_seconds: benchmarkInterval });
+		}
 
 		const [stats, chartData] = await Promise.all([
 			getBenchmarkStats(db, safeRange),

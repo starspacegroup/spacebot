@@ -3019,9 +3019,50 @@ function setupEventHandlers(client, logFn) {
   });
 }
 
-// Benchmark reporting interval reference
-let benchmarkInterval = null;
+// Benchmark reporting timer state
+let benchmarkTimer = null;
+let benchmarkConfigPoll = null;
 let currentBenchmarkIntervalMs = 60_000;
+
+const BENCHMARK_CONFIG_SYNC_MS = 30_000;
+
+function clearBenchmarkTimer() {
+  if (benchmarkTimer) {
+    clearTimeout(benchmarkTimer);
+    benchmarkTimer = null;
+  }
+}
+
+function scheduleNextBenchmark(delayMs = currentBenchmarkIntervalMs) {
+  clearBenchmarkTimer();
+  benchmarkTimer = setTimeout(() => {
+    benchmarkTimer = null;
+    void reportBenchmark();
+  }, delayMs);
+}
+
+function updateBenchmarkInterval(intervalSeconds, source, reschedule = false) {
+  const parsedIntervalSeconds = Number.parseInt(String(intervalSeconds), 10);
+  if (!Number.isFinite(parsedIntervalSeconds) || parsedIntervalSeconds <= 0) {
+    return false;
+  }
+
+  const newIntervalMs = parsedIntervalSeconds * 1000;
+  if (newIntervalMs === currentBenchmarkIntervalMs) {
+    return false;
+  }
+
+  log.info(
+    `[Benchmark] Interval changed via ${source}: ${currentBenchmarkIntervalMs / 1000}s → ${parsedIntervalSeconds}s`
+  );
+  currentBenchmarkIntervalMs = newIntervalMs;
+
+  if (reschedule) {
+    scheduleNextBenchmark();
+  }
+
+  return true;
+}
 
 /**
  * Start periodic gateway benchmark reporting
@@ -3029,10 +3070,9 @@ let currentBenchmarkIntervalMs = 60_000;
  * @param {Client} client - The discord.js client
  */
 function startBenchmarkReporting(client) {
-  // Clear any existing interval
-  if (benchmarkInterval) clearInterval(benchmarkInterval);
+  clearBenchmarkTimer();
 
-  const reportBenchmark = async () => {
+  async function reportBenchmark() {
     try {
       const ping = client.ws.ping; // Heartbeat ACK round-trip in ms (-1 if not yet measured)
       const guildCount = client.guilds.cache.size;
@@ -3069,25 +3109,49 @@ function startBenchmarkReporting(client) {
         const result = await response.json();
         log.debug(`[Benchmark] Reported latency: ${ping}ms, guilds: ${guildCount}`);
 
-        // Adjust interval if the server tells us a different one
         if (result.benchmark_interval_seconds) {
-          const newIntervalMs = result.benchmark_interval_seconds * 1000;
-          if (newIntervalMs !== currentBenchmarkIntervalMs) {
-            log.info(`[Benchmark] Interval changed: ${currentBenchmarkIntervalMs / 1000}s → ${result.benchmark_interval_seconds}s`);
-            currentBenchmarkIntervalMs = newIntervalMs;
-            clearInterval(benchmarkInterval);
-            benchmarkInterval = setInterval(reportBenchmark, currentBenchmarkIntervalMs);
-          }
+          updateBenchmarkInterval(result.benchmark_interval_seconds, "benchmark POST response");
         }
       }
     } catch (error) {
       log.debug(`[Benchmark] Report error: ${error.message}`);
+    } finally {
+      scheduleNextBenchmark();
     }
-  };
+  }
 
-  // Report immediately, then at the configured interval
-  reportBenchmark();
-  benchmarkInterval = setInterval(reportBenchmark, currentBenchmarkIntervalMs);
+  async function syncBenchmarkInterval() {
+    try {
+      const response = await fetch(`${API_BASE}/api/gateway/benchmark`, {
+        headers: {
+          "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+        },
+      });
+
+      if (!response.ok) {
+        log.debug(`[Benchmark] Config sync failed: ${response.status}`);
+        return;
+      }
+
+      const result = await response.json();
+      if (result.benchmark_interval_seconds) {
+        updateBenchmarkInterval(result.benchmark_interval_seconds, "config sync", true);
+      }
+    } catch (error) {
+      log.debug(`[Benchmark] Config sync error: ${error.message}`);
+    }
+  }
+
+  if (benchmarkConfigPoll) {
+    clearInterval(benchmarkConfigPoll);
+  }
+
+  benchmarkConfigPoll = setInterval(() => {
+    void syncBenchmarkInterval();
+  }, BENCHMARK_CONFIG_SYNC_MS);
+
+  // Report immediately, then schedule subsequent checks dynamically.
+  void reportBenchmark();
   log.info(`📡 Gateway benchmark reporting started (${currentBenchmarkIntervalMs / 1000}s interval)`);
 }
 
@@ -3120,7 +3184,8 @@ async function startBot() {
 // Graceful shutdown for PM2 / process managers
 function gracefulShutdown(signal) {
   log.info(`\n🛑 Received ${signal}, shutting down gracefully...`);
-  if (benchmarkInterval) clearInterval(benchmarkInterval);
+  clearBenchmarkTimer();
+  if (benchmarkConfigPoll) clearInterval(benchmarkConfigPoll);
   if (discordClient) {
     discordClient.destroy();
     log.info("✅ Discord client destroyed");
