@@ -211,8 +211,14 @@ function setGatewayLogCaptureEnabled(enabled) {
   if (!enabled) {
     gatewayLogQueue = [];
     clearGatewayLogFlushTimer();
-  } else if (gatewayLogQueue.length > 0) {
-    scheduleGatewayLogFlush();
+  } else {
+    enqueueGatewayLog("info", [
+      `[GatewayLogs] Capture enabled on ${new Date().toISOString()} via ${API_BASE}`,
+    ]);
+
+    if (gatewayLogQueue.length > 0) {
+      scheduleGatewayLogFlush();
+    }
   }
 
   ORIGINAL_CONSOLE.info(`[GatewayLogs] Capture ${enabled ? "enabled" : "disabled"}`);

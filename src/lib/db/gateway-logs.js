@@ -61,14 +61,24 @@ export async function listGatewayLogs(db, options = {}) {
   if (!db) return [];
 
   const limit = clampLimit(options.limit);
+  const afterId = Number.parseInt(String(options.afterId || ""), 10);
+  const hasAfterId = Number.isFinite(afterId) && afterId > 0;
 
   try {
-    const result = await db.prepare(`
-      SELECT id, level, message, source, logged_at, created_at
-      FROM gateway_logs
-      ORDER BY id DESC
-      LIMIT ?
-    `).bind(limit).all();
+    const result = hasAfterId
+      ? await db.prepare(`
+          SELECT id, level, message, source, logged_at, created_at
+          FROM gateway_logs
+          WHERE id > ?
+          ORDER BY id ASC
+          LIMIT ?
+        `).bind(afterId, limit).all()
+      : await db.prepare(`
+          SELECT id, level, message, source, logged_at, created_at
+          FROM gateway_logs
+          ORDER BY id DESC
+          LIMIT ?
+        `).bind(limit).all();
 
     return result.results || [];
   } catch (error) {

@@ -32,6 +32,11 @@
 	let gatewayLogsUpdating = $state(false);
 	let gatewayLogsError = $state(null);
 	let gatewayLogsLastUpdated = $state(null);
+	let gatewayLogStatus = $state(null);
+	let gatewayLogsStreamConnected = $state(false);
+	let gatewayLogsStreamError = $state(null);
+	let gatewayLogsStream = null;
+	let gatewayLogsReconnectTimer = null;
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
@@ -77,6 +82,30 @@
 			return formatDate(dateStr);
 		}
 		return `${parsed.toLocaleDateString()} ${parsed.toLocaleTimeString()}`;
+	}
+
+	function formatRelativeTime(dateStr) {
+		if (!dateStr) return 'never';
+
+		const parsed = new Date(dateStr);
+		if (Number.isNaN(parsed.getTime())) {
+			return formatTimestamp(dateStr);
+		}
+
+		const diffMs = Date.now() - parsed.getTime();
+		if (diffMs < 5_000) return 'just now';
+
+		const diffSeconds = Math.floor(diffMs / 1000);
+		if (diffSeconds < 60) return `${diffSeconds}s ago`;
+
+		const diffMinutes = Math.floor(diffSeconds / 60);
+		if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+		const diffHours = Math.floor(diffMinutes / 60);
+		if (diffHours < 24) return `${diffHours}h ago`;
+
+		const diffDays = Math.floor(diffHours / 24);
+		return `${diffDays}d ago`;
 	}
 	
 	// Format short date for charts
@@ -155,7 +184,7 @@
 			const response = await fetch('/api/gateway/logs?limit=150');
 			const result = await parseJsonResponse(response, 'Failed to load gateway logs');
 
-			gatewayLoggingEnabled = result.enabled === true;
+			applyGatewayLogStatus(result.status);
 			gatewayLogs = result.logs || [];
 			gatewayLogsLastUpdated = new Date().toISOString();
 		} catch (error) {
@@ -190,6 +219,115 @@
 		return updateGatewayLogging(!gatewayLoggingEnabled);
 	}
 
+	function applyGatewayLogStatus(status) {
+		if (!status) {
+			return;
+		}
+
+		gatewayLogStatus = status;
+		gatewayLoggingEnabled = status.enabled === true;
+	}
+
+	function mergeGatewayLogEntries(entries) {
+		if (!entries?.length) {
+			return;
+		}
+
+		const merged = new Map(gatewayLogs.map((entry) => [entry.id, entry]));
+		for (const entry of entries) {
+			merged.set(entry.id, entry);
+		}
+
+		gatewayLogs = Array.from(merged.values())
+			.sort((left, right) => right.id - left.id)
+			.slice(0, 150);
+		gatewayLogsLastUpdated = new Date().toISOString();
+	}
+
+	function parseGatewayStreamPayload(event) {
+		try {
+			return JSON.parse(event.data);
+		} catch {
+			return null;
+		}
+	}
+
+	function clearGatewayLogsReconnectTimer() {
+		if (gatewayLogsReconnectTimer) {
+			window.clearTimeout(gatewayLogsReconnectTimer);
+			gatewayLogsReconnectTimer = null;
+		}
+	}
+
+	function disconnectGatewayLogsStream() {
+		clearGatewayLogsReconnectTimer();
+		gatewayLogsStreamConnected = false;
+
+		if (gatewayLogsStream) {
+			gatewayLogsStream.close();
+			gatewayLogsStream = null;
+		}
+	}
+
+	function scheduleGatewayLogsReconnect() {
+		clearGatewayLogsReconnectTimer();
+		gatewayLogsReconnectTimer = window.setTimeout(() => {
+			gatewayLogsReconnectTimer = null;
+			connectGatewayLogsStream();
+		}, 3000);
+	}
+
+	function connectGatewayLogsStream() {
+		if (typeof EventSource === 'undefined' || gatewayLogsStream) {
+			return;
+		}
+
+		const stream = new EventSource('/api/gateway/logs/stream');
+		gatewayLogsStream = stream;
+
+		stream.addEventListener('open', () => {
+			gatewayLogsStreamConnected = true;
+			gatewayLogsStreamError = null;
+		});
+
+		stream.addEventListener('snapshot', (event) => {
+			const payload = parseGatewayStreamPayload(event);
+			if (!payload) return;
+
+			applyGatewayLogStatus(payload.status);
+			gatewayLogs = payload.logs || [];
+			gatewayLogsLastUpdated = new Date().toISOString();
+		});
+
+		stream.addEventListener('append', (event) => {
+			const payload = parseGatewayStreamPayload(event);
+			if (!payload) return;
+
+			applyGatewayLogStatus(payload.status);
+			mergeGatewayLogEntries(payload.entries || []);
+		});
+
+		stream.addEventListener('status', (event) => {
+			const payload = parseGatewayStreamPayload(event);
+			if (!payload) return;
+
+			applyGatewayLogStatus(payload.status);
+			gatewayLogsLastUpdated = new Date().toISOString();
+		});
+
+		stream.onerror = () => {
+			gatewayLogsStreamConnected = false;
+			gatewayLogsStreamError = 'Live stream disconnected. Retrying...';
+
+			if (gatewayLogsStream === stream) {
+				stream.close();
+				gatewayLogsStream = null;
+			}
+
+			scheduleGatewayLogsReconnect();
+		};
+	}
+
 	onMount(() => {
 		const intervalId = window.setInterval(() => {
 			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
@@ -205,21 +343,23 @@
 		}, 15000);
 
 		const gatewayLogsIntervalId = window.setInterval(() => {
-			if (gatewayLoggingEnabled) {
+			if (!gatewayLogsStreamConnected) {
 				void refreshGatewayLogs({ silent: true });
 			}
-		}, 3000);
+		}, 5000);
 
 		if (cronJobHistory.some((entry) => entry.status === 'running')) {
 			void refreshCronData();
 		}
 
+		connectGatewayLogsStream();
 		void refreshGatewayLogs();
 
 		return () => {
 			window.clearInterval(intervalId);
 			window.clearInterval(backgroundIntervalId);
 			window.clearInterval(gatewayLogsIntervalId);
+			disconnectGatewayLogsStream();
 		};
 	});
 	
@@ -621,6 +761,21 @@
 			When enabled, the gateway process forwards new console output here for superadmin debugging. Toggle changes propagate to the gateway within a few seconds.
 		</p>
 
+		<div class="gateway-logs-diagnostics">
+			<span class:gateway-connection-status={true} class:connected={gatewayLogStatus?.lastGatewayConnected === true} class:stale={gatewayLogStatus?.lastGatewayConnected !== true}>
+				{gatewayLogStatus?.lastGatewayConnected ? 'Gateway Connected' : 'Gateway Not Connected'}
+			</span>
+			<span>
+				{gatewayLogStatus?.lastGatewaySeenAt ? `Last poll ${formatRelativeTime(gatewayLogStatus.lastGatewaySeenAt)}` : 'No gateway poll seen yet'}
+			</span>
+			<span>
+				{gatewayLogStatus?.lastGatewayPostedAt ? `Last stored batch ${formatRelativeTime(gatewayLogStatus.lastGatewayPostedAt)} (${gatewayLogStatus.lastStoredCount || 0} entries)` : 'No stored gateway batches yet'}
+			</span>
+			<span>
+				{gatewayLogsStreamConnected ? 'Live stream connected' : gatewayLogsStreamError || 'Live stream connecting...'}
+			</span>
+		</div>
+
 		{#if gatewayLogsError}
 			<div class="cmd-toast cmd-toast-error">
 				<span>✗</span> {gatewayLogsError}
@@ -637,7 +792,13 @@
 			<div class="gateway-logs-empty">Loading gateway logs...</div>
 		{:else if gatewayLogs.length === 0}
 			<div class="gateway-logs-empty">
-				{gatewayLoggingEnabled ? 'Logging is enabled. New gateway output will appear here.' : 'Gateway logging is disabled. Enable it to capture new console output.'}
+				{#if gatewayLoggingEnabled && gatewayLogStatus?.lastGatewayConnected !== true}
+					Logging is enabled, but this app has not seen a live gateway heartbeat yet.
+				{:else if gatewayLoggingEnabled}
+					Logging is enabled. New gateway output will appear here live.
+				{:else}
+					Gateway logging is disabled. Enable it to capture new console output.
+				{/if}
 			</div>
 		{:else}
 			<div class="gateway-logs-console">
@@ -1476,6 +1637,37 @@
 		margin: 0 0 0.75rem;
 		color: var(--color-text-muted);
 		font-size: 0.9rem;
+	}
+
+	.gateway-logs-diagnostics {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+
+	.gateway-connection-status {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.25rem 0.65rem;
+		border-radius: var(--radius-full);
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+	}
+
+	.gateway-connection-status.connected {
+		background: rgba(34, 197, 94, 0.15);
+		color: #86efac;
+		border: 1px solid rgba(34, 197, 94, 0.35);
+	}
+
+	.gateway-connection-status.stale {
+		background: rgba(245, 158, 11, 0.15);
+		color: #fcd34d;
+		border: 1px solid rgba(245, 158, 11, 0.35);
 	}
 
 	.gateway-logs-meta {
