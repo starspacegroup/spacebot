@@ -31,6 +31,246 @@ import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-deliv
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || "http://localhost:4269";
 
+const ORIGINAL_CONSOLE = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
+
+const GATEWAY_LOG_CONFIG_SYNC_MS = 5_000;
+const GATEWAY_LOG_FLUSH_MS = 1_500;
+const GATEWAY_LOG_BATCH_SIZE = 50;
+const GATEWAY_LOG_MAX_QUEUE = 500;
+
+let gatewayLogCaptureEnabled = false;
+let gatewayLogQueue = [];
+let gatewayLogFlushTimer = null;
+let gatewayLogConfigPoll = null;
+let gatewayLogFlushInFlight = false;
+let gatewayConsoleCaptureInstalled = false;
+
+function safeJsonStringify(value) {
+  const seen = new WeakSet();
+
+  return JSON.stringify(value, (key, current) => {
+    if (current instanceof Error) {
+      return {
+        name: current.name,
+        message: current.message,
+        stack: current.stack,
+      };
+    }
+
+    if (typeof current === "bigint") {
+      return String(current);
+    }
+
+    if (typeof current === "object" && current !== null) {
+      if (seen.has(current)) {
+        return "[Circular]";
+      }
+      seen.add(current);
+    }
+
+    return current;
+  });
+}
+
+function stringifyGatewayLogValue(value) {
+  if (value instanceof Error) {
+    return value.stack || `${value.name}: ${value.message}`;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+
+  if (value === undefined) {
+    return "undefined";
+  }
+
+  if (value === null) {
+    return "null";
+  }
+
+  try {
+    return safeJsonStringify(value) || String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatGatewayLogMessage(args) {
+  const message = args.map((arg) => stringifyGatewayLogValue(arg)).join(" ").trim();
+  if (message.length <= 8000) {
+    return message;
+  }
+  return `${message.slice(0, 7997)}...`;
+}
+
+function clearGatewayLogFlushTimer() {
+  if (gatewayLogFlushTimer) {
+    clearTimeout(gatewayLogFlushTimer);
+    gatewayLogFlushTimer = null;
+  }
+}
+
+function scheduleGatewayLogFlush() {
+  if (!gatewayLogCaptureEnabled || gatewayLogQueue.length === 0 || gatewayLogFlushTimer) {
+    return;
+  }
+
+  gatewayLogFlushTimer = setTimeout(() => {
+    gatewayLogFlushTimer = null;
+    void flushGatewayLogs();
+  }, GATEWAY_LOG_FLUSH_MS);
+}
+
+function enqueueGatewayLog(level, args) {
+  if (!gatewayLogCaptureEnabled) {
+    return;
+  }
+
+  const message = formatGatewayLogMessage(args);
+  if (!message) {
+    return;
+  }
+
+  gatewayLogQueue.push({
+    level,
+    message,
+    source: "gateway",
+    logged_at: new Date().toISOString(),
+  });
+
+  if (gatewayLogQueue.length > GATEWAY_LOG_MAX_QUEUE) {
+    gatewayLogQueue = gatewayLogQueue.slice(-GATEWAY_LOG_MAX_QUEUE);
+  }
+
+  scheduleGatewayLogFlush();
+}
+
+async function flushGatewayLogs() {
+  if (
+    !gatewayLogCaptureEnabled ||
+    gatewayLogFlushInFlight ||
+    gatewayLogQueue.length === 0
+  ) {
+    return;
+  }
+
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    return;
+  }
+
+  const batch = gatewayLogQueue.splice(0, GATEWAY_LOG_BATCH_SIZE);
+  gatewayLogFlushInFlight = true;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/gateway/logs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bot ${token}`,
+      },
+      body: JSON.stringify({ entries: batch }),
+    });
+
+    if (!response.ok) {
+      gatewayLogQueue = [...batch, ...gatewayLogQueue].slice(-GATEWAY_LOG_MAX_QUEUE);
+    }
+  } catch {
+    gatewayLogQueue = [...batch, ...gatewayLogQueue].slice(-GATEWAY_LOG_MAX_QUEUE);
+  } finally {
+    gatewayLogFlushInFlight = false;
+
+    if (gatewayLogCaptureEnabled && gatewayLogQueue.length > 0) {
+      scheduleGatewayLogFlush();
+    }
+  }
+}
+
+function setGatewayLogCaptureEnabled(enabled) {
+  if (gatewayLogCaptureEnabled === enabled) {
+    return;
+  }
+
+  gatewayLogCaptureEnabled = enabled;
+
+  if (!enabled) {
+    gatewayLogQueue = [];
+    clearGatewayLogFlushTimer();
+  } else if (gatewayLogQueue.length > 0) {
+    scheduleGatewayLogFlush();
+  }
+
+  ORIGINAL_CONSOLE.info(`[GatewayLogs] Capture ${enabled ? "enabled" : "disabled"}`);
+}
+
+async function syncGatewayLogCaptureSetting() {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/gateway/logs`, {
+      headers: {
+        Authorization: `Bot ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const result = await response.json();
+    setGatewayLogCaptureEnabled(result.enabled === true);
+  } catch {
+    // Best effort only. The gateway should keep running even if log sync fails.
+  }
+}
+
+function installGatewayConsoleCapture() {
+  if (gatewayConsoleCaptureInstalled) {
+    return;
+  }
+
+  gatewayConsoleCaptureInstalled = true;
+
+  for (const level of ["log", "info", "warn", "error", "debug"]) {
+    const original = ORIGINAL_CONSOLE[level];
+    console[level] = (...args) => {
+      original(...args);
+      enqueueGatewayLog(level, args);
+    };
+  }
+}
+
+function startGatewayLogStreaming() {
+  installGatewayConsoleCapture();
+
+  if (gatewayLogConfigPoll) {
+    clearInterval(gatewayLogConfigPoll);
+  }
+
+  void syncGatewayLogCaptureSetting();
+  gatewayLogConfigPoll = setInterval(() => {
+    void syncGatewayLogCaptureSetting();
+  }, GATEWAY_LOG_CONFIG_SYNC_MS);
+}
+
 /**
  * User DM session storage
  * Tracks selected server, conversation state, and pending operations per user
@@ -3166,6 +3406,8 @@ async function startBot() {
     process.exit(1);
   }
 
+  startGatewayLogStreaming();
+
   log.info("🚀 Starting Discord Gateway Bot...");
   log.info("🤖 Automation engine enabled");
 
@@ -3184,8 +3426,10 @@ async function startBot() {
 // Graceful shutdown for PM2 / process managers
 function gracefulShutdown(signal) {
   log.info(`\n🛑 Received ${signal}, shutting down gracefully...`);
+  clearGatewayLogFlushTimer();
   clearBenchmarkTimer();
   if (benchmarkConfigPoll) clearInterval(benchmarkConfigPoll);
+  if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
   if (discordClient) {
     discordClient.destroy();
     log.info("✅ Discord client destroyed");

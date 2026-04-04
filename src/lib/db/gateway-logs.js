@@ -1,0 +1,78 @@
+import { log } from "$lib/log.js";
+
+const DEFAULT_LOG_LIMIT = 150;
+const MAX_LOG_LIMIT = 500;
+const MAX_LOG_ROWS = 2000;
+
+function clampLimit(limit) {
+  const parsed = Number.parseInt(String(limit), 10);
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_LOG_LIMIT;
+  }
+  return Math.min(Math.max(parsed, 1), MAX_LOG_LIMIT);
+}
+
+export async function recordGatewayLogs(db, entries = []) {
+  if (!db) return { success: false, error: "Database not available" };
+
+  const normalizedEntries = entries
+    .map((entry) => ({
+      level: String(entry?.level || "info").slice(0, 20),
+      message: String(entry?.message || "").trim(),
+      source: String(entry?.source || "gateway").slice(0, 50),
+      logged_at: entry?.logged_at || entry?.loggedAt || null,
+    }))
+    .filter((entry) => entry.message);
+
+  if (normalizedEntries.length === 0) {
+    return { success: true, count: 0 };
+  }
+
+  try {
+    for (const entry of normalizedEntries) {
+      await db.prepare(`
+        INSERT INTO gateway_logs (level, message, source, logged_at, created_at)
+        VALUES (?, ?, ?, COALESCE(?, datetime('now')), datetime('now'))
+      `).bind(
+        entry.level,
+        entry.message,
+        entry.source,
+        entry.logged_at,
+      ).run();
+    }
+
+    await db.prepare(`
+      DELETE FROM gateway_logs
+      WHERE id NOT IN (
+        SELECT id FROM gateway_logs
+        ORDER BY id DESC
+        LIMIT ?
+      )
+    `).bind(MAX_LOG_ROWS).run();
+
+    return { success: true, count: normalizedEntries.length };
+  } catch (error) {
+    log.error("[GatewayLogs] Failed to record logs:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function listGatewayLogs(db, options = {}) {
+  if (!db) return [];
+
+  const limit = clampLimit(options.limit);
+
+  try {
+    const result = await db.prepare(`
+      SELECT id, level, message, source, logged_at, created_at
+      FROM gateway_logs
+      ORDER BY id DESC
+      LIMIT ?
+    `).bind(limit).all();
+
+    return result.results || [];
+  } catch (error) {
+    log.error("[GatewayLogs] Failed to list logs:", error);
+    return [];
+  }
+}

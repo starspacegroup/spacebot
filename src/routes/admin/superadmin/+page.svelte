@@ -26,6 +26,12 @@
 	const integrations = $derived(data?.integrations ?? []);
 	const actionTypes = $derived(data?.actionTypes ?? {});
 	const responseTypes = $derived(data?.responseTypes ?? {});
+	let gatewayLogs = $state([]);
+	let gatewayLoggingEnabled = $state(false);
+	let gatewayLogsLoading = $state(false);
+	let gatewayLogsUpdating = $state(false);
+	let gatewayLogsError = $state(null);
+	let gatewayLogsLastUpdated = $state(null);
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
@@ -62,6 +68,15 @@
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
 		return tzFormatDate(dateStr, null);
+	}
+
+	function formatTimestamp(dateStr) {
+		if (!dateStr) return 'Never';
+		const parsed = new Date(dateStr);
+		if (Number.isNaN(parsed.getTime())) {
+			return formatDate(dateStr);
+		}
+		return `${parsed.toLocaleDateString()} ${parsed.toLocaleTimeString()}`;
 	}
 	
 	// Format short date for charts
@@ -102,6 +117,62 @@
 		}
 	}
 
+	async function refreshGatewayLogs({ silent = false } = {}) {
+		if (!silent) {
+			gatewayLogsLoading = true;
+		}
+		gatewayLogsError = null;
+
+		try {
+			const response = await fetch('/api/gateway/logs?limit=150');
+			const result = await response.json();
+
+			if (!response.ok) {
+				gatewayLogsError = result.error || 'Failed to load gateway logs';
+				return;
+			}
+
+			gatewayLoggingEnabled = result.enabled === true;
+			gatewayLogs = result.logs || [];
+			gatewayLogsLastUpdated = new Date().toISOString();
+		} catch (error) {
+			gatewayLogsError = error.message;
+		} finally {
+			gatewayLogsLoading = false;
+		}
+	}
+
+	async function updateGatewayLogging(enabled) {
+		gatewayLogsUpdating = true;
+		gatewayLogsError = null;
+
+		try {
+			const response = await fetch('/api/gateway/logs', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled }),
+			});
+
+			const result = await response.json();
+
+			if (!response.ok) {
+				gatewayLogsError = result.error || 'Failed to update gateway logging';
+				return;
+			}
+
+			gatewayLoggingEnabled = result.enabled === true;
+			await refreshGatewayLogs({ silent: true });
+		} catch (error) {
+			gatewayLogsError = error.message;
+		} finally {
+			gatewayLogsUpdating = false;
+		}
+	}
+
+	function toggleGatewayLogging() {
+		return updateGatewayLogging(!gatewayLoggingEnabled);
+	}
+
 	onMount(() => {
 		const intervalId = window.setInterval(() => {
 			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
@@ -116,13 +187,22 @@
 			void refreshCronData();
 		}, 15000);
 
+		const gatewayLogsIntervalId = window.setInterval(() => {
+			if (gatewayLoggingEnabled) {
+				void refreshGatewayLogs({ silent: true });
+			}
+		}, 3000);
+
 		if (cronJobHistory.some((entry) => entry.status === 'running')) {
 			void refreshCronData();
 		}
 
+		void refreshGatewayLogs();
+
 		return () => {
 			window.clearInterval(intervalId);
 			window.clearInterval(backgroundIntervalId);
+			window.clearInterval(gatewayLogsIntervalId);
 		};
 	});
 	
@@ -493,6 +573,68 @@
 				<span class="stat-value">{formatNumber(summary.totalChannels)}</span>
 			</div>
 		</div>
+	</section>
+
+	<section class="gateway-logs-section">
+		<div class="gateway-logs-header">
+			<h2 class="section-title">
+				<span class="section-icon">🛰️</span>
+				Gateway Logs
+			</h2>
+			<div class="gateway-logs-actions">
+				<span class:gateway-log-status={true} class:enabled={gatewayLoggingEnabled} class:disabled={!gatewayLoggingEnabled}>
+					{gatewayLoggingEnabled ? 'Live Capture On' : 'Live Capture Off'}
+				</span>
+				<button class="btn btn-secondary btn-sm" onclick={() => refreshGatewayLogs()} disabled={gatewayLogsLoading || gatewayLogsUpdating}>
+					Refresh
+				</button>
+				<button class="btn btn-sm {gatewayLoggingEnabled ? 'btn-danger' : 'btn-primary'}" onclick={toggleGatewayLogging} disabled={gatewayLogsUpdating}>
+					{#if gatewayLogsUpdating}
+						Saving...
+					{:else if gatewayLoggingEnabled}
+						Disable Logging
+					{:else}
+						Enable Logging
+					{/if}
+				</button>
+			</div>
+		</div>
+
+		<p class="gateway-logs-hint">
+			When enabled, the gateway process forwards new console output here for superadmin debugging. Toggle changes propagate to the gateway within a few seconds.
+		</p>
+
+		{#if gatewayLogsError}
+			<div class="cmd-toast cmd-toast-error">
+				<span>✗</span> {gatewayLogsError}
+				<button class="cmd-toast-close" onclick={() => gatewayLogsError = null}>✕</button>
+			</div>
+		{/if}
+
+		<div class="gateway-logs-meta">
+			<span>Showing {gatewayLogs.length} recent entries</span>
+			<span>Last refreshed: {formatTimestamp(gatewayLogsLastUpdated)}</span>
+		</div>
+
+		{#if gatewayLogsLoading && gatewayLogs.length === 0}
+			<div class="gateway-logs-empty">Loading gateway logs...</div>
+		{:else if gatewayLogs.length === 0}
+			<div class="gateway-logs-empty">
+				{gatewayLoggingEnabled ? 'Logging is enabled. New gateway output will appear here.' : 'Gateway logging is disabled. Enable it to capture new console output.'}
+			</div>
+		{:else}
+			<div class="gateway-logs-console">
+				{#each gatewayLogs as entry (entry.id)}
+					<div class="gateway-log-entry level-{entry.level}">
+						<div class="gateway-log-entry-meta">
+							<span class="gateway-log-time">{formatTimestamp(entry.logged_at || entry.created_at)}</span>
+							<span class="gateway-log-level">{entry.level.toUpperCase()}</span>
+						</div>
+						<pre class="gateway-log-message">{entry.message}</pre>
+					</div>
+				{/each}
+			</div>
+		{/if}
 	</section>
 	
 	<!-- Built-in Commands -->
@@ -1256,6 +1398,170 @@
 	/* Stats Section */
 	.stats-section {
 		margin-bottom: 2rem;
+	}
+
+	.gateway-logs-section {
+		margin-bottom: 2rem;
+		padding: 1rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+
+	@media (min-width: 640px) {
+		.gateway-logs-section {
+			padding: 1.25rem;
+		}
+	}
+
+	.gateway-logs-header {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	@media (min-width: 900px) {
+		.gateway-logs-header {
+			flex-direction: row;
+			justify-content: space-between;
+			align-items: center;
+		}
+	}
+
+	.gateway-logs-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.gateway-log-status {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.35rem 0.7rem;
+		border-radius: var(--radius-full);
+		font-size: 0.75rem;
+		font-weight: 700;
+	}
+
+	.gateway-log-status.enabled {
+		background: var(--color-success-bg, rgba(34, 197, 94, 0.15));
+		color: var(--color-success, #22c55e);
+	}
+
+	.gateway-log-status.disabled {
+		background: rgba(148, 163, 184, 0.16);
+		color: var(--color-text-muted);
+	}
+
+	.gateway-logs-hint {
+		margin: 0 0 0.75rem;
+		color: var(--color-text-muted);
+		font-size: 0.9rem;
+	}
+
+	.gateway-logs-meta {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		margin-bottom: 0.75rem;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+
+	@media (min-width: 640px) {
+		.gateway-logs-meta {
+			flex-direction: row;
+			justify-content: space-between;
+		}
+	}
+
+	.gateway-logs-console {
+		max-height: 30rem;
+		overflow: auto;
+		padding: 0.75rem;
+		background: var(--color-bg, #0f172a);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+
+	.gateway-log-entry {
+		padding: 0.75rem 0;
+		border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+	}
+
+	.gateway-log-entry:first-child {
+		padding-top: 0;
+	}
+
+	.gateway-log-entry:last-child {
+		padding-bottom: 0;
+		border-bottom: 0;
+	}
+
+	.gateway-log-entry-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		align-items: center;
+		margin-bottom: 0.35rem;
+		font-size: 0.75rem;
+	}
+
+	.gateway-log-time {
+		color: #94a3b8;
+		font-family: monospace;
+	}
+
+	.gateway-log-level {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.15rem 0.45rem;
+		border-radius: 999px;
+		font-weight: 700;
+		letter-spacing: 0.03em;
+	}
+
+	.level-error .gateway-log-level {
+		background: rgba(239, 68, 68, 0.15);
+		color: #fca5a5;
+	}
+
+	.level-warn .gateway-log-level {
+		background: rgba(245, 158, 11, 0.15);
+		color: #fcd34d;
+	}
+
+	.level-info .gateway-log-level,
+	.level-log .gateway-log-level {
+		background: rgba(59, 130, 246, 0.15);
+		color: #93c5fd;
+	}
+
+	.level-debug .gateway-log-level {
+		background: rgba(168, 85, 247, 0.15);
+		color: #d8b4fe;
+	}
+
+	.gateway-log-message {
+		margin: 0;
+		white-space: pre-wrap;
+		word-break: break-word;
+		font-family: Consolas, 'Courier New', monospace;
+		font-size: 0.82rem;
+		line-height: 1.45;
+		color: #e2e8f0;
+		background: transparent;
+	}
+
+	.gateway-logs-empty {
+		padding: 1rem;
+		background: rgba(148, 163, 184, 0.08);
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text-muted);
+		text-align: center;
 	}
 	
 	.section-title {
