@@ -10,7 +10,7 @@ import { getBenchmarkStats, getBenchmarkChartData, getRecentBenchmarks } from "$
 import { getGlobalSetting } from "$lib/db/global-settings.js";
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform }) {
+export async function load({ cookies, platform, url }) {
 	const userId = cookies.get("discord_user_id");
 	if (!userId) throw redirect(302, "/admin");
 
@@ -31,5 +31,6 @@ export async function load({ cookies, platform }) {
 		recentSnapshots,
 		range: defaultRange,
 		benchmarkInterval: parseInt(intervalStr, 10) || 60,
+		requestOrigin: url.origin,
 	};
 }

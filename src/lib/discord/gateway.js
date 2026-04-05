@@ -29,7 +29,7 @@ import { resolveTargetUser } from "../automation/engine.js";
 import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-delivery.js";
 
 // For local development, we'll use a REST endpoint to log events
-const API_BASE = process.env.API_BASE || "http://localhost:4269";
+const API_BASE = process.env.API_BASE || process.env.APP_URL || "http://localhost:4269";
 
 const ORIGINAL_CONSOLE = {
   log: console.log.bind(console),
@@ -3398,7 +3398,9 @@ function startBenchmarkReporting(client) {
 
   // Report immediately, then schedule subsequent checks dynamically.
   void reportBenchmark();
-  log.info(`📡 Gateway benchmark reporting started (${currentBenchmarkIntervalMs / 1000}s interval)`);
+  log.info(
+    `📡 Gateway benchmark reporting started (${currentBenchmarkIntervalMs / 1000}s interval via ${API_BASE})`
+  );
 }
 
 /**

@@ -8,10 +8,12 @@
 	const serverChartData = $derived(data?.chartData ?? []);
 	const recentSnapshots = $derived(data?.recentSnapshots ?? []);
 	const serverBenchmarkInterval = $derived(data?.benchmarkInterval ?? 60);
+	const requestOrigin = $derived(data?.requestOrigin ?? '');
 
 	// Mutable state for client-side fetched data (overrides server data)
 	let fetchedStats = $state(null);
 	let fetchedChartData = $state(null);
+	let fetchedRecentSnapshots = $state(null);
 	let selectedRange = $state('24h');
 	let loading = $state(false);
 	let fetchedInterval = $state(null);
@@ -21,6 +23,7 @@
 	// Use fetched data if available, otherwise fall back to server data
 	const stats = $derived(fetchedStats ?? serverStats);
 	const chartData = $derived(fetchedChartData ?? serverChartData);
+	const snapshots = $derived(fetchedRecentSnapshots ?? recentSnapshots);
 	const benchmarkInterval = $derived(fetchedInterval ?? serverBenchmarkInterval);
 
 	const ranges = [
@@ -109,6 +112,7 @@
 				const result = await response.json();
 				fetchedStats = result.stats;
 				fetchedChartData = result.chartData;
+				fetchedRecentSnapshots = result.recentSnapshots ?? null;
 				if (result.benchmarkInterval) {
 					fetchedInterval = result.benchmarkInterval;
 				}
@@ -132,7 +136,9 @@
 				body: JSON.stringify({ benchmark_interval_seconds: newInterval }),
 			});
 			if (response.ok) {
-				fetchedInterval = newInterval;
+				const result = await response.json().catch(() => ({}));
+				fetchedInterval = result.benchmark_interval_seconds ?? newInterval;
+				await fetchRange(selectedRange);
 				toast = { type: 'success', message: 'Check interval updated' };
 			} else {
 				const result = await response.json().catch(() => ({}));
@@ -197,7 +203,7 @@
 	});
 
 	// Current status from latest snapshot
-	const latestSnapshot = $derived(recentSnapshots?.[0] ?? null);
+	const latestSnapshot = $derived(snapshots?.[0] ?? null);
 	const currentLatency = $derived(latestSnapshot?.heartbeat_latency_ms ?? null);
 	const currentStatus = $derived(latestSnapshot?.status ?? 'unknown');
 </script>
@@ -268,6 +274,11 @@
 		{/if}
 		<div class="interval-picker">
 			<p class="interval-description">How often the gateway reports latency data. Takes effect on the next check cycle.</p>
+			{#if requestOrigin}
+				<p class="interval-hint">
+					This dashboard is updating settings on <code>{requestOrigin}</code>. The gateway process follows its own <code>API_BASE</code>, so if it points at a different origin the reporting cadence here will not change.
+				</p>
+			{/if}
 			<div class="interval-options">
 				{#each intervalOptions as opt}
 					<button
@@ -389,7 +400,7 @@
 			Recent Snapshots
 		</h2>
 
-		{#if recentSnapshots.length > 0}
+		{#if snapshots.length > 0}
 			<div class="table-wrapper">
 				<table class="snapshots-table">
 					<thead>
@@ -403,7 +414,7 @@
 						</tr>
 					</thead>
 					<tbody>
-						{#each recentSnapshots as snapshot}
+						{#each snapshots as snapshot}
 							<tr>
 								<td class="cell-time">{formatDate(snapshot.recorded_at)}</td>
 								<td>
@@ -755,6 +766,19 @@
 		color: var(--color-text-muted);
 		font-size: 0.8rem;
 		margin: 0 0 0.75rem;
+	}
+
+	.interval-hint {
+		color: var(--color-text-muted);
+		font-size: 0.78rem;
+		line-height: 1.5;
+		margin: 0 0 0.75rem;
+	}
+
+	.interval-hint code {
+		background: rgba(255, 255, 255, 0.06);
+		border-radius: var(--radius-sm);
+		padding: 0.1rem 0.35rem;
 	}
 
 	.interval-options {

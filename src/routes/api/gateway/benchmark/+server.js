@@ -6,7 +6,7 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { recordGatewayBenchmark, getBenchmarkStats, getBenchmarkChartData } from "$lib/db/gateway-benchmarks.js";
+import { recordGatewayBenchmark, getBenchmarkStats, getBenchmarkChartData, getRecentBenchmarks } from "$lib/db/gateway-benchmarks.js";
 import { getGlobalSetting, setGlobalSetting } from "$lib/db/global-settings.js";
 import { log } from "$lib/log.js";
 
@@ -101,12 +101,20 @@ export async function GET({ request, cookies, platform, url }) {
 			return json({ success: true, benchmark_interval_seconds: benchmarkInterval });
 		}
 
-		const [stats, chartData] = await Promise.all([
+		const [stats, chartData, recentSnapshots] = await Promise.all([
 			getBenchmarkStats(db, safeRange),
 			getBenchmarkChartData(db, safeRange),
+			getRecentBenchmarks(db, 10),
 		]);
 
-		return json({ stats, chartData, range: safeRange, benchmarkInterval });
+		return json({
+			stats,
+			chartData,
+			recentSnapshots,
+			range: safeRange,
+			benchmarkInterval,
+			requestOrigin: url.origin,
+		});
 	} catch (error) {
 		log.error("[GatewayBenchmark API] GET error:", error);
 		return json({ error: "Failed to fetch benchmark data" }, { status: 500 });

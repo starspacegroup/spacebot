@@ -1,3 +1,5 @@
+const apiBase = process.env.API_BASE || process.env.APP_URL || "https://spacebot.starspace.group";
+
 module.exports = {
   apps: [
     {
@@ -6,7 +8,7 @@ module.exports = {
       interpreter: "bun",
       env: {
         NODE_ENV: "production",
-        API_BASE: "https://spacebot.starspace.group",
+        API_BASE: apiBase,
       },
       // Restart policy
       max_restarts: 10,
@@ -69,7 +71,7 @@ module.exports = {
       args: "--experimental-specifier-resolution=node",
       env: {
         NODE_ENV: "production",
-        API_BASE: "https://spacebot.starspace.group",
+        API_BASE: apiBase,
       },
       // Restart policy
       max_restarts: 10,
