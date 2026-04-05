@@ -37,6 +37,7 @@
 	let gatewayLogsStreamError = $state(null);
 	let gatewayLogsStream = null;
 	let gatewayLogsReconnectTimer = null;
+	let gatewayLogsAppOrigin = $state('');
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
@@ -328,7 +329,21 @@
 		};
 	}
 
+	function getGatewayLogsGuidance() {
+		if (gatewayLogStatus?.lastGatewayConnected || !gatewayLoggingEnabled) {
+			return null;
+		}
+
+		if (gatewayLogsAppOrigin.includes('localhost:4269')) {
+			return `This local web app is live, but no local gateway process has polled ${gatewayLogsAppOrigin} yet. Start the gateway service separately so it can connect to this app instance.`;
+		}
+
+		return 'This app instance has not seen a gateway heartbeat yet. The gateway service is likely offline or pointed at a different environment.';
+	}
+
 	onMount(() => {
+		gatewayLogsAppOrigin = window.location.origin;
+
 		const intervalId = window.setInterval(() => {
 			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
 			const hasRunningRequest = Object.values(runningJobs).some(Boolean);
@@ -775,6 +790,10 @@
 				{gatewayLogsStreamConnected ? 'Live stream connected' : gatewayLogsStreamError || 'Live stream connecting...'}
 			</span>
 		</div>
+
+		{#if getGatewayLogsGuidance()}
+			<div class="gateway-logs-empty gateway-logs-guidance">{getGatewayLogsGuidance()}</div>
+		{/if}
 
 		{#if gatewayLogsError}
 			<div class="cmd-toast cmd-toast-error">
@@ -1771,6 +1790,11 @@
 		border-radius: var(--radius-md);
 		color: var(--color-text-muted);
 		text-align: center;
+	}
+
+	.gateway-logs-guidance {
+		margin-bottom: 0.75rem;
+		text-align: left;
 	}
 	
 	.section-title {
