@@ -17,6 +17,7 @@ import {
 	RESPONSE_TYPES,
 } from "$lib/db/commands.js";
 import { listIntegrations, createIntegrationToken, revokeIntegrationToken } from "$lib/db/integrations.js";
+import { getFirstLoginDmEnabled } from "$lib/server/superadmin-notifications.js";
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
 
@@ -295,6 +296,7 @@ export async function load({ cookies, platform }) {
 		activitySummary,
 		builtInCommands,
 		integrations,
+		firstLoginDmEnabled,
 	] = await Promise.all([
 		getBotGuildsWithDetails(botToken),
 		getBotApplicationInfo(botToken),
@@ -306,6 +308,7 @@ export async function load({ cookies, platform }) {
 		getGlobalStatsSummary(db, "30d"),
 		db ? getBuiltInCommands(db) : [],
 		db ? listIntegrations(db) : [],
+		db ? getFirstLoginDmEnabled(db) : false,
 	]);
 
 	// Build cron jobs with last run info
@@ -370,6 +373,7 @@ export async function load({ cookies, platform }) {
 		integrations,
 		actionTypes: ACTION_TYPES,
 		responseTypes: RESPONSE_TYPES,
+		firstLoginDmEnabled,
 		user: {
 			id: userId,
 			username: cookies.get("discord_username") || "Superadmin",

@@ -20,7 +20,7 @@ import { log } from "./logger.js";
  * @param {string} [userData.discriminator]
  * @param {string} [userData.email]
  * @param {boolean} [userData.is_superadmin]
- * @returns {Promise<{success: boolean, error?: string}>}
+ * @returns {Promise<{success: boolean, isNewUser?: boolean, error?: string}>}
  */
 export async function upsertUser(db, userData) {
   if (!db || !userData?.id) {
@@ -28,6 +28,11 @@ export async function upsertUser(db, userData) {
   }
 
   try {
+    const existingUser = await db
+      .prepare("SELECT id FROM users WHERE id = ?")
+      .bind(userData.id)
+      .first();
+
     await db
       .prepare(`
         INSERT INTO users (
@@ -58,7 +63,7 @@ export async function upsertUser(db, userData) {
       .run();
 
     log.debug(`[Users] Upserted user ${userData.id} (${userData.username})`);
-    return { success: true };
+    return { success: true, isNewUser: !existingUser };
   } catch (error) {
     log.error("[Users] Error upserting user:", error);
     return { success: false, error: error.message || String(error) };

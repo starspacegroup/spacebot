@@ -26,6 +26,9 @@
 	const integrations = $derived(data?.integrations ?? []);
 	const actionTypes = $derived(data?.actionTypes ?? {});
 	const responseTypes = $derived(data?.responseTypes ?? {});
+	let firstLoginDmEnabled = $state(false);
+	let firstLoginDmSaving = $state(false);
+	let firstLoginDmError = $state(null);
 	let gatewayLogs = $state([]);
 	let gatewayLoggingEnabled = $state(false);
 	let gatewayLogsLoading = $state(false);
@@ -47,6 +50,7 @@
 	$effect(() => {
 		cronJobs = data?.cronJobs ?? [];
 		cronJobHistory = data?.cronJobHistory ?? [];
+		firstLoginDmEnabled = data?.firstLoginDmEnabled === true;
 	});
 	
 	// Built-in commands state
@@ -218,6 +222,30 @@
 
 	function toggleGatewayLogging() {
 		return updateGatewayLogging(!gatewayLoggingEnabled);
+	}
+
+	async function updateFirstLoginDmSetting(enabled) {
+		firstLoginDmSaving = true;
+		firstLoginDmError = null;
+
+		try {
+			const response = await fetch('/api/superadmin/settings/first-login-dm', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled }),
+			});
+			const result = await parseJsonResponse(response, 'Failed to update first-login DM setting');
+
+			firstLoginDmEnabled = result.enabled === true;
+		} catch (error) {
+			firstLoginDmError = error.message;
+		} finally {
+			firstLoginDmSaving = false;
+		}
+	}
+
+	function toggleFirstLoginDmSetting() {
+		return updateFirstLoginDmSetting(!firstLoginDmEnabled);
 	}
 
 	function applyGatewayLogStatus(status) {
@@ -745,6 +773,40 @@
 				<span class="stat-value">{formatNumber(summary.totalChannels)}</span>
 			</div>
 		</div>
+	</section>
+
+	<section class="stats-section superadmin-settings-section">
+		<div class="superadmin-settings-header">
+			<h2 class="section-title">
+				<span class="section-icon">📬</span>
+				Superadmin Alerts
+			</h2>
+			<div class="superadmin-settings-actions">
+				<span class:gateway-log-status={true} class:enabled={firstLoginDmEnabled} class:disabled={!firstLoginDmEnabled}>
+					{firstLoginDmEnabled ? 'First-Login DMs On' : 'First-Login DMs Off'}
+				</span>
+				<button class="btn btn-sm {firstLoginDmEnabled ? 'btn-danger' : 'btn-primary'}" onclick={toggleFirstLoginDmSetting} disabled={firstLoginDmSaving}>
+					{#if firstLoginDmSaving}
+						Saving...
+					{:else if firstLoginDmEnabled}
+						Disable Alerts
+					{:else}
+						Enable Alerts
+					{/if}
+				</button>
+			</div>
+		</div>
+
+		<p class="gateway-logs-hint">
+			When enabled, any Discord OAuth user signing into SpaceBot for the first time triggers a DM to every configured superadmin account.
+		</p>
+
+		{#if firstLoginDmError}
+			<div class="cmd-toast cmd-toast-error">
+				<span>✗</span> {firstLoginDmError}
+				<button class="cmd-toast-close" onclick={() => firstLoginDmError = null}>✕</button>
+			</div>
+		{/if}
 	</section>
 
 	<section class="gateway-logs-section">
@@ -1595,6 +1657,35 @@
 	/* Stats Section */
 	.stats-section {
 		margin-bottom: 2rem;
+	}
+
+	.superadmin-settings-section {
+		padding: 1.5rem;
+		border-radius: 1rem;
+		background: linear-gradient(135deg, rgba(17, 24, 39, 0.92), rgba(31, 41, 55, 0.85));
+		border: 1px solid rgba(148, 163, 184, 0.18);
+	}
+
+	.superadmin-settings-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.superadmin-settings-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	@media (max-width: 720px) {
+		.superadmin-settings-header {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 
 	.gateway-logs-section {

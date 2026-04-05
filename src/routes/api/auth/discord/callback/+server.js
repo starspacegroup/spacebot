@@ -2,6 +2,7 @@ import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { invalidateGuildCache } from "$lib/discord/guilds.js";
 import { upsertUser } from "$lib/db/users.js";
+import { notifySuperAdminsOfFirstLogin } from "$lib/server/superadmin-notifications.js";
 
 /**
  * Safely get environment variable from platform.env (Cloudflare Workers/Pages)
@@ -125,7 +126,7 @@ export async function GET({ request, url, cookies, platform }) {
 			const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
 			const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(userData.id);
 			try {
-				await upsertUser(db, {
+				const upsertResult = await upsertUser(db, {
 					id: userData.id,
 					username: userData.username,
 					global_name: userData.global_name || null,
@@ -134,6 +135,14 @@ export async function GET({ request, url, cookies, platform }) {
 					email: userData.email || null,
 					is_superadmin: isSuperAdmin,
 				});
+
+				if (upsertResult.success && upsertResult.isNewUser) {
+					try {
+						await notifySuperAdminsOfFirstLogin(platform, userData);
+					} catch (notifyError) {
+						log.error("[OAuth] Failed to send first-login DM notification:", notifyError);
+					}
+				}
 			} catch (err) {
 				log.error("[OAuth] Failed to track user login:", err);
 			}
