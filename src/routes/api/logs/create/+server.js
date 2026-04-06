@@ -208,8 +208,11 @@ export async function POST({ request, platform }) {
           if (isLogChannelEvent && isOwnBotMessage) {
             log.debug("[Discord Log] Skipping log for own bot message in log channel to prevent loop");
           } else {
-            // Don't await - send asynchronously to not slow down the response
-            sendLogToChannel(settings.log_channel_id, event, botToken, settings.log_embed_colors);
+            // Use waitUntil to keep the worker alive until the Discord API call completes
+            const logPromise = sendLogToChannel(settings.log_channel_id, event, botToken, settings.log_embed_colors);
+            if (platform?.context?.waitUntil) {
+              platform.context.waitUntil(logPromise);
+            }
           }
         }
       } catch (settingsError) {
