@@ -647,6 +647,29 @@ export async function POST({ request, cookies, platform }) {
     return json({ error: "Database not available" }, { status: 503 });
   }
 
+  // Proactively clean up any stale running jobs
+  await markStaleRunningJobs(db);
+
+  // Check if this job is already running (skip for send_scheduled_messages since it runs every minute)
+  if (jobName !== 'send_scheduled_messages') {
+    try {
+      const alreadyRunning = await db.prepare(`
+        SELECT id, started_at FROM cron_job_history
+        WHERE job_name = ? AND status = 'running' AND completed_at IS NULL
+        LIMIT 1
+      `).bind(jobName).first();
+
+      if (alreadyRunning) {
+        return json({
+          error: `Job "${jobName}" is already running (started at ${alreadyRunning.started_at})`,
+          alreadyRunning: true,
+        }, { status: 409 });
+      }
+    } catch (error) {
+      log.warn("[Cron API] Failed to check for duplicate running jobs:", error);
+    }
+  }
+
   const startTime = Date.now();
   const triggeredBy = isBearerAuth ? 'cron_scheduler' : 'manual';
   const jobId = await recordJobStart(db, jobName, triggeredBy, isBearerAuth ? null : userId);
