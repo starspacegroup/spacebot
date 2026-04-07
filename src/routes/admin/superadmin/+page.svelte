@@ -918,6 +918,132 @@
 		{/if}
 	</section>
 	
+	<!-- Cron Jobs -->
+	<section class="cron-section">
+		<h2 class="section-title">
+			<span class="section-icon">⏰</span>
+			Scheduled Jobs
+		</h2>
+		
+		<div class="cron-jobs-grid">
+			{#each cronJobs as job}
+				<div class="cron-job-card {job.dangerous ? 'cron-job-dangerous' : ''}">
+					<div class="cron-job-header">
+						<div class="cron-job-info">
+							<h3 class="cron-job-name">
+								{#if job.dangerous}<span class="dangerous-icon">⚠️</span>{/if}
+								{job.displayName}
+							</h3>
+							<p class="cron-job-description">{job.description}</p>
+						</div>
+						<button 
+							class="btn {job.dangerous ? 'btn-danger' : 'btn-primary'} btn-run"
+							onclick={() => runCronJob(job.name, job.dangerous)}
+							disabled={runningJobs[job.name]}
+						>
+							{#if runningJobs[job.name]}
+								<span class="spinner-small"></span>
+								Running...
+							{:else}
+								▶ Run Now
+							{/if}
+						</button>
+					</div>
+					
+					<div class="cron-job-details">
+						<div class="cron-detail">
+							<span class="cron-label">Schedule</span>
+							<span class="cron-value">
+								{#if job.cronPattern}<code>{job.cronPattern}</code>{/if}
+								<span class="cron-schedule-text">{job.schedule}</span>
+							</span>
+						</div>
+						<div class="cron-detail">
+							<span class="cron-label">Last Run</span>
+							<span class="cron-value">
+								{formatDate(job.lastRun)}
+								{#if job.lastStatus}
+									<span class="status-badge status-{job.lastStatus}">{job.lastStatus}</span>
+								{/if}
+							</span>
+						</div>
+						{#if job.lastDuration}
+							<div class="cron-detail">
+								<span class="cron-label">Duration</span>
+								<span class="cron-value">{formatDuration(job.lastDuration)}</span>
+							</div>
+						{/if}
+					</div>
+					
+					{#if jobResults[job.name]}
+						<div class="cron-result {jobResults[job.name].success ? 'result-success' : 'result-error'}">
+							{#if jobResults[job.name].success}
+								<span class="result-icon">✓</span>
+								<span>Completed in {formatDuration(jobResults[job.name].duration)}</span>
+								{#if jobResults[job.name].result}
+									<details class="result-details">
+										<summary>View details</summary>
+										<pre>{JSON.stringify(jobResults[job.name].result, null, 2)}</pre>
+									</details>
+								{/if}
+							{:else}
+								<span class="result-icon">✗</span>
+								<span>Failed: {jobResults[job.name].error}</span>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		</div>
+		
+		{#if cronJobHistory.length > 0}
+			<div class="cron-history">
+				<h3 class="subsection-title">Recent Executions</h3>
+				<div class="history-table-wrapper">
+					<table class="history-table">
+						<thead>
+							<tr>
+								<th>Job</th>
+								<th>Triggered</th>
+								<th>Status</th>
+								<th>Duration</th>
+								<th>Time</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each cronJobHistory as entry}
+								<tr>
+									<td class="job-name-cell">
+										{cronJobs.find(j => j.name === entry.job_name)?.displayName || entry.job_name}
+									</td>
+									<td>
+										<span class="trigger-badge trigger-{entry.triggered_by}">
+											{entry.triggered_by}
+										</span>
+									</td>
+									<td>
+										<span class="status-badge status-{entry.status}">{entry.status}</span>
+										{#if entry.status === 'running'}
+											<button 
+												class="btn btn-sm btn-danger force-cancel-btn"
+												onclick={() => forceCancelJob(entry.id, entry.job_name)}
+												title="Force cancel this stuck job"
+											>
+												✕
+											</button>
+										{/if}
+									</td>
+									<td class="duration-cell">{formatDuration(entry.duration_ms)}</td>
+									<td class="date-cell">{formatDate(entry.started_at)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{/if}
+	</section>
+	
 	<!-- Built-in Commands -->
 	<section class="builtin-commands-section">
 		<h2 class="section-title">
@@ -1239,132 +1365,6 @@
 						</div>
 					</div>
 				{/each}
-			</div>
-		{/if}
-	</section>
-	
-	<!-- Cron Jobs -->
-	<section class="cron-section">
-		<h2 class="section-title">
-			<span class="section-icon">⏰</span>
-			Scheduled Jobs
-		</h2>
-		
-		<div class="cron-jobs-grid">
-			{#each cronJobs as job}
-				<div class="cron-job-card {job.dangerous ? 'cron-job-dangerous' : ''}">
-					<div class="cron-job-header">
-						<div class="cron-job-info">
-							<h3 class="cron-job-name">
-								{#if job.dangerous}<span class="dangerous-icon">⚠️</span>{/if}
-								{job.displayName}
-							</h3>
-							<p class="cron-job-description">{job.description}</p>
-						</div>
-						<button 
-							class="btn {job.dangerous ? 'btn-danger' : 'btn-primary'} btn-run"
-							onclick={() => runCronJob(job.name, job.dangerous)}
-							disabled={runningJobs[job.name]}
-						>
-							{#if runningJobs[job.name]}
-								<span class="spinner-small"></span>
-								Running...
-							{:else}
-								▶ Run Now
-							{/if}
-						</button>
-					</div>
-					
-					<div class="cron-job-details">
-						<div class="cron-detail">
-							<span class="cron-label">Schedule</span>
-							<span class="cron-value">
-								{#if job.cronPattern}<code>{job.cronPattern}</code>{/if}
-								<span class="cron-schedule-text">{job.schedule}</span>
-							</span>
-						</div>
-						<div class="cron-detail">
-							<span class="cron-label">Last Run</span>
-							<span class="cron-value">
-								{formatDate(job.lastRun)}
-								{#if job.lastStatus}
-									<span class="status-badge status-{job.lastStatus}">{job.lastStatus}</span>
-								{/if}
-							</span>
-						</div>
-						{#if job.lastDuration}
-							<div class="cron-detail">
-								<span class="cron-label">Duration</span>
-								<span class="cron-value">{formatDuration(job.lastDuration)}</span>
-							</div>
-						{/if}
-					</div>
-					
-					{#if jobResults[job.name]}
-						<div class="cron-result {jobResults[job.name].success ? 'result-success' : 'result-error'}">
-							{#if jobResults[job.name].success}
-								<span class="result-icon">✓</span>
-								<span>Completed in {formatDuration(jobResults[job.name].duration)}</span>
-								{#if jobResults[job.name].result}
-									<details class="result-details">
-										<summary>View details</summary>
-										<pre>{JSON.stringify(jobResults[job.name].result, null, 2)}</pre>
-									</details>
-								{/if}
-							{:else}
-								<span class="result-icon">✗</span>
-								<span>Failed: {jobResults[job.name].error}</span>
-							{/if}
-						</div>
-					{/if}
-				</div>
-			{/each}
-		</div>
-		
-		{#if cronJobHistory.length > 0}
-			<div class="cron-history">
-				<h3 class="subsection-title">Recent Executions</h3>
-				<div class="history-table-wrapper">
-					<table class="history-table">
-						<thead>
-							<tr>
-								<th>Job</th>
-								<th>Triggered</th>
-								<th>Status</th>
-								<th>Duration</th>
-								<th>Time</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each cronJobHistory as entry}
-								<tr>
-									<td class="job-name-cell">
-										{cronJobs.find(j => j.name === entry.job_name)?.displayName || entry.job_name}
-									</td>
-									<td>
-										<span class="trigger-badge trigger-{entry.triggered_by}">
-											{entry.triggered_by}
-										</span>
-									</td>
-									<td>
-										<span class="status-badge status-{entry.status}">{entry.status}</span>
-										{#if entry.status === 'running'}
-											<button 
-												class="btn btn-sm btn-danger force-cancel-btn"
-												onclick={() => forceCancelJob(entry.id, entry.job_name)}
-												title="Force cancel this stuck job"
-											>
-												✕
-											</button>
-										{/if}
-									</td>
-									<td class="duration-cell">{formatDuration(entry.duration_ms)}</td>
-									<td class="date-cell">{formatDate(entry.started_at)}</td>
-								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
 			</div>
 		{/if}
 	</section>
