@@ -1,4 +1,30 @@
+const { execSync } = require("child_process");
+
 const apiBase = process.env.API_BASE || process.env.APP_URL || "https://spacebot.starspace.group";
+const tunnelName = process.env.CLOUDFLARED_TUNNEL_NAME || "spacebot";
+
+function resolveTunnelArgs() {
+  const configuredToken = process.env.TUNNEL_TOKEN || process.env.CLOUDFLARED_TUNNEL_TOKEN;
+  if (configuredToken) {
+    return `tunnel run --token ${configuredToken}`;
+  }
+
+  try {
+    const generatedToken = execSync(`cloudflared tunnel token ${tunnelName}`, {
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString().trim();
+
+    if (generatedToken) {
+      return `tunnel run --token ${generatedToken}`;
+    }
+  } catch {
+    // Fall back to named-tunnel mode when the local machine is not authenticated.
+  }
+
+  return `tunnel run ${tunnelName}`;
+}
+
+const tunnelArgs = resolveTunnelArgs();
 
 module.exports = {
   apps: [
@@ -28,7 +54,7 @@ module.exports = {
     {
       name: "spacebot-tunnel",
       script: "cloudflared",
-      args: "tunnel run spacebot",
+      args: tunnelArgs,
       // Restart policy
       max_restarts: 10,
       min_uptime: "10s",

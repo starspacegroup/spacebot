@@ -74,8 +74,8 @@ function deploy(changedFiles) {
 			run('npm run db:migrate');
 		}
 
-		// Restart the gateway, cron scheduler, and tunnel (not this webhook)
-		run('pm2 restart spacebot-gateway spacebot-cron spacebot-tunnel');
+		// Re-read the ecosystem so PM2 picks up code, args, and env changes on every deploy.
+		run('pm2 restart ecosystem.config.cjs --update-env');
 
 		const elapsed = ((Date.now() - start) / 1000).toFixed(1);
 		console.log(`✅ Deploy complete in ${elapsed}s\n`);
