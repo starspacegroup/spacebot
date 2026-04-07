@@ -11,8 +11,10 @@
  */
 
 import { loadSecrets, getSecret } from '../src/lib/secrets.js';
+import { deploy, getRemoteDeployPlan } from './deploy-runner.js';
 
 const API_BASE = process.env.API_BASE || 'https://spacebot.starspace.group';
+const autoDeployIntervalMs = Number(process.env.AUTO_DEPLOY_INTERVAL_MS || 60_000);
 
 /** @type {{ job: string, intervalMs: number, lastRun: number, description: string, getNextRun?: () => boolean }[]} */
 const schedules = [
@@ -81,6 +83,40 @@ async function triggerJob(jobName, cronSecret) {
 	}
 }
 
+let lastDeployCheck = 0;
+let deployInProgress = false;
+
+function checkForRemoteDeploy(now) {
+	if (deployInProgress) return;
+	if (now - lastDeployCheck < autoDeployIntervalMs) return;
+
+	lastDeployCheck = now;
+	deployInProgress = true;
+
+	queueMicrotask(() => {
+		try {
+			const plan = getRemoteDeployPlan();
+			if (!plan) {
+				return;
+			}
+
+			console.log(
+				`[Deploy] New commit detected: ${plan.localHead.slice(0, 7)} -> ${plan.remoteHead.slice(0, 7)}`
+			);
+			deploy(plan.changedFiles, {
+				trigger: 'cron-poll',
+				branch: plan.branch,
+				remote: plan.remote,
+				remoteHead: plan.remoteHead,
+			});
+		} catch (err) {
+			console.error('[Deploy] Auto-deploy check failed:', err.message);
+		} finally {
+			deployInProgress = false;
+		}
+	});
+}
+
 /**
  * Main loop — checks every 30 seconds if any job is due
  */
@@ -95,10 +131,12 @@ async function main() {
 
 	console.log(`[Cron] Scheduler started — targeting ${API_BASE}`);
 	console.log(`[Cron] Jobs: ${schedules.map(s => s.job).join(', ')}`);
+	console.log(`[Deploy] Auto-deploy polling every ${Math.round(autoDeployIntervalMs / 1000)}s`);
 
 	// Run the tick loop every 30 seconds
 	const tick = async () => {
 		const now = Date.now();
+		checkForRemoteDeploy(now);
 
 		for (const schedule of schedules) {
 			const elapsed = now - schedule.lastRun;

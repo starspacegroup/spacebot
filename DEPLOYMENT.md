@@ -301,12 +301,16 @@ pm2 logs spacebot-cron --lines 50
 
 ### Auto-Deploy on Push
 
-The `spacebot-deploy` PM2 process runs a webhook listener on port 9090. When you push to `main`, GitHub sends a webhook and the server automatically:
+The production server now polls `origin/main` from the existing `spacebot-cron` PM2 process every minute and self-deploys when a new commit appears. The `spacebot-deploy` webhook listener on port 9090 remains available as a fast-path trigger, and the gateway app exposes `POST /deploy` as a local proxy to that listener so GitHub can hit the main hostname directly.
 
-1. `git pull origin main`
-2. `npm install` (if `package.json` changed)
-3. `npm run db:migrate` (if migration files changed)
-4. `pm2 restart spacebot-gateway spacebot-cron`
+When a new commit is detected, the server automatically:
+
+1. `git fetch origin main`
+2. Validates the remote revision in a temporary git worktree with `npm install` and `npm run build`
+3. Fast-forwards the live checkout only if validation succeeds
+4. `npm install` (if `package.json` changed)
+5. `npm run db:migrate` (if migration files changed)
+6. `pm2 restart ecosystem.config.cjs --update-env`
 
 **Setup (one-time):**
 
@@ -315,14 +319,8 @@ The `spacebot-deploy` PM2 process runs a webhook listener on port 9090. When you
    export DEPLOY_WEBHOOK_SECRET="your-secret-here"
    ```
 
-2. Add a route in your cloudflared config (`~/.cloudflared/config.yml`) to forward deploy requests to the webhook:
-   ```yaml
-   ingress:
-     - hostname: spacebot.starspace.group
-       path: /deploy
-       service: http://localhost:9090
-     # ... other routes ...
-   ```
+2. Configure the GitHub webhook to call `https://spacebot.starspace.group/deploy`.
+    The gateway app now handles that path directly and proxies it to the internal deploy listener, so a separate Cloudflare ingress rule for `/deploy` is no longer required.
 
 3. Add a GitHub webhook at **Settings > Webhooks** for the `spacebot` repo:
    - **Payload URL:** `https://spacebot.starspace.group/deploy`

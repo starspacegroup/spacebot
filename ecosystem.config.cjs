@@ -1,7 +1,25 @@
 const { execSync } = require("child_process");
+const { existsSync } = require("fs");
+const { homedir } = require("os");
+const { join } = require("path");
 
 const apiBase = process.env.API_BASE || process.env.APP_URL || "https://spacebot.starspace.group";
 const tunnelName = process.env.CLOUDFLARED_TUNNEL_NAME || "spacebot";
+const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
+
+function resolveOriginCertPath() {
+  const configuredCert = process.env.TUNNEL_ORIGIN_CERT || process.env.CLOUDFLARED_ORIGIN_CERT;
+  const candidates = [
+    configuredCert,
+    join(homeDir, ".cloudflared", "cert.pem"),
+    "/etc/cloudflared/cert.pem",
+    "/usr/local/etc/cloudflared/cert.pem",
+  ].filter(Boolean);
+
+  return candidates.find(candidate => existsSync(candidate));
+}
+
+const originCertPath = resolveOriginCertPath();
 
 function resolveTunnelArgs() {
   const configuredToken = process.env.TUNNEL_TOKEN || process.env.CLOUDFLARED_TUNNEL_TOKEN;
@@ -9,16 +27,23 @@ function resolveTunnelArgs() {
     return `tunnel run --token ${configuredToken}`;
   }
 
-  try {
-    const generatedToken = execSync(`cloudflared tunnel token ${tunnelName}`, {
-      stdio: ["ignore", "pipe", "ignore"],
-    }).toString().trim();
+  if (originCertPath) {
+    try {
+      const generatedToken = execSync(`cloudflared tunnel token ${tunnelName}`, {
+        stdio: ["ignore", "pipe", "ignore"],
+        env: {
+          ...process.env,
+          HOME: homeDir,
+          TUNNEL_ORIGIN_CERT: originCertPath,
+        },
+      }).toString().trim();
 
-    if (generatedToken) {
-      return `tunnel run --token ${generatedToken}`;
+      if (generatedToken) {
+        return `tunnel run --token ${generatedToken}`;
+      }
+    } catch {
+      // Fall back to named-tunnel mode when the local machine is not authenticated.
     }
-  } catch {
-    // Fall back to named-tunnel mode when the local machine is not authenticated.
   }
 
   return `tunnel run ${tunnelName}`;
@@ -55,6 +80,10 @@ module.exports = {
       name: "spacebot-tunnel",
       script: "cloudflared",
       args: tunnelArgs,
+      env: {
+        HOME: homeDir,
+        ...(originCertPath ? { TUNNEL_ORIGIN_CERT: originCertPath } : {}),
+      },
       // Restart policy
       max_restarts: 10,
       min_uptime: "10s",

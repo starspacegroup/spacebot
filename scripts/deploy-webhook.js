@@ -19,9 +19,9 @@
  */
 
 import { createServer } from 'http';
-import { execSync } from 'child_process';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { loadSecrets, getSecret } from '../src/lib/secrets.js';
+import { deploy } from './deploy-runner.js';
 
 // Load dotenv first, then override with GCP secrets if available
 import 'dotenv/config';
@@ -43,44 +43,6 @@ function verifySignature(payload, signature) {
 		return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 	} catch {
 		return false;
-	}
-}
-
-function run(cmd) {
-	console.log(`  → ${cmd}`);
-	return execSync(cmd, { stdio: 'inherit', cwd: process.cwd() });
-}
-
-function deploy(changedFiles) {
-	const start = Date.now();
-	console.log(`\n🚀 [${new Date().toISOString()}] Deploying...`);
-
-	try {
-		run('git pull origin main');
-
-		// Install deps if package.json or lockfile changed
-		const needsInstall = changedFiles.some(f =>
-			f === 'package.json' || f === 'package-lock.json' || f === 'bun.lockb'
-		);
-		if (needsInstall) {
-			console.log('  📦 package.json changed — installing dependencies...');
-			run('npm install');
-		}
-
-		// Run migrations if any migration files changed or were added
-		const needsMigrate = changedFiles.some(f => f.startsWith('migrations/'));
-		if (needsMigrate) {
-			console.log('  🗃️  Migration files changed — running migrations...');
-			run('npm run db:migrate');
-		}
-
-		// Re-read the ecosystem so PM2 picks up code, args, and env changes on every deploy.
-		run('pm2 restart ecosystem.config.cjs --update-env');
-
-		const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-		console.log(`✅ Deploy complete in ${elapsed}s\n`);
-	} catch (err) {
-		console.error(`❌ Deploy failed: ${err.message}\n`);
 	}
 }
 
@@ -150,7 +112,11 @@ const server = createServer((req, res) => {
 		res.writeHead(200);
 		res.end('Deploying...');
 
-		deploy([...changedFiles]);
+		try {
+			deploy([...changedFiles], { trigger: 'webhook', remoteHead: payload.after });
+		} catch {
+			// Errors are already logged inside the deploy runner.
+		}
 	});
 });
 
