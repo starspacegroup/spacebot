@@ -15,7 +15,7 @@ import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { processScheduledMessages } from "$lib/db/scheduled-messages.js";
 import { log } from "$lib/log.js";
 
-const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
+const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 30;
 
 /**
  * Check if user is a superadmin
@@ -674,9 +674,10 @@ export async function POST({ request, cookies, platform }) {
   const triggeredBy = isBearerAuth ? 'cron_scheduler' : 'manual';
   const jobId = await recordJobStart(db, jobName, triggeredBy, isBearerAuth ? null : userId);
 
-  try {
-    let result;
+  let result;
+  let jobError = null;
 
+  try {
     if (jobName === 'hourly_aggregation') {
       result = await runHourlyAggregation(db);
     } else if (jobName === 'daily_refresh') {
@@ -700,27 +701,91 @@ export async function POST({ request, cookies, platform }) {
       }
       result = await processScheduledMessages(db, botToken);
     }
-
-    const duration = Date.now() - startTime;
-    await recordJobComplete(db, jobId, true, result, null, duration);
-
-    log.info(`[Cron API] Manual job ${jobName} completed successfully in ${duration}ms`);
-
-    return json({
-      success: true,
-      result,
-      duration,
-    });
   } catch (error) {
-    const duration = Date.now() - startTime;
-    await recordJobComplete(db, jobId, false, null, error.message, duration);
+    jobError = error;
+  }
 
-    log.error(`[Cron API] Manual job ${jobName} failed:`, error);
+  // Always record completion, even if the job failed
+  const duration = Date.now() - startTime;
+  const completionPromise = recordJobComplete(
+    db, jobId, !jobError, jobError ? null : result, jobError?.message || null, duration
+  );
+
+  // Use waitUntil to ensure DB write survives even if the worker is shutting down
+  if (platform?.context?.waitUntil) {
+    platform.context.waitUntil(completionPromise);
+  } else {
+    await completionPromise;
+  }
+
+  if (jobError) {
+    log.error(`[Cron API] Manual job ${jobName} failed:`, jobError);
 
     return json({
       success: false,
-      error: error.message,
+      error: jobError.message,
       duration,
     }, { status: 500 });
+  }
+
+  log.info(`[Cron API] Manual job ${jobName} completed successfully in ${duration}ms`);
+
+  return json({
+    success: true,
+    result,
+    duration,
+  });
+}
+
+/**
+ * DELETE /api/cron - Force-cancel a stuck running job
+ */
+export async function DELETE({ request, cookies, platform }) {
+  const userId = cookies.get("discord_user_id");
+
+  if (!checkIsSuperAdmin(userId, platform)) {
+    return json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const { jobId } = body;
+
+  if (!jobId) {
+    return json({ error: "Job ID is required" }, { status: 400 });
+  }
+
+  const db = platform?.env?.DB;
+  if (!db) {
+    return json({ error: "Database not available" }, { status: 503 });
+  }
+
+  try {
+    const job = await db.prepare(`
+      SELECT id, job_name, status FROM cron_job_history WHERE id = ?
+    `).bind(jobId).first();
+
+    if (!job) {
+      return json({ error: "Job not found" }, { status: 404 });
+    }
+
+    if (job.status !== 'running') {
+      return json({ error: "Job is not running" }, { status: 400 });
+    }
+
+    await db.prepare(`
+      UPDATE cron_job_history
+      SET status = 'failed',
+          error_message = 'Manually cancelled by admin',
+          completed_at = datetime('now'),
+          duration_ms = CAST((julianday(datetime('now')) - julianday(started_at)) * 86400000 AS INTEGER)
+      WHERE id = ?
+    `).bind(jobId).run();
+
+    log.info(`[Cron API] Job ${job.job_name} (ID: ${jobId}) manually cancelled by user ${userId}`);
+
+    return json({ success: true });
+  } catch (error) {
+    log.error("[Cron API] Failed to cancel job:", error);
+    return json({ error: error.message }, { status: 500 });
   }
 }

@@ -439,6 +439,28 @@
 		}
 	}
 	
+	async function forceCancelJob(jobId, jobName) {
+		const confirmed = confirm(`Force-cancel the stuck "${jobName}" job?\n\nThis will mark it as failed so you can re-run it.`);
+		if (!confirmed) return;
+		
+		try {
+			const response = await fetch('/api/cron', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ jobId }),
+			});
+			
+			if (response.ok) {
+				await refreshCronData();
+			} else {
+				const result = await response.json();
+				alert(`Failed to cancel job: ${result.error}`);
+			}
+		} catch (error) {
+			alert(`Error: ${error.message}`);
+		}
+	}
+	
 	// Reset new command form
 	function resetNewCommandForm() {
 		newCommand = {
@@ -1326,6 +1348,15 @@
 									</td>
 									<td>
 										<span class="status-badge status-{entry.status}">{entry.status}</span>
+										{#if entry.status === 'running'}
+											<button 
+												class="btn btn-sm btn-danger force-cancel-btn"
+												onclick={() => forceCancelJob(entry.id, entry.job_name)}
+												title="Force cancel this stuck job"
+											>
+												✕
+											</button>
+										{/if}
 									</td>
 									<td class="duration-cell">{formatDuration(entry.duration_ms)}</td>
 									<td class="date-cell">{formatDate(entry.started_at)}</td>
@@ -2492,6 +2523,13 @@
 	.status-running {
 		background: var(--color-warning-bg, rgba(245, 158, 11, 0.15));
 		color: var(--color-warning, #f59e0b);
+	}
+	
+	.force-cancel-btn {
+		margin-left: 0.4rem;
+		padding: 0.1rem 0.4rem;
+		font-size: 0.65rem;
+		vertical-align: middle;
 	}
 	
 	.cron-result {
