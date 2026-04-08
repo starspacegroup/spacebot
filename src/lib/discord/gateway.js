@@ -12,6 +12,7 @@ import "dotenv/config";
 import { loadSecrets } from "../secrets.js";
 await loadSecrets();
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -3438,6 +3439,7 @@ function gracefulShutdown(signal) {
   clearBenchmarkTimer();
   if (benchmarkConfigPoll) clearInterval(benchmarkConfigPoll);
   if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
+  if (httpServer) httpServer.close();
   if (discordClient) {
     discordClient.destroy();
     log.info("✅ Discord client destroyed");
@@ -3448,7 +3450,54 @@ function gracefulShutdown(signal) {
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
+/**
+ * Lightweight HTTP server that proxies POST /deploy to the internal
+ * deploy-webhook listener on port 9090 so GitHub can hit the main
+ * tunnel hostname without a separate cloudflared ingress rule.
+ */
+const DEPLOY_PROXY_PORT = parseInt(process.env.GATEWAY_HTTP_PORT || "4269", 10);
+const DEPLOY_TARGET = `http://127.0.0.1:${process.env.DEPLOY_WEBHOOK_PORT || "9090"}`;
+let httpServer;
+
+function startHttpProxy() {
+  httpServer = http.createServer((req, res) => {
+    const url = new URL(req.url, `http://localhost:${DEPLOY_PROXY_PORT}`);
+
+    if (url.pathname === "/deploy" && req.method === "POST") {
+      const proxyReq = http.request(
+        DEPLOY_TARGET,
+        { method: "POST", headers: req.headers },
+        (proxyRes) => {
+          res.writeHead(proxyRes.statusCode, proxyRes.headers);
+          proxyRes.pipe(res);
+        }
+      );
+      proxyReq.on("error", () => {
+        res.writeHead(503, { "Content-Type": "text/plain" });
+        res.end("Deploy service unavailable");
+      });
+      req.pipe(proxyReq);
+      return;
+    }
+
+    // Health check
+    if (req.method === "GET" && url.pathname === "/") {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+      return;
+    }
+
+    res.writeHead(404);
+    res.end();
+  });
+
+  httpServer.listen(DEPLOY_PROXY_PORT, () => {
+    log.info(`🔗 HTTP proxy listening on port ${DEPLOY_PROXY_PORT} (POST /deploy → ${DEPLOY_TARGET})`);
+  });
+}
+
 // Start the bot if this file is run directly
 startBot();
+startHttpProxy();
 
 export { createClient, setupEventHandlers };
