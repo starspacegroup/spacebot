@@ -6,6 +6,10 @@
 
 import { log } from "$lib/log.js";
 
+function isUnhealthyBenchmarkSnapshot(snapshot) {
+	return snapshot?.heartbeat_latency_ms == null && snapshot?.status !== "connected";
+}
+
 /**
  * Record a gateway benchmark snapshot
  * @param {D1Database} db
@@ -21,6 +25,39 @@ export async function recordGatewayBenchmark(db, data) {
 	if (!db) return { success: false, error: "Database not available" };
 
 	try {
+		if (isUnhealthyBenchmarkSnapshot(data)) {
+			const latest = await db.prepare(`
+				SELECT id, heartbeat_latency_ms, status
+				FROM gateway_benchmarks
+				ORDER BY recorded_at DESC, id DESC
+				LIMIT 1
+			`).first();
+
+			if (isUnhealthyBenchmarkSnapshot(latest)) {
+				await db.prepare(`
+					UPDATE gateway_benchmarks
+					SET heartbeat_latency_ms = ?,
+						gateway_url = ?,
+						shard_id = ?,
+						guild_count = ?,
+						uptime_seconds = ?,
+						status = ?,
+						recorded_at = datetime('now')
+					WHERE id = ?
+				`).bind(
+					data.heartbeat_latency_ms ?? null,
+					data.gateway_url ?? null,
+					data.shard_id ?? 0,
+					data.guild_count ?? 0,
+					data.uptime_seconds ?? 0,
+					data.status ?? "connected",
+					latest.id,
+				).run();
+
+				return { success: true, updated: true };
+			}
+		}
+
 		await db.prepare(`
 			INSERT INTO gateway_benchmarks 
 				(heartbeat_latency_ms, gateway_url, shard_id, guild_count, uptime_seconds, status)
@@ -52,7 +89,7 @@ export async function getRecentBenchmarks(db, limit = 100) {
 	try {
 		const result = await db.prepare(`
 			SELECT * FROM gateway_benchmarks
-			ORDER BY recorded_at DESC
+			ORDER BY recorded_at DESC, id DESC
 			LIMIT ?
 		`).bind(limit).all();
 
@@ -123,13 +160,14 @@ export async function getBenchmarkChartData(db, range = "24h") {
 		const result = await db.prepare(`
 			SELECT 
 				heartbeat_latency_ms,
+				id,
 				guild_count,
 				uptime_seconds,
 				status,
 				recorded_at
 			FROM gateway_benchmarks
 			WHERE recorded_at >= datetime('now', ?)
-			ORDER BY recorded_at ASC
+			ORDER BY recorded_at ASC, id ASC
 		`).bind(sqlRange).all();
 
 		return result?.results || [];

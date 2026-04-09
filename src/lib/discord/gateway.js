@@ -3257,6 +3257,28 @@ function setupEventHandlers(client, logFn) {
     startBenchmarkReporting(c);
   });
 
+  client.on(Events.ShardReady, (shardId, unavailableGuilds) => {
+    log.info(
+      `[Gateway] Shard ${shardId} ready${unavailableGuilds?.size ? ` with ${unavailableGuilds.size} unavailable guilds` : ""}`
+    );
+  });
+
+  client.on(Events.ShardResume, (shardId, replayedEvents) => {
+    log.info(`[Gateway] Shard ${shardId} resumed (${replayedEvents} replayed events)`);
+  });
+
+  client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
+    log.warn(`[Gateway] Shard ${shardId} disconnected (code ${closeEvent.code})`);
+  });
+
+  client.on(Events.ShardReconnecting, (shardId) => {
+    log.warn(`[Gateway] Shard ${shardId} reconnecting`);
+  });
+
+  client.on(Events.ShardError, (error, shardId) => {
+    log.error(`[Gateway] Shard ${shardId} error:`, error);
+  });
+
   client.on(Events.Error, (error) => {
     log.error("Discord client error:", error);
   });
@@ -3269,9 +3291,26 @@ function setupEventHandlers(client, logFn) {
 // Benchmark reporting timer state
 let benchmarkTimer = null;
 let benchmarkConfigPoll = null;
+let benchmarkReportRunner = null;
+let benchmarkStallStartedAt = null;
+let benchmarkRecoveryInFlight = false;
 let currentBenchmarkIntervalMs = 60_000;
 
 const BENCHMARK_CONFIG_SYNC_MS = 30_000;
+const BENCHMARK_STALL_GRACE_MS = 180_000;
+const BENCHMARK_RECOVERY_COOLDOWN_MS = 120_000;
+const GATEWAY_SHARD_STATUS_LABELS = [
+  "Ready",
+  "Connecting",
+  "Reconnecting",
+  "Idle",
+  "Nearly",
+  "Disconnected",
+  "WaitingForGuilds",
+  "Identifying",
+  "Resuming",
+];
+let benchmarkLastRecoveryAt = 0;
 
 function clearBenchmarkTimer() {
   if (benchmarkTimer) {
@@ -3280,11 +3319,141 @@ function clearBenchmarkTimer() {
   }
 }
 
+function clearBenchmarkConfigPoll() {
+  if (benchmarkConfigPoll) {
+    clearInterval(benchmarkConfigPoll);
+    benchmarkConfigPoll = null;
+  }
+}
+
+function resetBenchmarkWatchdogState() {
+  benchmarkStallStartedAt = null;
+}
+
+function stopBenchmarkReporting() {
+  clearBenchmarkTimer();
+  clearBenchmarkConfigPoll();
+  benchmarkReportRunner = null;
+  resetBenchmarkWatchdogState();
+}
+
+function getShardStatusLabel(status) {
+  return GATEWAY_SHARD_STATUS_LABELS[status] || String(status);
+}
+
+function getGatewayShardSummary(client) {
+  const now = Date.now();
+  return [...client.ws.shards.values()].map((shard) => ({
+    id: shard.id,
+    ping: shard.ping,
+    status: getShardStatusLabel(shard.status),
+    lastPingAgeSeconds:
+      shard.lastPingTimestamp > 0
+        ? Math.floor((now - shard.lastPingTimestamp) / 1000)
+        : null,
+  }));
+}
+
+function getBenchmarkRecoveryThresholdMs() {
+  return Math.max(currentBenchmarkIntervalMs * 3, BENCHMARK_STALL_GRACE_MS);
+}
+
+function checkBenchmarkWatchdog(client, { ping, status, uptimeMs }) {
+  if (status === "connected" && ping >= 0) {
+    resetBenchmarkWatchdogState();
+    return null;
+  }
+
+  const now = Date.now();
+  if (!benchmarkStallStartedAt) {
+    benchmarkStallStartedAt = now;
+    log.warn(
+      `[BenchmarkWatchdog] Gateway benchmark entered unhealthy state: status=${status}, ping=${ping}, uptime=${Math.floor(uptimeMs / 1000)}s, shards=${client.ws.shards.size}`
+    );
+    return null;
+  }
+
+  const stallDurationMs = now - benchmarkStallStartedAt;
+  const recoveryThresholdMs = getBenchmarkRecoveryThresholdMs();
+  const recoveryCooldownElapsed =
+    now - benchmarkLastRecoveryAt >= BENCHMARK_RECOVERY_COOLDOWN_MS;
+
+  if (
+    !benchmarkRecoveryInFlight &&
+    recoveryCooldownElapsed &&
+    stallDurationMs >= recoveryThresholdMs
+  ) {
+    return {
+      stallDurationMs,
+      recoveryThresholdMs,
+      shardSummary: getGatewayShardSummary(client),
+    };
+  }
+
+  return null;
+}
+
+async function connectDiscordClient(token) {
+  const client = createClient();
+  discordClient = client;
+  setupEventHandlers(client, logEventViaAPI);
+  await client.login(token);
+  return client;
+}
+
+async function recoverGatewayClient(reason) {
+  if (benchmarkRecoveryInFlight) {
+    return;
+  }
+
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) {
+    log.error(`[BenchmarkWatchdog] ${reason}. Cannot recover without DISCORD_BOT_TOKEN; exiting.`);
+    process.exit(1);
+  }
+
+  benchmarkRecoveryInFlight = true;
+  benchmarkLastRecoveryAt = Date.now();
+  stopBenchmarkReporting();
+
+  const previousClient = discordClient;
+  log.error(`[BenchmarkWatchdog] ${reason}. Recycling Discord client.`);
+
+  try {
+    if (previousClient) {
+      try {
+        await previousClient.destroy();
+      } catch (error) {
+        log.warn("[BenchmarkWatchdog] Failed to destroy stalled Discord client:", error.message);
+      }
+
+      if (discordClient === previousClient) {
+        discordClient = null;
+      }
+    }
+
+    await connectDiscordClient(token);
+    log.info("[BenchmarkWatchdog] Discord client recovered after benchmark stall");
+  } catch (error) {
+    log.error("[BenchmarkWatchdog] Recovery failed; exiting for process manager restart:", error);
+    process.exit(1);
+  } finally {
+    benchmarkRecoveryInFlight = false;
+  }
+}
+
 function scheduleNextBenchmark(delayMs = currentBenchmarkIntervalMs) {
   clearBenchmarkTimer();
+  if (!benchmarkReportRunner) {
+    return;
+  }
+
   benchmarkTimer = setTimeout(() => {
     benchmarkTimer = null;
-    void reportBenchmark();
+    const runner = benchmarkReportRunner;
+    if (runner) {
+      void runner();
+    }
   }, delayMs);
 }
 
@@ -3324,7 +3493,7 @@ function startBenchmarkReporting(client) {
   // "Measuring" snapshots with no latency data.  The closure already
   // holds a reference to the same Client object, so property reads
   // (ping, guilds, uptime) naturally reflect the latest connection state.
-  if (benchmarkTimer || benchmarkConfigPoll) {
+  if (benchmarkTimer || benchmarkConfigPoll || benchmarkReportRunner) {
     log.debug("[Benchmark] Already running, skipping restart on reconnect");
     return;
   }
@@ -3351,6 +3520,16 @@ function startBenchmarkReporting(client) {
       let status = "connected";
       if (ping === -1) status = "measuring";
       if (!client.ws.shards.size) status = "disconnected";
+
+      const recoveryState = checkBenchmarkWatchdog(client, { ping, status, uptimeMs });
+      if (recoveryState) {
+        const stallSeconds = Math.floor(recoveryState.stallDurationMs / 1000);
+        log.error(
+          `[BenchmarkWatchdog] Gateway benchmark stalled for ${stallSeconds}s (threshold ${Math.floor(recoveryState.recoveryThresholdMs / 1000)}s). Shards: ${safeJsonStringify(recoveryState.shardSummary)}`
+        );
+        await recoverGatewayClient(`Gateway benchmark stalled in status=${status} with ping=${ping}`);
+        return;
+      }
 
       const payload = {
         heartbeat_latency_ms: ping >= 0 ? ping : null,
@@ -3386,9 +3565,15 @@ function startBenchmarkReporting(client) {
     } catch (error) {
       log.debug(`[Benchmark] Report error: ${error.message}`);
     } finally {
+      if (benchmarkRecoveryInFlight || client !== discordClient) {
+        return;
+      }
+
       scheduleNextBenchmark();
     }
   }
+
+  benchmarkReportRunner = reportBenchmark;
 
   async function syncBenchmarkInterval() {
     try {
@@ -3440,12 +3625,8 @@ async function startBot() {
   log.info("🚀 Starting Discord Gateway Bot...");
   log.info("🤖 Automation engine enabled");
 
-  const client = createClient();
-  discordClient = client; // Store reference for automation execution
-  setupEventHandlers(client, logEventViaAPI);
-
   try {
-    await client.login(token);
+    await connectDiscordClient(token);
   } catch (error) {
     log.error("❌ Failed to login:", error);
     process.exit(1);
@@ -3456,8 +3637,7 @@ async function startBot() {
 function gracefulShutdown(signal) {
   log.info(`\n🛑 Received ${signal}, shutting down gracefully...`);
   clearGatewayLogFlushTimer();
-  clearBenchmarkTimer();
-  if (benchmarkConfigPoll) clearInterval(benchmarkConfigPoll);
+  stopBenchmarkReporting();
   if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
   if (httpServer) httpServer.close();
   if (discordClient) {
