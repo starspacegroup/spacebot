@@ -10,6 +10,7 @@
  *   - Every day:     daily_refresh (midnight UTC)
  */
 
+import 'dotenv/config';
 import { loadSecrets, getSecret } from '../src/lib/secrets.js';
 import { deploy, getRemoteDeployPlan } from './deploy-runner.js';
 
