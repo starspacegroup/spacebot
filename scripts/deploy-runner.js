@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import { closeSync, mkdtempSync, openSync, rmSync, unlinkSync } from 'fs';
+import { closeSync, mkdtempSync, openSync, rmSync, statSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -7,6 +7,7 @@ const MAIN_BRANCH = 'main';
 const REMOTE_NAME = 'origin';
 const DEPLOY_LOCK_PATH = join(process.cwd(), '.deploy.lock');
 const VALIDATION_BUILD_CMD = process.env.DEPLOY_BUILD_CMD || 'npm run build';
+const STALE_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 function runInDir(cmd, cwd) {
 	console.log(`  → (${cwd}) ${cmd}`);
@@ -32,9 +33,29 @@ function withDeployLock(fn) {
 		fd = openSync(DEPLOY_LOCK_PATH, 'wx');
 	} catch (err) {
 		if (err?.code === 'EEXIST') {
-			throw new Error('Another deployment is already in progress');
+			// Check if lock is stale (older than STALE_LOCK_TIMEOUT_MS)
+			try {
+				const lockStat = statSync(DEPLOY_LOCK_PATH);
+				const ageMs = Date.now() - lockStat.mtimeMs;
+				if (ageMs > STALE_LOCK_TIMEOUT_MS) {
+					console.log(`⚠️  Stale deploy lock detected (${Math.round(ageMs / 1000)}s old) — removing`);
+					unlinkSync(DEPLOY_LOCK_PATH);
+					fd = openSync(DEPLOY_LOCK_PATH, 'wx');
+				} else {
+					throw new Error('Another deployment is already in progress');
+				}
+			} catch (staleErr) {
+				if (staleErr.message === 'Another deployment is already in progress') throw staleErr;
+				// Lock file disappeared between check and remove — try again
+				try {
+					fd = openSync(DEPLOY_LOCK_PATH, 'wx');
+				} catch {
+					throw new Error('Another deployment is already in progress');
+				}
+			}
+		} else {
+			throw err;
 		}
-		throw err;
 	}
 
 	try {
@@ -42,7 +63,11 @@ function withDeployLock(fn) {
 	} finally {
 		if (fd !== undefined) {
 			closeSync(fd);
+		}
+		try {
 			unlinkSync(DEPLOY_LOCK_PATH);
+		} catch {
+			// Already removed or never created
 		}
 	}
 }
@@ -98,6 +123,10 @@ export function deploy(changedFiles, options = {}) {
 				console.log('  🗃️  Migration files changed — running migrations...');
 				run('npm run db:migrate');
 			}
+
+			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart
+			// kills this process (SIGTERM) before the finally block can run.
+			try { unlinkSync(DEPLOY_LOCK_PATH); } catch { /* already removed */ }
 
 			run('pm2 restart ecosystem.config.cjs --update-env');
 

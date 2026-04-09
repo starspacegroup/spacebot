@@ -3452,15 +3452,17 @@ process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 /**
  * Lightweight HTTP server that proxies POST /deploy to the internal
- * deploy-webhook listener on port 9090 so GitHub can hit the main
- * tunnel hostname without a separate cloudflared ingress rule.
+ * deploy-webhook listener on port 9090, and forwards all other requests
+ * to the Cloudflare Pages origin (SvelteKit app) so the tunnel can serve
+ * both deploy webhooks and API routes via a single hostname.
  */
 const DEPLOY_PROXY_PORT = parseInt(process.env.GATEWAY_HTTP_PORT || "4269", 10);
 const DEPLOY_TARGET = `http://127.0.0.1:${process.env.DEPLOY_WEBHOOK_PORT || "9090"}`;
+const PAGES_ORIGIN = process.env.PAGES_ORIGIN || process.env.CF_PAGES_URL || "";
 let httpServer;
 
 function startHttpProxy() {
-  httpServer = http.createServer((req, res) => {
+  httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${DEPLOY_PROXY_PORT}`);
 
     if (url.pathname === "/deploy" && req.method === "POST") {
@@ -3487,12 +3489,50 @@ function startHttpProxy() {
       return;
     }
 
+    // Forward all other requests to the Cloudflare Pages origin
+    if (PAGES_ORIGIN) {
+      try {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        const body = Buffer.concat(chunks);
+
+        const targetUrl = `${PAGES_ORIGIN}${req.url}`;
+        const forwardHeaders = { ...req.headers };
+        delete forwardHeaders.host; // let fetch set the correct Host
+
+        const pagesRes = await fetch(targetUrl, {
+          method: req.method,
+          headers: forwardHeaders,
+          body: ["GET", "HEAD"].includes(req.method) ? undefined : body,
+        });
+
+        const responseHeaders = {};
+        pagesRes.headers.forEach((value, key) => { responseHeaders[key] = value; });
+        // Remove transfer-encoding since we'll send the full body
+        delete responseHeaders["transfer-encoding"];
+
+        const responseBody = Buffer.from(await pagesRes.arrayBuffer());
+        responseHeaders["content-length"] = String(responseBody.length);
+
+        res.writeHead(pagesRes.status, responseHeaders);
+        res.end(responseBody);
+      } catch (err) {
+        log.debug(`[HTTP Proxy] Pages forward error: ${err.message}`);
+        res.writeHead(502, { "Content-Type": "text/plain" });
+        res.end("Pages origin unavailable");
+      }
+      return;
+    }
+
     res.writeHead(404);
     res.end();
   });
 
   httpServer.listen(DEPLOY_PROXY_PORT, () => {
     log.info(`🔗 HTTP proxy listening on port ${DEPLOY_PROXY_PORT} (POST /deploy → ${DEPLOY_TARGET})`);
+    if (PAGES_ORIGIN) {
+      log.info(`🔗 Forwarding other routes to ${PAGES_ORIGIN}`);
+    }
   });
 }
 
