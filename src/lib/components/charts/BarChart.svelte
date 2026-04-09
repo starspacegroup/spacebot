@@ -1,4 +1,6 @@
 <script>
+	import ChartTooltip from './ChartTooltip.svelte';
+
 	/**
 	 * Beautiful, responsive bar chart component
 	 * @type {{ data: Array<{date: string, label?: string, hasData?: boolean, values: {label: string, value: number, color: string}[]}>, title?: string, emptyMessage?: string, height?: string, showLegend?: boolean }}
@@ -12,17 +14,14 @@
 	} = $props();
 	
 	// Tooltip state
-	let tooltip = $state({ visible: false, x: 0, y: 0, date: '', items: [], hasData: true });
+	let tooltip = $state({ visible: false, clientX: 0, clientY: 0, date: '', items: [], hasData: true });
 	const missingBarColor = 'rgba(148, 163, 184, 0.55)';
 	
 	function showTooltip(event, group) {
-		const rect = event.currentTarget.closest('svg').getBoundingClientRect();
-		const svgX = event.clientX - rect.left;
-		const svgY = event.clientY - rect.top;
 		tooltip = {
 			visible: true,
-			x: svgX,
-			y: svgY,
+			clientX: event.clientX,
+			clientY: event.clientY,
 			date: group.label || formatDate(group.date),
 			items: group.bars.map(b => ({ label: b.label, value: b.value, color: b.color })),
 			hasData: group.hasData !== false,
@@ -117,27 +116,7 @@
 </script>
 
 <div class="chart-wrapper" style:--chart-height={height}>
-	{#if tooltip.visible}
-		<div
-			class="chart-tooltip"
-			style:left="{tooltip.x}px"
-			style:top="{tooltip.y}px"
-		>
-			<div class="tooltip-date">{tooltip.date}</div>
-			{#each tooltip.items as item}
-				{#if item.value > 0}
-					<div class="tooltip-item">
-						<span class="tooltip-color" style:background={item.color}></span>
-						<span class="tooltip-label">{item.label}</span>
-						<span class="tooltip-value">{item.value.toLocaleString()}</span>
-					</div>
-				{/if}
-			{/each}
-			{#if !tooltip.hasData}
-				<div class="tooltip-note">No recorded data for this point</div>
-			{/if}
-		</div>
-	{/if}
+	<ChartTooltip {tooltip} />
 	{#if chartData && chartData.bars.length > 0}
 		<svg 
 			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}" 
@@ -292,57 +271,6 @@
 
 	.bar.missing-data {
 		opacity: 0.8;
-	}
-	
-	.chart-tooltip {
-		position: absolute;
-		pointer-events: none;
-		background: var(--color-surface, rgba(30, 30, 30, 0.95));
-		border: 1px solid var(--color-border, rgba(255, 255, 255, 0.15));
-		border-radius: 8px;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.875rem;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		transform: translate(-50%, -120%);
-		z-index: 10;
-		white-space: nowrap;
-	}
-	
-	.tooltip-date {
-		color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
-		font-size: 0.8rem;
-		margin-bottom: 0.25rem;
-	}
-	
-	.tooltip-item {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-	}
-
-	.tooltip-note {
-		color: var(--color-text-muted, rgba(255, 255, 255, 0.6));
-		font-size: 0.75rem;
-		margin-top: 0.25rem;
-	}
-	
-	.tooltip-color {
-		width: 8px;
-		height: 8px;
-		border-radius: 2px;
-		flex-shrink: 0;
-	}
-	
-	.tooltip-label {
-		color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
-		font-size: 0.8rem;
-	}
-	
-	.tooltip-value {
-		color: var(--color-text, #fff);
-		font-weight: 600;
-		font-size: 0.9rem;
-		margin-left: auto;
 	}
 	
 	.chart-legend {

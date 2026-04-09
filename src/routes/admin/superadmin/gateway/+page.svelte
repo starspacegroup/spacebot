@@ -1,5 +1,6 @@
 <script>
 	import { formatDate as tzFormatDate } from '$lib/timezone.js';
+	import ChartTooltip from '$lib/components/charts/ChartTooltip.svelte';
 
 	let { data } = $props();
 
@@ -149,6 +150,26 @@
 		} finally {
 			savingInterval = false;
 		}
+	}
+
+	// Tooltip state for latency chart
+	let latencyTooltip = $state({ visible: false, clientX: 0, clientY: 0, date: '', value: '', hasData: true });
+
+	function showLatencyTooltip(event, point) {
+		latencyTooltip = {
+			visible: true,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			date: point.time,
+			value: `${point.latency}ms`,
+			label: point.status,
+			chartColor: point.latency < 80 ? '#57F287' : point.latency < 150 ? '#FEE75C' : '#ED4245',
+			hasData: true
+		};
+	}
+
+	function hideLatencyTooltip() {
+		latencyTooltip.visible = false;
 	}
 
 	// Chart dimensions
@@ -339,7 +360,8 @@
 		{/if}
 
 		<!-- Latency Chart -->
-		<div class="chart-container" class:loading>
+		<div class="chart-container" class:loading style="position:relative">
+			<ChartTooltip tooltip={latencyTooltip} />
 			{#if chartPoints.length > 1}
 				<svg viewBox="0 0 {chartWidth} {chartHeight}" class="latency-chart">
 					<!-- Grid lines -->
@@ -363,15 +385,17 @@
 					<path d={chartPath} class="latency-line" />
 
 					<!-- Data points -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					{#each chartPoints as point}
 						<circle
 							cx={point.x}
 							cy={point.y}
-							r="3"
+							r="4"
 							class="data-point {latencyClass(point.latency)}"
-						>
-							<title>{point.time}: {point.latency}ms ({point.status})</title>
-						</circle>
+							style="cursor:pointer"
+							onmouseenter={(e) => showLatencyTooltip(e, point)}
+							onmouseleave={hideLatencyTooltip}
+						/>
 					{/each}
 				</svg>
 			{:else if chartData.length === 0}
