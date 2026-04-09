@@ -29,18 +29,6 @@
 	let firstLoginDmEnabled = $state(false);
 	let firstLoginDmSaving = $state(false);
 	let firstLoginDmError = $state(null);
-	let gatewayLogs = $state([]);
-	let gatewayLoggingEnabled = $state(false);
-	let gatewayLogsLoading = $state(false);
-	let gatewayLogsUpdating = $state(false);
-	let gatewayLogsError = $state(null);
-	let gatewayLogsLastUpdated = $state(null);
-	let gatewayLogStatus = $state(null);
-	let gatewayLogsStreamConnected = $state(false);
-	let gatewayLogsStreamError = $state(null);
-	let gatewayLogsStream = null;
-	let gatewayLogsReconnectTimer = null;
-	let gatewayLogsAppOrigin = $state('');
 	
 	// State for running cron jobs
 	let runningJobs = $state({});
@@ -80,39 +68,6 @@
 		return tzFormatDate(dateStr, null);
 	}
 
-	function formatTimestamp(dateStr) {
-		if (!dateStr) return 'Never';
-		const parsed = new Date(dateStr);
-		if (Number.isNaN(parsed.getTime())) {
-			return formatDate(dateStr);
-		}
-		return `${parsed.toLocaleDateString()} ${parsed.toLocaleTimeString()}`;
-	}
-
-	function formatRelativeTime(dateStr) {
-		if (!dateStr) return 'never';
-
-		const parsed = new Date(dateStr);
-		if (Number.isNaN(parsed.getTime())) {
-			return formatTimestamp(dateStr);
-		}
-
-		const diffMs = Date.now() - parsed.getTime();
-		if (diffMs < 5_000) return 'just now';
-
-		const diffSeconds = Math.floor(diffMs / 1000);
-		if (diffSeconds < 60) return `${diffSeconds}s ago`;
-
-		const diffMinutes = Math.floor(diffSeconds / 60);
-		if (diffMinutes < 60) return `${diffMinutes}m ago`;
-
-		const diffHours = Math.floor(diffMinutes / 60);
-		if (diffHours < 24) return `${diffHours}h ago`;
-
-		const diffDays = Math.floor(diffHours / 24);
-		return `${diffDays}d ago`;
-	}
-	
 	// Format short date for charts
 	function formatShortDate(dateStr) {
 		if (!dateStr) return '';
@@ -179,51 +134,6 @@
 		}
 	}
 
-	async function refreshGatewayLogs({ silent = false } = {}) {
-		if (!silent) {
-			gatewayLogsLoading = true;
-		}
-		gatewayLogsError = null;
-
-		try {
-			const response = await fetch('/api/gateway/logs?limit=150');
-			const result = await parseJsonResponse(response, 'Failed to load gateway logs');
-
-			applyGatewayLogStatus(result.status);
-			gatewayLogs = result.logs || [];
-			gatewayLogsLastUpdated = new Date().toISOString();
-		} catch (error) {
-			gatewayLogsError = error.message;
-		} finally {
-			gatewayLogsLoading = false;
-		}
-	}
-
-	async function updateGatewayLogging(enabled) {
-		gatewayLogsUpdating = true;
-		gatewayLogsError = null;
-
-		try {
-			const response = await fetch('/api/gateway/logs', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ enabled }),
-			});
-			const result = await parseJsonResponse(response, 'Failed to update gateway logging');
-
-			gatewayLoggingEnabled = result.enabled === true;
-			await refreshGatewayLogs({ silent: true });
-		} catch (error) {
-			gatewayLogsError = error.message;
-		} finally {
-			gatewayLogsUpdating = false;
-		}
-	}
-
-	function toggleGatewayLogging() {
-		return updateGatewayLogging(!gatewayLoggingEnabled);
-	}
-
 	async function updateFirstLoginDmSetting(enabled) {
 		firstLoginDmSaving = true;
 		firstLoginDmError = null;
@@ -248,130 +158,7 @@
 		return updateFirstLoginDmSetting(!firstLoginDmEnabled);
 	}
 
-	function applyGatewayLogStatus(status) {
-		if (!status) {
-			return;
-		}
-
-		gatewayLogStatus = status;
-		gatewayLoggingEnabled = status.enabled === true;
-	}
-
-	function mergeGatewayLogEntries(entries) {
-		if (!entries?.length) {
-			return;
-		}
-
-		const merged = new Map(gatewayLogs.map((entry) => [entry.id, entry]));
-		for (const entry of entries) {
-			merged.set(entry.id, entry);
-		}
-
-		gatewayLogs = Array.from(merged.values())
-			.sort((left, right) => right.id - left.id)
-			.slice(0, 150);
-		gatewayLogsLastUpdated = new Date().toISOString();
-	}
-
-	function parseGatewayStreamPayload(event) {
-		try {
-			return JSON.parse(event.data);
-		} catch {
-			return null;
-		}
-	}
-
-	function clearGatewayLogsReconnectTimer() {
-		if (gatewayLogsReconnectTimer) {
-			window.clearTimeout(gatewayLogsReconnectTimer);
-			gatewayLogsReconnectTimer = null;
-		}
-	}
-
-	function disconnectGatewayLogsStream() {
-		clearGatewayLogsReconnectTimer();
-		gatewayLogsStreamConnected = false;
-
-		if (gatewayLogsStream) {
-			gatewayLogsStream.close();
-			gatewayLogsStream = null;
-		}
-	}
-
-	function scheduleGatewayLogsReconnect() {
-		clearGatewayLogsReconnectTimer();
-		gatewayLogsReconnectTimer = window.setTimeout(() => {
-			gatewayLogsReconnectTimer = null;
-			connectGatewayLogsStream();
-		}, 3000);
-	}
-
-	function connectGatewayLogsStream() {
-		if (typeof EventSource === 'undefined' || gatewayLogsStream) {
-			return;
-		}
-
-		const stream = new EventSource('/api/gateway/logs/stream');
-		gatewayLogsStream = stream;
-
-		stream.addEventListener('open', () => {
-			gatewayLogsStreamConnected = true;
-			gatewayLogsStreamError = null;
-		});
-
-		stream.addEventListener('snapshot', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			gatewayLogs = payload.logs || [];
-			gatewayLogsLastUpdated = new Date().toISOString();
-		});
-
-		stream.addEventListener('append', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			mergeGatewayLogEntries(payload.entries || []);
-		});
-
-		stream.addEventListener('status', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			gatewayLogsLastUpdated = new Date().toISOString();
-		});
-
-		stream.onerror = () => {
-			gatewayLogsStreamConnected = false;
-			gatewayLogsStreamError = 'Live stream disconnected. Retrying...';
-
-			if (gatewayLogsStream === stream) {
-				stream.close();
-				gatewayLogsStream = null;
-			}
-
-			scheduleGatewayLogsReconnect();
-		};
-	}
-
-	function getGatewayLogsGuidance() {
-		if (gatewayLogStatus?.lastGatewayConnected || !gatewayLoggingEnabled) {
-			return null;
-		}
-
-		if (gatewayLogsAppOrigin.includes('localhost:4269')) {
-			return `This local web app is live, but no local gateway process has polled ${gatewayLogsAppOrigin} yet. Start the gateway service separately so it can connect to this app instance.`;
-		}
-
-		return 'This app instance has not seen a gateway heartbeat yet. The gateway service is likely offline or pointed at a different environment.';
-	}
-
 	onMount(() => {
-		gatewayLogsAppOrigin = window.location.origin;
-
 		const intervalId = window.setInterval(() => {
 			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
 			const hasRunningRequest = Object.values(runningJobs).some(Boolean);
@@ -385,24 +172,13 @@
 			void refreshCronData();
 		}, 15000);
 
-		const gatewayLogsIntervalId = window.setInterval(() => {
-			if (!gatewayLogsStreamConnected) {
-				void refreshGatewayLogs({ silent: true });
-			}
-		}, 5000);
-
 		if (cronJobHistory.some((entry) => entry.status === 'running')) {
 			void refreshCronData();
 		}
 
-		connectGatewayLogsStream();
-		void refreshGatewayLogs();
-
 		return () => {
 			window.clearInterval(intervalId);
 			window.clearInterval(backgroundIntervalId);
-			window.clearInterval(gatewayLogsIntervalId);
-			disconnectGatewayLogsStream();
 		};
 	});
 	
@@ -827,93 +603,6 @@
 			<div class="cmd-toast cmd-toast-error">
 				<span>✗</span> {firstLoginDmError}
 				<button class="cmd-toast-close" onclick={() => firstLoginDmError = null}>✕</button>
-			</div>
-		{/if}
-	</section>
-
-	<section class="gateway-logs-section">
-		<div class="gateway-logs-header">
-			<h2 class="section-title">
-				<span class="section-icon">🛰️</span>
-				Gateway Logs
-			</h2>
-			<div class="gateway-logs-actions">
-				<span class:gateway-log-status={true} class:enabled={gatewayLoggingEnabled} class:disabled={!gatewayLoggingEnabled}>
-					{gatewayLoggingEnabled ? 'Live Capture On' : 'Live Capture Off'}
-				</span>
-				<button class="btn btn-secondary btn-sm" onclick={() => refreshGatewayLogs()} disabled={gatewayLogsLoading || gatewayLogsUpdating}>
-					Refresh
-				</button>
-				<button class="btn btn-sm {gatewayLoggingEnabled ? 'btn-danger' : 'btn-primary'}" onclick={toggleGatewayLogging} disabled={gatewayLogsUpdating}>
-					{#if gatewayLogsUpdating}
-						Saving...
-					{:else if gatewayLoggingEnabled}
-						Disable Logging
-					{:else}
-						Enable Logging
-					{/if}
-				</button>
-			</div>
-		</div>
-
-		<p class="gateway-logs-hint">
-			When enabled, the gateway process forwards new console output here for superadmin debugging. Toggle changes propagate to the gateway within a few seconds.
-		</p>
-
-		<div class="gateway-logs-diagnostics">
-			<span class:gateway-connection-status={true} class:connected={gatewayLogStatus?.lastGatewayConnected === true} class:stale={gatewayLogStatus?.lastGatewayConnected !== true}>
-				{gatewayLogStatus?.lastGatewayConnected ? 'Gateway Connected' : 'Gateway Not Connected'}
-			</span>
-			<span>
-				{gatewayLogStatus?.lastGatewaySeenAt ? `Last poll ${formatRelativeTime(gatewayLogStatus.lastGatewaySeenAt)}` : 'No gateway poll seen yet'}
-			</span>
-			<span>
-				{gatewayLogStatus?.lastGatewayPostedAt ? `Last stored batch ${formatRelativeTime(gatewayLogStatus.lastGatewayPostedAt)} (${gatewayLogStatus.lastStoredCount || 0} entries)` : 'No stored gateway batches yet'}
-			</span>
-			<span>
-				{gatewayLogsStreamConnected ? 'Live stream connected' : gatewayLogsStreamError || 'Live stream connecting...'}
-			</span>
-		</div>
-
-		{#if getGatewayLogsGuidance()}
-			<div class="gateway-logs-empty gateway-logs-guidance">{getGatewayLogsGuidance()}</div>
-		{/if}
-
-		{#if gatewayLogsError}
-			<div class="cmd-toast cmd-toast-error">
-				<span>✗</span> {gatewayLogsError}
-				<button class="cmd-toast-close" onclick={() => gatewayLogsError = null}>✕</button>
-			</div>
-		{/if}
-
-		<div class="gateway-logs-meta">
-			<span>Showing {gatewayLogs.length} recent entries</span>
-			<span>Last refreshed: {formatTimestamp(gatewayLogsLastUpdated)}</span>
-		</div>
-
-		{#if gatewayLogsLoading && gatewayLogs.length === 0}
-			<div class="gateway-logs-empty">Loading gateway logs...</div>
-		{:else if gatewayLogs.length === 0}
-			<div class="gateway-logs-empty">
-				{#if gatewayLoggingEnabled && gatewayLogStatus?.lastGatewayConnected !== true}
-					Logging is enabled, but this app has not seen a live gateway heartbeat yet.
-				{:else if gatewayLoggingEnabled}
-					Logging is enabled. New gateway output will appear here live.
-				{:else}
-					Gateway logging is disabled. Enable it to capture new console output.
-				{/if}
-			</div>
-		{:else}
-			<div class="gateway-logs-console">
-				{#each gatewayLogs as entry (entry.id)}
-					<div class="gateway-log-entry level-{entry.level}">
-						<div class="gateway-log-entry-meta">
-							<span class="gateway-log-time">{formatTimestamp(entry.logged_at || entry.created_at)}</span>
-							<span class="gateway-log-level">{entry.level.toUpperCase()}</span>
-						</div>
-						<pre class="gateway-log-message">{entry.message}</pre>
-					</div>
-				{/each}
 			</div>
 		{/if}
 	</section>
@@ -1719,42 +1408,6 @@
 		}
 	}
 
-	.gateway-logs-section {
-		margin-bottom: 2rem;
-		padding: 1rem;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-	}
-
-	@media (min-width: 640px) {
-		.gateway-logs-section {
-			padding: 1.25rem;
-		}
-	}
-
-	.gateway-logs-header {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-	}
-
-	@media (min-width: 900px) {
-		.gateway-logs-header {
-			flex-direction: row;
-			justify-content: space-between;
-			align-items: center;
-		}
-	}
-
-	.gateway-logs-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
 	.gateway-log-status {
 		display: inline-flex;
 		align-items: center;
@@ -1778,145 +1431,6 @@
 		margin: 0 0 0.75rem;
 		color: var(--color-text-muted);
 		font-size: 0.9rem;
-	}
-
-	.gateway-logs-diagnostics {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-		font-size: 0.85rem;
-		color: var(--color-text-muted);
-	}
-
-	.gateway-connection-status {
-		display: inline-flex;
-		align-items: center;
-		padding: 0.25rem 0.65rem;
-		border-radius: var(--radius-full);
-		font-size: 0.75rem;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-	}
-
-	.gateway-connection-status.connected {
-		background: rgba(34, 197, 94, 0.15);
-		color: #86efac;
-		border: 1px solid rgba(34, 197, 94, 0.35);
-	}
-
-	.gateway-connection-status.stale {
-		background: rgba(245, 158, 11, 0.15);
-		color: #fcd34d;
-		border: 1px solid rgba(245, 158, 11, 0.35);
-	}
-
-	.gateway-logs-meta {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		margin-bottom: 0.75rem;
-		font-size: 0.85rem;
-		color: var(--color-text-muted);
-	}
-
-	@media (min-width: 640px) {
-		.gateway-logs-meta {
-			flex-direction: row;
-			justify-content: space-between;
-		}
-	}
-
-	.gateway-logs-console {
-		max-height: 30rem;
-		overflow: auto;
-		padding: 0.75rem;
-		background: var(--color-bg, #0f172a);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-	}
-
-	.gateway-log-entry {
-		padding: 0.75rem 0;
-		border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-	}
-
-	.gateway-log-entry:first-child {
-		padding-top: 0;
-	}
-
-	.gateway-log-entry:last-child {
-		padding-bottom: 0;
-		border-bottom: 0;
-	}
-
-	.gateway-log-entry-meta {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		align-items: center;
-		margin-bottom: 0.35rem;
-		font-size: 0.75rem;
-	}
-
-	.gateway-log-time {
-		color: #94a3b8;
-		font-family: monospace;
-	}
-
-	.gateway-log-level {
-		display: inline-flex;
-		align-items: center;
-		padding: 0.15rem 0.45rem;
-		border-radius: 999px;
-		font-weight: 700;
-		letter-spacing: 0.03em;
-	}
-
-	.level-error .gateway-log-level {
-		background: rgba(239, 68, 68, 0.15);
-		color: #fca5a5;
-	}
-
-	.level-warn .gateway-log-level {
-		background: rgba(245, 158, 11, 0.15);
-		color: #fcd34d;
-	}
-
-	.level-info .gateway-log-level,
-	.level-log .gateway-log-level {
-		background: rgba(59, 130, 246, 0.15);
-		color: #93c5fd;
-	}
-
-	.level-debug .gateway-log-level {
-		background: rgba(168, 85, 247, 0.15);
-		color: #d8b4fe;
-	}
-
-	.gateway-log-message {
-		margin: 0;
-		white-space: pre-wrap;
-		word-break: break-word;
-		font-family: Consolas, 'Courier New', monospace;
-		font-size: 0.82rem;
-		line-height: 1.45;
-		color: #e2e8f0;
-		background: transparent;
-	}
-
-	.gateway-logs-empty {
-		padding: 1rem;
-		background: rgba(148, 163, 184, 0.08);
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-md);
-		color: var(--color-text-muted);
-		text-align: center;
-	}
-
-	.gateway-logs-guidance {
-		margin-bottom: 0.75rem;
-		text-align: left;
 	}
 	
 	.section-title {
