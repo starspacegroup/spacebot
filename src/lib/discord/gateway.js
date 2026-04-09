@@ -3317,11 +3317,32 @@ function updateBenchmarkInterval(intervalSeconds, source, reschedule = false) {
  * @param {Client} client - The discord.js client
  */
 function startBenchmarkReporting(client) {
-  clearBenchmarkTimer();
+  // Guard against re-entry on reconnection. ClientReady fires on every
+  // reconnect — restarting the timer each time would cancel any pending
+  // scheduled report and fire an immediate one while client.ws.ping is
+  // still -1 (heartbeat ACK hasn't arrived yet), producing a stream of
+  // "Measuring" snapshots with no latency data.  The closure already
+  // holds a reference to the same Client object, so property reads
+  // (ping, guilds, uptime) naturally reflect the latest connection state.
+  if (benchmarkTimer || benchmarkConfigPoll) {
+    log.debug("[Benchmark] Already running, skipping restart on reconnect");
+    return;
+  }
 
   async function reportBenchmark() {
     try {
-      const ping = client.ws.ping; // Heartbeat ACK round-trip in ms (-1 if not yet measured)
+      // Try aggregate ping first, then check individual shards in case
+      // the aggregate is stale after a reconnect.
+      let ping = client.ws.ping; // -1 if not yet measured
+      if (ping === -1 && client.ws.shards.size > 0) {
+        for (const [, shard] of client.ws.shards) {
+          if (shard.ping >= 0) {
+            ping = shard.ping;
+            break;
+          }
+        }
+      }
+
       const guildCount = client.guilds.cache.size;
       const uptimeMs = client.uptime || 0;
       const gatewayUrl = client.ws.gateway || null;
@@ -3354,7 +3375,9 @@ function startBenchmarkReporting(client) {
         log.debug(`[Benchmark] Failed to report: ${response.status}`);
       } else {
         const result = await response.json();
-        log.debug(`[Benchmark] Reported latency: ${ping}ms, guilds: ${guildCount}`);
+        log.debug(
+          `[Benchmark] Reported latency: ${ping}ms, status: ${status}, guilds: ${guildCount}, uptime: ${Math.floor(uptimeMs / 1000)}s`
+        );
 
         if (result.benchmark_interval_seconds) {
           updateBenchmarkInterval(result.benchmark_interval_seconds, "benchmark POST response");
@@ -3389,16 +3412,13 @@ function startBenchmarkReporting(client) {
     }
   }
 
-  if (benchmarkConfigPoll) {
-    clearInterval(benchmarkConfigPoll);
-  }
-
   benchmarkConfigPoll = setInterval(() => {
     void syncBenchmarkInterval();
   }, BENCHMARK_CONFIG_SYNC_MS);
 
-  // Report immediately, then schedule subsequent checks dynamically.
-  void reportBenchmark();
+  // Delay the first report by 45s so the first heartbeat cycle (~41s)
+  // can complete and client.ws.ping has a real value instead of -1.
+  scheduleNextBenchmark(45_000);
   log.info(
     `📡 Gateway benchmark reporting started (${currentBenchmarkIntervalMs / 1000}s interval via ${API_BASE})`
   );
