@@ -861,10 +861,22 @@ function getActiveVoiceSessionsForGuild(guild) {
     }
 
     seenUserIds.add(userId);
+    const member = voiceState.member;
+    const user = member?.user;
     activeSessions.push({
       user_id: userId,
       channel_id: voiceState.channelId,
       channel_name: voiceState.channel?.name || null,
+      user_name: user?.username || user?.tag || null,
+      display_name: member?.displayName || user?.globalName || user?.username || null,
+      avatar_url: member?.displayAvatarURL?.({ size: 64 }) || user?.displayAvatarURL?.({ size: 64 }) || null,
+      self_mute: Boolean(voiceState.selfMute),
+      self_deaf: Boolean(voiceState.selfDeaf),
+      server_mute: Boolean(voiceState.serverMute),
+      server_deaf: Boolean(voiceState.serverDeaf),
+      streaming: Boolean(voiceState.streaming),
+      self_video: Boolean(voiceState.selfVideo),
+      suppress: Boolean(voiceState.suppress),
     });
   }
 
@@ -891,6 +903,18 @@ async function postVoiceSessionSnapshot(guild, reason) {
   }
 
   return response.json();
+}
+
+async function syncGuildLiveVoiceSnapshot(guild, reason) {
+  if (!guild) {
+    return;
+  }
+
+  try {
+    await postVoiceSessionSnapshot(guild, reason);
+  } catch (error) {
+    log.warn(`[VoiceSessions] Live snapshot sync failed for guild ${guild.id} after ${reason}:`, error.message);
+  }
 }
 
 async function reconcileVoiceSessionsViaAPI(client, reason) {
@@ -2330,6 +2354,9 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     const guildId = newState.guild.id;
     const member = newState.member;
+    const scheduleLiveVoiceSync = () => {
+      syncGuildLiveVoiceSnapshot(newState.guild || oldState.guild, "voice_state_update");
+    };
 
     // User joined a voice channel
     if (!oldState.channel && newState.channel) {
@@ -2350,6 +2377,7 @@ function setupEventHandlers(client, logFn) {
           actor_roles: member.roles?.cache.map((r) => r.id) || [],
         },
       });
+      scheduleLiveVoiceSync();
       return; // Don't check for state changes on initial join
     }
 
@@ -2401,6 +2429,7 @@ function setupEventHandlers(client, logFn) {
           actor_roles: member.roles?.cache.map((r) => r.id) || [],
         },
       });
+      scheduleLiveVoiceSync();
       return;
     }
 
@@ -2615,6 +2644,8 @@ function setupEventHandlers(client, logFn) {
         });
       }
     }
+
+    scheduleLiveVoiceSync();
   });
 
   // ===== CHANNEL EVENTS =====

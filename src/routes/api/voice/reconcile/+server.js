@@ -1,4 +1,5 @@
 import { json } from "@sveltejs/kit";
+import { replaceLiveVoiceSnapshot } from "$lib/db/live-voice.js";
 import { reconcileVoiceSessions } from "$lib/db/stats-aggregation.js";
 import { log } from "$lib/log.js";
 
@@ -29,6 +30,16 @@ export async function POST({ request, platform }) {
           user_id: String(session.user_id),
           channel_id: String(session.channel_id),
           channel_name: session.channel_name ? String(session.channel_name) : null,
+          user_name: session.user_name ? String(session.user_name) : null,
+          display_name: session.display_name ? String(session.display_name) : null,
+          avatar_url: session.avatar_url ? String(session.avatar_url) : null,
+          self_mute: Boolean(session.self_mute),
+          self_deaf: Boolean(session.self_deaf),
+          server_mute: Boolean(session.server_mute),
+          server_deaf: Boolean(session.server_deaf),
+          streaming: Boolean(session.streaming),
+          self_video: Boolean(session.self_video),
+          suppress: Boolean(session.suppress),
         }))
       : [];
 
@@ -36,7 +47,14 @@ export async function POST({ request, platform }) {
       return json({ error: "guild_id is required" }, { status: 400 });
     }
 
-    const result = await reconcileVoiceSessions(db, String(guildId), activeSessions);
+    const [result, liveSnapshotResult] = await Promise.all([
+      reconcileVoiceSessions(db, String(guildId), activeSessions),
+      replaceLiveVoiceSnapshot(db, String(guildId), activeSessions),
+    ]);
+
+    if (!liveSnapshotResult.success) {
+      log.warn(`[VoiceSessions API] Failed to store live snapshot for guild ${guildId}: ${liveSnapshotResult.error}`);
+    }
 
     if (result.closedSessions > 0 || result.createdSessions > 0 || result.duplicateSessionsClosed > 0) {
       log.info(
@@ -44,7 +62,7 @@ export async function POST({ request, platform }) {
       );
     }
 
-    return json({ success: true, ...result });
+    return json({ success: true, ...result, liveMembers: liveSnapshotResult.memberCount || 0 });
   } catch (error) {
     log.error("[VoiceSessions API] Reconciliation failed:", error);
     return json({ error: "Invalid request body" }, { status: 400 });

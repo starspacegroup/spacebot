@@ -28,6 +28,7 @@ import {
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { getRolesFromCache } from "$lib/db/guild-cache.js";
+import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 
 const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
@@ -136,6 +137,14 @@ export async function load({ params, cookies, platform, parent, url }) {
   let topScreenshareUsers = [];
   let guildMetadata = null;
   let cachedRoles = [];
+  let liveVoiceSnapshot = {
+    channels: [],
+    totalUsers: 0,
+    totalChannels: 0,
+    activeCameras: 0,
+    activeStreams: 0,
+    updatedAt: null,
+  };
 
   if (db) {
     try {
@@ -210,6 +219,11 @@ export async function load({ params, cookies, platform, parent, url }) {
       } catch (rolesError) {
         log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
       }
+      try {
+        liveVoiceSnapshot = await getLiveVoiceChannels(db, serverId);
+      } catch (liveVoiceError) {
+        log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
+      }
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
     }
@@ -234,6 +248,7 @@ export async function load({ params, cookies, platform, parent, url }) {
     topScreenshareUsers,
     guildMetadata,
     cachedRoles,
+    liveVoiceSnapshot,
     plan,
     statsRetentionDays,
     periodOptions,
