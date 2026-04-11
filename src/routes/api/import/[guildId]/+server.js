@@ -3,7 +3,8 @@
  * POST /api/import/[guildId] - Import all server data from a unified backup file
  * 
  * Handles format: "spacebot-backup"
- * Imports automations, commands, stats, and settings from a single file.
+ * Imports automations, commands, and settings from a single file.
+ * Stats payloads are ignored here and must be restored by a superadmin.
  */
 
 import { json } from "@sveltejs/kit";
@@ -14,32 +15,6 @@ import { getGuildSettings, saveGuildSettings } from "$lib/db/settings.js";
 import { EVENT_TYPES, log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 import { clearActionConfigReferences, clearFilterReferences, summarizeCleared } from "$lib/import-export.js";
-
-/**
- * Batch insert rows using D1 batch API for efficiency.
- */
-async function batchInsert(db, statements) {
-  if (statements.length === 0) return 0;
-
-  const BATCH_SIZE = 100;
-  let totalInserted = 0;
-
-  for (let i = 0; i < statements.length; i += BATCH_SIZE) {
-    const batch = statements.slice(i, i + BATCH_SIZE);
-    try {
-      const results = await db.batch(batch);
-      for (const result of results) {
-        if (result.meta?.changes) {
-          totalInserted += result.meta.changes;
-        }
-      }
-    } catch (error) {
-      log.error(`Batch insert error (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, error);
-    }
-  }
-
-  return totalInserted;
-}
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, request, cookies, platform }) {
@@ -81,12 +56,18 @@ export async function POST({ params, request, cookies, platform }) {
       automations: { imported: 0, failed: 0, results: [] },
       commands: { imported: 0, failed: 0, results: [] },
       settings: { imported: false },
-      stats: {
-        server_stats: { imported: 0, total: 0 },
-        aggregated_stats: { imported: 0, total: 0 },
-        voice_sessions: { imported: 0, total: 0 },
+      skipped: {
+        statsRecords: 0,
       },
     };
+
+    const skippedStatsRecords = [
+      Array.isArray(body.server_stats) ? body.server_stats.length : 0,
+      Array.isArray(body.aggregated_stats) ? body.aggregated_stats.length : 0,
+      Array.isArray(body.voice_sessions) ? body.voice_sessions.length : 0,
+    ].reduce((sum, count) => sum + count, 0);
+
+    results.skipped.statsRecords = skippedStatsRecords;
 
     // ── Import automations ─────────────────────────────
     if (body.automations && Array.isArray(body.automations)) {
@@ -239,85 +220,6 @@ export async function POST({ params, request, cookies, platform }) {
       }
     }
 
-    // ── Import stats ───────────────────────────────────
-    if (body.server_stats && Array.isArray(body.server_stats)) {
-      results.stats.server_stats.total = body.server_stats.length;
-      const statements = body.server_stats.map(row =>
-        db.prepare(`
-          INSERT OR IGNORE INTO server_stats (
-            guild_id, member_count, online_count, bot_count, human_count,
-            channel_count, role_count, emoji_count, boost_count, boost_level,
-            recorded_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          guildId,
-          row.member_count || 0,
-          row.online_count ?? null,
-          row.bot_count ?? null,
-          row.human_count ?? null,
-          row.channel_count ?? null,
-          row.role_count ?? null,
-          row.emoji_count ?? null,
-          row.boost_count ?? null,
-          row.boost_level ?? null,
-          row.recorded_at,
-        )
-      );
-      results.stats.server_stats.imported = await batchInsert(db, statements);
-    }
-
-    if (body.aggregated_stats && Array.isArray(body.aggregated_stats)) {
-      results.stats.aggregated_stats.total = body.aggregated_stats.length;
-      const statements = body.aggregated_stats.map(row =>
-        db.prepare(`
-          INSERT OR IGNORE INTO aggregated_stats (
-            guild_id, period_type, period_start, period_end,
-            member_joins, member_leaves, member_net_change,
-            voice_total_seconds, voice_unique_users, voice_peak_concurrent,
-            message_count, message_unique_users,
-            total_events, processed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          guildId,
-          row.period_type,
-          row.period_start,
-          row.period_end,
-          row.member_joins || 0,
-          row.member_leaves || 0,
-          row.member_net_change || 0,
-          row.voice_total_seconds || 0,
-          row.voice_unique_users || 0,
-          row.voice_peak_concurrent || 0,
-          row.message_count || 0,
-          row.message_unique_users || 0,
-          row.total_events || 0,
-          row.processed_at || new Date().toISOString(),
-        )
-      );
-      results.stats.aggregated_stats.imported = await batchInsert(db, statements);
-    }
-
-    if (body.voice_sessions && Array.isArray(body.voice_sessions)) {
-      results.stats.voice_sessions.total = body.voice_sessions.length;
-      const statements = body.voice_sessions.map(row =>
-        db.prepare(`
-          INSERT OR IGNORE INTO voice_sessions (
-            guild_id, user_id, channel_id, channel_name,
-            joined_at, left_at, duration_seconds
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          guildId,
-          row.user_id,
-          row.channel_id,
-          row.channel_name ?? null,
-          row.joined_at,
-          row.left_at ?? null,
-          row.duration_seconds ?? null,
-        )
-      );
-      results.stats.voice_sessions.imported = await batchInsert(db, statements);
-    }
-
     // Build summary message
     const parts = [];
     if (results.automations.imported > 0 || results.automations.failed > 0) {
@@ -329,17 +231,18 @@ export async function POST({ params, request, cookies, platform }) {
     if (results.settings.imported) {
       parts.push("settings");
     }
-    const totalStats = results.stats.server_stats.imported + results.stats.aggregated_stats.imported + results.stats.voice_sessions.imported;
-    if (totalStats > 0) {
-      parts.push(`${totalStats} stats record${totalStats !== 1 ? "s" : ""}`);
-    }
 
     const hasFailures = results.automations.failed > 0 || results.commands.failed > 0 || results.settings.error;
+    const warnings = [];
+    if (results.skipped.statsRecords > 0) {
+      warnings.push("Stats data was skipped. Use the Superadmin stats import page to restore stats exports.");
+    }
 
     return json({
       success: !hasFailures,
       message: parts.length > 0 ? `Imported: ${parts.join(", ")}` : "No data was imported",
       results,
+      warnings,
     }, { status: hasFailures ? 207 : 200 });
   } catch (error) {
     log.error("Unified import error:", error);

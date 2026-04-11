@@ -20,6 +20,10 @@
 			<span class="nav-icon">📡</span>
 			Gateway
 		</a>
+		<a href="/admin/superadmin/stats-import" class="nav-link">
+			<span class="nav-icon">📥</span>
+			Stats Import
+		</a>
 	</nav>
 	{@render children()}
 </div>

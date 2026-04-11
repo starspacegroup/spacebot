@@ -2,6 +2,8 @@
  * Stats Data Import API
  * POST /api/stats/[guildId]/import - Import stats data from a JSON export file
  * 
+ * Superadmin only.
+ * 
  * Imports:
  * - server_stats: Historical server metric snapshots
  * - aggregated_stats: Pre-computed hourly/daily aggregates
@@ -11,8 +13,13 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 import { log } from "$lib/log.js";
+
+function checkIsSuperAdmin(userId, platform) {
+  if (!userId) return false;
+  const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+  return adminUserIds.split(",").map((id) => id.trim()).filter(Boolean).includes(userId);
+}
 
 /**
  * Batch insert rows using D1 batch API for efficiency.
@@ -46,11 +53,10 @@ async function batchInsert(db, statements) {
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, request, cookies, platform }) {
   const { guildId } = params;
-  const accessToken = cookies.get("discord_access_token");
+  const userId = cookies.get("discord_user_id");
 
-  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
-  if (!auth.authorized) {
-    return json({ error: auth.error }, { status: 403 });
+  if (!checkIsSuperAdmin(userId, platform)) {
+    return json({ error: "Forbidden" }, { status: 403 });
   }
 
   const db = platform?.env?.DB;

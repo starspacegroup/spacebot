@@ -219,8 +219,11 @@
 				type = 'commands';
 				apiPath = `/api/commands/${selectedGuildId}/import`;
 			} else if (parsed.format === 'spacebot-stats') {
-				type = 'stats';
-				apiPath = `/api/stats/${selectedGuildId}/import`;
+				importError = data?.isSuperAdmin
+					? 'Stats imports have moved to the Superadmin Stats Import page.'
+					: 'Stats imports are only available from the Superadmin panel.';
+				importing = false;
+				return;
 			} else if (parsed.format === 'spacebot-backup') {
 				type = 'backup';
 				apiPath = `/api/import/${selectedGuildId}`;
@@ -274,7 +277,7 @@
 				<span class="header-icon">📦</span>
 				Import & Export
 			</h1>
-			<p class="header-subtitle">Share automations, commands, and stats data between servers or back them up</p>
+			<p class="header-subtitle">Share automations and commands between servers, and export stats data for backup</p>
 		</div>
 	</header>
 	
@@ -453,7 +456,7 @@
 	<section class="section-card">
 		<div class="section-header">
 			<h2><span class="section-icon">📥</span> Import</h2>
-			<p class="section-desc">Upload a SpaceBot export file to import automations, commands, or stats data</p>
+			<p class="section-desc">Upload a SpaceBot export file to import automations, commands, or backup settings</p>
 		</div>
 		
 		{#if !importResult}
@@ -497,11 +500,14 @@
 			<div class="import-notes">
 				<h4>Notes:</h4>
 				<ul>
-					<li>Accepts full backups, or individual automation, command, and stats export files — the format is auto-detected</li>
+					<li>Accepts full backups, or individual automation and command export files — the format is auto-detected</li>
 					<li>Server-specific references (channels, roles, users) are <strong>automatically cleared</strong> during import for automations/commands</li>
 					<li>Automations and commands are imported as <strong>disabled</strong> — enable them after reviewing</li>
 					<li>Commands with duplicate names will fail — rename existing commands first</li>
-					<li>Stats data is imported with duplicate prevention — existing records are preserved</li>
+					<li>Backup files with stats data will skip the stats section here</li>
+					{#if data?.isSuperAdmin}
+						<li>Use <a href="/admin/superadmin/stats-import">Superadmin Stats Import</a> to restore stats exports</li>
+					{/if}
 				</ul>
 			</div>
 		{:else}
@@ -562,41 +568,13 @@
 							<p class="backup-result-note">Server settings restored</p>
 						</div>
 					{/if}
-					
-					{#if r.stats}
+
+					{#if r.skipped?.statsRecords > 0}
 						<div class="backup-result-section">
 							<h4>📊 Stats Data</h4>
-							<div class="stats-import-results">
-								<div class="stats-import-row">
-									<span class="stats-import-label">Server snapshots:</span>
-									<span>{r.stats.server_stats?.imported || 0} / {r.stats.server_stats?.total || 0}</span>
-								</div>
-								<div class="stats-import-row">
-									<span class="stats-import-label">Aggregated periods:</span>
-									<span>{r.stats.aggregated_stats?.imported || 0} / {r.stats.aggregated_stats?.total || 0}</span>
-								</div>
-								<div class="stats-import-row">
-									<span class="stats-import-label">Voice sessions:</span>
-									<span>{r.stats.voice_sessions?.imported || 0} / {r.stats.voice_sessions?.total || 0}</span>
-								</div>
-							</div>
+							<p class="backup-result-note">Skipped {r.skipped.statsRecords} stats record{r.skipped.statsRecords !== 1 ? 's' : ''}. Restore stats from the Superadmin panel.</p>
 						</div>
 					{/if}
-				{:else if importResult.type === 'stats' && importResult.results}
-					<div class="stats-import-results">
-						<div class="stats-import-row">
-							<span class="stats-import-label">Server snapshots:</span>
-							<span>{importResult.results.server_stats?.imported || 0} / {importResult.results.server_stats?.total || 0}</span>
-						</div>
-						<div class="stats-import-row">
-							<span class="stats-import-label">Aggregated periods:</span>
-							<span>{importResult.results.aggregated_stats?.imported || 0} / {importResult.results.aggregated_stats?.total || 0}</span>
-						</div>
-						<div class="stats-import-row">
-							<span class="stats-import-label">Voice sessions:</span>
-							<span>{importResult.results.voice_sessions?.imported || 0} / {importResult.results.voice_sessions?.total || 0}</span>
-						</div>
-					</div>
 				{:else if importResult.results?.length > 0}
 					<div class="result-details">
 						{#each importResult.results as result}
@@ -623,9 +601,9 @@
 						<a href="/admin/{selectedGuildId}/commands" class="btn btn-secondary">
 							Go to Commands
 						</a>
-					{:else if importResult.type === 'stats' || importResult.type === 'backup'}
-						<a href="/admin/{selectedGuildId}/stats" class="btn btn-secondary">
-							Go to Stats
+					{:else if importResult.type === 'backup'}
+						<a href="/admin/{selectedGuildId}" class="btn btn-secondary">
+							Go to Dashboard
 						</a>
 					{/if}
 					<button class="btn btn-primary" onclick={resetImport}>Import Another</button>
@@ -1066,28 +1044,6 @@
 	
 	.stats-summary-label {
 		font-size: 0.75rem;
-		color: var(--text-muted);
-	}
-	
-	/* Stats import results */
-	.stats-import-results {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		background: var(--bg-tertiary, #36393f);
-		border-radius: 8px;
-		padding: 1rem;
-	}
-	
-	.stats-import-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		font-size: 0.875rem;
-		padding: 0.25rem 0;
-	}
-	
-	.stats-import-label {
 		color: var(--text-muted);
 	}
 	
