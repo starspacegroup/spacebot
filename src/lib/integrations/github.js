@@ -24,6 +24,14 @@
 
 import { log } from "../log.js";
 
+function getRepoVisibility(repo) {
+  if (!repo) return null;
+  if (typeof repo.visibility === "string" && repo.visibility.trim()) {
+    return repo.visibility.trim().toLowerCase();
+  }
+  return repo.private ? "private" : "public";
+}
+
 /**
  * Map of GitHub webhook event names to SpaceBot event types.
  */
@@ -137,6 +145,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             branch,
             ref: payload.ref,
             commit_count: commitCount,
@@ -164,6 +173,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             number: pr?.number,
             title: pr?.title,
             url: pr?.html_url,
@@ -191,6 +201,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             number: issue?.number,
             title: issue?.title,
             url: issue?.html_url,
@@ -216,6 +227,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: issue?.title,
             url: comment?.html_url,
             issue_number: issue?.number,
@@ -243,6 +255,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: release?.name || release?.tag_name,
             tag: release?.tag_name,
             name: release?.name,
@@ -267,6 +280,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             stars: repo?.stargazers_count,
             sender: sender?.login,
             sender_url: sender?.html_url,
@@ -287,6 +301,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: forkee?.full_name,
             url: forkee?.html_url,
             fork_name: forkee?.full_name,
@@ -310,6 +325,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: run?.name,
             url: run?.html_url,
             workflow_name: run?.name,
@@ -336,6 +352,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: job?.name,
             url: job?.html_url,
             workflow_job_name: job?.name,
@@ -361,6 +378,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: run?.name,
             url: run?.html_url,
             check_name: run?.name,
@@ -386,6 +404,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             url: repo?.html_url,
             status: suite?.status,
             conclusion: suite?.conclusion, // success, failure, neutral, cancelled, etc.
@@ -411,6 +430,7 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
             repo: repo?.full_name,
             repo_url: repo?.html_url,
             repo_private: repo?.private || false,
+            repo_visibility: getRepoVisibility(repo),
             title: deployment?.task,
             url: deployStatus?.target_url || deployStatus?.log_url || null,
             environment: deployStatus?.environment || deployment?.environment,

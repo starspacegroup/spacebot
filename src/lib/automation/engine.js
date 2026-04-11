@@ -497,9 +497,11 @@ export function matchesFilters(event, filters, context = {}) {
 
       case "github_repo_visibility":
         if (filterValue && filterValue !== "any") {
-          const isPrivate = event.details?.repo_private === true;
-          if (filterValue === "public" && isPrivate) return false;
-          if (filterValue === "private" && !isPrivate) return false;
+          const visibility = normalize(
+            event.details?.repo_visibility ||
+              (event.details?.repo_private === true ? "private" : "public"),
+          );
+          if (visibility && visibility !== normalize(filterValue)) return false;
         }
         break;
 
