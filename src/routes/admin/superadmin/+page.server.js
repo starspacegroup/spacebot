@@ -17,6 +17,7 @@ import {
 	RESPONSE_TYPES,
 } from "$lib/db/commands.js";
 import { listIntegrations, createIntegrationToken, revokeIntegrationToken } from "$lib/db/integrations.js";
+import { usesIntegrationTokenAuth } from "$lib/integrations/registry.js";
 import { getFirstLoginDmEnabled } from "$lib/server/superadmin-notifications.js";
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
@@ -338,6 +339,7 @@ export async function load({ cookies, platform }) {
 		sum + (g.stats?.member_count || g.approximate_member_count || 0), 0);
 	const totalChannels = guildsWithStats.reduce((sum, g) => 
 		sum + (g.stats?.channel_count || 0), 0);
+	const externalIntegrations = integrations.filter(usesIntegrationTokenAuth);
 
 	return {
 		isSuperAdmin: true,
@@ -370,7 +372,7 @@ export async function load({ cookies, platform }) {
 		cronJobs,
 		cronJobHistory: cronJobData.history,
 		builtInCommands,
-		integrations,
+		integrations: externalIntegrations,
 		actionTypes: ACTION_TYPES,
 		responseTypes: RESPONSE_TYPES,
 		firstLoginDmEnabled,

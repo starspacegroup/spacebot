@@ -197,6 +197,15 @@ export async function fetchRemoteManifest(url) {
 }
 
 /**
+ * Whether an integration authenticates as an external service using
+ * SpaceBot-issued integration tokens.
+ */
+export function usesIntegrationTokenAuth(integration) {
+  const manifest = integration?.manifest || integration?.manifest_json;
+  return Boolean(integration?.manifest_url || manifest?.webhooks?.command_handler);
+}
+
+/**
  * Given an integration's manifest, return the Discord command payloads
  * that should be registered when the integration is enabled for a guild.
  */

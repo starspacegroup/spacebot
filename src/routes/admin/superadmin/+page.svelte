@@ -950,8 +950,8 @@
 	<section class="integrations-management-section">
 		<h2 class="section-title">
 			<span class="section-icon">🔌</span>
-			Integrations
-			<span class="section-subtitle">({integrations.length} registered)</span>
+			External Integrations
+			<span class="section-subtitle">({integrations.length} token-authenticated)</span>
 		</h2>
 		
 		{#if integrationSuccess}
@@ -969,7 +969,7 @@
 		{/if}
 		
 		{#if integrations.length === 0}
-			<p class="empty-text">No integrations registered yet.</p>
+			<p class="empty-text">No external integrations registered yet.</p>
 		{:else}
 			<div class="integrations-manage-grid">
 				{#each integrations as integration (integration.id)}
