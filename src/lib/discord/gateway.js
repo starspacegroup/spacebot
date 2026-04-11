@@ -25,9 +25,11 @@ import {
   PermissionFlagsBits,
 } from "discord.js";
 import { log } from "../log.js";
+import { buildLiveVoiceSnapshot } from "../db/live-voice.js";
 import { generateChatResponse, isAIEnabled } from "../ai/chat.js";
 import { resolveTargetUser } from "../automation/engine.js";
 import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-delivery.js";
+import { verifyLiveUpdateAccess } from "../live-updates.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || process.env.APP_URL || "http://localhost:4269";
@@ -54,6 +56,56 @@ let gatewayLogFlushInFlight = false;
 let gatewayConsoleCaptureInstalled = false;
 let lastVoiceSessionReconcileAt = 0;
 let voiceSessionReconcileInFlight = false;
+const liveUpdateClientsByGuild = new Map();
+
+function getLiveUpdateSecret() {
+  return process.env.INTERNAL_API_KEY || process.env.DISCORD_BOT_TOKEN || "";
+}
+
+function writeSseEvent(res, eventName, payload) {
+  res.write(`event: ${eventName}\n`);
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function registerLiveUpdateClient(guildId, res) {
+  if (!liveUpdateClientsByGuild.has(guildId)) {
+    liveUpdateClientsByGuild.set(guildId, new Set());
+  }
+
+  liveUpdateClientsByGuild.get(guildId).add(res);
+}
+
+function unregisterLiveUpdateClient(guildId, res) {
+  const clients = liveUpdateClientsByGuild.get(guildId);
+  if (!clients) {
+    return;
+  }
+
+  clients.delete(res);
+  if (clients.size === 0) {
+    liveUpdateClientsByGuild.delete(guildId);
+  }
+}
+
+function broadcastLiveUpdate(guildId, eventName, payload) {
+  const clients = liveUpdateClientsByGuild.get(guildId);
+  if (!clients || clients.size === 0) {
+    return;
+  }
+
+  for (const client of [...clients]) {
+    try {
+      writeSseEvent(client, eventName, payload);
+    } catch (error) {
+      unregisterLiveUpdateClient(guildId, client);
+      try {
+        client.end();
+      } catch {
+        // noop
+      }
+    }
+  }
+}
 
 function safeJsonStringify(value) {
   const seen = new WeakSet();
@@ -883,6 +935,26 @@ function getActiveVoiceSessionsForGuild(guild) {
   return activeSessions;
 }
 
+function buildGuildLiveVoiceSnapshot(guild) {
+  return buildLiveVoiceSnapshot(
+    getActiveVoiceSessionsForGuild(guild),
+    new Date().toISOString(),
+  );
+}
+
+function broadcastGuildLiveVoiceSnapshot(guild, reason) {
+  if (!guild) {
+    return;
+  }
+
+  broadcastLiveUpdate(guild.id, "voice_snapshot", {
+    type: "voice_snapshot",
+    guildId: guild.id,
+    reason,
+    data: buildGuildLiveVoiceSnapshot(guild),
+  });
+}
+
 async function postVoiceSessionSnapshot(guild, reason) {
   const response = await fetch(`${API_BASE}/api/voice/reconcile`, {
     method: "POST",
@@ -909,6 +981,8 @@ async function syncGuildLiveVoiceSnapshot(guild, reason) {
   if (!guild) {
     return;
   }
+
+  broadcastGuildLiveVoiceSnapshot(guild, reason);
 
   try {
     await postVoiceSessionSnapshot(guild, reason);
@@ -939,6 +1013,7 @@ async function reconcileVoiceSessionsViaAPI(client, reason) {
 
     for (const guild of client.guilds.cache.values()) {
       const result = await postVoiceSessionSnapshot(guild, reason);
+      broadcastGuildLiveVoiceSnapshot(guild, reason);
       guildsProcessed++;
       closedSessions += result.closedSessions || 0;
       createdSessions += result.createdSessions || 0;
@@ -3795,6 +3870,55 @@ let httpServer;
 function startHttpProxy() {
   httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${DEPLOY_PROXY_PORT}`);
+
+    const liveUpdatesMatch = url.pathname.match(/^\/api\/admin\/(\d{17,20})\/live-updates\/stream$/);
+    if (req.method === "GET" && liveUpdatesMatch) {
+      const guildId = liveUpdatesMatch[1];
+      const userId = url.searchParams.get("user") || "";
+      const expiresAt = url.searchParams.get("exp") || "";
+      const signature = url.searchParams.get("sig") || "";
+      const secret = getLiveUpdateSecret();
+
+      const authorized = await verifyLiveUpdateAccess(guildId, userId, expiresAt, signature, secret);
+      if (!authorized) {
+        res.writeHead(401, { "Content-Type": "text/plain" });
+        res.end("Unauthorized");
+        return;
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      res.write(": connected\n\n");
+
+      registerLiveUpdateClient(guildId, res);
+
+      const guild = discordClient?.guilds?.cache?.get(guildId);
+      writeSseEvent(res, "voice_snapshot", {
+        type: "voice_snapshot",
+        guildId,
+        reason: "initial_connect",
+        data: guild ? buildGuildLiveVoiceSnapshot(guild) : buildLiveVoiceSnapshot([], new Date().toISOString()),
+      });
+
+      const heartbeat = setInterval(() => {
+        try {
+          res.write(": heartbeat\n\n");
+        } catch {
+          clearInterval(heartbeat);
+          unregisterLiveUpdateClient(guildId, res);
+        }
+      }, 30000);
+
+      req.on("close", () => {
+        clearInterval(heartbeat);
+        unregisterLiveUpdateClient(guildId, res);
+      });
+      return;
+    }
 
     if (url.pathname === "/deploy" && req.method === "POST") {
       const proxyReq = http.request(

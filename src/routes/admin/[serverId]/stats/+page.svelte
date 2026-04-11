@@ -8,6 +8,7 @@
 	const selectedPeriod = $derived(data.selectedPeriod || '30d');
 	const selectedPeriodLabel = $derived(data.selectedPeriodLabel || '30 Days');
 	const LIVE_VOICE_POLL_MS = 15000;
+	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
 
 	function normalizeLiveVoiceSnapshot(snapshot) {
 		return {
@@ -24,6 +25,7 @@
 	let liveVoiceSnapshot = $state(normalizeLiveVoiceSnapshot());
 	let liveVoiceRefreshing = $state(false);
 	let liveVoiceRefreshError = $state('');
+	let liveVoiceStreamConnected = $state(false);
 
 	$effect(() => {
 		liveVoiceSnapshot = initialLiveVoiceSnapshot;
@@ -34,6 +36,7 @@
 	}
 
 	async function refreshLiveVoiceSnapshot({ silent = false } = {}) {
+		if (liveVoiceStreamConnected && silent) return;
 		if (liveVoiceRefreshing) return;
 
 		liveVoiceRefreshing = true;
@@ -65,13 +68,46 @@
 	}
 
 	onMount(() => {
+		let stream;
+
+		if (liveUpdatesAuth?.signature && liveUpdatesAuth?.userId && liveUpdatesAuth?.expiresAt) {
+			const streamUrl = new URL(`/api/admin/${data.serverId}/live-updates/stream`, window.location.origin);
+			streamUrl.searchParams.set('user', liveUpdatesAuth.userId);
+			streamUrl.searchParams.set('exp', String(liveUpdatesAuth.expiresAt));
+			streamUrl.searchParams.set('sig', liveUpdatesAuth.signature);
+
+			stream = new EventSource(streamUrl);
+			stream.addEventListener('open', () => {
+				liveVoiceStreamConnected = true;
+				liveVoiceRefreshError = '';
+			});
+
+			stream.addEventListener('voice_snapshot', (event) => {
+				try {
+					const payload = JSON.parse(event.data);
+					liveVoiceSnapshot = normalizeLiveVoiceSnapshot(payload?.data || payload);
+					liveVoiceStreamConnected = true;
+					liveVoiceRefreshError = '';
+				} catch (error) {
+					console.warn('[Stats] Invalid live voice event payload', error);
+				}
+			});
+
+			stream.addEventListener('error', () => {
+				liveVoiceStreamConnected = false;
+			});
+		}
+
 		refreshLiveVoiceSnapshot({ silent: true });
 
 		const intervalId = setInterval(() => {
 			refreshLiveVoiceSnapshot({ silent: true });
 		}, LIVE_VOICE_POLL_MS);
 
-		return () => clearInterval(intervalId);
+		return () => {
+			clearInterval(intervalId);
+			stream?.close();
+		};
 	});
 	
 	// Master toggle for all bot visibility

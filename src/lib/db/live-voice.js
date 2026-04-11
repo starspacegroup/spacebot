@@ -1,5 +1,87 @@
 import { log } from "$lib/log.js";
 
+function getMemberValue(member, camelKey, snakeKey, fallback = null) {
+  if (member?.[camelKey] !== undefined && member?.[camelKey] !== null) {
+    return member[camelKey];
+  }
+  if (member?.[snakeKey] !== undefined && member?.[snakeKey] !== null) {
+    return member[snakeKey];
+  }
+  return fallback;
+}
+
+function getMemberBoolean(member, camelKey, snakeKey) {
+  return Boolean(getMemberValue(member, camelKey, snakeKey, false));
+}
+
+export function buildLiveVoiceSnapshot(members = [], updatedAtOverride = null) {
+  const channelsById = new Map();
+  let activeCameras = 0;
+  let activeStreams = 0;
+  let updatedAt = updatedAtOverride;
+
+  for (const row of members) {
+    const channelId = getMemberValue(row, "channelId", "channel_id");
+    const userId = getMemberValue(row, "userId", "user_id");
+    if (!channelId || !userId) {
+      continue;
+    }
+
+    if (!channelsById.has(channelId)) {
+      channelsById.set(channelId, {
+        channelId,
+        channelName: getMemberValue(row, "channelName", "channel_name", "Unknown Channel") || "Unknown Channel",
+        members: [],
+      });
+    }
+
+    const member = {
+      userId,
+      userName: getMemberValue(row, "userName", "user_name", "Unknown User") || "Unknown User",
+      displayName: getMemberValue(row, "displayName", "display_name") || getMemberValue(row, "userName", "user_name", "Unknown User") || "Unknown User",
+      avatarUrl: getMemberValue(row, "avatarUrl", "avatar_url"),
+      selfMute: getMemberBoolean(row, "selfMute", "self_mute"),
+      selfDeaf: getMemberBoolean(row, "selfDeaf", "self_deaf"),
+      serverMute: getMemberBoolean(row, "serverMute", "server_mute"),
+      serverDeaf: getMemberBoolean(row, "serverDeaf", "server_deaf"),
+      streaming: getMemberBoolean(row, "streaming", "streaming"),
+      selfVideo: getMemberBoolean(row, "selfVideo", "self_video"),
+      suppress: getMemberBoolean(row, "suppress", "suppress"),
+    };
+
+    if (member.selfVideo) activeCameras++;
+    if (member.streaming) activeStreams++;
+
+    const rowUpdatedAt = getMemberValue(row, "updatedAt", "updated_at");
+    if (!updatedAt || (rowUpdatedAt && rowUpdatedAt > updatedAt)) {
+      updatedAt = rowUpdatedAt;
+    }
+
+    channelsById.get(channelId).members.push(member);
+  }
+
+  const channels = [...channelsById.values()]
+    .map((channel) => ({
+      ...channel,
+      memberCount: channel.members.length,
+    }))
+    .sort((left, right) => {
+      if (right.memberCount !== left.memberCount) {
+        return right.memberCount - left.memberCount;
+      }
+      return left.channelName.localeCompare(right.channelName);
+    });
+
+  return {
+    channels,
+    totalUsers: channels.reduce((sum, channel) => sum + channel.memberCount, 0),
+    totalChannels: channels.length,
+    activeCameras,
+    activeStreams,
+    updatedAt: updatedAt || null,
+  };
+}
+
 function normalizeMemberState(member = {}) {
   return {
     guild_id: String(member.guild_id),
@@ -151,64 +233,7 @@ export async function getLiveVoiceChannels(db, guildId) {
       WHERE guild_id = ?
       ORDER BY channel_name COLLATE NOCASE ASC, display_name COLLATE NOCASE ASC, user_name COLLATE NOCASE ASC
     `).bind(guildId).all();
-
-    const channelsById = new Map();
-    let activeCameras = 0;
-    let activeStreams = 0;
-    let updatedAt = null;
-
-    for (const row of result.results || []) {
-      if (!channelsById.has(row.channel_id)) {
-        channelsById.set(row.channel_id, {
-          channelId: row.channel_id,
-          channelName: row.channel_name || "Unknown Channel",
-          members: [],
-        });
-      }
-
-      const member = {
-        userId: row.user_id,
-        userName: row.user_name || "Unknown User",
-        displayName: row.display_name || row.user_name || "Unknown User",
-        avatarUrl: row.avatar_url || null,
-        selfMute: Boolean(row.self_mute),
-        selfDeaf: Boolean(row.self_deaf),
-        serverMute: Boolean(row.server_mute),
-        serverDeaf: Boolean(row.server_deaf),
-        streaming: Boolean(row.streaming),
-        selfVideo: Boolean(row.self_video),
-        suppress: Boolean(row.suppress),
-      };
-
-      if (member.selfVideo) activeCameras++;
-      if (member.streaming) activeStreams++;
-      if (!updatedAt || row.updated_at > updatedAt) {
-        updatedAt = row.updated_at;
-      }
-
-      channelsById.get(row.channel_id).members.push(member);
-    }
-
-    const channels = [...channelsById.values()]
-      .map((channel) => ({
-        ...channel,
-        memberCount: channel.members.length,
-      }))
-      .sort((left, right) => {
-        if (right.memberCount !== left.memberCount) {
-          return right.memberCount - left.memberCount;
-        }
-        return left.channelName.localeCompare(right.channelName);
-      });
-
-    return {
-      channels,
-      totalUsers: channels.reduce((sum, channel) => sum + channel.memberCount, 0),
-      totalChannels: channels.length,
-      activeCameras,
-      activeStreams,
-      updatedAt,
-    };
+    return buildLiveVoiceSnapshot(result.results || []);
   } catch (error) {
     log.error("[LiveVoice] Failed to fetch snapshot:", error);
     return {

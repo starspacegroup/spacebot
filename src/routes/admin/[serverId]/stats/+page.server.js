@@ -29,9 +29,17 @@ import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { getRolesFromCache } from "$lib/db/guild-cache.js";
 import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
+import {
+  LIVE_UPDATE_TOKEN_TTL_SECONDS,
+  signLiveUpdateAccess,
+} from "$lib/live-updates.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 
 const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
+
+function getEnv(platform, name) {
+  return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
+}
 
 function buildPeriodOptions(retentionDays) {
   const allowedDays = retentionDays === null || retentionDays === undefined
@@ -137,6 +145,7 @@ export async function load({ params, cookies, platform, parent, url }) {
   let topScreenshareUsers = [];
   let guildMetadata = null;
   let cachedRoles = [];
+  let liveUpdatesAuth = null;
   let liveVoiceSnapshot = {
     channels: [],
     totalUsers: 0,
@@ -229,6 +238,17 @@ export async function load({ params, cookies, platform, parent, url }) {
     }
   }
 
+  const liveUpdateSecret = getEnv(platform, "INTERNAL_API_KEY") || getEnv(platform, "DISCORD_BOT_TOKEN");
+  const liveUpdateUserId = userId || parentData.user?.id;
+  if (liveUpdateSecret && liveUpdateUserId) {
+    const expiresAt = Math.floor(Date.now() / 1000) + LIVE_UPDATE_TOKEN_TTL_SECONDS;
+    liveUpdatesAuth = {
+      userId: liveUpdateUserId,
+      expiresAt,
+      signature: await signLiveUpdateAccess(serverId, liveUpdateUserId, expiresAt, liveUpdateSecret),
+    };
+  }
+
   return {
     serverId,
     guild,
@@ -248,6 +268,7 @@ export async function load({ params, cookies, platform, parent, url }) {
     topScreenshareUsers,
     guildMetadata,
     cachedRoles,
+    liveUpdatesAuth,
     liveVoiceSnapshot,
     plan,
     statsRetentionDays,
