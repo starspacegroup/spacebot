@@ -56,4 +56,15 @@ describe('GitHub visibility handling', () => {
     expect(matchesFilters(event, { github_repo_visibility: 'private' })).toBe(true);
     expect(matchesFilters(event, { github_repo_visibility: 'public' })).toBe(false);
   });
+
+  it('treats github repo filter value any as no filter', () => {
+    const event = {
+      event_type: 'GITHUB_PUSH',
+      details: {
+        repo: 'owner/repo',
+      },
+    };
+
+    expect(matchesFilters(event, { github_repo: 'any' })).toBe(true);
+  });
 });

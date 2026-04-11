@@ -464,7 +464,7 @@ export function matchesFilters(event, filters, context = {}) {
 
       // GitHub-specific filters
       case "github_repo":
-        if (filterValue && event.details?.repo) {
+        if (filterValue && normalize(filterValue) !== "any" && event.details?.repo) {
           if (normalize(event.details.repo) !== normalize(filterValue)) return false;
         }
         break;

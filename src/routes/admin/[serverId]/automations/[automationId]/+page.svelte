@@ -602,7 +602,7 @@
 									id="filter_{filterKey}" 
 									name="filter.{filterKey}" 
 									placeholder={filterInfo.description}
-									value={automation.trigger_filters?.[filterKey] || ''}
+									value={automation.trigger_filters?.[filterKey] || (filterKey === 'github_repo' ? 'any' : '')}
 								/>
 							{/if}
 						</div>

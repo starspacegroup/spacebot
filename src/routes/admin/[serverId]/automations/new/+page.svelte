@@ -540,6 +540,7 @@
 									id="filter_{filterKey}" 
 									name="filter.{filterKey}" 
 									placeholder={filterInfo.description}
+									value={filterKey === 'github_repo' ? 'any' : ''}
 								/>
 							{/if}
 						</div>
