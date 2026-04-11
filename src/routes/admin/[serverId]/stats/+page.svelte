@@ -95,6 +95,9 @@
 
 			stream.addEventListener('error', () => {
 				liveVoiceStreamConnected = false;
+				if (!liveVoiceSnapshot.updatedAt) {
+					liveVoiceRefreshError = 'Live stream unavailable, using refresh fallback.';
+				}
 			});
 		}
 
