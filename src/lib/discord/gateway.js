@@ -44,6 +44,7 @@ const GATEWAY_LOG_CONFIG_SYNC_MS = 5_000;
 const GATEWAY_LOG_FLUSH_MS = 1_500;
 const GATEWAY_LOG_BATCH_SIZE = 50;
 const GATEWAY_LOG_MAX_QUEUE = 500;
+const VOICE_SESSION_RECONCILE_COOLDOWN_MS = 60_000;
 
 let gatewayLogCaptureEnabled = false;
 let gatewayLogQueue = [];
@@ -51,6 +52,8 @@ let gatewayLogFlushTimer = null;
 let gatewayLogConfigPoll = null;
 let gatewayLogFlushInFlight = false;
 let gatewayConsoleCaptureInstalled = false;
+let lastVoiceSessionReconcileAt = 0;
+let voiceSessionReconcileInFlight = false;
 
 function safeJsonStringify(value) {
   const seen = new WeakSet();
@@ -841,6 +844,95 @@ async function logEventViaAPI(event) {
 
   // Process automations for this event
   await processEventAutomations(event);
+}
+
+function getActiveVoiceSessionsForGuild(guild) {
+  const activeSessions = [];
+  const seenUserIds = new Set();
+
+  for (const voiceState of guild.voiceStates.cache.values()) {
+    if (!voiceState.channelId) {
+      continue;
+    }
+
+    const userId = voiceState.id || voiceState.member?.id;
+    if (!userId || seenUserIds.has(userId)) {
+      continue;
+    }
+
+    seenUserIds.add(userId);
+    activeSessions.push({
+      user_id: userId,
+      channel_id: voiceState.channelId,
+      channel_name: voiceState.channel?.name || null,
+    });
+  }
+
+  return activeSessions;
+}
+
+async function postVoiceSessionSnapshot(guild, reason) {
+  const response = await fetch(`${API_BASE}/api/voice/reconcile`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+    },
+    body: JSON.stringify({
+      guild_id: guild.id,
+      reason,
+      active_sessions: getActiveVoiceSessionsForGuild(guild),
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Voice reconciliation failed for guild ${guild.id}: ${response.status} ${errorText}`);
+  }
+
+  return response.json();
+}
+
+async function reconcileVoiceSessionsViaAPI(client, reason) {
+  const now = Date.now();
+  if (voiceSessionReconcileInFlight) {
+    return;
+  }
+
+  if (now - lastVoiceSessionReconcileAt < VOICE_SESSION_RECONCILE_COOLDOWN_MS) {
+    log.debug(`[VoiceSessions] Skipping reconciliation for ${reason}; cooldown active`);
+    return;
+  }
+
+  voiceSessionReconcileInFlight = true;
+  lastVoiceSessionReconcileAt = now;
+
+  try {
+    let guildsProcessed = 0;
+    let closedSessions = 0;
+    let createdSessions = 0;
+    let duplicateSessionsClosed = 0;
+
+    for (const guild of client.guilds.cache.values()) {
+      const result = await postVoiceSessionSnapshot(guild, reason);
+      guildsProcessed++;
+      closedSessions += result.closedSessions || 0;
+      createdSessions += result.createdSessions || 0;
+      duplicateSessionsClosed += result.duplicateSessionsClosed || 0;
+    }
+
+    if (closedSessions > 0 || createdSessions > 0 || duplicateSessionsClosed > 0) {
+      log.info(
+        `[VoiceSessions] Reconciled ${guildsProcessed} guilds after ${reason}: closed=${closedSessions}, created=${createdSessions}, duplicates_closed=${duplicateSessionsClosed}`
+      );
+    } else {
+      log.debug(`[VoiceSessions] Reconciled ${guildsProcessed} guilds after ${reason} with no changes`);
+    }
+  } catch (error) {
+    log.warn(`[VoiceSessions] Reconciliation after ${reason} failed:`, error.message);
+  } finally {
+    voiceSessionReconcileInFlight = false;
+  }
 }
 
 /**
@@ -3253,6 +3345,10 @@ function setupEventHandlers(client, logFn) {
       }
     }
 
+    reconcileVoiceSessionsViaAPI(c, "client_ready").catch((error) => {
+      log.warn("[VoiceSessions] ClientReady reconciliation failed:", error.message);
+    });
+
     // Start gateway benchmark reporting (every 60 seconds)
     startBenchmarkReporting(c);
   });
@@ -3265,6 +3361,10 @@ function setupEventHandlers(client, logFn) {
 
   client.on(Events.ShardResume, (shardId, replayedEvents) => {
     log.info(`[Gateway] Shard ${shardId} resumed (${replayedEvents} replayed events)`);
+
+    reconcileVoiceSessionsViaAPI(client, `shard_resume:${shardId}`).catch((error) => {
+      log.warn(`[VoiceSessions] Shard ${shardId} reconciliation failed:`, error.message);
+    });
   });
 
   client.on(Events.ShardDisconnect, (closeEvent, shardId) => {

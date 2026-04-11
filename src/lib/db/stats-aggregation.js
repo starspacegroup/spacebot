@@ -7,6 +7,14 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+function toSqlDateTime(value = new Date()) {
+  if (typeof value === "string") {
+    return value.replace("T", " ").replace(/\.\d+Z$/, "").replace(/Z$/, "");
+  }
+
+  return value.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function getPeriodRange(period, fallbackDays = 30) {
   if (period === "24h") {
     return { days: 1, timeRange: "-1 day" };
@@ -70,6 +78,148 @@ async function updateCheckpoint(db, guildId, checkpointType, lastEventId) {
   `).bind(guildId, checkpointType, lastEventId, lastEventId).run();
 }
 
+async function getOpenVoiceSessions(db, guildId, userId = null) {
+  const sql = userId
+    ? `
+      SELECT id, guild_id, user_id, channel_id, channel_name, joined_at, join_event_id
+      FROM voice_sessions
+      WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
+      ORDER BY joined_at ASC, id ASC
+    `
+    : `
+      SELECT id, guild_id, user_id, channel_id, channel_name, joined_at, join_event_id
+      FROM voice_sessions
+      WHERE guild_id = ? AND left_at IS NULL
+      ORDER BY user_id ASC, joined_at ASC, id ASC
+    `;
+
+  const result = userId
+    ? await db.prepare(sql).bind(guildId, userId).all()
+    : await db.prepare(sql).bind(guildId).all();
+
+  return result.results || [];
+}
+
+async function closeVoiceSessions(db, sessions, closedAt, leaveEventId = null) {
+  if (!sessions.length) {
+    return 0;
+  }
+
+  const closedAtSql = toSqlDateTime(closedAt);
+
+  for (const session of sessions) {
+    await db.prepare(`
+      UPDATE voice_sessions
+      SET
+        left_at = ?,
+        leave_event_id = ?,
+        duration_seconds = MAX(CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER), 0)
+      WHERE id = ?
+    `).bind(closedAtSql, leaveEventId, closedAtSql, session.id).run();
+  }
+
+  return sessions.length;
+}
+
+function buildActiveVoiceStateMap(activeVoiceStates = []) {
+  const activeByUser = new Map();
+
+  for (const state of activeVoiceStates) {
+    if (!state?.user_id || !state?.channel_id) {
+      continue;
+    }
+
+    if (!activeByUser.has(state.user_id)) {
+      activeByUser.set(state.user_id, {
+        user_id: state.user_id,
+        channel_id: state.channel_id,
+        channel_name: state.channel_name || null,
+      });
+    }
+  }
+
+  return activeByUser;
+}
+
+/**
+ * Reconcile open voice sessions against the current live voice state snapshot.
+ * This repairs stale open rows after gateway reconnects or missed voice events.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {Array<{user_id: string, channel_id: string, channel_name?: string|null}>} activeVoiceStates
+ * @param {string|Date} [observedAt]
+ * @returns {Promise<{closedSessions: number, createdSessions: number, duplicateSessionsClosed: number}>}
+ */
+export async function reconcileVoiceSessions(db, guildId, activeVoiceStates = [], observedAt = new Date()) {
+  if (!db || !guildId) {
+    return { closedSessions: 0, createdSessions: 0, duplicateSessionsClosed: 0 };
+  }
+
+  const observedAtSql = toSqlDateTime(observedAt);
+  const activeByUser = buildActiveVoiceStateMap(activeVoiceStates);
+  const openSessions = await getOpenVoiceSessions(db, guildId);
+  const openByUser = new Map();
+
+  for (const session of openSessions) {
+    if (!openByUser.has(session.user_id)) {
+      openByUser.set(session.user_id, []);
+    }
+    openByUser.get(session.user_id).push(session);
+  }
+
+  let closedSessions = 0;
+  let createdSessions = 0;
+  let duplicateSessionsClosed = 0;
+
+  for (const [userId, sessions] of openByUser.entries()) {
+    const activeState = activeByUser.get(userId);
+
+    if (!activeState) {
+      closedSessions += await closeVoiceSessions(db, sessions, observedAtSql);
+      continue;
+    }
+
+    const matchingSession = sessions.find((session) => session.channel_id === activeState.channel_id);
+    if (matchingSession) {
+      const duplicates = sessions.filter((session) => session.id !== matchingSession.id);
+      duplicateSessionsClosed += await closeVoiceSessions(db, duplicates, observedAtSql);
+      activeByUser.delete(userId);
+      continue;
+    }
+
+    closedSessions += await closeVoiceSessions(db, sessions, observedAtSql);
+
+    await db.prepare(`
+      INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
+      VALUES (?, ?, ?, ?, ?, NULL)
+    `).bind(
+      guildId,
+      activeState.user_id,
+      activeState.channel_id,
+      activeState.channel_name,
+      observedAtSql
+    ).run();
+    createdSessions++;
+    activeByUser.delete(userId);
+  }
+
+  for (const activeState of activeByUser.values()) {
+    await db.prepare(`
+      INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
+      VALUES (?, ?, ?, ?, ?, NULL)
+    `).bind(
+      guildId,
+      activeState.user_id,
+      activeState.channel_id,
+      activeState.channel_name,
+      observedAtSql
+    ).run();
+    createdSessions++;
+  }
+
+  return { closedSessions, createdSessions, duplicateSessionsClosed };
+}
+
 /**
  * Process voice sessions from VOICE_JOIN/VOICE_LEAVE events
  * Creates session records for accurate time tracking
@@ -77,7 +227,7 @@ async function updateCheckpoint(db, guildId, checkpointType, lastEventId) {
  * @param {string} guildId
  * @returns {Promise<{processed: number, sessionsCreated: number, sessionsClosed: number}>}
  */
-async function processVoiceSessions(db, guildId) {
+export async function processVoiceSessions(db, guildId) {
   const checkpoint = await getCheckpoint(db, guildId, "voice_sessions");
   
   // Get unprocessed voice events
@@ -103,7 +253,31 @@ async function processVoiceSessions(db, guildId) {
     lastEventId = event.id;
 
     if (event.event_type === "VOICE_JOIN") {
-      // Create a new session
+      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      const matchingSession = openSessions.find((session) => session.channel_id === event.channel_id);
+
+      if (matchingSession) {
+        const staleSessions = openSessions.filter((session) => session.id !== matchingSession.id);
+        if (staleSessions.length > 0) {
+          sessionsClosed += await closeVoiceSessions(db, staleSessions, event.created_at);
+          log.warn(
+            `[VoiceSessions] Closed ${staleSessions.length} stale duplicate session(s) for ${event.actor_id} in guild ${guildId} on duplicate join`
+          );
+        }
+
+        log.warn(
+          `[VoiceSessions] Ignoring duplicate VOICE_JOIN for ${event.actor_id} in guild ${guildId} channel ${event.channel_id}`
+        );
+        continue;
+      }
+
+      if (openSessions.length > 0) {
+        sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
+        log.warn(
+          `[VoiceSessions] Auto-closed ${openSessions.length} stale open session(s) for ${event.actor_id} in guild ${guildId} before new join`
+        );
+      }
+
       await db.prepare(`
         INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -117,48 +291,18 @@ async function processVoiceSessions(db, guildId) {
       ).run();
       sessionsCreated++;
     } else if (event.event_type === "VOICE_LEAVE") {
-      // Close the most recent open session for this user
-      const result = await db.prepare(`
-        UPDATE voice_sessions
-        SET 
-          left_at = ?,
-          leave_event_id = ?,
-          duration_seconds = CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER)
-        WHERE guild_id = ? 
-          AND user_id = ? 
-          AND left_at IS NULL
-          AND id = (
-            SELECT id FROM voice_sessions 
-            WHERE guild_id = ? AND user_id = ? AND left_at IS NULL
-            ORDER BY joined_at DESC
-            LIMIT 1
-          )
-      `).bind(
-        event.created_at,
-        event.id,
-        event.created_at,
-        guildId,
-        event.actor_id,
-        guildId,
-        event.actor_id
-      ).run();
-      
-      if (result.meta?.changes > 0) {
-        sessionsClosed++;
+      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      if (!openSessions.length) {
+        log.warn(
+          `[VoiceSessions] Received VOICE_LEAVE with no open session for ${event.actor_id} in guild ${guildId}`
+        );
+        continue;
       }
+
+      sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at, event.id);
     } else if (event.event_type === "VOICE_MOVE") {
-      // Close old session and create new one
-      // First close the existing session
-      await db.prepare(`
-        UPDATE voice_sessions
-        SET 
-          left_at = ?,
-          duration_seconds = CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER)
-        WHERE guild_id = ? 
-          AND user_id = ? 
-          AND left_at IS NULL
-      `).bind(event.created_at, event.created_at, guildId, event.actor_id).run();
-      sessionsClosed++;
+      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
 
       // Then create new session in new channel
       await db.prepare(`
