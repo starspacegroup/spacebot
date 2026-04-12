@@ -67,4 +67,27 @@ describe('GitHub visibility handling', () => {
 
     expect(matchesFilters(event, { github_repo: 'any' })).toBe(true);
   });
+
+  it('treats github repo filter value ALL as no filter', () => {
+    const event = {
+      event_type: 'GITHUB_PUSH',
+      details: {
+        repo: 'owner/repo',
+      },
+    };
+
+    expect(matchesFilters(event, { github_repo: 'ALL' })).toBe(true);
+  });
+
+  it('matches when repository is in a comma-separated github_repo filter list', () => {
+    const event = {
+      event_type: 'GITHUB_PUSH',
+      details: {
+        repo: 'starspacegroup/spacebot',
+      },
+    };
+
+    expect(matchesFilters(event, { github_repo: 'owner/repo,starspacegroup/spacebot' })).toBe(true);
+    expect(matchesFilters(event, { github_repo: 'owner/repo,another/repo' })).toBe(false);
+  });
 });

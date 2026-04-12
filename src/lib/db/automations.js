@@ -622,7 +622,7 @@ export const FILTER_TYPES = {
   github_repo: {
     type: "text",
     label: "Repository",
-    description: "Filter by repository name (e.g. owner/repo)",
+    description: "Filter by one or more repositories (e.g. owner/repo)",
     applicableEvents: ["GITHUB_"],
   },
   github_action: {

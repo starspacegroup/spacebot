@@ -162,6 +162,41 @@ export async function getLogs(db, guildId, options = {}) {
 }
 
 /**
+ * Get distinct GitHub repositories seen for a guild.
+ * Uses event log payloads to keep options aligned with real incoming webhook traffic.
+ *
+ * @param {D1Database} db - D1 database binding
+ * @param {string} guildId - Guild ID
+ * @param {number} [limit=200] - Max repositories to return
+ * @returns {Promise<string[]>}
+ */
+export async function getGuildGitHubRepositories(db, guildId, limit = 200) {
+  if (!db || !guildId) return [];
+
+  try {
+    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 200;
+    const { results } = await db.prepare(`
+      SELECT DISTINCT TRIM(json_extract(details, '$.repo')) AS repo
+      FROM event_logs
+      WHERE guild_id = ?
+        AND event_category = 'github'
+        AND details IS NOT NULL
+        AND json_extract(details, '$.repo') IS NOT NULL
+        AND TRIM(json_extract(details, '$.repo')) != ''
+      ORDER BY LOWER(repo) ASC
+      LIMIT ?
+    `).bind(guildId, safeLimit).all();
+
+    return (results || [])
+      .map((row) => row.repo)
+      .filter((repo) => typeof repo === 'string' && repo.length > 0);
+  } catch (error) {
+    log.error('Failed to fetch GitHub repositories for guild:', error);
+    return [];
+  }
+}
+
+/**
  * Get log statistics for a guild
  * @param {D1Database} db - D1 database binding
  * @param {string} guildId - Guild ID

@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import RepositorySelector from '$lib/components/RepositorySelector.svelte';
 	import UserSelector from '$lib/components/UserSelector.svelte';
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
@@ -596,13 +597,27 @@
 										<option value={option.value} selected={option.value === (automation.trigger_filters?.[filterKey] || filterInfo.default)}>{option.label}</option>
 									{/each}
 								</select>
+							{:else if filterKey === 'github_repo'}
+								<RepositorySelector
+									repositories={data.githubRepositories || []}
+									name="filter.{filterKey}"
+									placeholder={filterInfo.description}
+									multiple={true}
+									showAnyOption={true}
+									value={
+										!automation.trigger_filters?.[filterKey] ||
+										automation.trigger_filters?.[filterKey].toLowerCase() === 'any'
+											? 'ALL'
+											: automation.trigger_filters?.[filterKey]
+									}
+								/>
 							{:else}
 								<input 
 									type={filterInfo.type === 'number' ? 'number' : 'text'} 
 									id="filter_{filterKey}" 
 									name="filter.{filterKey}" 
 									placeholder={filterInfo.description}
-									value={automation.trigger_filters?.[filterKey] || (filterKey === 'github_repo' ? 'any' : '')}
+									value={automation.trigger_filters?.[filterKey] || ''}
 								/>
 							{/if}
 						</div>

@@ -8,7 +8,7 @@ import {
   TEMPLATE_VARIABLES,
 } from "$lib/db/automations.js";
 import { getGuildWebhooks } from "$lib/db/webhooks.js";
-import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
+import { EVENT_CATEGORIES, EVENT_TYPES, getGuildGitHubRepositories, log } from "$lib/db/logger.js";
 import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -29,6 +29,7 @@ export async function load({ cookies, platform, parent, params }) {
   // Load webhooks for this guild
   const db = platform?.env?.DB;
   const webhooks = db ? await getGuildWebhooks(db, guildId) : [];
+  const githubRepositories = db ? await getGuildGitHubRepositories(db, guildId) : [];
   const enabledWebhooks = webhooks.filter(w => w.enabled).map(w => ({
     id: w.id,
     name: w.name,
@@ -45,6 +46,7 @@ export async function load({ cookies, platform, parent, params }) {
     templateVariables: TEMPLATE_VARIABLES,
     userSources: AUTOMATION_USER_SOURCES,
     webhooks: enabledWebhooks,
+    githubRepositories,
   };
 }
 

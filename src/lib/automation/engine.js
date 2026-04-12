@@ -282,7 +282,8 @@ export function matchesFilters(event, filters, context = {}) {
   const isAllSentinel = (value) => {
     if (value === undefined || value === null) return true;
     if (typeof value !== "string") return false;
-    return value.trim().toUpperCase() === "ALL";
+    const normalized = value.trim().toUpperCase();
+    return normalized === "ALL" || normalized === "ANY";
   };
 
   for (const [filterType, filterValue] of Object.entries(filters)) {
@@ -464,8 +465,15 @@ export function matchesFilters(event, filters, context = {}) {
 
       // GitHub-specific filters
       case "github_repo":
-        if (filterValue && normalize(filterValue) !== "any" && event.details?.repo) {
-          if (normalize(event.details.repo) !== normalize(filterValue)) return false;
+        if (filterValue && !isAllSentinel(filterValue) && event.details?.repo) {
+          const allowedRepositories = String(filterValue)
+            .split(",")
+            .map((repo) => normalize(repo))
+            .filter(Boolean);
+          if (allowedRepositories.length > 0) {
+            const actualRepository = normalize(event.details.repo);
+            if (!allowedRepositories.includes(actualRepository)) return false;
+          }
         }
         break;
 
