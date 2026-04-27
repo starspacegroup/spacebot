@@ -1,0 +1,47 @@
+import { json } from "@sveltejs/kit";
+import { revokeRunnerToken, createRunnerJob } from "$lib/db/local-runners.js";
+
+/** DELETE /api/account/runners/[id] — revoke a token */
+export async function DELETE({ params, cookies, platform }) {
+  const userId = cookies.get("discord_user_id");
+  if (!userId) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const db = platform?.env?.DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+
+  const tokenId = Number(params.id);
+  if (!tokenId) return json({ error: "Invalid ID" }, { status: 400 });
+
+  const result = await revokeRunnerToken(db, userId, tokenId);
+  if (!result.success) return json({ error: result.error }, { status: 400 });
+
+  return json({ success: true });
+}
+
+/** POST /api/account/runners/[id] — queue a job for a specific runner */
+export async function POST({ params, request, cookies, platform }) {
+  const userId = cookies.get("discord_user_id");
+  if (!userId) return json({ error: "Unauthorized" }, { status: 401 });
+
+  const db = platform?.env?.DB;
+  if (!db) return json({ error: "Database unavailable" }, { status: 503 });
+
+  const tokenId = Number(params.id);
+  if (!tokenId) return json({ error: "Invalid ID" }, { status: 400 });
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const result = await createRunnerJob(db, userId, tokenId, {
+    command: body?.command,
+    working_dir: body?.working_dir,
+    label: body?.label,
+  });
+
+  if (!result.success) return json({ error: result.error }, { status: 400 });
+  return json({ success: true, jobId: result.jobId }, { status: 201 });
+}

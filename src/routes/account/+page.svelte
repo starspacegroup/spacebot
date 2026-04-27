@@ -1,6 +1,7 @@
 <script>
 	import Toast from '$lib/components/Toast.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { untrack } from 'svelte';
 	
 	let { data } = $props();
 	
@@ -11,6 +12,144 @@
 	
 	// Active section for navigation
 	let activeSection = $state('profile');
+
+	// -------------------------------------------------------------------------
+	// Runner state
+	// -------------------------------------------------------------------------
+	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
+	let runnerJobs = $state(untrack(() => data.runnerJobs ?? []));
+
+	// Create-token form
+	let newRunnerName = $state('');
+	let creatingRunner = $state(false);
+	// Shown ONCE after creation – user must copy it before dismissing
+	let newRawToken = $state(null);
+	let newRawTokenCopied = $state(false);
+
+	// Dispatch-job form
+	let dispatchTokenId = $state(null); // which runner to dispatch to
+	let dispatchCommand = $state('');
+	let dispatchWorkDir = $state('');
+	let dispatchLabel = $state('');
+	let dispatching = $state(false);
+
+	/** Returns true if the runner checked in within the last 45 seconds */
+	function isRunnerOnline(token) {
+		if (!token.last_seen_at) return false;
+		const age = Date.now() - new Date(token.last_seen_at + 'Z').getTime();
+		return age < 45_000;
+	}
+
+	async function createRunner() {
+		if (!newRunnerName.trim()) return;
+		creatingRunner = true;
+		try {
+			const res = await fetch('/api/account/runners', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: newRunnerName.trim() }),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to create runner';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			runnerTokens = [body.token, ...runnerTokens];
+			newRawToken = body.rawToken;
+			newRawTokenCopied = false;
+			newRunnerName = '';
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		} finally {
+			creatingRunner = false;
+		}
+	}
+
+	async function revokeRunner(id) {
+		if (!confirm('Revoke this runner token? The runner will stop working immediately.')) return;
+		try {
+			const res = await fetch(`/api/account/runners/${id}`, { method: 'DELETE' });
+			if (!res.ok) {
+				const body = await res.json();
+				toastMessage = body.error || 'Failed to revoke runner';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			runnerTokens = runnerTokens.map(t => t.id === id ? { ...t, revoked: true } : t);
+			toastMessage = 'Runner revoked.';
+			toastSuccess = true;
+			showToast = true;
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		}
+	}
+
+	async function dispatchJob() {
+		if (!dispatchCommand.trim() || !dispatchTokenId) return;
+		dispatching = true;
+		try {
+			const res = await fetch(`/api/account/runners/${dispatchTokenId}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					command: dispatchCommand.trim(),
+					working_dir: dispatchWorkDir.trim() || undefined,
+					label: dispatchLabel.trim() || undefined,
+				}),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to queue job';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			toastMessage = `Job #${body.jobId} queued — runner will pick it up shortly.`;
+			toastSuccess = true;
+			showToast = true;
+			dispatchCommand = '';
+			dispatchWorkDir = '';
+			dispatchLabel = '';
+			dispatchTokenId = null;
+			// Refresh job list
+			const listRes = await fetch('/api/account/runners');
+			if (listRes.ok) {
+				const listBody = await listRes.json();
+				runnerJobs = listBody.jobs || runnerJobs;
+			}
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		} finally {
+			dispatching = false;
+		}
+	}
+
+	function copyRawToken() {
+		if (!newRawToken) return;
+		navigator.clipboard.writeText(newRawToken).then(() => {
+			newRawTokenCopied = true;
+		});
+	}
+
+	function formatJobStatus(status) {
+		switch (status) {
+			case 'pending': return { label: 'Pending', cls: 'badge-neutral' };
+			case 'running': return { label: 'Running', cls: 'badge-info' };
+			case 'completed': return { label: 'Done', cls: 'badge-success' };
+			case 'failed': return { label: 'Failed', cls: 'badge-danger' };
+			case 'canceled': return { label: 'Canceled', cls: 'badge-warning' };
+			default: return { label: status, cls: 'badge-neutral' };
+		}
+	}
 	
 	const dbUser = $derived(data.dbUser);
 	const user = $derived(data.user);
@@ -245,6 +384,14 @@
 		>
 			<span class="nav-icon">⚙️</span>
 			Settings
+		</button>
+		<button 
+			class="section-nav-item" 
+			class:active={activeSection === 'runners'}
+			onclick={() => scrollToSection('runners')}
+		>
+			<span class="nav-icon">🖥️</span>
+			Runners
 		</button>
 	</nav>
 	
@@ -541,6 +688,146 @@
 		{/if}
 	</section>
 	
+	<!-- Local Runners Section -->
+	<section id="section-runners" class="content-section">
+		<h2><span class="section-icon">🖥️</span> Local Runners</h2>
+
+		<p class="section-intro">
+			Local runners let you run shell commands and scripts on your own machine, triggered from
+			SpaceBot. Each runner authenticates with a secret token and polls for queued jobs.
+		</p>
+
+		<!-- Token creation -->
+		<div class="runner-create-row">
+			<input
+				class="input runner-name-input"
+				type="text"
+				placeholder="Runner name (e.g. Home Server)"
+				bind:value={newRunnerName}
+				onkeydown={(e) => e.key === 'Enter' && createRunner()}
+				disabled={creatingRunner}
+			/>
+			<button class="btn btn-primary btn-sm" onclick={createRunner} disabled={creatingRunner || !newRunnerName.trim()}>
+				{creatingRunner ? 'Creating…' : 'Create Runner'}
+			</button>
+		</div>
+
+		<!-- Show raw token once after creation -->
+		{#if newRawToken}
+			<div class="token-reveal">
+				<p class="token-reveal-warning">
+					⚠️ Copy this token now — it won't be shown again.
+				</p>
+				<div class="token-reveal-row">
+					<code class="token-reveal-value">{newRawToken}</code>
+					<button class="btn btn-outline btn-sm" onclick={copyRawToken}>
+						{newRawTokenCopied ? '✓ Copied' : 'Copy'}
+					</button>
+				</div>
+				<p class="token-reveal-hint">
+					Add it to your runner config file as <code>SPACEBOT_RUNNER_TOKEN</code>.
+				</p>
+				<button class="btn btn-sm btn-ghost" onclick={() => newRawToken = null}>Dismiss</button>
+			</div>
+		{/if}
+
+		<!-- Runners list -->
+		{#if runnerTokens.length === 0}
+			<div class="empty-state">
+				<span class="empty-icon">🖥️</span>
+				No runners yet. Create one above and run <code>bun run scripts/local-runner/index.ts</code> on your machine.
+			</div>
+		{:else}
+			<div class="runners-list">
+				{#each runnerTokens as t (t.id)}
+					<div class="runner-card" class:revoked={t.revoked}>
+						<div class="runner-card-header">
+							<div class="runner-identity">
+								<span class="runner-status-dot" class:online={!t.revoked && isRunnerOnline(t)}></span>
+								<span class="runner-name">{t.name}</span>
+								<code class="runner-prefix">{t.token_prefix}…</code>
+							</div>
+							<div class="runner-meta">
+								{#if t.revoked}
+									<span class="status-badge badge-danger">Revoked</span>
+								{:else if isRunnerOnline(t)}
+									<span class="status-badge badge-success">Online</span>
+								{:else}
+									<span class="status-badge badge-neutral">Offline</span>
+								{/if}
+								{#if t.last_seen_at}
+									<span class="runner-last-seen">Last seen {formatDate(t.last_seen_at)}</span>
+								{/if}
+								{#if !t.revoked}
+									<button class="btn btn-danger btn-sm" onclick={() => revokeRunner(t.id)}>Revoke</button>
+									<button class="btn btn-outline btn-sm" onclick={() => { dispatchTokenId = t.id; dispatchCommand = ''; }}>
+										Run Script
+									</button>
+								{/if}
+							</div>
+						</div>
+
+						<!-- Inline dispatch form for this runner -->
+						{#if dispatchTokenId === t.id}
+							<div class="dispatch-form">
+								<input
+									class="input"
+									type="text"
+									placeholder="Shell command (e.g. bash ~/scripts/deploy.sh)"
+									bind:value={dispatchCommand}
+								/>
+								<input
+									class="input"
+									type="text"
+									placeholder="Working directory (optional)"
+									bind:value={dispatchWorkDir}
+								/>
+								<input
+									class="input"
+									type="text"
+									placeholder="Label (optional)"
+									bind:value={dispatchLabel}
+								/>
+								<div class="dispatch-actions">
+									<button class="btn btn-primary btn-sm" onclick={dispatchJob} disabled={dispatching || !dispatchCommand.trim()}>
+										{dispatching ? 'Queuing…' : 'Queue Job'}
+									</button>
+									<button class="btn btn-ghost btn-sm" onclick={() => dispatchTokenId = null}>Cancel</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		{/if}
+
+		<!-- Job history -->
+		{#if runnerJobs.length > 0}
+			<div class="runner-jobs">
+				<h3>Recent Jobs</h3>
+				<div class="jobs-list">
+					{#each runnerJobs as job (job.id)}
+						{@const s = formatJobStatus(job.status)}
+						<div class="job-card">
+							<div class="job-header">
+								<span class="job-runner-name">{job.runner_name}</span>
+								<span class="status-badge {s.cls}">{s.label}</span>
+								{#if job.exit_code !== null}
+									<code class="job-exit-code">exit {job.exit_code}</code>
+								{/if}
+								<span class="job-time">{formatDate(job.created_at)}</span>
+							</div>
+							<code class="job-command">{job.label || job.command}</code>
+							{#if job.output}
+								<pre class="job-output">{job.output.length > 2000 ? job.output.slice(-2000) + '\n…(truncated)' : job.output}</pre>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</section>
+
 	<!-- Settings Section -->
 	<section id="section-settings" class="content-section">
 		<h2><span class="section-icon">⚙️</span> Settings</h2>
@@ -1531,5 +1818,263 @@
 		.detail-grid {
 			grid-template-columns: 1fr 1fr;
 		}
+	}
+
+	/* -------------------------------------------------------------------------
+	 * Local Runners Section
+	 * ----------------------------------------------------------------------- */
+
+	.section-intro {
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+		margin: 0 0 1.25rem;
+		line-height: 1.5;
+	}
+
+	.runner-create-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.runner-name-input {
+		flex: 1;
+	}
+
+	/* Token reveal banner */
+	.token-reveal {
+		background: hsla(38, 92%, 50%, 0.08);
+		border: 1px solid hsla(38, 92%, 50%, 0.3);
+		border-radius: var(--radius-md);
+		padding: 1rem 1.25rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.token-reveal-warning {
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-warning);
+		margin: 0 0 0.625rem;
+	}
+
+	.token-reveal-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.token-reveal-value {
+		flex: 1;
+		font-family: monospace;
+		font-size: 0.8125rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 0.375rem 0.625rem;
+		word-break: break-all;
+		color: var(--color-text);
+	}
+
+	.token-reveal-hint {
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+		margin: 0 0 0.625rem;
+	}
+
+	/* Runner card list */
+	.runners-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.runner-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.875rem 1rem;
+		transition: border-color var(--transition-fast);
+	}
+
+	.runner-card:hover {
+		border-color: var(--color-primary);
+	}
+
+	.runner-card.revoked {
+		opacity: 0.6;
+		border-color: var(--color-border);
+	}
+
+	.runner-card-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.runner-identity {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.runner-status-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+
+	.runner-status-dot.online {
+		background: var(--color-success);
+		box-shadow: 0 0 0 3px hsla(142, 71%, 45%, 0.2);
+	}
+
+	.runner-name {
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.runner-prefix {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		font-family: monospace;
+	}
+
+	.runner-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.runner-last-seen {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	/* Job dispatch form */
+	.dispatch-form {
+		margin-top: 0.875rem;
+		padding-top: 0.875rem;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.dispatch-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	/* Job history */
+	.runner-jobs h3 {
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--color-text);
+		margin: 0 0 0.75rem;
+	}
+
+	.jobs-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.job-card {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.75rem 1rem;
+	}
+
+	.job-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.375rem;
+	}
+
+	.job-runner-name {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+	}
+
+	.job-exit-code {
+		font-family: monospace;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.job-time {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin-left: auto;
+	}
+
+	.job-command {
+		display: block;
+		font-family: monospace;
+		font-size: 0.8125rem;
+		color: var(--color-text);
+		margin-bottom: 0.375rem;
+	}
+
+	.job-output {
+		background: var(--color-code-bg, hsla(var(--hue), 10%, 8%, 0.6));
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 0.5rem 0.75rem;
+		font-family: monospace;
+		font-size: 0.75rem;
+		color: var(--color-text);
+		white-space: pre-wrap;
+		word-break: break-word;
+		max-height: 200px;
+		overflow-y: auto;
+		margin: 0;
+	}
+
+	/* Generic input used in inline forms */
+	.input {
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		font-size: 0.875rem;
+		color: var(--color-text);
+		outline: none;
+		transition: border-color var(--transition-fast);
+		box-sizing: border-box;
+	}
+
+	.input:focus {
+		border-color: var(--color-primary);
+	}
+
+	.input:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-ghost {
+		background: transparent;
+		border: none;
+		color: var(--color-text-muted);
+	}
+
+	.btn-ghost:hover {
+		color: var(--color-text);
+		background: var(--color-surface-hover);
 	}
 </style>
