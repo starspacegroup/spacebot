@@ -1628,18 +1628,21 @@ export async function processAutomations(
     );
 
     if (automations.length === 0) {
+      log.info(
+        `[Automation] No automations found for event=${event.event_type} guild=${event.guild_id} — check that the automation is enabled and has this trigger saved`,
+      );
       return { executed: 0, errors: 0 };
     }
 
-    log.debug(
-      `[Automation] Found ${automations.length} automations for ${event.event_type}`,
+    log.info(
+      `[Automation] Found ${automations.length} automation(s) for ${event.event_type} in guild ${event.guild_id}`,
     );
 
     for (const automation of automations) {
       // Check if event matches filters
       if (!matchesFilters(event, automation.trigger_filters, filterContext)) {
-        log.debug(
-          `[Automation] ${automation.name} - filters not matched, skipping`,
+        log.info(
+          `[Automation] "${automation.name}" — filters not matched, skipping (filters: ${JSON.stringify(automation.trigger_filters)})`,
         );
         continue;
       }
