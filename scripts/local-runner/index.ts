@@ -2,28 +2,26 @@
 /**
  * SpaceBot Local Runner
  *
- * Authenticates with the SpaceBot server using a personal runner token,
- * polls for queued jobs, executes them locally as shell commands, and
- * reports the results back.
+ * Connects to the SpaceBot server via WebSocket, receives jobs in real time,
+ * executes them locally as shell commands, and reports results back over the
+ * same connection.
  *
  * Usage:
  *   SPACEBOT_RUNNER_TOKEN=sbr_... bun run scripts/local-runner/index.ts
  *
- * Or create a .env file / runner.config.ts next to this file.
- *
  * Config (env vars):
- *   SPACEBOT_RUNNER_TOKEN   – Required. Runner token from Account > Local Runners.
- *   SPACEBOT_API_URL        – Optional. Defaults to https://spacebot.starspace.group
- *   RUNNER_DEFAULT_WORKDIR  – Optional. Default working directory for commands.
- *   RUNNER_POLL_INTERVAL_MS – Optional. Polling interval in ms (default 3000).
- *   RUNNER_MAX_OUTPUT_BYTES – Optional. Max captured output per job (default 65536).
- *   RUNNER_ALLOWED_PATHS    – Optional. Colon-separated list of path prefixes that
- *                             working_dir must start with (security allowlist).
- *   RUNNER_SHELL            – Optional. Shell to use (default: /bin/sh on Unix, cmd.exe on Windows).
+ *   SPACEBOT_RUNNER_TOKEN    – Required. Runner token from Account > Local Runners.
+ *   SPACEBOT_API_URL         – Optional. Defaults to https://spacebot.starspace.group
+ *   RUNNER_DEFAULT_WORKDIR   – Optional. Default working directory for commands.
+ *   RUNNER_MAX_OUTPUT_BYTES  – Optional. Max captured output per job (default 65536).
+ *   RUNNER_ALLOWED_PATHS     – Optional. Colon-separated list of path prefixes that
+ *                              working_dir must start with (security allowlist).
+ *   RUNNER_SHELL             – Optional. Shell to use (default: /bin/sh on Unix, cmd.exe on Windows).
+ *   RUNNER_RECONNECT_BASE_MS – Optional. Base reconnect delay in ms (default 1000).
  */
 
 import { spawn } from "bun";
-import { join, resolve, isAbsolute } from "node:path";
+import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +31,6 @@ import { existsSync } from "node:fs";
 const TOKEN = process.env.SPACEBOT_RUNNER_TOKEN ?? "";
 const API_URL = (process.env.SPACEBOT_API_URL ?? "https://spacebot.starspace.group").replace(/\/$/, "");
 const DEFAULT_WORKDIR = process.env.RUNNER_DEFAULT_WORKDIR ?? process.cwd();
-const POLL_INTERVAL_MS = Number(process.env.RUNNER_POLL_INTERVAL_MS ?? "3000");
 const MAX_OUTPUT_BYTES = Number(process.env.RUNNER_MAX_OUTPUT_BYTES ?? "65536");
 const ALLOWED_PATHS: string[] = process.env.RUNNER_ALLOWED_PATHS
   ? process.env.RUNNER_ALLOWED_PATHS.split(":").map((p) => resolve(p))
@@ -41,6 +38,11 @@ const ALLOWED_PATHS: string[] = process.env.RUNNER_ALLOWED_PATHS
 const IS_WINDOWS = process.platform === "win32";
 const SHELL = process.env.RUNNER_SHELL ?? (IS_WINDOWS ? "cmd.exe" : "/bin/sh");
 const SHELL_FLAG = IS_WINDOWS ? "/C" : "-c";
+const RECONNECT_BASE_MS = Number(process.env.RUNNER_RECONNECT_BASE_MS ?? "1000");
+const RECONNECT_MAX_MS = 60_000;
+
+// Build the WebSocket URL (http→ws, https→wss)
+const WS_URL = API_URL.replace(/^http/, "ws") + `/api/runner/ws?token=${encodeURIComponent(TOKEN)}`;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,50 +56,25 @@ interface Job {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Logging
 // ---------------------------------------------------------------------------
 
 function log(...args: unknown[]) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}]`, ...args);
+  console.log(`[${new Date().toISOString()}]`, ...args);
 }
 
 function warn(...args: unknown[]) {
-  const ts = new Date().toISOString();
-  console.warn(`[${ts}] WARN`, ...args);
+  console.warn(`[${new Date().toISOString()}] WARN`, ...args);
 }
 
 function err(...args: unknown[]) {
-  const ts = new Date().toISOString();
-  console.error(`[${ts}] ERR`, ...args);
+  console.error(`[${new Date().toISOString()}] ERR`, ...args);
 }
 
-/** POST JSON to the SpaceBot API with runner token auth */
-async function api(path: string, body?: object): Promise<{ ok: boolean; data: unknown; }> {
-  const method = body !== undefined ? "POST" : "GET";
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: {
-      "Authorization": `Bearer ${TOKEN}`,
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+// ---------------------------------------------------------------------------
+// Working directory validation
+// ---------------------------------------------------------------------------
 
-  let data: unknown;
-  try {
-    data = await res.json();
-  } catch {
-    data = {};
-  }
-
-  return { ok: res.ok, data };
-}
-
-/**
- * Resolve and validate the working directory for a job.
- * Returns the resolved path or throws if it fails the allowlist check.
- */
 function resolveWorkDir(jobDir: string | null): string {
   const base = jobDir ? resolve(jobDir) : resolve(DEFAULT_WORKDIR);
 
@@ -145,13 +122,11 @@ async function executeJob(job: Job): Promise<{ status: "completed" | "failed"; o
     stderr: "pipe",
     env: {
       ...process.env,
-      // Pass runner context to scripts
       SPACEBOT_JOB_ID: String(job.id),
       SPACEBOT_JOB_LABEL: job.label ?? "",
     },
   });
 
-  // Stream stdout + stderr together
   async function consumeStream(stream: ReadableStream<Uint8Array>) {
     const reader = stream.getReader();
     while (true) {
@@ -182,49 +157,103 @@ async function executeJob(job: Job): Promise<{ status: "completed" | "failed"; o
 }
 
 // ---------------------------------------------------------------------------
-// Poll loop
+// Job queue (sequential processing, safe against parallel shell mayhem)
 // ---------------------------------------------------------------------------
 
-let consecutiveErrors = 0;
-const MAX_BACKOFF_MS = 60_000;
+let jobQueue: Job[] = [];
+let jobRunning = false;
 
-async function poll() {
-  const { ok, data } = await api("/api/runner/poll");
-
-  if (!ok) {
-    consecutiveErrors++;
-    const backoff = Math.min(POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors), MAX_BACKOFF_MS);
-    err(`Poll failed (${(data as { error?: string; })?.error ?? "unknown error"}). Retrying in ${backoff}ms…`);
-    await Bun.sleep(backoff);
-    return;
-  }
-
-  consecutiveErrors = 0;
-  const jobs = (data as { jobs?: Job[]; })?.jobs ?? [];
-
-  if (jobs.length === 0) return;
-
-  log(`Received ${jobs.length} job(s).`);
-
-  // Execute jobs sequentially (safe default; no parallel shell mayhem)
-  for (const job of jobs) {
+async function drainQueue(ws: WebSocket) {
+  if (jobRunning) return;
+  while (jobQueue.length > 0) {
+    const job = jobQueue.shift()!;
+    jobRunning = true;
     log(`Running job #${job.id}${job.label ? ` (${job.label})` : ""}…`);
 
-    const result = await executeJob(job);
-
-    const { ok: reported, data: reportData } = await api("/api/runner/result", {
-      jobId: job.id,
-      status: result.status,
-      output: result.output,
-      exitCode: result.exitCode,
-    });
-
-    if (!reported) {
-      err(`Failed to report result for job #${job.id}:`, (reportData as { error?: string; })?.error);
-    } else {
-      log(`Job #${job.id} reported as ${result.status}.`);
+    let result: { status: "completed" | "failed"; output: string; exitCode: number; };
+    try {
+      result = await executeJob(job);
+    } catch (e) {
+      result = { status: "failed", output: `Unexpected runner error: ${e}`, exitCode: 1 };
     }
+
+    try {
+      ws.send(JSON.stringify({
+        type: "result",
+        jobId: job.id,
+        status: result.status,
+        output: result.output,
+        exitCode: result.exitCode,
+      }));
+    } catch {
+      err(`Failed to send result for job #${job.id} — connection lost.`);
+    }
+
+    jobRunning = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket connection with auto-reconnect
+// ---------------------------------------------------------------------------
+
+let running = true;
+let reconnectAttempts = 0;
+
+function connect() {
+  if (!running) return;
+
+  log(`Connecting to ${API_URL}/api/runner/ws …`);
+
+  const ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    log("WebSocket connected. Waiting for jobs…");
+    reconnectAttempts = 0;
+  };
+
+  ws.onmessage = (event: MessageEvent) => {
+    let msg: { type: string; job?: Job; jobId?: number; };
+    try {
+      msg = JSON.parse(event.data as string);
+    } catch {
+      return;
+    }
+
+    switch (msg.type) {
+      case "connected":
+        log("Authenticated — runner ready.");
+        break;
+
+      case "job":
+        if (msg.job) {
+          jobQueue.push(msg.job);
+          drainQueue(ws).catch((e) => err("Job queue error:", e));
+        }
+        break;
+
+      case "ack":
+        log(`Job #${msg.jobId} confirmed by server.`);
+        break;
+
+      case "heartbeat":
+        // silently ignore
+        break;
+    }
+  };
+
+  ws.onclose = (event: CloseEvent) => {
+    if (!running) return;
+    reconnectAttempts++;
+    const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
+    warn(`WebSocket closed (code ${event.code}). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
+    setTimeout(connect, delay);
+  };
+
+  ws.onerror = (event: Event) => {
+    err("WebSocket error:", (event as ErrorEvent).message ?? event.type);
+    // onclose fires after onerror — reconnect is handled there
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,9 +267,8 @@ if (!TOKEN || !TOKEN.startsWith("sbr_")) {
 }
 
 log("SpaceBot Local Runner starting…");
-log(`  API:  ${API_URL}`);
-log(`  Poll: every ${POLL_INTERVAL_MS}ms`);
-log(`  CWD:  ${DEFAULT_WORKDIR}`);
+log(`  Server: ${API_URL}`);
+log(`  CWD:    ${DEFAULT_WORKDIR}`);
 if (ALLOWED_PATHS.length > 0) {
   log(`  Allowed paths: ${ALLOWED_PATHS.join(", ")}`);
 } else {
@@ -248,25 +276,8 @@ if (ALLOWED_PATHS.length > 0) {
 }
 log("");
 
-// Graceful shutdown
-let running = true;
-process.on("SIGINT", () => {
-  log("Shutting down…");
-  running = false;
-});
-process.on("SIGTERM", () => {
-  log("Shutting down…");
-  running = false;
-});
+process.on("SIGINT", () => { log("Shutting down…"); running = false; process.exit(0); });
+process.on("SIGTERM", () => { log("Shutting down…"); running = false; process.exit(0); });
 
-while (running) {
-  try {
-    await poll();
-  } catch (e) {
-    err("Unexpected error in poll loop:", e);
-    consecutiveErrors++;
-  }
-  if (running) await Bun.sleep(POLL_INTERVAL_MS);
-}
+connect();
 
-log("Runner stopped.");
