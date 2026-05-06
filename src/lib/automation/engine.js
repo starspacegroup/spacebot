@@ -7,11 +7,17 @@ import {
   getTriggeredAutomations,
   logAutomationExecution,
 } from "../db/automations.js";
-import { getWebhook, callWebhook } from "../db/webhooks.js";
-import { createScheduledMessage, parseDelay } from "../db/scheduled-messages.js";
+import { callWebhook, getWebhook } from "../db/webhooks.js";
+import {
+  createScheduledMessage,
+  parseDelay,
+} from "../db/scheduled-messages.js";
 import { log } from "../log.js";
 import { detectCommandResult, getBot } from "../discord/bots.js";
-import { fetchSignedWidgetPng, resolveWidgetOrigin } from "../stats-widget-delivery.js";
+import {
+  fetchSignedWidgetPng,
+  resolveWidgetOrigin,
+} from "../stats-widget-delivery.js";
 
 /**
  * Resolve the target user ID from action config
@@ -173,7 +179,12 @@ export function processTemplate(template, context) {
 /**
  * Send an ephemeral followup message via the Discord interaction webhook
  */
-async function sendInteractionFollowup(applicationId, interactionToken, payload, botToken) {
+async function sendInteractionFollowup(
+  applicationId,
+  interactionToken,
+  payload,
+  botToken,
+) {
   const res = await fetch(
     `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,
     {
@@ -184,7 +195,9 @@ async function sendInteractionFollowup(applicationId, interactionToken, payload,
   );
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Failed to send ephemeral followup: ${res.status} ${errText}`);
+    throw new Error(
+      `Failed to send ephemeral followup: ${res.status} ${errText}`,
+    );
   }
   return res.json();
 }
@@ -196,15 +209,21 @@ async function sendInteractionFollowup(applicationId, interactionToken, payload,
  * @returns {number} - Discord color integer
  */
 function resolveEmbedColor(actionConfig, context) {
-  const defaultColor = actionConfig.embed_color && /^#[0-9a-fA-F]{6}$/.test(actionConfig.embed_color)
-    ? parseInt(actionConfig.embed_color.slice(1), 16)
-    : 0x5865F2;
+  const defaultColor =
+    actionConfig.embed_color &&
+      /^#[0-9a-fA-F]{6}$/.test(actionConfig.embed_color)
+      ? parseInt(actionConfig.embed_color.slice(1), 16)
+      : 0x5865F2;
 
   let rules = actionConfig.embed_color_rules;
   if (!rules || !Array.isArray(rules)) {
     // Try parsing if stored as JSON string
-    if (typeof rules === 'string') {
-      try { rules = JSON.parse(rules); } catch { return defaultColor; }
+    if (typeof rules === "string") {
+      try {
+        rules = JSON.parse(rules);
+      } catch {
+        return defaultColor;
+      }
     } else {
       return defaultColor;
     }
@@ -218,7 +237,10 @@ function resolveEmbedColor(actionConfig, context) {
     const parts = rule.variable.split(".");
     let actual = context;
     for (const part of parts) {
-      if (actual === undefined || actual === null) { actual = undefined; break; }
+      if (actual === undefined || actual === null) {
+        actual = undefined;
+        break;
+      }
       actual = actual[part];
     }
     if (actual === undefined || actual === null) continue;
@@ -227,11 +249,21 @@ function resolveEmbedColor(actionConfig, context) {
 
     let match = false;
     switch (rule.operator) {
-      case "equals": match = actualStr === expected; break;
-      case "contains": match = actualStr.includes(expected); break;
-      case "starts_with": match = actualStr.startsWith(expected); break;
-      case "ends_with": match = actualStr.endsWith(expected); break;
-      case "not_equals": match = actualStr !== expected; break;
+      case "equals":
+        match = actualStr === expected;
+        break;
+      case "contains":
+        match = actualStr.includes(expected);
+        break;
+      case "starts_with":
+        match = actualStr.startsWith(expected);
+        break;
+      case "ends_with":
+        match = actualStr.endsWith(expected);
+        break;
+      case "not_equals":
+        match = actualStr !== expected;
+        break;
     }
 
     if (match) {
@@ -407,7 +439,9 @@ export function matchesFilters(event, filters, context = {}) {
         // Filter by the bot that responded to the command
         // For SLASH_COMMAND_USE, target_id is the bot that responded
         if (filterValue && filterValue !== "ALL") {
-          log.debug(`[Filter] target_bot_id: expected=${filterValue}, actual=${event.target_id}`);
+          log.debug(
+            `[Filter] target_bot_id: expected=${filterValue}, actual=${event.target_id}`,
+          );
           if (event.target_id !== filterValue) return false;
         }
         break;
@@ -416,7 +450,9 @@ export function matchesFilters(event, filters, context = {}) {
         // Filter by the specific command used
         if (filterValue && filterValue !== "ALL" && filterValue !== "") {
           const eventCommandName = event.details?.commandName?.toLowerCase();
-          log.debug(`[Filter] command_name: expected=${filterValue.toLowerCase()}, actual=${eventCommandName}`);
+          log.debug(
+            `[Filter] command_name: expected=${filterValue.toLowerCase()}, actual=${eventCommandName}`,
+          );
           if (eventCommandName !== filterValue.toLowerCase()) return false;
         }
         break;
@@ -426,13 +462,25 @@ export function matchesFilters(event, filters, context = {}) {
         if (filterValue && filterValue !== "any") {
           const botId = event.target_id;
           const commandName = event.details?.commandName;
-          
+
           // Get the detected result from bot registry patterns
-          const detectedResult = detectCommandResult(botId, commandName, event.details || {});
-          log.debug(`[Filter] command_result: expected=${filterValue}, detected=${detectedResult}, embedTexts=${JSON.stringify(event.details?.embedTexts)}`);
-          
-          if (filterValue === "success" && detectedResult !== "success") return false;
-          if (filterValue === "failure" && detectedResult !== "failure") return false;
+          const detectedResult = detectCommandResult(
+            botId,
+            commandName,
+            event.details || {},
+          );
+          log.debug(
+            `[Filter] command_result: expected=${filterValue}, detected=${detectedResult}, embedTexts=${
+              JSON.stringify(event.details?.embedTexts)
+            }`,
+          );
+
+          if (filterValue === "success" && detectedResult !== "success") {
+            return false;
+          }
+          if (filterValue === "failure" && detectedResult !== "failure") {
+            return false;
+          }
         }
         break;
 
@@ -450,15 +498,21 @@ export function matchesFilters(event, filters, context = {}) {
       case "voice_from_channel_id":
         // Filter VOICE_MOVE by source channel (where user moved FROM)
         if (filterValue !== "ALL" && event.event_type === "VOICE_MOVE") {
-          const allowedFromChannels = filterValue.split(",").map((id) => id.trim());
-          if (!allowedFromChannels.includes(event.details?.fromChannelId)) return false;
+          const allowedFromChannels = filterValue.split(",").map((id) =>
+            id.trim()
+          );
+          if (!allowedFromChannels.includes(event.details?.fromChannelId)) {
+            return false;
+          }
         }
         break;
 
       case "voice_to_channel_id":
         // Filter VOICE_MOVE by destination channel (where user moved TO)
         if (filterValue !== "ALL" && event.event_type === "VOICE_MOVE") {
-          const allowedToChannels = filterValue.split(",").map((id) => id.trim());
+          const allowedToChannels = filterValue.split(",").map((id) =>
+            id.trim()
+          );
           if (!allowedToChannels.includes(event.channel_id)) return false;
         }
         break;
@@ -480,26 +534,45 @@ export function matchesFilters(event, filters, context = {}) {
       case "github_action":
         // Only apply to GitHub event types that expose actionable action values.
         // This prevents filters like "opened" from accidentally blocking GITHUB_PUSH.
-        if (filterValue && normalize(filterValue) !== "any" && githubActionEvents.has(event.event_type)) {
+        if (
+          filterValue && normalize(filterValue) !== "any" &&
+          githubActionEvents.has(event.event_type)
+        ) {
           const expected = normalize(filterValue);
           const actual = normalize(event.details?.action);
+          const status = normalize(event.details?.status);
           // Accept either "created" or "check_run.created" style values.
-          const actualSuffix = actual.includes(".") ? actual.split(".").pop() : actual;
-          if (actual !== expected && actualSuffix !== expected) return false;
+          const actualSuffix = actual.includes(".")
+            ? actual.split(".").pop()
+            : actual;
+          // For workflow/check events, GitHub may report action "created" while
+          // status carries the transition users care about (e.g. completed).
+          if (
+            actual !== expected && actualSuffix !== expected &&
+            status !== expected
+          ) return false;
         }
         break;
 
       case "github_branch":
         if (filterValue) {
-          const branch = event.details?.branch || event.details?.head_branch || event.details?.base_branch;
-          if (!branch || normalize(branch) !== normalize(filterValue)) return false;
+          const branch = event.details?.branch || event.details?.head_branch ||
+            event.details?.base_branch;
+          if (!branch || normalize(branch) !== normalize(filterValue)) {
+            return false;
+          }
         }
         break;
 
       case "github_workflow_conclusion":
         // Only apply to workflow/check/deployment style events.
-        if (filterValue && normalize(filterValue) !== "any" && githubConclusionEvents.has(event.event_type)) {
-          if (normalize(event.details?.conclusion) !== normalize(filterValue)) return false;
+        if (
+          filterValue && normalize(filterValue) !== "any" &&
+          githubConclusionEvents.has(event.event_type)
+        ) {
+          if (normalize(event.details?.conclusion) !== normalize(filterValue)) {
+            return false;
+          }
         }
         break;
 
@@ -545,13 +618,11 @@ export function buildContext(event, guildInfo = {}) {
   const github = {
     ...githubDetails,
     repo: githubDetails.repo || githubDetails.target_name || "",
-    branch:
-      githubDetails.branch ||
+    branch: githubDetails.branch ||
       githubDetails.head_branch ||
       githubDetails.base_branch ||
       "",
-    title:
-      githubDetails.title ||
+    title: githubDetails.title ||
       githubDetails.issue_title ||
       githubDetails.workflow_name ||
       githubDetails.workflow_job_name ||
@@ -559,8 +630,7 @@ export function buildContext(event, guildInfo = {}) {
       githubDetails.name ||
       githubDetails.repo ||
       "",
-    url:
-      githubDetails.url ||
+    url: githubDetails.url ||
       githubDetails.comment_url ||
       githubDetails.issue_url ||
       githubDetails.workflow_url ||
@@ -620,7 +690,13 @@ export function buildContext(event, guildInfo = {}) {
  * @param {D1Database} [db] - Database for scheduled messages
  * @returns {Promise<{success: boolean, result?: any, error?: string}>}
  */
-export async function executeAction(automation, event, context, discord, db = null) {
+export async function executeAction(
+  automation,
+  event,
+  context,
+  discord,
+  db = null,
+) {
   const { action_type, action_config } = automation;
 
   try {
@@ -727,7 +803,9 @@ export async function executeAction(automation, event, context, discord, db = nu
             );
 
             if (recentMessages.length > 1) {
-              await channel.bulkDelete(recentMessages).catch((e) => log.error("[Automation] bulkDelete error:", e));
+              await channel.bulkDelete(recentMessages).catch((e) =>
+                log.error("[Automation] bulkDelete error:", e)
+              );
               deleted += recentMessages.length;
             } else if (recentMessages.length === 1) {
               await recentMessages[0].delete().catch(() => {});
@@ -830,7 +908,9 @@ export async function executeAction(automation, event, context, discord, db = nu
             );
 
             if (recentMessages.length > 1) {
-              await channel.bulkDelete(recentMessages).catch((e) => log.error("[Automation] bulkDelete error:", e));
+              await channel.bulkDelete(recentMessages).catch((e) =>
+                log.error("[Automation] bulkDelete error:", e)
+              );
               deleted += recentMessages.length;
             } else if (recentMessages.length === 1) {
               await recentMessages[0].delete().catch(() => {});
@@ -866,21 +946,35 @@ export async function executeAction(automation, event, context, discord, db = nu
         const content = processTemplate(action_config.content, context);
 
         // Ephemeral: send as interaction followup visible only to the user
-        if (action_config.ephemeral && event.application_id && event.interaction_token) {
+        if (
+          action_config.ephemeral && event.application_id &&
+          event.interaction_token
+        ) {
           if (!content) {
             return { success: false, error: "Missing message content" };
           }
           const payload = { flags: 64 };
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
-            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            const thumbnailUrl = action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
+            const embed = {
+              description: content,
+              color: embedColor,
+              timestamp: new Date().toISOString(),
+            };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
             payload.embeds = [embed];
           } else {
             payload.content = content;
           }
-          await sendInteractionFollowup(event.application_id, event.interaction_token, payload, event._bot_token);
+          await sendInteractionFollowup(
+            event.application_id,
+            event.interaction_token,
+            payload,
+            event._bot_token,
+          );
           return { success: true, result: { sent: true, ephemeral: true } };
         }
 
@@ -891,21 +985,37 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
-          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
-          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+          const embedColor = action_config.embed
+            ? resolveEmbedColor(action_config, context)
+            : null;
+          const thumbnailUrl =
+            action_config.embed && action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
             action_type: "SEND_MESSAGE",
-            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor, ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}) },
+            message_payload: {
+              content,
+              embed: !!action_config.embed,
+              embed_color: embedColor,
+              ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+            },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
             source_automation_id: automation.id,
           });
           if (result.success) {
-            return { success: true, result: { scheduled: true, send_at: result.send_at } };
+            return {
+              success: true,
+              result: { scheduled: true, send_at: result.send_at },
+            };
           }
-          return { success: false, error: result.error || "Failed to schedule message" };
+          return {
+            success: false,
+            error: result.error || "Failed to schedule message",
+          };
         }
 
         const channel = await discord.channels.fetch(channelId).catch(() =>
@@ -917,8 +1027,14 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         if (action_config.embed) {
           const embedColor = resolveEmbedColor(action_config, context);
-          const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
-          const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+          const thumbnailUrl = action_config.embed_thumbnail_url
+            ? processTemplate(action_config.embed_thumbnail_url, context)
+            : null;
+          const embed = {
+            description: content,
+            color: embedColor,
+            timestamp: new Date().toISOString(),
+          };
           if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
           await channel.send({ embeds: [embed] });
         } else {
@@ -933,25 +1049,50 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         // Build button components from config
         const buttonRows = action_config.buttons || [];
-        const components = buildButtonComponents(buttonRows, event.guild_id, automation.id);
+        const components = buildButtonComponents(
+          buttonRows,
+          event.guild_id,
+          automation.id,
+        );
 
         // Ephemeral: send as interaction followup visible only to the user
-        if (action_config.ephemeral && event.application_id && event.interaction_token) {
+        if (
+          action_config.ephemeral && event.application_id &&
+          event.interaction_token
+        ) {
           if (!content) {
             return { success: false, error: "Missing message content" };
           }
           const payload = { flags: 64, components };
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
-            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            const thumbnailUrl = action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
+            const embed = {
+              description: content,
+              color: embedColor,
+              timestamp: new Date().toISOString(),
+            };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
             payload.embeds = [embed];
           } else {
             payload.content = content;
           }
-          await sendInteractionFollowup(event.application_id, event.interaction_token, payload, event._bot_token);
-          return { success: true, result: { sent: true, ephemeral: true, buttonsAttached: components.length } };
+          await sendInteractionFollowup(
+            event.application_id,
+            event.interaction_token,
+            payload,
+            event._bot_token,
+          );
+          return {
+            success: true,
+            result: {
+              sent: true,
+              ephemeral: true,
+              buttonsAttached: components.length,
+            },
+          };
         }
 
         const channelId = action_config.channel_id;
@@ -961,8 +1102,13 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
-          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
-          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+          const embedColor = action_config.embed
+            ? resolveEmbedColor(action_config, context)
+            : null;
+          const thumbnailUrl =
+            action_config.embed && action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
@@ -979,9 +1125,19 @@ export async function executeAction(automation, event, context, discord, db = nu
             source_automation_id: automation.id,
           });
           if (result.success) {
-            return { success: true, result: { scheduled: true, send_at: result.send_at, buttonsAttached: components.length } };
+            return {
+              success: true,
+              result: {
+                scheduled: true,
+                send_at: result.send_at,
+                buttonsAttached: components.length,
+              },
+            };
           }
-          return { success: false, error: result.error || "Failed to schedule message" };
+          return {
+            success: false,
+            error: result.error || "Failed to schedule message",
+          };
         }
 
         const channel = await discord.channels.fetch(channelId).catch(() =>
@@ -995,8 +1151,14 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         if (action_config.embed) {
           const embedColor = resolveEmbedColor(action_config, context);
-          const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
-          const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+          const thumbnailUrl = action_config.embed_thumbnail_url
+            ? processTemplate(action_config.embed_thumbnail_url, context)
+            : null;
+          const embed = {
+            description: content,
+            color: embedColor,
+            timestamp: new Date().toISOString(),
+          };
           if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
           messagePayload.embeds = [embed];
         } else {
@@ -1004,7 +1166,10 @@ export async function executeAction(automation, event, context, discord, db = nu
         }
 
         await channel.send(messagePayload);
-        return { success: true, result: { sent: true, buttonsAttached: components.length } };
+        return {
+          success: true,
+          result: { sent: true, buttonsAttached: components.length },
+        };
       }
 
       case "SEND_STATS_WIDGET_IMAGE": {
@@ -1027,12 +1192,17 @@ export async function executeAction(automation, event, context, discord, db = nu
           };
         }
 
-        const channel = await discord.channels.fetch(channelId).catch(() => null);
+        const channel = await discord.channels.fetch(channelId).catch(() =>
+          null
+        );
         if (!channel) {
           return { success: false, error: "Channel not found" };
         }
 
-        const signingSecret = context.widget_signing_secret || (typeof process !== 'undefined' ? process.env?.DISCORD_PUBLIC_KEY : undefined);
+        const signingSecret = context.widget_signing_secret ||
+          (typeof process !== "undefined"
+            ? process.env?.DISCORD_PUBLIC_KEY
+            : undefined);
         const origin = context.widget_origin || resolveWidgetOrigin();
 
         const { pngData, filename, widgetInfo, periodLabel } =
@@ -1072,21 +1242,37 @@ export async function executeAction(automation, event, context, discord, db = nu
 
         // Schedule for later if configured
         if (action_config.send_later && action_config.send_later_delay && db) {
-          const embedColor = action_config.embed ? resolveEmbedColor(action_config, context) : null;
-          const thumbnailUrl = action_config.embed && action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
+          const embedColor = action_config.embed
+            ? resolveEmbedColor(action_config, context)
+            : null;
+          const thumbnailUrl =
+            action_config.embed && action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             target_user_id: userId,
             action_type: "SEND_DM",
-            message_payload: { content, embed: !!action_config.embed, embed_color: embedColor, ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}) },
+            message_payload: {
+              content,
+              embed: !!action_config.embed,
+              embed_color: embedColor,
+              ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+            },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
             source_automation_id: automation.id,
           });
           if (result.success) {
-            return { success: true, result: { scheduled: true, send_at: result.send_at, userId } };
+            return {
+              success: true,
+              result: { scheduled: true, send_at: result.send_at, userId },
+            };
           }
-          return { success: false, error: result.error || "Failed to schedule DM" };
+          return {
+            success: false,
+            error: result.error || "Failed to schedule DM",
+          };
         }
 
         // Fetch the user and send a DM
@@ -1098,8 +1284,14 @@ export async function executeAction(automation, event, context, discord, db = nu
         try {
           if (action_config.embed) {
             const embedColor = resolveEmbedColor(action_config, context);
-            const thumbnailUrl = action_config.embed_thumbnail_url ? processTemplate(action_config.embed_thumbnail_url, context) : null;
-            const embed = { description: content, color: embedColor, timestamp: new Date().toISOString() };
+            const thumbnailUrl = action_config.embed_thumbnail_url
+              ? processTemplate(action_config.embed_thumbnail_url, context)
+              : null;
+            const embed = {
+              description: content,
+              color: embedColor,
+              timestamp: new Date().toISOString(),
+            };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
             await user.send({ embeds: [embed] });
           } else {
@@ -1108,15 +1300,24 @@ export async function executeAction(automation, event, context, discord, db = nu
           return { success: true, result: { dmSent: true, userId } };
         } catch (dmError) {
           // User may have DMs disabled or blocked the bot
-          return { success: false, error: `Could not send DM: ${dmError.message || "User has DMs disabled or blocked the bot"}` };
+          return {
+            success: false,
+            error: `Could not send DM: ${
+              dmError.message || "User has DMs disabled or blocked the bot"
+            }`,
+          };
         }
       }
 
       case "ADD_ROLE": {
         // Support both legacy role_id (single) and new role_ids (comma-separated)
         const roleIds = action_config.role_ids
-          ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
-          : action_config.role_id ? [action_config.role_id] : [];
+          ? action_config.role_ids.split(",").map((id) => id.trim()).filter(
+            Boolean,
+          )
+          : action_config.role_id
+          ? [action_config.role_id]
+          : [];
         const userId = resolveTargetUser(action_config, event);
 
         if (roleIds.length === 0 || !userId) {
@@ -1145,8 +1346,12 @@ export async function executeAction(automation, event, context, discord, db = nu
       case "REMOVE_ROLE": {
         // Support both legacy role_id (single) and new role_ids (comma-separated)
         const roleIds = action_config.role_ids
-          ? action_config.role_ids.split(',').map(id => id.trim()).filter(Boolean)
-          : action_config.role_id ? [action_config.role_id] : [];
+          ? action_config.role_ids.split(",").map((id) => id.trim()).filter(
+            Boolean,
+          )
+          : action_config.role_id
+          ? [action_config.role_id]
+          : [];
         const userId = resolveTargetUser(action_config, event);
 
         if (roleIds.length === 0 || !userId) {
@@ -1486,19 +1691,27 @@ export async function executeAction(automation, event, context, discord, db = nu
         }
 
         if (!messageId) {
-          return { success: false, error: "No message ID available - this action requires a message event" };
+          return {
+            success: false,
+            error:
+              "No message ID available - this action requires a message event",
+          };
         }
 
         if (!channelId) {
           return { success: false, error: "No channel ID available" };
         }
 
-        const channel = await discord.channels.fetch(channelId).catch(() => null);
+        const channel = await discord.channels.fetch(channelId).catch(() =>
+          null
+        );
         if (!channel) {
           return { success: false, error: "Channel not found" };
         }
 
-        const message = await channel.messages.fetch(messageId).catch(() => null);
+        const message = await channel.messages.fetch(messageId).catch(() =>
+          null
+        );
         if (!message) {
           return { success: false, error: "Message not found" };
         }
@@ -1521,12 +1734,22 @@ export async function executeAction(automation, event, context, discord, db = nu
         // We need the database reference - it's passed via context
         const db = context.db;
         if (!db) {
-          return { success: false, error: "Database not available for webhook lookup" };
+          return {
+            success: false,
+            error: "Database not available for webhook lookup",
+          };
         }
 
-        const webhook = await getWebhook(db, parseInt(webhookId), event.guild_id);
+        const webhook = await getWebhook(
+          db,
+          parseInt(webhookId),
+          event.guild_id,
+        );
         if (!webhook) {
-          return { success: false, error: "Webhook not found or not configured" };
+          return {
+            success: false,
+            error: "Webhook not found or not configured",
+          };
         }
 
         if (!webhook.enabled) {
@@ -1562,8 +1785,10 @@ export async function executeAction(automation, event, context, discord, db = nu
           try {
             // Process template variables in the payload
             const processedPayload = processTemplate(
-              typeof customPayload === "string" ? customPayload : JSON.stringify(customPayload),
-              context
+              typeof customPayload === "string"
+                ? customPayload
+                : JSON.stringify(customPayload),
+              context,
             );
             const parsedCustom = JSON.parse(processedPayload);
             payload = { ...payload, ...parsedCustom };
@@ -1577,7 +1802,10 @@ export async function executeAction(automation, event, context, discord, db = nu
         const result = await callWebhook(webhook, payload);
 
         if (!result.success) {
-          return { success: false, error: result.error || "Webhook call failed" };
+          return {
+            success: false,
+            error: result.error || "Webhook call failed",
+          };
         }
 
         return {
@@ -1642,7 +1870,9 @@ export async function processAutomations(
       // Check if event matches filters
       if (!matchesFilters(event, automation.trigger_filters, filterContext)) {
         log.info(
-          `[Automation] "${automation.name}" — filters not matched, skipping (filters: ${JSON.stringify(automation.trigger_filters)})`,
+          `[Automation] "${automation.name}" — filters not matched, skipping (filters: ${
+            JSON.stringify(automation.trigger_filters)
+          })`,
         );
         continue;
       }
@@ -1791,7 +2021,7 @@ export function buildButtonComponents(buttonRows, guildId, sourceId) {
     for (const btn of row.slice(0, 5)) { // Max 5 buttons per row
       if (!btn || !btn.label) continue;
 
-      const style = typeof btn.style === 'number'
+      const style = typeof btn.style === "number"
         ? btn.style
         : (BUTTON_STYLES[btn.style] || 2);
 
@@ -1803,10 +2033,14 @@ export function buildButtonComponents(buttonRows, guildId, sourceId) {
 
       if (btn.emoji) {
         // Handle both unicode emoji and custom emoji format
-        if (btn.emoji.includes(':')) {
+        if (btn.emoji.includes(":")) {
           const match = btn.emoji.match(/<?(a)?:(\w+):(\d+)>?/);
           if (match) {
-            button.emoji = { name: match[2], id: match[3], animated: !!match[1] };
+            button.emoji = {
+              name: match[2],
+              id: match[3],
+              animated: !!match[1],
+            };
           }
         } else {
           button.emoji = { name: btn.emoji };
@@ -1818,7 +2052,9 @@ export function buildButtonComponents(buttonRows, guildId, sourceId) {
         button.url = btn.url;
       } else {
         // Interactive buttons use custom_id for routing
-        button.custom_id = `sb_${guildId}_${sourceId}_${btn.id || btn.label.replace(/\s+/g, '_').toLowerCase()}`;
+        button.custom_id = `sb_${guildId}_${sourceId}_${
+          btn.id || btn.label.replace(/\s+/g, "_").toLowerCase()
+        }`;
       }
 
       if (btn.disabled) {
