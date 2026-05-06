@@ -4,9 +4,9 @@
 
 **NEVER** attempt to start, restart, stop, or run development servers. This includes:
 
-- `npm run dev`
+- `bun run dev`
 - `npm start`
-- `npm run dev:tunnel`
+- `bun run dev:tunnel`
 - `wrangler dev`
 - `wrangler pages dev`
 - Any variation of server startup commands
@@ -48,7 +48,7 @@ To make database schema changes:
 2. Use `ALTER TABLE` statements to modify existing tables
 3. Use `CREATE TABLE IF NOT EXISTS` for new tables
 4. Never use `DROP TABLE` or `DROP COLUMN` without explicit user approval
-5. Run `npm run db:migrate:local` to test locally before applying to production
+5. Run `bun run db:migrate:local` to test locally before applying to production
 
 The migration runner (`scripts/migrate.js`) tracks applied migrations in a `_migrations` table. Once a migration has been recorded as applied, it is permanently skipped on future runs.
 

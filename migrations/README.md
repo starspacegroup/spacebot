@@ -19,11 +19,11 @@ All migration files in this directory have been applied to production. **They ar
 2. Write your SQL. Use `ALTER TABLE` to modify existing tables, `CREATE TABLE IF NOT EXISTS` for new tables.
 3. Test locally:
    ```
-   npm run db:migrate:local
+   bun run db:migrate:local
    ```
 4. Deploy to production:
    ```
-   npm run db:migrate
+   bun run db:migrate
    ```
 
 ## Rules

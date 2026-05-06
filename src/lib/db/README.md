@@ -27,7 +27,7 @@ dashboard.
 
 ```bash
 # Create the database
-npm run db:create
+bun run db:create
 
 # Copy the database_id from the output and add it to wrangler.toml
 ```
@@ -45,10 +45,10 @@ database_id = "YOUR_DATABASE_ID_HERE"
 
 ```bash
 # For local development
-npm run db:migrate:local
+bun run db:migrate:local
 
 # For production
-npm run db:migrate
+bun run db:migrate
 ```
 
 ### 3. Enable Gateway Intents
@@ -70,7 +70,7 @@ The gateway bot runs as a separate process to capture Discord events:
 $env:DISCORD_BOT_TOKEN = "your_bot_token"
 
 # Start the gateway bot
-npm run dev:gateway
+bun run dev:gateway
 ```
 
 ### 5. Run the Web App
@@ -78,7 +78,7 @@ npm run dev:gateway
 In a separate terminal:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 ## Architecture

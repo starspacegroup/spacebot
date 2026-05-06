@@ -104,7 +104,7 @@ git clone https://github.com/starspacegroup/spacebot.git
 cd spacebot
 
 # Install dependencies
-npm install
+bun install
 
 # Register commands
 DISCORD_CLIENT_ID=your_client_id DISCORD_BOT_TOKEN=your_bot_token node scripts/register-commands.js
@@ -256,8 +256,8 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT \
   --role="roles/secretmanager.secretAccessor"
 
 # 3. Push secrets from your local .env to GCP (dry run first)
-npm run secrets:setup:dry
-npm run secrets:setup
+bun run secrets:setup:dry
+bun run secrets:setup
 ```
 
 When running on a GCP instance, secrets are fetched from Secret Manager at startup. If GCP is unavailable (e.g., local dev), it falls back to `.env` / `process.env` automatically.
@@ -282,7 +282,7 @@ Then create or update `~/.cloudflared/config.yml` to include the `spacebot` tunn
 ### Start Production
 
 ```bash
-npm run gateway
+bun run gateway
 ```
 
 This runs `scripts/prod-start.js` which:
@@ -306,10 +306,10 @@ The production server now polls `origin/main` from the existing `spacebot-cron` 
 When a new commit is detected, the server automatically:
 
 1. `git fetch origin main`
-2. Validates the remote revision in a temporary git worktree with `npm install` and `npm run build`
+2. Validates the remote revision in a temporary git worktree with `bun install --frozen-lockfile` and `bun run build`
 3. Fast-forwards the live checkout only if validation succeeds
-4. `npm install` (if `package.json` changed)
-5. `npm run db:migrate` (if migration files changed)
+4. `bun install --frozen-lockfile` (if `package.json` or `bun.lock` changed)
+5. `bun run db:migrate` (if migration files changed)
 6. `pm2 restart ecosystem.config.cjs --update-env`
 
 **Setup (one-time):**
@@ -331,10 +331,10 @@ When a new commit is detected, the server automatically:
 ### PM2 Commands
 
 ```bash
-npm run gateway:status    # Check process status
-npm run gateway:logs      # Tail live logs
-npm run gateway:restart   # Restart all services
-npm run gateway:stop      # Stop all services
+bun run gateway:status    # Check process status
+bun run gateway:logs      # Tail live logs
+bun run gateway:restart   # Restart all services
+bun run gateway:stop      # Stop all services
 ```
 
 ### PM2 Startup (Auto-start on Reboot)

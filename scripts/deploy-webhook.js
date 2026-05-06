@@ -13,7 +13,7 @@
  * The webhook will:
  *   - Validate the GitHub signature
  *   - git pull origin main
- *   - npm install (if package.json changed)
+ *   - bun install --frozen-lockfile (if package.json or bun.lock changed)
  *   - Run migrations (if migrations/ changed)
  *   - pm2 restart spacebot-gateway
  */

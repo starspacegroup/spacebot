@@ -4,6 +4,7 @@ node_modules
 .output
 .vercel
 .netlify
+/package-lock.json
 .wrangler
 /.svelte-kit
 /build

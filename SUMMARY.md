@@ -78,7 +78,7 @@ Security measures implemented:
 ## 🚀 Deployment Ready
 
 ### Build Configuration
-- **Build command**: `npm run build`
+- **Build command**: `bun run build`
 - **Build output**: `.svelte-kit/cloudflare`
 - **Node version**: 18+
 
@@ -102,9 +102,9 @@ See `DEPLOYMENT.md` for detailed instructions.
 ## 📊 Build Verification
 
 ```bash
-npm install           # ✅ Success
-npm run build         # ✅ Success - 0 errors
-npm run dev           # ✅ Success - Tested locally
+bun install           # ✅ Success
+bun run build         # ✅ Success - 0 errors
+bun run dev           # ✅ Success - Tested locally
 ```
 
 Build output verified:

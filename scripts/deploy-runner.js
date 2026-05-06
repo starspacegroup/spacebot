@@ -6,7 +6,7 @@ import { join } from 'path';
 const MAIN_BRANCH = 'main';
 const REMOTE_NAME = 'origin';
 const DEPLOY_LOCK_PATH = join(process.cwd(), '.deploy.lock');
-const VALIDATION_BUILD_CMD = process.env.DEPLOY_BUILD_CMD || 'npm run build';
+const VALIDATION_BUILD_CMD = process.env.DEPLOY_BUILD_CMD || 'bun run build';
 const STALE_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 function runInDir(cmd, cwd) {
@@ -77,7 +77,7 @@ function validateRemoteRevision(remoteHead) {
 
 	try {
 		run(`git worktree add --detach "${tempDir}" ${remoteHead}`);
-		runInDir('npm install', tempDir);
+		runInDir('bun install --frozen-lockfile', tempDir);
 		runInDir(VALIDATION_BUILD_CMD, tempDir);
 	} finally {
 		try {
@@ -111,17 +111,17 @@ export function deploy(changedFiles, options = {}) {
 			}
 
 			const needsInstall = changedFiles.some(file =>
-				file === 'package.json' || file === 'package-lock.json' || file === 'bun.lockb'
+				file === 'package.json' || file === 'bun.lock'
 			);
 			if (needsInstall) {
 				console.log('  📦 Dependency manifest changed — installing dependencies...');
-				run('npm install');
+				run('bun install --frozen-lockfile');
 			}
 
 			const needsMigrate = changedFiles.some(file => file.startsWith('migrations/'));
 			if (needsMigrate) {
 				console.log('  🗃️  Migration files changed — running migrations...');
-				run('npm run db:migrate');
+				run('bun run db:migrate');
 			}
 
 			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart

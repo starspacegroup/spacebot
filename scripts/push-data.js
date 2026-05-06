@@ -191,7 +191,7 @@ if (failedCount > 0) {
     console.log(`      - ${table}: ${error}`);
   }
   console.log(`\n   💡 Schema mismatch? Run migrations on production first:`);
-  console.log(`      npm run db:migrate`);
+  console.log(`      bun run db:migrate`);
 }
 
 cleanup();

@@ -163,7 +163,7 @@ Comprehensive logging of all Discord events with filtering and search.
 
 2. **Install dependencies**
    ```bash
-   npm install
+   bun install
    ```
 
 3. **Configure environment variables**
@@ -193,18 +193,18 @@ Comprehensive logging of all Discord events with filtering and search.
 
 4. **Set up the database (local development)**
    ```bash
-   npm run db:migrate:local
+   bun run db:migrate:local
    ```
 
 5. **Run the development server**
    ```bash
-   npm run dev
+   bun run dev
    ```
    The app will be available at `http://localhost:5173`
 
 6. **Start the Gateway bot** (in a separate terminal)
    ```bash
-   npm run dev:gateway
+   bun run dev:gateway
    ```
    This captures Discord events and processes automations.
 
@@ -233,18 +233,18 @@ URL:
    https://your-domain.pages.dev/api/discord/interactions
    ```
 
-## 📦 Available npm Scripts
+## 📦 Available Bun Scripts
 
 | Script                      | Description                                      |
 | --------------------------- | ------------------------------------------------ |
-| `npm run dev`               | Start SvelteKit dev server                       |
-| `npm run dev:wrangler`      | Run with Wrangler (Cloudflare local environment) |
-| `npm run dev:gateway`       | Start Discord gateway bot                        |
-| `npm run dev:tunnel`        | Start cloudflared tunnel for local development   |
-| `npm run build`             | Build for production                             |
-| `npm run db:migrate`        | Run database migrations (production)             |
-| `npm run db:migrate:local`  | Run database migrations (local)                  |
-| `npm run register-commands` | Register slash commands with Discord             |
+| `bun run dev`               | Start SvelteKit dev server                       |
+| `bun run dev:wrangler`      | Run with Wrangler (Cloudflare local environment) |
+| `bun run dev:gateway`       | Start Discord gateway bot                        |
+| `bun run dev:tunnel`        | Start cloudflared tunnel for local development   |
+| `bun run build`             | Build for production                             |
+| `bun run db:migrate`        | Run database migrations (production)             |
+| `bun run db:migrate:local`  | Run database migrations (local)                  |
+| `bun run register-commands` | Register slash commands with Discord             |
 
 ## 🔄 Automations
 
@@ -325,7 +325,7 @@ SpaceBot captures and logs all Discord events:
      Git**
    - Select your repository
    - Configure:
-     - **Build command**: `npm run build`
+       - **Build command**: `bun run build`
      - **Build output**: `.svelte-kit/cloudflare`
 
 3. **Add Environment Variables** In Cloudflare Pages Settings → Environment
@@ -339,7 +339,7 @@ SpaceBot captures and logs all Discord events:
 
 5. **Run Migrations**
    ```bash
-   npm run db:migrate
+   bun run db:migrate
    ```
 
 6. **Deploy** Future pushes to `main` will auto-deploy.

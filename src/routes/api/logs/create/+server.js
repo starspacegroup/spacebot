@@ -175,7 +175,7 @@ export async function POST({ request, platform }) {
 
     if (!db) {
       log.error(
-        "D1 database binding not available. Make sure you're running with: npm run dev",
+        "D1 database binding not available. Make sure you're running with: bun run dev",
       );
       return json({ error: "Database not configured" }, { status: 503 });
     }
