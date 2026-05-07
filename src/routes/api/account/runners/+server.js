@@ -3,6 +3,8 @@ import {
   getRunnerTokens,
   createRunnerToken,
   getRunnerJobs,
+  getRunnerInstances,
+  getRunnerEvents,
 } from "$lib/db/local-runners.js";
 
 /** @type {import('./$types').RequestHandler} */
@@ -13,12 +15,14 @@ export async function GET({ cookies, platform }) {
   const db = platform?.env?.DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
-  const [tokens, jobs] = await Promise.all([
+  const [tokens, jobs, instances, events] = await Promise.all([
     getRunnerTokens(db, userId),
     getRunnerJobs(db, userId, null, 25),
+    getRunnerInstances(db, userId, { limit: 100 }),
+    getRunnerEvents(db, userId, { limit: 50 }),
   ]);
 
-  return json({ tokens, jobs });
+  return json({ tokens, jobs, instances, events });
 }
 
 /** @type {import('./$types').RequestHandler} */

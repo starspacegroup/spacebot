@@ -13,6 +13,16 @@ import { log } from "../log.js";
 let Database = null;
 const isBun = typeof globalThis.Bun !== "undefined";
 
+function parseJsonField(value) {
+  if (!value) return null;
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * MCP Client class that connects to D1 database via Cloudflare API or local SQLite
  */
@@ -217,6 +227,227 @@ export class MCPClient {
     ]);
 
     return Array.from(guildIds);
+  }
+
+  async getLocalRunners(userId, options = {}) {
+    if (!userId) {
+      throw new Error("userId is required to list local runners");
+    }
+
+    const { includeOffline = true, tokenId = null, limit = 100 } = options;
+    let sql = `SELECT i.id, i.runner_token_id, t.name AS token_name, i.instance_key, i.display_name,
+                      i.hostname, i.platform, i.platform_release, i.arch, i.runner_version,
+                      i.default_workdir, i.metadata, i.last_seen_at, i.last_disconnect_at,
+                      i.last_seen_ip, i.created_at, i.updated_at,
+                      CASE
+                        WHEN i.last_seen_at IS NOT NULL
+                         AND i.last_seen_at >= datetime('now', '-90 seconds')
+                         AND t.revoked = 0
+                        THEN 1 ELSE 0
+                      END AS is_online,
+                      (
+                        SELECT COUNT(*)
+                        FROM local_runner_jobs j
+                        WHERE j.target_instance_id = i.id AND j.status = 'pending'
+                      ) AS pending_job_count,
+                      (
+                        SELECT COUNT(*)
+                        FROM local_runner_jobs j
+                        WHERE j.claimed_by_instance_id = i.id AND j.status = 'running'
+                      ) AS running_job_count
+               FROM local_runner_instances i
+               JOIN local_runner_tokens t ON t.id = i.runner_token_id
+               WHERE i.user_id = ?`;
+    const params = [userId];
+
+    if (tokenId) {
+      sql += ` AND i.runner_token_id = ?`;
+      params.push(tokenId);
+    }
+
+    sql += ` ORDER BY i.last_seen_at DESC, i.created_at DESC LIMIT ?`;
+    params.push(limit);
+
+    const result = await this.executeD1Query(sql, params);
+    const runners = (result.results || []).map((row) => ({
+      ...row,
+      is_online: Boolean(row.is_online),
+      pending_job_count: Number(row.pending_job_count || 0),
+      running_job_count: Number(row.running_job_count || 0),
+      metadata: parseJsonField(row.metadata),
+    }));
+
+    return includeOffline ? runners : runners.filter((runner) => runner.is_online);
+  }
+
+  async getLocalRunnerActivity(userId, options = {}) {
+    if (!userId) {
+      throw new Error("userId is required to inspect local runner activity");
+    }
+
+    const { tokenId = null, instanceId = null, limit = 20 } = options;
+    const runners = await this.getLocalRunners(userId, { includeOffline: true, tokenId, limit: 100 });
+    const filteredRunners = instanceId
+      ? runners.filter((runner) => String(runner.id) === String(instanceId))
+      : runners;
+
+    let eventsSql = `SELECT e.id, e.runner_token_id, e.runner_instance_id, e.job_id,
+                            e.event_type, e.level, e.message, e.details, e.created_at,
+                            i.display_name AS instance_name, t.name AS token_name
+                     FROM local_runner_events e
+                     LEFT JOIN local_runner_instances i ON i.id = e.runner_instance_id
+                     JOIN local_runner_tokens t ON t.id = e.runner_token_id
+                     WHERE e.user_id = ?`;
+    const eventParams = [userId];
+
+    if (tokenId) {
+      eventsSql += ` AND e.runner_token_id = ?`;
+      eventParams.push(tokenId);
+    }
+
+    if (instanceId) {
+      eventsSql += ` AND e.runner_instance_id = ?`;
+      eventParams.push(instanceId);
+    }
+
+    eventsSql += ` ORDER BY e.created_at DESC, e.id DESC LIMIT ?`;
+    eventParams.push(limit);
+
+    const eventsResult = await this.executeD1Query(eventsSql, eventParams);
+    const recentEvents = (eventsResult.results || []).map((row) => ({
+      ...row,
+      details: parseJsonField(row.details),
+    }));
+
+    let jobsSql = `SELECT j.id, j.runner_token_id, j.command, j.working_dir, j.status,
+                          j.label, j.created_at, j.updated_at, j.completed_at,
+                          j.target_instance_id, j.claimed_by_instance_id,
+                          target.display_name AS target_instance_name,
+                          claimed.display_name AS claimed_by_instance_name,
+                          t.name AS token_name
+                   FROM local_runner_jobs j
+                   JOIN local_runner_tokens t ON t.id = j.runner_token_id
+                   LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
+                   LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
+                   WHERE j.user_id = ? AND j.status IN ('pending', 'running')`;
+    const jobParams = [userId];
+
+    if (tokenId) {
+      jobsSql += ` AND j.runner_token_id = ?`;
+      jobParams.push(tokenId);
+    }
+
+    if (instanceId) {
+      jobsSql += ` AND (j.target_instance_id = ? OR j.claimed_by_instance_id = ?)`;
+      jobParams.push(instanceId, instanceId);
+    }
+
+    jobsSql += ` ORDER BY j.created_at DESC LIMIT ?`;
+    jobParams.push(limit);
+
+    const jobsResult = await this.executeD1Query(jobsSql, jobParams);
+
+    return {
+      runners: filteredRunners,
+      activeJobs: jobsResult.results || [],
+      recentEvents,
+    };
+  }
+
+  async startLocalRunnerTask(userId, options = {}) {
+    if (!userId) {
+      throw new Error("userId is required to queue local runner tasks");
+    }
+
+    const {
+      command,
+      workingDir = null,
+      label = null,
+      tokenId = null,
+      instanceIds = [],
+      instanceNames = [],
+      targetMode = 'selected',
+    } = options;
+
+    if (!command?.trim()) {
+      throw new Error("command is required");
+    }
+
+    const runners = await this.getLocalRunners(userId, { includeOffline: true, tokenId, limit: 500 });
+    const selected = new Map();
+    const unresolvedNames = [];
+
+    for (const instanceId of instanceIds || []) {
+      const match = runners.find((runner) => String(runner.id) === String(instanceId));
+      if (match) selected.set(match.id, match);
+    }
+
+    for (const rawName of instanceNames || []) {
+      const query = String(rawName || '').trim().toLowerCase();
+      if (!query) continue;
+      const matches = runners.filter((runner) =>
+        String(runner.display_name || '').toLowerCase().includes(query)
+        || String(runner.hostname || '').toLowerCase().includes(query)
+        || String(runner.token_name || '').toLowerCase().includes(query)
+      );
+
+      if (matches.length === 0) {
+        unresolvedNames.push(rawName);
+      }
+
+      for (const match of matches) {
+        selected.set(match.id, match);
+      }
+    }
+
+    if (targetMode === 'all-online') {
+      for (const runner of runners.filter((runner) => runner.is_online)) {
+        selected.set(runner.id, runner);
+      }
+    }
+
+    if (targetMode === 'all-known') {
+      for (const runner of runners) {
+        selected.set(runner.id, runner);
+      }
+    }
+
+    if (selected.size === 0) {
+      if (!instanceIds?.length && !instanceNames?.length && targetMode === 'selected' && runners.length === 1) {
+        selected.set(runners[0].id, runners[0]);
+      } else {
+        throw new Error(unresolvedNames.length > 0
+          ? `No runner instances matched: ${unresolvedNames.join(', ')}`
+          : 'No runner instances matched the requested targets');
+      }
+    }
+
+    const queuedJobs = [];
+    for (const runner of selected.values()) {
+      const insert = await this.executeD1Query(
+        `INSERT INTO local_runner_jobs (
+           runner_token_id, user_id, command, working_dir, label, status, target_instance_id
+         )
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)
+         RETURNING id`,
+        [runner.runner_token_id, userId, command.trim(), workingDir, label, runner.id]
+      );
+
+      queuedJobs.push({
+        jobId: insert.results?.[0]?.id ?? null,
+        runnerId: runner.id,
+        runnerName: runner.display_name,
+        tokenId: runner.runner_token_id,
+        tokenName: runner.token_name,
+        isOnline: runner.is_online,
+      });
+    }
+
+    return {
+      queuedCount: queuedJobs.length,
+      queuedJobs,
+      unresolvedNames,
+    };
   }
 
   /**
@@ -2180,6 +2411,40 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             return { success: false, error: statsError.message };
           }
 
+        case "list_local_runners":
+          return {
+            success: true,
+            data: await this.getLocalRunners(args.userId, {
+              includeOffline: args.includeOffline !== false,
+              tokenId: args.tokenId,
+              limit: args.limit || 100,
+            }),
+          };
+
+        case "get_local_runner_activity":
+          return {
+            success: true,
+            data: await this.getLocalRunnerActivity(args.userId, {
+              tokenId: args.tokenId,
+              instanceId: args.instanceId,
+              limit: args.limit || 20,
+            }),
+          };
+
+        case "start_local_runner_task":
+          return {
+            success: true,
+            data: await this.startLocalRunnerTask(args.userId, {
+              command: args.command,
+              workingDir: args.workingDir,
+              label: args.label,
+              tokenId: args.tokenId,
+              instanceIds: args.instanceIds,
+              instanceNames: args.instanceNames,
+              targetMode: args.targetMode,
+            }),
+          };
+
         case "get_user_roles":
           return {
             success: true,
@@ -2527,6 +2792,40 @@ export const MCP_TOOLS = [
     description: "Get server statistics including member count, bot count, channel count, boost level, etc. Use this to answer questions about server size or member counts.",
     parameters: {
       guildId: "string (required) - The Discord server ID",
+    },
+  },
+  {
+    name: "list_local_runners",
+    description: "List the user's known local runner systems across all computers/servers where the runner has connected before. Returns online/offline state, token grouping, host/platform details, and pending/running job counts.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. This is injected automatically in DMs.",
+      tokenId: "number (optional) - Restrict results to a specific runner token",
+      includeOffline: "boolean (optional) - Include offline systems as well as online ones (default: true)",
+      limit: "number (optional) - Maximum systems to return (default: 100)",
+    },
+  },
+  {
+    name: "get_local_runner_activity",
+    description: "Get current local runner activity for the DM user: known systems, pending/running jobs, and recent runner events like connects, disconnects, job starts, and job completions/failures.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. This is injected automatically in DMs.",
+      tokenId: "number (optional) - Restrict to a specific runner token",
+      instanceId: "number (optional) - Restrict to one concrete runner system",
+      limit: "number (optional) - Maximum events/jobs to return (default: 20)",
+    },
+  },
+  {
+    name: "start_local_runner_task",
+    description: "Queue a shell command to run on one or more known local runner systems owned by the DM user. Use list_local_runners first to discover exact systems. This tool queues per-system jobs so offline systems can pick them up later when they reconnect.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. This is injected automatically in DMs.",
+      command: "string (required) - Shell command to execute on the target systems",
+      label: "string (optional) - Human-readable label for the queued task",
+      workingDir: "string (optional) - Working directory override for the command",
+      tokenId: "number (optional) - Limit targeting to systems under one runner token",
+      instanceIds: "number[] (optional) - Exact runner system IDs to target",
+      instanceNames: "string[] (optional) - System names/hostnames to match case-insensitively",
+      targetMode: "string (optional) - 'selected' (default), 'all-online', or 'all-known'",
     },
   },
   {

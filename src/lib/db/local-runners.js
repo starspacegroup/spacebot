@@ -12,6 +12,34 @@ import { log } from "./logger.js";
 
 /** Maximum output stored per job (64 KB) */
 const MAX_OUTPUT_BYTES = 65536;
+const RUNNER_ONLINE_WINDOW_SECONDS = 90;
+
+function parseJson(value) {
+  if (!value) return null;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRunnerInstance(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    is_online: Boolean(row.is_online),
+    metadata: parseJson(row.metadata),
+  };
+}
+
+function normalizeRunnerEvent(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    details: parseJson(row.details),
+  };
+}
 
 /** Token format: sbr_<64 hex chars> */
 export function generateRunnerToken() {
@@ -169,6 +197,298 @@ export async function validateRunnerToken(db, rawToken, clientIp) {
   }
 }
 
+/**
+ * Register or refresh a concrete runner instance behind a token.
+ * @param {D1Database} db
+ * @param {object} runner
+ * @param {number} runner.tokenId
+ * @param {string} runner.userId
+ * @param {string} runner.instanceKey
+ * @param {string} runner.displayName
+ * @param {string} [runner.hostname]
+ * @param {string} [runner.platform]
+ * @param {string} [runner.platformRelease]
+ * @param {string} [runner.arch]
+ * @param {string} [runner.runnerVersion]
+ * @param {string} [runner.defaultWorkdir]
+ * @param {object} [runner.metadata]
+ * @param {string} [clientIp]
+ */
+export async function registerRunnerInstance(db, runner, clientIp) {
+  if (!db || !runner?.tokenId || !runner?.userId || !runner?.instanceKey || !runner?.displayName) {
+    return { success: false, error: "Invalid runner instance payload" };
+  }
+
+  const metadataJson = runner.metadata ? JSON.stringify(runner.metadata) : null;
+
+  try {
+    const existing = await db
+      .prepare(
+        `SELECT id
+         FROM local_runner_instances
+         WHERE runner_token_id = ? AND instance_key = ?`
+      )
+      .bind(runner.tokenId, runner.instanceKey)
+      .first();
+
+    if (existing?.id) {
+      await db
+        .prepare(
+          `UPDATE local_runner_instances
+           SET display_name = ?, hostname = ?, platform = ?, platform_release = ?, arch = ?,
+               runner_version = ?, default_workdir = ?, metadata = ?,
+               last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now')
+           WHERE id = ?`
+        )
+        .bind(
+          runner.displayName,
+          runner.hostname ?? null,
+          runner.platform ?? null,
+          runner.platformRelease ?? null,
+          runner.arch ?? null,
+          runner.runnerVersion ?? null,
+          runner.defaultWorkdir ?? null,
+          metadataJson,
+          clientIp ?? null,
+          existing.id
+        )
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO local_runner_instances (
+             runner_token_id, user_id, instance_key, display_name, hostname,
+             platform, platform_release, arch, runner_version, default_workdir,
+             metadata, last_seen_at, last_seen_ip
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)`
+        )
+        .bind(
+          runner.tokenId,
+          runner.userId,
+          runner.instanceKey,
+          runner.displayName,
+          runner.hostname ?? null,
+          runner.platform ?? null,
+          runner.platformRelease ?? null,
+          runner.arch ?? null,
+          runner.runnerVersion ?? null,
+          runner.defaultWorkdir ?? null,
+          metadataJson,
+          clientIp ?? null
+        )
+        .run();
+    }
+
+    const instance = await db
+      .prepare(
+        `SELECT i.*, t.name AS token_name,
+                CASE
+                  WHEN i.last_seen_at IS NOT NULL
+                   AND i.last_seen_at >= datetime('now', ?)
+                   AND t.revoked = 0
+                  THEN 1 ELSE 0
+                END AS is_online
+         FROM local_runner_instances i
+         JOIN local_runner_tokens t ON t.id = i.runner_token_id
+         WHERE i.runner_token_id = ? AND i.instance_key = ?`
+      )
+      .bind(`-${RUNNER_ONLINE_WINDOW_SECONDS} seconds`, runner.tokenId, runner.instanceKey)
+      .first();
+
+    return { success: true, instance: normalizeRunnerInstance(instance) };
+  } catch (err) {
+    log.error("[LocalRunners] registerRunnerInstance error:", err);
+    return { success: false, error: "Failed to register runner instance" };
+  }
+}
+
+/**
+ * Refresh a runner instance heartbeat.
+ * @param {D1Database} db
+ * @param {number} instanceId
+ * @param {string} [clientIp]
+ */
+export async function touchRunnerInstance(db, instanceId, clientIp) {
+  if (!db || !instanceId) return { success: false, error: "Invalid parameters" };
+  try {
+    await db
+      .prepare(
+        `UPDATE local_runner_instances
+         SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .bind(clientIp ?? null, instanceId)
+      .run();
+    return { success: true };
+  } catch (err) {
+    log.error("[LocalRunners] touchRunnerInstance error:", err);
+    return { success: false, error: "Failed to update runner heartbeat" };
+  }
+}
+
+/**
+ * Mark a runner instance as disconnected.
+ * @param {D1Database} db
+ * @param {number} instanceId
+ */
+export async function disconnectRunnerInstance(db, instanceId) {
+  if (!db || !instanceId) return { success: false, error: "Invalid parameters" };
+  try {
+    await db
+      .prepare(
+        `UPDATE local_runner_instances
+         SET last_disconnect_at = datetime('now'), updated_at = datetime('now')
+         WHERE id = ?`
+      )
+      .bind(instanceId)
+      .run();
+    return { success: true };
+  } catch (err) {
+    log.error("[LocalRunners] disconnectRunnerInstance error:", err);
+    return { success: false, error: "Failed to mark runner disconnected" };
+  }
+}
+
+/**
+ * Store a runner activity event.
+ * @param {D1Database} db
+ * @param {object} event
+ */
+export async function recordRunnerEvent(db, event) {
+  if (!db || !event?.userId || !event?.tokenId || !event?.eventType || !event?.message) {
+    return { success: false, error: "Invalid runner event payload" };
+  }
+
+  try {
+    const detailsJson = event.details ? JSON.stringify(event.details) : null;
+    const inserted = await db
+      .prepare(
+        `INSERT INTO local_runner_events (
+           user_id, runner_token_id, runner_instance_id, job_id, event_type, level, message, details
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id, user_id, runner_token_id, runner_instance_id, job_id,
+                   event_type, level, message, details, created_at`
+      )
+      .bind(
+        event.userId,
+        event.tokenId,
+        event.instanceId ?? null,
+        event.jobId ?? null,
+        event.eventType,
+        event.level ?? "info",
+        event.message,
+        detailsJson
+      )
+      .first();
+
+    return { success: true, event: normalizeRunnerEvent(inserted) };
+  } catch (err) {
+    log.error("[LocalRunners] recordRunnerEvent error:", err);
+    return { success: false, error: "Failed to record runner event" };
+  }
+}
+
+/**
+ * List concrete runner instances for a user.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {object} [options]
+ */
+export async function getRunnerInstances(db, userId, options = {}) {
+  if (!db || !userId) return [];
+
+  const { tokenId = null, limit = 100 } = options;
+
+  try {
+    const sql = tokenId
+      ? `SELECT i.*, t.name AS token_name,
+                CASE
+                  WHEN i.last_seen_at IS NOT NULL
+                   AND i.last_seen_at >= datetime('now', ?)
+                   AND t.revoked = 0
+                  THEN 1 ELSE 0
+                END AS is_online
+         FROM local_runner_instances i
+         JOIN local_runner_tokens t ON t.id = i.runner_token_id
+         WHERE i.user_id = ? AND i.runner_token_id = ?
+         ORDER BY i.last_seen_at DESC, i.created_at DESC
+         LIMIT ?`
+      : `SELECT i.*, t.name AS token_name,
+                CASE
+                  WHEN i.last_seen_at IS NOT NULL
+                   AND i.last_seen_at >= datetime('now', ?)
+                   AND t.revoked = 0
+                  THEN 1 ELSE 0
+                END AS is_online
+         FROM local_runner_instances i
+         JOIN local_runner_tokens t ON t.id = i.runner_token_id
+         WHERE i.user_id = ?
+         ORDER BY i.last_seen_at DESC, i.created_at DESC
+         LIMIT ?`;
+
+    const result = tokenId
+      ? await db.prepare(sql).bind(`-${RUNNER_ONLINE_WINDOW_SECONDS} seconds`, userId, tokenId, limit).all()
+      : await db.prepare(sql).bind(`-${RUNNER_ONLINE_WINDOW_SECONDS} seconds`, userId, limit).all();
+
+    return (result.results || []).map(normalizeRunnerInstance);
+  } catch (err) {
+    log.error("[LocalRunners] getRunnerInstances error:", err);
+    return [];
+  }
+}
+
+/**
+ * List recent runner activity for a user.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {object} [options]
+ */
+export async function getRunnerEvents(db, userId, options = {}) {
+  if (!db || !userId) return [];
+
+  const {
+    tokenId = null,
+    instanceId = null,
+    jobId = null,
+    limit = 50,
+  } = options;
+
+  try {
+    let sql = `SELECT e.*, i.display_name AS instance_name, t.name AS token_name
+               FROM local_runner_events e
+               LEFT JOIN local_runner_instances i ON i.id = e.runner_instance_id
+               JOIN local_runner_tokens t ON t.id = e.runner_token_id
+               WHERE e.user_id = ?`;
+    const params = [userId];
+
+    if (tokenId) {
+      sql += " AND e.runner_token_id = ?";
+      params.push(tokenId);
+    }
+
+    if (instanceId) {
+      sql += " AND e.runner_instance_id = ?";
+      params.push(instanceId);
+    }
+
+    if (jobId) {
+      sql += " AND e.job_id = ?";
+      params.push(jobId);
+    }
+
+    sql += " ORDER BY e.created_at DESC, e.id DESC LIMIT ?";
+    params.push(limit);
+
+    const result = await db.prepare(sql).bind(...params).all();
+    return (result.results || []).map(normalizeRunnerEvent);
+  } catch (err) {
+    log.error("[LocalRunners] getRunnerEvents error:", err);
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Job CRUD
 // ---------------------------------------------------------------------------
@@ -185,17 +505,25 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
   try {
     const query = tokenId
       ? `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-                j.status, j.output, j.exit_code, j.label,
+      j.status, j.output, j.exit_code, j.label, j.target_instance_id, j.claimed_by_instance_id,
+      target.display_name AS target_instance_name,
+      claimed.display_name AS claimed_by_instance_name,
                 j.created_at, j.updated_at, j.completed_at
          FROM local_runner_jobs j
          JOIN local_runner_tokens t ON t.id = j.runner_token_id
+    LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
+    LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
          WHERE j.user_id = ? AND j.runner_token_id = ?
          ORDER BY j.created_at DESC LIMIT ?`
       : `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-                j.status, j.output, j.exit_code, j.label,
+      j.status, j.output, j.exit_code, j.label, j.target_instance_id, j.claimed_by_instance_id,
+      target.display_name AS target_instance_name,
+      claimed.display_name AS claimed_by_instance_name,
                 j.created_at, j.updated_at, j.completed_at
          FROM local_runner_jobs j
          JOIN local_runner_tokens t ON t.id = j.runner_token_id
+    LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
+    LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
          WHERE j.user_id = ?
          ORDER BY j.created_at DESC LIMIT ?`;
 
@@ -233,14 +561,39 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
     .first();
   if (!token) return { success: false, error: "Runner not found or revoked" };
 
+  let targetInstanceId = jobData.target_instance_id ?? null;
+  if (targetInstanceId) {
+    const instance = await db
+      .prepare(
+        `SELECT id
+         FROM local_runner_instances
+         WHERE id = ? AND runner_token_id = ? AND user_id = ?`
+      )
+      .bind(targetInstanceId, tokenId, userId)
+      .first();
+
+    if (!instance) {
+      return { success: false, error: "Target runner instance not found" };
+    }
+  }
+
   try {
     const result = await db
       .prepare(
-        `INSERT INTO local_runner_jobs (runner_token_id, user_id, command, working_dir, label, status)
-         VALUES (?, ?, ?, ?, ?, 'pending')
+        `INSERT INTO local_runner_jobs (
+           runner_token_id, user_id, command, working_dir, label, status, target_instance_id
+         )
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)
          RETURNING id`
       )
-      .bind(tokenId, userId, jobData.command.trim(), jobData.working_dir ?? null, jobData.label ?? null)
+      .bind(
+        tokenId,
+        userId,
+        jobData.command.trim(),
+        jobData.working_dir ?? null,
+        jobData.label ?? null,
+        targetInstanceId
+      )
       .first();
 
     return { success: true, jobId: result?.id };
@@ -256,36 +609,45 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
  * @param {number} tokenId - Already validated token ID
  * @returns {Promise<object[]>}
  */
-export async function claimPendingJobs(db, tokenId) {
+export async function claimPendingJobs(db, tokenId, instanceId = null) {
   if (!db || !tokenId) return [];
   try {
-    // Fetch pending jobs for this runner
     const pending = await db
       .prepare(
-        `SELECT id, command, working_dir, label
+        `SELECT id, command, working_dir, label, target_instance_id
          FROM local_runner_jobs
-         WHERE runner_token_id = ? AND status = 'pending'
+         WHERE runner_token_id = ?
+           AND status = 'pending'
+           AND (target_instance_id IS NULL OR target_instance_id = ?)
          ORDER BY created_at ASC
          LIMIT 10`
       )
-      .bind(tokenId)
+      .bind(tokenId, instanceId)
       .all();
 
     const jobs = pending.results || [];
     if (jobs.length === 0) return [];
 
-    const ids = jobs.map((j) => j.id);
-    const placeholders = ids.map(() => "?").join(", ");
-    await db
-      .prepare(
-        `UPDATE local_runner_jobs
-         SET status = 'running', updated_at = datetime('now')
-         WHERE id IN (${placeholders})`
-      )
-      .bind(...ids)
-      .run();
+    const claimedJobs = [];
+    for (const job of jobs) {
+      const update = await db
+        .prepare(
+          `UPDATE local_runner_jobs
+           SET status = 'running', claimed_by_instance_id = ?, updated_at = datetime('now')
+           WHERE id = ?
+             AND status = 'pending'
+             AND (target_instance_id IS NULL OR target_instance_id = ?)`
+        )
+        .bind(instanceId, job.id, instanceId)
+        .run();
 
-    return jobs;
+      const changed = update?.meta?.changes ?? update?.changes ?? 0;
+      if (changed) {
+        claimedJobs.push(job);
+      }
+    }
+
+    return claimedJobs;
   } catch (err) {
     log.error("[LocalRunners] claimPendingJobs error:", err);
     return [];
