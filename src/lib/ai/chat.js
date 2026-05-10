@@ -106,6 +106,16 @@ You can send messages to Discord channels on the user's behalf. For requests lik
 3. Format a message with the event names and links
 4. Call \`send_channel_message\` with the channel ID and formatted message
 
+## LOCAL RUNNERS IN DMS
+
+In DMs, you CAN inspect and control the user's registered local runners using local-runner tools.
+
+- For runner discovery/status questions ("can you see my runner", "list my runners", "is my runner online"), use \`list_local_runners\`.
+- For current jobs and event timeline, use \`get_local_runner_activity\`.
+- For executing commands on local systems, use \`start_local_runner_task\`.
+
+Never claim you "don't have access" to local runners without trying these tools first. If no runners are registered, say that clearly and explain how to register one.
+
 ## HONESTY RULES
 
 - Only report data that comes from context or tool results
@@ -113,6 +123,45 @@ You can send messages to Discord channels on the user's behalf. For requests lik
 - Never invent or guess numbers
 
 Keep responses concise. Use Discord markdown.`;
+
+function detectLocalRunnerIntent(message = "") {
+  const text = String(message || "").toLowerCase();
+  const mentionsRunner = /(local\s+runner|local\s+runners|runner\b|registered\s+runner)/i.test(text);
+  const asksVisibility = /(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered)/i.test(text);
+  const asksAction = /(run|execute|start|queue|trigger|launch|deploy|pull|restart)/i.test(text);
+
+  return {
+    mentionsRunner,
+    asksVisibility,
+    asksAction,
+    isVisibilityQuery: mentionsRunner && asksVisibility && !asksAction,
+  };
+}
+
+function formatRunnerVisibilityResponse(runners = []) {
+  if (!Array.isArray(runners) || runners.length === 0) {
+    return [
+      "I checked and I don't see any registered local runner systems for your account yet.",
+      "You can create a runner token in Account -> Local Runners, start the runner script, and then I can see it here.",
+    ].join("\n\n");
+  }
+
+  const online = runners.filter((runner) => runner.is_online).length;
+  const lines = runners.slice(0, 8).map((runner) => {
+    const status = runner.is_online ? "online" : "offline";
+    const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
+    const host = runner.hostname ? ` (${runner.hostname})` : "";
+    const pending = Number(runner.pending_job_count || 0);
+    const running = Number(runner.running_job_count || 0);
+    return `- ${name}${host}: ${status} | pending ${pending} | running ${running}`;
+  });
+
+  const overflow = runners.length > 8
+    ? `\n- ...and ${runners.length - 8} more system(s)`
+    : "";
+
+  return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\n${lines.join("\n")}${overflow}`;
+}
 
 /**
  * Build the full system prompt with context
@@ -554,10 +603,40 @@ export async function generateChatResponse(options, env) {
   // Check if MCP is enabled (needs D1 access via Cloudflare API)
   const mcpClient = getMCPClient(env);
   const mcpEnabled = mcpClient.isConfigured();
+  const localRunnerIntent = detectLocalRunnerIntent(message);
   
   console.log("[AI] MCP enabled:", mcpEnabled);
   
   log.info(`[AI] MCP enabled: ${mcpEnabled}`);
+
+  // Deterministic runner discovery path so visibility questions always hit tools.
+  if (localRunnerIntent.isVisibilityQuery) {
+    if (!mcpEnabled) {
+      return {
+        success: true,
+        response: "I can't check local runners right now because MCP tools are not configured on this deployment (missing CLOUDFLARE_API_TOKEN).",
+      };
+    }
+
+    const runnerResults = await executeToolCalls([
+      { tool: "list_local_runners", args: { includeOffline: true, limit: 100 } },
+    ], env, userId);
+
+    const toolResult = runnerResults[0]?.result;
+    if (!toolResult?.success) {
+      return {
+        success: true,
+        response: `I tried to check your local runners, but the lookup failed: ${toolResult?.error || "unknown error"}`,
+        toolsUsed: ["list_local_runners"],
+      };
+    }
+
+    return {
+      success: true,
+      response: formatRunnerVisibilityResponse(toolResult.data || []),
+      toolsUsed: ["list_local_runners"],
+    };
+  }
   
   // Build system prompt with context including selected server and permissions
   const systemPrompt = buildSystemPrompt({
