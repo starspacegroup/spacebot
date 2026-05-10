@@ -14,7 +14,7 @@ try {
 } catch {
   // No .env loader available; continue with existing process environment.
 }
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -47,13 +47,25 @@ function resolveWranglerCommand() {
   );
 
   if (existsSync(localWrangler)) {
-    return `"${localWrangler}"`;
+    return {
+      command: localWrangler,
+      prefixArgs: [],
+      display: localWrangler,
+    };
   }
   if (commandExists("bunx")) {
-    return "bunx wrangler";
+    return {
+      command: "bunx",
+      prefixArgs: ["wrangler"],
+      display: "bunx wrangler",
+    };
   }
   if (commandExists("npx")) {
-    return "npx wrangler";
+    return {
+      command: "npx",
+      prefixArgs: ["wrangler"],
+      display: "npx wrangler",
+    };
   }
 
   throw new Error(
@@ -64,20 +76,28 @@ function resolveWranglerCommand() {
 const wranglerCommand = resolveWranglerCommand();
 
 console.log(`🗄️  Running migrations ${isLocal ? "(local)" : "(remote)"}...\n`);
-console.log(`Using Wrangler command: ${wranglerCommand}`);
+console.log(`Using Wrangler command: ${wranglerCommand.display}`);
 
 function d1CliExecute(args) {
-  return execSync(
-    `${wranglerCommand} d1 execute ${dbName} ${locationFlag} ${args}`,
-    { stdio: "pipe" },
-  ).toString();
+  return execFileSync(
+    wranglerCommand.command,
+    [
+      ...wranglerCommand.prefixArgs,
+      "d1",
+      "execute",
+      dbName,
+      locationFlag,
+      ...args,
+    ],
+    { stdio: "pipe", encoding: "utf8" },
+  );
 }
 
 /**
  * Execute a SQL command string against D1 and return stdout
  */
 function d1Execute(sql) {
-  return d1CliExecute(`--command="${sql.replace(/"/g, '\\"')}"`);
+  return d1CliExecute(["--command", sql]);
 }
 
 // Ensure the _migrations tracking table exists
@@ -127,7 +147,7 @@ for (const file of migrationFiles) {
   const filePath = join(migrationsDir, file);
 
   try {
-    d1CliExecute(`--file="${filePath}"`);
+    d1CliExecute(["--file", filePath]);
 
     // Record successful migration
     try {
