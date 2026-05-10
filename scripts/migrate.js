@@ -15,7 +15,7 @@ try {
   // No .env loader available; continue with existing process environment.
 }
 import { execSync } from "child_process";
-import { readdirSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -27,16 +27,57 @@ const isLocal = process.argv.includes("--local");
 const dbName = "spacebot-logs";
 const locationFlag = isLocal ? "--local" : "--remote";
 
+function commandExists(command) {
+  try {
+    const probe = process.platform === "win32" ? `where ${command}` : `command -v ${command}`;
+    execSync(probe, { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveWranglerCommand() {
+  const localWrangler = join(
+    __dirname,
+    "..",
+    "node_modules",
+    ".bin",
+    process.platform === "win32" ? "wrangler.cmd" : "wrangler",
+  );
+
+  if (existsSync(localWrangler)) {
+    return `"${localWrangler}"`;
+  }
+  if (commandExists("bunx")) {
+    return "bunx wrangler";
+  }
+  if (commandExists("npx")) {
+    return "npx wrangler";
+  }
+
+  throw new Error(
+    "Wrangler CLI not found. Install wrangler or make bunx/npx available in PATH.",
+  );
+}
+
+const wranglerCommand = resolveWranglerCommand();
+
 console.log(`🗄️  Running migrations ${isLocal ? "(local)" : "(remote)"}...\n`);
+console.log(`Using Wrangler command: ${wranglerCommand}`);
+
+function d1CliExecute(args) {
+  return execSync(
+    `${wranglerCommand} d1 execute ${dbName} ${locationFlag} ${args}`,
+    { stdio: "pipe" },
+  ).toString();
+}
 
 /**
  * Execute a SQL command string against D1 and return stdout
  */
 function d1Execute(sql) {
-  return execSync(
-    `wrangler d1 execute ${dbName} ${locationFlag} --command="${sql.replace(/"/g, '\\"')}"`,
-    { stdio: "pipe" },
-  ).toString();
+  return d1CliExecute(`--command="${sql.replace(/"/g, '\\"')}"`);
 }
 
 // Ensure the _migrations tracking table exists
@@ -86,10 +127,7 @@ for (const file of migrationFiles) {
   const filePath = join(migrationsDir, file);
 
   try {
-    execSync(
-      `wrangler d1 execute ${dbName} ${locationFlag} --file="${filePath}"`,
-      { stdio: "pipe" },
-    );
+    d1CliExecute(`--file="${filePath}"`);
 
     // Record successful migration
     try {
