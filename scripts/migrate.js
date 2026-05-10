@@ -15,7 +15,7 @@ try {
   // No .env loader available; continue with existing process environment.
 }
 import { execFileSync, execSync } from "child_process";
-import { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -97,7 +97,21 @@ function d1CliExecute(args) {
  * Execute a SQL command string against D1 and return stdout
  */
 function d1Execute(sql) {
-  return d1CliExecute(["--command", sql]);
+  const tempSqlPath = join(
+    migrationsDir,
+    `.__tmp_d1_${process.pid}_${Date.now()}.sql`,
+  );
+
+  writeFileSync(tempSqlPath, `${sql.trim()}\n`, "utf8");
+  try {
+    return d1CliExecute(["--file", tempSqlPath]);
+  } finally {
+    try {
+      unlinkSync(tempSqlPath);
+    } catch {
+      // Best-effort cleanup.
+    }
+  }
 }
 
 // Ensure the _migrations tracking table exists
