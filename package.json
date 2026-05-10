@@ -16,7 +16,7 @@
 		"gateway:restart": "pm2 restart spacebot-gateway",
 		"gateway:logs": "pm2 logs",
 		"gateway:status": "pm2 status",
-		"build": "vite build",
+		"build": "bun install --frozen-lockfile && vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"register-commands": "node scripts/register-commands.js",
