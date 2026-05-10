@@ -26,6 +26,40 @@ const migrationsDir = join(__dirname, "..", "migrations");
 const isLocal = process.argv.includes("--local");
 const dbName = "spacebot-logs";
 const locationFlag = isLocal ? "--local" : "--remote";
+const maxD1Retries = isLocal ? 1 : 3;
+
+function sleepMs(ms) {
+  if (ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function extractErrorOutput(error) {
+  return error?.stderr?.toString() || error?.stdout?.toString() || error?.message || "";
+}
+
+function isTransientD1Error(output) {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("upstream service unavailable") ||
+    normalized.includes("[code: 7009]") ||
+    normalized.includes("internal error") ||
+    normalized.includes("timed out") ||
+    normalized.includes("econnreset") ||
+    normalized.includes("etimedout") ||
+    normalized.includes("too many requests") ||
+    normalized.includes(" code: 429")
+  );
+}
+
+function isAlreadyAppliedError(output) {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("already exists") ||
+    normalized.includes("duplicate") ||
+    normalized.includes("duplicate column name") ||
+    normalized.includes("no such column")
+  );
+}
 
 function commandExists(command) {
   try {
@@ -79,18 +113,38 @@ console.log(`🗄️  Running migrations ${isLocal ? "(local)" : "(remote)"}...\
 console.log(`Using Wrangler command: ${wranglerCommand.display}`);
 
 function d1CliExecute(args) {
-  return execFileSync(
-    wranglerCommand.command,
-    [
-      ...wranglerCommand.prefixArgs,
-      "d1",
-      "execute",
-      dbName,
-      locationFlag,
-      ...args,
-    ],
-    { stdio: "pipe", encoding: "utf8" },
-  );
+  let lastError;
+  for (let attempt = 1; attempt <= maxD1Retries; attempt++) {
+    try {
+      return execFileSync(
+        wranglerCommand.command,
+        [
+          ...wranglerCommand.prefixArgs,
+          "d1",
+          "execute",
+          dbName,
+          locationFlag,
+          ...args,
+        ],
+        { stdio: "pipe", encoding: "utf8" },
+      );
+    } catch (error) {
+      lastError = error;
+      const errorOutput = extractErrorOutput(error);
+      const canRetry = attempt < maxD1Retries && isTransientD1Error(errorOutput);
+
+      if (!canRetry) {
+        throw error;
+      }
+
+      console.log(
+        `     🔁 Transient D1 API error (attempt ${attempt}/${maxD1Retries}); retrying...`,
+      );
+      sleepMs(attempt * 1000);
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -174,12 +228,9 @@ for (const file of migrationFiles) {
     console.log(`     ✅ Success\n`);
     successCount++;
   } catch (error) {
-    const errorOutput = error.stderr?.toString() || error.stdout?.toString() || "";
+    const errorOutput = extractErrorOutput(error);
 
-    if (
-      errorOutput.includes("already exists") ||
-      errorOutput.includes("duplicate")
-    ) {
+    if (isAlreadyAppliedError(errorOutput)) {
       // Migration was already applied before tracking existed — record it now
       try {
         d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
