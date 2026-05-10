@@ -8,7 +8,12 @@
  *   node scripts/migrate.js --local # Run against local D1
  */
 
-import "dotenv/config";
+try {
+  // Optional in CI/build images; local runs can still use dotenv when installed.
+  await import("dotenv/config");
+} catch {
+  // No .env loader available; continue with existing process environment.
+}
 import { execSync } from "child_process";
 import { readdirSync } from "fs";
 import { dirname, join } from "path";
