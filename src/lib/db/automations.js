@@ -22,6 +22,39 @@ function normalizeTriggerEvents(values) {
   return [...new Set(normalized)];
 }
 
+function triggerMatchesEvent(trigger, normalizedEventType) {
+  const normalizedTrigger = normalizeTriggerEvent(trigger);
+  if (!normalizedTrigger) return false;
+
+  // Explicit global wildcards match any event.
+  if (normalizedTrigger === "*" || normalizedTrigger === "ALL") {
+    return true;
+  }
+
+  // Exact event match.
+  if (normalizedTrigger === normalizedEventType) {
+    return true;
+  }
+
+  // Legacy category wildcards such as "GITHUB:*" or "GITHUB_*".
+  if (
+    normalizedTrigger.endsWith(":*") ||
+    normalizedTrigger.endsWith("_*")
+  ) {
+    const prefix = normalizedTrigger.slice(0, -2);
+    return normalizedEventType === prefix ||
+      normalizedEventType.startsWith(`${prefix}_`);
+  }
+
+  // Generic trailing wildcard support for values like "GITHUB*".
+  if (normalizedTrigger.endsWith("*")) {
+    const prefix = normalizedTrigger.slice(0, -1);
+    return normalizedEventType.startsWith(prefix);
+  }
+
+  return false;
+}
+
 function parseStoredTriggerEvents(rawTriggerEvents, legacyTriggerEvent = null) {
   if (rawTriggerEvents) {
     try {
@@ -1208,37 +1241,30 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
   try {
     const normalizedEventType = normalizeTriggerEvent(eventType);
 
-    // Query automations where eventType is in the trigger_events array
-    // Also check legacy trigger_event for backwards compatibility
+    // Load enabled automations for this guild, then match triggers in JS.
+    // This keeps compatibility with legacy wildcard trigger values like
+    // "GITHUB:*" that can exist in production data.
     const results = await db.prepare(`
       SELECT * FROM automations 
       WHERE guild_id = ? AND enabled = 1
-        AND (
-          UPPER(REPLACE(TRIM(trigger_event), ' ', '_')) = ?
-          OR (
-            json_valid(trigger_events) = 1
-            AND EXISTS (
-              SELECT 1
-              FROM json_each(trigger_events)
-              WHERE UPPER(
-                REPLACE(
-                  TRIM(CAST(json_each.value AS TEXT)),
-                  ' ',
-                  '_'
-                )
-              ) = ?
-            )
-          )
-        )
-    `).bind(guildId, normalizedEventType, normalizedEventType).all();
+    `).bind(guildId).all();
+
+    const matched = (results.results || []).filter((a) => {
+      const triggerEvents = parseStoredTriggerEvents(
+        a.trigger_events,
+        a.trigger_event,
+      );
+
+      return triggerEvents.some((trigger) =>
+        triggerMatchesEvent(trigger, normalizedEventType)
+      );
+    });
 
     log.debug(
-      `[DB] getTriggeredAutomations for ${eventType}: found ${
-        results.results?.length || 0
-      } automations`,
+      `[DB] getTriggeredAutomations for ${eventType}: found ${matched.length} matching automations`,
     );
 
-    return (results.results || []).map((a) => {
+    return matched.map((a) => {
       const parsed = {
         ...a,
         enabled: !!a.enabled,

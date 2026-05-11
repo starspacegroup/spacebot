@@ -577,7 +577,7 @@ export function matchesFilters(event, filters, context = {}) {
         break;
 
       case "github_repo_visibility":
-        if (filterValue && filterValue !== "any") {
+        if (filterValue && !isAllSentinel(filterValue)) {
           const visibility = normalize(
             event.details?.repo_visibility ||
               (event.details?.repo_private === true ? "private" : "public"),
