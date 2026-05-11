@@ -1249,42 +1249,63 @@ export async function getTriggeredAutomations(db, guildId, eventType) {
       WHERE guild_id = ? AND enabled = 1
     `).bind(guildId).all();
 
-    const matched = (results.results || []).filter((a) => {
+    const allEnabled = results.results || [];
+
+    if (allEnabled.length === 0) {
+      log.info(
+        `[DB] getTriggeredAutomations: no enabled automations for guild=${guildId} (event=${normalizedEventType})`,
+      );
+    }
+
+    const matched = allEnabled.filter((a) => {
       const triggerEvents = parseStoredTriggerEvents(
         a.trigger_events,
         a.trigger_event,
       );
 
-      return triggerEvents.some((trigger) =>
+      const matches = triggerEvents.some((trigger) =>
         triggerMatchesEvent(trigger, normalizedEventType)
       );
+
+      if (!matches) {
+        log.info(
+          `[DB] Automation "${a.name}" (id=${a.id}) skipped for ${normalizedEventType} — stored triggers: ${JSON.stringify(triggerEvents)}`,
+        );
+      }
+
+      return matches;
     });
 
-    log.debug(
-      `[DB] getTriggeredAutomations for ${eventType}: found ${matched.length} matching automations`,
+    log.info(
+      `[DB] getTriggeredAutomations for ${normalizedEventType} in guild=${guildId}: ${matched.length}/${allEnabled.length} automation(s) matched`,
     );
 
-    return matched.map((a) => {
-      const parsed = {
-        ...a,
-        enabled: !!a.enabled,
-        trigger_filters: a.trigger_filters
-          ? JSON.parse(a.trigger_filters)
-          : null,
-        action_config: a.action_config ? JSON.parse(a.action_config) : {},
-      };
-      parsed.trigger_events = parseStoredTriggerEvents(
-        a.trigger_events,
-        a.trigger_event,
-      );
-      parsed.trigger_event = parsed.trigger_events[0] || null;
-      log.debug(
-        `[DB] Automation "${a.name}" has triggers: ${
-          JSON.stringify(parsed.trigger_events)
-        }`,
-      );
-      return parsed;
-    });
+    const parsedMatched = [];
+
+    for (const a of matched) {
+      try {
+        const parsed = {
+          ...a,
+          enabled: !!a.enabled,
+          trigger_filters: a.trigger_filters
+            ? JSON.parse(a.trigger_filters)
+            : null,
+          action_config: a.action_config ? JSON.parse(a.action_config) : {},
+        };
+        parsed.trigger_events = parseStoredTriggerEvents(
+          a.trigger_events,
+          a.trigger_event,
+        );
+        parsed.trigger_event = parsed.trigger_events[0] || null;
+        parsedMatched.push(parsed);
+      } catch (rowError) {
+        log.error(
+          `[DB] getTriggeredAutomations: skipping malformed automation id=${a.id} name="${a.name}" for guild=${guildId}: ${rowError.message}`,
+        );
+      }
+    }
+
+    return parsedMatched;
   } catch (error) {
     log.error("Failed to get triggered automations:", error);
     return [];
