@@ -21,6 +21,11 @@ import { createDiscordRestClient } from "$lib/discord/rest-client.js";
 import { getLatestServerStats } from "$lib/db/server-stats.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 
+function getEnv(platform, name) {
+  return platform?.env?.[name] ??
+    (typeof process !== "undefined" ? process.env?.[name] : undefined);
+}
+
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, request, platform }) {
   const { guildId } = params;
@@ -113,9 +118,12 @@ export async function POST({ params, request, platform }) {
 
   // Process automations for this event
   try {
-    const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
-    event._widget_signing_secret = platform?.env?.DISCORD_PUBLIC_KEY || process.env.DISCORD_PUBLIC_KEY;
-    event._widget_origin = platform?.env?.APP_URL || process.env.APP_URL || process.env.API_BASE || "http://localhost:4269";
+    const botToken = getEnv(platform, "DISCORD_BOT_TOKEN");
+    event._widget_signing_secret = getEnv(platform, "DISCORD_PUBLIC_KEY");
+    event._widget_origin =
+      getEnv(platform, "APP_URL") ||
+      getEnv(platform, "API_BASE") ||
+      "http://localhost:4269";
     const discord = botToken ? createDiscordRestClient(botToken) : null;
     const [guildMeta, guildStats] = await Promise.all([
       getGuildMetadata(db, guildId).catch(() => null),
