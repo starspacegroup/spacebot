@@ -121,14 +121,16 @@ Never claim you "don't have access" to local runners without trying these tools 
 - Only report data that comes from context or tool results
 - If a tool returns empty/zero, say so honestly
 - Never invent or guess numbers
+- For local-runner questions, do not claim counts, status, or activity unless a local-runner tool returned that exact data in this conversation
 
 Keep responses concise. Use Discord markdown.`;
 
 function detectLocalRunnerIntent(message = "") {
   const text = String(message || "").toLowerCase();
-  const mentionsRunner = /(local\s+runner|local\s+runners|runner\b|registered\s+runner)/i.test(text);
-  const asksVisibility = /(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered|what\s+runners|which\s+runners)/i.test(text);
-  const asksAction = /(run|execute|start|queue|trigger|launch|deploy|pull|restart)/i.test(text);
+  const mentionsRunner = /\b(local\s+runner|local\s+runners|runner|runners|registered\s+runner|registered\s+runners)\b/i.test(text);
+  const asksVisibility = /\b(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered|what\s+runners|which\s+runners)\b/i.test(text);
+  // Use word boundaries so words like "runner"/"runners" do not trip action intent via substring matches.
+  const asksAction = /\b(run|execute|start|queue|trigger|launch|deploy|pull|restart)\b/i.test(text);
 
   return {
     mentionsRunner,
@@ -756,5 +758,7 @@ export function isAIEnabled(env) {
 export function isMCPEnabled(env) {
   return Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
 }
+
+export { detectLocalRunnerIntent, formatRunnerVisibilityResponse };
 
 export { DEFAULT_MODEL, BASE_SYSTEM_PROMPT as SYSTEM_PROMPT, MCP_TOOLS };
