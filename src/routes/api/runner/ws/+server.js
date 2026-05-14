@@ -389,8 +389,8 @@ export async function GET({ request, platform }) {
   const executionContext = platform?.context;
 
   // Only handle WebSocket upgrades
-  const upgradeHeader = request.headers.get("Upgrade");
-  if (upgradeHeader !== "websocket") {
+  const upgradeHeader = (request.headers.get("Upgrade") ?? request.headers.get("upgrade") ?? "").toLowerCase();
+  if (!upgradeHeader.includes("websocket")) {
     return new Response("Expected WebSocket upgrade (Upgrade: websocket)", { status: 426 });
   }
 
