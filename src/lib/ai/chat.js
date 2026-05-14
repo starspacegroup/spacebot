@@ -127,14 +127,15 @@ Keep responses concise. Use Discord markdown.`;
 function detectLocalRunnerIntent(message = "") {
   const text = String(message || "").toLowerCase();
   const mentionsRunner = /(local\s+runner|local\s+runners|runner\b|registered\s+runner)/i.test(text);
-  const asksVisibility = /(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered)/i.test(text);
+  const asksVisibility = /(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered|what\s+runners|which\s+runners)/i.test(text);
   const asksAction = /(run|execute|start|queue|trigger|launch|deploy|pull|restart)/i.test(text);
 
   return {
     mentionsRunner,
     asksVisibility,
     asksAction,
-    isVisibilityQuery: mentionsRunner && asksVisibility && !asksAction,
+    // Treat runner mentions in DMs as visibility checks unless the user clearly asks to execute an action.
+    isVisibilityQuery: mentionsRunner && !asksAction && (asksVisibility || /^\s*local\s+runners\??\s*$/i.test(text)),
   };
 }
 
@@ -151,16 +152,21 @@ function formatRunnerVisibilityResponse(runners = []) {
     const status = runner.is_online ? "online" : "offline";
     const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
     const host = runner.hostname ? ` (${runner.hostname})` : "";
+    const token = runner.token_name ? ` | token ${runner.token_name}` : "";
+    const platform = [runner.platform, runner.platform_release, runner.arch].filter(Boolean).join(" ");
+    const platformText = platform ? ` | ${platform}` : "";
+    const workdir = runner.default_workdir ? ` | wd ${runner.default_workdir}` : "";
     const pending = Number(runner.pending_job_count || 0);
     const running = Number(runner.running_job_count || 0);
-    return `- ${name}${host}: ${status} | pending ${pending} | running ${running}`;
+    const seenAt = runner.last_seen_at ? ` | last seen ${runner.last_seen_at} UTC` : "";
+    return `- ${name}${host}: ${status}${token}${platformText}${workdir} | pending ${pending} | running ${running}${seenAt}`;
   });
 
   const overflow = runners.length > 8
     ? `\n- ...and ${runners.length - 8} more system(s)`
     : "";
 
-  return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\n${lines.join("\n")}${overflow}`;
+  return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\nHere is your current runner list:\n${lines.join("\n")}${overflow}`;
 }
 
 /**
