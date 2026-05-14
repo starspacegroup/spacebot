@@ -38,6 +38,8 @@ export async function POST({ params, request, cookies, platform }) {
 
   const result = await createRunnerJob(db, userId, tokenId, {
     command: body?.command,
+    job_type: body?.job_type,
+    payload_json: body?.payload_json,
     working_dir: body?.working_dir,
     label: body?.label,
     target_instance_id: body?.target_instance_id,

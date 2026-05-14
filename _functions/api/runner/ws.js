@@ -217,7 +217,7 @@ async function recordRunnerEvent(db, auth, state, event) {
 async function claimPendingJobs(db, tokenId, instanceId) {
   const result = await db
     .prepare(
-      `SELECT id, command, working_dir, label, target_instance_id
+      `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json
        FROM local_runner_jobs
        WHERE runner_token_id = ?
          AND status = 'pending'
@@ -264,24 +264,120 @@ async function claimPendingJobs(db, tokenId, instanceId) {
  * @param {number} jobId
  * @param {{ status: string, output: string, exitCode: number|null }} result
  */
-async function storeResult(db, tokenId, instanceId, jobId, { status, output, exitCode }) {
+async function storeResult(db, tokenId, instanceId, jobId, {
+  status,
+  output,
+  exitCode,
+  resultJson,
+  artifactRefs,
+}) {
   let out = typeof output === "string" ? output : "";
   if (out.length > MAX_OUTPUT_BYTES) {
     out = out.slice(0, MAX_OUTPUT_BYTES) + "\n--- output truncated ---";
   }
 
+  let resultJsonStr = null;
+  if (resultJson !== undefined && resultJson !== null) {
+    try {
+      resultJsonStr = JSON.stringify(resultJson);
+    } catch {
+      resultJsonStr = null;
+    }
+  }
+
+  let artifactRefsJsonStr = null;
+  if (artifactRefs !== undefined && artifactRefs !== null) {
+    try {
+      artifactRefsJsonStr = JSON.stringify(artifactRefs);
+    } catch {
+      artifactRefsJsonStr = null;
+    }
+  }
+
   return db
     .prepare(
       `UPDATE local_runner_jobs
-       SET status = ?, output = ?, exit_code = ?,
+       SET status = ?, output = ?, exit_code = ?, result_json = ?, artifact_refs_json = ?,
            completed_at = datetime('now'), updated_at = datetime('now')
        WHERE id = ?
          AND runner_token_id = ?
          AND status = 'running'
          AND (claimed_by_instance_id IS NULL OR claimed_by_instance_id = ?)`
     )
-    .bind(status, out, exitCode ?? null, jobId, tokenId, instanceId)
+    .bind(status, out, exitCode ?? null, resultJsonStr, artifactRefsJsonStr, jobId, tokenId, instanceId)
     .run();
+}
+
+async function persistArtifacts(db, auth, state, jobId, artifactRefs) {
+  if (!Array.isArray(artifactRefs) || artifactRefs.length === 0) return [];
+
+  const saved = [];
+
+  for (let i = 0; i < artifactRefs.length; i++) {
+    const ref = artifactRefs[i] ?? {};
+    const artifactType = typeof ref.artifactType === "string" ? ref.artifactType : "unknown";
+    const mimeType = typeof ref.mimeType === "string" ? ref.mimeType : null;
+    const storageMode = typeof ref.storageMode === "string" ? ref.storageMode : "inline_base64";
+    const blobBase64 = typeof ref.blobBase64 === "string" ? ref.blobBase64 : null;
+    const byteSize = typeof ref.byteSize === "number"
+      ? ref.byteSize
+      : (blobBase64 ? Math.floor((blobBase64.length * 3) / 4) : null);
+
+    let metadataJson = null;
+    if (ref && typeof ref === "object") {
+      const metadata = {
+        ...ref,
+      };
+      delete metadata.blobBase64;
+      try {
+        metadataJson = JSON.stringify(metadata);
+      } catch {
+        metadataJson = null;
+      }
+    }
+
+    const inserted = await db
+      .prepare(
+        `INSERT INTO local_runner_artifacts (
+           user_id, runner_token_id, runner_instance_id, job_id,
+           artifact_type, mime_type, byte_size, width, height,
+           capture_source, capture_index, storage_mode,
+           blob_base64, external_url, metadata_json
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`
+      )
+      .bind(
+        auth.userId,
+        auth.tokenId,
+        state.instanceId ?? null,
+        jobId,
+        artifactType,
+        mimeType,
+        byteSize,
+        typeof ref.width === "number" ? ref.width : null,
+        typeof ref.height === "number" ? ref.height : null,
+        typeof ref.captureSource === "string" ? ref.captureSource : null,
+        typeof ref.captureIndex === "number" ? ref.captureIndex : i,
+        storageMode,
+        blobBase64,
+        typeof ref.externalUrl === "string" ? ref.externalUrl : null,
+        metadataJson,
+      )
+      .first();
+
+    saved.push({
+      id: inserted?.id ?? null,
+      artifactType,
+      mimeType,
+      byteSize,
+      captureIndex: typeof ref.captureIndex === "number" ? ref.captureIndex : i,
+      storageMode,
+      externalUrl: typeof ref.externalUrl === "string" ? ref.externalUrl : null,
+    });
+  }
+
+  return saved;
 }
 
 // ---------------------------------------------------------------------------
@@ -421,12 +517,20 @@ export async function onRequestGet(context) {
 
     if (msg.type === "result") {
       if (!state.instanceId) return;
-      const { jobId, status, output, exitCode } = msg;
+      const { jobId, status, output, exitCode, result, artifactRefs } = msg;
       if (typeof jobId !== "number" || (status !== "completed" && status !== "failed")) {
         return; // ignore invalid
       }
       try {
-        const update = await storeResult(db, auth.tokenId, state.instanceId, jobId, { status, output, exitCode });
+        const persistedArtifactRefs = await persistArtifacts(db, auth, state, jobId, artifactRefs);
+
+        const update = await storeResult(db, auth.tokenId, state.instanceId, jobId, {
+          status,
+          output,
+          exitCode,
+          resultJson: result ?? null,
+          artifactRefs: persistedArtifactRefs,
+        });
         const changed = update?.meta?.changes ?? update?.changes ?? 0;
         if (!changed) return;
 
@@ -439,6 +543,8 @@ export async function onRequestGet(context) {
             exitCode: exitCode ?? null,
             truncated: Boolean(msg.truncated),
             outputBytes: typeof output === "string" ? output.length : 0,
+            hasStructuredResult: Boolean(result),
+            artifactCount: persistedArtifactRefs.length,
           },
         });
 

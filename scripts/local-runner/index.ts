@@ -24,9 +24,12 @@
 
 import { spawn } from "bun";
 import { resolve } from "node:path";
-import { existsSync } from "node:fs";
-import { hostname, release } from "node:os";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { hostname, release, tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { gatherSystemProfile } from "./capabilities";
+import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -44,6 +47,7 @@ const SHELL = process.env.RUNNER_SHELL ?? (IS_WINDOWS ? "cmd.exe" : "/bin/sh");
 const SHELL_FLAG = IS_WINDOWS ? "/C" : "-c";
 const RECONNECT_BASE_MS = Number(process.env.RUNNER_RECONNECT_BASE_MS ?? "1000");
 const RECONNECT_MAX_MS = 60_000;
+const MAX_ARTIFACT_BYTES = Number(process.env.RUNNER_MAX_ARTIFACT_BYTES ?? "2000000");
 const HOSTNAME = hostname();
 const RUNNER_VERSION = "2026.05.07";
 const INSTANCE_KEY = process.env.RUNNER_INSTANCE_KEY
@@ -62,6 +66,8 @@ interface Job {
   command: string;
   working_dir: string | null;
   label: string | null;
+  job_type?: string | null;
+  payload_json?: unknown;
   target_instance_id?: number | null;
 }
 
@@ -70,6 +76,8 @@ interface JobResult {
   output: string;
   exitCode: number;
   truncated: boolean;
+  result?: unknown;
+  artifactRefs?: unknown[];
 }
 
 interface RunnerHelloPayload {
@@ -86,6 +94,14 @@ interface RunnerHelloPayload {
     pid: number;
     allowedPaths: string[];
     maxOutputBytes: number;
+    maxArtifactBytes: number;
+    capabilities: {
+      screenshotAvailable: boolean;
+      workspaceMetadataAvailable: boolean;
+      vscodeControlAvailable: boolean;
+      copilotMessageAvailable: boolean;
+    };
+    systemProfile: unknown;
   };
 }
 
@@ -124,6 +140,7 @@ function sendRunnerEvent(eventType: string, message: string, details?: Record<st
 }
 
 function buildHelloPayload(): RunnerHelloPayload {
+  const profile = gatherSystemProfile();
   return {
     instanceKey: INSTANCE_KEY,
     displayName: DISPLAY_NAME,
@@ -138,7 +155,343 @@ function buildHelloPayload(): RunnerHelloPayload {
       pid: process.pid,
       allowedPaths: ALLOWED_PATHS,
       maxOutputBytes: MAX_OUTPUT_BYTES,
+      maxArtifactBytes: MAX_ARTIFACT_BYTES,
+      capabilities: profile.capabilities,
+      systemProfile: profile,
     },
+  };
+}
+
+function commandExists(command: string): boolean {
+  try {
+    const probe = IS_WINDOWS
+      ? spawnSync("where", [command], { encoding: "utf8", windowsHide: true })
+      : spawnSync("which", [command], { encoding: "utf8" });
+    return probe.status === 0 && Boolean(probe.stdout?.trim());
+  } catch {
+    return false;
+  }
+}
+
+function parsePayload(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function captureScreenshotBuffer(): Buffer {
+  const tempPath = `${tmpdir()}/spacebot-runner-${Date.now()}-${Math.random().toString(16).slice(2)}.png`;
+
+  if (process.platform === "darwin") {
+    const result = spawnSync("screencapture", ["-x", tempPath], { encoding: "utf8" });
+    if (result.status !== 0) {
+      throw new Error(result.stderr?.trim() || "screencapture failed");
+    }
+  } else if (IS_WINDOWS) {
+    const script = [
+      "Add-Type -AssemblyName System.Windows.Forms;",
+      "Add-Type -AssemblyName System.Drawing;",
+      "$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;",
+      "$img=New-Object System.Drawing.Bitmap $b.Width,$b.Height;",
+      "$g=[System.Drawing.Graphics]::FromImage($img);",
+      "$g.CopyFromScreen($b.X,$b.Y,0,0,$img.Size);",
+      `$img.Save('${tempPath.replace(/\\/g, "/")}', [System.Drawing.Imaging.ImageFormat]::Png);`,
+      "$g.Dispose();",
+      "$img.Dispose();",
+    ].join(" ");
+
+    const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    if (result.status !== 0) {
+      throw new Error(result.stderr?.trim() || "PowerShell screenshot failed");
+    }
+  } else {
+    const command = [
+      "if command -v grim >/dev/null 2>&1; then grim '$1';",
+      "elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f '$1';",
+      "elif command -v import >/dev/null 2>&1; then import -window root '$1';",
+      "else exit 127; fi",
+    ].join(" ");
+
+    const result = spawnSync(SHELL, [SHELL_FLAG, command, "--", tempPath], { encoding: "utf8" });
+    if (result.status !== 0) {
+      throw new Error(result.stderr?.trim() || "No Linux screenshot utility available");
+    }
+  }
+
+  if (!existsSync(tempPath)) {
+    throw new Error("Screenshot file was not created");
+  }
+
+  const buf = readFileSync(tempPath);
+  try {
+    unlinkSync(tempPath);
+  } catch {
+    // Best effort cleanup.
+  }
+  return buf;
+}
+
+async function executeVscodeDiscover(): Promise<JobResult> {
+  const bridge = await bridgeDiscover();
+  if (bridge.ok) {
+    return {
+      status: "completed",
+      output: "VS Code discovery completed via bridge.",
+      exitCode: 0,
+      truncated: false,
+      result: {
+        bridge: true,
+        ...(bridge.body ?? {}),
+      },
+    };
+  }
+
+  const hasCode = commandExists("code");
+  const instances: string[] = [];
+
+  try {
+    if (IS_WINDOWS) {
+      const result = spawnSync("tasklist", ["/FI", "IMAGENAME eq Code.exe"], {
+        encoding: "utf8",
+        windowsHide: true,
+      });
+      if (result.status === 0 && result.stdout) {
+        instances.push(...result.stdout.split("\n").filter((line) => line.toLowerCase().includes("code.exe")));
+      }
+    } else {
+      const result = spawnSync("pgrep", ["-fa", "code|Code"], { encoding: "utf8" });
+      if (result.status === 0 && result.stdout) {
+        instances.push(...result.stdout.split("\n").filter(Boolean));
+      }
+    }
+  } catch {
+    // Ignore process listing failures.
+  }
+
+  return {
+    status: "completed",
+    output: `VS Code CLI ${hasCode ? "available" : "missing"}. Detected ${instances.length} process entries.`,
+    exitCode: 0,
+    truncated: false,
+    result: {
+      hasCodeCli: hasCode,
+      runningInstances: instances,
+      copilotBridgeConnected: false,
+      bridgeError: bridge.error ?? null,
+    },
+  };
+}
+
+async function executeTypedJob(job: Job): Promise<JobResult | null> {
+  const jobType = job.job_type || "shell_command";
+  const payload = parsePayload(job.payload_json);
+
+  if (jobType === "shell_command") {
+    return null;
+  }
+
+  if (jobType === "system_profile") {
+    const profile = gatherSystemProfile();
+    return {
+      status: "completed",
+      output: `System profile collected for ${profile.os.hostname} (${profile.os.platform}/${profile.os.arch}), displays: ${profile.displays.count}`,
+      exitCode: 0,
+      truncated: false,
+      result: profile,
+    };
+  }
+
+  if (jobType === "screenshot_capture") {
+    if (process.env.RUNNER_ENABLE_SCREENSHOTS !== "1") {
+      return {
+        status: "failed",
+        output: "Screenshot capture is disabled. Set RUNNER_ENABLE_SCREENSHOTS=1 to enable.",
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+
+    try {
+      const buffer = captureScreenshotBuffer();
+      if (buffer.length > MAX_ARTIFACT_BYTES) {
+        return {
+          status: "failed",
+          output: `Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES (${buffer.length} > ${MAX_ARTIFACT_BYTES}).`,
+          exitCode: 1,
+          truncated: false,
+        };
+      }
+
+      const artifact = {
+        artifactType: "screenshot",
+        mimeType: "image/png",
+        byteSize: buffer.length,
+        captureMode: typeof payload.mode === "string" ? payload.mode : "all_displays",
+        storageMode: "inline_base64",
+        blobBase64: buffer.toString("base64"),
+      };
+
+      return {
+        status: "completed",
+        output: `Captured screenshot (${buffer.length} bytes).`,
+        exitCode: 0,
+        truncated: false,
+        artifactRefs: [artifact],
+        result: {
+          captureMode: artifact.captureMode,
+          workspaceContextIncluded: Boolean(payload.includeWorkspaceContext),
+          note: "Current implementation captures the visible desktop as one image. Per-display expansion is planned.",
+        },
+      };
+    } catch (e) {
+      return {
+        status: "failed",
+        output: `Screenshot capture failed: ${e instanceof Error ? e.message : String(e)}`,
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+  }
+
+  if (jobType === "vscode_discover_instances") {
+    if (process.env.RUNNER_ENABLE_VSCODE_CONTROL === "0") {
+      return {
+        status: "failed",
+        output: "VS Code control is disabled. Set RUNNER_ENABLE_VSCODE_CONTROL=1 to enable.",
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+    return executeVscodeDiscover();
+  }
+
+  if (jobType === "vscode_open_workspace") {
+    if (process.env.RUNNER_ENABLE_VSCODE_CONTROL === "0") {
+      return {
+        status: "failed",
+        output: "VS Code control is disabled. Set RUNNER_ENABLE_VSCODE_CONTROL=1 to enable.",
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+
+    const target = typeof payload.path === "string" ? payload.path : null;
+    if (!target) {
+      return {
+        status: "failed",
+        output: "vscode_open_workspace requires payload.path",
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+
+    if (!isAllowedPath(target)) {
+      return {
+        status: "failed",
+        output: `Path is not permitted by RUNNER_ALLOWED_PATHS: ${target}`,
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+
+    const bridge = await bridgeOpenWorkspace(target, payload.newWindow === true);
+    if (bridge.ok) {
+      return {
+        status: "completed",
+        output: `Opened workspace path in VS Code via bridge: ${target}`,
+        exitCode: 0,
+        truncated: false,
+      };
+    }
+
+    const args = [target];
+    if (payload.newWindow === true) args.unshift("--new-window");
+    const run = spawnSync("code", args, { encoding: "utf8", windowsHide: true });
+    if (run.status !== 0) {
+      return {
+        status: "failed",
+        output: `${run.stderr?.trim() || "Failed to open workspace in VS Code"}${bridge.error ? ` (bridge fallback failed: ${bridge.error})` : ""}`,
+        exitCode: run.status ?? 1,
+        truncated: false,
+      };
+    }
+
+    return {
+      status: "completed",
+      output: `Opened workspace path in VS Code: ${target}`,
+      exitCode: 0,
+      truncated: false,
+    };
+  }
+
+  if (jobType === "vscode_send_copilot_message") {
+    if (process.env.RUNNER_ENABLE_COPILOT_CHAT !== "1") {
+      return {
+        status: "failed",
+        output: "Copilot chat bridge is not enabled yet. Set RUNNER_ENABLE_COPILOT_CHAT=1 once bridge support is installed.",
+        exitCode: 1,
+        truncated: false,
+        result: {
+          supported: false,
+          reason: "bridge_not_installed",
+        },
+      };
+    }
+
+    const message = typeof payload.message === "string" ? payload.message.trim() : "";
+    if (!message) {
+      return {
+        status: "failed",
+        output: "vscode_send_copilot_message requires payload.message",
+        exitCode: 1,
+        truncated: false,
+      };
+    }
+
+    const sent = await bridgeSendCopilotMessage(message);
+    if (!sent.ok) {
+      return {
+        status: "failed",
+        output: `Failed to send Copilot message via VS Code bridge: ${sent.error || "unknown error"}`,
+        exitCode: 1,
+        truncated: false,
+        result: {
+          supported: false,
+          reason: "bridge_unavailable_or_command_missing",
+          bridgeStatus: sent.status ?? null,
+        },
+      };
+    }
+
+    return {
+      status: "completed",
+      output: "Copilot message sent via VS Code bridge.",
+      exitCode: 0,
+      truncated: false,
+      result: {
+        supported: true,
+        bridgeResponse: sent.body ?? null,
+      },
+    };
+  }
+
+  return {
+    status: "failed",
+    output: `Unsupported job type: ${jobType}`,
+    exitCode: 1,
+    truncated: false,
   };
 }
 
@@ -166,11 +519,22 @@ function resolveWorkDir(jobDir: string | null): string {
   return base;
 }
 
+function isAllowedPath(pathValue: string): boolean {
+  const base = resolve(pathValue);
+  if (ALLOWED_PATHS.length === 0) return true;
+  return ALLOWED_PATHS.some((p) => base.startsWith(p));
+}
+
 // ---------------------------------------------------------------------------
 // Job executor
 // ---------------------------------------------------------------------------
 
 async function executeJob(job: Job): Promise<JobResult> {
+  const typedResult = await executeTypedJob(job);
+  if (typedResult) {
+    return typedResult;
+  }
+
   let workDir: string;
   try {
     workDir = resolveWorkDir(job.working_dir);
@@ -267,6 +631,8 @@ async function drainQueue(ws: WebSocket) {
         output: result.output,
         exitCode: result.exitCode,
         truncated: result.truncated,
+        result: result.result,
+        artifactRefs: result.artifactRefs,
       }));
     } catch {
       err(`Failed to send result for job #${job.id} — connection lost.`);

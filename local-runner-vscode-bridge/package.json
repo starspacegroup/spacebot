@@ -1,0 +1,26 @@
+{
+  "name": "spacebot-local-runner-vscode-bridge",
+  "displayName": "SpaceBot Local Runner Bridge",
+  "description": "Local VS Code control bridge for SpaceBot local runner",
+  "version": "0.0.1",
+  "publisher": "starspacegroup",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:spacebotLocalRunnerBridge.start"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "spacebotLocalRunnerBridge.start",
+        "title": "SpaceBot: Start Local Runner VS Code Bridge"
+      }
+    ]
+  },
+  "categories": [
+    "Other"
+  ]
+}

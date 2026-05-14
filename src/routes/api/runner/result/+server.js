@@ -5,7 +5,14 @@ import { validateRunnerToken, reportJobResult } from "$lib/db/local-runners.js";
  * POST /api/runner/result
  *
  * Called by the local runner after completing (or failing) a job.
- * Body: { jobId: number, status: "completed"|"failed", output: string, exitCode: number }
+ * Body: {
+ *   jobId: number,
+ *   status: "completed"|"failed",
+ *   output: string,
+ *   exitCode: number,
+ *   result?: object,
+ *   artifactRefs?: object[]
+ * }
  */
 export async function POST({ request, platform }) {
   const db = platform?.env?.DB;
@@ -33,7 +40,7 @@ export async function POST({ request, platform }) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { jobId, status, output, exitCode } = body || {};
+  const { jobId, status, output, exitCode, result, artifactRefs } = body || {};
   if (!jobId || typeof jobId !== "number") {
     return json({ error: "jobId (number) is required" }, { status: 400 });
   }
@@ -45,6 +52,8 @@ export async function POST({ request, platform }) {
     status,
     output: typeof output === "string" ? output : "",
     exitCode: typeof exitCode === "number" ? exitCode : null,
+    result_json: result ?? null,
+    artifact_refs_json: artifactRefs ?? null,
   });
 
   if (!result.success) return json({ error: result.error }, { status: 400 });

@@ -41,6 +41,16 @@ function normalizeRunnerEvent(row) {
   };
 }
 
+function normalizeRunnerJob(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    payload_json: parseJson(row.payload_json),
+    result_json: parseJson(row.result_json),
+    artifact_refs_json: parseJson(row.artifact_refs_json),
+  };
+}
+
 /** Token format: sbr_<64 hex chars> */
 export function generateRunnerToken() {
   const bytes = new Uint8Array(32);
@@ -505,9 +515,11 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
   try {
     const query = tokenId
       ? `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-      j.status, j.output, j.exit_code, j.label, j.target_instance_id, j.claimed_by_instance_id,
+      j.status, j.output, j.exit_code, j.label, j.job_type, j.payload_json, j.result_json, j.artifact_refs_json,
+      j.target_instance_id, j.claimed_by_instance_id,
       target.display_name AS target_instance_name,
       claimed.display_name AS claimed_by_instance_name,
+      (SELECT COUNT(*) FROM local_runner_artifacts a WHERE a.job_id = j.id) AS artifact_count,
                 j.created_at, j.updated_at, j.completed_at
          FROM local_runner_jobs j
          JOIN local_runner_tokens t ON t.id = j.runner_token_id
@@ -516,9 +528,11 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
          WHERE j.user_id = ? AND j.runner_token_id = ?
          ORDER BY j.created_at DESC LIMIT ?`
       : `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-      j.status, j.output, j.exit_code, j.label, j.target_instance_id, j.claimed_by_instance_id,
+      j.status, j.output, j.exit_code, j.label, j.job_type, j.payload_json, j.result_json, j.artifact_refs_json,
+      j.target_instance_id, j.claimed_by_instance_id,
       target.display_name AS target_instance_name,
       claimed.display_name AS claimed_by_instance_name,
+      (SELECT COUNT(*) FROM local_runner_artifacts a WHERE a.job_id = j.id) AS artifact_count,
                 j.created_at, j.updated_at, j.completed_at
          FROM local_runner_jobs j
          JOIN local_runner_tokens t ON t.id = j.runner_token_id
@@ -532,10 +546,77 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
       : db.prepare(query).bind(userId, limit);
 
     const result = await stmt.all();
-    return result.results || [];
+    return (result.results || []).map(normalizeRunnerJob);
   } catch (err) {
     log.error("[LocalRunners] getRunnerJobs error:", err);
     return [];
+  }
+}
+
+/**
+ * List artifacts for a specific job owned by a user.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {number} jobId
+ */
+export async function getRunnerArtifactsByJob(db, userId, jobId) {
+  if (!db || !userId || !jobId) return [];
+  try {
+    const result = await db
+      .prepare(
+        `SELECT id, job_id, artifact_type, mime_type, byte_size, width, height,
+                capture_source, capture_index, storage_mode, external_url, metadata_json,
+                created_at, expires_at
+         FROM local_runner_artifacts
+         WHERE user_id = ? AND job_id = ?
+         ORDER BY capture_index ASC, id ASC`
+      )
+      .bind(userId, jobId)
+      .all();
+
+    return (result.results || []).map((row) => ({
+      ...row,
+      metadata_json: parseJson(row.metadata_json),
+    }));
+  } catch (err) {
+    log.error("[LocalRunners] getRunnerArtifactsByJob error:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch a single artifact, optionally including the inline base64 blob.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {number} artifactId
+ * @param {boolean} includeBlob
+ */
+export async function getRunnerArtifact(db, userId, artifactId, includeBlob = false) {
+  if (!db || !userId || !artifactId) return null;
+
+  const fields = includeBlob
+    ? "id, user_id, job_id, artifact_type, mime_type, byte_size, width, height, storage_mode, blob_base64, external_url, metadata_json"
+    : "id, user_id, job_id, artifact_type, mime_type, byte_size, width, height, storage_mode, external_url, metadata_json";
+
+  try {
+    const row = await db
+      .prepare(
+        `SELECT ${fields}
+         FROM local_runner_artifacts
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(artifactId, userId)
+      .first();
+
+    if (!row) return null;
+
+    return {
+      ...row,
+      metadata_json: parseJson(row.metadata_json),
+    };
+  } catch (err) {
+    log.error("[LocalRunners] getRunnerArtifact error:", err);
+    return null;
   }
 }
 
@@ -552,7 +633,23 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
  */
 export async function createRunnerJob(db, userId, tokenId, jobData) {
   if (!db || !userId || !tokenId) return { success: false, error: "Invalid parameters" };
-  if (!jobData?.command?.trim()) return { success: false, error: "Command is required" };
+  const jobType = typeof jobData?.job_type === "string" && jobData.job_type.trim()
+    ? jobData.job_type.trim()
+    : "shell_command";
+
+  const rawCommand = typeof jobData?.command === "string" ? jobData.command.trim() : "";
+  if (jobType === "shell_command" && !rawCommand) {
+    return { success: false, error: "Command is required for shell_command jobs" };
+  }
+
+  let payloadJson = null;
+  if (jobData?.payload_json !== undefined && jobData.payload_json !== null) {
+    try {
+      payloadJson = JSON.stringify(jobData.payload_json);
+    } catch {
+      return { success: false, error: "payload_json must be serializable JSON" };
+    }
+  }
 
   // Verify the token belongs to this user
   const token = await db
@@ -581,18 +678,20 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
     const result = await db
       .prepare(
         `INSERT INTO local_runner_jobs (
-           runner_token_id, user_id, command, working_dir, label, status, target_instance_id
+           runner_token_id, user_id, command, working_dir, label, status, target_instance_id, job_type, payload_json
          )
-         VALUES (?, ?, ?, ?, ?, 'pending', ?)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
          RETURNING id`
       )
       .bind(
         tokenId,
         userId,
-        jobData.command.trim(),
+        rawCommand || `[${jobType}]`,
         jobData.working_dir ?? null,
         jobData.label ?? null,
-        targetInstanceId
+        targetInstanceId,
+        jobType,
+        payloadJson
       )
       .first();
 
@@ -614,7 +713,7 @@ export async function claimPendingJobs(db, tokenId, instanceId = null) {
   try {
     const pending = await db
       .prepare(
-        `SELECT id, command, working_dir, label, target_instance_id
+        `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json
          FROM local_runner_jobs
          WHERE runner_token_id = ?
            AND status = 'pending'
@@ -647,7 +746,7 @@ export async function claimPendingJobs(db, tokenId, instanceId = null) {
       }
     }
 
-    return claimedJobs;
+    return claimedJobs.map(normalizeRunnerJob);
   } catch (err) {
     log.error("[LocalRunners] claimPendingJobs error:", err);
     return [];
@@ -671,17 +770,35 @@ export async function reportJobResult(db, tokenId, jobId, result) {
     ? result.output.slice(-MAX_OUTPUT_BYTES)
     : null;
 
+  let resultJson = null;
+  if (result.result_json !== undefined && result.result_json !== null) {
+    try {
+      resultJson = JSON.stringify(result.result_json);
+    } catch {
+      return { success: false, error: "result_json must be serializable JSON" };
+    }
+  }
+
+  let artifactRefsJson = null;
+  if (result.artifact_refs_json !== undefined && result.artifact_refs_json !== null) {
+    try {
+      artifactRefsJson = JSON.stringify(result.artifact_refs_json);
+    } catch {
+      return { success: false, error: "artifact_refs_json must be serializable JSON" };
+    }
+  }
+
   const status = result.status === "failed" ? "failed" : "completed";
 
   try {
     const update = await db
       .prepare(
         `UPDATE local_runner_jobs
-         SET status = ?, output = ?, exit_code = ?,
+         SET status = ?, output = ?, exit_code = ?, result_json = ?, artifact_refs_json = ?,
              updated_at = datetime('now'), completed_at = datetime('now')
          WHERE id = ? AND runner_token_id = ? AND status = 'running'`
       )
-      .bind(status, output, result.exitCode ?? null, jobId, tokenId)
+      .bind(status, output, result.exitCode ?? null, resultJson, artifactRefsJson, jobId, tokenId)
       .run();
 
     const changed = update?.meta?.changes ?? update?.changes ?? 0;

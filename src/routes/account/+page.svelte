@@ -18,6 +18,7 @@
 	// -------------------------------------------------------------------------
 	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
 	let runnerJobs = $state(untrack(() => data.runnerJobs ?? []));
+	let runnerInstances = $state(untrack(() => data.runnerInstances ?? []));
 
 	// Create-token form
 	let newRunnerName = $state('');
@@ -32,6 +33,7 @@
 	let dispatchWorkDir = $state('');
 	let dispatchLabel = $state('');
 	let dispatching = $state(false);
+	let copilotPrompt = $state('');
 
 	/** Returns true if the runner checked in within the last 45 seconds */
 	function isRunnerOnline(token) {
@@ -123,6 +125,7 @@
 			if (listRes.ok) {
 				const listBody = await listRes.json();
 				runnerJobs = listBody.jobs || runnerJobs;
+				runnerInstances = listBody.instances || runnerInstances;
 			}
 		} catch {
 			toastMessage = 'Network error. Please try again.';
@@ -131,6 +134,55 @@
 		} finally {
 			dispatching = false;
 		}
+	}
+
+	async function queueTypedJob(tokenId, jobType, payload = {}, label = null, targetInstanceId = undefined) {
+		dispatching = true;
+		try {
+			const res = await fetch(`/api/account/runners/${tokenId}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					job_type: jobType,
+					payload_json: payload,
+					label,
+					target_instance_id: targetInstanceId,
+				}),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || `Failed to queue ${jobType}`;
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+
+			toastMessage = `Job #${body.jobId} queued (${jobType}).`;
+			toastSuccess = true;
+			showToast = true;
+
+			const listRes = await fetch('/api/account/runners');
+			if (listRes.ok) {
+				const listBody = await listRes.json();
+				runnerJobs = listBody.jobs || runnerJobs;
+				runnerInstances = listBody.instances || runnerInstances;
+			}
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		} finally {
+			dispatching = false;
+		}
+	}
+
+	function instancesForToken(tokenId) {
+		return runnerInstances.filter((i) => i.runner_token_id === tokenId);
+	}
+
+	function capabilityLabel(instance, key) {
+		const caps = instance?.metadata?.capabilities || {};
+		return caps[key] ? 'yes' : 'no';
 	}
 
 	function copyRawToken() {
@@ -767,6 +819,29 @@
 							</div>
 						</div>
 
+						{#if instancesForToken(t.id).length > 0}
+							<div class="runner-instances">
+								{#each instancesForToken(t.id) as inst (inst.id)}
+									<div class="runner-instance-row">
+										<div class="runner-instance-main">
+											<strong>{inst.display_name}</strong>
+											<span class="runner-instance-meta">{inst.platform || 'unknown'} / {inst.arch || 'unknown'}</span>
+											<span class="runner-instance-meta">screenshots: {capabilityLabel(inst, 'screenshotAvailable')}</span>
+											<span class="runner-instance-meta">vscode: {capabilityLabel(inst, 'vscodeControlAvailable')}</span>
+											<span class="runner-instance-meta">copilot: {capabilityLabel(inst, 'copilotMessageAvailable')}</span>
+										</div>
+										{#if !t.revoked}
+											<div class="runner-instance-actions">
+												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'system_profile', {}, 'Collect System Profile', inst.id)} disabled={dispatching}>Profile</button>
+												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'screenshot_capture', { mode: 'all_displays' }, 'Capture Screenshot', inst.id)} disabled={dispatching}>Screenshot</button>
+												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'vscode_discover_instances', {}, 'Discover VS Code', inst.id)} disabled={dispatching}>VS Code</button>
+											</div>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						{/if}
+
 						<!-- Inline dispatch form for this runner -->
 						{#if dispatchTokenId === t.id}
 							<div class="dispatch-form">
@@ -791,6 +866,19 @@
 								<div class="dispatch-actions">
 									<button class="btn btn-primary btn-sm" onclick={dispatchJob} disabled={dispatching || !dispatchCommand.trim()}>
 										{dispatching ? 'Queuing…' : 'Queue Job'}
+									</button>
+									<input
+										class="input"
+										type="text"
+										placeholder="Send to Copilot (requires bridge)"
+										bind:value={copilotPrompt}
+									/>
+									<button
+										class="btn btn-outline btn-sm"
+										onclick={() => queueTypedJob(t.id, 'vscode_send_copilot_message', { message: copilotPrompt }, 'Send Copilot Message')}
+										disabled={dispatching || !copilotPrompt.trim()}
+									>
+										Send to Copilot
 									</button>
 									<button class="btn btn-ghost btn-sm" onclick={() => dispatchTokenId = null}>Cancel</button>
 								</div>
@@ -820,6 +908,17 @@
 							<code class="job-command">{job.label || job.command}</code>
 							{#if job.output}
 								<pre class="job-output">{job.output.length > 2000 ? job.output.slice(-2000) + '\n…(truncated)' : job.output}</pre>
+							{/if}
+							{#if job.artifact_refs_json && job.artifact_refs_json.length > 0}
+								<div class="job-artifacts">
+									{#each job.artifact_refs_json as a}
+										{#if a.id}
+											<a class="btn btn-outline btn-sm" href={`/api/account/runners/artifacts/${a.id}?raw=1`} target="_blank" rel="noreferrer">
+												Open {a.artifactType || 'Artifact'} #{a.id}
+											</a>
+										{/if}
+									{/each}
+								</div>
 							{/if}
 						</div>
 					{/each}
@@ -1959,6 +2058,43 @@
 		color: var(--color-text-muted);
 	}
 
+	.runner-instances {
+		margin-top: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.runner-instance-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		padding: 0.5rem 0.625rem;
+		background: var(--color-surface-elevated, hsla(var(--hue), 25%, 96%, 0.2));
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+	}
+
+	.runner-instance-main {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.runner-instance-meta {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.runner-instance-actions {
+		display: flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+	}
+
 	/* Job dispatch form */
 	.dispatch-form {
 		margin-top: 0.875rem;
@@ -1972,6 +2108,7 @@
 	.dispatch-actions {
 		display: flex;
 		gap: 0.5rem;
+		flex-wrap: wrap;
 	}
 
 	/* Job history */
@@ -2042,6 +2179,13 @@
 		max-height: 200px;
 		overflow-y: auto;
 		margin: 0;
+	}
+
+	.job-artifacts {
+		display: flex;
+		gap: 0.375rem;
+		flex-wrap: wrap;
+		margin-top: 0.5rem;
 	}
 
 	/* Generic input used in inline forms */
