@@ -23,6 +23,10 @@ const DEFAULT_TIMEOUT_SECONDS = 300;
 const MIN_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 3600;
 const RETRY_BACKOFF_SECONDS = 5;
+const TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS = 15;
+const INSTANCE_HEARTBEAT_WRITE_WINDOW_SECONDS = 15;
+const TIMEOUT_SWEEP_INTERVAL_MS = 15_000;
+const lastTimeoutSweepByToken = new Map();
 
 function parseJson(value) {
   if (!value) return null;
@@ -64,6 +68,16 @@ function jobMeetsCapabilityRequirements(job, runnerMetadata) {
     }
   }
 
+  return true;
+}
+
+function shouldSweepTimeouts(tokenId) {
+  const now = Date.now();
+  const lastSweep = lastTimeoutSweepByToken.get(tokenId) ?? 0;
+  if (now - lastSweep < TIMEOUT_SWEEP_INTERVAL_MS) {
+    return false;
+  }
+  lastTimeoutSweepByToken.set(tokenId, now);
   return true;
 }
 
@@ -238,9 +252,10 @@ export async function validateRunnerToken(db, rawToken, clientIp) {
     db.prepare(
       `UPDATE local_runner_tokens
        SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now')
-       WHERE id = ?`
+       WHERE id = ?
+         AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))`
     )
-      .bind(clientIp ?? null, row.id)
+      .bind(clientIp ?? null, row.id, `-${TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`)
       .run()
       .catch(() => {});
 
@@ -292,7 +307,8 @@ export async function registerRunnerInstance(db, runner, clientIp) {
            SET display_name = ?, hostname = ?, platform = ?, platform_release = ?, arch = ?,
                runner_version = ?, default_workdir = ?, metadata = ?,
                last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now')
-           WHERE id = ?`
+             WHERE id = ?
+               AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))`
         )
         .bind(
           runner.displayName,
@@ -304,7 +320,8 @@ export async function registerRunnerInstance(db, runner, clientIp) {
           runner.defaultWorkdir ?? null,
           metadataJson,
           clientIp ?? null,
-          existing.id
+          existing.id,
+          `-${INSTANCE_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`
         )
         .run();
     } else {
@@ -805,6 +822,7 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
 
 async function requeueTimedOutRunnerJobs(db, tokenId) {
   if (!db || !tokenId) return;
+  if (!shouldSweepTimeouts(tokenId)) return;
 
   await db
     .prepare(

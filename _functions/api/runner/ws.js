@@ -25,13 +25,18 @@
 
 const MAX_OUTPUT_BYTES = 65_536;
 const MAX_EVENT_MESSAGE_CHARS = 2_000;
-const JOB_POLL_INTERVAL_MS = 200;
+const JOB_POLL_MIN_INTERVAL_MS = 500;
+const JOB_POLL_MAX_INTERVAL_MS = 4_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const RUNNER_ONLINE_WINDOW_SECONDS = 90;
 const DEFAULT_MAX_ATTEMPTS = 5;
 const MIN_MAX_ATTEMPTS = 1;
 const MAX_MAX_ATTEMPTS = 20;
 const RETRY_BACKOFF_SECONDS = 5;
+const TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS = 15;
+const INSTANCE_HEARTBEAT_WRITE_WINDOW_SECONDS = 15;
+const TIMEOUT_SWEEP_INTERVAL_MS = 15_000;
+const lastTimeoutSweepByToken = new Map();
 
 // ---------------------------------------------------------------------------
 // Helpers (inlined — can't import from $lib in Pages Functions)
@@ -85,6 +90,16 @@ function jobMeetsCapabilityRequirements(job, runnerMetadata) {
   return true;
 }
 
+function shouldSweepTimeouts(tokenId) {
+  const now = Date.now();
+  const lastSweep = lastTimeoutSweepByToken.get(tokenId) ?? 0;
+  if (now - lastSweep < TIMEOUT_SWEEP_INTERVAL_MS) {
+    return false;
+  }
+  lastTimeoutSweepByToken.set(tokenId, now);
+  return true;
+}
+
 /**
  * Validate a runner token against D1 and update last_seen heartbeat.
  * @param {D1Database} db
@@ -114,8 +129,8 @@ async function validateToken(db, rawToken, clientIp) {
 
   // Fire-and-forget heartbeat
   db.prepare(
-    "UPDATE local_runner_tokens SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now') WHERE id = ?"
-  ).bind(clientIp ?? null, row.id).run().catch(() => {});
+    "UPDATE local_runner_tokens SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now') WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))"
+  ).bind(clientIp ?? null, row.id, `-${TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`).run().catch(() => {});
 
   return { valid: true, tokenId: row.id, userId: row.user_id };
 }
@@ -143,7 +158,8 @@ async function registerRunnerInstance(db, auth, instance, clientIp) {
          SET display_name = ?, hostname = ?, platform = ?, platform_release = ?, arch = ?,
              runner_version = ?, default_workdir = ?, metadata = ?,
              last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now')
-         WHERE id = ?`
+         WHERE id = ?
+           AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))`
       )
       .bind(
         instance.displayName,
@@ -156,6 +172,7 @@ async function registerRunnerInstance(db, auth, instance, clientIp) {
         metadataJson,
         clientIp ?? null,
         existing.id,
+        `-${INSTANCE_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`,
       )
       .run();
   } else {
@@ -262,6 +279,8 @@ async function recordRunnerEvent(db, auth, state, event) {
  * @returns {Promise<Array>}
  */
 async function requeueTimedOutRunnerJobs(db, tokenId) {
+  if (!shouldSweepTimeouts(tokenId)) return;
+
   await db
     .prepare(
       `UPDATE local_runner_jobs
@@ -740,10 +759,12 @@ export async function onRequestGet(context) {
 
   // Job push loop — polls D1 at 200 ms, pushes new jobs immediately
   async function jobPushLoop() {
+      let idlePollDelay = JOB_POLL_MIN_INTERVAL_MS;
+
     while (!closed) {
       try {
         if (!state.instanceId) {
-          await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+            await new Promise((resolve) => setTimeout(resolve, JOB_POLL_MIN_INTERVAL_MS));
           continue;
         }
 
@@ -752,11 +773,18 @@ export async function onRequestGet(context) {
           if (closed) break;
           server.send(JSON.stringify({ type: "job", job }));
         }
+
+          if (jobs.length > 0) {
+            idlePollDelay = JOB_POLL_MIN_INTERVAL_MS;
+          } else {
+            idlePollDelay = Math.min(Math.round(idlePollDelay * 1.5), JOB_POLL_MAX_INTERVAL_MS);
+          }
       } catch {
         // D1 hiccup — keep looping
+          idlePollDelay = Math.min(Math.round(idlePollDelay * 1.5), JOB_POLL_MAX_INTERVAL_MS);
       }
       // Wait between polls
-      await new Promise((resolve) => setTimeout(resolve, JOB_POLL_INTERVAL_MS));
+        await new Promise((resolve) => setTimeout(resolve, idlePollDelay));
     }
     clearInterval(heartbeatTimer);
   }
