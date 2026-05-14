@@ -13,6 +13,16 @@ import { log } from "./logger.js";
 /** Maximum output stored per job (64 KB) */
 const MAX_OUTPUT_BYTES = 65536;
 const RUNNER_ONLINE_WINDOW_SECONDS = 90;
+const DEFAULT_JOB_PRIORITY = 0;
+const MIN_JOB_PRIORITY = -100;
+const MAX_JOB_PRIORITY = 100;
+const DEFAULT_MAX_ATTEMPTS = 5;
+const MIN_MAX_ATTEMPTS = 1;
+const MAX_MAX_ATTEMPTS = 20;
+const DEFAULT_TIMEOUT_SECONDS = 300;
+const MIN_TIMEOUT_SECONDS = 30;
+const MAX_TIMEOUT_SECONDS = 3600;
+const RETRY_BACKOFF_SECONDS = 5;
 
 function parseJson(value) {
   if (!value) return null;
@@ -22,6 +32,39 @@ function parseJson(value) {
   } catch {
     return null;
   }
+}
+
+function clampInteger(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const rounded = Math.trunc(numeric);
+  return Math.max(min, Math.min(max, rounded));
+}
+
+function normalizeBoolean(value) {
+  if (value === true || value === 1 || value === "1") return true;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === "true" || trimmed === "yes" || trimmed === "on") return true;
+    if (trimmed === "false" || trimmed === "no" || trimmed === "off") return false;
+  }
+  return Boolean(value);
+}
+
+function jobMeetsCapabilityRequirements(job, runnerMetadata) {
+  const requirements = parseJson(job?.capability_requirements_json);
+  if (!requirements || typeof requirements !== "object") return true;
+
+  const capabilities = runnerMetadata?.capabilities;
+  if (!capabilities || typeof capabilities !== "object") return false;
+
+  for (const [key, requiredValue] of Object.entries(requirements)) {
+    if (normalizeBoolean(capabilities[key]) !== normalizeBoolean(requiredValue)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function normalizeRunnerInstance(row) {
@@ -48,6 +91,7 @@ function normalizeRunnerJob(row) {
     payload_json: parseJson(row.payload_json),
     result_json: parseJson(row.result_json),
     artifact_refs_json: parseJson(row.artifact_refs_json),
+    capability_requirements_json: parseJson(row.capability_requirements_json),
   };
 }
 
@@ -513,37 +557,57 @@ export async function getRunnerEvents(db, userId, options = {}) {
 export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
   if (!db || !userId) return [];
   try {
-    const query = tokenId
-      ? `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-      j.status, j.output, j.exit_code, j.label, j.job_type, j.payload_json, j.result_json, j.artifact_refs_json,
-      j.target_instance_id, j.claimed_by_instance_id,
-      target.display_name AS target_instance_name,
-      claimed.display_name AS claimed_by_instance_name,
-      (SELECT COUNT(*) FROM local_runner_artifacts a WHERE a.job_id = j.id) AS artifact_count,
-                j.created_at, j.updated_at, j.completed_at
-         FROM local_runner_jobs j
-         JOIN local_runner_tokens t ON t.id = j.runner_token_id
-    LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
-    LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
-         WHERE j.user_id = ? AND j.runner_token_id = ?
-         ORDER BY j.created_at DESC LIMIT ?`
-      : `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
-      j.status, j.output, j.exit_code, j.label, j.job_type, j.payload_json, j.result_json, j.artifact_refs_json,
-      j.target_instance_id, j.claimed_by_instance_id,
-      target.display_name AS target_instance_name,
-      claimed.display_name AS claimed_by_instance_name,
-      (SELECT COUNT(*) FROM local_runner_artifacts a WHERE a.job_id = j.id) AS artifact_count,
-                j.created_at, j.updated_at, j.completed_at
-         FROM local_runner_jobs j
-         JOIN local_runner_tokens t ON t.id = j.runner_token_id
-    LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
-    LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
-         WHERE j.user_id = ?
-         ORDER BY j.created_at DESC LIMIT ?`;
+    const options = typeof limit === "object" && limit !== null
+      ? limit
+      : { limit };
 
-    const stmt = tokenId
-      ? db.prepare(query).bind(userId, tokenId, limit)
-      : db.prepare(query).bind(userId, limit);
+    const {
+      status = null,
+      instanceId = null,
+      offset = 0,
+    } = options;
+
+    const boundedLimit = clampInteger(options.limit, 50, 1, 200);
+    const boundedOffset = clampInteger(offset, 0, 0, 10_000);
+    const normalizedStatus = typeof status === "string" && status.trim()
+      ? status.trim().toLowerCase()
+      : null;
+
+    let query = `SELECT j.id, j.runner_token_id, t.name AS runner_name, j.command, j.working_dir,
+      j.status, j.output, j.exit_code, j.label, j.job_type, j.payload_json, j.result_json, j.artifact_refs_json,
+      j.priority, j.max_attempts, j.attempt_count, j.timeout_seconds, j.started_at, j.next_retry_at,
+      j.capability_requirements_json, j.canceled_at, j.cancel_reason, j.terminal_error,
+      j.target_instance_id, j.claimed_by_instance_id,
+      target.display_name AS target_instance_name,
+      claimed.display_name AS claimed_by_instance_name,
+      (SELECT COUNT(*) FROM local_runner_artifacts a WHERE a.job_id = j.id) AS artifact_count,
+                j.created_at, j.updated_at, j.completed_at
+         FROM local_runner_jobs j
+         JOIN local_runner_tokens t ON t.id = j.runner_token_id
+    LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
+    LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
+         WHERE j.user_id = ?`;
+    const params = [userId];
+
+    if (tokenId) {
+      query += ` AND j.runner_token_id = ?`;
+      params.push(tokenId);
+    }
+
+    if (normalizedStatus) {
+      query += ` AND j.status = ?`;
+      params.push(normalizedStatus);
+    }
+
+    if (instanceId) {
+      query += ` AND (j.target_instance_id = ? OR j.claimed_by_instance_id = ?)`;
+      params.push(instanceId, instanceId);
+    }
+
+    query += ` ORDER BY j.created_at DESC LIMIT ? OFFSET ?`;
+    params.push(boundedLimit, boundedOffset);
+
+    const stmt = db.prepare(query).bind(...params);
 
     const result = await stmt.all();
     return (result.results || []).map(normalizeRunnerJob);
@@ -651,6 +715,37 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
     }
   }
 
+  let capabilityRequirementsJson = null;
+  if (jobData?.capability_requirements_json !== undefined && jobData.capability_requirements_json !== null) {
+    if (typeof jobData.capability_requirements_json !== "object" || Array.isArray(jobData.capability_requirements_json)) {
+      return { success: false, error: "capability_requirements_json must be a JSON object" };
+    }
+    try {
+      capabilityRequirementsJson = JSON.stringify(jobData.capability_requirements_json);
+    } catch {
+      return { success: false, error: "capability_requirements_json must be serializable JSON" };
+    }
+  }
+
+  const priority = clampInteger(
+    jobData?.priority,
+    DEFAULT_JOB_PRIORITY,
+    MIN_JOB_PRIORITY,
+    MAX_JOB_PRIORITY
+  );
+  const maxAttempts = clampInteger(
+    jobData?.max_attempts,
+    DEFAULT_MAX_ATTEMPTS,
+    MIN_MAX_ATTEMPTS,
+    MAX_MAX_ATTEMPTS
+  );
+  const timeoutSeconds = clampInteger(
+    jobData?.timeout_seconds,
+    DEFAULT_TIMEOUT_SECONDS,
+    MIN_TIMEOUT_SECONDS,
+    MAX_TIMEOUT_SECONDS
+  );
+
   // Verify the token belongs to this user
   const token = await db
     .prepare("SELECT id FROM local_runner_tokens WHERE id = ? AND user_id = ? AND revoked = 0")
@@ -678,9 +773,11 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
     const result = await db
       .prepare(
         `INSERT INTO local_runner_jobs (
-           runner_token_id, user_id, command, working_dir, label, status, target_instance_id, job_type, payload_json
+           runner_token_id, user_id, command, working_dir, label, status, target_instance_id,
+           job_type, payload_json, capability_requirements_json, priority,
+           max_attempts, timeout_seconds
          )
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`
       )
       .bind(
@@ -691,7 +788,11 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
         jobData.label ?? null,
         targetInstanceId,
         jobType,
-        payloadJson
+        payloadJson,
+        capabilityRequirementsJson,
+        priority,
+        maxAttempts,
+        timeoutSeconds
       )
       .first();
 
@@ -700,6 +801,45 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
     log.error("[LocalRunners] createRunnerJob error:", err);
     return { success: false, error: "Failed to create job" };
   }
+}
+
+async function requeueTimedOutRunnerJobs(db, tokenId) {
+  if (!db || !tokenId) return;
+
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'pending',
+           claimed_by_instance_id = NULL,
+           started_at = NULL,
+           next_retry_at = datetime('now', ?),
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out before completion'
+       WHERE runner_token_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count < max_attempts`
+    )
+    .bind(`+${RETRY_BACKOFF_SECONDS} seconds`, tokenId)
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'failed',
+           completed_at = datetime('now'),
+           started_at = NULL,
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out and retry budget exhausted'
+       WHERE runner_token_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count >= max_attempts`
+    )
+    .bind(tokenId)
+    .run();
 }
 
 /**
@@ -711,15 +851,29 @@ export async function createRunnerJob(db, userId, tokenId, jobData) {
 export async function claimPendingJobs(db, tokenId, instanceId = null) {
   if (!db || !tokenId) return [];
   try {
+    await requeueTimedOutRunnerJobs(db, tokenId);
+
+    let instanceMetadata = null;
+    if (instanceId) {
+      const instance = await db
+        .prepare("SELECT metadata FROM local_runner_instances WHERE id = ? AND runner_token_id = ?")
+        .bind(instanceId, tokenId)
+        .first();
+      instanceMetadata = parseJson(instance?.metadata);
+    }
+
     const pending = await db
       .prepare(
-        `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json
+        `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json,
+                capability_requirements_json, priority, max_attempts, attempt_count,
+                timeout_seconds, next_retry_at
          FROM local_runner_jobs
          WHERE runner_token_id = ?
            AND status = 'pending'
+           AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
            AND (target_instance_id IS NULL OR target_instance_id = ?)
-         ORDER BY created_at ASC
-         LIMIT 10`
+         ORDER BY priority DESC, created_at ASC
+         LIMIT 25`
       )
       .bind(tokenId, instanceId)
       .all();
@@ -729,12 +883,26 @@ export async function claimPendingJobs(db, tokenId, instanceId = null) {
 
     const claimedJobs = [];
     for (const job of jobs) {
+      if (!instanceId) {
+        // Polling without a concrete instance cannot reliably match capabilities.
+        if (job.capability_requirements_json) continue;
+      } else if (!jobMeetsCapabilityRequirements(job, instanceMetadata)) {
+        continue;
+      }
+
       const update = await db
         .prepare(
           `UPDATE local_runner_jobs
-           SET status = 'running', claimed_by_instance_id = ?, updated_at = datetime('now')
+           SET status = 'running',
+               claimed_by_instance_id = ?,
+               started_at = datetime('now'),
+               attempt_count = attempt_count + 1,
+               next_retry_at = NULL,
+               updated_at = datetime('now')
            WHERE id = ?
              AND status = 'pending'
+             AND attempt_count < max_attempts
+             AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
              AND (target_instance_id IS NULL OR target_instance_id = ?)`
         )
         .bind(instanceId, job.id, instanceId)
@@ -791,14 +959,73 @@ export async function reportJobResult(db, tokenId, jobId, result) {
   const status = result.status === "failed" ? "failed" : "completed";
 
   try {
+    if (status === "failed") {
+      const job = await db
+        .prepare(
+          `SELECT attempt_count, max_attempts
+           FROM local_runner_jobs
+           WHERE id = ? AND runner_token_id = ? AND status = 'running'`
+        )
+        .bind(jobId, tokenId)
+        .first();
+
+      if (!job) {
+        return { success: false, error: "Job not found or not in running state" };
+      }
+
+      const attemptCount = clampInteger(job.attempt_count, 0, 0, Number.MAX_SAFE_INTEGER);
+      const maxAttempts = clampInteger(
+        job.max_attempts,
+        DEFAULT_MAX_ATTEMPTS,
+        MIN_MAX_ATTEMPTS,
+        MAX_MAX_ATTEMPTS
+      );
+
+      if (attemptCount < maxAttempts) {
+        const retryUpdate = await db
+          .prepare(
+            `UPDATE local_runner_jobs
+             SET status = 'pending',
+                 output = ?,
+                 exit_code = ?,
+                 result_json = ?,
+                 artifact_refs_json = ?,
+                 claimed_by_instance_id = NULL,
+                 started_at = NULL,
+                 next_retry_at = datetime('now', ?),
+                 terminal_error = NULL,
+                 completed_at = NULL,
+                 updated_at = datetime('now')
+             WHERE id = ? AND runner_token_id = ? AND status = 'running'`
+          )
+          .bind(
+            output,
+            result.exitCode ?? null,
+            resultJson,
+            artifactRefsJson,
+            `+${RETRY_BACKOFF_SECONDS} seconds`,
+            jobId,
+            tokenId
+          )
+          .run();
+
+        const changed = retryUpdate?.meta?.changes ?? retryUpdate?.changes ?? 0;
+        if (!changed) return { success: false, error: "Job not found or not in running state" };
+        return { success: true, retried: true };
+      }
+    }
+
     const update = await db
       .prepare(
         `UPDATE local_runner_jobs
          SET status = ?, output = ?, exit_code = ?, result_json = ?, artifact_refs_json = ?,
+             started_at = NULL,
+             next_retry_at = NULL,
+             terminal_error = CASE WHEN ? = 'failed' THEN 'Retry budget exhausted' ELSE NULL END,
              updated_at = datetime('now'), completed_at = datetime('now')
          WHERE id = ? AND runner_token_id = ? AND status = 'running'`
       )
-      .bind(status, output, result.exitCode ?? null, resultJson, artifactRefsJson, jobId, tokenId)
+      .bind(status, output, result.exitCode ?? null, resultJson, artifactRefsJson, status, jobId, tokenId)
       .run();
 
     const changed = update?.meta?.changes ?? update?.changes ?? 0;
@@ -807,5 +1034,73 @@ export async function reportJobResult(db, tokenId, jobId, result) {
   } catch (err) {
     log.error("[LocalRunners] reportJobResult error:", err);
     return { success: false, error: "Database error" };
+  }
+}
+
+export async function cancelRunnerJob(db, userId, jobId, reason = null) {
+  if (!db || !userId || !jobId) return { success: false, error: "Invalid parameters" };
+
+  try {
+    const update = await db
+      .prepare(
+        `UPDATE local_runner_jobs
+         SET status = 'canceled',
+             canceled_at = datetime('now'),
+             cancel_reason = ?,
+             terminal_error = COALESCE(?, terminal_error),
+             completed_at = datetime('now'),
+             started_at = NULL,
+             next_retry_at = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?
+           AND user_id = ?
+           AND status IN ('pending', 'running')`
+      )
+      .bind(reason ?? null, reason ?? null, jobId, userId)
+      .run();
+
+    const changed = update?.meta?.changes ?? update?.changes ?? 0;
+    if (!changed) return { success: false, error: "Job not found or cannot be canceled" };
+    return { success: true };
+  } catch (err) {
+    log.error("[LocalRunners] cancelRunnerJob error:", err);
+    return { success: false, error: "Failed to cancel job" };
+  }
+}
+
+export async function retryRunnerJob(db, userId, jobId) {
+  if (!db || !userId || !jobId) return { success: false, error: "Invalid parameters" };
+
+  try {
+    const update = await db
+      .prepare(
+        `UPDATE local_runner_jobs
+         SET status = 'pending',
+             output = NULL,
+             exit_code = NULL,
+             result_json = NULL,
+             artifact_refs_json = NULL,
+             claimed_by_instance_id = NULL,
+             attempt_count = 0,
+             started_at = NULL,
+             next_retry_at = NULL,
+             canceled_at = NULL,
+             cancel_reason = NULL,
+             terminal_error = NULL,
+             completed_at = NULL,
+             updated_at = datetime('now')
+         WHERE id = ?
+           AND user_id = ?
+           AND status IN ('failed', 'canceled')`
+      )
+      .bind(jobId, userId)
+      .run();
+
+    const changed = update?.meta?.changes ?? update?.changes ?? 0;
+    if (!changed) return { success: false, error: "Job not found or cannot be retried" };
+    return { success: true };
+  } catch (err) {
+    log.error("[LocalRunners] retryRunnerJob error:", err);
+    return { success: false, error: "Failed to retry job" };
   }
 }

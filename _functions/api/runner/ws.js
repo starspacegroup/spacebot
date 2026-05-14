@@ -28,6 +28,10 @@ const MAX_EVENT_MESSAGE_CHARS = 2_000;
 const JOB_POLL_INTERVAL_MS = 200;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const RUNNER_ONLINE_WINDOW_SECONDS = 90;
+const DEFAULT_MAX_ATTEMPTS = 5;
+const MIN_MAX_ATTEMPTS = 1;
+const MAX_MAX_ATTEMPTS = 20;
+const RETRY_BACKOFF_SECONDS = 5;
 
 // ---------------------------------------------------------------------------
 // Helpers (inlined — can't import from $lib in Pages Functions)
@@ -36,6 +40,49 @@ const RUNNER_ONLINE_WINDOW_SECONDS = 90;
 async function sha256hex(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function parseJson(value) {
+  if (!value) return null;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function clampInteger(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  const rounded = Math.trunc(numeric);
+  return Math.max(min, Math.min(max, rounded));
+}
+
+function normalizeBoolean(value) {
+  if (value === true || value === 1 || value === "1") return true;
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    if (trimmed === "true" || trimmed === "yes" || trimmed === "on") return true;
+    if (trimmed === "false" || trimmed === "no" || trimmed === "off") return false;
+  }
+  return Boolean(value);
+}
+
+function jobMeetsCapabilityRequirements(job, runnerMetadata) {
+  const requirements = parseJson(job?.capability_requirements_json);
+  if (!requirements || typeof requirements !== "object") return true;
+
+  const capabilities = runnerMetadata?.capabilities;
+  if (!capabilities || typeof capabilities !== "object") return false;
+
+  for (const [key, requiredValue] of Object.entries(requirements)) {
+    if (normalizeBoolean(capabilities[key]) !== normalizeBoolean(requiredValue)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -214,16 +261,67 @@ async function recordRunnerEvent(db, auth, state, event) {
  * @param {number} tokenId
  * @returns {Promise<Array>}
  */
+async function requeueTimedOutRunnerJobs(db, tokenId) {
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'pending',
+           claimed_by_instance_id = NULL,
+           started_at = NULL,
+           next_retry_at = datetime('now', ?),
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out before completion'
+       WHERE runner_token_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count < max_attempts`
+    )
+    .bind(`+${RETRY_BACKOFF_SECONDS} seconds`, tokenId)
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'failed',
+           completed_at = datetime('now'),
+           started_at = NULL,
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out and retry budget exhausted'
+       WHERE runner_token_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count >= max_attempts`
+    )
+    .bind(tokenId)
+    .run();
+}
+
 async function claimPendingJobs(db, tokenId, instanceId) {
+  await requeueTimedOutRunnerJobs(db, tokenId);
+
+  let runnerMetadata = null;
+  if (instanceId) {
+    const instance = await db
+      .prepare("SELECT metadata FROM local_runner_instances WHERE id = ? AND runner_token_id = ?")
+      .bind(instanceId, tokenId)
+      .first();
+    runnerMetadata = parseJson(instance?.metadata);
+  }
+
   const result = await db
     .prepare(
-      `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json
+      `SELECT id, command, working_dir, label, target_instance_id, job_type, payload_json,
+              capability_requirements_json, priority, max_attempts, attempt_count,
+              timeout_seconds, next_retry_at
        FROM local_runner_jobs
        WHERE runner_token_id = ?
          AND status = 'pending'
+         AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
          AND (target_instance_id IS NULL OR target_instance_id = ?)
-       ORDER BY id ASC
-       LIMIT 10`
+       ORDER BY priority DESC, created_at ASC
+       LIMIT 25`
     )
     .bind(tokenId, instanceId)
     .all();
@@ -233,13 +331,24 @@ async function claimPendingJobs(db, tokenId, instanceId) {
 
   const claimed = [];
   for (const job of jobs) {
+    if (!jobMeetsCapabilityRequirements(job, runnerMetadata)) {
+      continue;
+    }
+
     try {
       const update = await db
         .prepare(
           `UPDATE local_runner_jobs
-           SET status = 'running', claimed_by_instance_id = ?, updated_at = datetime('now')
+           SET status = 'running',
+               claimed_by_instance_id = ?,
+               started_at = datetime('now'),
+               attempt_count = attempt_count + 1,
+               next_retry_at = NULL,
+               updated_at = datetime('now')
            WHERE id = ?
              AND status = 'pending'
+             AND attempt_count < max_attempts
+             AND (next_retry_at IS NULL OR next_retry_at <= datetime('now'))
              AND (target_instance_id IS NULL OR target_instance_id = ?)`
         )
         .bind(instanceId, job.id, instanceId)
@@ -294,17 +403,77 @@ async function storeResult(db, tokenId, instanceId, jobId, {
     }
   }
 
+  if (status === "failed") {
+    const job = await db
+      .prepare(
+        `SELECT attempt_count, max_attempts
+         FROM local_runner_jobs
+         WHERE id = ?
+           AND runner_token_id = ?
+           AND status = 'running'
+           AND (claimed_by_instance_id IS NULL OR claimed_by_instance_id = ?)`
+      )
+      .bind(jobId, tokenId, instanceId)
+      .first();
+
+    if (job) {
+      const attemptCount = clampInteger(job.attempt_count, 0, 0, Number.MAX_SAFE_INTEGER);
+      const maxAttempts = clampInteger(
+        job.max_attempts,
+        DEFAULT_MAX_ATTEMPTS,
+        MIN_MAX_ATTEMPTS,
+        MAX_MAX_ATTEMPTS
+      );
+
+      if (attemptCount < maxAttempts) {
+        return db
+          .prepare(
+            `UPDATE local_runner_jobs
+             SET status = 'pending',
+                 output = ?,
+                 exit_code = ?,
+                 result_json = ?,
+                 artifact_refs_json = ?,
+                 claimed_by_instance_id = NULL,
+                 started_at = NULL,
+                 next_retry_at = datetime('now', ?),
+                 terminal_error = NULL,
+                 completed_at = NULL,
+                 updated_at = datetime('now')
+             WHERE id = ?
+               AND runner_token_id = ?
+               AND status = 'running'
+               AND (claimed_by_instance_id IS NULL OR claimed_by_instance_id = ?)`
+          )
+          .bind(
+            out,
+            exitCode ?? null,
+            resultJsonStr,
+            artifactRefsJsonStr,
+            `+${RETRY_BACKOFF_SECONDS} seconds`,
+            jobId,
+            tokenId,
+            instanceId
+          )
+          .run();
+      }
+    }
+  }
+
   return db
     .prepare(
       `UPDATE local_runner_jobs
        SET status = ?, output = ?, exit_code = ?, result_json = ?, artifact_refs_json = ?,
+           started_at = NULL,
+           next_retry_at = NULL,
+           terminal_error = CASE WHEN ? = 'failed' THEN 'Retry budget exhausted' ELSE NULL END,
            completed_at = datetime('now'), updated_at = datetime('now')
        WHERE id = ?
          AND runner_token_id = ?
          AND status = 'running'
          AND (claimed_by_instance_id IS NULL OR claimed_by_instance_id = ?)`
     )
-    .bind(status, out, exitCode ?? null, resultJsonStr, artifactRefsJsonStr, jobId, tokenId, instanceId)
+    .bind(status, out, exitCode ?? null, resultJsonStr, artifactRefsJsonStr, status, jobId, tokenId, instanceId)
     .run();
 }
 

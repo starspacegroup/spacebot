@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+	cancelRunnerJob,
 	claimPendingJobs,
 	createRunnerJob,
 	getRunnerEvents,
+	getRunnerJobs,
 	getRunnerInstances,
 	recordRunnerEvent,
 	registerRunnerInstance,
+	retryRunnerJob,
 } from '../lib/db/local-runners.js';
 
 class FakeStatement {
@@ -137,8 +140,27 @@ class FakeDb {
 			return this.instances.find((instance) => instance.id === instanceId && instance.runner_token_id === tokenId && instance.user_id === userId) || null;
 		}
 
+		if (sql.includes('SELECT metadata FROM local_runner_instances WHERE id = ? AND runner_token_id = ?')) {
+			const [instanceId, tokenId] = args;
+			const instance = this.instances.find((entry) => entry.id === instanceId && entry.runner_token_id === tokenId);
+			return instance ? { metadata: instance.metadata } : null;
+		}
+
 		if (sql.includes('INSERT INTO local_runner_jobs')) {
-			const [tokenId, userId, command, workingDir, label, targetInstanceId] = args;
+			const [
+				tokenId,
+				userId,
+				command,
+				workingDir,
+				label,
+				targetInstanceId,
+				jobType,
+				payloadJson,
+				capabilityRequirementsJson,
+				priority,
+				maxAttempts,
+				timeoutSeconds,
+			] = args;
 			const job = {
 				id: this.nextJobId++,
 				runner_token_id: tokenId,
@@ -147,6 +169,15 @@ class FakeDb {
 				working_dir: workingDir,
 				label,
 				status: 'pending',
+				job_type: jobType,
+				payload_json: payloadJson,
+				capability_requirements_json: capabilityRequirementsJson,
+				priority,
+				max_attempts: maxAttempts,
+				attempt_count: 0,
+				timeout_seconds: timeoutSeconds,
+				started_at: null,
+				next_retry_at: null,
 				target_instance_id: targetInstanceId,
 				claimed_by_instance_id: null,
 				created_at: new Date().toISOString(),
@@ -160,16 +191,105 @@ class FakeDb {
 		if (sql.includes('SELECT id, command, working_dir, label, target_instance_id') && sql.includes('FROM local_runner_jobs')) {
 			const [tokenId, instanceId] = args;
 			return {
-				results: this.jobs.filter((job) => job.runner_token_id === tokenId && job.status === 'pending' && (job.target_instance_id == null || job.target_instance_id === instanceId)),
+				results: this.jobs
+					.filter((job) => job.runner_token_id === tokenId && job.status === 'pending' && (job.target_instance_id == null || job.target_instance_id === instanceId))
+					.sort((a, b) => (b.priority - a.priority) || a.id - b.id),
 			};
 		}
 
-		if (sql.includes('UPDATE local_runner_jobs') && sql.includes("SET status = 'running', claimed_by_instance_id = ?")) {
+		if (sql.includes('UPDATE local_runner_jobs') && sql.includes("SET status = 'running'")) {
 			const [instanceId, jobId] = args;
 			const job = this.jobs.find((entry) => entry.id === jobId && entry.status === 'pending');
 			if (!job) return { meta: { changes: 0 } };
 			job.status = 'running';
 			job.claimed_by_instance_id = instanceId;
+			job.started_at = new Date().toISOString();
+			job.attempt_count += 1;
+			job.updated_at = new Date().toISOString();
+			return { meta: { changes: 1 } };
+		}
+
+		if (sql.includes('UPDATE local_runner_jobs') && sql.includes("Execution timed out before completion")) {
+			return { meta: { changes: 0 } };
+		}
+
+		if (sql.includes('UPDATE local_runner_jobs') && sql.includes("Execution timed out and retry budget exhausted")) {
+			return { meta: { changes: 0 } };
+		}
+
+		if (sql.includes('FROM local_runner_jobs j')) {
+			const [userId, ...rest] = args;
+			let tokenId = null;
+			let status = null;
+			let instanceId = null;
+			let limit = 50;
+			let offset = 0;
+
+			if (sql.includes('AND j.runner_token_id = ?')) {
+				tokenId = rest.shift();
+			}
+			if (sql.includes('AND j.status = ?')) {
+				status = rest.shift();
+			}
+			if (sql.includes('AND (j.target_instance_id = ? OR j.claimed_by_instance_id = ?)')) {
+				instanceId = rest.shift();
+				rest.shift();
+			}
+			limit = rest.shift();
+			offset = rest.shift();
+
+			const tokenNameById = Object.fromEntries(this.tokens.map((token) => [token.id, token.name]));
+			const instanceNameById = Object.fromEntries(this.instances.map((instance) => [instance.id, instance.display_name]));
+
+			return {
+				results: this.jobs
+					.filter((job) => job.user_id === userId)
+					.filter((job) => (tokenId ? job.runner_token_id === tokenId : true))
+					.filter((job) => (status ? job.status === status : true))
+					.filter((job) => (instanceId ? (job.target_instance_id === instanceId || job.claimed_by_instance_id === instanceId) : true))
+					.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+					.slice(offset, offset + limit)
+					.map((job) => ({
+						...job,
+						runner_name: tokenNameById[job.runner_token_id] ?? null,
+						target_instance_name: instanceNameById[job.target_instance_id] ?? null,
+						claimed_by_instance_name: instanceNameById[job.claimed_by_instance_id] ?? null,
+						artifact_count: 0,
+					})),
+			};
+		}
+
+		if (sql.includes("SET status = 'canceled'")) {
+			const [, reason, jobId, userId] = args;
+			const job = this.jobs.find((entry) => entry.id === jobId && entry.user_id === userId && ['pending', 'running'].includes(entry.status));
+			if (!job) return { meta: { changes: 0 } };
+			job.status = 'canceled';
+			job.cancel_reason = reason;
+			job.canceled_at = new Date().toISOString();
+			job.completed_at = new Date().toISOString();
+			job.started_at = null;
+			job.next_retry_at = null;
+			job.updated_at = new Date().toISOString();
+			return { meta: { changes: 1 } };
+		}
+
+		if (sql.includes("SET status = 'pending'") && sql.includes('attempt_count = 0')) {
+			const [jobId, userId] = args;
+			const job = this.jobs.find((entry) => entry.id === jobId && entry.user_id === userId && ['failed', 'canceled'].includes(entry.status));
+			if (!job) return { meta: { changes: 0 } };
+			job.status = 'pending';
+			job.output = null;
+			job.exit_code = null;
+			job.result_json = null;
+			job.artifact_refs_json = null;
+			job.claimed_by_instance_id = null;
+			job.attempt_count = 0;
+			job.started_at = null;
+			job.next_retry_at = null;
+			job.canceled_at = null;
+			job.cancel_reason = null;
+			job.terminal_error = null;
+			job.completed_at = null;
 			job.updated_at = new Date().toISOString();
 			return { meta: { changes: 1 } };
 		}
@@ -296,5 +416,43 @@ describe('local runner data layer', () => {
 		expect(events[0].event_type).toBe('job.completed');
 		expect(events[0].details).toEqual({ exitCode: 0, bytes: 128 });
 		expect(events[0].instance_name).toBe('Home Server / host-a');
+	});
+
+	it('filters runner jobs and supports cancel/retry transitions', async () => {
+		const db = new FakeDb();
+		const instance = await registerRunnerInstance(db, {
+			tokenId: 1,
+			userId: 'user-1',
+			instanceKey: 'host-a::linux::x64',
+			displayName: 'Home Server / host-a',
+		}, '10.0.0.9');
+
+		await createRunnerJob(db, 'user-1', 1, {
+			command: 'git pull',
+			label: 'Update repo',
+			target_instance_id: instance.instance.id,
+		});
+		await createRunnerJob(db, 'user-1', 1, {
+			command: 'uptime',
+			label: 'Check uptime',
+		});
+
+		db.jobs[0].status = 'failed';
+		db.jobs[0].attempt_count = 5;
+		db.jobs[0].terminal_error = 'Retry budget exhausted';
+		db.jobs[0].completed_at = new Date().toISOString();
+
+		const failedJobs = await getRunnerJobs(db, 'user-1', 1, { status: 'failed', limit: 10 });
+		expect(failedJobs).toHaveLength(1);
+		expect(failedJobs[0].label).toBe('Update repo');
+
+		const cancelResult = await cancelRunnerJob(db, 'user-1', db.jobs[1].id, 'No longer needed');
+		expect(cancelResult.success).toBe(true);
+		expect(db.jobs[1].status).toBe('canceled');
+
+		const retryResult = await retryRunnerJob(db, 'user-1', db.jobs[0].id);
+		expect(retryResult.success).toBe(true);
+		expect(db.jobs[0].status).toBe('pending');
+		expect(db.jobs[0].attempt_count).toBe(0);
 	});
 });

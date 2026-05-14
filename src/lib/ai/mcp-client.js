@@ -367,10 +367,26 @@ export class MCPClient {
       instanceIds = [],
       instanceNames = [],
       targetMode = 'selected',
+      priority = 0,
+      maxAttempts = 5,
+      timeoutSeconds = 300,
+      capabilityRequirements = null,
     } = options;
 
     if (!command?.trim()) {
       throw new Error("command is required");
+    }
+
+    const boundedPriority = Math.max(-100, Math.min(100, Math.trunc(Number(priority) || 0)));
+    const boundedAttempts = Math.max(1, Math.min(20, Math.trunc(Number(maxAttempts) || 5)));
+    const boundedTimeout = Math.max(30, Math.min(3600, Math.trunc(Number(timeoutSeconds) || 300)));
+
+    let capabilityRequirementsJson = null;
+    if (capabilityRequirements !== null && capabilityRequirements !== undefined) {
+      if (typeof capabilityRequirements !== 'object' || Array.isArray(capabilityRequirements)) {
+        throw new Error('capabilityRequirements must be an object when provided');
+      }
+      capabilityRequirementsJson = JSON.stringify(capabilityRequirements);
     }
 
     const runners = await this.getLocalRunners(userId, { includeOffline: true, tokenId, limit: 500 });
@@ -426,11 +442,23 @@ export class MCPClient {
     for (const runner of selected.values()) {
       const insert = await this.executeD1Query(
         `INSERT INTO local_runner_jobs (
-           runner_token_id, user_id, command, working_dir, label, status, target_instance_id
+           runner_token_id, user_id, command, working_dir, label, status, target_instance_id,
+           priority, max_attempts, timeout_seconds, capability_requirements_json
          )
-         VALUES (?, ?, ?, ?, ?, 'pending', ?)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
          RETURNING id`,
-        [runner.runner_token_id, userId, command.trim(), workingDir, label, runner.id]
+        [
+          runner.runner_token_id,
+          userId,
+          command.trim(),
+          workingDir,
+          label,
+          runner.id,
+          boundedPriority,
+          boundedAttempts,
+          boundedTimeout,
+          capabilityRequirementsJson,
+        ]
       );
 
       queuedJobs.push({
@@ -2442,6 +2470,10 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
               instanceIds: args.instanceIds,
               instanceNames: args.instanceNames,
               targetMode: args.targetMode,
+              priority: args.priority,
+              maxAttempts: args.maxAttempts,
+              timeoutSeconds: args.timeoutSeconds,
+              capabilityRequirements: args.capabilityRequirements,
             }),
           };
 
@@ -2826,6 +2858,10 @@ export const MCP_TOOLS = [
       instanceIds: "number[] (optional) - Exact runner system IDs to target",
       instanceNames: "string[] (optional) - System names/hostnames to match case-insensitively",
       targetMode: "string (optional) - 'selected' (default), 'all-online', or 'all-known'",
+      priority: "number (optional) - Queue priority from -100 to 100 (higher runs sooner, default: 0)",
+      maxAttempts: "number (optional) - Retry budget per queued job (default: 5, max: 20)",
+      timeoutSeconds: "number (optional) - Per-attempt timeout in seconds (default: 300, range: 30-3600)",
+      capabilityRequirements: "object (optional) - Required runner capability flags, e.g. { screenshotAvailable: true }",
     },
   },
   {

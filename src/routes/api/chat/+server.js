@@ -138,7 +138,7 @@ export async function POST({ request, cookies, platform }) {
   }
 
   const body = await request.json();
-  const { message, history, selectedGuildId } = body;
+  const { message, history, selectedGuildId, maxToolIterations } = body;
 
   if (!message || typeof message !== "string" || !message.trim()) {
     return json({ error: "Message is required" }, { status: 400 });
@@ -188,6 +188,7 @@ export async function POST({ request, cookies, platform }) {
       selectedGuild,
       selectedGuildId: selectedGuildId || null,
       selectedGuildName,
+      maxToolIterations,
     }, env);
 
     if (!result.success) {

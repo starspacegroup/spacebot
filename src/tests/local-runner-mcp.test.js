@@ -124,7 +124,18 @@ class FakeMCPClient extends MCPClient {
 		}
 
 		if (sql.includes('INSERT INTO local_runner_jobs')) {
-			const [tokenId, userId, command, workingDir, label, targetInstanceId] = params;
+			const [
+				tokenId,
+				userId,
+				command,
+				workingDir,
+				label,
+				targetInstanceId,
+				priority,
+				maxAttempts,
+				timeoutSeconds,
+				capabilityRequirementsJson,
+			] = params;
 			const job = {
 				id: this.nextJobId++,
 				runner_token_id: tokenId,
@@ -134,6 +145,10 @@ class FakeMCPClient extends MCPClient {
 				label,
 				status: 'pending',
 				target_instance_id: targetInstanceId,
+				priority,
+				max_attempts: maxAttempts,
+				timeout_seconds: timeoutSeconds,
+				capability_requirements_json: capabilityRequirementsJson,
 				claimed_by_instance_id: null,
 				created_at: '2026-05-07T11:00:00.000Z',
 				updated_at: '2026-05-07T11:00:00.000Z',

@@ -8,21 +8,48 @@ import {
 } from "$lib/db/local-runners.js";
 
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ cookies, platform }) {
+export async function GET({ cookies, platform, url }) {
   const userId = cookies.get("discord_user_id");
   if (!userId) return json({ error: "Unauthorized" }, { status: 401 });
 
   const db = platform?.env?.DB;
   if (!db) return json({ error: "Database unavailable" }, { status: 503 });
 
+  const tokenId = Number(url.searchParams.get("tokenId") || "") || null;
+  const instanceId = Number(url.searchParams.get("instanceId") || "") || null;
+  const jobsLimit = Math.max(1, Math.min(200, Number(url.searchParams.get("jobsLimit") || "25") || 25));
+  const jobsOffset = Math.max(0, Number(url.searchParams.get("jobsOffset") || "0") || 0);
+  const jobsStatus = url.searchParams.get("status") || null;
+  const eventsLimit = Math.max(1, Math.min(200, Number(url.searchParams.get("eventsLimit") || "50") || 50));
+  const instancesLimit = Math.max(1, Math.min(200, Number(url.searchParams.get("instancesLimit") || "100") || 100));
+
   const [tokens, jobs, instances, events] = await Promise.all([
     getRunnerTokens(db, userId),
-    getRunnerJobs(db, userId, null, 25),
-    getRunnerInstances(db, userId, { limit: 100 }),
-    getRunnerEvents(db, userId, { limit: 50 }),
+    getRunnerJobs(db, userId, tokenId, {
+      limit: jobsLimit,
+      offset: jobsOffset,
+      status: jobsStatus,
+      instanceId,
+    }),
+    getRunnerInstances(db, userId, { tokenId, limit: instancesLimit }),
+    getRunnerEvents(db, userId, { tokenId, instanceId, limit: eventsLimit }),
   ]);
 
-  return json({ tokens, jobs, instances, events });
+  return json({
+    tokens,
+    jobs,
+    instances,
+    events,
+    filters: {
+      tokenId,
+      instanceId,
+      jobsLimit,
+      jobsOffset,
+      jobsStatus,
+      eventsLimit,
+      instancesLimit,
+    },
+  });
 }
 
 /** @type {import('./$types').RequestHandler} */

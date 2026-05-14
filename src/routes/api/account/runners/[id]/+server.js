@@ -40,9 +40,13 @@ export async function POST({ params, request, cookies, platform }) {
     command: body?.command,
     job_type: body?.job_type,
     payload_json: body?.payload_json,
+    capability_requirements_json: body?.capability_requirements_json,
     working_dir: body?.working_dir,
     label: body?.label,
     target_instance_id: body?.target_instance_id,
+    priority: body?.priority,
+    max_attempts: body?.max_attempts,
+    timeout_seconds: body?.timeout_seconds,
   });
 
   if (!result.success) return json({ error: result.error }, { status: 400 });

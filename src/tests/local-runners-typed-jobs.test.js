@@ -46,7 +46,20 @@ class FakeDb {
     }
 
     if (sql.includes('INSERT INTO local_runner_jobs')) {
-      const [tokenId, userId, command, workingDir, label, targetInstanceId, jobType, payloadJson] = args;
+      const [
+        tokenId,
+        userId,
+        command,
+        workingDir,
+        label,
+        targetInstanceId,
+        jobType,
+        payloadJson,
+        capabilityRequirementsJson,
+        priority,
+        maxAttempts,
+        timeoutSeconds,
+      ] = args;
       const row = {
         id: this.nextId++,
         tokenId,
@@ -57,6 +70,10 @@ class FakeDb {
         targetInstanceId,
         jobType,
         payloadJson,
+        capabilityRequirementsJson,
+        priority,
+        maxAttempts,
+        timeoutSeconds,
       };
       this.inserted.push(row);
       return { id: row.id };
@@ -92,6 +109,8 @@ describe('createRunnerJob typed behavior', () => {
     expect(db.inserted[0].command).toBe('[system_profile]');
     expect(db.inserted[0].jobType).toBe('system_profile');
     expect(db.inserted[0].payloadJson).toBe(JSON.stringify({ includeTools: true }));
+    expect(db.inserted[0].maxAttempts).toBe(5);
+    expect(db.inserted[0].timeoutSeconds).toBe(300);
   });
 
   it('rejects non-serializable payload JSON', async () => {

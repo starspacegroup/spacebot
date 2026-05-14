@@ -569,6 +569,7 @@ async function callAI(messages, env) {
  * @param {Object} [options.selectedGuild] - The currently selected guild object
  * @param {string} [options.selectedGuildId] - The currently selected guild ID
  * @param {string} [options.selectedGuildName] - The currently selected guild name
+ * @param {number} [options.maxToolIterations] - Max tool call loop iterations (default: 5, max: 20)
  * @param {Object} env - Environment variables
  * @returns {Promise<{success: boolean, response?: string, error?: string, toolsUsed?: string[]}>}
  */
@@ -583,6 +584,7 @@ export async function generateChatResponse(options, env) {
     selectedGuild = null,
     selectedGuildId = null,
     selectedGuildName = null,
+    maxToolIterations = 5,
   } = options;
   
   // Direct console.log for debugging (bypasses LOG_LEVEL)
@@ -667,7 +669,7 @@ export async function generateChatResponse(options, env) {
     console.log("[AI] Full initial response:", aiResponse);
     
     const toolsUsed = [];
-    const MAX_TOOL_ITERATIONS = 5; // Prevent infinite loops
+    const MAX_TOOL_ITERATIONS = Math.max(1, Math.min(20, Math.trunc(Number(maxToolIterations) || 5)));
     let iteration = 0;
     
     // Tool call loop - keep processing until AI stops making tool calls or we hit the limit
