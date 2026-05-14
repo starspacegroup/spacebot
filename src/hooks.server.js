@@ -1,4 +1,4 @@
-import { redirect } from "@sveltejs/kit";
+import { json, redirect } from "@sveltejs/kit";
 import { log } from "$lib/log.js";
 import { upsertUser } from "$lib/db/users.js";
 import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
@@ -83,63 +83,19 @@ function setDevAuthCookies(cookies, platform) {
 export async function handle({ event, resolve }) {
   const { url, cookies, platform } = event;
 
-  // Check if dev auth bypass is enabled
-  const isDev = getEnv('NODE_ENV', platform) !== 'production';
-  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+  try {
+    // Check if dev auth bypass is enabled
+    const isDev = getEnv('NODE_ENV', platform) !== 'production';
+    const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
-  // Handle dev auth bypass
-  if (devAuthEnabled) {
-    // Special /dev-login route for easy dev authentication
-    if (url.pathname === "/dev-login") {
-      const devUser = getDevUser(platform);
-      setDevAuthCookies(cookies, platform);
-
-      // Track dev user in the database so they appear in User Management
-      const db = platform?.env?.DB;
-      if (db) {
-        const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
-        const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
-        try {
-          await upsertUser(db, {
-            id: devUser.id,
-            username: devUser.username,
-            global_name: devUser.globalName || null,
-            avatar: devUser.avatar || null,
-            discriminator: devUser.discriminator || "0",
-            is_superadmin: isSuperAdmin,
-          });
-        } catch (err) {
-          log.error("[DevAuth] Failed to track dev user login:", err);
-        }
-      }
-
-      const returnTo = url.searchParams.get("return_to") || "/admin";
-      // Use SvelteKit's redirect to ensure cookies are properly sent
-      throw redirect(302, returnTo);
-    }
-
-    // Special /dev-logout route to clear dev auth
-    if (url.pathname === "/dev-logout") {
-      const cookieOptions = { path: "/" };
-      cookies.delete("discord_user_id", cookieOptions);
-      cookies.delete("discord_username", cookieOptions);
-      cookies.delete("discord_global_name", cookieOptions);
-      cookies.delete("discord_avatar", cookieOptions);
-      cookies.delete("discord_discriminator", cookieOptions);
-      cookies.delete("discord_access_token", cookieOptions);
-
-      log.debug("[DevAuth] Cleared dev auth cookies");
-      throw redirect(302, "/");
-    }
-
-    // Allow ?dev_auth=true query param to auto-login
-    if (url.searchParams.get("dev_auth") === "true") {
-      const userId = cookies.get("discord_user_id");
-      if (!userId) {
+    // Handle dev auth bypass
+    if (devAuthEnabled) {
+      // Special /dev-login route for easy dev authentication
+      if (url.pathname === "/dev-login") {
         const devUser = getDevUser(platform);
         setDevAuthCookies(cookies, platform);
 
-        // Track dev user in the database
+        // Track dev user in the database so they appear in User Management
         const db = platform?.env?.DB;
         if (db) {
           const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
@@ -158,32 +114,111 @@ export async function handle({ event, resolve }) {
           }
         }
 
-        // Remove the dev_auth param and redirect
-        const cleanUrl = new URL(url);
-        cleanUrl.searchParams.delete("dev_auth");
-        throw redirect(302, cleanUrl.pathname + cleanUrl.search);
+        const returnTo = url.searchParams.get("return_to") || "/admin";
+        // Use SvelteKit's redirect to ensure cookies are properly sent
+        throw redirect(302, returnTo);
+      }
+
+      // Special /dev-logout route to clear dev auth
+      if (url.pathname === "/dev-logout") {
+        const cookieOptions = { path: "/" };
+        cookies.delete("discord_user_id", cookieOptions);
+        cookies.delete("discord_username", cookieOptions);
+        cookies.delete("discord_global_name", cookieOptions);
+        cookies.delete("discord_avatar", cookieOptions);
+        cookies.delete("discord_discriminator", cookieOptions);
+        cookies.delete("discord_access_token", cookieOptions);
+
+        log.debug("[DevAuth] Cleared dev auth cookies");
+        throw redirect(302, "/");
+      }
+
+      // Allow ?dev_auth=true query param to auto-login
+      if (url.searchParams.get("dev_auth") === "true") {
+        const userId = cookies.get("discord_user_id");
+        if (!userId) {
+          const devUser = getDevUser(platform);
+          setDevAuthCookies(cookies, platform);
+
+          // Track dev user in the database
+          const db = platform?.env?.DB;
+          if (db) {
+            const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
+            const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
+            try {
+              await upsertUser(db, {
+                id: devUser.id,
+                username: devUser.username,
+                global_name: devUser.globalName || null,
+                avatar: devUser.avatar || null,
+                discriminator: devUser.discriminator || "0",
+                is_superadmin: isSuperAdmin,
+              });
+            } catch (err) {
+              log.error("[DevAuth] Failed to track dev user login:", err);
+            }
+          }
+
+          // Remove the dev_auth param and redirect
+          const cleanUrl = new URL(url);
+          cleanUrl.searchParams.delete("dev_auth");
+          throw redirect(302, cleanUrl.pathname + cleanUrl.search);
+        }
       }
     }
+
+    // Add dev auth status to event.locals for use in routes
+    event.locals.devAuthEnabled = devAuthEnabled;
+
+    if (url.pathname === "/api/gateway/logs") {
+      return handleGatewayLogsApi(event);
+    }
+
+    const response = await resolve(event);
+
+    // Add cache headers for dynamic content to ensure fresh data
+    // Assets in /_app/ are already hashed and can be cached long-term
+    // /api/ routes manage their own cache headers
+    // All other routes (HTML pages + SvelteKit __data.json fetches) must not be cached
+    if (!url.pathname.startsWith('/_app/') && !url.pathname.startsWith('/api/')) {
+      response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+    }
+
+    return response;
+  } catch (error) {
+    const isRedirect = Boolean(
+      error &&
+      typeof error === "object" &&
+      typeof error.status === "number" &&
+      error.status >= 300 &&
+      error.status < 400 &&
+      typeof error.location === "string",
+    );
+
+    if (isRedirect) {
+      throw error;
+    }
+
+    log.error("[Hooks] Unhandled request error", {
+      method: event.request.method,
+      path: url.pathname,
+      search: url.search,
+      cfRay: event.request.headers.get("cf-ray") || null,
+      error: error?.stack || error?.message || String(error),
+    });
+
+    if (url.pathname.startsWith('/api/')) {
+      return json({ error: "Internal server error" }, { status: 500 });
+    }
+
+    return new Response("Internal server error", {
+      status: 500,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
   }
-
-  // Add dev auth status to event.locals for use in routes
-  event.locals.devAuthEnabled = devAuthEnabled;
-
-  if (url.pathname === "/api/gateway/logs") {
-    return handleGatewayLogsApi(event);
-  }
-
-  const response = await resolve(event);
-
-  // Add cache headers for dynamic content to ensure fresh data
-  // Assets in /_app/ are already hashed and can be cached long-term
-  // /api/ routes manage their own cache headers
-  // All other routes (HTML pages + SvelteKit __data.json fetches) must not be cached
-  if (!url.pathname.startsWith('/_app/') && !url.pathname.startsWith('/api/')) {
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
-  }
-
-  return response;
 }
