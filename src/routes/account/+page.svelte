@@ -900,6 +900,9 @@
 							<div class="job-header">
 								<span class="job-runner-name">{job.runner_name}</span>
 								<span class="status-badge {s.cls}">{s.label}</span>
+								{#if job.job_type && job.job_type !== 'shell_command'}
+									<span class="job-type-badge">{job.job_type}</span>
+								{/if}
 								{#if job.exit_code !== null}
 									<code class="job-exit-code">exit {job.exit_code}</code>
 								{/if}
@@ -908,6 +911,9 @@
 							<code class="job-command">{job.label || job.command}</code>
 							{#if job.output}
 								<pre class="job-output">{job.output.length > 2000 ? job.output.slice(-2000) + '\n…(truncated)' : job.output}</pre>
+							{/if}
+							{#if job.result_json}
+								<pre class="job-result-json">{JSON.stringify(job.result_json, null, 2)}</pre>
 							{/if}
 							{#if job.artifact_refs_json && job.artifact_refs_json.length > 0}
 								<div class="job-artifacts">
@@ -2158,6 +2164,17 @@
 		margin-left: auto;
 	}
 
+	.job-type-badge {
+		font-size: 0.6875rem;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		padding: 0.125rem 0.375rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-elevated, hsla(var(--hue), 25%, 96%, 0.2));
+		color: var(--color-text-muted);
+	}
+
 	.job-command {
 		display: block;
 		font-family: monospace;
@@ -2179,6 +2196,20 @@
 		max-height: 200px;
 		overflow-y: auto;
 		margin: 0;
+	}
+
+	.job-result-json {
+		margin-top: 0.375rem;
+		background: var(--color-surface-elevated, hsla(var(--hue), 25%, 96%, 0.2));
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		padding: 0.5rem 0.75rem;
+		font-family: monospace;
+		font-size: 0.7rem;
+		max-height: 180px;
+		overflow-y: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
 	}
 
 	.job-artifacts {

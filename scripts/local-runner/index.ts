@@ -23,13 +23,14 @@
  */
 
 import { spawn } from "bun";
-import { resolve } from "node:path";
-import { existsSync, readFileSync, unlinkSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { hostname, release, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { gatherSystemProfile } from "./capabilities";
 import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
+import { collectWorkspaceContext } from "./workspace-context";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -187,6 +188,32 @@ function parsePayload(value: unknown): Record<string, unknown> {
   return {};
 }
 
+interface PreparedArtifact {
+  artifactType: string;
+  mimeType: string;
+  byteSize: number;
+  width?: number;
+  height?: number;
+  captureSource?: string;
+  captureIndex?: number;
+  storageMode: string;
+  blobBase64: string;
+}
+
+function encodeArtifact(buffer: Buffer, options: { width?: number; height?: number; captureSource?: string; captureIndex?: number }): PreparedArtifact {
+  return {
+    artifactType: "screenshot",
+    mimeType: "image/png",
+    byteSize: buffer.length,
+    width: options.width,
+    height: options.height,
+    captureSource: options.captureSource,
+    captureIndex: options.captureIndex,
+    storageMode: "inline_base64",
+    blobBase64: buffer.toString("base64"),
+  };
+}
+
 function captureScreenshotBuffer(): Buffer {
   const tempPath = `${tmpdir()}/spacebot-runner-${Date.now()}-${Math.random().toString(16).slice(2)}.png`;
 
@@ -241,6 +268,179 @@ function captureScreenshotBuffer(): Buffer {
     // Best effort cleanup.
   }
   return buf;
+}
+
+function captureWindowsPerDisplayArtifacts(): PreparedArtifact[] {
+  const tempDir = mkdtempSync(join(tmpdir(), "spacebot-runner-screens-"));
+  const script = [
+    "Add-Type -AssemblyName System.Windows.Forms;",
+    "Add-Type -AssemblyName System.Drawing;",
+    `$dir='${tempDir.replace(/\\/g, "/")}';`,
+    "$i=0;",
+    "[System.Windows.Forms.Screen]::AllScreens | ForEach-Object {",
+    "$bounds=$_.Bounds;",
+    "$path=Join-Path $dir (\"screen-\" + $i + \".png\");",
+    "$bmp=New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height;",
+    "$g=[System.Drawing.Graphics]::FromImage($bmp);",
+    "$g.CopyFromScreen($bounds.X,$bounds.Y,0,0,$bmp.Size);",
+    "$bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png);",
+    "$g.Dispose();",
+    "$bmp.Dispose();",
+    "Write-Output ($path + '|' + $bounds.Width + '|' + $bounds.Height + '|' + $_.DeviceName + '|' + $i);",
+    "$i=$i+1;",
+    "}",
+  ].join(" ");
+
+  const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
+    encoding: "utf8",
+    windowsHide: true,
+  });
+
+  if (result.status !== 0) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw new Error(result.stderr?.trim() || "PowerShell per-display screenshot failed");
+  }
+
+  const lines = (result.stdout || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const artifacts: PreparedArtifact[] = [];
+
+  for (const line of lines) {
+    const [path, width, height, source, index] = line.split("|");
+    if (!path || !existsSync(path)) continue;
+    const buf = readFileSync(path);
+    if (buf.length > MAX_ARTIFACT_BYTES) {
+      throw new Error(`Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES for ${source || path}`);
+    }
+    artifacts.push(encodeArtifact(buf, {
+      width: Number(width) || undefined,
+      height: Number(height) || undefined,
+      captureSource: source || "display",
+      captureIndex: Number(index) || artifacts.length,
+    }));
+  }
+
+  rmSync(tempDir, { recursive: true, force: true });
+  return artifacts;
+}
+
+function captureMacPerDisplayArtifacts(displayItems: Array<Record<string, unknown>>): PreparedArtifact[] {
+  if (!commandExists("screencapture")) {
+    throw new Error("screencapture is not available");
+  }
+
+  const tempDir = mkdtempSync(join(tmpdir(), "spacebot-runner-mac-screens-"));
+  const artifacts: PreparedArtifact[] = [];
+
+  try {
+    const displayCount = Math.max(displayItems.length, 1);
+    for (let i = 1; i <= displayCount; i++) {
+      const tempPath = join(tempDir, `screen-${i}.png`);
+      const result = spawnSync("screencapture", ["-x", "-D", String(i), tempPath], { encoding: "utf8" });
+      if (result.status !== 0) {
+        continue;
+      }
+      if (!existsSync(tempPath)) {
+        continue;
+      }
+      const buf = readFileSync(tempPath);
+      if (buf.length > MAX_ARTIFACT_BYTES) {
+        throw new Error(`Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES for display ${i}`);
+      }
+      const display = displayItems[i - 1] ?? {};
+      artifacts.push(encodeArtifact(buf, {
+        width: typeof display.width === "number" ? display.width : undefined,
+        height: typeof display.height === "number" ? display.height : undefined,
+        captureSource: typeof display.id === "string" ? display.id : `display-${i}`,
+        captureIndex: i - 1,
+      }));
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  if (artifacts.length === 0) {
+    throw new Error("No per-display captures were produced by screencapture");
+  }
+
+  return artifacts;
+}
+
+function captureLinuxPerDisplayArtifacts(displayItems: Array<Record<string, unknown>>): PreparedArtifact[] {
+  if (!commandExists("grim")) {
+    throw new Error("grim is not available for per-display capture");
+  }
+
+  const outputs = displayItems
+    .map((item) => (typeof item.id === "string" ? item.id : ""))
+    .filter(Boolean);
+
+  if (outputs.length === 0) {
+    throw new Error("No display outputs detected for per-display capture");
+  }
+
+  const tempDir = mkdtempSync(join(tmpdir(), "spacebot-runner-linux-screens-"));
+  const artifacts: PreparedArtifact[] = [];
+
+  try {
+    for (let i = 0; i < outputs.length; i++) {
+      const outputName = outputs[i];
+      const tempPath = join(tempDir, `screen-${i}.png`);
+      const result = spawnSync("grim", ["-o", outputName, tempPath], { encoding: "utf8" });
+      if (result.status !== 0 || !existsSync(tempPath)) {
+        continue;
+      }
+
+      const buf = readFileSync(tempPath);
+      if (buf.length > MAX_ARTIFACT_BYTES) {
+        throw new Error(`Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES for ${outputName}`);
+      }
+
+      const display = displayItems[i] ?? {};
+      artifacts.push(encodeArtifact(buf, {
+        width: typeof display.width === "number" ? display.width : undefined,
+        height: typeof display.height === "number" ? display.height : undefined,
+        captureSource: outputName,
+        captureIndex: i,
+      }));
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  if (artifacts.length === 0) {
+    throw new Error("No per-display captures were produced by grim");
+  }
+
+  return artifacts;
+}
+
+function captureScreenshotArtifacts(mode: string, displayItems: Array<Record<string, unknown>>): PreparedArtifact[] {
+  if (mode === "per_display") {
+    if (IS_WINDOWS) {
+      const artifacts = captureWindowsPerDisplayArtifacts();
+      if (artifacts.length > 0) return artifacts;
+    }
+
+    if (process.platform === "darwin") {
+      const artifacts = captureMacPerDisplayArtifacts(displayItems);
+      if (artifacts.length > 0) return artifacts;
+    }
+
+    if (process.platform === "linux") {
+      const artifacts = captureLinuxPerDisplayArtifacts(displayItems);
+      if (artifacts.length > 0) return artifacts;
+    }
+  }
+
+  const single = captureScreenshotBuffer();
+  if (single.length > MAX_ARTIFACT_BYTES) {
+    throw new Error(`Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES (${single.length} > ${MAX_ARTIFACT_BYTES}).`);
+  }
+
+  return [encodeArtifact(single, {
+    captureSource: mode,
+    captureIndex: 0,
+  })];
 }
 
 async function executeVscodeDiscover(): Promise<JobResult> {
@@ -324,35 +524,28 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
     }
 
     try {
-      const buffer = captureScreenshotBuffer();
-      if (buffer.length > MAX_ARTIFACT_BYTES) {
-        return {
-          status: "failed",
-          output: `Screenshot exceeds RUNNER_MAX_ARTIFACT_BYTES (${buffer.length} > ${MAX_ARTIFACT_BYTES}).`,
-          exitCode: 1,
-          truncated: false,
-        };
-      }
-
-      const artifact = {
-        artifactType: "screenshot",
-        mimeType: "image/png",
-        byteSize: buffer.length,
-        captureMode: typeof payload.mode === "string" ? payload.mode : "all_displays",
-        storageMode: "inline_base64",
-        blobBase64: buffer.toString("base64"),
-      };
+      const profile = gatherSystemProfile();
+      const captureMode = typeof payload.mode === "string" ? payload.mode : "all_displays";
+      const includeWorkspaceContext = payload.includeWorkspaceContext !== false;
+      const artifacts = captureScreenshotArtifacts(captureMode, profile.displays.items as Array<Record<string, unknown>>);
+      const workspaceContext = includeWorkspaceContext ? collectWorkspaceContext() : null;
+      const totalBytes = artifacts.reduce((sum, item) => sum + (item.byteSize || 0), 0);
+      const perDisplayFallback = captureMode === "per_display" && artifacts.length === 1 && profile.displays.count > 1;
 
       return {
         status: "completed",
-        output: `Captured screenshot (${buffer.length} bytes).`,
+        output: `Captured ${artifacts.length} screenshot artifact(s), total ${totalBytes} bytes.`,
         exitCode: 0,
         truncated: false,
-        artifactRefs: [artifact],
+        artifactRefs: artifacts,
         result: {
-          captureMode: artifact.captureMode,
-          workspaceContextIncluded: Boolean(payload.includeWorkspaceContext),
-          note: "Current implementation captures the visible desktop as one image. Per-display expansion is planned.",
+          captureMode,
+          artifactCount: artifacts.length,
+          totalBytes,
+          workspaceContextIncluded: includeWorkspaceContext,
+          workspaceContext,
+          displays: profile.displays,
+          fallbackReason: perDisplayFallback ? "per_display_capture_fell_back_to_single_image" : null,
         },
       };
     } catch (e) {

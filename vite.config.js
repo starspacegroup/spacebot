@@ -64,6 +64,22 @@ export default defineConfig({
 	plugins: [excludeNativeModules(), staleDepsFix(), sveltekit()],
 	test: {
 		environment: 'node',
+		coverage: {
+			provider: 'v8',
+			reporter: ['text', 'lcov'],
+			include: [
+				'scripts/local-runner/capabilities.ts',
+				'scripts/local-runner/workspace-context.ts',
+				'scripts/local-runner/vscode-bridge-client.ts',
+				'src/routes/api/account/runners/artifacts/[id]/+server.js',
+			],
+			thresholds: {
+				lines: 80,
+				functions: 80,
+				statements: 80,
+				branches: 75,
+			},
+		},
 	},
 	optimizeDeps: {
 		// Pre-bundle Svelte runtime deps at startup so they're ready instantly.

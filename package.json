@@ -31,9 +31,11 @@
 		"secrets:setup": "node scripts/setup-secrets.js --confirm",
 		"secrets:setup:dry": "node scripts/setup-secrets.js",
 		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest"
 	},
 	"devDependencies": {
+		"@vitest/coverage-v8": "^4.1.2",
 		"@cloudflare/vite-plugin": "^1.21.2",
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"@sveltejs/adapter-cloudflare": "^7.2.6",
