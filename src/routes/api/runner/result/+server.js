@@ -40,7 +40,7 @@ export async function POST({ request, platform }) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { jobId, status, output, exitCode, result, artifactRefs } = body || {};
+  const { jobId, status, output, exitCode, result: structuredResult, artifactRefs } = body || {};
   if (!jobId || typeof jobId !== "number") {
     return json({ error: "jobId (number) is required" }, { status: 400 });
   }
@@ -48,14 +48,14 @@ export async function POST({ request, platform }) {
     return json({ error: "status must be 'completed' or 'failed'" }, { status: 400 });
   }
 
-  const result = await reportJobResult(db, auth.tokenId, jobId, {
+  const reportResult = await reportJobResult(db, auth.tokenId, jobId, {
     status,
     output: typeof output === "string" ? output : "",
     exitCode: typeof exitCode === "number" ? exitCode : null,
-    result_json: result ?? null,
+    result_json: structuredResult ?? null,
     artifact_refs_json: artifactRefs ?? null,
   });
 
-  if (!result.success) return json({ error: result.error }, { status: 400 });
+  if (!reportResult.success) return json({ error: reportResult.error }, { status: 400 });
   return json({ success: true });
 }
