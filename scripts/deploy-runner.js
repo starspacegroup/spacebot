@@ -1,12 +1,10 @@
 import { execSync } from 'child_process';
-import { closeSync, mkdtempSync, openSync, rmSync, statSync, unlinkSync } from 'fs';
-import { tmpdir } from 'os';
+import { closeSync, openSync, statSync, unlinkSync } from 'fs';
 import { join } from 'path';
 
 const MAIN_BRANCH = 'main';
 const REMOTE_NAME = 'origin';
 const DEPLOY_LOCK_PATH = join(process.cwd(), '.deploy.lock');
-const VALIDATION_BUILD_CMD = process.env.DEPLOY_BUILD_CMD || 'bun run build';
 const STALE_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 function runInDir(cmd, cwd) {
@@ -72,22 +70,6 @@ function withDeployLock(fn) {
 	}
 }
 
-function validateRemoteRevision(remoteHead) {
-	const tempDir = mkdtempSync(join(tmpdir(), 'spacebot-deploy-'));
-
-	try {
-		run(`git worktree add --detach "${tempDir}" ${remoteHead}`);
-		runInDir('bun install --frozen-lockfile', tempDir);
-		runInDir(VALIDATION_BUILD_CMD, tempDir);
-	} finally {
-		try {
-			run(`git worktree remove --force "${tempDir}"`);
-		} catch {
-			rmSync(tempDir, { recursive: true, force: true });
-		}
-	}
-}
-
 export function deploy(changedFiles, options = {}) {
 	return withDeployLock(() => {
 		const branch = options.branch || MAIN_BRANCH;
@@ -116,12 +98,7 @@ export function deploy(changedFiles, options = {}) {
 			if (needsInstall) {
 				console.log('  📦 Dependency manifest changed — installing dependencies...');
 				run('bun install --frozen-lockfile');
-			}
-
-			const needsMigrate = changedFiles.some(file => file.startsWith('migrations/'));
-			if (needsMigrate) {
-				console.log('  🗃️  Migration files changed — running migrations...');
-				run('bun run db:migrate');
+			}run('bun run db:migrate');
 			}
 
 			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart
