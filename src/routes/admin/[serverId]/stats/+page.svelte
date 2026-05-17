@@ -942,10 +942,18 @@
 					<button
 						type="button"
 						class="live-voice-refresh"
+						class:live-voice-refresh--connected={liveVoiceStreamConnected}
 						onclick={() => refreshLiveVoiceSnapshot()}
-						disabled={liveVoiceRefreshing}
+						disabled={liveVoiceRefreshing || liveVoiceStreamConnected}
+						title={liveVoiceStreamConnected ? 'Live updates active via WebSocket' : 'Click to manually refresh'}
 					>
-						{liveVoiceRefreshing ? 'Refreshing...' : 'Refresh'}
+						{#if liveVoiceStreamConnected}
+							<span class="live-voice-refresh-dot"></span> Live
+						{:else if liveVoiceRefreshing}
+							Refreshing...
+						{:else}
+							Refresh
+						{/if}
 					</button>
 				</div>
 			</div>
@@ -2308,7 +2316,7 @@
 
 	.live-voice-heading-row {
 		display: flex;
-		align-items: flex-start;
+		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		flex-wrap: wrap;
@@ -2349,7 +2357,29 @@
 
 	.live-voice-refresh:disabled {
 		opacity: 0.7;
-		cursor: wait;
+		cursor: not-allowed;
+	}
+
+	.live-voice-refresh--connected {
+		border-color: #57F287;
+		color: #57F287;
+		cursor: default;
+	}
+
+	.live-voice-refresh-dot {
+		display: inline-block;
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		background: #57F287;
+		box-shadow: 0 0 6px #57F287;
+		animation: live-pulse 1.5s ease-in-out infinite;
+		margin-right: 0.1rem;
+	}
+
+	@keyframes live-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.4; }
 	}
 
 	.live-voice-summary-card {
