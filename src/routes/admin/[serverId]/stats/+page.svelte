@@ -683,6 +683,7 @@
 					<p class="subtitle">Comprehensive analytics for {data.guild?.name || 'your server'}</p>
 				</div>
 				<div class="header-actions">
+					<a href="/admin/{data.serverId}/stats/live-voice" class="btn btn-secondary btn-sm">🔴 Live Voice</a>
 					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm">📜 Event Logs</a>
 					<label class="master-bot-toggle">
 						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
@@ -925,111 +926,6 @@
 			</div>
 		</section>
 
-		<section class="chart-section">
-			<div class="live-voice-heading-row">
-				<h2 class="section-title">
-					<span class="section-icon">🔴</span>
-					Live Voice Channels
-					<span class="section-subtitle">
-						{liveVoiceSnapshot.updatedAt ? `Updated ${formatRelativeTime(liveVoiceSnapshot.updatedAt)}` : 'Waiting for voice snapshot'}
-					</span>
-				</h2>
-
-				<div class="live-voice-actions">
-					{#if liveVoiceRefreshError}
-						<span class="live-voice-refresh-error">{liveVoiceRefreshError}</span>
-					{/if}
-					<button
-						type="button"
-						class="live-voice-refresh"
-						class:live-voice-refresh--connected={liveVoiceStreamConnected}
-						onclick={() => refreshLiveVoiceSnapshot()}
-						disabled={liveVoiceRefreshing || liveVoiceStreamConnected}
-						title={liveVoiceStreamConnected ? 'Live updates active via WebSocket' : 'Click to manually refresh'}
-					>
-						{#if liveVoiceStreamConnected}
-							<span class="live-voice-refresh-dot"></span> Live
-						{:else if liveVoiceRefreshing}
-							Refreshing...
-						{:else}
-							Refresh
-						{/if}
-					</button>
-				</div>
-			</div>
-
-			<div class="live-voice-summary-grid">
-				<div class="live-voice-summary-card">
-					<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.totalChannels)}</span>
-					<span class="live-voice-summary-label">Active Channels</span>
-				</div>
-				<div class="live-voice-summary-card">
-					<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.totalUsers)}</span>
-					<span class="live-voice-summary-label">People In Voice</span>
-				</div>
-				<div class="live-voice-summary-card">
-					<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.activeCameras)}</span>
-					<span class="live-voice-summary-label">Cameras On</span>
-				</div>
-				<div class="live-voice-summary-card">
-					<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.activeStreams)}</span>
-					<span class="live-voice-summary-label">Screensharing</span>
-				</div>
-			</div>
-
-			{#if liveVoiceSnapshot.channels.length > 0}
-				<div class="live-voice-grid">
-					{#each liveVoiceSnapshot.channels as channel}
-						<div class="live-voice-channel-card">
-							<div class="live-voice-channel-header">
-								<div>
-									<h3 class="live-voice-channel-name">{channel.channelName}</h3>
-									<p class="live-voice-channel-meta">{channel.memberCount} {channel.memberCount === 1 ? 'member' : 'members'}</p>
-								</div>
-								<span class="live-voice-channel-count">{channel.memberCount}</span>
-							</div>
-
-							<div class="live-voice-member-list">
-								{#each channel.members as member}
-									<div class="live-voice-member-row">
-										<div class="live-voice-member-avatar-wrap">
-											{#if member.avatarUrl}
-												<img class="live-voice-member-avatar" src={member.avatarUrl} alt={member.displayName} />
-											{:else}
-												<div class="live-voice-member-avatar live-voice-member-avatar-fallback">{getAvatarInitial(member.displayName || member.userName)}</div>
-											{/if}
-										</div>
-
-										<div class="live-voice-member-main">
-											<div class="live-voice-member-heading">
-												<span class="live-voice-member-name">{member.displayName}</span>
-												{#if member.userName && member.userName !== member.displayName}
-													<span class="live-voice-member-handle">@{member.userName}</span>
-												{/if}
-											</div>
-
-											<div class="live-voice-badge-row">
-												{#each getLiveVoiceBadges(member) as badge}
-													<span class={`live-voice-badge ${badge.active ? 'active' : 'inactive'} ${badge.tone}`} title={`${badge.label}: ${badge.active ? 'on' : 'off'}`}>
-														{badge.label}
-													</span>
-												{/each}
-											</div>
-										</div>
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{:else}
-				<div class="live-voice-empty">
-					<span class="live-voice-empty-icon">🎧</span>
-					<span class="live-voice-empty-text">Nobody is in voice right now.</span>
-				</div>
-			{/if}
-		</section>
-		
 		<!-- Member Growth Chart Section -->
 		<section class="chart-section">
 			<ChartCard 
