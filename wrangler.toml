@@ -41,6 +41,32 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # STRIPE_PRO_MONTHLY_PRICE_ID = ""
 # STRIPE_PRO_YEARLY_PRICE_ID = ""
 
+# Async backbone rollout flags
+# Enable dual-write/shadow-consume behavior incrementally per environment.
+ASYNC_BACKBONE_ENABLED = "true"
+ASYNC_BACKBONE_SHADOW_MODE = "true"
+
+# Queue/Workflow binding scaffolding (uncomment after resources are provisioned).
+#
+# [[queues.producers]]
+# binding = "ASYNC_INGRESS_QUEUE"
+# queue = "spacebot-async-ingress"
+#
+# [[queues.consumers]]
+# queue = "spacebot-async-ingress"
+# max_batch_size = 10
+# max_batch_timeout = 5
+# max_retries = 12
+# dead_letter_queue = "spacebot-async-ingress-dlq"
+#
+# [[r2_buckets]]
+# binding = "AUDIT_ARCHIVE"
+# bucket_name = "spacebot-audit-archive"
+#
+# [workflows]
+# binding = "ASYNC_WORKFLOWS"
+# class_name = "SpacebotAsyncWorkflow"
+
 # NOTE: Cron triggers are NOT supported on Cloudflare Pages.
 # Use an external cron service to call /api/cron endpoints instead:
 # - "0 * * * *" = Every hour (stats aggregation) → POST /api/cron with job=hourly_aggregation

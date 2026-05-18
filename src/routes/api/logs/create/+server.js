@@ -2,6 +2,12 @@ import { json } from "@sveltejs/kit";
 import { log, logEvent } from "$lib/db/logger.js";
 import { getGuildSettings } from "$lib/db/settings.js";
 import { updateMemberCount } from "$lib/db/server-stats.js";
+import { buildAsyncEventEnvelope } from "$lib/async/backbone.js";
+import { enqueueAsyncIngressEvent } from "$lib/async/queue.js";
+import {
+  markAsyncEventQueued,
+  recordAsyncIngressEvent,
+} from "$lib/db/async-ledger.js";
 
 /**
  * Format an event for Discord channel logging
@@ -178,6 +184,26 @@ export async function POST({ request, platform }) {
         "D1 database binding not available. Make sure you're running with: bun run dev",
       );
       return json({ error: "Database not configured" }, { status: 503 });
+    }
+
+    const asyncBackboneEnabled = String(
+      platform?.env?.ASYNC_BACKBONE_ENABLED || "false",
+    ).toLowerCase() === "true";
+
+    if (asyncBackboneEnabled) {
+      const asyncEnvelope = buildAsyncEventEnvelope(event, {
+        source: "api.logs.create",
+      });
+
+      const asyncRecord = await recordAsyncIngressEvent(db, asyncEnvelope);
+      if (!asyncRecord.success) {
+        log.warn("[Async Backbone] Failed to persist ingress envelope", asyncRecord.error);
+      } else if (!asyncRecord.duplicate) {
+        const queueResult = await enqueueAsyncIngressEvent(platform?.env, asyncEnvelope);
+        if (queueResult.queued) {
+          await markAsyncEventQueued(db, asyncEnvelope.eventId, queueResult.queueName);
+        }
+      }
     }
 
     const result = await logEvent(db, event);
