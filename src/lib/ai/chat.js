@@ -506,56 +506,96 @@ function formatToolResults(results) {
 }
 
 /**
- * Call the AI API
+ * Build an ordered list of model IDs to try, deduplicating across
+ * CLOUDFLARE_AI_MODELS (array) and CLOUDFLARE_AI_MODEL (string fallback).
+ */
+function normalizeModelList(env) {
+  const candidates = Array.isArray(env.CLOUDFLARE_AI_MODELS)
+    ? [...env.CLOUDFLARE_AI_MODELS]
+    : [];
+  const single = env.CLOUDFLARE_AI_MODEL || DEFAULT_MODEL;
+  if (!candidates.includes(single)) candidates.push(single);
+  return candidates.filter(Boolean);
+}
+
+/**
+ * If round_robin routing, rotate the model list based on the current minute
+ * so different requests in the same minute always go to the same model.
+ */
+function buildModelOrder(models, env) {
+  if (!models.length) return [DEFAULT_MODEL];
+  if (env.CLOUDFLARE_AI_MODEL_ROUTING === "round_robin") {
+    const minute = Math.floor(Date.now() / 60000);
+    const offset = minute % models.length;
+    return [...models.slice(offset), ...models.slice(0, offset)];
+  }
+  return models;
+}
+
+/**
+ * Call the AI API, trying each model in order until one succeeds.
  */
 async function callAI(messages, env) {
   const accountId = env.CLOUDFLARE_ACCOUNT_ID;
   const apiToken = env.CLOUDFLARE_AI_TOKEN;
   const gatewayId = env.CLOUDFLARE_AI_GATEWAY_ID;
-  const model = env.CLOUDFLARE_AI_MODEL || DEFAULT_MODEL;
-  
-  let apiUrl;
-  if (gatewayId) {
-    apiUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/workers-ai/${model}`;
-  } else {
-    apiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+
+  const modelList = buildModelOrder(normalizeModelList(env), env);
+  let lastError;
+
+  for (const model of modelList) {
+    let apiUrl;
+    if (gatewayId) {
+      apiUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/workers-ai/${model}`;
+    } else {
+      apiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+    }
+
+    log.debug(`[AI] Sending request to ${gatewayId ? "AI Gateway" : "Workers AI"} model=${model}`);
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages,
+          max_tokens: 1500,
+          temperature: 0.2, // Low temperature to reduce hallucination/creativity
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        log.error(`[AI] API error ${response.status} for model ${model}: ${errorText}`);
+        lastError = new Error(`AI service error: ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+
+      let responseText;
+      if (data.result?.response) {
+        responseText = data.result.response;
+      } else if (data.response) {
+        responseText = data.response;
+      } else if (typeof data === "string") {
+        responseText = data;
+      } else {
+        lastError = new Error("Unexpected response format from AI service");
+        continue;
+      }
+
+      return responseText;
+    } catch (err) {
+      log.error(`[AI] Request failed for model ${model}: ${err.message}`);
+      lastError = err;
+    }
   }
-  
-  log.debug(`[AI] Sending request to ${gatewayId ? 'AI Gateway' : 'Workers AI'}`);
-  
-  const response = await fetch(apiUrl, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages,
-      max_tokens: 1500,
-      temperature: 0.2, // Low temperature to reduce hallucination/creativity
-    }),
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    log.error(`[AI] API error ${response.status}: ${errorText}`);
-    throw new Error(`AI service error: ${response.status}`);
-  }
-  
-  const data = await response.json();
-  
-  let responseText;
-  if (data.result?.response) {
-    responseText = data.result.response;
-  } else if (data.response) {
-    responseText = data.response;
-  } else if (typeof data === "string") {
-    responseText = data;
-  } else {
-    throw new Error("Unexpected response format from AI service");
-  }
-  
-  return responseText;
+
+  throw lastError || new Error("All AI models failed to respond");
 }
 
 /**

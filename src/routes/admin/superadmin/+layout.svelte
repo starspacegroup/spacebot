@@ -24,6 +24,10 @@
 			<span class="nav-icon">📥</span>
 			Stats Import
 		</a>
+		<a href="/admin/superadmin/ai-models" class="nav-link">
+			<span class="nav-icon">🤖</span>
+			AI Models
+		</a>
 	</nav>
 	{@render children()}
 </div>

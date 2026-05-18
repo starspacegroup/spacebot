@@ -9,6 +9,7 @@ import { json } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { generateChatResponse, isAIEnabled } from "$lib/ai/chat.js";
 import { filterAdminGuilds, getUserGuilds, getBotGuildIds } from "$lib/discord/guilds.js";
+import { resolveRuntimeModelConfig } from "$lib/server/workers-ai-models.js";
 
 /**
  * Safely get environment variable
@@ -122,15 +123,21 @@ export async function POST({ request, cookies, platform }) {
     return json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const db = platform?.env?.DB;
+  const envModel = getEnv("CLOUDFLARE_AI_MODEL", platform);
+  const runtimeModelConfig = await resolveRuntimeModelConfig(db, envModel);
+
   const env = {
     CLOUDFLARE_ACCOUNT_ID: getEnv("CLOUDFLARE_ACCOUNT_ID", platform),
     CLOUDFLARE_AI_TOKEN: getEnv("CLOUDFLARE_AI_TOKEN", platform),
     CLOUDFLARE_API_TOKEN: getEnv("CLOUDFLARE_API_TOKEN", platform),
     CLOUDFLARE_AI_GATEWAY_ID: getEnv("CLOUDFLARE_AI_GATEWAY_ID", platform),
-    CLOUDFLARE_AI_MODEL: getEnv("CLOUDFLARE_AI_MODEL", platform),
+    CLOUDFLARE_AI_MODEL: runtimeModelConfig.primaryModelId || envModel,
+    CLOUDFLARE_AI_MODELS: runtimeModelConfig.candidateModelIds,
+    CLOUDFLARE_AI_MODEL_ROUTING: runtimeModelConfig.routingStrategy,
     DISCORD_BOT_TOKEN: getEnv("DISCORD_BOT_TOKEN", platform),
     DISCORD_CLIENT_ID: getEnv("DISCORD_CLIENT_ID", platform),
-    DB: platform?.env?.DB,
+    DB: db,
   };
 
   if (!isAIEnabled(env)) {
