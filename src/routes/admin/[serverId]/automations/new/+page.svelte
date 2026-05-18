@@ -176,6 +176,67 @@
 		const rules = getColorRules(action, configKey);
 		action.config[configKey] = [...rules, { variable: '', operator: 'equals', value: '', color: '#57F287' }];
 	}
+
+	function getFilterOptionValues(filterKey) {
+		const options = data.filterTypes?.[filterKey]?.options || [];
+		return options
+			.map((opt) => {
+				if (typeof opt === 'object' && opt !== null) {
+					return { value: opt.value, label: opt.label || String(opt.value) };
+				}
+				return { value: opt, label: String(opt) };
+			})
+			.filter((opt) => opt.value !== 'any' && opt.value !== 'ALL');
+	}
+
+	function getColorRuleValueOptions(variable) {
+		switch (variable) {
+			case 'trigger.event':
+				return Object.keys(data.eventTypes || {})
+					.sort()
+					.map((eventType) => ({
+						value: eventType,
+						label: eventType.replace(/_/g, ' ')
+					}));
+			case 'trigger.category':
+				return Object.entries(data.eventCategories || {})
+					.map(([key, info]) => ({
+						value: key,
+						label: info?.name || key
+					}));
+			case 'github.action':
+				return getFilterOptionValues('github_action');
+			case 'github.conclusion':
+				return getFilterOptionValues('github_workflow_conclusion');
+			case 'github.status':
+				return [
+					{ value: 'queued', label: 'queued' },
+					{ value: 'in_progress', label: 'in progress' },
+					{ value: 'completed', label: 'completed' },
+					{ value: 'requested', label: 'requested' },
+					{ value: 'waiting', label: 'waiting' },
+					{ value: 'pending', label: 'pending' }
+				];
+			case 'github.repo':
+				return (data.githubRepositories || []).map((repo) => ({ value: repo, label: repo }));
+			default:
+				return [];
+		}
+	}
+
+	function getColorRuleValueOptionsWithCurrent(variable, currentValue) {
+		const options = getColorRuleValueOptions(variable);
+		if (!currentValue || options.some((opt) => opt.value === currentValue)) {
+			return options;
+		}
+		return [{ value: currentValue, label: `${currentValue} (custom)` }, ...options];
+	}
+
+	function shouldUseColorRuleValueSelect(rule) {
+		const operator = rule?.operator || 'equals';
+		if (operator !== 'equals' && operator !== 'not_equals') return false;
+		return getColorRuleValueOptions(rule?.variable).length > 0;
+	}
 	
 	// Initialize config values when action type changes to avoid undefined bind errors
 	function initializeActionConfig(actionIndex, actionType) {
@@ -737,13 +798,26 @@
 																<option value="starts_with">starts with</option>
 																<option value="ends_with">ends with</option>
 															</select>
-															<input
-																type="text"
-																class="color-rule-value"
-																placeholder="value..."
-																value={rule.value || ''}
-																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
-															/>
+															{#if shouldUseColorRuleValueSelect(rule)}
+																<select
+																	class="color-rule-value"
+																	value={rule.value || ''}
+																	onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+																>
+																	<option value="">pick a value...</option>
+																	{#each getColorRuleValueOptionsWithCurrent(rule.variable, rule.value) as option}
+																		<option value={option.value}>{option.label}</option>
+																	{/each}
+																</select>
+															{:else}
+																<input
+																	type="text"
+																	class="color-rule-value"
+																	placeholder="value..."
+																	value={rule.value || ''}
+																	oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+																/>
+															{/if}
 															<button type="button" class="btn-remove-rule" title="Remove rule" onclick={() => removeColorRule(action, configKey, ruleIndex)}>✕</button>
 														</div>
 													{/each}
