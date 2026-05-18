@@ -942,6 +942,110 @@ export async function executeAction(
         };
       }
 
+      case "DELETE_MENTIONED_MESSAGES": {
+        const channelIds = action_config.channel_ids;
+        const limit = action_config.limit || 100;
+        const userId = resolveTargetUser(action_config, event);
+
+        if (!userId) {
+          return { success: false, error: "Missing user ID" };
+        }
+
+        if (!channelIds) {
+          return { success: false, error: "No channels specified" };
+        }
+
+        const guild = await discord.guilds.fetch(event.guild_id).catch(() =>
+          null
+        );
+        if (!guild) {
+          return { success: false, error: "Guild not found" };
+        }
+
+        // Parse comma-separated channel IDs
+        const channelsToProcess = channelIds
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean);
+
+        let totalDeleted = 0;
+        const results = {};
+
+        for (const channelId of channelsToProcess) {
+          // Stop if we've hit the max messages limit
+          if (totalDeleted >= limit) break;
+
+          const channel = await discord.channels.fetch(channelId).catch(() =>
+            null
+          );
+          if (!channel || !channel.messages) {
+            results[channelId] = {
+              error: "Channel not found or not text-based",
+            };
+            continue;
+          }
+
+          try {
+            // Fetch messages and filter by mentions
+            const messages = await channel.messages.fetch({ limit: 100 });
+            const mentionedMessages = messages.filter((m) =>
+              m.mentions.has(userId)
+            );
+
+            // Limit to remaining quota
+            const remainingQuota = limit - totalDeleted;
+            const toDelete = Array.from(mentionedMessages.values()).slice(
+              0,
+              remainingQuota,
+            );
+
+            if (toDelete.length === 0) {
+              results[channelId] = { deleted: 0 };
+              continue;
+            }
+
+            let deleted = 0;
+
+            // Try bulk delete for messages < 14 days old
+            const recentMessages = toDelete.filter((m) =>
+              Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+            );
+
+            if (recentMessages.length > 1) {
+              await channel.bulkDelete(recentMessages).catch((e) =>
+                log.error("[Automation] bulkDelete error:", e)
+              );
+              deleted += recentMessages.length;
+            } else if (recentMessages.length === 1) {
+              await recentMessages[0].delete().catch(() => {});
+              deleted++;
+            }
+
+            // Delete older messages individually
+            const oldMessages = toDelete.filter((m) =>
+              Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+            );
+
+            for (const msg of oldMessages) {
+              await msg.delete().catch(() => {});
+              deleted++;
+              // Rate limit protection
+              await new Promise((r) => setTimeout(r, 500));
+            }
+
+            results[channelId] = { deleted };
+            totalDeleted += deleted;
+          } catch (err) {
+            results[channelId] = { error: err.message || "Failed to delete" };
+          }
+        }
+
+        return {
+          success: true,
+          result: { totalDeleted, channelResults: results },
+        };
+      }
+
       case "SEND_MESSAGE": {
         const content = processTemplate(action_config.content, context);
 

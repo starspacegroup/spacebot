@@ -265,6 +265,7 @@ SpaceBot's automation engine lets you create powerful event-driven workflows:
 
 - 📨 **Send Message** — Send a message to a channel
 - 🗑️ **Delete Messages** — Delete messages from a user
+- 🗑️ **Delete Messages Mentioning User** — Delete messages that mention a specific user
 - 🏷️ **Add/Remove Role** — Modify member roles
 - 👢 **Kick Member** — Kick a member from the server
 - 🔨 **Ban Member** — Ban a member

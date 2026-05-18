@@ -1414,6 +1414,87 @@ async function executeAutomationAction(automation, event) {
       return { totalDeleted, channelsProcessed: channelsToProcess.length };
     }
 
+    case "DELETE_MENTIONED_MESSAGES": {
+      const channelIds = action_config.channel_ids;
+      const limit = action_config.limit || 100;
+      const userId = resolveTargetUser(action_config, event);
+
+      if (!userId) {
+        throw new Error("Missing user ID");
+      }
+
+      if (!channelIds) {
+        throw new Error("No channels specified");
+      }
+
+      const guild = await client.guilds.fetch(event.guild_id);
+      if (!guild) throw new Error("Guild not found");
+
+      // Parse comma-separated channel IDs
+      const channelsToProcess = channelIds
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+      let totalDeleted = 0;
+
+      for (const channelId of channelsToProcess) {
+        if (totalDeleted >= limit) break;
+
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (!channel || !channel.messages) continue;
+
+        try {
+          // Fetch messages and filter by mentions
+          const messages = await channel.messages.fetch({ limit: 100 });
+          const mentionedMessages = messages.filter((m) => m.mentions.has(userId));
+          const remainingQuota = limit - totalDeleted;
+          const toDelete = Array.from(mentionedMessages.values()).slice(
+            0,
+            remainingQuota,
+          );
+
+          if (toDelete.length === 0) continue;
+
+          // Try bulk delete for recent messages
+          const recentMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+          );
+
+          if (recentMessages.length > 1) {
+            await channel.bulkDelete(recentMessages);
+          } else if (recentMessages.length === 1) {
+            await recentMessages[0].delete();
+          }
+
+          // Delete older messages individually
+          const oldMessages = toDelete.filter((m) =>
+            Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
+          );
+
+          for (const msg of oldMessages) {
+            await msg.delete().catch(() => {});
+            await new Promise((r) => setTimeout(r, 500));
+          }
+
+          totalDeleted += toDelete.length;
+          log.info(
+            `[Automation] Deleted ${toDelete.length} messages mentioning <@${userId}> in #${channel.name}`,
+          );
+        } catch (err) {
+          log.error(
+            `[Automation] Error deleting in ${channelId}:`,
+            err.message,
+          );
+        }
+      }
+
+      log.info(
+        `[Automation] Total deleted: ${totalDeleted} messages mentioning user`,
+      );
+      return { totalDeleted, channelsProcessed: channelsToProcess.length };
+    }
+
     case "SEND_MESSAGE": {
       const content = automation.processed_content || action_config.content;
 

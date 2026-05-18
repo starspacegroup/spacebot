@@ -169,6 +169,33 @@ export const ACTION_TYPES = {
       },
     },
   },
+  DELETE_MENTIONED_MESSAGES: {
+    name: "Delete Messages Mentioning User",
+    description: "Delete messages that mention a specific user in a channel",
+    icon: "🗑️",
+    targetUser: true,
+    configSchema: {
+      target_user: {
+        type: "user_source",
+        required: true,
+        label: "Mentioned User",
+        description: "Which user to find mentions of",
+      },
+      channel_ids: {
+        type: "channel_multi",
+        required: true,
+        label: "Channel(s)",
+        showAllOption: false,
+        description: "Which channel(s) to search in",
+      },
+      limit: {
+        type: "number",
+        default: 100,
+        max: 1000,
+        label: "Max messages to delete",
+      },
+    },
+  },
   SEND_MESSAGE: {
     name: "Send Message",
     description: "Send a message to a channel",

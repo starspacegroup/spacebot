@@ -113,6 +113,11 @@ const ACTION_TYPES = {
     description: "Delete multiple messages from a user",
     configFields: ["target_user", "channel_ids", "max_age_days", "max_messages"],
   },
+  DELETE_MENTIONED_MESSAGES: {
+    name: "Delete Messages Mentioning User",
+    description: "Delete messages that mention a specific user in a channel",
+    configFields: ["target_user", "channel_ids", "limit"],
+  },
   LOG_TO_CHANNEL: {
     name: "Log to Channel",
     description: "Send a log message with event details",
