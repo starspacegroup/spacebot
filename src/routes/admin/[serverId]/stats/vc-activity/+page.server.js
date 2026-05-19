@@ -1,11 +1,43 @@
 import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
+import { EVENT_TYPES, getLogs, log } from "$lib/db/logger.js";
 import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
 import {
   LIVE_UPDATE_TOKEN_TTL_SECONDS,
   signLiveUpdateAccess,
 } from "$lib/live-updates.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
+
+const VOICE_ACTIVITY_LOG_LIMIT = 30;
+
+function formatEventType(eventType) {
+  if (!eventType) return "Voice activity";
+  return eventType.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeVoiceActivityLog(entries) {
+  return (entries || []).map((entry) => {
+    const details = entry?.details && typeof entry.details === "object" ? entry.details : {};
+    const eventType = entry?.event_type || null;
+    const eventMeta = eventType ? EVENT_TYPES[eventType] : null;
+    const fromChannelName = details.oldChannelName || details.fromChannelName || details.previousChannelName || null;
+    const channelName =
+      entry?.channel_name || details.newChannelName || details.toChannelName || details.channelName || fromChannelName || "Unknown channel";
+
+    let actionLabel = eventMeta?.description || formatEventType(eventType);
+    if (eventType === "VOICE_MOVE" && fromChannelName && channelName && fromChannelName !== channelName) {
+      actionLabel = `Moved from ${fromChannelName} to ${channelName}`;
+    }
+
+    return {
+      id: entry.id,
+      eventType,
+      actorName: entry?.actor_name || "Unknown member",
+      channelName,
+      actionLabel,
+      createdAt: entry?.created_at || null,
+    };
+  });
+}
 
 function getEnv(platform, name) {
   return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
@@ -44,6 +76,7 @@ export async function load({ params, cookies, platform, parent }) {
   const db = platform?.env?.DB;
 
   let liveVoiceSnapshot = null;
+  let voiceActivityLog = [];
   let liveUpdatesAuth = null;
 
   if (db) {
@@ -51,6 +84,16 @@ export async function load({ params, cookies, platform, parent }) {
       liveVoiceSnapshot = await getLiveVoiceChannels(db, serverId);
     } catch (error) {
       log.warn(`[LiveVoice] Failed to fetch snapshot for ${serverId}:`, error);
+    }
+
+    try {
+      const { logs } = await getLogs(db, serverId, {
+        category: "voice",
+        limit: VOICE_ACTIVITY_LOG_LIMIT,
+      });
+      voiceActivityLog = normalizeVoiceActivityLog(logs);
+    } catch (error) {
+      log.warn(`[LiveVoice] Failed to fetch voice activity log for ${serverId}:`, error);
     }
   }
 
@@ -69,6 +112,7 @@ export async function load({ params, cookies, platform, parent }) {
     serverId,
     guild,
     liveVoiceSnapshot,
+    voiceActivityLog,
     liveUpdatesAuth,
     user: parentData.user,
   };

@@ -683,7 +683,7 @@
 					<p class="subtitle">Comprehensive analytics for {data.guild?.name || 'your server'}</p>
 				</div>
 				<div class="header-actions">
-					<a href="/admin/{data.serverId}/stats/live-voice" class="btn btn-secondary btn-sm">🔴 Live Voice</a>
+					<a href="/admin/{data.serverId}/stats/vc-activity" class="btn btn-secondary btn-sm">🔴 VC Activity</a>
 					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm">📜 Event Logs</a>
 					<label class="master-bot-toggle">
 						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />

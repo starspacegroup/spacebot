@@ -6,6 +6,7 @@
 
 	const LIVE_VOICE_POLL_MS = 15000;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
+	const voiceActivityLog = $derived(Array.isArray(data.voiceActivityLog) ? data.voiceActivityLog : []);
 
 	function normalizeLiveVoiceSnapshot(snapshot) {
 		return {
@@ -134,7 +135,7 @@
 </script>
 
 <svelte:head>
-	<title>Live Voice Channels - {data.guild?.name || 'Server'} | SpaceBot</title>
+	<title>VC activity - {data.guild?.name || 'Server'} | SpaceBot</title>
 </svelte:head>
 
 <div class="live-voice-page">
@@ -146,7 +147,7 @@
 			</a>
 			<div class="title-row">
 				<div class="title-section">
-					<h1>🔴 Live Voice Channels</h1>
+					<h1>🔴 VC activity</h1>
 					<p class="subtitle">Real-time voice activity for {data.guild?.name || 'your server'}</p>
 				</div>
 				<div class="header-actions">
@@ -251,6 +252,32 @@
 				<span class="live-voice-empty-text">Nobody is in voice right now.</span>
 			</div>
 		{/if}
+
+		<section class="voice-log-section">
+			<div class="voice-log-header">
+				<h2>VC Channel Activity Log</h2>
+				<span class="voice-log-count">{voiceActivityLog.length} recent events</span>
+			</div>
+
+			{#if voiceActivityLog.length > 0}
+				<div class="voice-log-list">
+					{#each voiceActivityLog as entry}
+						<div class="voice-log-row">
+							<div class="voice-log-main">
+								<span class="voice-log-actor">{entry.actorName}</span>
+								<span class="voice-log-action">{entry.actionLabel}</span>
+								<span class="voice-log-channel">in {entry.channelName}</span>
+							</div>
+							<span class="voice-log-time" title={entry.createdAt || ''}>
+								{entry.createdAt ? formatRelativeTime(entry.createdAt) : 'Unknown time'}
+							</span>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<div class="voice-log-empty">No recent VC channel activity yet.</div>
+			{/if}
+		</section>
 	</div>
 </div>
 
@@ -599,5 +626,85 @@
 
 	.live-voice-empty-text {
 		font-size: 0.95rem;
+	}
+
+	.voice-log-section {
+		margin-top: 1rem;
+		padding: 1rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+
+	.voice-log-header {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 0.85rem;
+		flex-wrap: wrap;
+	}
+
+	.voice-log-header h2 {
+		margin: 0;
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.voice-log-count {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+
+	.voice-log-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.voice-log-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 0.75rem;
+		padding: 0.7rem 0.8rem;
+		border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in srgb, var(--color-surface-elevated) 84%, transparent);
+		flex-wrap: wrap;
+	}
+
+	.voice-log-main {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+	}
+
+	.voice-log-actor {
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.voice-log-action {
+		color: var(--color-text);
+	}
+
+	.voice-log-channel {
+		color: var(--color-text-muted);
+	}
+
+	.voice-log-time {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+
+	.voice-log-empty {
+		padding: 0.8rem;
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius-md);
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
 	}
 </style>
