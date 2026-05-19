@@ -7,6 +7,7 @@ export const WORKERS_AI_SELECTION_KEY = "workers_ai_model_selection_v1";
 
 const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_MODELS_PER_PAGE = 100;
+const CLOUDFLARE_WORKERS_AI_MODELS_API_URL = "https://ai-cloudflare-com.pages.dev/api/models";
 
 function getEnv(name, platform) {
   return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
@@ -34,8 +35,46 @@ function toLowerTrimmedSet(values) {
   );
 }
 
+function toBoolean(value) {
+  if (value === true || value === false) return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "y"].includes(normalized)) return true;
+    if (["0", "false", "no", "n"].includes(normalized)) return false;
+  }
+  return null;
+}
+
+function normalizeModelName(value) {
+  return String(value || "").trim();
+}
+
+function deriveAuthorFromModelName(modelName) {
+  if (!modelName.startsWith("@")) return null;
+  const segments = modelName.split("/").filter(Boolean);
+  if (segments.length < 2) return null;
+  return segments[1] || null;
+}
+
+function toPropertiesMap(properties) {
+  const map = new Map();
+  for (const prop of toArray(properties)) {
+    const key = String(prop?.property_id || prop?.key || "").trim();
+    if (!key) continue;
+    map.set(key, prop?.value);
+  }
+  return map;
+}
+
 function normalizeModel(raw) {
-  const id = String(raw?.id || raw?.name || raw?.model || "").trim();
+  const modelName =
+    normalizeModelName(raw?.model_id) ||
+    normalizeModelName(raw?.name) ||
+    normalizeModelName(raw?.model);
+  const id = modelName || normalizeModelName(raw?.id);
+
+  const properties = toPropertiesMap(raw?.properties);
 
   const taskNames = toArray(raw?.task || raw?.tasks)
     .map((task) => (typeof task === "string" ? task : task?.name || task?.label || ""))
@@ -53,7 +92,13 @@ function normalizeModel(raw) {
 
   const tagSet = toLowerTrimmedSet(tagValues);
 
+  const betaValue = toBoolean(properties.get("beta"));
+  const experimentalValue = toBoolean(properties.get("experimental"));
+  const deprecatedValue = toBoolean(properties.get("deprecated"));
+  const plannedDeprecation = properties.get("planned_deprecation_date") || raw?.planned_deprecation;
+
   const isBeta =
+    betaValue === true ||
     raw?.beta === true ||
     raw?.is_beta === true ||
     raw?.experimental === true ||
@@ -62,31 +107,41 @@ function normalizeModel(raw) {
     tagSet.has("experimental");
 
   const isDeprecated =
+    deprecatedValue === true ||
     raw?.deprecated === true ||
     raw?.is_deprecated === true ||
     raw?.planned_deprecation === true ||
+    Boolean(plannedDeprecation) ||
     tagSet.has("planned deprecation") ||
     tagSet.has("deprecated") ||
     tagSet.has("deprecation");
 
+  const authorFromModelName = deriveAuthorFromModelName(modelName);
+  const contextWindow =
+    raw?.context_window ||
+    raw?.contextWindow ||
+    properties.get("context_window") ||
+    properties.get("max_input_tokens") ||
+    null;
+
   return {
     id,
-    name: String(raw?.name || id || "Unknown model"),
+    name: modelName.split("/").at(-1) || id || "Unknown model",
     description: String(raw?.description || raw?.summary || "").trim(),
     author:
       typeof raw?.author === "string"
         ? raw.author
-        : raw?.author?.name || raw?.provider || "Unknown",
+        : raw?.author?.name || raw?.provider || authorFromModelName || "Unknown",
     source:
       typeof raw?.source === "string"
         ? raw.source
-        : raw?.source?.name || "Hosted",
+        : raw?.source?.name || (modelName.startsWith("@cf/") ? "Hosted" : "Cloudflare"),
     tasks: taskNames,
     tags: tagValues,
     isBeta,
-    isExperimental: raw?.experimental === true || raw?.is_experimental === true,
+    isExperimental: experimentalValue === true || raw?.experimental === true || raw?.is_experimental === true,
     isDeprecated,
-    contextWindow: raw?.context_window || raw?.contextWindow || null,
+    contextWindow,
     pricing: raw?.pricing || raw?.price || raw?.cost || null,
     homepage: raw?.homepage || raw?.url || raw?.documentation_url || null,
     raw,
@@ -108,6 +163,21 @@ function normalizeCatalog(rawModels) {
 }
 
 export async function fetchWorkersAIModelsFromCloudflare(platform) {
+  // Cloudflare docs use this endpoint to build the Workers AI models catalog,
+  // so it is the closest source-of-truth for matching that page.
+  try {
+    const response = await fetch(CLOUDFLARE_WORKERS_AI_MODELS_API_URL);
+    if (response.ok) {
+      const payload = await response.json();
+      const docsModels = toArray(payload?.models || payload?.result);
+      if (docsModels.length > 0) {
+        return normalizeCatalog(docsModels);
+      }
+    }
+  } catch {
+    // Fall back to authenticated Cloudflare account API below.
+  }
+
   const accountId = getEnv("CLOUDFLARE_ACCOUNT_ID", platform);
   const apiToken =
     getEnv("CLOUDFLARE_API_TOKEN", platform) ||
