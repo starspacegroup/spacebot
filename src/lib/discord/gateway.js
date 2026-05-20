@@ -2073,6 +2073,17 @@ function getUserLogInfo(user) {
 }
 
 /**
+ * Get the best avatar representation for log storage.
+ * Uses display avatar URL so guild-specific profile images are preserved.
+ * @param {Discord.GuildMember} member
+ * @returns {string|null}
+ */
+function getMemberAvatarForLog(member) {
+  if (!member) return null;
+  return member.displayAvatarURL?.({ size: 128 }) || member.user?.avatar || null;
+}
+
+/**
  * Set up all event handlers
  */
 function setupEventHandlers(client, logFn) {
@@ -2527,6 +2538,7 @@ function setupEventHandlers(client, logFn) {
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     const guildId = newState.guild.id;
     const member = newState.member;
+    const actorAvatar = getMemberAvatarForLog(member);
     const scheduleLiveVoiceSync = () => {
       syncGuildLiveVoiceSnapshot(newState.guild || oldState.guild, "voice_state_update");
     };
@@ -2540,7 +2552,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
@@ -2567,7 +2579,7 @@ function setupEventHandlers(client, logFn) {
           actor_id: member.user.id,
           actor_name: member.user.tag,
           actor_is_bot: member.user.bot || false,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
@@ -2582,7 +2594,7 @@ function setupEventHandlers(client, logFn) {
           actor_id: member.user.id,
           actor_name: member.user.tag,
           actor_is_bot: member.user.bot || false,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
@@ -2597,7 +2609,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: oldState.channel.id,
         channel_name: oldState.channel.name,
@@ -2628,7 +2640,7 @@ function setupEventHandlers(client, logFn) {
           actor_id: member.user.id,
           actor_name: member.user.tag,
           actor_is_bot: member.user.bot || false,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
@@ -2643,7 +2655,7 @@ function setupEventHandlers(client, logFn) {
           actor_id: member.user.id,
           actor_name: member.user.tag,
           actor_is_bot: member.user.bot || false,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
@@ -2658,7 +2670,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
@@ -2685,7 +2697,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: channel.id,
         channel_name: channel.name,
@@ -2706,7 +2718,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: channel.id,
         channel_name: channel.name,
@@ -2725,7 +2737,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: channel.id,
         channel_name: channel.name,
@@ -2746,7 +2758,7 @@ function setupEventHandlers(client, logFn) {
         actor_id: member.user.id,
         actor_name: member.user.tag,
         actor_is_bot: member.user.bot || false,
-        actor_avatar: member.user.avatar || null,
+        actor_avatar: actorAvatar,
         actor_discriminator: member.user.discriminator || '0',
         channel_id: channel.id,
         channel_name: channel.name,
@@ -2821,7 +2833,7 @@ function setupEventHandlers(client, logFn) {
           event_category: "voice",
           actor_id: member.user.id,
           actor_name: member.user.tag,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: channel.id,
           channel_name: channel.name,
@@ -2836,7 +2848,7 @@ function setupEventHandlers(client, logFn) {
           event_category: "voice",
           actor_id: member.user.id,
           actor_name: member.user.tag,
-          actor_avatar: member.user.avatar || null,
+          actor_avatar: actorAvatar,
           actor_discriminator: member.user.discriminator || '0',
           channel_id: channel.id,
           channel_name: channel.name,

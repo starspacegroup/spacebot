@@ -1,5 +1,6 @@
 <script>
 	import { goto, invalidateAll } from '$app/navigation';
+	import { getAvatarUrl as getDiscordAvatarUrl } from '$lib/utils/avatar.js';
 	
 	let { data } = $props();
 	
@@ -24,14 +25,7 @@
 	}
 	
 	function getAvatarUrl(user) {
-		if (user.avatar) {
-			return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=32`;
-		}
-		// Default Discord avatar
-		const index = user.discriminator === '0' 
-			? (BigInt(user.id) >> 22n) % 6n
-			: parseInt(user.discriminator) % 5;
-		return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+		return getDiscordAvatarUrl(user?.id, user?.avatar, user?.discriminator, 32);
 	}
 	
 	async function doSearch() {

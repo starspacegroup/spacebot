@@ -1,27 +1,11 @@
 <script>
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
+
 	let { user, selectedGuildId = null, isSuperAdmin = false } = $props();
 	let isOpen = $state(false);
 	
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(selectedGuildId ? `/admin/${selectedGuildId}` : '/admin');
-	
-	/**
-	 * Get Discord avatar URL
-	 * @param {string} userId
-	 * @param {string|null} avatar
-	 * @param {string} discriminator
-	 */
-	function getAvatarUrl(userId, avatar, discriminator = '0') {
-		if (avatar) {
-			const ext = avatar.startsWith('a_') ? 'gif' : 'png';
-			return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=64`;
-		}
-		// Default avatar based on user ID or discriminator
-		const index = discriminator === '0' 
-			? (BigInt(userId) >> 22n) % 6n
-			: parseInt(discriminator) % 5;
-		return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
-	}
 	
 	function toggleMenu() {
 		isOpen = !isOpen;

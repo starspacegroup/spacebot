@@ -15,9 +15,29 @@ export function getAvatarUrl(userId, avatar, discriminator = '0', size = 64) {
   if (!userId) return '';
 
   if (avatar) {
-    // Custom avatar
-    const ext = avatar.startsWith('a_') ? 'gif' : 'png';
-    return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=${size}`;
+    const avatarValue = String(avatar).trim();
+
+    // Some records store a full URL (e.g. displayAvatarURL for guild-specific avatars).
+    // Return it directly and only adjust the size parameter for Discord CDN URLs.
+    if (avatarValue.startsWith('http://') || avatarValue.startsWith('https://')) {
+      try {
+        const url = new URL(avatarValue);
+        if (url.hostname === 'cdn.discordapp.com' && Number.isFinite(size) && size > 0) {
+          url.searchParams.set('size', String(size));
+        }
+        return url.toString();
+      } catch {
+        return avatarValue;
+      }
+    }
+
+    if (avatarValue.startsWith('data:')) {
+      return avatarValue;
+    }
+
+    // Custom avatar hash
+    const ext = avatarValue.startsWith('a_') ? 'gif' : 'png';
+    return `https://cdn.discordapp.com/avatars/${userId}/${avatarValue}.${ext}?size=${size}`;
   }
 
   // Default avatar based on discriminator
