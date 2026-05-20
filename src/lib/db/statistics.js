@@ -673,6 +673,23 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
         actor_id,
         actor_name,
         actor_is_bot,
+        (
+          SELECT l.actor_avatar
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = voice_events.actor_id
+            AND l.actor_avatar IS NOT NULL
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_avatar,
+        (
+          SELECT COALESCE(l.actor_discriminator, '0')
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = voice_events.actor_id
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_discriminator,
         ROUND(SUM(
           CASE
             WHEN event_type = 'VOICE_JOIN' AND next_event_type = 'VOICE_LEAVE'
@@ -688,7 +705,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, timeRange, limit).all();
+    `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
     return result.results || [];
   } catch (error) {
@@ -731,6 +748,23 @@ export async function getTopVideoUsers(db, guildId, limit = 20, period = "30d") 
         actor_id,
         actor_name,
         actor_is_bot,
+        (
+          SELECT l.actor_avatar
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = video_events.actor_id
+            AND l.actor_avatar IS NOT NULL
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_avatar,
+        (
+          SELECT COALESCE(l.actor_discriminator, '0')
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = video_events.actor_id
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_discriminator,
         ROUND(SUM(
           CASE
             WHEN event_type = 'VOICE_VIDEO_START' AND next_event_type IN ('VOICE_VIDEO_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
@@ -746,7 +780,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20, period = "30d") 
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, timeRange, limit).all();
+    `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
     return result.results || [];
   } catch (error) {
@@ -789,6 +823,23 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20, period = "
         actor_id,
         actor_name,
         actor_is_bot,
+        (
+          SELECT l.actor_avatar
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = stream_events.actor_id
+            AND l.actor_avatar IS NOT NULL
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_avatar,
+        (
+          SELECT COALESCE(l.actor_discriminator, '0')
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND l.actor_id = stream_events.actor_id
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_discriminator,
         ROUND(SUM(
           CASE
             WHEN event_type = 'VOICE_STREAM_START' AND next_event_type IN ('VOICE_STREAM_STOP', 'VOICE_LEAVE', 'VOICE_MOVE')
@@ -804,7 +855,7 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20, period = "
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
-    `).bind(guildId, timeRange, limit).all();
+    `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
     return result.results || [];
   } catch (error) {
