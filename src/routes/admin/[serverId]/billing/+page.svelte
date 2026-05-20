@@ -1,5 +1,6 @@
 <script>
 	import Toast from '$lib/components/Toast.svelte';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	
 	let { data } = $props();
 	
@@ -431,7 +432,17 @@
 								</div>
 							{/if}
 							{#if event.actor_name}
-								<span class="event-actor">by {event.actor_name}</span>
+								<div class="event-actor">
+									{#if event.actor_id}
+										<img
+											src={getAvatarUrl(event.actor_id, event.actor_avatar, event.actor_discriminator, 24)}
+											alt="{event.actor_name}'s avatar"
+											class="event-actor-avatar"
+											onerror={(e) => { e.target.style.display = 'none'; }}
+										/>
+									{/if}
+									<span>by {event.actor_name}</span>
+								</div>
 							{/if}
 							{#if event.event_type === 'admin_edit' && event.details?.changes?.length}
 								<details class="event-changes">
@@ -1162,11 +1173,21 @@
 	}
 	
 	.event-actor {
-		display: block;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		margin-top: 0.25rem;
 		font-style: italic;
+	}
+
+	.event-actor-avatar {
+		width: 20px;
+		height: 20px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 	
 	.event-changes {

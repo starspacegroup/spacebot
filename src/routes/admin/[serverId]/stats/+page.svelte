@@ -1,6 +1,7 @@
 <script>
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 	
 	let { data } = $props();
@@ -1304,6 +1305,14 @@
 								<span class="list-rank">#{rank}</span>
 								<div class="list-info">
 									<span class="list-name">
+										{#if actor.actor_id}
+											<img
+												src={getAvatarUrl(actor.actor_id, actor.actor_avatar, actor.actor_discriminator, 20)}
+												alt="{actor.actor_name || 'User'} avatar"
+												class="inline-user-avatar"
+												onerror={(e) => { e.target.style.display = 'none'; }}
+											/>
+										{/if}
 										{actor.actor_name || 'Unknown User'}
 										{#if isBot(actor)}<span class="bot-badge">🤖</span>{/if}
 									</span>
@@ -1373,6 +1382,14 @@
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
 										<span class="user-name">
+											{#if user.actor_id}
+												<img
+													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
+													alt="{user.actor_name || 'User'} avatar"
+													class="inline-user-avatar"
+													onerror={(e) => { e.target.style.display = 'none'; }}
+												/>
+											{/if}
 											{user.actor_name || 'Unknown User'}
 											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
 										</span>
@@ -1411,6 +1428,14 @@
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
 										<span class="user-name">
+											{#if user.actor_id}
+												<img
+													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
+													alt="{user.actor_name || 'User'} avatar"
+													class="inline-user-avatar"
+													onerror={(e) => { e.target.style.display = 'none'; }}
+												/>
+											{/if}
 											{user.actor_name || 'Unknown User'}
 											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
 										</span>
@@ -1449,6 +1474,14 @@
 									<span class="user-rank">#{i + 1}</span>
 									<div class="user-info">
 										<span class="user-name">
+											{#if user.actor_id}
+												<img
+													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
+													alt="{user.actor_name || 'User'} avatar"
+													class="inline-user-avatar"
+													onerror={(e) => { e.target.style.display = 'none'; }}
+												/>
+											{/if}
 											{user.actor_name || 'Unknown User'}
 											{#if isBot(user)}<span class="bot-badge-sm">🤖</span>{/if}
 										</span>
@@ -2708,6 +2741,9 @@
 	}
 
 	.list-name {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		font-weight: 500;
 		color: var(--color-text);
 		font-size: 0.8rem;
@@ -3085,13 +3121,23 @@
 	}
 	
 	.user-name {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		font-size: 0.8rem;
 		font-weight: 500;
 		color: var(--color-text);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		display: block;
+	}
+
+	.inline-user-avatar {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 	
 	.user-bar-container {

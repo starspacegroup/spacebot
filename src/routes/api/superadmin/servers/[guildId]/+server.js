@@ -42,6 +42,8 @@ export async function GET({ cookies, platform, params }) {
 /** @type {import('./$types').RequestHandler} */
 export async function PATCH({ cookies, platform, params, request }) {
   const userId = cookies.get("discord_user_id");
+  const actorAvatar = cookies.get("discord_avatar") || null;
+  const actorDiscriminator = cookies.get("discord_discriminator") || "0";
   if (!checkIsSuperAdmin(userId, platform)) {
     return json({ error: "Forbidden" }, { status: 403 });
   }
@@ -85,6 +87,8 @@ export async function PATCH({ cookies, platform, params, request }) {
     details: { changes, plan_before: planBefore, plan_after: plan },
     actor_id: userId,
     actor_name: adminUser?.global_name || adminUser?.username || userId,
+    actor_avatar: actorAvatar,
+    actor_discriminator: actorDiscriminator,
     plan_before: planBefore.plan,
     plan_after: plan.plan,
     amount_cents: plan.price_cents,
@@ -96,6 +100,8 @@ export async function PATCH({ cookies, platform, params, request }) {
 /** @type {import('./$types').RequestHandler} */
 export async function DELETE({ cookies, platform, params }) {
   const userId = cookies.get("discord_user_id");
+  const actorAvatar = cookies.get("discord_avatar") || null;
+  const actorDiscriminator = cookies.get("discord_discriminator") || "0";
   if (!checkIsSuperAdmin(userId, platform)) {
     return json({ error: "Forbidden" }, { status: 403 });
   }
@@ -120,6 +126,8 @@ export async function DELETE({ cookies, platform, params }) {
     details: { plan_before: planBefore },
     actor_id: userId,
     actor_name: adminUser?.global_name || adminUser?.username || userId,
+    actor_avatar: actorAvatar,
+    actor_discriminator: actorDiscriminator,
     plan_before: planBefore.plan,
     plan_after: "free",
   });

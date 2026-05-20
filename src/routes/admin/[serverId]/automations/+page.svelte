@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
 	let { data, form } = $props();
@@ -233,7 +234,17 @@
 													{#each summary as item}
 														<span class="trigger-summary-item">
 															<span class="trigger-summary-key">{item.label}:</span>
-															<span class="trigger-summary-val">{item.value}</span>
+															<span class="trigger-summary-val">
+																{#if item.label === 'Actor' && item.id}
+																	<img
+																		src={getAvatarUrl(item.id, log.trigger_data?.actor_avatar, log.trigger_data?.actor_discriminator, 18)}
+																		alt="{item.value}'s avatar"
+																		class="trigger-actor-avatar"
+																		onerror={(e) => { e.target.style.display = 'none'; }}
+																	/>
+																{/if}
+																{item.value}
+															</span>
 														</span>
 													{/each}
 												</div>
@@ -1001,7 +1012,18 @@
 	}
 	
 	.trigger-summary-val {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
 		color: var(--text-secondary, #dcddde);
+	}
+
+	.trigger-actor-avatar {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 	
 	/* Actions breakdown */

@@ -34,6 +34,8 @@ export const BILLING_EVENT_TYPES = {
  * @param {object} [event.details] - Additional context (stored as JSON)
  * @param {string} [event.actor_id] - Discord user ID who triggered the event
  * @param {string} [event.actor_name] - Display name of actor
+ * @param {string} [event.actor_avatar] - Discord avatar hash of actor
+ * @param {string} [event.actor_discriminator] - Discord discriminator of actor
  * @param {number} [event.amount_cents] - Payment amount in cents
  * @param {string} [event.plan_before] - Plan tier before change
  * @param {string} [event.plan_after] - Plan tier after change
@@ -49,10 +51,10 @@ export async function addBillingEvent(db, event) {
       .prepare(`
         INSERT INTO billing_history (
           guild_id, event_type, description,
-          details, actor_id, actor_name,
+          details, actor_id, actor_name, actor_avatar, actor_discriminator,
           amount_cents, plan_before, plan_after,
           created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `)
       .bind(
         event.guild_id,
@@ -61,6 +63,8 @@ export async function addBillingEvent(db, event) {
         event.details ? JSON.stringify(event.details) : null,
         event.actor_id || null,
         event.actor_name || null,
+        event.actor_avatar || null,
+        event.actor_discriminator || "0",
         event.amount_cents ?? null,
         event.plan_before || null,
         event.plan_after || null,

@@ -1,5 +1,6 @@
 <script>
 	import { formatDateFull, formatRelativeTime as tzFormatRelative } from '$lib/timezone.js';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
 	let { data } = $props();
 	
@@ -75,13 +76,26 @@
 				<h3>👤 Actor</h3>
 				{#if data.log.actor_name || data.log.actor_id}
 					<div class="detail-content">
-						{#if data.log.actor_name}
+						{#if data.log.actor_id && data.log.actor_name}
+							<div class="actor-avatar-section">
+								<img 
+									src={getAvatarUrl(data.log.actor_id, data.log.actor_avatar, data.log.actor_discriminator, 64)}
+									alt="{data.log.actor_name}'s avatar"
+									class="detail-avatar"
+									onerror={(e) => { e.target.style.display = 'none'; }}
+								/>
+								<div class="actor-text">
+									<span class="actor-name">{data.log.actor_name}</span>
+									<span class="actor-id mono">{data.log.actor_id}</span>
+								</div>
+							</div>
+						{:else if data.log.actor_name}
 							<div class="detail-row">
 								<span class="label">Username</span>
 								<span class="value">{data.log.actor_name}</span>
 							</div>
 						{/if}
-						{#if data.log.actor_id}
+						{#if data.log.actor_id && !data.log.actor_name}
 							<div class="detail-row">
 								<span class="label">User ID</span>
 								<span class="value mono">
@@ -368,6 +382,37 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+	}
+
+	.actor-avatar-section {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.detail-avatar {
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+
+	.actor-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.actor-name {
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+
+	.actor-id {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
 	}
 	
 	.detail-row {

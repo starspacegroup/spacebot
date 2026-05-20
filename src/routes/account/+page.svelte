@@ -1,6 +1,7 @@
 <script>
 	import Toast from '$lib/components/Toast.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { untrack } from 'svelte';
 	
 	let { data } = $props();
@@ -626,7 +627,17 @@
 										<span class="timeline-plan-change">{event.plan_before} → {event.plan_after}</span>
 									{/if}
 									{#if event.actor_name}
-										<span class="timeline-actor">by {event.actor_name}</span>
+										<span class="timeline-actor">
+											{#if event.actor_id}
+												<img
+													src={getAvatarUrl(event.actor_id, event.actor_avatar, event.actor_discriminator, 20)}
+													alt="{event.actor_name}'s avatar"
+													class="timeline-actor-avatar"
+													onerror={(e) => { e.target.style.display = 'none'; }}
+												/>
+											{/if}
+											by {event.actor_name}
+										</span>
 									{/if}
 								</div>
 							</div>
@@ -1696,9 +1707,20 @@
 	}
 	
 	.timeline-actor {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		font-size: 0.6875rem;
 		color: var(--color-text-muted);
 		font-style: italic;
+	}
+
+	.timeline-actor-avatar {
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 	
 	/* Plan Comparison Table */

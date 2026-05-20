@@ -2057,17 +2057,34 @@ function createClient() {
 }
 
 /**
+ * Extract user information including avatar for logging
+ * @param {Discord.User|Discord.PartialUser} user - Discord user object
+ * @returns {Object} Object with id, name, is_bot, avatar, and discriminator
+ */
+function getUserLogInfo(user) {
+  if (!user) return {};
+  return {
+    id: user.id,
+    name: user.tag || user.username || 'Unknown User',
+    is_bot: user.bot || false,
+    avatar: user.avatar || null,
+    discriminator: user.discriminator || '0',
+  };
+}
+
+/**
  * Set up all event handlers
  */
 function setupEventHandlers(client, logFn) {
   // ===== MEMBER EVENTS =====
 
   client.on(Events.GuildMemberAdd, async (member) => {
+    const userInfo = getUserLogInfo(member.user);
     await logFn({
       guild_id: member.guild.id,
       event_type: "MEMBER_JOIN",
       event_category: "member",
-      actor_id: member.user.id,
+      actor_id: userInfo.id,
       actor_name: member.user.tag,
       actor_is_bot: member.user.bot || false,
       details: {

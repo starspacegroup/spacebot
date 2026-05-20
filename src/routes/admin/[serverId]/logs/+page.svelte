@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { log } from '$lib/log.js';
 	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	
 	let { data } = $props();
 	
@@ -516,10 +517,22 @@
 								</td>
 								<td class="actor-cell">
 									{#if log.actor_name}
-										<span class="user-tag">{log.actor_name}</span>
-										{#if log.actor_id}
-											<span class="user-id">{log.actor_id}</span>
-										{/if}
+										<div class="user-info">
+											{#if log.actor_id}
+												<img 
+													src={getAvatarUrl(log.actor_id, log.actor_avatar, log.actor_discriminator, 32)} 
+													alt="{log.actor_name}'s avatar"
+													class="user-avatar"
+													onerror={(e) => { e.target.style.display = 'none'; }}
+												/>
+											{/if}
+											<div class="user-text">
+												<span class="user-tag">{log.actor_name}</span>
+												{#if log.actor_id}
+													<span class="user-id">{log.actor_id}</span>
+												{/if}
+											</div>
+										</div>
 									{:else}
 										<span class="na">—</span>
 									{/if}
@@ -1179,6 +1192,27 @@
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
 		font-family: monospace;
+	}
+	
+	/* User avatar display */
+	.user-info {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	
+	.user-avatar {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+	
+	.user-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
 	}
 	
 	.channel-name {

@@ -1,5 +1,6 @@
 <script>
 	import { parseUTCDate, formatChartDate } from '$lib/timezone.js';
+	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 
 	let { data } = $props();
@@ -264,7 +265,17 @@
 					{#each voiceActivityLog as entry}
 						<div class="voice-log-row">
 							<div class="voice-log-main">
-								<span class="voice-log-actor">{entry.actorName}</span>
+								<span class="voice-log-actor">
+									{#if entry.actorId}
+										<img
+											src={getAvatarUrl(entry.actorId, entry.actorAvatar, entry.actorDiscriminator, 20)}
+											alt="{entry.actorName}'s avatar"
+											class="voice-log-actor-avatar"
+											onerror={(e) => { e.target.style.display = 'none'; }}
+										/>
+									{/if}
+									{entry.actorName}
+								</span>
 								<span class="voice-log-action">{entry.actionLabel}</span>
 								<span class="voice-log-channel">in {entry.channelName}</span>
 							</div>
@@ -683,8 +694,19 @@
 	}
 
 	.voice-log-actor {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
 		font-weight: 700;
 		color: var(--color-text);
+	}
+
+	.voice-log-actor-avatar {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 
 	.voice-log-action {

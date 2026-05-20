@@ -80,7 +80,13 @@
 				if (!data?.members) return;
 				const newCache = { ...selectedMembersCache };
 				for (const m of data.members) {
-					newCache[m.id] = { id: m.id, displayName: m.displayName, isBot: m.isBot };
+					newCache[m.id] = {
+						id: m.id,
+						displayName: m.displayName,
+						username: m.username,
+						avatar: m.avatar,
+						isBot: m.isBot,
+					};
 				}
 				selectedMembersCache = newCache;
 			})
@@ -169,6 +175,8 @@
 				return { 
 					id: member.id, 
 					displayName: member.displayName,
+					username: member.username,
+					avatar: member.avatar,
 					isBot: member.isBot 
 				};
 			}
@@ -207,6 +215,8 @@
 					[member.id]: {
 						id: member.id,
 						displayName: member.displayName,
+						username: member.username,
+						avatar: member.avatar,
 						isBot: member.isBot
 					}
 				};
@@ -220,6 +230,8 @@
 				[member.id]: {
 					id: member.id,
 					displayName: member.displayName,
+					username: member.username,
+					avatar: member.avatar,
 					isBot: member.isBot
 				}
 			};
@@ -303,6 +315,9 @@
 			<div class="selected-tags">
 				{#each selectedMemberInfo as member, i}
 					<span class="user-tag" class:bot={member.isBot}>
+						{#if member.avatar}
+							<img src={member.avatar} alt="" class="selected-avatar" onerror={(e) => e.target.style.display = 'none'} />
+						{/if}
 						{#if member.isBot}🤖{/if}
 						{member.displayName}
 						{#if member.id !== ANY_USER}
@@ -326,7 +341,11 @@
 			<!-- Single select: show selected user -->
 			<div class="selected-user">
 				<span class="user-display">
-					{selectedMemberInfo[0]?.isBot ? '🤖 ' : '👤 '}
+					{#if selectedMemberInfo[0]?.avatar}
+						<img src={selectedMemberInfo[0].avatar} alt="" class="selected-avatar" onerror={(e) => e.target.style.display = 'none'} />
+					{:else}
+						{selectedMemberInfo[0]?.isBot ? '🤖 ' : '👤 '}
+					{/if}
 					{selectedMemberInfo[0]?.displayName || value}
 				</span>
 				<button type="button" class="clear-btn" onclick={clearSelection} title="Clear selection">
@@ -511,6 +530,14 @@
 		padding: 0 0.125rem;
 		font-size: 1rem;
 		line-height: 1;
+	}
+	
+	.selected-avatar {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
 	}
 	
 	.tag-remove:hover {

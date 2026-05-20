@@ -31,7 +31,10 @@ function normalizeVoiceActivityLog(entries) {
     return {
       id: entry.id,
       eventType,
+      actorId: entry?.actor_id || null,
       actorName: entry?.actor_name || "Unknown member",
+      actorAvatar: entry?.actor_avatar || null,
+      actorDiscriminator: entry?.actor_discriminator || "0",
       channelName,
       actionLabel,
       createdAt: entry?.created_at || null,

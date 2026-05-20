@@ -16,8 +16,11 @@ export { log };
  * @property {string|null} actor_id - User who performed the action
  * @property {string|null} actor_name - Username of the actor
  * @property {boolean|null} actor_is_bot - Whether the actor is a bot
+ * @property {string|null} actor_avatar - Avatar hash of the actor
+ * @property {string|null} actor_discriminator - Discriminator of the actor (for default avatar calculation)
  * @property {string|null} target_id - Target of the action (user, channel, etc.)
  * @property {string|null} target_name - Name of the target
+ * @property {string|null} target_avatar - Avatar hash of the target
  * @property {string|null} channel_id - Channel where event occurred
  * @property {string|null} channel_name - Name of the channel
  * @property {Object|null} details - Additional event-specific data
@@ -39,9 +42,10 @@ export async function logEvent(db, event) {
     await db.prepare(`
 			INSERT INTO event_logs (
 				guild_id, event_type, event_category,
-				actor_id, actor_name, actor_is_bot, target_id, target_name,
+				actor_id, actor_name, actor_is_bot, actor_avatar, actor_discriminator,
+				target_id, target_name, target_avatar,
 				channel_id, channel_name, details
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).bind(
       event.guild_id,
       event.event_type,
@@ -49,8 +53,11 @@ export async function logEvent(db, event) {
       event.actor_id || null,
       event.actor_name || null,
       event.actor_is_bot ? 1 : 0,
+      event.actor_avatar || null,
+      event.actor_discriminator || '0',
       event.target_id || null,
       event.target_name || null,
+      event.target_avatar || null,
       event.channel_id || null,
       event.channel_name || null,
       event.details ? JSON.stringify(event.details) : null,

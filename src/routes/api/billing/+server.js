@@ -32,6 +32,9 @@ function checkIsSuperAdmin(userId, platform) {
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, cookies, platform, url }) {
   const userId = cookies.get("discord_user_id");
+  const actorName = cookies.get("discord_global_name") || cookies.get("discord_username") || null;
+  const actorAvatar = cookies.get("discord_avatar") || null;
+  const actorDiscriminator = cookies.get("discord_discriminator") || "0";
   if (!userId) {
     return json({ error: "Not authenticated" }, { status: 401 });
   }
@@ -156,6 +159,9 @@ export async function POST({ request, cookies, platform, url }) {
           event_type: BILLING_EVENT_TYPES.SUBSCRIPTION_CANCELED,
           description: `Subscription set to cancel at end of billing period`,
           actor_id: userId,
+          actor_name: actorName,
+          actor_avatar: actorAvatar,
+          actor_discriminator: actorDiscriminator,
           plan_before: "pro",
           plan_after: "pro",
         });
@@ -187,6 +193,9 @@ export async function POST({ request, cookies, platform, url }) {
           event_type: BILLING_EVENT_TYPES.SUBSCRIPTION_REACTIVATED,
           description: `Subscription reactivated`,
           actor_id: userId,
+          actor_name: actorName,
+          actor_avatar: actorAvatar,
+          actor_discriminator: actorDiscriminator,
           plan_before: "pro",
           plan_after: "pro",
         });
