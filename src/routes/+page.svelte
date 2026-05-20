@@ -609,39 +609,6 @@
 		color: var(--color-primary);
 	}
 
-	.pricing-enterprise-banner {
-		max-width: 1100px;
-		margin: 2rem auto 0;
-	}
-
-	.pricing-enterprise-inner {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1.5rem;
-		background: var(--color-surface);
-		border: 1px dashed var(--color-border);
-		border-radius: var(--radius-lg);
-		padding: 1.5rem 2rem;
-		text-align: left;
-	}
-
-	.pricing-enterprise-text h3 {
-		font-size: 1rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		margin-bottom: 0.25rem;
-	}
-
-	.pricing-enterprise-text p {
-		color: var(--color-text-secondary);
-		font-size: 0.95rem;
-		margin: 0;
-		line-height: 1.5;
-	}
-
 	.pricing-price {
 		margin-bottom: 0.75rem;
 	}
@@ -985,11 +952,6 @@
 
 		.steps {
 			grid-template-columns: 1fr;
-		}
-
-		.pricing-enterprise-inner {
-			flex-direction: column;
-			text-align: center;
 		}
 	}
 </style>

@@ -224,17 +224,6 @@
 		serverPlans.filter(s => s.stripeCustomerId)
 	);
 	
-	function getAvatarUrl(userId, avatar, discriminator = '0') {
-		if (avatar) {
-			const ext = avatar.startsWith('a_') ? 'gif' : 'png';
-			return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=128`;
-		}
-		const index = discriminator === '0' 
-			? (BigInt(userId) >> 22n) % 6n
-			: parseInt(discriminator) % 5;
-		return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
-	}
-	
 	function formatDate(dateStr) {
 		if (!dateStr) return 'N/A';
 		return new Date(dateStr).toLocaleDateString('en-US', {
