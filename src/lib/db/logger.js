@@ -4,6 +4,7 @@
  */
 
 import { log } from "../log.js";
+import { enrichRowsWithActorAvatars } from "./avatar-enrichment.js";
 
 // Re-export the unified log utility for other modules
 export { log };
@@ -155,11 +156,27 @@ export async function getLogs(db, guildId, options = {}) {
 			LIMIT ? OFFSET ?
 		`).bind(...params, limit, offset).all();
 
-    return {
-      logs: logsResult.results.map((log) => ({
+    const parsedLogs = (logsResult.results || []).map((log) => ({
         ...log,
         details: log.details ? JSON.parse(log.details) : null,
-      })),
+      }));
+
+    const actorEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, parsedLogs, {
+      idField: "actor_id",
+      avatarField: "actor_avatar",
+      nameField: "actor_name",
+      discriminatorField: "actor_discriminator",
+    });
+
+    const fullyEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, actorEnrichedLogs, {
+      idField: "target_id",
+      avatarField: "target_avatar",
+      nameField: "target_name",
+      discriminatorField: null,
+    });
+
+    return {
+      logs: fullyEnrichedLogs,
       total: countResult?.total || 0,
     };
   } catch (error) {

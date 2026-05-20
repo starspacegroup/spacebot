@@ -6,6 +6,7 @@
  */
 
 import { log } from "./logger.js";
+import { enrichRowsWithActorAvatars } from "./avatar-enrichment.js";
 
 /**
  * Event type constants
@@ -109,10 +110,17 @@ export async function getBillingHistory(db, guildId, { limit = 50, offset = 0 } 
         .first(),
     ]);
 
-    const events = (eventsResult?.results || []).map((row) => ({
+    const parsedEvents = (eventsResult?.results || []).map((row) => ({
       ...row,
       details: row.details ? JSON.parse(row.details) : null,
     }));
+
+    const events = await enrichRowsWithActorAvatars(db, guildId, parsedEvents, {
+      idField: "actor_id",
+      avatarField: "actor_avatar",
+      nameField: "actor_name",
+      discriminatorField: "actor_discriminator",
+    });
 
     return {
       events,

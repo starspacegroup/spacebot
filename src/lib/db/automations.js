@@ -5,6 +5,7 @@
 
 import { log } from "../log.js";
 import { generateHashId } from "../utils.js";
+import { enrichRowsWithActorAvatars } from "./avatar-enrichment.js";
 
 function normalizeTriggerEvent(value) {
   if (value === undefined || value === null) return "";
@@ -1418,13 +1419,44 @@ export async function getAutomationLogs(db, guildId, options = {}) {
       LIMIT ? OFFSET ?
     `).bind(...params, limit, offset).all();
 
-    return {
-      logs: (results.results || []).map((log) => ({
+    const parsedLogs = (results.results || []).map((log) => ({
         ...log,
         success: !!log.success,
         trigger_data: log.trigger_data ? JSON.parse(log.trigger_data) : null,
         action_result: log.action_result ? JSON.parse(log.action_result) : null,
-      })),
+      }));
+
+    const actorRows = parsedLogs.map((entry, index) => ({
+      __idx: index,
+      actor_id: entry?.trigger_data?.actor_id || null,
+      actor_avatar: entry?.trigger_data?.actor_avatar || null,
+      actor_name: entry?.trigger_data?.actor_name || null,
+      actor_discriminator: entry?.trigger_data?.actor_discriminator || "0",
+    }));
+
+    const enrichedActors = await enrichRowsWithActorAvatars(db, guildId, actorRows, {
+      idField: "actor_id",
+      avatarField: "actor_avatar",
+      nameField: "actor_name",
+      discriminatorField: "actor_discriminator",
+    });
+
+    const enrichedLogs = parsedLogs.map((entry, index) => {
+      const actor = enrichedActors[index];
+      if (!entry?.trigger_data || !actor?.actor_id) return entry;
+      return {
+        ...entry,
+        trigger_data: {
+          ...entry.trigger_data,
+          actor_avatar: actor.actor_avatar || null,
+          actor_name: actor.actor_name || entry.trigger_data.actor_name || null,
+          actor_discriminator: actor.actor_discriminator || entry.trigger_data.actor_discriminator || "0",
+        },
+      };
+    });
+
+    return {
+      logs: enrichedLogs,
       total: countResult?.total || 0,
     };
   } catch (error) {

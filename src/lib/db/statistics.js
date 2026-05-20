@@ -5,6 +5,7 @@
 
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
+import { enrichRowsWithActorAvatars } from "./avatar-enrichment.js";
 
 function parsePeriodDays(period, fallbackDays = 30) {
   if (period === "24h") return 1;
@@ -18,70 +19,6 @@ function parsePeriodDays(period, fallbackDays = 30) {
   return days;
 }
 
-function buildGuildAvatarUrl(guildId, userId, avatarHash, size = 64) {
-  if (!guildId || !userId || !avatarHash) return null;
-  const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
-  return `https://cdn.discordapp.com/guilds/${guildId}/users/${userId}/avatars/${avatarHash}.${ext}?size=${size}`;
-}
-
-async function enrichActorRowsWithMemberCache(db, guildId, rows) {
-  if (!db || !guildId || !Array.isArray(rows) || rows.length === 0) {
-    return rows || [];
-  }
-
-  const actorIds = [...new Set(
-    rows
-      .map((row) => String(row?.actor_id || "").trim())
-      .filter(Boolean),
-  )];
-
-  if (actorIds.length === 0) return rows;
-
-  try {
-    const placeholders = actorIds.map(() => "?").join(", ");
-    const result = await db.prepare(`
-      SELECT user_id, username, discriminator, avatar, guild_avatar
-      FROM guild_members_cache
-      WHERE guild_id = ? AND user_id IN (${placeholders})
-    `).bind(guildId, ...actorIds).all();
-
-    const memberById = new Map(
-      (result?.results || []).map((member) => [String(member.user_id), member]),
-    );
-
-    return rows.map((row) => {
-      const actorId = String(row?.actor_id || "").trim();
-      if (!actorId) {
-        return {
-          ...row,
-          actor_discriminator: row?.actor_discriminator || "0",
-        };
-      }
-
-      const member = memberById.get(actorId);
-      if (!member) {
-        return {
-          ...row,
-          actor_discriminator: row?.actor_discriminator || "0",
-        };
-      }
-
-      const guildAvatarUrl = member.guild_avatar
-        ? buildGuildAvatarUrl(guildId, actorId, member.guild_avatar, 64)
-        : null;
-
-      return {
-        ...row,
-        actor_avatar: row?.actor_avatar || guildAvatarUrl || member.avatar || null,
-        actor_discriminator: row?.actor_discriminator || member.discriminator || "0",
-        actor_name: row?.actor_name || member.username || "Unknown User",
-      };
-    });
-  } catch (error) {
-    log.debug(`[Stats] Member cache enrichment skipped for ${guildId}:`, error);
-    return rows;
-  }
-}
 
 /**
  * Get comprehensive statistics for a guild
@@ -495,7 +432,7 @@ async function getTopActors(db, guildId) {
     LIMIT 20
   `).bind(guildId, guildId, guildId).all();
 
-  return enrichActorRowsWithMemberCache(db, guildId, result.results || []);
+  return enrichRowsWithActorAvatars(db, guildId, result.results || []);
 }
 
 /**
@@ -789,7 +726,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
       LIMIT ?
     `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
-    return enrichActorRowsWithMemberCache(db, guildId, result.results || []);
+    return enrichRowsWithActorAvatars(db, guildId, result.results || []);
   } catch (error) {
     log.error("Failed to fetch top voice users:", error);
     return [];
@@ -864,7 +801,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20, period = "30d") 
       LIMIT ?
     `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
-    return enrichActorRowsWithMemberCache(db, guildId, result.results || []);
+    return enrichRowsWithActorAvatars(db, guildId, result.results || []);
   } catch (error) {
     log.error("Failed to fetch top video users:", error);
     return [];
@@ -939,7 +876,7 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20, period = "
       LIMIT ?
     `).bind(guildId, timeRange, guildId, guildId, limit).all();
 
-    return enrichActorRowsWithMemberCache(db, guildId, result.results || []);
+    return enrichRowsWithActorAvatars(db, guildId, result.results || []);
   } catch (error) {
     log.error("Failed to fetch top screenshare users:", error);
     return [];
