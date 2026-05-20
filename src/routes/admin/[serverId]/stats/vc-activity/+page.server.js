@@ -14,6 +14,61 @@ function formatEventType(eventType) {
   return eventType.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function buildGuildAvatarUrl(guildId, userId, avatarHash, size = 64) {
+  if (!guildId || !userId || !avatarHash) return null;
+  const ext = String(avatarHash).startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/guilds/${guildId}/users/${userId}/avatars/${avatarHash}.${ext}?size=${size}`;
+}
+
+async function enrichVoiceActivityLogWithMemberCache(db, guildId, entries) {
+  if (!db || !guildId || !Array.isArray(entries) || entries.length === 0) {
+    return entries;
+  }
+
+  const actorIds = [...new Set(
+    entries
+      .map((entry) => String(entry?.actorId || "").trim())
+      .filter(Boolean),
+  )];
+
+  if (actorIds.length === 0) return entries;
+
+  try {
+    const placeholders = actorIds.map(() => "?").join(", ");
+    const result = await db.prepare(`
+      SELECT user_id, username, discriminator, avatar, guild_avatar
+      FROM guild_members_cache
+      WHERE guild_id = ? AND user_id IN (${placeholders})
+    `).bind(guildId, ...actorIds).all();
+
+    const memberById = new Map(
+      (result?.results || []).map((member) => [String(member.user_id), member]),
+    );
+
+    return entries.map((entry) => {
+      const actorId = String(entry?.actorId || "").trim();
+      if (!actorId) return entry;
+
+      const member = memberById.get(actorId);
+      if (!member) return entry;
+
+      const guildAvatarUrl = member.guild_avatar
+        ? buildGuildAvatarUrl(guildId, actorId, member.guild_avatar, 64)
+        : null;
+
+      return {
+        ...entry,
+        actorAvatar: entry.actorAvatar || guildAvatarUrl || member.avatar || null,
+        actorDiscriminator: entry.actorDiscriminator || member.discriminator || "0",
+        actorName: entry.actorName || member.username || "Unknown member",
+      };
+    });
+  } catch (error) {
+    log.debug(`[LiveVoice] Member cache enrichment skipped for ${guildId}:`, error);
+    return entries;
+  }
+}
+
 function normalizeVoiceActivityLog(entries) {
   return (entries || []).map((entry) => {
     const details = entry?.details && typeof entry.details === "object" ? entry.details : {};
@@ -94,7 +149,8 @@ export async function load({ params, cookies, platform, parent }) {
         category: "voice",
         limit: VOICE_ACTIVITY_LOG_LIMIT,
       });
-      voiceActivityLog = normalizeVoiceActivityLog(logs);
+      const normalized = normalizeVoiceActivityLog(logs);
+      voiceActivityLog = await enrichVoiceActivityLogWithMemberCache(db, serverId, normalized);
     } catch (error) {
       log.warn(`[LiveVoice] Failed to fetch voice activity log for ${serverId}:`, error);
     }
