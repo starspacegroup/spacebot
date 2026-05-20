@@ -6,8 +6,53 @@
 	let { data } = $props();
 
 	const LIVE_VOICE_POLL_MS = 15000;
+	const VOICE_LOG_FILTER_DEBOUNCE_MS = 220;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
 	const voiceActivityLog = $derived(Array.isArray(data.voiceActivityLog) ? data.voiceActivityLog : []);
+	const voiceEventTypeOptions = $derived(Array.isArray(data.voiceEventTypeOptions) ? data.voiceEventTypeOptions : []);
+
+	function normalizeVoiceLogPagination(pagination) {
+		const pageSize = Number(pagination?.pageSize || 30);
+		const total = Number(pagination?.total || 0);
+		const totalPages = Math.max(1, Number(pagination?.totalPages || Math.ceil(total / pageSize) || 1));
+		const page = Math.min(Math.max(Number(pagination?.page || 1), 1), totalPages);
+
+		return {
+			page,
+			pageSize,
+			total,
+			totalPages,
+			hasPreviousPage: page > 1,
+			hasNextPage: page < totalPages,
+		};
+	}
+
+	function getInitialVoiceLogFilters(source) {
+		return {
+			search: String(source?.search || ''),
+			eventType: String(source?.eventType || ''),
+			sortOrder: source?.sortOrder === 'asc' ? 'asc' : 'desc',
+			startDate: String(source?.startDate || ''),
+			endDate: String(source?.endDate || ''),
+		};
+	}
+
+	const initialVoiceLogFilters = $derived(getInitialVoiceLogFilters(data.voiceActivityFilters));
+	const initialVoiceLogPagination = $derived(normalizeVoiceLogPagination(data.voiceActivityPagination));
+
+	let voiceLogEntries = $state(voiceActivityLog);
+	let voiceLogPagination = $state(initialVoiceLogPagination);
+	let voiceLogPageSize = $state(initialVoiceLogPagination.pageSize);
+	let voiceLogSearch = $state(initialVoiceLogFilters.search);
+	let voiceLogEventType = $state(initialVoiceLogFilters.eventType);
+	let voiceLogSortOrder = $state(initialVoiceLogFilters.sortOrder);
+	let voiceLogStartDate = $state(initialVoiceLogFilters.startDate);
+	let voiceLogEndDate = $state(initialVoiceLogFilters.endDate);
+	let voiceLogLoading = $state(false);
+	let voiceLogError = $state('');
+
+	let voiceLogDebounceTimer;
+	let voiceLogAbortController;
 
 	function normalizeLiveVoiceSnapshot(snapshot) {
 		return {
@@ -28,6 +73,18 @@
 
 	$effect(() => {
 		liveVoiceSnapshot = initialLiveVoiceSnapshot;
+	});
+
+	$effect(() => {
+		voiceLogEntries = voiceActivityLog;
+		voiceLogPagination = initialVoiceLogPagination;
+		voiceLogPageSize = initialVoiceLogPagination.pageSize;
+		voiceLogSearch = initialVoiceLogFilters.search;
+		voiceLogEventType = initialVoiceLogFilters.eventType;
+		voiceLogSortOrder = initialVoiceLogFilters.sortOrder;
+		voiceLogStartDate = initialVoiceLogFilters.startDate;
+		voiceLogEndDate = initialVoiceLogFilters.endDate;
+		voiceLogError = '';
 	});
 
 	async function refreshLiveVoiceSnapshot({ silent = false } = {}) {
@@ -92,6 +149,10 @@
 
 		return () => {
 			clearInterval(intervalId);
+			if (voiceLogDebounceTimer) {
+				clearTimeout(voiceLogDebounceTimer);
+			}
+			voiceLogAbortController?.abort();
 			stream?.close();
 		};
 	});
@@ -132,6 +193,134 @@
 			{ key: 'server-deaf', label: 'Server Deaf', active: !!member.serverDeaf, tone: 'server-deaf' },
 			{ key: 'stage', label: 'Suppressed', active: !!member.suppress, tone: 'stage' },
 		];
+	}
+
+	function buildVoiceLogQueryParams({ page = voiceLogPagination.page, pageSize = voiceLogPageSize } = {}) {
+		const params = new URLSearchParams();
+		params.set('page', String(Math.max(1, page)));
+		params.set('pageSize', String(Math.max(1, Number(pageSize) || 30)));
+		params.set('sort', voiceLogSortOrder === 'asc' ? 'asc' : 'desc');
+
+		if (voiceLogSearch.trim()) params.set('search', voiceLogSearch.trim());
+		if (voiceLogEventType) params.set('eventType', voiceLogEventType);
+		if (voiceLogStartDate) params.set('startDate', voiceLogStartDate);
+		if (voiceLogEndDate) params.set('endDate', voiceLogEndDate);
+
+		return params;
+	}
+
+	function syncVoiceLogQueryToUrl() {
+		if (typeof window === 'undefined') return;
+		const next = new URL(window.location.href);
+		const params = buildVoiceLogQueryParams();
+
+		next.searchParams.delete('page');
+		next.searchParams.delete('pageSize');
+		next.searchParams.delete('sort');
+		next.searchParams.delete('search');
+		next.searchParams.delete('eventType');
+		next.searchParams.delete('startDate');
+		next.searchParams.delete('endDate');
+
+		for (const [key, value] of params.entries()) {
+			next.searchParams.set(key, value);
+		}
+
+		window.history.replaceState({}, '', next);
+	}
+
+	async function loadVoiceActivityLog({ resetToFirstPage = false, debounced = false } = {}) {
+		if (resetToFirstPage) {
+			voiceLogPagination = {
+				...voiceLogPagination,
+				page: 1,
+				pageSize: Number(voiceLogPageSize) || 30,
+				hasPreviousPage: false,
+				hasNextPage: voiceLogPagination.totalPages > 1,
+			};
+		}
+
+		if (voiceLogDebounceTimer) {
+			clearTimeout(voiceLogDebounceTimer);
+			voiceLogDebounceTimer = undefined;
+		}
+
+		const run = async () => {
+			voiceLogAbortController?.abort();
+			voiceLogAbortController = new AbortController();
+
+			voiceLogLoading = true;
+			voiceLogError = '';
+
+			try {
+				const params = buildVoiceLogQueryParams();
+				const response = await fetch(`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`, {
+					headers: { accept: 'application/json' },
+					signal: voiceLogAbortController.signal,
+				});
+
+				if (!response.ok) {
+					throw new Error(`Failed to load history (${response.status})`);
+				}
+
+				const payload = await response.json();
+				voiceLogEntries = Array.isArray(payload?.entries) ? payload.entries : [];
+				voiceLogPagination = normalizeVoiceLogPagination(payload?.pagination);
+				voiceLogPageSize = voiceLogPagination.pageSize;
+				syncVoiceLogQueryToUrl();
+			} catch (error) {
+				if (error?.name === 'AbortError') return;
+				console.warn('[LiveVoice] Failed to load voice history', error);
+				voiceLogError = 'Unable to load history right now.';
+			} finally {
+				voiceLogLoading = false;
+			}
+		};
+
+		if (debounced) {
+			voiceLogDebounceTimer = setTimeout(() => {
+				run();
+			}, VOICE_LOG_FILTER_DEBOUNCE_MS);
+			return;
+		}
+
+		await run();
+	}
+
+	async function goToVoiceLogPage(page) {
+		const nextPage = Math.min(Math.max(1, Number(page) || 1), voiceLogPagination.totalPages);
+		if (nextPage === voiceLogPagination.page) return;
+
+		voiceLogPagination = {
+			...voiceLogPagination,
+			page: nextPage,
+		};
+
+		await loadVoiceActivityLog();
+	}
+
+	function onVoiceLogSearchInput() {
+		loadVoiceActivityLog({ resetToFirstPage: true, debounced: true });
+	}
+
+	function onVoiceLogFilterChange() {
+		loadVoiceActivityLog({ resetToFirstPage: true });
+	}
+
+	function clearVoiceLogFilters() {
+		voiceLogSearch = '';
+		voiceLogEventType = '';
+		voiceLogSortOrder = 'desc';
+		voiceLogStartDate = '';
+		voiceLogEndDate = '';
+		loadVoiceActivityLog({ resetToFirstPage: true });
+	}
+
+	function getVoiceLogRangeLabel() {
+		if (voiceLogPagination.total === 0) return '0 events';
+		const start = (voiceLogPagination.page - 1) * voiceLogPagination.pageSize + 1;
+		const end = Math.min(start + voiceLogEntries.length - 1, voiceLogPagination.total);
+		return `${start}-${end} of ${voiceLogPagination.total}`;
 	}
 </script>
 
@@ -257,12 +446,75 @@
 		<section class="voice-log-section">
 			<div class="voice-log-header">
 				<h2>VC Channel Activity Log</h2>
-				<span class="voice-log-count">{voiceActivityLog.length} recent events</span>
+				<div class="voice-log-header-meta">
+					<span class="voice-log-count">{getVoiceLogRangeLabel()}</span>
+					{#if voiceLogLoading}
+						<span class="voice-log-loading">Loading...</span>
+					{/if}
+				</div>
 			</div>
 
-			{#if voiceActivityLog.length > 0}
+			<div class="voice-log-filters">
+				<label class="voice-log-filter voice-log-filter--search">
+					<span>Search</span>
+					<input
+						type="search"
+						placeholder="Find member, channel, or activity"
+						bind:value={voiceLogSearch}
+						oninput={onVoiceLogSearchInput}
+					/>
+				</label>
+
+				<label class="voice-log-filter">
+					<span>Event</span>
+					<select bind:value={voiceLogEventType} onchange={onVoiceLogFilterChange}>
+						<option value="">All events</option>
+						{#each voiceEventTypeOptions as option}
+							<option value={option.value}>{option.label}</option>
+						{/each}
+					</select>
+				</label>
+
+				<label class="voice-log-filter">
+					<span>Order</span>
+					<select bind:value={voiceLogSortOrder} onchange={onVoiceLogFilterChange}>
+						<option value="desc">Newest first</option>
+						<option value="asc">Oldest first</option>
+					</select>
+				</label>
+
+				<label class="voice-log-filter">
+					<span>From</span>
+					<input type="date" bind:value={voiceLogStartDate} onchange={onVoiceLogFilterChange} />
+				</label>
+
+				<label class="voice-log-filter">
+					<span>To</span>
+					<input type="date" bind:value={voiceLogEndDate} onchange={onVoiceLogFilterChange} />
+				</label>
+
+				<label class="voice-log-filter">
+					<span>Page size</span>
+					<select bind:value={voiceLogPageSize} onchange={onVoiceLogFilterChange}>
+						<option value="20">20</option>
+						<option value="30">30</option>
+						<option value="50">50</option>
+						<option value="100">100</option>
+					</select>
+				</label>
+
+				<button type="button" class="voice-log-clear" onclick={clearVoiceLogFilters}>
+					Reset
+				</button>
+			</div>
+
+			{#if voiceLogError}
+				<div class="voice-log-error">{voiceLogError}</div>
+			{/if}
+
+			{#if voiceLogEntries.length > 0}
 				<div class="voice-log-list">
-					{#each voiceActivityLog as entry}
+					{#each voiceLogEntries as entry}
 						<div class="voice-log-row">
 							<div class="voice-log-main">
 								<span class="voice-log-actor">
@@ -285,8 +537,38 @@
 						</div>
 					{/each}
 				</div>
+
+				<div class="voice-log-pagination">
+					<button type="button" onclick={() => goToVoiceLogPage(1)} disabled={voiceLogLoading || !voiceLogPagination.hasPreviousPage}>
+						First
+					</button>
+					<button
+						type="button"
+						onclick={() => goToVoiceLogPage(voiceLogPagination.page - 1)}
+						disabled={voiceLogLoading || !voiceLogPagination.hasPreviousPage}
+					>
+						Previous
+					</button>
+					<span class="voice-log-page-indicator">
+						Page {voiceLogPagination.page} of {voiceLogPagination.totalPages}
+					</span>
+					<button
+						type="button"
+						onclick={() => goToVoiceLogPage(voiceLogPagination.page + 1)}
+						disabled={voiceLogLoading || !voiceLogPagination.hasNextPage}
+					>
+						Next
+					</button>
+					<button
+						type="button"
+						onclick={() => goToVoiceLogPage(voiceLogPagination.totalPages)}
+						disabled={voiceLogLoading || !voiceLogPagination.hasNextPage}
+					>
+						Last
+					</button>
+				</div>
 			{:else}
-				<div class="voice-log-empty">No recent VC channel activity yet.</div>
+				<div class="voice-log-empty">No VC activity matched this filter yet.</div>
 			{/if}
 		</section>
 	</div>
@@ -668,6 +950,86 @@
 		color: var(--color-text-muted);
 	}
 
+	.voice-log-header-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+	}
+
+	.voice-log-loading {
+		font-size: 0.75rem;
+		padding: 0.2rem 0.45rem;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+		border-radius: 999px;
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary-soft) 65%, transparent);
+	}
+
+	.voice-log-filters {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0.6rem;
+		margin-bottom: 0.9rem;
+	}
+
+	.voice-log-filter {
+		display: flex;
+		flex-direction: column;
+		gap: 0.32rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+	}
+
+	.voice-log-filter--search {
+		grid-column: span 2;
+	}
+
+	.voice-log-filter input,
+	.voice-log-filter select {
+		height: 2rem;
+		padding: 0 0.6rem;
+		border-radius: 0.55rem;
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-surface-elevated) 88%, transparent);
+		color: var(--color-text);
+		font-size: 0.83rem;
+	}
+
+	.voice-log-filter input:focus,
+	.voice-log-filter select:focus {
+		outline: none;
+		border-color: color-mix(in srgb, var(--color-primary) 65%, var(--color-border));
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-soft) 35%, transparent);
+	}
+
+	.voice-log-clear {
+		height: 2rem;
+		align-self: end;
+		border: 1px solid var(--color-border);
+		border-radius: 0.55rem;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.voice-log-clear:hover {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+
+	.voice-log-error {
+		margin-bottom: 0.8rem;
+		padding: 0.6rem 0.7rem;
+		border-radius: 0.55rem;
+		border: 1px solid rgba(239, 68, 68, 0.45);
+		background: rgba(239, 68, 68, 0.12);
+		color: #ff9b9b;
+		font-size: 0.82rem;
+	}
+
 	.voice-log-list {
 		display: flex;
 		flex-direction: column;
@@ -722,11 +1084,59 @@
 		color: var(--color-text-muted);
 	}
 
+	.voice-log-pagination {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.45rem;
+		flex-wrap: wrap;
+		margin-top: 0.8rem;
+	}
+
+	.voice-log-pagination button {
+		height: 1.9rem;
+		padding: 0 0.7rem;
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+		color: var(--color-text);
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.voice-log-pagination button:hover:not(:disabled) {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+
+	.voice-log-pagination button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.voice-log-page-indicator {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		padding: 0 0.2rem;
+	}
+
 	.voice-log-empty {
 		padding: 0.8rem;
 		border: 1px dashed var(--color-border);
 		border-radius: var(--radius-md);
 		font-size: 0.9rem;
 		color: var(--color-text-muted);
+	}
+
+	@media (max-width: 767px) {
+		.voice-log-filter--search {
+			grid-column: span 1;
+		}
+
+		.voice-log-pagination {
+			justify-content: flex-start;
+		}
 	}
 </style>
