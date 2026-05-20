@@ -126,6 +126,8 @@ export function parseGitHubEvent(githubEvent, payload, guildId) {
     actor_id: null, // GitHub users don't map to Discord users
     actor_name: sender?.login || "github",
     actor_is_bot: sender?.type === "Bot",
+    actor_avatar: sender?.avatar_url || null,  // GitHub avatar URL
+    actor_discriminator: '0',  // Not applicable for GitHub users
     target_id: null,
     target_name: repo?.full_name || null,
     channel_id: null,

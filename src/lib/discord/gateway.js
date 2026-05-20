@@ -2098,6 +2098,8 @@ function setupEventHandlers(client, logFn) {
       actor_id: userInfo.id,
       actor_name: member.user.tag,
       actor_is_bot: member.user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       details: {
         accountCreated: member.user.createdAt?.toISOString(),
         bot: member.user.bot,
@@ -2107,6 +2109,7 @@ function setupEventHandlers(client, logFn) {
   });
 
   client.on(Events.GuildMemberRemove, async (member) => {
+    const userInfo = getUserLogInfo(member.user);
     await logFn({
       guild_id: member.guild.id,
       event_type: "MEMBER_LEAVE",
@@ -2114,6 +2117,8 @@ function setupEventHandlers(client, logFn) {
       actor_id: member.user.id,
       actor_name: member.user.tag,
       actor_is_bot: member.user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       details: {
         roles: member.roles?.cache.map((r) => r.name) || [],
         joinedAt: member.joinedAt?.toISOString(),
@@ -2139,12 +2144,18 @@ function setupEventHandlers(client, logFn) {
     const removedRoles = oldRoles.filter((r) => !newRoles.includes(r));
 
     if (addedRoles.length > 0) {
+      const userInfo = getUserLogInfo(newMember.user);
       for (const roleId of addedRoles) {
         const role = newMember.guild.roles.cache.get(roleId);
         await logFn({
           guild_id: newMember.guild.id,
           event_type: "MEMBER_ROLE_ADD",
           event_category: "role",
+          actor_id: newMember.user.id,
+          actor_name: newMember.user.tag,
+          actor_is_bot: newMember.user.bot || false,
+          actor_avatar: userInfo.avatar,
+          actor_discriminator: userInfo.discriminator,
           target_id: newMember.user.id,
           target_name: newMember.user.tag,
           details: {
@@ -2156,12 +2167,18 @@ function setupEventHandlers(client, logFn) {
     }
 
     if (removedRoles.length > 0) {
+      const userInfo = getUserLogInfo(newMember.user);
       for (const roleId of removedRoles) {
         const role = oldMember.guild.roles.cache.get(roleId);
         await logFn({
           guild_id: newMember.guild.id,
           event_type: "MEMBER_ROLE_REMOVE",
           event_category: "role",
+          actor_id: newMember.user.id,
+          actor_name: newMember.user.tag,
+          actor_is_bot: newMember.user.bot || false,
+          actor_avatar: userInfo.avatar,
+          actor_discriminator: userInfo.discriminator,
           target_id: newMember.user.id,
           target_name: newMember.user.tag,
           details: {
@@ -2173,10 +2190,16 @@ function setupEventHandlers(client, logFn) {
     }
 
     if (Object.keys(changes).length > 0) {
+      const userInfo = getUserLogInfo(newMember.user);
       await logFn({
         guild_id: newMember.guild.id,
         event_type: "MEMBER_UPDATE",
         event_category: "member",
+        actor_id: newMember.user.id,
+        actor_name: newMember.user.tag,
+        actor_is_bot: newMember.user.bot || false,
+        actor_avatar: userInfo.avatar,
+        actor_discriminator: userInfo.discriminator,
         target_id: newMember.user.id,
         target_name: newMember.user.tag,
         details: changes,
@@ -2187,10 +2210,39 @@ function setupEventHandlers(client, logFn) {
   // ===== MODERATION EVENTS =====
 
   client.on(Events.GuildBanAdd, async (ban) => {
+    // Try to determine who banned the member via audit logs
+    let actor = null;
+    try {
+      const auditLogs = await ban.guild.fetchAuditLogs({
+        type: AuditLogEvent.MemberBanAdd,
+        limit: 5,
+      });
+      const entry = auditLogs.entries.find(
+        (e) => e.target?.id === ban.user.id && Date.now() - e.createdTimestamp < 5000
+      );
+      if (entry) {
+        const actorInfo = getUserLogInfo(entry.executor);
+        actor = {
+          id: actorInfo.id,
+          name: actorInfo.name,
+          is_bot: actorInfo.is_bot,
+          avatar: actorInfo.avatar,
+          discriminator: actorInfo.discriminator,
+        };
+      }
+    } catch {
+      // Bot may lack VIEW_AUDIT_LOG permission — fall through
+    }
+
     await logFn({
       guild_id: ban.guild.id,
       event_type: "MEMBER_BAN",
       event_category: "moderation",
+      actor_id: actor?.id || null,
+      actor_name: actor?.name || null,
+      actor_is_bot: actor?.is_bot || false,
+      actor_avatar: actor?.avatar || null,
+      actor_discriminator: actor?.discriminator || '0',
       target_id: ban.user.id,
       target_name: ban.user.tag,
       details: {
@@ -2200,10 +2252,39 @@ function setupEventHandlers(client, logFn) {
   });
 
   client.on(Events.GuildBanRemove, async (ban) => {
+    // Try to determine who unbanned the member via audit logs
+    let actor = null;
+    try {
+      const auditLogs = await ban.guild.fetchAuditLogs({
+        type: AuditLogEvent.MemberBanRemove,
+        limit: 5,
+      });
+      const entry = auditLogs.entries.find(
+        (e) => e.target?.id === ban.user.id && Date.now() - e.createdTimestamp < 5000
+      );
+      if (entry) {
+        const actorInfo = getUserLogInfo(entry.executor);
+        actor = {
+          id: actorInfo.id,
+          name: actorInfo.name,
+          is_bot: actorInfo.is_bot,
+          avatar: actorInfo.avatar,
+          discriminator: actorInfo.discriminator,
+        };
+      }
+    } catch {
+      // Bot may lack VIEW_AUDIT_LOG permission — fall through
+    }
+
     await logFn({
       guild_id: ban.guild.id,
       event_type: "MEMBER_UNBAN",
       event_category: "moderation",
+      actor_id: actor?.id || null,
+      actor_name: actor?.name || null,
+      actor_is_bot: actor?.is_bot || false,
+      actor_avatar: actor?.avatar || null,
+      actor_discriminator: actor?.discriminator || '0',
       target_id: ban.user.id,
       target_name: ban.user.tag,
     });
@@ -2286,6 +2367,9 @@ function setupEventHandlers(client, logFn) {
           event_category: "interaction",
           actor_id: userId,
           actor_name: userName,
+          actor_is_bot: false,
+          actor_avatar: null,
+          actor_discriminator: '0',
           target_id: message.author.id, // The bot that responded
           target_name: message.author.tag || message.author.username,
           channel_id: message.channel.id,
@@ -2342,6 +2426,8 @@ function setupEventHandlers(client, logFn) {
       actor_id: message.author.id,
       actor_name: message.author.tag,
       actor_is_bot: message.author.bot || false,
+      actor_avatar: message.author.avatar || null,
+      actor_discriminator: message.author.discriminator || '0',
       // Target is the first mentioned human (useful for bot response automations)
       target_id: firstMentionedHuman?.id || null,
       target_name: firstMentionedHuman?.tag || null,
@@ -2417,6 +2503,9 @@ function setupEventHandlers(client, logFn) {
           event_category: "interaction",
           actor_id: userId,
           actor_name: userName,
+          actor_is_bot: false,
+          actor_avatar: null,
+          actor_discriminator: '0',
           target_id: newMessage.author.id, // The bot that responded
           target_name: newMessage.author.tag || newMessage.author.username,
           channel_id: newMessage.channel.id,
@@ -2458,6 +2547,9 @@ function setupEventHandlers(client, logFn) {
       event_category: "message",
       actor_id: newMessage.author?.id,
       actor_name: newMessage.author?.tag,
+      actor_is_bot: newMessage.author?.bot || false,
+      actor_avatar: newMessage.author?.avatar || null,
+      actor_discriminator: newMessage.author?.discriminator || '0',
       channel_id: newMessage.channel.id,
       channel_name: newMessage.channel.name,
       details: {
@@ -2498,6 +2590,9 @@ function setupEventHandlers(client, logFn) {
     // If no audit log entry, the author likely deleted their own message
     const actorId = deletedBy?.id || message.author?.id;
     const actorName = deletedBy?.name || message.author?.tag || "Unknown";
+    const actorIsBot = deletedBy ? false : (message.author?.bot || false);
+    const actorAvatar = deletedBy ? null : (message.author?.avatar || null);
+    const actorDiscriminator = deletedBy ? '0' : (message.author?.discriminator || '0');
 
     await logFn({
       guild_id: message.guild.id,
@@ -2505,6 +2600,9 @@ function setupEventHandlers(client, logFn) {
       event_category: "message",
       actor_id: actorId,
       actor_name: actorName,
+      actor_is_bot: actorIsBot,
+      actor_avatar: actorAvatar,
+      actor_discriminator: actorDiscriminator,
       target_id: message.author?.id,
       target_name: message.author?.tag,
       channel_id: message.channel.id,
@@ -3076,12 +3174,16 @@ function setupEventHandlers(client, logFn) {
     if (!reaction.message.guild) return;
     if (user.bot) return;
 
+    const userInfo = getUserLogInfo(user);
     await logFn({
       guild_id: reaction.message.guild.id,
       event_type: "REACTION_ADD",
       event_category: "reaction",
       actor_id: user.id,
       actor_name: user.tag,
+      actor_is_bot: user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       channel_id: reaction.message.channel.id,
       channel_name: reaction.message.channel.name,
       details: {
@@ -3096,12 +3198,16 @@ function setupEventHandlers(client, logFn) {
     if (!reaction.message.guild) return;
     if (user.bot) return;
 
+    const userInfo = getUserLogInfo(user);
     await logFn({
       guild_id: reaction.message.guild.id,
       event_type: "REACTION_REMOVE",
       event_category: "reaction",
       actor_id: user.id,
       actor_name: user.tag,
+      actor_is_bot: user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       channel_id: reaction.message.channel.id,
       channel_name: reaction.message.channel.name,
       details: {
@@ -3414,12 +3520,16 @@ function setupEventHandlers(client, logFn) {
   });
 
   client.on(Events.GuildScheduledEventUserAdd, async (event, user) => {
+    const userInfo = getUserLogInfo(user);
     await logFn({
       guild_id: event.guild.id,
       event_type: "SCHEDULED_EVENT_USER_ADD",
       event_category: "scheduled_event",
       actor_id: user.id,
       actor_name: user.tag,
+      actor_is_bot: user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       details: {
         eventId: event.id,
         eventName: event.name,
@@ -3428,12 +3538,16 @@ function setupEventHandlers(client, logFn) {
   });
 
   client.on(Events.GuildScheduledEventUserRemove, async (event, user) => {
+    const userInfo = getUserLogInfo(user);
     await logFn({
       guild_id: event.guild.id,
       event_type: "SCHEDULED_EVENT_USER_REMOVE",
       event_category: "scheduled_event",
       actor_id: user.id,
       actor_name: user.tag,
+      actor_is_bot: user.bot || false,
+      actor_avatar: userInfo.avatar,
+      actor_discriminator: userInfo.discriminator,
       details: {
         eventId: event.id,
         eventName: event.name,
