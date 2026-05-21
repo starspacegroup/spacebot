@@ -80,12 +80,16 @@ export function normalizeVoiceActivityLog(entries) {
       actionLabel = `Moved from ${fromChannelName} to ${channelName}`;
     }
 
+    const actorId = entry?.actor_id || entry?.target_id || null;
+    const actorName = entry?.actor_name || entry?.target_name || "Unknown member";
+    const actorAvatar = entry?.actor_avatar || entry?.target_avatar || null;
+
     return {
       id: entry.id,
       eventType,
-      actorId: entry?.actor_id || null,
-      actorName: entry?.actor_name || "Unknown member",
-      actorAvatar: entry?.actor_avatar || null,
+      actorId,
+      actorName,
+      actorAvatar,
       actorDiscriminator: entry?.actor_discriminator || "0",
       channelName,
       actionLabel,
