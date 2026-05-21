@@ -819,9 +819,7 @@
 
 <style>
 	.gateway-page {
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: 0;
+		width: 100%;
 	}
 
 	.page-title {

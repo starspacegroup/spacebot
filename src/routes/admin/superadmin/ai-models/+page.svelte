@@ -338,9 +338,6 @@
 
 <style>
 	.page {
-		padding: 1.5rem;
-		max-width: 1400px;
-		margin: 0 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
