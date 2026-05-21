@@ -2634,11 +2634,20 @@ function setupEventHandlers(client, logFn) {
   // ===== VOICE EVENTS =====
 
   client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
-    const guildId = newState.guild.id;
-    const member = newState.member;
-    const actorAvatar = getMemberAvatarForLog(member);
+    const guild = newState.guild || oldState.guild;
+    if (!guild) return;
+
+    const guildId = guild.id;
+    const member = newState.member || oldState.member || null;
+    const user = member?.user || null;
+    const actorId = user?.id || newState.id || oldState.id || null;
+    const actorName = user?.tag || user?.username || member?.displayName || "Unknown member";
+    const actorIsBot = user?.bot || false;
+    const actorDiscriminator = user?.discriminator || '0';
+    const actorAvatar = getMemberAvatarForLog(member) || user?.avatar || null;
+    const actorRoles = member?.roles?.cache?.map((r) => r.id) || [];
     const scheduleLiveVoiceSync = () => {
-      syncGuildLiveVoiceSnapshot(newState.guild || oldState.guild, "voice_state_update");
+      syncGuildLiveVoiceSnapshot(guild, "voice_state_update");
     };
 
     // User joined a voice channel
@@ -2647,11 +2656,11 @@ function setupEventHandlers(client, logFn) {
         guild_id: guildId,
         event_type: "VOICE_JOIN",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
         details: {
@@ -2659,7 +2668,7 @@ function setupEventHandlers(client, logFn) {
           selfDeaf: newState.selfDeaf,
           streaming: newState.streaming,
           selfVideo: newState.selfVideo,
-          actor_roles: member.roles?.cache.map((r) => r.id) || [],
+          actor_roles: actorRoles,
         },
       });
       scheduleLiveVoiceSync();
@@ -2674,11 +2683,11 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_VIDEO_STOP",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
-          actor_is_bot: member.user.bot || false,
+          actor_id: actorId,
+          actor_name: actorName,
+          actor_is_bot: actorIsBot,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
           details: { videoEnabled: false, reason: "left_channel" },
@@ -2689,11 +2698,11 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_STREAM_STOP",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
-          actor_is_bot: member.user.bot || false,
+          actor_id: actorId,
+          actor_name: actorName,
+          actor_is_bot: actorIsBot,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
           details: { streaming: false, reason: "left_channel" },
@@ -2704,11 +2713,11 @@ function setupEventHandlers(client, logFn) {
         guild_id: guildId,
         event_type: "VOICE_LEAVE",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: oldState.channel.id,
         channel_name: oldState.channel.name,
         details: {
@@ -2717,7 +2726,7 @@ function setupEventHandlers(client, logFn) {
           wasDeafened: oldState.selfDeaf,
           wasStreaming: oldState.streaming,
           hadVideo: oldState.selfVideo,
-          actor_roles: member.roles?.cache.map((r) => r.id) || [],
+          actor_roles: actorRoles,
         },
       });
       scheduleLiveVoiceSync();
@@ -2735,11 +2744,11 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_VIDEO_STOP",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
-          actor_is_bot: member.user.bot || false,
+          actor_id: actorId,
+          actor_name: actorName,
+          actor_is_bot: actorIsBot,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
           details: { videoEnabled: false, reason: "moved_channel" },
@@ -2750,11 +2759,11 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_STREAM_STOP",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
-          actor_is_bot: member.user.bot || false,
+          actor_id: actorId,
+          actor_name: actorName,
+          actor_is_bot: actorIsBot,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: oldState.channel.id,
           channel_name: oldState.channel.name,
           details: { streaming: false, reason: "moved_channel" },
@@ -2765,17 +2774,17 @@ function setupEventHandlers(client, logFn) {
         guild_id: guildId,
         event_type: "VOICE_MOVE",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: newState.channel.id,
         channel_name: newState.channel.name,
         details: {
           fromChannelId: oldState.channel.id,
           fromChannelName: oldState.channel.name,
-          actor_roles: member.roles?.cache.map((r) => r.id) || [],
+          actor_roles: actorRoles,
         },
       });
     }
@@ -2792,11 +2801,11 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_VIDEO_START"
           : "VOICE_VIDEO_STOP",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2813,11 +2822,11 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_STREAM_START"
           : "VOICE_STREAM_STOP",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2832,11 +2841,11 @@ function setupEventHandlers(client, logFn) {
         guild_id: guildId,
         event_type: newState.selfMute ? "VOICE_SELF_MUTE" : "VOICE_SELF_UNMUTE",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2853,11 +2862,11 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_SELF_DEAFEN"
           : "VOICE_SELF_UNDEAFEN",
         event_category: "voice",
-        actor_id: member.user.id,
-        actor_name: member.user.tag,
-        actor_is_bot: member.user.bot || false,
+        actor_id: actorId,
+        actor_name: actorName,
+        actor_is_bot: actorIsBot,
         actor_avatar: actorAvatar,
-        actor_discriminator: member.user.discriminator || '0',
+        actor_discriminator: actorDiscriminator,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2874,8 +2883,8 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_SERVER_MUTE"
           : "VOICE_SERVER_UNMUTE",
         event_category: "voice",
-        target_id: member.user.id,
-        target_name: member.user.tag,
+        target_id: actorId,
+        target_name: actorName,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2892,8 +2901,8 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_SERVER_DEAFEN"
           : "VOICE_SERVER_UNDEAFEN",
         event_category: "voice",
-        target_id: member.user.id,
-        target_name: member.user.tag,
+        target_id: actorId,
+        target_name: actorName,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2910,8 +2919,8 @@ function setupEventHandlers(client, logFn) {
           ? "VOICE_STAGE_SUPPRESS"
           : "VOICE_STAGE_UNSUPPRESS",
         event_category: "voice",
-        target_id: member.user.id,
-        target_name: member.user.tag,
+        target_id: actorId,
+        target_name: actorName,
         channel_id: channel.id,
         channel_name: channel.name,
         details: {
@@ -2929,10 +2938,10 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_STAGE_REQUEST_TO_SPEAK",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
+          actor_id: actorId,
+          actor_name: actorName,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: channel.id,
           channel_name: channel.name,
           details: {
@@ -2944,10 +2953,10 @@ function setupEventHandlers(client, logFn) {
           guild_id: guildId,
           event_type: "VOICE_STAGE_REQUEST_CANCELLED",
           event_category: "voice",
-          actor_id: member.user.id,
-          actor_name: member.user.tag,
+          actor_id: actorId,
+          actor_name: actorName,
           actor_avatar: actorAvatar,
-          actor_discriminator: member.user.discriminator || '0',
+          actor_discriminator: actorDiscriminator,
           channel_id: channel.id,
           channel_name: channel.name,
         });
