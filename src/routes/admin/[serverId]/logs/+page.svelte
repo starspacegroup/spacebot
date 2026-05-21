@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { log } from '$lib/log.js';
 	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
+	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	
 	let { data } = $props();
@@ -180,19 +181,23 @@
 	}
 	
 	function getEventIcon(category) {
-		return categories[category]?.icon || '📌';
+		return getDiscordCategoryMeta(category)?.icon || '📌';
 	}
 	
 	function getEventColor(category) {
-		return categories[category]?.color || '#888';
+		return getDiscordCategoryMeta(category)?.color || '#888';
 	}
 	
 	function getCategoryName(category) {
-		return categories[category]?.name || category;
+		return getDiscordCategoryMeta(category)?.name || category;
 	}
 	
 	function getEventDescription(eventType) {
-		return eventTypes[eventType]?.description || eventType;
+		return getDiscordEventTypeMeta(eventType)?.description || eventType;
+	}
+
+	function getEventMeta(eventType, eventCategory) {
+		return getDiscordEventTypeMeta(eventType, { fallbackCategory: eventCategory });
 	}
 	
 	function toggleAutoRefresh() {
@@ -344,7 +349,8 @@
 						<select id="eventType" bind:value={selectedEventType} onchange={applyFilters}>
 							<option value="">All Events</option>
 							{#each filteredEventTypes() as type}
-								<option value={type}>{type.replace(/_/g, ' ')}</option>
+								{@const typeMeta = getEventMeta(type, selectedCategory)}
+								<option value={type}>{typeMeta.icon} {typeMeta.description}</option>
 							{/each}
 						</select>
 					</div>
@@ -502,6 +508,7 @@
 					</thead>
 					<tbody>
 						{#each logs as log}
+							{@const eventMeta = getEventMeta(log.event_type, log.event_category)}
 							<tr>
 								<td class="time-cell">
 									{formatDate(log.created_at)}
@@ -511,8 +518,8 @@
 										class="event-badge" 
 										style="--event-color: {getEventColor(log.event_category)}"
 									>
-										<span class="event-icon">{getEventIcon(log.event_category)}</span>
-										<span class="event-type">{log.event_type.replace(/_/g, ' ')}</span>
+										<span class="event-icon">{eventMeta.icon}</span>
+										<span class="event-type">{eventMeta.description}</span>
 									</span>
 								</td>
 								<td class="actor-cell">

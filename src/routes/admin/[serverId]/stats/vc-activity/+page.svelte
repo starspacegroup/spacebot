@@ -322,49 +322,6 @@
 		const end = Math.min(start + voiceLogEntries.length - 1, voiceLogPagination.total);
 		return `${start}-${end} of ${voiceLogPagination.total}`;
 	}
-
-	function getVoiceLogActionIcon(entry) {
-		const eventType = String(entry?.eventType || '').toUpperCase();
-
-		switch (eventType) {
-			case 'VOICE_JOIN':
-				return { icon: '📥', label: 'Joined voice channel', tone: 'join' };
-			case 'VOICE_LEAVE':
-				return { icon: '📤', label: 'Left voice channel', tone: 'leave' };
-			case 'VOICE_MOVE':
-				return { icon: '🔁', label: 'Moved voice channel', tone: 'move' };
-			case 'VOICE_VIDEO_START':
-				return { icon: '🎥', label: 'Started video', tone: 'video-start' };
-			case 'VOICE_VIDEO_STOP':
-				return { icon: '📷', label: 'Stopped video', tone: 'video-stop' };
-			case 'VOICE_STREAM_START':
-				return { icon: '🖥️', label: 'Started streaming', tone: 'stream-start' };
-			case 'VOICE_STREAM_STOP':
-				return { icon: '🛑', label: 'Stopped streaming', tone: 'stream-stop' };
-			case 'VOICE_SELF_MUTE':
-			case 'VOICE_SERVER_MUTE':
-				return { icon: '🔇', label: 'Muted', tone: 'muted' };
-			case 'VOICE_SELF_UNMUTE':
-			case 'VOICE_SERVER_UNMUTE':
-				return { icon: '🔊', label: 'Unmuted', tone: 'unmuted' };
-			case 'VOICE_SELF_DEAFEN':
-			case 'VOICE_SERVER_DEAFEN':
-				return { icon: '🙉', label: 'Deafened', tone: 'deafened' };
-			case 'VOICE_SELF_UNDEAFEN':
-			case 'VOICE_SERVER_UNDEAFEN':
-				return { icon: '👂', label: 'Undeafened', tone: 'undeafened' };
-			case 'VOICE_STAGE_SUPPRESS':
-				return { icon: '🤐', label: 'Stage suppressed', tone: 'stage' };
-			case 'VOICE_STAGE_UNSUPPRESS':
-				return { icon: '🎤', label: 'Stage unsuppressed', tone: 'stage' };
-			case 'VOICE_STAGE_REQUEST_TO_SPEAK':
-				return { icon: '✋', label: 'Requested to speak', tone: 'stage' };
-			case 'VOICE_STAGE_REQUEST_CANCELLED':
-				return { icon: '✖', label: 'Cancelled speak request', tone: 'stage' };
-			default:
-				return { icon: '•', label: 'Voice activity event', tone: 'default' };
-		}
-	}
 </script>
 
 <svelte:head>
@@ -558,7 +515,6 @@
 			{#if voiceLogEntries.length > 0}
 				<div class="voice-log-list">
 					{#each voiceLogEntries as entry}
-						{@const actionIcon = getVoiceLogActionIcon(entry)}
 						<div class="voice-log-row">
 							<div class="voice-log-main">
 								<span class="voice-log-actor">
@@ -572,8 +528,8 @@
 									{/if}
 									{entry.actorName}
 								</span>
-								<span class={`voice-log-action-icon ${actionIcon.tone}`} title={actionIcon.label} aria-label={actionIcon.label}>
-									{actionIcon.icon}
+								<span class="voice-log-action-icon" title={entry.actionLabel} aria-label={entry.actionLabel}>
+									{entry.actionIcon || '🎤'}
 								</span>
 								<span class="voice-log-action">{entry.actionLabel}</span>
 								<span class="voice-log-channel">in {entry.channelName}</span>
@@ -1131,44 +1087,8 @@
 		font-size: 0.85rem;
 		line-height: 1;
 		border-radius: 0.35rem;
-		border: 1px solid transparent;
+		border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
 		background: color-mix(in srgb, var(--color-surface-elevated) 90%, transparent);
-	}
-
-	.voice-log-action-icon.join {
-		background: rgba(34, 197, 94, 0.14);
-		border-color: rgba(34, 197, 94, 0.34);
-	}
-
-	.voice-log-action-icon.leave {
-		background: rgba(239, 68, 68, 0.14);
-		border-color: rgba(239, 68, 68, 0.34);
-	}
-
-	.voice-log-action-icon.move {
-		background: rgba(245, 158, 11, 0.14);
-		border-color: rgba(245, 158, 11, 0.34);
-	}
-
-	.voice-log-action-icon.video-start,
-	.voice-log-action-icon.stream-start,
-	.voice-log-action-icon.unmuted,
-	.voice-log-action-icon.undeafened {
-		background: rgba(88, 101, 242, 0.14);
-		border-color: rgba(88, 101, 242, 0.34);
-	}
-
-	.voice-log-action-icon.video-stop,
-	.voice-log-action-icon.stream-stop,
-	.voice-log-action-icon.muted,
-	.voice-log-action-icon.deafened {
-		background: rgba(236, 72, 153, 0.14);
-		border-color: rgba(236, 72, 153, 0.34);
-	}
-
-	.voice-log-action-icon.stage {
-		background: rgba(168, 85, 247, 0.14);
-		border-color: rgba(168, 85, 247, 0.34);
 	}
 
 	.voice-log-channel {

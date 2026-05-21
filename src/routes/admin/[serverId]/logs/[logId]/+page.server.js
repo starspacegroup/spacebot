@@ -6,6 +6,10 @@ import {
   log,
 } from "$lib/db/logger.js";
 import { getUserGuilds } from "$lib/discord/guilds.js";
+import {
+  getDiscordCategoryMeta,
+  getDiscordEventTypeMeta,
+} from "$lib/discord/event-metadata.js";
 
 // Discord permission flags
 const ADMINISTRATOR = 0x8;
@@ -121,16 +125,10 @@ export async function load({ params, cookies, platform, parent }) {
   }
 
   // Get category and event type info
-  const categoryInfo = EVENT_CATEGORIES[log.event_category] || {
-    name: log.event_category,
-    color: "#888",
-    icon: "📌",
-  };
-
-  const eventTypeInfo = EVENT_TYPES[log.event_type] || {
-    category: log.event_category,
-    description: log.event_type,
-  };
+  const categoryInfo = getDiscordCategoryMeta(log.event_category);
+  const eventTypeInfo = getDiscordEventTypeMeta(log.event_type, {
+    fallbackCategory: log.event_category,
+  });
 
   return {
     serverId,

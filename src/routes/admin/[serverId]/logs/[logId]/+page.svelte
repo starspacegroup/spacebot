@@ -18,7 +18,7 @@
 </script>
 
 <svelte:head>
-	<title>Event Details - {data.log.event_type} | SpaceBot Admin</title>
+	<title>Event Details - {data.eventTypeInfo.description} | SpaceBot Admin</title>
 </svelte:head>
 
 <div class="event-detail-container">
@@ -49,9 +49,9 @@
 		<!-- Event Summary Card -->
 		<div class="summary-card" style="--event-color: {data.categoryInfo.color}">
 			<div class="summary-header">
-				<span class="event-icon">{data.categoryInfo.icon}</span>
+				<span class="event-icon">{data.eventTypeInfo.icon}</span>
 				<div class="event-info">
-					<span class="event-type">{data.log.event_type.replace(/_/g, ' ')}</span>
+					<span class="event-type">{data.eventTypeInfo.description}</span>
 					<span class="event-category">{data.categoryInfo.name}</span>
 				</div>
 			</div>

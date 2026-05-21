@@ -1,5 +1,6 @@
 <script>
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
+	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
@@ -384,36 +385,12 @@
 	
 	// Get color for category
 	function getCategoryColor(category) {
-		const colors = {
-			member: '#5865F2',
-			message: '#57F287',
-			voice: '#FEE75C',
-			channel: '#EB459E',
-			role: '#ED4245',
-			guild: '#9B59B6',
-			emoji: '#F1C40F',
-			invite: '#3498DB',
-			moderation: '#E74C3C',
-			interaction: '#1ABC9C',
-		};
-		return colors[category] || '#6E6A95';
+		return getDiscordCategoryMeta(category).color || '#6E6A95';
 	}
 	
 	// Get category icon
 	function getCategoryIcon(category) {
-		const icons = {
-			member: '👤',
-			message: '💬',
-			voice: '🎤',
-			channel: '📁',
-			role: '🏷️',
-			guild: '⚙️',
-			emoji: '😀',
-			invite: '📨',
-			moderation: '🔨',
-			interaction: '⚡',
-		};
-		return icons[category] || '📊';
+		return getDiscordCategoryMeta(category).icon || '📊';
 	}
 	
 	// Prepare heatmap grid (7 days x 24 hours) - filtered by bot toggle
@@ -1181,10 +1158,11 @@
 						{#each filteredEventTypes as eventType, i}
 							{@const maxCount = getMaxValue(allFilteredEventTypes, 'display_count')}
 							{@const rank = eventTypesPage * ITEMS_PER_PAGE + i + 1}
+							{@const eventMeta = getDiscordEventTypeMeta(eventType.event_type, { fallbackCategory: eventType.event_category })}
 							<div class="list-item">
 								<span class="list-rank">#{rank}</span>
 								<div class="list-info">
-									<span class="list-name">{eventType.event_type}</span>
+									<span class="list-name">{eventMeta.icon} {eventMeta.description}</span>
 									<span class="list-category" style="color: {getCategoryColor(eventType.event_category)}">
 										{getCategoryIcon(eventType.event_category)} {eventType.event_category}
 									</span>

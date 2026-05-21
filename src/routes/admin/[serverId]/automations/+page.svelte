@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
+	import { getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
@@ -32,7 +33,10 @@
 		if (triggerData.actor_name) items.push({ label: 'Actor', value: triggerData.actor_name, id: triggerData.actor_id });
 		if (triggerData.channel_name) items.push({ label: 'Channel', value: `#${triggerData.channel_name}`, id: triggerData.channel_id });
 		if (triggerData.target_name) items.push({ label: 'Target', value: triggerData.target_name, id: triggerData.target_id });
-		if (triggerData.event_type) items.push({ label: 'Event', value: triggerData.event_type });
+		if (triggerData.event_type) {
+			const eventMeta = getDiscordEventTypeMeta(triggerData.event_type);
+			items.push({ label: 'Event', value: `${eventMeta.icon} ${eventMeta.description}` });
+		}
 		return items;
 	}
 	
@@ -128,7 +132,8 @@
 		for (const trigger of triggers) {
 			const cat = getEventCategory(trigger);
 			if (!handledCategories.has(cat)) {
-				result.push({ label: trigger.replace(/_/g, ' '), category: cat, collapsed: false });
+				const eventMeta = getDiscordEventTypeMeta(trigger, { fallbackCategory: cat });
+				result.push({ label: eventMeta.description, icon: eventMeta.icon, category: cat, collapsed: false });
 			}
 		}
 
@@ -336,7 +341,7 @@
 								{#each displayTriggers as trigger}
 									{@const triggerCategoryInfo = getCategoryInfo(trigger.category)}
 									<div class="automation-trigger" style="--category-color: {triggerCategoryInfo.color}">
-										<span class="trigger-icon">{triggerCategoryInfo.icon}</span>
+										<span class="trigger-icon">{trigger.icon || triggerCategoryInfo.icon}</span>
 										<span class="trigger-event">{trigger.label}</span>
 									</div>
 								{/each}

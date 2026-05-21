@@ -1,21 +1,15 @@
-import { EVENT_TYPES, getLogs, log } from "$lib/db/logger.js";
+import { getLogs, log } from "$lib/db/logger.js";
+import {
+  formatDiscordEventTypeLabel,
+  getDiscordEventTypeMeta,
+  getDiscordEventTypeOptions,
+} from "$lib/discord/event-metadata.js";
 
 export const VOICE_ACTIVITY_DEFAULT_PAGE = 1;
 export const VOICE_ACTIVITY_DEFAULT_PAGE_SIZE = 30;
 export const VOICE_ACTIVITY_MAX_PAGE_SIZE = 100;
 
-const VOICE_EVENT_TYPE_OPTIONS = Object.entries(EVENT_TYPES)
-  .filter(([, meta]) => meta?.category === "voice")
-  .map(([value, meta]) => ({
-    value,
-    label: meta?.description || value,
-  }))
-  .sort((a, b) => a.label.localeCompare(b.label));
-
-function formatEventType(eventType) {
-  if (!eventType) return "Voice activity";
-  return eventType.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
-}
+const VOICE_EVENT_TYPE_OPTIONS = getDiscordEventTypeOptions({ category: "voice" });
 
 function buildGuildAvatarUrl(guildId, userId, avatarHash, size = 64) {
   if (!guildId || !userId || !avatarHash) return null;
@@ -76,12 +70,12 @@ export function normalizeVoiceActivityLog(entries) {
   return (entries || []).map((entry) => {
     const details = entry?.details && typeof entry.details === "object" ? entry.details : {};
     const eventType = entry?.event_type || null;
-    const eventMeta = eventType ? EVENT_TYPES[eventType] : null;
+    const eventMeta = getDiscordEventTypeMeta(eventType, { fallbackCategory: "voice" });
     const fromChannelName = details.oldChannelName || details.fromChannelName || details.previousChannelName || null;
     const channelName =
       entry?.channel_name || details.newChannelName || details.toChannelName || details.channelName || fromChannelName || "Unknown channel";
 
-    let actionLabel = eventMeta?.description || formatEventType(eventType);
+    let actionLabel = eventMeta?.description || formatDiscordEventTypeLabel(eventType);
     if (eventType === "VOICE_MOVE" && fromChannelName && channelName && fromChannelName !== channelName) {
       actionLabel = `Moved from ${fromChannelName} to ${channelName}`;
     }
@@ -95,6 +89,7 @@ export function normalizeVoiceActivityLog(entries) {
       actorDiscriminator: entry?.actor_discriminator || "0",
       channelName,
       actionLabel,
+      actionIcon: eventMeta?.icon || "🎤",
       createdAt: entry?.created_at || null,
     };
   });

@@ -6,6 +6,10 @@ import {
   log,
 } from "$lib/db/logger.js";
 import { verifyGuildAccess } from "$lib/discord/guilds.js";
+import {
+  getDiscordCategoryMeta,
+  getDiscordEventTypeMeta,
+} from "$lib/discord/event-metadata.js";
 
 /**
  * Safely get environment variable, works in both Node.js and Cloudflare Workers
@@ -74,16 +78,10 @@ export async function GET({ params, cookies, platform }) {
   }
 
   // Include metadata for the UI
-  const categoryInfo = EVENT_CATEGORIES[log.event_category] || {
-    name: log.event_category,
-    color: "#888",
-    icon: "📌",
-  };
-
-  const eventTypeInfo = EVENT_TYPES[log.event_type] || {
-    category: log.event_category,
-    description: log.event_type,
-  };
+  const categoryInfo = getDiscordCategoryMeta(log.event_category);
+  const eventTypeInfo = getDiscordEventTypeMeta(log.event_type, {
+    fallbackCategory: log.event_category,
+  });
 
   return json({
     log,
