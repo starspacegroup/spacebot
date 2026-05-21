@@ -801,4 +801,4 @@ export function isMCPEnabled(env) {
 
 export { detectLocalRunnerIntent, formatRunnerVisibilityResponse };
 
-export { DEFAULT_MODEL, BASE_SYSTEM_PROMPT as SYSTEM_PROMPT, MCP_TOOLS };
+export { BASE_SYSTEM_PROMPT as SYSTEM_PROMPT, MCP_TOOLS };
