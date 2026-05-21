@@ -13,7 +13,7 @@ import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from "./mcp-client.js";
 //   @cf/meta/llama-3.1-8b-instruct-fast - Fast but less capable
 //   @cf/meta/llama-3.1-70b-instruct - Slower but smarter
 //   @cf/meta/llama-3.3-70b-instruct-fp8-fast - Best balance of speed and intelligence
-const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+export const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 // Base system prompt for the bot assistant
 const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.

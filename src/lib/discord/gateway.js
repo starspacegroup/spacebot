@@ -47,6 +47,7 @@ const GATEWAY_LOG_FLUSH_MS = 1_500;
 const GATEWAY_LOG_BATCH_SIZE = 50;
 const GATEWAY_LOG_MAX_QUEUE = 500;
 const VOICE_SESSION_RECONCILE_COOLDOWN_MS = 60_000;
+const WORKERS_AI_MODEL_CONFIG_CACHE_MS = 0;
 
 let gatewayLogCaptureEnabled = false;
 let gatewayLogQueue = [];
@@ -56,6 +57,7 @@ let gatewayLogFlushInFlight = false;
 let gatewayConsoleCaptureInstalled = false;
 let lastVoiceSessionReconcileAt = 0;
 let voiceSessionReconcileInFlight = false;
+let cachedWorkersAIModelConfig = null;
 const liveUpdateClientsByGuild = new Map();
 
 function getLiveUpdateSecret() {
@@ -172,6 +174,48 @@ function formatGatewayLogMessage(args) {
     return message;
   }
   return `${message.slice(0, 7997)}...`;
+}
+
+async function getWorkersAIModelConfig() {
+  const now = Date.now();
+  if (
+    cachedWorkersAIModelConfig &&
+    (now - cachedWorkersAIModelConfig.cachedAt) < WORKERS_AI_MODEL_CONFIG_CACHE_MS
+  ) {
+    return cachedWorkersAIModelConfig.value;
+  }
+
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE}/api/gateway/workers-ai/models`, {
+      headers: { Authorization: `Bot ${botToken}` },
+    });
+
+    if (!response.ok) {
+      log.warn(`[AI] Failed to fetch Workers AI model config: ${response.status}`);
+      return null;
+    }
+
+    const payload = await response.json();
+    const modelConfig = payload?.modelConfig;
+    if (!modelConfig || typeof modelConfig !== "object") {
+      return null;
+    }
+
+    cachedWorkersAIModelConfig = {
+      cachedAt: now,
+      value: modelConfig,
+    };
+
+    return modelConfig;
+  } catch (error) {
+    log.warn(`[AI] Could not load Workers AI model config: ${error.message}`);
+    return null;
+  }
 }
 
 function clearGatewayLogFlushTimer() {
@@ -740,6 +784,8 @@ async function handleDirectMessage(message, client) {
     log.debug("[DM] AI is not enabled, ignoring DM");
     return;
   }
+
+  const workersAIModelConfig = await getWorkersAIModelConfig();
   
   // Start typing indicator while we check permissions and generate response
   await message.channel.sendTyping().catch(() => {});
@@ -817,6 +863,13 @@ async function handleDirectMessage(message, client) {
   addToConversationHistory(userId, "user", content);
   
   // Generate AI response with MCP tool access
+  const env = {
+    ...process.env,
+    ...(workersAIModelConfig?.primaryModelId ? { CLOUDFLARE_AI_MODEL: workersAIModelConfig.primaryModelId } : {}),
+    ...(workersAIModelConfig?.candidateModelIds ? { CLOUDFLARE_AI_MODELS: workersAIModelConfig.candidateModelIds } : {}),
+    ...(workersAIModelConfig?.routingStrategy ? { CLOUDFLARE_AI_MODEL_ROUTING: workersAIModelConfig.routingStrategy } : {}),
+  };
+
   const aiResult = await generateChatResponse({
     message: content,
     userName,
@@ -827,7 +880,7 @@ async function handleDirectMessage(message, client) {
     selectedGuild, // Pass the currently selected guild
     selectedGuildId: currentSession.selectedGuildId,
     selectedGuildName: currentSession.selectedGuildName,
-  }, process.env);
+  }, env);
   
   if (!aiResult.success) {
     log.error("[DM] AI response failed:", aiResult.error);
