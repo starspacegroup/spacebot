@@ -53,6 +53,41 @@
 
 	let voiceLogDebounceTimer;
 	let voiceLogAbortController;
+	let voiceLogLiveRefreshController;
+
+	function canAutoRefreshLog() {
+		return (
+			voiceLogPagination.page === 1 &&
+			voiceLogSortOrder === 'desc' &&
+			!voiceLogSearch.trim() &&
+			!voiceLogEventType &&
+			!voiceLogStartDate &&
+			!voiceLogEndDate
+		);
+	}
+
+	async function silentRefreshVoiceLog() {
+		if (!canAutoRefreshLog()) return;
+		if (voiceLogLoading) return;
+
+		voiceLogLiveRefreshController?.abort();
+		voiceLogLiveRefreshController = new AbortController();
+
+		try {
+			const params = buildVoiceLogQueryParams({ page: 1 });
+			const response = await fetch(`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`, {
+				headers: { accept: 'application/json' },
+				signal: voiceLogLiveRefreshController.signal,
+			});
+			if (!response.ok) return;
+			const payload = await response.json();
+			voiceLogEntries = Array.isArray(payload?.entries) ? payload.entries : [];
+			voiceLogPagination = normalizeVoiceLogPagination(payload?.pagination);
+		} catch (err) {
+			if (err?.name === 'AbortError') return;
+			console.warn('[LiveVoice] Silent log refresh failed', err);
+		}
+	}
 
 	function normalizeLiveVoiceSnapshot(snapshot) {
 		return {
@@ -129,6 +164,7 @@
 					liveVoiceSnapshot = normalizeLiveVoiceSnapshot(payload?.data || payload);
 					liveVoiceStreamConnected = true;
 					liveVoiceRefreshError = '';
+					silentRefreshVoiceLog();
 				} catch (error) {
 					console.warn('[LiveVoice] Invalid event payload', error);
 				}
@@ -145,6 +181,7 @@
 
 		const intervalId = setInterval(() => {
 			refreshLiveVoiceSnapshot({ silent: true });
+			if (!liveVoiceStreamConnected) silentRefreshVoiceLog();
 		}, LIVE_VOICE_POLL_MS);
 
 		return () => {
@@ -153,6 +190,7 @@
 				clearTimeout(voiceLogDebounceTimer);
 			}
 			voiceLogAbortController?.abort();
+			voiceLogLiveRefreshController?.abort();
 			stream?.close();
 		};
 	});
