@@ -35,6 +35,33 @@ interface AppProps extends RunnerTuiOptions {
   onExit: () => void;
 }
 
+const IS_GHOSTTY = /ghostty/i.test(process.env.TERM ?? "") || /ghostty/i.test(process.env.TERM_PROGRAM ?? "");
+
+const THEME = IS_GHOSTTY
+  ? {
+    title: "#7dd3fc",
+    heading: "#93c5fd",
+    key: "#f8fafc",
+    value: "#94a3b8",
+    info: "#22d3ee",
+    warn: "#fde047",
+    ok: "#4ade80",
+    muted: "#64748b",
+  }
+  : {
+    title: "cyan",
+    heading: "blue",
+    key: "white",
+    value: "gray",
+    info: "cyan",
+    warn: "yellow",
+    ok: "green",
+    muted: "gray",
+  };
+
+// Strip common ANSI sequences (CSI/OSC/single-char) to prevent style leakage into TUI rendering.
+const ANSI_ESCAPE_RE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
+
 function formatInstallKind(kind: RunnerAutostartStatus["installKind"]): string {
   if (kind === "systemd-user") return "systemd user service";
   if (kind === "launch-agent") return "LaunchAgent";
@@ -43,7 +70,9 @@ function formatInstallKind(kind: RunnerAutostartStatus["installKind"]): string {
 
 function summarizeRunnerLine(line: string): string | null {
   if (line.includes("WebSocket connected")) return "Connected to SpaceBot. Waiting for jobs.";
-  if (line.includes("Authenticated — runner ready")) return "Runner authenticated and ready.";
+  if (line.includes("Authenticated - runner ready") || line.includes("Authenticated — runner ready")) {
+    return "Runner authenticated and ready.";
+  }
   if (line.includes("Reconnecting in")) return line.replace(/^.*WARN\s*/, "");
   if (line.includes("Running job #")) return line.replace(/^.*\]\s*/, "");
   if (line.includes("Shutting down")) return "Runner shutting down.";
@@ -57,9 +86,9 @@ function trimLogHistory(lines: string[]): string[] {
 
 function normalizeDisplayText(value: string): string {
   return value
-    .replace(/\u001b\[[0-9;]*m/g, "")
-    .replace(/[\u0000-\u001f\u007f]+/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(ANSI_ESCAPE_RE, "")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]+/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 
@@ -69,7 +98,12 @@ function buildKeyValueLine(label: string, value: string): string {
 
 function clipForUi(value: string, max = 120): string {
   if (value.length <= max) return value;
-  return `${value.slice(0, Math.max(0, max - 1))}…`;
+  return `${value.slice(0, Math.max(0, max - 3))}...`;
+}
+
+interface StyledLine {
+  tone: keyof typeof THEME;
+  text: string;
 }
 
 function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scriptPath, initialToken, onExit }: AppProps) {
@@ -160,6 +194,9 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         ...process.env,
         SPACEBOT_RUNNER_TOKEN: effectiveToken,
         RUNNER_TUI_CHILD: "1",
+        NO_COLOR: "1",
+        FORCE_COLOR: "0",
+        CLICOLOR: "0",
       },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
@@ -354,68 +391,89 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const noServiceLine = `No ${formatInstallKind(autostartStatus.installKind)} detected at ${autostartStatus.serviceFile}`;
   const tokenStateLine = buildKeyValueLine(
     "Runner token",
-    runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}… configured` : "missing",
+    runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... configured` : "missing",
   );
+  const statusLabel = childRunning ? "Runner online" : "Runner stopped";
+
+  const topLines = [
+    `State: ${runnerState}`,
+    `Session: ${statusLabel}`,
+    buildKeyValueLine("Server", apiUrl),
+    buildKeyValueLine("Runner", displayName),
+    buildKeyValueLine("Host", hostname),
+    buildKeyValueLine("Default workdir", defaultWorkdir),
+    tokenStateLine,
+    buildKeyValueLine("Allowed paths", allowedPathText),
+    autostartLine,
+  ];
+
+  const middleLines = mode === "prompt"
+    ? [
+      noServiceLine,
+      serviceMessage,
+      "Use Up/Down to choose, Enter to continue.",
+      ...promptOptions.flatMap((option, index) => {
+        const active = index === promptSelection;
+        return [
+          `${active ? ">" : " "} ${option.title}`,
+          `   ${option.description}`,
+        ];
+      }),
+    ]
+    : [
+      serviceMessage,
+      "Controls: q quit  r restart  k get token  i install autostart",
+      childRunning ? "Runner child is active." : "Runner child is stopped.",
+      ...(tokenNegotiating ? ["Negotiation in progress. Complete the browser step to continue."] : []),
+      ...(manualOpenUrl
+        ? [
+          "Manual Browser Fallback:",
+          "Could not launch your browser automatically.",
+          "Open this URL manually, then complete login/consent.",
+          manualOpenUrl,
+          "Press c to copy this URL to your clipboard.",
+        ]
+        : []),
+    ];
+
+  const recentLines = logs.map((line) => line);
+
+  const screenLines: StyledLine[] = [
+    { tone: "title", text: "STARSPACE LOCAL RUNNER" },
+    { tone: "muted", text: "------------------------------------------------------------" },
+    { tone: "heading", text: "RUNNER" },
+    ...topLines.map((line) => ({ tone: "value" as const, text: line })),
+    { tone: "muted", text: "" },
+    { tone: "heading", text: mode === "prompt" ? "AUTOSTART SETUP" : "DASHBOARD" },
+    ...middleLines.map((line) => ({ tone: "value" as const, text: line })),
+    { tone: "muted", text: "" },
+    { tone: "heading", text: "RECENT OUTPUT" },
+    ...recentLines.map((line) => ({ tone: "value" as const, text: line })),
+  ];
+
+  const toneForLine = (line: string, baseTone: keyof typeof THEME): keyof typeof THEME => {
+    const lower = line.toLowerCase();
+    if (lower.includes("installed") || lower.includes("active") || lower.includes("ready")) return "ok";
+    if (lower.includes("not installed") || lower.includes("could not") || lower.includes("failed") || lower.includes("missing")) return "warn";
+    if (lower.startsWith("controls:") || lower.startsWith("use up/down")) return "info";
+    if (line.includes(": ")) return "key";
+    return baseTone;
+  };
 
   return (
-    <box flexDirection="column" padding={1} style={{ width: "100%", height: "100%", backgroundColor: "#08111b" }}>
-      <box border title="SpaceBot Local Runner" padding={1} flexDirection="column" style={{ marginBottom: 1 }}>
-        <text content={clipForUi(buildKeyValueLine("State", runnerState))} fg="#9fd0ff" />
-        <text content={clipForUi(buildKeyValueLine("Server", apiUrl))} />
-        <text content={clipForUi(buildKeyValueLine("Runner", displayName))} />
-        <text content={clipForUi(buildKeyValueLine("Host", hostname))} />
-        <text content={clipForUi(buildKeyValueLine("Default workdir", defaultWorkdir))} />
-        <text content={clipForUi(tokenStateLine)} />
-        <text content={clipForUi(buildKeyValueLine("Allowed paths", allowedPathText))} />
-        <text content={clipForUi(autostartLine)} />
-      </box>
-
-      {mode === "prompt" ? (
-        <box border title="Autostart Setup" padding={1} flexDirection="column" style={{ marginBottom: 1 }}>
-          <text content={clipForUi(noServiceLine)} fg="#ffd17a" />
-          <text content={clipForUi(serviceMessage, 160)} />
-          <text content="Use Up/Down to choose, Enter to continue." />
-          {promptOptions.map((option, index) => {
-            const active = index === promptSelection;
-            return (
-              <box
-                key={option.id}
-                border
-                padding={1}
-                flexDirection="column"
-                style={{
-                  marginTop: 1,
-                  backgroundColor: active ? "#14324d" : "#0f1f30",
-                }}
-              >
-                <text content={`${active ? ">" : " "} ${option.title}`} fg={active ? "#ffffff" : "#9fd0ff"} />
-                <text content={clipForUi(option.description, 140)} />
-              </box>
-            );
-          })}
-        </box>
-      ) : (
-        <box border title="Dashboard" padding={1} flexDirection="column" style={{ marginBottom: 1 }}>
-          <text content={clipForUi(serviceMessage, 160)} />
-          <text content="Controls: q quit, r restart runner, k get token, i install autostart" />
-          <text content={childRunning ? "Runner child is active." : "Runner child is stopped."} />
-          {tokenNegotiating ? <text content="Negotiation in progress. Complete the browser step to continue." /> : null}
-          {manualOpenUrl ? (
-            <box border title="Manual Browser Fallback" padding={1} flexDirection="column" style={{ marginTop: 1 }}>
-              <text content="Could not launch your browser automatically." fg="#ffd17a" />
-              <text content="Open this URL manually, then complete login/consent." />
-              <text content={clipForUi(manualOpenUrl, 170)} fg="#9fd0ff" />
-              <text content="Press c to copy this URL to your clipboard." />
-            </box>
-          ) : null}
-        </box>
-      )}
-
-      <box border title="Recent Output" padding={1} flexDirection="column" style={{ flexGrow: 1 }}>
-        {logs.map((line, index) => (
-          <text key={`${index}-${line.slice(0, 12)}`} content={clipForUi(line, 180)} />
-        ))}
-      </box>
+    <box border title="StarSpace Runner Console" padding={1} style={{ width: "100%", height: "100%" }}>
+      <text wrapMode="char" truncate>
+        {screenLines.map((line, index) => {
+          const normalized = clipForUi(normalizeDisplayText(line.text), 170);
+          const tone = toneForLine(normalized, line.tone);
+          return (
+            <React.Fragment key={`${index}-${normalized.slice(0, 18)}`}>
+              <span fg={THEME[tone]}>{normalized}</span>
+              {index < screenLines.length - 1 ? <br /> : null}
+            </React.Fragment>
+          );
+        })}
+      </text>
     </box>
   );
 }
