@@ -18,6 +18,7 @@ import {
   fetchSignedWidgetPng,
   resolveWidgetOrigin,
 } from "../stats-widget-delivery.js";
+import { getDiscordEventTypeMeta } from "../discord/event-metadata.js";
 
 /**
  * Resolve the target user ID from action config
@@ -671,6 +672,7 @@ export function buildContext(event, guildInfo = {}) {
     trigger: {
       event: event.event_type,
       category: event.event_category,
+      icon: getDiscordEventTypeMeta(event.event_type).icon,
       time: new Date().toISOString(),
     },
     github,

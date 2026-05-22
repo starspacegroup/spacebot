@@ -858,6 +858,7 @@ export const TEMPLATE_VARIABLES = {
   "guild.boost_level": "Server boost level (0-3)",
   "trigger.event": "Event type that triggered",
   "trigger.category": "Event category",
+  "trigger.icon": "Event type emoji icon",
   "trigger.time": "When the event occurred",
   // GitHub-specific variables (available for GITHUB_* events)
   "github.repo": "GitHub repository (owner/repo)",
