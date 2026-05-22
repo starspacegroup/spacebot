@@ -214,6 +214,7 @@ export const ACTION_TYPES = {
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
       embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
+      embed_image_url: { type: "text", label: "Embed Image URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },
@@ -235,6 +236,7 @@ export const ACTION_TYPES = {
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
       embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
+      embed_image_url: { type: "text", label: "Embed Image URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later", hideWhen: "ephemeral" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
       buttons: {
@@ -322,6 +324,7 @@ export const ACTION_TYPES = {
       embed_color: { type: "color", default: "#5865F2", label: "Default embed color", showWhen: "embed" },
       embed_color_rules: { type: "color_rules", default: [], label: "Conditional colors", showWhen: "embed" },
       embed_thumbnail_url: { type: "text", label: "Embed Thumbnail URL", supportsVariables: true, showWhen: "embed" },
+      embed_image_url: { type: "text", label: "Embed Image URL", supportsVariables: true, showWhen: "embed" },
       send_later: { type: "boolean", default: false, label: "Schedule for later" },
       send_later_delay: { type: "delay", label: "Send after", showWhen: "send_later" },
     },

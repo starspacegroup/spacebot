@@ -243,6 +243,7 @@ async function sendScheduledChannelMessage(botToken, channelId, payload) {
       timestamp: new Date().toISOString(),
     };
     if (payload.embed_thumbnail_url) embed.thumbnail = { url: payload.embed_thumbnail_url };
+    if (payload.embed_image_url) embed.image = { url: payload.embed_image_url };
     body.embeds = [embed];
   } else {
     body.content = payload.content;

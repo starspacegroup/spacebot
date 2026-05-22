@@ -1065,12 +1065,16 @@ export async function executeAction(
             const thumbnailUrl = action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+            const imageUrl = action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
             const embed = {
               description: content,
               color: embedColor,
               timestamp: new Date().toISOString(),
             };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            if (imageUrl) embed.image = { url: imageUrl };
             payload.embeds = [embed];
           } else {
             payload.content = content;
@@ -1098,6 +1102,10 @@ export async function executeAction(
             action_config.embed && action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+          const imageUrl =
+            action_config.embed && action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
@@ -1107,6 +1115,7 @@ export async function executeAction(
               embed: !!action_config.embed,
               embed_color: embedColor,
               ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+              ...(imageUrl ? { embed_image_url: imageUrl } : {}),
             },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
@@ -1136,12 +1145,16 @@ export async function executeAction(
           const thumbnailUrl = action_config.embed_thumbnail_url
             ? processTemplate(action_config.embed_thumbnail_url, context)
             : null;
+          const imageUrl = action_config.embed_image_url
+            ? processTemplate(action_config.embed_image_url, context)
+            : null;
           const embed = {
             description: content,
             color: embedColor,
             timestamp: new Date().toISOString(),
           };
           if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+          if (imageUrl) embed.image = { url: imageUrl };
           await channel.send({ embeds: [embed] });
         } else {
           await channel.send(content);
@@ -1175,12 +1188,16 @@ export async function executeAction(
             const thumbnailUrl = action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+            const imageUrl = action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
             const embed = {
               description: content,
               color: embedColor,
               timestamp: new Date().toISOString(),
             };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            if (imageUrl) embed.image = { url: imageUrl };
             payload.embeds = [embed];
           } else {
             payload.content = content;
@@ -1215,6 +1232,10 @@ export async function executeAction(
             action_config.embed && action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+          const imageUrl =
+            action_config.embed && action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             channel_id: channelId,
@@ -1224,6 +1245,7 @@ export async function executeAction(
               embed: !!action_config.embed,
               embed_color: embedColor,
               ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+              ...(imageUrl ? { embed_image_url: imageUrl } : {}),
               components,
             },
             delay: action_config.send_later_delay,
@@ -1260,12 +1282,16 @@ export async function executeAction(
           const thumbnailUrl = action_config.embed_thumbnail_url
             ? processTemplate(action_config.embed_thumbnail_url, context)
             : null;
+          const imageUrl = action_config.embed_image_url
+            ? processTemplate(action_config.embed_image_url, context)
+            : null;
           const embed = {
             description: content,
             color: embedColor,
             timestamp: new Date().toISOString(),
           };
           if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+          if (imageUrl) embed.image = { url: imageUrl };
           messagePayload.embeds = [embed];
         } else {
           messagePayload.content = content;
@@ -1355,6 +1381,10 @@ export async function executeAction(
             action_config.embed && action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+          const imageUrl =
+            action_config.embed && action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
           const result = await createScheduledMessage(db, {
             guild_id: event.guild_id,
             target_user_id: userId,
@@ -1364,6 +1394,7 @@ export async function executeAction(
               embed: !!action_config.embed,
               embed_color: embedColor,
               ...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+              ...(imageUrl ? { embed_image_url: imageUrl } : {}),
             },
             delay: action_config.send_later_delay,
             created_by: event.actor_id,
@@ -1393,12 +1424,16 @@ export async function executeAction(
             const thumbnailUrl = action_config.embed_thumbnail_url
               ? processTemplate(action_config.embed_thumbnail_url, context)
               : null;
+            const imageUrl = action_config.embed_image_url
+              ? processTemplate(action_config.embed_image_url, context)
+              : null;
             const embed = {
               description: content,
               color: embedColor,
               timestamp: new Date().toISOString(),
             };
             if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
+            if (imageUrl) embed.image = { url: imageUrl };
             await user.send({ embeds: [embed] });
           } else {
             await user.send(content);
