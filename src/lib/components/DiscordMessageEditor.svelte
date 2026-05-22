@@ -29,6 +29,9 @@
 	let showVariableMenu = $state(false);
 	let mentionType = $state('channel'); // 'channel' | 'role'
 	let mentionSearch = $state('');
+	let channelSearch = $state('');
+	let roleSearch = $state('');
+	let variableSearch = $state('');
 	let menuPosition = $state({ top: 0, left: 0 });
 	let highlightedIndex = $state(0);
 	
@@ -71,10 +74,15 @@
 	// Get currently active items based on mention type
 	const activeItems = $derived(mentionType === 'channel' ? filteredChannels : filteredRoles);
 	
-	// Variable categories for organized display
+	// Variable categories for organized display (filtered by realtime search)
 	const variableCategories = $derived.by(() => {
+		const query = variableSearch.trim().toLowerCase();
 		const categories = {};
 		for (const [key, desc] of Object.entries(templateVariables)) {
+			if (query) {
+				const hay = `${key} ${desc}`.toLowerCase();
+				if (!hay.includes(query)) continue;
+			}
 			const [category] = key.split('.');
 			if (!categories[category]) {
 				categories[category] = [];
@@ -83,6 +91,45 @@
 		}
 		return categories;
 	});
+
+	// Filtered channels for the toolbar Channel dropdown (separate from inline @-mention search)
+	const toolbarChannels = $derived.by(() => {
+		const query = channelSearch.trim().toLowerCase();
+		if (!query) return flatChannels.slice(0, 25);
+		return flatChannels.filter(ch => ch.name.toLowerCase().includes(query)).slice(0, 25);
+	});
+
+	// Filtered roles for the toolbar Role dropdown
+	const toolbarRoles = $derived.by(() => {
+		if (!roles || !Array.isArray(roles)) return [];
+		const query = roleSearch.trim().toLowerCase();
+		if (!query) return roles.slice(0, 25);
+		return roles.filter(r => r.name.toLowerCase().includes(query)).slice(0, 25);
+	});
+
+	// Icon for a variable category — matches the kind of "event/entity" the variable describes
+	function getCategoryIcon(category) {
+		switch (category) {
+			case 'user': return '👤';
+			case 'target': return '🎯';
+			case 'channel': return '#⃣';
+			case 'guild': return '🏠';
+			case 'trigger': return '⚡';
+			case 'github': return '🐙';
+			case 'github_logo_url': return '🐙';
+			case 'option': return '⚙️';
+			case 'message': return '💬';
+			case 'role': return '🛡️';
+			case 'reaction': return '😀';
+			case 'voice': return '🔊';
+			default: return '🔖';
+		}
+	}
+
+	function getCategoryLabel(category) {
+		if (!category) return '';
+		return category.charAt(0).toUpperCase() + category.slice(1);
+	}
 	
 	// Formatting commands - organized by category
 	const textFormats = [
@@ -554,10 +601,14 @@
 				</button>
 				<div class="dropdown-menu channel-dropdown">
 					<div class="dropdown-search">
-						<input type="text" placeholder="Search channels..." />
+						<input
+							type="text"
+							placeholder="Search channels..."
+							bind:value={channelSearch}
+						/>
 					</div>
 					<div class="dropdown-items">
-						{#each flatChannels.slice(0, 15) as channel}
+						{#each toolbarChannels as channel}
 							<button type="button" class="dropdown-item" onclick={() => insertChannelMention(channel)}>
 								<span class="channel-icon">{getChannelIcon(channel.type)}</span>
 								<span class="channel-name">{channel.name}</span>
@@ -566,8 +617,8 @@
 								{/if}
 							</button>
 						{/each}
-						{#if flatChannels.length === 0}
-							<div class="dropdown-empty">No channels available</div>
+						{#if toolbarChannels.length === 0}
+							<div class="dropdown-empty">No channels match “{channelSearch}”</div>
 						{/if}
 					</div>
 				</div>
@@ -579,14 +630,24 @@
 						@ Role
 					</button>
 					<div class="dropdown-menu role-dropdown">
+						<div class="dropdown-search">
+							<input
+								type="text"
+								placeholder="Search roles..."
+								bind:value={roleSearch}
+							/>
+						</div>
 						<div class="dropdown-items">
-							{#each roles.slice(0, 15) as role}
+							{#each toolbarRoles as role}
 								{@const roleColor = role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5'}
 								<button type="button" class="dropdown-item" onclick={() => insertRoleMention(role)}>
 									<span class="role-dot" style="background-color: {roleColor}"></span>
 									<span class="role-name">{role.name}</span>
 								</button>
 							{/each}
+							{#if toolbarRoles.length === 0}
+								<div class="dropdown-empty">No roles match “{roleSearch}”</div>
+							{/if}
 						</div>
 					</div>
 				</div>
@@ -597,18 +658,33 @@
 					{'{}'} Variable
 				</button>
 				<div class="dropdown-menu variable-dropdown">
+					<div class="dropdown-search">
+						<input
+							type="text"
+							placeholder="Search variables..."
+							bind:value={variableSearch}
+							autocomplete="off"
+						/>
+					</div>
 					<div class="dropdown-items variable-items">
 						{#each Object.entries(variableCategories) as [category, vars]}
 							<div class="variable-category">
-								<div class="variable-category-name">{category}</div>
+								<div class="variable-category-name">
+									<span class="variable-category-icon" aria-hidden="true">{getCategoryIcon(category)}</span>
+									<span>{getCategoryLabel(category)}</span>
+								</div>
 								{#each vars as v}
 									<button type="button" class="dropdown-item variable-item" onclick={() => insertVariableFromButton(v.key)}>
+										<span class="variable-item-icon" aria-hidden="true">{getCategoryIcon(category)}</span>
 										<code>{`{${v.key}}`}</code>
 										<span class="variable-desc">{v.desc}</span>
 									</button>
 								{/each}
 							</div>
 						{/each}
+						{#if Object.keys(variableCategories).length === 0}
+							<div class="dropdown-empty">No variables match “{variableSearch}”</div>
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -869,6 +945,9 @@
 	}
 	
 	.variable-category-name {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 		padding: 0.5rem 0.75rem 0.25rem;
 		color: var(--color-text-secondary, #b9bbbe);
 		font-size: 0.7rem;
@@ -876,13 +955,25 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
-	
+
+	.variable-category-icon {
+		font-size: 0.9rem;
+		line-height: 1;
+	}
+
 	.variable-item {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.125rem;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.5rem;
 		padding: 0.375rem 0.75rem;
 		border-radius: 4px;
+		flex-wrap: wrap;
+	}
+
+	.variable-item-icon {
+		font-size: 0.95rem;
+		line-height: 1;
+		flex-shrink: 0;
 	}
 	
 	.variable-item code {
