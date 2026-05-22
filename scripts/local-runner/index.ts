@@ -256,9 +256,9 @@ function captureScreenshotBuffer(): Buffer {
     }
   } else {
     const command = [
-      "if command -v grim >/dev/null 2>&1; then grim '$1';",
-      "elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f '$1';",
-      "elif command -v import >/dev/null 2>&1; then import -window root '$1';",
+      'if command -v grim >/dev/null 2>&1; then grim "$1";',
+      'elif command -v gnome-screenshot >/dev/null 2>&1; then gnome-screenshot -f "$1";',
+      'elif command -v import >/dev/null 2>&1; then import -window root "$1";',
       "else exit 127; fi",
     ].join(" ");
 

@@ -496,6 +496,49 @@ async function storeResult(db, tokenId, instanceId, jobId, {
     .run();
 }
 
+async function sendScreenshotDM(env, userId, rawArtifactRefs) {
+  const botToken = env?.DISCORD_BOT_TOKEN;
+  if (!botToken || !userId) return;
+
+  const screenshots = (rawArtifactRefs ?? []).filter(
+    (r) => r && r.artifactType === "screenshot" && typeof r.blobBase64 === "string",
+  );
+  if (screenshots.length === 0) return;
+
+  // Create DM channel
+  const dmRes = await fetch("https://discord.com/api/v10/users/@me/channels", {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ recipient_id: userId }),
+  });
+  if (!dmRes.ok) return;
+
+  const { id: channelId } = await dmRes.json();
+
+  // Build multipart message with screenshot attachments
+  const formData = new FormData();
+  const content =
+    screenshots.length === 1 ? "📸 Screenshot captured:" : `📸 ${screenshots.length} screenshot(s) captured:`;
+  formData.append("payload_json", JSON.stringify({ content }));
+
+  for (let i = 0; i < screenshots.length; i++) {
+    const ref = screenshots[i];
+    const binary = Uint8Array.from(atob(ref.blobBase64), (c) => c.charCodeAt(0));
+    const blob = new Blob([binary], { type: ref.mimeType || "image/png" });
+    const label = typeof ref.captureSource === "string" ? ref.captureSource : String(ref.captureIndex ?? i);
+    formData.append(`files[${i}]`, blob, `screenshot-${label}.png`);
+  }
+
+  await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bot ${botToken}` },
+    body: formData,
+  });
+}
+
 async function persistArtifacts(db, auth, state, jobId, artifactRefs) {
   if (!Array.isArray(artifactRefs) || artifactRefs.length === 0) return [];
 
@@ -736,6 +779,11 @@ export async function GET({ request, platform }) {
             artifactCount: persistedArtifactRefs.length,
           },
         });
+
+        // Send screenshot(s) to the requesting user via Discord DM (fire-and-forget)
+        if (status === "completed" && Array.isArray(artifactRefs) && artifactRefs.length > 0) {
+          sendScreenshotDM(env, auth.userId, artifactRefs).catch(() => {});
+        }
 
         server.send(JSON.stringify({ type: "ack", jobId }));
       } catch (e) {
