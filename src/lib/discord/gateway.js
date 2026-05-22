@@ -904,8 +904,11 @@ async function handleDirectMessage(message, client) {
     if (dispatch?.dispatched) {
       const runnerName = dispatch.runner?.display_name || dispatch.runner?.hostname || "your local runner";
       const onlineNote = dispatch.runner?.is_online ? "" : " (currently offline — it will pick this up when it reconnects)";
+      const isScreenshotJob = dispatch.jobType === "screenshot_capture";
       await message.reply({
-        content: `📨 Sent to **${runnerName}**${onlineNote}. (job #${dispatch.jobId})`,
+        content: isScreenshotJob
+          ? `📸 Capturing a screenshot on **${runnerName}**${onlineNote}. I will DM the image back when it finishes. (job #${dispatch.jobId})`
+          : `📨 Sent to **${runnerName}**${onlineNote}. (job #${dispatch.jobId})`,
       }).catch((err) => log.error("[DM] Failed to send runner-dispatch reply:", err.message));
       return;
     }

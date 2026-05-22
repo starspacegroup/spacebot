@@ -1,6 +1,9 @@
 import { json } from "@sveltejs/kit";
 import { getRunnerInstances, createRunnerJob } from "$lib/db/local-runners.js";
 
+const SCREENSHOT_REQUEST_RE = /\b(screenshot|screen\s*shot|screen\s*capture|capture\s+(?:the\s+)?screen)\b/i;
+const TARGET_HINT_RE = /\b(?:of|on|from|at|for)\s+([a-z0-9._-]{3,})\b/i;
+
 function getEnv(platform, name) {
   return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
 }
@@ -9,6 +12,104 @@ function checkIsBotRequest(request, platform) {
   const authHeader = request.headers.get("Authorization");
   const botToken = getEnv(platform, "DISCORD_BOT_TOKEN");
   return Boolean(botToken) && authHeader === `Bot ${botToken}`;
+}
+
+function sanitizeForMatch(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, " ")
+    .trim();
+}
+
+function chooseTargetRunner(instances, content) {
+  if (!Array.isArray(instances) || instances.length === 0) return null;
+
+  const contentLower = String(content || "").toLowerCase();
+  const normalizedContent = sanitizeForMatch(content);
+  const hint = TARGET_HINT_RE.exec(contentLower)?.[1]?.trim().toLowerCase() || null;
+
+  const scored = instances
+    .map((instance) => {
+      const names = [instance.display_name, instance.hostname, instance.token_name]
+        .filter((value) => typeof value === "string" && value.trim().length > 0)
+        .map((value) => value.trim());
+
+      let score = instance.is_online ? 10 : 0;
+
+      for (const name of names) {
+        const lowerName = name.toLowerCase();
+        const normalizedName = sanitizeForMatch(name);
+
+        if (hint && (lowerName.includes(hint) || hint.includes(lowerName))) {
+          score += 100;
+        }
+
+        if (contentLower.includes(lowerName)) {
+          score += 60;
+        }
+
+        if (normalizedName && normalizedContent.includes(normalizedName)) {
+          score += 30;
+        }
+      }
+
+      return { instance, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  if (!scored.length) return null;
+  if (scored[0].score > 0) return scored[0].instance;
+
+  const online = instances.find((instance) => instance.is_online);
+  return online || instances[0];
+}
+
+function inferDmJob(content, userId, userName, history, targetInstance) {
+  const isScreenshotRequest = SCREENSHOT_REQUEST_RE.test(content || "");
+
+  if (isScreenshotRequest) {
+    return {
+      jobType: "screenshot_capture",
+      label: `Screenshot request from ${userName || userId}`,
+      priority: 20,
+      timeoutSeconds: 120,
+      payload: {
+        mode: "all_displays",
+        includeWorkspaceContext: false,
+        response_target: {
+          type: "discord_dm",
+          user_id: userId,
+          source: "gateway_dm",
+        },
+        requested_runner: {
+          id: targetInstance?.id ?? null,
+          display_name: targetInstance?.display_name ?? null,
+          hostname: targetInstance?.hostname ?? null,
+        },
+        request_text: content,
+        received_at: new Date().toISOString(),
+      },
+    };
+  }
+
+  return {
+    jobType: "dm",
+    label: `DM from ${userName || userId}`,
+    priority: 10,
+    timeoutSeconds: 300,
+    payload: {
+      user_id: userId,
+      user_name: typeof userName === "string" ? userName : null,
+      message: content,
+      history,
+      response_target: {
+        type: "discord_dm",
+        user_id: userId,
+        source: "gateway_dm",
+      },
+      received_at: new Date().toISOString(),
+    },
+  };
 }
 
 /**
@@ -49,35 +150,26 @@ export async function POST({ request, platform }) {
     return json({ dispatched: false, reason: "no_runner" });
   }
 
-  // Prefer an online instance; otherwise fall back to the most-recently-seen one.
-  const online = instances.filter((i) => i.is_online);
-  const target = online[0] || instances[0];
+  const target = chooseTargetRunner(instances, content);
   if (!target) {
     return json({ dispatched: false, reason: "no_runner" });
   }
 
+  const history = Array.isArray(body?.history) ? body.history.slice(-20) : [];
+  const inferredJob = inferDmJob(content, userId, body?.userName, history, target);
   const payload = {
-    user_id: userId,
-    user_name: typeof body?.userName === "string" ? body.userName : null,
-    message: content,
-    history: Array.isArray(body?.history) ? body.history.slice(-20) : [],
+    ...inferredJob.payload,
     provider_chain: Array.isArray(body?.providerChain) ? body.providerChain : undefined,
-    response_target: {
-      type: "discord_dm",
-      user_id: userId,
-      source: "gateway_dm",
-    },
-    received_at: new Date().toISOString(),
   };
 
   const result = await createRunnerJob(db, userId, target.runner_token_id, {
-    job_type: "dm",
-    label: `DM from ${payload.user_name || userId}`,
+    job_type: inferredJob.jobType,
+    label: inferredJob.label,
     target_instance_id: target.id,
     payload_json: payload,
-    priority: 10,
+    priority: inferredJob.priority,
     max_attempts: 1,
-    timeout_seconds: 300,
+    timeout_seconds: inferredJob.timeoutSeconds,
   });
 
   if (!result.success) {
@@ -87,6 +179,7 @@ export async function POST({ request, platform }) {
   return json({
     dispatched: true,
     jobId: result.jobId,
+    jobType: inferredJob.jobType,
     runner: {
       id: target.id,
       display_name: target.display_name,
