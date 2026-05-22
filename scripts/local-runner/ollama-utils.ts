@@ -47,6 +47,24 @@ export interface OllamaModel {
   size: number;
 }
 
+interface OllamaGenerateResponse {
+  response?: string;
+  error?: string;
+  model?: string;
+  eval_count?: number;
+  prompt_eval_count?: number;
+  total_duration?: number;
+  eval_duration?: number;
+}
+
+export interface OllamaGenerateStats {
+  evalCount?: number;
+  promptEvalCount?: number;
+  totalDurationMs?: number;
+  evalDurationMs?: number;
+  model?: string;
+}
+
 /**
  * Get list of available Ollama models
  */
@@ -122,4 +140,78 @@ export function getOllamaConfig(): { host: string; port: number; model: string }
     port: parseInt(port, 10),
     model,
   };
+}
+
+/**
+ * Generate a response from an Ollama model.
+ */
+export async function generateOllamaResponse(options: {
+  model: string;
+  prompt: string;
+  host?: string;
+  port?: number;
+}): Promise<{ ok: true; text: string; stats: OllamaGenerateStats } | { ok: false; error: string }> {
+  const host = options.host ?? "localhost";
+  const port = options.port ?? 11434;
+
+  return new Promise((resolve) => {
+    const req = http.request(
+      {
+        hostname: host,
+        port,
+        path: "/api/generate",
+        method: "POST",
+        timeout: 30000,
+        headers: {
+          "content-type": "application/json",
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (chunk) => {
+          data += chunk;
+        });
+        res.on("end", () => {
+          if (res.statusCode && res.statusCode >= 400) {
+            resolve({ ok: false, error: `Ollama returned HTTP ${res.statusCode}.` });
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(data) as OllamaGenerateResponse;
+            const text = (parsed.response ?? "").trim();
+            if (!text) {
+              resolve({ ok: false, error: parsed.error || "Ollama returned an empty response." });
+              return;
+            }
+            const stats: OllamaGenerateStats = {
+              evalCount: parsed.eval_count,
+              promptEvalCount: parsed.prompt_eval_count,
+              totalDurationMs: typeof parsed.total_duration === "number" ? parsed.total_duration / 1_000_000 : undefined,
+              evalDurationMs: typeof parsed.eval_duration === "number" ? parsed.eval_duration / 1_000_000 : undefined,
+              model: parsed.model,
+            };
+            resolve({ ok: true, text, stats });
+          } catch {
+            resolve({ ok: false, error: "Failed to parse Ollama response." });
+          }
+        });
+      }
+    );
+
+    req.on("error", () => resolve({ ok: false, error: "Could not connect to Ollama." }));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ ok: false, error: "Timed out waiting for Ollama response." });
+    });
+
+    req.write(
+      JSON.stringify({
+        model: options.model,
+        prompt: options.prompt,
+        stream: false,
+      })
+    );
+    req.end();
+  });
 }

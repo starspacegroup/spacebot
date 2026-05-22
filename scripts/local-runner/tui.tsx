@@ -18,9 +18,27 @@ import {
   getOllamaModels,
   getOllamaConfig,
   storeOllamaConfig,
+  generateOllamaResponse,
   formatBytes,
   type OllamaModel,
 } from "./ollama-utils";
+import {
+  readPersistedProviderConfig,
+  writePersistedProviderConfig,
+} from "./provider-config";
+import {
+  detectCopilotAvailability,
+  runCopilotPrompt,
+  COPILOT_MODELS,
+  DEFAULT_COPILOT_MODEL,
+  storeCopilotConfig,
+  getCopilotConfig,
+  formatCopilotMultiplier,
+  type CopilotAvailability,
+  type CopilotConfig,
+} from "./copilot-utils";
+
+type LlmProvider = "ollama" | "copilot";
 
 // Spinner frames for loading states
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -181,9 +199,315 @@ function clipForUi(value: string, max = 120): string {
   return `${value.slice(0, Math.max(0, max - 3))}...`;
 }
 
+function repeatChar(char: string, count: number): string {
+  if (count <= 0) return "";
+  return new Array(count).fill(char).join("");
+}
+
+function fitLine(value: string, width: number): string {
+  const clean = normalizeDisplayText(value);
+  return clipForUi(clean, width).padEnd(width);
+}
+
+function wrapForUi(value: string, width: number): string[] {
+  const clean = normalizeDisplayText(value);
+  if (!clean) return [""];
+  if (width <= 1) return [clipForUi(clean, 1)];
+
+  const words = clean.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    if (!word) continue;
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= width) {
+      current = candidate;
+      continue;
+    }
+
+    if (current) lines.push(current);
+
+    if (word.length <= width) {
+      current = word;
+      continue;
+    }
+
+    let remaining = word;
+    while (remaining.length > width) {
+      lines.push(remaining.slice(0, width));
+      remaining = remaining.slice(width);
+    }
+    current = remaining;
+  }
+
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatTokenStat(tokens?: number, durationMs?: number): string {
+  if (typeof tokens !== "number" || tokens <= 0) return "";
+  const parts: string[] = [`${tokens} tok`];
+  if (typeof durationMs === "number" && durationMs > 0) {
+    const seconds = durationMs / 1000;
+    if (seconds >= 0.1) {
+      const rate = tokens / seconds;
+      parts.push(`${seconds.toFixed(seconds < 10 ? 1 : 0)}s`);
+      if (rate >= 1) parts.push(`${rate.toFixed(rate < 10 ? 1 : 0)} t/s`);
+    }
+  }
+  return parts.join(" · ");
+}
+
+/**
+ * Lightweight markdown-ish formatter for terminal display.
+ * Returns plain-text lines with inline markers stripped and block structure preserved.
+ */
+function renderMarkdownLines(text: string): string[] {
+  const out: string[] = [];
+  const raw = text.replace(/\r\n?/g, "\n").split("\n");
+  let inCodeFence = false;
+  let prevBlank = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    let line = raw[i] ?? "";
+
+    // Fenced code blocks ``` ... ```
+    if (/^\s*```/.test(line)) {
+      inCodeFence = !inCodeFence;
+      out.push(inCodeFence ? "┄┄ code ┄┄" : "┄┄ end ┄┄");
+      prevBlank = false;
+      continue;
+    }
+
+    if (inCodeFence) {
+      out.push(`  ${line}`);
+      prevBlank = false;
+      continue;
+    }
+
+    // Headings
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      const text = heading[2]?.trim() ?? "";
+      out.push(`▎ ${text.toUpperCase()}`);
+      prevBlank = false;
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
+      out.push("─────");
+      prevBlank = false;
+      continue;
+    }
+
+    // Blockquote
+    const quote = line.match(/^\s*>\s?(.*)$/);
+    if (quote) {
+      line = `┃ ${quote[1] ?? ""}`;
+    }
+
+    // Bullets: -, *, +
+    const bullet = line.match(/^(\s*)[-*+]\s+(.*)$/);
+    if (bullet) {
+      const indent = bullet[1] ?? "";
+      line = `${indent}• ${bullet[2] ?? ""}`;
+    } else {
+      // Numbered list keeps its number, just normalize spacing
+      const numbered = line.match(/^(\s*)(\d+)[.)]\s+(.*)$/);
+      if (numbered) {
+        line = `${numbered[1] ?? ""}${numbered[2]}. ${numbered[3] ?? ""}`;
+      }
+    }
+
+    // Strip inline emphasis: **bold**, __bold__, *italic*, _italic_
+    line = line.replace(/\*\*([^*]+)\*\*/g, "$1");
+    line = line.replace(/__([^_]+)__/g, "$1");
+    line = line.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1$2");
+    line = line.replace(/(^|[^_])_([^_\n]+)_/g, "$1$2");
+
+    // Inline code: `code` → ⎡code⎤
+    line = line.replace(/`([^`]+)`/g, "⎡$1⎤");
+
+    // Strip simple links [text](url) → text (url)
+    line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)");
+
+    if (!line.trim()) {
+      if (!prevBlank && out.length > 0) {
+        out.push("");
+        prevBlank = true;
+      }
+      continue;
+    }
+    out.push(line);
+    prevBlank = false;
+  }
+
+  // Trim trailing blank
+  while (out.length > 0 && !out[out.length - 1]?.trim()) out.pop();
+  return out.length > 0 ? out : [""];
+}
+
+interface ChatMessageLike {
+  type: "user" | "assistant" | "system" | "error" | "success";
+  text: string;
+  ts: number;
+  model?: string;
+  tokens?: number;
+  promptTokens?: number;
+  durationMs?: number;
+}
+
+interface ChatRenderRow {
+  tone: keyof typeof THEME;
+  text: string;
+}
+
+/**
+ * Convert a chat message into a sequence of styled rows.
+ * Header line carries timestamp + author + optional token stats.
+ * Body lines are markdown-rendered and indented for legibility.
+ */
+function renderChatMessage(msg: ChatMessageLike): ChatRenderRow[] {
+  const ts = formatTimestamp(msg.ts);
+  const rows: ChatRenderRow[] = [];
+
+  let icon: string;
+  let author: string;
+  let headerTone: keyof typeof THEME;
+  let bodyTone: keyof typeof THEME;
+  let meta = "";
+
+  switch (msg.type) {
+    case "user":
+      icon = "▸";
+      author = "you";
+      headerTone = "accent2";
+      bodyTone = "value";
+      break;
+    case "assistant":
+      icon = "✦";
+      author = msg.model ?? "assistant";
+      headerTone = "accent1";
+      bodyTone = "heading";
+      meta = formatTokenStat(msg.tokens, msg.durationMs);
+      break;
+    case "error":
+      icon = "✕";
+      author = "error";
+      headerTone = "error";
+      bodyTone = "error";
+      break;
+    case "success":
+      icon = "✓";
+      author = "ok";
+      headerTone = "success";
+      bodyTone = "success";
+      break;
+    default:
+      icon = "ℹ";
+      author = "system";
+      headerTone = "info";
+      bodyTone = "muted";
+      break;
+  }
+
+  const headerText = meta
+    ? `${icon} ${ts}  ${author}  ·  ${meta}`
+    : `${icon} ${ts}  ${author}`;
+  rows.push({ tone: headerTone, text: headerText });
+
+  const body = msg.type === "user" ? msg.text.split("\n") : renderMarkdownLines(msg.text);
+  for (const line of body) {
+    rows.push({ tone: bodyTone, text: line ? `  ${line}` : "" });
+  }
+  return rows;
+}
+
+function createPanel(title: string, rows: Array<{ tone: keyof typeof THEME; text: string }>, width: number): StyledLine[] {
+  const inner = Math.max(18, width - 4);
+  const titlePrefix = `─ ${title} `;
+  const titleFill = Math.max(0, inner - titlePrefix.length);
+
+  const lines: StyledLine[] = [
+    { tone: "primary", text: `┌${titlePrefix}${repeatChar("─", titleFill)}┐` },
+  ];
+
+  for (const row of rows) {
+    for (const wrapped of wrapForUi(row.text, inner)) {
+      lines.push({ tone: row.tone, text: `│${fitLine(wrapped, inner)}│` });
+    }
+  }
+
+  lines.push({ tone: "primary", text: `└${repeatChar("─", inner)}┘` });
+  return lines;
+}
+
+/**
+ * Build a fixed-height panel with vertical scroll support.
+ * `contentHeight` is the number of body rows inside the panel (excluding borders).
+ * `scrollOffset` is lines from the bottom (0 = pinned to latest).
+ */
+function createScrollablePanel(
+  title: string,
+  rows: Array<{ tone: keyof typeof THEME; text: string }>,
+  width: number,
+  contentHeight: number,
+  scrollOffset: number,
+): { lines: StyledLine[]; totalWrapped: number; clampedOffset: number } {
+  const inner = Math.max(18, width - 4);
+  const safeHeight = Math.max(1, contentHeight);
+
+  // Pre-wrap every row so scroll math works on rendered lines
+  const wrapped: StyledLine[] = [];
+  for (const row of rows) {
+    for (const piece of wrapForUi(row.text, inner)) {
+      wrapped.push({ tone: row.tone, text: piece });
+    }
+  }
+
+  const total = wrapped.length;
+  const maxOffset = Math.max(0, total - safeHeight);
+  const offset = Math.max(0, Math.min(scrollOffset, maxOffset));
+  const end = total - offset;
+  const start = Math.max(0, end - safeHeight);
+  const slice = wrapped.slice(start, end);
+
+  // Pad to fill height for stable layout
+  while (slice.length < safeHeight) slice.push({ tone: "muted", text: "" });
+
+  // Title with scroll indicator
+  const scrollSuffix = total > safeHeight
+    ? offset > 0
+      ? ` ↑${offset}/${maxOffset}`
+      : ` ▼`
+    : "";
+  const titlePrefix = `─ ${title}${scrollSuffix} `;
+  const titleFill = Math.max(0, inner - titlePrefix.length);
+
+  const lines: StyledLine[] = [
+    { tone: "primary", text: `┌${titlePrefix}${repeatChar("─", titleFill)}┐` },
+  ];
+  for (const row of slice) {
+    lines.push({ tone: row.tone, text: `│${fitLine(row.text, inner)}│` });
+  }
+  lines.push({ tone: "primary", text: `└${repeatChar("─", inner)}┘` });
+
+  return { lines, totalWrapped: total, clampedOffset: offset };
+}
+
 interface StyledLine {
   tone: keyof typeof THEME;
   text: string;
+  /** Optional colored segments rendered left-to-right; when present, overrides `tone+text`. */
+  segments?: Array<{ tone: keyof typeof THEME; text: string }>;
 }
 
 /**
@@ -213,11 +537,34 @@ function formatStatus(status: "running" | "stopped" | "loading" | "ready" | "err
 
 function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scriptPath, initialToken, onExit }: AppProps) {
   const initialStatus = useMemo(() => detectAutostartStatus(), []);
+  // Hydrate persisted provider/ollama/copilot config so users don't re-pick on every launch.
+  const initialProvider = useMemo<LlmProvider | null>(() => {
+    const persisted = readPersistedProviderConfig();
+    if (persisted.ollama) {
+      process.env.OLLAMA_HOST = persisted.ollama.host;
+      process.env.OLLAMA_PORT = String(persisted.ollama.port);
+      process.env.OLLAMA_MODEL = persisted.ollama.model;
+    }
+    if (persisted.copilot) {
+      process.env.SPACEBOT_COPILOT_MODEL = persisted.copilot.model;
+      process.env.SPACEBOT_COPILOT_VIA = persisted.copilot.via;
+    }
+    const envProvider = process.env.SPACEBOT_LLM_PROVIDER;
+    if (envProvider === "ollama" || envProvider === "copilot") return envProvider;
+    if (persisted.provider === "ollama" || persisted.provider === "copilot") {
+      process.env.SPACEBOT_LLM_PROVIDER = persisted.provider;
+      return persisted.provider;
+    }
+    return null;
+  }, []);
   const [autostartStatus, setAutostartStatus] = useState(initialStatus);
+  // Default to "skip" so users can dismiss with a single Enter — autostart is recommended, not required.
   const [promptSelection, setPromptSelection] = useState(0);
-  const [mode, setMode] = useState<"prompt" | "dashboard">(
-    shouldPromptForAutostart(initialStatus) ? "prompt" : "dashboard",
-  );
+  const [mode, setMode] = useState<"prompt" | "provider-setup" | "dashboard">(() => {
+    if (shouldPromptForAutostart(initialStatus)) return "prompt";
+    if (!initialProvider) return "provider-setup";
+    return "dashboard";
+  });
   const [runnerState, setRunnerState] = useState("Preparing runner process...");
   const [serviceMessage, setServiceMessage] = useState(normalizeDisplayText(initialStatus.detail));
   const [logs, setLogs] = useState<string[]>([
@@ -241,17 +588,82 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const [ollamaRunning, setOllamaRunning] = useState(false);
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
   const [ollamaDetecting, setOllamaDetecting] = useState(true);
+
+  // Copilot state
+  const [copilotAvailability, setCopilotAvailability] = useState<CopilotAvailability | null>(null);
+  const [activeCopilotConfig, setActiveCopilotConfig] = useState<CopilotConfig | null>(() => getCopilotConfig());
+
+  // Active LLM provider — null means user hasn't picked yet.
+  const [activeProvider, setActiveProvider] = useState<LlmProvider | null>(initialProvider);
+  const providerPromptShownRef = useRef(false);
+
+  // Provider setup wizard state
+  const [providerSetupStep, setProviderSetupStep] = useState<"provider" | "model" | "copilot-model">("provider");
+  const [providerSetupSelection, setProviderSetupSelection] = useState(0);
+  const [modelSetupSelection, setModelSetupSelection] = useState(0);
+  const [copilotModelSetupSelection, setCopilotModelSetupSelection] = useState(0);
+  const [providerSetupError, setProviderSetupError] = useState<string | null>(null);
   
   // Chat interface state
   interface ChatMessage {
-    type: "user" | "system" | "error" | "success";
+    type: "user" | "assistant" | "system" | "error" | "success";
     text: string;
+    ts: number;
+    model?: string;
+    tokens?: number;
+    promptTokens?: number;
+    durationMs?: number;
   }
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { type: "system", text: "Welcome to SpaceBot Runner. Type /help for available commands." },
+    { type: "system", text: "Welcome to SpaceBot Runner. Type /help for available commands.", ts: Date.now() },
   ]);
+  const [chatScrollOffset, setChatScrollOffset] = useState(0);
   const [chatInput, setChatInput] = useState("");
-  const [chatMode, setChatMode] = useState(false); // Toggle chat at bottom
+  const [chatMode, setChatMode] = useState(!shouldPromptForAutostart(initialStatus));
+  const [chatBusy, setChatBusy] = useState(false);
+  const [activeOllamaConfig, setActiveOllamaConfig] = useState(() => getOllamaConfig());
+  const [terminalSize, setTerminalSize] = useState(() => ({
+    width: process.stdout.columns ?? 120,
+    height: process.stdout.rows ?? 36,
+  }));
+  const [panelsVisible, setPanelsVisible] = useState(true);
+
+  // Exit confirmation (double Ctrl+C / q to exit)
+  const [exitConfirmPending, setExitConfirmPending] = useState(false);
+  const exitConfirmTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Ephemeral status message shown in unified status bar (auto-clears)
+  const [statusFlash, setStatusFlash] = useState<{ tone: keyof typeof THEME; text: string } | null>(null);
+  const statusFlashTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const flashStatus = (tone: keyof typeof THEME, text: string, ms = 3000) => {
+    setStatusFlash({ tone, text });
+    if (statusFlashTimerRef.current) clearTimeout(statusFlashTimerRef.current);
+    statusFlashTimerRef.current = setTimeout(() => setStatusFlash(null), ms);
+  };
+
+  const requestExit = () => {
+    if (exitConfirmPending) {
+      stopRunnerChild();
+      onExit();
+      return;
+    }
+    setExitConfirmPending(true);
+    flashStatus("warning", "⚠  Press Ctrl+C again to exit · runner stays online if installed as service", 4000);
+    if (exitConfirmTimerRef.current) clearTimeout(exitConfirmTimerRef.current);
+    exitConfirmTimerRef.current = setTimeout(() => setExitConfirmPending(false), 4000);
+  };
+
+  /** Append a chat message with a timestamp and snap the conversation to the latest. */
+  const addChatMessage = (msg: Omit<ChatMessage, "ts"> & { ts?: number }) => {
+    const stamped: ChatMessage = { ts: Date.now(), ...msg };
+    setChatMessages((prev) => {
+      const next = [...prev, stamped];
+      // Keep history bounded to avoid runaway memory
+      return next.length > 500 ? next.slice(-500) : next;
+    });
+    setChatScrollOffset(0);
+  };
 
   // Spinner animation loop
   useEffect(() => {
@@ -261,9 +673,25 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     return () => clearInterval(interval);
   }, []);
 
-  // Detect Ollama on startup
+  useEffect(() => {
+    const handleResize = () => {
+      setTerminalSize({
+        width: process.stdout.columns ?? 120,
+        height: process.stdout.rows ?? 36,
+      });
+    };
+
+    process.stdout.on("resize", handleResize);
+    return () => {
+      process.stdout.off("resize", handleResize);
+    };
+  }, []);
+
+  // Detect Ollama and Copilot on startup, then guide selection if needed.
   useEffect(() => {
     (async () => {
+      let ollamaReady = false;
+      let ollamaModelCount = 0;
       try {
         const installed = await detectOllamaInstalled();
         setOllamaInstalled(installed);
@@ -275,16 +703,9 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
           if (running) {
             const models = await getOllamaModels();
             setOllamaModels(models);
-
-            if (models.length > 0 && !getOllamaConfig()) {
-              setChatMessages((prev) => [
-                ...prev,
-                {
-                  type: "system",
-                  text: `Ollama detected with ${models.length} model(s). Use /models to list or /connect to set up.`,
-                },
-              ]);
-            }
+            setActiveOllamaConfig(getOllamaConfig());
+            ollamaModelCount = models.length;
+            ollamaReady = models.length > 0;
           }
         }
       } catch {
@@ -292,19 +713,32 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       } finally {
         setOllamaDetecting(false);
       }
+
+      let copilot: CopilotAvailability | null = null;
+      try {
+        copilot = await detectCopilotAvailability();
+        setCopilotAvailability(copilot);
+      } catch {
+        // Detection is best-effort.
+      }
+
+      // Detection done; if user is in the provider-setup wizard, the picker will render the fresh values automatically.
+      // No inline chat picker on first run — the dedicated wizard handles guided selection.
+      providerPromptShownRef.current = true;
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const autostartOptions: PromptOption[] = [
     {
-      id: "install",
-      title: `Install ${formatInstallKind(autostartStatus.installKind)}`,
-      description: "Persist the current SPACEBOT_/RUNNER_ environment so the runner starts automatically.",
-    },
-    {
       id: "skip",
       title: "Skip for now",
-      description: "Start this session without changing startup behavior.",
+      description: "Continue to the dashboard. You can install autostart later with `i` or /autostart.",
+    },
+    {
+      id: "install",
+      title: `Install ${formatInstallKind(autostartStatus.installKind)} (recommended)`,
+      description: "Persist the current SPACEBOT_/RUNNER_ environment so the runner starts automatically.",
     },
     {
       id: "never",
@@ -350,7 +784,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     const effectiveToken = (tokenOverride || runnerToken).trim();
 
     if (!effectiveToken || !effectiveToken.startsWith("sbr_")) {
-      setRunnerState("No runner token configured. Press k to fetch one from the production site.");
+      setRunnerState("No runner token configured. Use /token to fetch one from the production site.");
       return;
     }
 
@@ -384,74 +818,398 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       setChildRunning(false);
       setRunnerState(signal
         ? `Runner exited after ${signal}.`
-        : `Runner exited with code ${code ?? 0}. Press r to restart.`);
+        : `Runner exited with code ${code ?? 0}. Run /restart to start it again.`);
     });
   }
 
-  function handleChatCommand(input: string) {
+  async function handleChatCommand(input: string) {
     const text = input.trim();
-    
-    // Add user message
-    setChatMessages((prev) => [...prev, { type: "user", text }]);
+    if (!text) return;
+
+    // Collapse panels on first user message
+    if (chatMessages.every((m) => m.type !== "user")) {
+      setPanelsVisible(false);
+    }
+
+    setChatMessages((prev) => {
+      const next = [...prev, { type: "user" as const, text, ts: Date.now() }];
+      return next.length > 500 ? next.slice(-500) : next;
+    });
+    setChatScrollOffset(0);
     setChatInput("");
 
-    // Parse command
     if (text === "/help") {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          type: "system",
-          text: "/help - Show this message\n/models - List Ollama models\n/connect <model> - Connect to a model\n/config - Show current setup\n/clear - Clear chat",
-        },
-      ]);
-    } else if (text === "/models") {
-      if (!ollamaRunning) {
-        setChatMessages((prev) => [...prev, { type: "error", text: "Ollama is not running" }]);
-      } else if (ollamaModels.length === 0) {
-        setChatMessages((prev) => [...prev, { type: "error", text: "No models found in Ollama" }]);
-      } else {
-        const modelList = ollamaModels
-          .map((m) => `  • ${m.name} (${formatBytes(m.size)})`)
-          .join("\n");
-        setChatMessages((prev) => [...prev, { type: "system", text: `Available models:\n${modelList}` }]);
+      const helpText = [
+        "### AI Provider",
+        "- `/providers`           Show detected backends (Ollama, Copilot)",
+        "- `/provider <name>`     Switch backend: `ollama` or `copilot`",
+        "",
+        "### Ollama",
+        "- `/models`             List available models (Ollama or Copilot, depending on active provider)",
+        "- `/connect <model>`    Connect to a specific model",
+        "- `/config`             Show active provider configuration",
+        "- `/clear`              Clear conversation history",
+        "",
+        "### Runner",
+        "- `/token`               Negotiate a runner token via browser",
+        "- `/autostart`           Install autostart service",
+        "- `/restart`             Restart the runner child process",
+        "- `/quit`                Exit SpaceBot Runner",
+        "",
+        "### Interface",
+        "- `/panels`              Toggle side panels",
+        "- `/hide-panels`         Hide side panels (chat-focused)",
+        "- `/show-panels`         Show all panels",
+        "",
+        "### Keyboard",
+        "- **PgUp / PgDn**        Scroll conversation by page",
+        "- **Shift+Up / Down**    Scroll conversation by line",
+        "- **Ctrl+End**           Jump to latest message",
+        "- **Esc**                Unfocus chat input",
+        "- **Tab**                Toggle panels",
+        "- **Ctrl+C ×2**          Exit",
+      ].join("\n");
+      addChatMessage({ type: "system", text: helpText });
+      return;
+    }
+
+    if (text === "/panels" || text === "/toggle-panels") {
+      setPanelsVisible((prev) => !prev);
+      addChatMessage({ type: "system", text: `Panels ${!panelsVisible ? "hidden" : "shown"}.` });
+      return;
+    }
+
+    if (text === "/show-panels") {
+      setPanelsVisible(true);
+      addChatMessage({ type: "system", text: "Panels shown." });
+      return;
+    }
+
+    if (text === "/hide-panels") {
+      setPanelsVisible(false);
+      addChatMessage({ type: "system", text: "Panels hidden." });
+      return;
+    }
+
+    if (text === "/models") {
+      if (activeProvider === "copilot") {
+        const lines: string[] = ["### Copilot models", "_Cost = GitHub premium-request multiplier per prompt._", ""];
+        const current = activeCopilotConfig?.model ?? DEFAULT_COPILOT_MODEL;
+        for (const m of COPILOT_MODELS) {
+          const mark = m.id === current ? "✓" : " ";
+          lines.push(`- ${mark} \`${m.id}\` — ${formatCopilotMultiplier(m.multiplier)} — _${m.label}_`);
+        }
+        lines.push("");
+        lines.push("> Switch with `/connect <id>` (e.g. `/connect auto` or `/connect gpt-5-mini`).");
+        addChatMessage({ type: "system", text: lines.join("\n") });
+        return;
       }
-    } else if (text.startsWith("/connect ")) {
+      if (!ollamaRunning) {
+        addChatMessage({ type: "error", text: "Ollama is not running" });
+        return;
+      }
+
+      const models = await getOllamaModels();
+      setOllamaModels(models);
+      if (models.length === 0) {
+        addChatMessage({ type: "error", text: "No models found in Ollama" });
+        return;
+      }
+
+      const modelList = models
+        .map((m) => `- \`${m.name}\` _(${formatBytes(m.size)})_`)
+        .join("\n");
+      addChatMessage({ type: "system", text: `### Available models\n${modelList}` });
+      return;
+    }
+
+    if (text.startsWith("/connect ")) {
       const model = text.slice(9).trim();
       if (!model) {
-        setChatMessages((prev) => [...prev, { type: "error", text: "Usage: /connect <model>" }]);
-      } else if (!ollamaRunning) {
-        setChatMessages((prev) => [...prev, { type: "error", text: "Ollama is not running" }]);
-      } else {
-        storeOllamaConfig({ host: "localhost", port: 11434, model });
-        setChatMessages((prev) => [...prev, { type: "success", text: `Connected to model: ${model}` }]);
+        addChatMessage({ type: "error", text: "Usage: /connect <model>" });
+        return;
       }
-    } else if (text === "/config") {
-      const config = getOllamaConfig();
-      if (config) {
-        setChatMessages((prev) => [
-          ...prev,
-          {
-            type: "system",
-            text: `Ollama Config:\nHost: ${config.host}\nPort: ${config.port}\nModel: ${config.model}`,
-          },
-        ]);
-      } else {
-        setChatMessages((prev) => [...prev, { type: "error", text: "No Ollama config set up yet" }]);
+
+      if (activeProvider === "copilot") {
+        const c = copilotAvailability;
+        if (!c || (!c.copilotCli && !(c.ghCopilot && c.ghAuthed))) {
+          addChatMessage({ type: "error", text: "Copilot CLI is not available. Run `/providers` for status." });
+          return;
+        }
+        const via: "copilot" | "gh" = c.copilotCli ? "copilot" : "gh";
+        const cfg: CopilotConfig = { model, via };
+        storeCopilotConfig(cfg);
+        setActiveCopilotConfig(cfg);
+        writePersistedProviderConfig({ provider: "copilot", copilot: cfg });
+        const known = COPILOT_MODELS.find((m) => m.id === model);
+        addChatMessage({
+          type: "success",
+          text: known
+            ? `Copilot model set to \`${model}\` · ${formatCopilotMultiplier(known.multiplier)} _(${known.label})_.`
+            : `Copilot model set to \`${model}\` _(custom — cost unknown; make sure the CLI accepts this id)_.`,
+        });
+        return;
       }
-    } else if (text === "/clear") {
-      setChatMessages([]);
-    } else if (text.startsWith("/")) {
-      setChatMessages((prev) => [...prev, { type: "error", text: `Unknown command: ${text}. Type /help for help.` }]);
-    } else {
-      setChatMessages((prev) => [...prev, { type: "system", text: "Commands start with /. Type /help for available commands." }]);
+
+      if (!ollamaRunning) {
+        addChatMessage({ type: "error", text: "Ollama is not running" });
+        return;
+      }
+
+      let models = ollamaModels;
+      if (models.length === 0) {
+        models = await getOllamaModels();
+        setOllamaModels(models);
+      }
+      if (!models.some((m) => m.name === model)) {
+        addChatMessage({ type: "error", text: `Model not found: ${model}. Use /models first.` });
+        return;
+      }
+
+      const config = { host: "localhost", port: 11434, model };
+      storeOllamaConfig(config);
+      setActiveOllamaConfig(config);
+      if (!activeProvider) {
+        setActiveProvider("ollama");
+        process.env.SPACEBOT_LLM_PROVIDER = "ollama";
+      }
+      writePersistedProviderConfig({ provider: "ollama", ollama: config });
+      addChatMessage({ type: "success", text: `Connected to model: \`${model}\` (provider: ollama)` });
+      return;
     }
+
+    if (text === "/config") {
+      if (activeProvider === "copilot") {
+        const c = copilotAvailability;
+        const cfg = activeCopilotConfig ?? getCopilotConfig();
+        const modelId = cfg?.model ?? DEFAULT_COPILOT_MODEL;
+        const known = COPILOT_MODELS.find((m) => m.id === modelId);
+        const lines = [
+          "### Copilot Config",
+          `- **Active provider**: \`copilot\``,
+          `- **Model**: \`${modelId}\`${cfg ? "" : " _(default)_"}`,
+          `- **Cost**: ${known ? formatCopilotMultiplier(known.multiplier) + " premium-request multiplier" : "_unknown (custom model id)_"}`,
+          `- **CLI path**: ${c?.copilotCli ? "standalone `copilot`" : c?.ghCopilot && c?.ghAuthed ? "`gh copilot` extension" : "_unavailable_"}`,
+        ];
+        addChatMessage({ type: "system", text: lines.join("\n") });
+        return;
+      }
+      const config = activeOllamaConfig ?? getOllamaConfig();
+      if (!config) {
+        addChatMessage({ type: "error", text: "No Ollama config set up yet" });
+        return;
+      }
+      addChatMessage({
+        type: "system",
+        text: `### Ollama Config\n- **Active provider**: \`ollama\`\n- **Host**: ${config.host}\n- **Port**: ${config.port}\n- **Model**: \`${config.model}\``,
+      });
+      return;
+    }
+
+    if (text === "/token") {
+      await negotiateToken();
+      addChatMessage({ type: "success", text: "Token negotiation completed." });
+      return;
+    }
+
+    if (text === "/autostart") {
+      installFromDashboard();
+      addChatMessage({ type: "success", text: "Autostart installation attempted." });
+      return;
+    }
+
+    if (text === "/restart") {
+      stopRunnerChild();
+      setTimeout(() => {
+        startRunnerChild();
+      }, 150);
+      addChatMessage({ type: "success", text: "Restarting runner child process." });
+      return;
+    }
+
+    if (text === "/quit") {
+      requestExit();
+      return;
+    }
+
+    if (text === "/clear") {
+      setChatMessages([{ type: "system", text: "Chat cleared. Type /help for commands.", ts: Date.now() }]);
+      setChatScrollOffset(0);
+      return;
+    }
+
+    if (text === "/providers") {
+      const lines: string[] = ["### Detected providers"];
+      lines.push(`- **Ollama**: ${ollamaRunning ? `running · ${ollamaModels.length} model(s)` : ollamaInstalled ? "installed but not running" : "not detected"}`);
+      if (copilotAvailability) {
+        const c = copilotAvailability;
+        const ghPart = c.ghCopilot ? (c.ghAuthed ? "ready" : "unauthed (run `gh auth login`)") : "not installed";
+        lines.push(`- **GitHub Copilot CLI**: ${c.copilotCli ? "standalone ready" : "not installed"}`);
+        lines.push(`- **gh copilot extension**: ${ghPart}`);
+      }
+      lines.push("");
+      lines.push(`> Active: \`${activeProvider ?? "none"}\` · switch with \`/provider ollama\` or \`/provider copilot\``);
+      addChatMessage({ type: "system", text: lines.join("\n") });
+      return;
+    }
+
+    if (text.startsWith("/provider")) {
+      const arg = text.slice("/provider".length).trim().toLowerCase();
+      if (!arg) {
+        addChatMessage({
+          type: "system",
+          text: `Active provider: \`${activeProvider ?? "none"}\`. Switch with \`/provider ollama\` or \`/provider copilot\`.`,
+        });
+        return;
+      }
+      if (arg !== "ollama" && arg !== "copilot") {
+        addChatMessage({ type: "error", text: "Usage: /provider <ollama|copilot>" });
+        return;
+      }
+      if (arg === "ollama") {
+        setActiveProvider("ollama");
+        process.env.SPACEBOT_LLM_PROVIDER = "ollama";
+        writePersistedProviderConfig({ provider: "ollama" });
+        if (!ollamaRunning) {
+          addChatMessage({ type: "error", text: "Ollama provider selected, but Ollama is not running. Start it, then `/models` and `/connect <model>`." });
+        } else if (!(activeOllamaConfig ?? getOllamaConfig())?.model) {
+          addChatMessage({ type: "success", text: "Switched to Ollama. Use `/models` then `/connect <model>` to pick a model." });
+        } else {
+          addChatMessage({ type: "success", text: `Switched to Ollama (\`${(activeOllamaConfig ?? getOllamaConfig())!.model}\`).` });
+        }
+        return;
+      }
+      // copilot
+      setActiveProvider("copilot");
+      process.env.SPACEBOT_LLM_PROVIDER = "copilot";
+      writePersistedProviderConfig({ provider: "copilot" });
+      let copilot = copilotAvailability;
+      if (!copilot) {
+        copilot = await detectCopilotAvailability();
+        setCopilotAvailability(copilot);
+      }
+      if (!copilot.copilotCli && !copilot.ghCopilot) {
+        addChatMessage({
+          type: "error",
+          text: "Copilot selected, but no Copilot CLI was found. Install one of:\n- `gh extension install github/gh-copilot` (with `gh auth login`)\n- Standalone `copilot` CLI",
+        });
+        return;
+      }
+      if (copilot.ghCopilot && !copilot.ghAuthed && !copilot.copilotCli) {
+        addChatMessage({ type: "error", text: "`gh copilot` is installed but `gh` is not authenticated. Run `gh auth login`, then retry." });
+        return;
+      }
+      addChatMessage({ type: "success", text: `Switched to GitHub Copilot _(${copilot.summary})_.` });
+      return;
+    }
+
+    if (text.startsWith("/")) {
+      addChatMessage({ type: "error", text: `Unknown command: ${text}. Type /help for help.` });
+      return;
+    }
+
+    // ---- LLM dispatch ----
+    // If no provider chosen yet, prompt the user.
+    if (!activeProvider) {
+      addChatMessage({
+        type: "error",
+        text: "No AI provider selected. Run `/providers` to see what's available, then `/provider ollama` or `/provider copilot`.",
+      });
+      return;
+    }
+
+    if (activeProvider === "copilot") {
+      let copilot = copilotAvailability;
+      if (!copilot) {
+        copilot = await detectCopilotAvailability();
+        setCopilotAvailability(copilot);
+      }
+      if (!copilot.copilotCli && !copilot.ghCopilot) {
+        addChatMessage({
+          type: "error",
+          text: "GitHub Copilot CLI is not installed. Install it or switch to Ollama with `/provider ollama`.",
+        });
+        return;
+      }
+      setChatBusy(true);
+      const cfg = activeCopilotConfig ?? getCopilotConfig();
+      const model = cfg?.model ?? DEFAULT_COPILOT_MODEL;
+      const preferVia: "copilot" | "gh" =
+        cfg?.via ?? (copilot.copilotCli ? "copilot" : "gh");
+      const result = await runCopilotPrompt(text, copilot, { model, preferVia });
+      setChatBusy(false);
+      if (!result.ok) {
+        addChatMessage({
+          type: "error",
+          text: `Copilot: ${result.error ?? "unknown error"}\n_Fallback: try \`/provider ollama\` if available._`,
+        });
+        return;
+      }
+      addChatMessage({
+        type: "assistant",
+        text: result.text ?? "",
+        model: `copilot · ${model}`,
+        durationMs: result.durationMs,
+      });
+      return;
+    }
+
+    // Ollama path
+    if (!ollamaRunning) {
+      addChatMessage({
+        type: "error",
+        text: "Ollama is not running. Start it, then use `/models` and `/connect`. Or switch with `/provider copilot`.",
+      });
+      return;
+    }
+
+    const config = activeOllamaConfig ?? getOllamaConfig();
+    if (!config?.model) {
+      addChatMessage({ type: "error", text: "No model selected. Use `/models` then `/connect <model>`." });
+      return;
+    }
+
+    setChatBusy(true);
+    const startedAt = Date.now();
+    const result = await generateOllamaResponse({
+      host: config.host,
+      port: config.port,
+      model: config.model,
+      prompt: text,
+    });
+    setChatBusy(false);
+
+    if (!result.ok) {
+      const errorResult = result as { ok: false; error: string };
+      addChatMessage({
+        type: "error",
+        text: `Ollama: ${errorResult.error}${copilotAvailability && (copilotAvailability.copilotCli || copilotAvailability.ghCopilot) ? "\n_Fallback: try `/provider copilot`._" : ""}`,
+      });
+      return;
+    }
+
+    const durationMs = result.stats.totalDurationMs ?? Date.now() - startedAt;
+    addChatMessage({
+      type: "assistant",
+      text: result.text,
+      model: result.stats.model ?? config.model,
+      tokens: result.stats.evalCount,
+      promptTokens: result.stats.promptEvalCount,
+      durationMs,
+    });
   }
 
   function applyPromptChoice(choice: PromptChoice) {
     if (choice === "install") {
       if (!runnerToken || !runnerToken.startsWith("sbr_")) {
         setServiceMessage(normalizeDisplayText("A runner token is required before installing auto-start. Press k first."));
-        setMode("dashboard");
+        if (!activeProvider) {
+          setMode("provider-setup");
+          setProviderSetupStep("provider");
+          setProviderSetupSelection(0);
+        } else {
+          setMode("dashboard");
+        }
         return;
       }
 
@@ -482,8 +1240,293 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       appendLogLines(["Skipped autostart installation for this session."]);
     }
 
+    // After autostart decision, route to provider setup if no provider yet, else dashboard.
+    if (!activeProvider) {
+      setMode("provider-setup");
+      setProviderSetupStep("provider");
+      setProviderSetupSelection(0);
+    } else {
+      setMode("dashboard");
+    }
+  }
+
+  // -------- Provider Setup Wizard --------
+
+  interface ProviderOption {
+    id: "ollama" | "copilot" | "skip";
+    title: string;
+    status: string;
+    statusTone: keyof typeof THEME;
+    selectable: boolean; // whether Enter advances/confirms
+    hint?: string;
+  }
+
+  const buildProviderOptions = (): ProviderOption[] => {
+    const opts: ProviderOption[] = [];
+
+    // Ollama row
+    if (ollamaDetecting) {
+      opts.push({
+        id: "ollama",
+        title: "Ollama (local)",
+        status: "detecting...",
+        statusTone: "muted",
+        selectable: false,
+        hint: "Waiting for detection to complete.",
+      });
+    } else if (ollamaRunning && ollamaModels.length > 0) {
+      opts.push({
+        id: "ollama",
+        title: "Ollama (local)",
+        status: `ready · ${ollamaModels.length} model${ollamaModels.length === 1 ? "" : "s"} available`,
+        statusTone: "success",
+        selectable: true,
+        hint: "Press Enter to pick a model.",
+      });
+    } else if (ollamaRunning) {
+      opts.push({
+        id: "ollama",
+        title: "Ollama (local)",
+        status: "running, but no models installed",
+        statusTone: "warning",
+        selectable: true,
+        hint: "Press Enter to select Ollama anyway (pull a model later with `ollama pull`).",
+      });
+    } else if (ollamaInstalled) {
+      opts.push({
+        id: "ollama",
+        title: "Ollama (local)",
+        status: "installed but not running",
+        statusTone: "warning",
+        selectable: true,
+        hint: "Start Ollama (`ollama serve`), then re-detect from /providers.",
+      });
+    } else {
+      opts.push({
+        id: "ollama",
+        title: "Ollama (local)",
+        status: "not detected",
+        statusTone: "error",
+        selectable: false,
+        hint: "Install from https://ollama.com to enable local inference.",
+      });
+    }
+
+    // Copilot row
+    const c = copilotAvailability;
+    if (!c) {
+      opts.push({
+        id: "copilot",
+        title: "GitHub Copilot",
+        status: "detecting...",
+        statusTone: "muted",
+        selectable: false,
+      });
+    } else if (c.copilotCli) {
+      opts.push({
+        id: "copilot",
+        title: "GitHub Copilot",
+        status: "ready · standalone `copilot` CLI",
+        statusTone: "success",
+        selectable: true,
+        hint: "Press Enter to select.",
+      });
+    } else if (c.ghCopilot && c.ghAuthed) {
+      opts.push({
+        id: "copilot",
+        title: "GitHub Copilot",
+        status: "ready · gh extension",
+        statusTone: "success",
+        selectable: true,
+        hint: "Press Enter to select.",
+      });
+    } else if (c.ghCopilot) {
+      opts.push({
+        id: "copilot",
+        title: "GitHub Copilot",
+        status: "needs `gh auth login`",
+        statusTone: "warning",
+        selectable: false,
+        hint: "Authenticate gh, then re-launch.",
+      });
+    } else {
+      opts.push({
+        id: "copilot",
+        title: "GitHub Copilot",
+        status: "not detected",
+        statusTone: "error",
+        selectable: false,
+        hint: "Install `gh extension install github/gh-copilot` or the standalone `copilot` CLI.",
+      });
+    }
+
+    opts.push({
+      id: "skip",
+      title: "Skip for now",
+      status: "decide later",
+      statusTone: "muted",
+      selectable: true,
+      hint: "Continue to the dashboard. Pick a provider any time with /provider.",
+    });
+
+    return opts;
+  };
+
+  function selectProviderFromWizard(id: "ollama" | "copilot" | "skip") {
+    setProviderSetupError(null);
+    if (id === "skip") {
+      setMode("dashboard");
+      return;
+    }
+    if (id === "ollama") {
+      if (!ollamaRunning) {
+        // Allow selection even when not running so user is committed; warn them.
+        setActiveProvider("ollama");
+        process.env.SPACEBOT_LLM_PROVIDER = "ollama";
+        writePersistedProviderConfig({ provider: "ollama" });
+        addChatMessage({
+          type: "system",
+          text: "Ollama selected, but it is not running yet. Start it with `ollama serve`, then `/models` and `/connect <model>`.",
+        });
+        setMode("dashboard");
+        return;
+      }
+      if (ollamaModels.length === 0) {
+        setActiveProvider("ollama");
+        process.env.SPACEBOT_LLM_PROVIDER = "ollama";
+        writePersistedProviderConfig({ provider: "ollama" });
+        addChatMessage({
+          type: "system",
+          text: "Ollama selected. No models found — pull one (e.g. `ollama pull llama3.2`), then `/connect <model>`.",
+        });
+        setMode("dashboard");
+        return;
+      }
+      // Models available → go to model selection step
+      setProviderSetupStep("model");
+      setModelSetupSelection(0);
+      return;
+    }
+    // copilot
+    const c = copilotAvailability;
+    if (!c || (!c.copilotCli && !(c.ghCopilot && c.ghAuthed))) {
+      setProviderSetupError("Copilot isn't ready yet. Install the CLI or authenticate gh, then retry.");
+      return;
+    }
+    setActiveProvider("copilot");
+    process.env.SPACEBOT_LLM_PROVIDER = "copilot";
+    writePersistedProviderConfig({ provider: "copilot" });
+    // Advance to model picker
+    setProviderSetupStep("copilot-model");
+    // Pre-select current model (or default)
+    const current = (activeCopilotConfig ?? getCopilotConfig())?.model ?? DEFAULT_COPILOT_MODEL;
+    const idx = COPILOT_MODELS.findIndex((m) => m.id === current);
+    setCopilotModelSetupSelection(idx >= 0 ? idx : 0);
+  }
+
+  function selectModelFromWizard(modelName: string) {
+    const config = { host: "localhost", port: 11434, model: modelName };
+    storeOllamaConfig(config);
+    setActiveOllamaConfig(config);
+    setActiveProvider("ollama");
+    process.env.SPACEBOT_LLM_PROVIDER = "ollama";
+    writePersistedProviderConfig({ provider: "ollama", ollama: config });
+    addChatMessage({ type: "success", text: `Connected to Ollama model: \`${modelName}\`` });
     setMode("dashboard");
   }
+
+  function selectCopilotModelFromWizard(modelId: string) {
+    const c = copilotAvailability;
+    const via: "copilot" | "gh" = c?.copilotCli ? "copilot" : "gh";
+    const cfg: CopilotConfig = { model: modelId, via };
+    storeCopilotConfig(cfg);
+    setActiveCopilotConfig(cfg);
+    writePersistedProviderConfig({ provider: "copilot", copilot: cfg });
+    const known = COPILOT_MODELS.find((m) => m.id === modelId);
+    const costPart = known ? ` · ${formatCopilotMultiplier(known.multiplier)}` : "";
+    const label = known?.label ?? modelId;
+    addChatMessage({ type: "success", text: `Switched to GitHub Copilot · \`${modelId}\`${costPart} _(${label})_.` });
+    setMode("dashboard");
+  }
+
+  function handleProviderSetupKey(key: { name?: string; sequence?: string; shift?: boolean; ctrl?: boolean }) {
+    if (providerSetupStep === "provider") {
+      const opts = buildProviderOptions();
+      if (key.name === "escape") {
+        selectProviderFromWizard("skip");
+        return;
+      }
+      if (key.name === "up") {
+        setProviderSetupSelection((s) => (s + opts.length - 1) % opts.length);
+        setProviderSetupError(null);
+        return;
+      }
+      if (key.name === "down" || key.name === "tab") {
+        setProviderSetupSelection((s) => (s + 1) % opts.length);
+        setProviderSetupError(null);
+        return;
+      }
+      if (key.name === "return") {
+        const chosen = opts[providerSetupSelection];
+        if (!chosen) return;
+        if (!chosen.selectable) {
+          setProviderSetupError(chosen.hint ?? "This option isn't ready. Choose another or Skip.");
+          return;
+        }
+        selectProviderFromWizard(chosen.id);
+        return;
+      }
+      return;
+    }
+
+    // step === "model"  (ollama)
+    if (providerSetupStep === "model") {
+      if (key.name === "escape" || (key.name === "tab" && key.shift)) {
+        setProviderSetupStep("provider");
+        setProviderSetupError(null);
+        return;
+      }
+      if (key.name === "up") {
+        setModelSetupSelection((s) => (s + ollamaModels.length - 1) % Math.max(1, ollamaModels.length));
+        return;
+      }
+      if (key.name === "down" || key.name === "tab") {
+        setModelSetupSelection((s) => (s + 1) % Math.max(1, ollamaModels.length));
+        return;
+      }
+      if (key.name === "return") {
+        const m = ollamaModels[modelSetupSelection];
+        if (m) selectModelFromWizard(m.name);
+        return;
+      }
+      return;
+    }
+
+    // step === "copilot-model"
+    if (providerSetupStep === "copilot-model") {
+      if (key.name === "escape" || (key.name === "tab" && key.shift)) {
+        setProviderSetupStep("provider");
+        setProviderSetupError(null);
+        return;
+      }
+      if (key.name === "up") {
+        setCopilotModelSetupSelection((s) => (s + COPILOT_MODELS.length - 1) % COPILOT_MODELS.length);
+        return;
+      }
+      if (key.name === "down" || key.name === "tab") {
+        setCopilotModelSetupSelection((s) => (s + 1) % COPILOT_MODELS.length);
+        return;
+      }
+      if (key.name === "return") {
+        const m = COPILOT_MODELS[copilotModelSetupSelection];
+        if (m) selectCopilotModelFromWizard(m.id);
+        return;
+      }
+      return;
+    }
+  }
+
+  // -------- end Provider Setup Wizard --------
 
   function installFromDashboard() {
     if (!runnerToken || !runnerToken.startsWith("sbr_")) {
@@ -544,6 +1587,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       startRunnerChild();
     }
 
+    if (mode === "dashboard") {
+      setChatMode(true);
+    }
+
     return () => {
       stopRunnerChild();
     };
@@ -552,13 +1599,69 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   useKeyboard((key) => {
     if (key.repeated) return;
 
-    // Chat mode input handling
-    if (chatMode) {
-      if (key.ctrl && key.name === "c") {
-        setChatMode(false);
+    if (key.ctrl && key.name === "c") {
+      requestExit();
+      return;
+    }
+
+    // Conversation scrolling — works in any mode
+    if (mode === "dashboard") {
+      if (key.name === "pageup") {
+        setChatScrollOffset((o) => o + 5);
+        return;
+      }
+      if (key.name === "pagedown") {
+        setChatScrollOffset((o) => Math.max(0, o - 5));
+        return;
+      }
+      if (key.shift && key.name === "up") {
+        setChatScrollOffset((o) => o + 1);
+        return;
+      }
+      if (key.shift && key.name === "down") {
+        setChatScrollOffset((o) => Math.max(0, o - 1));
+        return;
+      }
+      if (key.name === "home" && key.ctrl) {
+        setChatScrollOffset(99999);
+        return;
+      }
+      if (key.name === "end" && key.ctrl) {
+        setChatScrollOffset(0);
+        return;
+      }
+    }
+
+    if (mode === "prompt") {
+      if (key.name === "up") {
+        setPromptSelection((current) => (current + promptOptions.length - 1) % promptOptions.length);
         return;
       }
 
+      if (key.name === "down" || key.name === "tab") {
+        setPromptSelection((current) => (current + 1) % promptOptions.length);
+        return;
+      }
+
+      if (key.name === "escape") {
+        // Esc = skip autostart
+        applyPromptChoice("skip");
+        return;
+      }
+
+      if (key.name === "return") {
+        applyPromptChoice(promptOptions[promptSelection]?.id ?? "skip");
+        return;
+      }
+    }
+
+    if (mode === "provider-setup") {
+      handleProviderSetupKey(key);
+      return;
+    }
+
+    // Chat mode input handling
+    if (chatMode) {
       if (key.name === "escape") {
         setChatMode(false);
         return;
@@ -566,7 +1669,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
       if (key.name === "return") {
         if (chatInput.trim()) {
-          handleChatCommand(chatInput);
+          void handleChatCommand(chatInput);
         }
         return;
       }
@@ -578,38 +1681,21 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
       // Basic text input (limited to printable characters)
       if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
-        setChatInput((prev) => (prev.length < 80 ? prev + key.sequence : prev));
+        const maxInput = Math.max(32, terminalSize.width - 26);
+        setChatInput((prev) => (prev.length < maxInput ? prev + key.sequence : prev));
       }
       return;
     }
 
     // Normal mode input handling
-    if (key.ctrl && key.name === "c") {
-      stopRunnerChild();
-      onExit();
+    if (mode === "dashboard" && key.sequence === "/") {
+      setChatMode(true);
+      setChatInput("/");
       return;
     }
 
-    if (mode === "prompt") {
-      if (key.name === "up") {
-        setPromptSelection((current) => (current + promptOptions.length - 1) % promptOptions.length);
-        return;
-      }
-
-      if (key.name === "down") {
-        setPromptSelection((current) => (current + 1) % promptOptions.length);
-        return;
-      }
-
-      if (key.name === "return") {
-        applyPromptChoice(promptOptions[promptSelection]?.id ?? "skip");
-        return;
-      }
-    }
-
     if (key.name === "q") {
-      stopRunnerChild();
-      onExit();
+      requestExit();
       return;
     }
 
@@ -641,239 +1727,474 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return;
     }
 
-    // Chat toggle
-    if (key.name === "t" && ollamaRunning) {
-      setChatMode(true);
+    // Toggle panels with Tab or Ctrl+P
+    if ((key.name === "tab" || (key.ctrl && key.name === "p")) && mode === "dashboard") {
+      setPanelsVisible((prev) => !prev);
       return;
     }
+
   });
 
-  const autostartLine = buildKeyValueLine(
-    formatInstallKind(autostartStatus.installKind),
-    autostartStatus.installed ? "installed" : "not installed",
-  );
-  const allowedPathText = allowedPaths.length > 0 ? allowedPaths.join(", ") : "Any path accepted";
-  const noServiceLine = `No ${formatInstallKind(autostartStatus.installKind)} detected at ${autostartStatus.serviceFile}`;
-  const tokenStateLine = buildKeyValueLine(
-    "Runner token",
-    runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... configured` : "missing",
-  );
-  const statusLabel = childRunning ? "Runner online" : "Runner stopped";
-  
-  // Status icons for better visual feedback
-  const statusIcon = childRunning ? "✓" : "○";
-  const tokenIcon = runnerToken.startsWith("sbr_") ? "✓" : "✗";
-  const autostartIcon = autostartStatus.installed ? "✓" : "○";
+  const renderWidth = Math.max(44, terminalSize.width ?? 120);
+  const renderHeight = Math.max(14, terminalSize.height ?? 36);
 
-  const topLines = [
-    `State: ${runnerState}`,
-    `Session: ${statusLabel}`,
-    buildKeyValueLine("Server", apiUrl),
-    buildKeyValueLine("Runner", displayName),
-    buildKeyValueLine("Host", hostname),
-    buildKeyValueLine("Default workdir", defaultWorkdir),
-    tokenStateLine,
-    buildKeyValueLine("Allowed paths", allowedPathText),
-    autostartLine,
-  ];
+  // Build the unified status bar (one-line ephemeral + persistent hint)
+  const buildStatusBar = (): StyledLine => {
+    if (statusFlash) {
+      return { tone: statusFlash.tone, text: fitLine(statusFlash.text, renderWidth) };
+    }
+    if (exitConfirmPending) {
+      return { tone: "warning", text: fitLine("⚠  Press Ctrl+C again to exit", renderWidth) };
+    }
+    const hints = chatMode
+      ? "↵ send · esc focus · pgup/pgdn scroll · tab panels · ctrl+c×2 exit · /help"
+      : "/ chat · pgup/pgdn scroll · r restart · k token · i autostart · tab panels · ctrl+c×2 exit";
+    return { tone: "muted", text: fitLine(hints, renderWidth) };
+  };
 
-  const middleLines = mode === "prompt"
-    ? [
-      noServiceLine,
-      serviceMessage,
-      "Use Up/Down to choose, Enter to continue.",
-      ...promptOptions.flatMap((option, index) => {
-        const active = index === promptSelection;
-        return [
-          `${active ? ">" : " "} ${option.title}`,
-          `   ${option.description}`,
+  // Compact one-line agent status badges (always shown in bottom strip)
+  const buildAgentStrip = (): StyledLine => {
+    const parts = [
+      childRunning ? "🟢 Runner" : "🔴 Offline",
+      runnerToken.startsWith("sbr_") ? "🔐 Auth" : "🔓 No Auth",
+    ];
+
+    // Active provider badge
+    if (activeProvider === "ollama") {
+      parts.push(activeOllamaConfig?.model ? `🤖 ${activeOllamaConfig.model}` : "🤖 Ollama (no model)");
+    } else if (activeProvider === "copilot") {
+      const c = copilotAvailability;
+      const ready = c && (c.copilotCli || (c.ghCopilot && c.ghAuthed));
+      const m = (activeCopilotConfig ?? getCopilotConfig())?.model ?? DEFAULT_COPILOT_MODEL;
+      parts.push(ready ? `🐙 ${m}` : "🐙 Copilot (setup needed)");
+    } else {
+      parts.push("⚙ No Provider");
+    }
+
+    // Availability badges (small)
+    parts.push(ollamaRunning ? "✨ Ollama" : "❌ Ollama");
+    if (copilotAvailability) {
+      const c = copilotAvailability;
+      const ok = c.copilotCli || (c.ghCopilot && c.ghAuthed);
+      parts.push(ok ? "✨ Copilot" : "❌ Copilot");
+    }
+
+    return { tone: "info", text: fitLine(parts.join("  ·  "), renderWidth) };
+  };
+
+  /** One-line status used inside the INPUT panel describing the active provider. */
+  const buildInputStatus = (): string => {
+    if (chatBusy) return `${getSpinner(spinnerTick)} thinking...`;
+    if (!activeProvider) return "no provider · /providers to choose";
+    if (activeProvider === "ollama") {
+      const cfg = activeOllamaConfig ?? getOllamaConfig();
+      if (!ollamaRunning) return "ollama offline · /provider copilot to switch";
+      return cfg?.model ? `ollama · ${cfg.model}` : "ollama · /models then /connect";
+    }
+    // copilot
+    const c = copilotAvailability;
+    if (!c) return "copilot · detecting...";
+    const model = (activeCopilotConfig ?? getCopilotConfig())?.model ?? DEFAULT_COPILOT_MODEL;
+    if (c.copilotCli) return `copilot · ${model}`;
+    if (c.ghCopilot && c.ghAuthed) return `copilot · ${model} · gh extension`;
+    if (c.ghCopilot) return "copilot · run `gh auth login`";
+    return "copilot · CLI not installed";
+  };
+
+  const buildScreenLines = (): StyledLine[] => {
+    if (renderWidth < 44 || renderHeight < 14) {
+      return [
+        { tone: "warning", text: "Terminal too small for SpaceBot TUI." },
+        { tone: "info", text: "Increase terminal size or reduce font zoom." },
+      ];
+    }
+
+    // Brand logo (3-line ASCII) — gradient-colored on the left, with subtitle on the right.
+    // Total height matches the previous bordered header (4 lines incl. spacer) so layout math is unchanged.
+    const logoRows = [
+      " ╔═╗╔═╗╔═╗╔═╗╔═╗╔╗ ╔═╗╔╦╗",
+      " ╚═╗╠═╝╠═╣║  ║╣ ╠╩╗║ ║ ║ ",
+      " ╚═╝╩  ╩ ╩╚═╝╚═╝╚═╝╚═╝ ╩ ",
+    ];
+    const subtitleRows = panelsVisible
+      ? ["   ✦  SPACEBOT", "   Local Agent Runner", "   Ollama · GitHub Copilot"]
+      : ["   ✦  SPACEBOT", "   Chat Mode", "   Ollama · GitHub Copilot"];
+    const logoTones: Array<keyof typeof THEME> = ["primary", "secondary", "accent2"];
+    const subTones: Array<keyof typeof THEME> = ["title", "heading", "muted"];
+    const buildLogoHeader = (): StyledLine[] => {
+      const out: StyledLine[] = [];
+      for (let i = 0; i < 3; i++) {
+        const left = logoRows[i] ?? "";
+        const right = subtitleRows[i] ?? "";
+        const totalLen = left.length + right.length;
+        const padLen = Math.max(0, renderWidth - totalLen);
+        out.push({
+          tone: logoTones[i]!,
+          text: `${left}${right}${repeatChar(" ", padLen)}`,
+          segments: [
+            { tone: logoTones[i]!, text: left },
+            { tone: subTones[i]!, text: right },
+            { tone: "muted", text: repeatChar(" ", padLen) },
+          ],
+        });
+      }
+      out.push({ tone: "muted", text: "" });
+      return out;
+    };
+
+    if (mode === "prompt") {
+      const promptRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+        { tone: "info", text: "Autostart is recommended but optional — you can install it later from the dashboard." },
+        { tone: "value", text: serviceMessage },
+        { tone: "muted", text: "↑/↓ or Tab to move · Enter to choose · Esc to skip" },
+        ...promptOptions.flatMap((option, idx) => {
+          const active = idx === promptSelection;
+          return [
+            {
+              tone: (active ? "secondary" : "value") as keyof typeof THEME,
+              text: `${active ? "❯" : " "} ${option.title}`,
+            },
+            {
+              tone: "muted" as keyof typeof THEME,
+              text: `  ${option.description}`,
+            },
+          ];
+        }),
+      ];
+
+      const lines: StyledLine[] = [
+        ...buildLogoHeader(),
+        ...createPanel("AUTOSTART · RECOMMENDED (OPTIONAL)", promptRows, renderWidth),
+      ];
+
+      while (lines.length < renderHeight) {
+        lines.push({ tone: "muted", text: "" });
+      }
+      return lines.slice(0, renderHeight);
+    }
+
+    if (mode === "provider-setup") {
+      const opts = buildProviderOptions();
+      const headerLines: StyledLine[] = buildLogoHeader();
+
+      if (providerSetupStep === "provider") {
+        const rows: Array<{ tone: keyof typeof THEME; text: string }> = [
+          { tone: "info", text: "Pick how SpaceBot should answer your prompts." },
+          { tone: "muted", text: "↑/↓ or Tab to move · Enter to choose · Esc to skip" },
+          { tone: "muted", text: "" },
         ];
-      }),
-    ]
-    : [
-      serviceMessage,
-      "Controls: q quit  r restart  k get token  i install autostart",
-      childRunning ? "Runner child is active." : "Runner child is stopped.",
-      ...(tokenNegotiating ? ["Negotiation in progress. Complete the browser step to continue."] : []),
+        opts.forEach((option, idx) => {
+          const active = idx === providerSetupSelection;
+          const marker = active ? "❯" : " ";
+          const titleTone: keyof typeof THEME = !option.selectable
+            ? "muted"
+            : active
+              ? "secondary"
+              : "value";
+          rows.push({
+            tone: titleTone,
+            text: `${marker} ${option.title}`,
+          });
+          rows.push({
+            tone: option.statusTone,
+            text: `    ${option.status}`,
+          });
+          if (active && option.hint) {
+            rows.push({ tone: "muted", text: `    ${option.hint}` });
+          }
+        });
+        if (providerSetupError) {
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "error", text: providerSetupError });
+        }
+
+        const lines: StyledLine[] = [
+          ...headerLines,
+          ...createPanel("AI PROVIDER · STEP 1 OF 2", rows, renderWidth),
+        ];
+        while (lines.length < renderHeight) lines.push({ tone: "muted", text: "" });
+        return lines.slice(0, renderHeight);
+      }
+
+      // step === "model"  (ollama)
+      if (providerSetupStep === "model") {
+        const modelRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+          { tone: "info", text: "Choose an Ollama model to connect to." },
+          { tone: "muted", text: "↑/↓ to move · Enter to connect · Esc/Shift+Tab to go back" },
+          { tone: "muted", text: "" },
+        ];
+        if (ollamaModels.length === 0) {
+          modelRows.push({ tone: "warning", text: "No models available. Pull one with `ollama pull <name>`." });
+        } else {
+          ollamaModels.forEach((m, idx) => {
+            const active = idx === modelSetupSelection;
+            const marker = active ? "❯" : " ";
+            const sizeMb = m.size ? Math.round(m.size / 1024 / 1024) : null;
+            const detail = sizeMb ? ` · ${sizeMb} MB` : "";
+            modelRows.push({
+              tone: active ? "secondary" : "value",
+              text: `${marker} ${m.name}${detail}`,
+            });
+          });
+        }
+
+        const lines: StyledLine[] = [
+          ...headerLines,
+          ...createPanel("AI PROVIDER · STEP 2 OF 2 · OLLAMA MODEL", modelRows, renderWidth),
+        ];
+        while (lines.length < renderHeight) lines.push({ tone: "muted", text: "" });
+        return lines.slice(0, renderHeight);
+      }
+
+      // step === "copilot-model"
+      const c = copilotAvailability;
+      const cliLabel = c?.copilotCli
+        ? "standalone `copilot` CLI"
+        : c?.ghCopilot && c?.ghAuthed
+          ? "`gh copilot` extension"
+          : "(unavailable)";
+      const cmRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+        { tone: "info", text: `Choose a Copilot model. Using ${cliLabel}.` },
+        { tone: "muted", text: "↑/↓ to move · Enter to connect · Esc/Shift+Tab to go back" },
+        { tone: "muted", text: "Cost shown as the GitHub premium-request multiplier per prompt." },
+        { tone: "muted", text: "" },
+      ];
+      COPILOT_MODELS.forEach((m, idx) => {
+        const active = idx === copilotModelSetupSelection;
+        const marker = active ? "❯" : " ";
+        const mult = formatCopilotMultiplier(m.multiplier);
+        cmRows.push({
+          tone: active ? "secondary" : "value",
+          text: `${marker} ${m.id}  ·  ${mult}`,
+        });
+        cmRows.push({
+          tone: "muted",
+          text: `    ${m.label}`,
+        });
+      });
+
+      const cmLines: StyledLine[] = [
+        ...headerLines,
+        ...createPanel("AI PROVIDER · STEP 2 OF 2 · COPILOT MODEL", cmRows, renderWidth),
+      ];
+      while (cmLines.length < renderHeight) cmLines.push({ tone: "muted", text: "" });
+      return cmLines.slice(0, renderHeight);
+    }
+
+    // Collapsed layout for chat-focused mode (input stuck to bottom)
+    if (!panelsVisible && mode === "dashboard") {
+      // Bottom stack: agent strip (1) + status bar (1) + input panel (4) = 6 lines reserved
+      const inputPanelHeight = 4;
+      const reservedForBottom = inputPanelHeight + 2; // input + agent strip + status bar
+
+      // Build rich rows: header + body + spacer between messages
+      const chatResponseRows: Array<{ tone: keyof typeof THEME; text: string }> = [];
+      for (let i = 0; i < chatMessages.length; i++) {
+        const rendered = renderChatMessage(chatMessages[i]!);
+        chatResponseRows.push(...rendered);
+        if (i < chatMessages.length - 1) {
+          chatResponseRows.push({ tone: "muted", text: "" });
+        }
+      }
+
+      // Chat input panel (compact, 2 content rows + borders)
+      const chatInputRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+        {
+          tone: "muted",
+          text: buildInputStatus(),
+        },
+        {
+          tone: chatMode ? "accent1" : "muted",
+          text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}`,
+        },
+      ];
+
+      // Build header
+      const lines: StyledLine[] = buildLogoHeader().slice(0, 3);
+
+      // Calculate conversation panel height: fill everything between header and bottom stack
+      const headerHeight = lines.length;
+      const conversationPanelHeight = renderHeight - headerHeight - reservedForBottom;
+      const conversationContentHeight = Math.max(3, conversationPanelHeight - 2); // minus borders
+
+      const { lines: convoLines } = createScrollablePanel(
+        "✦ CONVERSATION",
+        chatResponseRows,
+        renderWidth,
+        conversationContentHeight,
+        chatScrollOffset,
+      );
+      lines.push(...convoLines);
+
+      // Pad to where bottom stack should start (safety net if panel was shorter)
+      const bottomStart = renderHeight - reservedForBottom;
+      while (lines.length < bottomStart) {
+        lines.push({ tone: "muted", text: "" });
+      }
+
+      // Bottom stack: agent strip + status bar + input panel
+      lines.push(buildAgentStrip());
+      lines.push(buildStatusBar());
+      lines.push(...createPanel("INPUT", chatInputRows, renderWidth));
+
+      return lines.slice(0, renderHeight);
+    }
+
+    // Full layout with all panels — log count is computed AFTER configRows
+    // are known so we can guarantee the conversation always has room.
+
+    const statusRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+      { tone: childRunning ? "success" : "warning", text: `Session: ${formatStatus(childRunning ? "running" : "stopped", spinnerTick)}` },
+      { tone: "value", text: `State: ${runnerState}` },
+      { tone: tokenNegotiating ? "info" : "muted", text: tokenNegotiating ? `${getSpinner(spinnerTick)} Negotiating token via browser...` : "Token negotiation idle" },
+    ];
+
+    const configRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+      { tone: "value", text: buildKeyValueLine("Server", apiUrl) },
+      { tone: "value", text: buildKeyValueLine("Runner", displayName) },
+      { tone: "value", text: buildKeyValueLine("Host", hostname) },
+      {
+        tone: runnerToken.startsWith("sbr_") ? "success" : "warning",
+        text: buildKeyValueLine("Token", runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... configured` : "missing, use /token"),
+      },
+      {
+        tone: autostartStatus.installed ? "success" : "warning",
+        text: buildKeyValueLine(formatInstallKind(autostartStatus.installKind), autostartStatus.installed ? "installed" : "not installed"),
+      },
+      { tone: "muted", text: buildKeyValueLine("Paths", allowedPaths.length > 0 ? allowedPaths.join(", ") : "Any path accepted") },
       ...(manualOpenUrl
         ? [
-          "Manual Browser Fallback:",
-          "Could not launch your browser automatically.",
-          "Open this URL manually, then complete login/consent.",
-          manualOpenUrl,
-          "Press c to copy this URL to your clipboard.",
+          { tone: "warning" as keyof typeof THEME, text: "Manual browser fallback required:" },
+          { tone: "info" as keyof typeof THEME, text: manualOpenUrl },
         ]
         : []),
     ];
 
-  const recentLines = logs.map((line) => line);
+    // Calculate available height for activity log dynamically.
+    //   header (4) + status panel (rows + 2 borders + 1 spacer)
+    //   + config panel (rows + 2 borders + 1 spacer)
+    //   + log panel borders+spacer (3) + convo panel borders (2)
+    //   + bottom stack (6) + min convo content (6)
+    const headerHeight = 4;
+    const statusPanelHeight = statusRows.length + 2 + 1;
+    const configPanelHeight = configRows.length + 2 + 1;
+    const logPanelOverhead = 3; // 2 borders + 1 spacer below
+    const convoPanelBorders = 2;
+    const bottomStackHeight = 6;
+    const minConvoContent = 6;
+    const fixedOverhead =
+      headerHeight + statusPanelHeight + configPanelHeight + logPanelOverhead + convoPanelBorders + bottomStackHeight + minConvoContent;
+    const availableForLog = renderHeight - fixedOverhead;
+    const logCount = Math.max(2, Math.min(14, availableForLog));
 
-  // Mobile-responsive design
-  const buildScreenLines = (): StyledLine[] => {
-    // Chat mode takes over the whole screen
-    if (chatMode) {
-      return [
-        { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
-        { tone: "title", text: "║            💬 OLLAMA ASSISTANT CHAT                             ║" },
-        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
-        ...chatMessages.slice(-15).map((msg) => {
-          const prefix = msg.type === "user" ? "You: " : `${msg.type}: `;
-          return {
-            tone: (msg.type === "error" ? "error" : msg.type === "success" ? "success" : "value") as keyof typeof THEME,
-            text: `║  ${clipForUi(`${prefix}${msg.text}`, 60).padEnd(60)}  ║`,
-          };
-        }),
-        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
-        { tone: "info", text: `║  Input: ${clipForUi(chatInput, 50).padEnd(50)}  ║` },
-        { tone: "muted", text: "║  (ESC to close, type /help for commands)                        ║" },
-        { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
-      ];
+    const logRows = logs.slice(-logCount).map((line) => {
+      const lower = line.toLowerCase();
+      let tone: keyof typeof THEME = "value";
+      if (lower.includes("error") || lower.includes("failed")) tone = "error";
+      else if (lower.includes("connected") || lower.includes("authenticated") || lower.includes("success")) tone = "success";
+      else if (lower.includes("warn")) tone = "warning";
+      return { tone, text: line };
+    });
+
+    const chatResponseRows: Array<{ tone: keyof typeof THEME; text: string }> = [];
+    for (let i = 0; i < chatMessages.length; i++) {
+      const rendered = renderChatMessage(chatMessages[i]!);
+      chatResponseRows.push(...rendered);
+      if (i < chatMessages.length - 1) {
+        chatResponseRows.push({ tone: "muted", text: "" });
+      }
     }
 
-    // When in prompt mode, show a big modal-like autostart setup
-    if (mode === "prompt") {
-      return [
-        { tone: "muted", text: "" },
-        { tone: "muted", text: "" },
-        { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
-        { tone: "primary", text: "║                                                                ║" },
-        { tone: "title", text: "║              ⚙️  AUTOSTART CONFIGURATION REQUIRED              ║" },
-        { tone: "primary", text: "║                                                                ║" },
-        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
-        { tone: "muted", text: "║                                                                ║" },
-        { tone: "info", text: `║  ${clipForUi(serviceMessage, 60).padEnd(60)}  ║` },
-        { tone: "muted", text: "║                                                                ║" },
-        { tone: "warning", text: "║  Would you like to enable automatic startup on this machine?  ║" },
-        { tone: "muted", text: "║                                                                ║" },
-        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
-        { tone: "muted", text: "║                                                                ║" },
-        ...promptOptions.map((option, idx) => {
-          const isActive = idx === promptSelection;
-          const marker = isActive ? "❯❯" : "  ";
-          const bg = isActive ? "█" : " ";
-          const title = `${marker} ${clipForUi(option.title, 56)}`.padEnd(60);
-          return {
-            tone: (isActive ? "secondary" : "value") as keyof typeof THEME,
-            text: `║${bg}${title}${bg}║`,
-            highlight: isActive,
-          };
-        }),
-        ...promptOptions.flatMap((option, idx) => {
-          const isActive = idx === promptSelection;
-          if (!isActive) return [];
-          const lines: StyledLine[] = [
-            { tone: "muted", text: "║                                                                ║" },
-            { tone: "muted", text: `║  ▪ ${clipForUi(option.description, 54).padEnd(54)}  ║` },
-            { tone: "muted", text: "║                                                                ║" },
-          ];
-          return lines;
-        }),
-        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
-        { tone: "muted", text: "║                                                                ║" },
-        { tone: "info", text: "║  Use  ↑  ↓  arrow keys to navigate  •  Press  ENTER  to select ║" },
-        { tone: "muted", text: "║                                                                ║" },
-        { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
-        { tone: "muted", text: "" },
-        { tone: "muted", text: "" },
-      ];
-    }
-
-    // Dashboard mode - compact responsive design
-    return [
-      { tone: "primary", text: "" },
-      { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
-      { tone: "title", text: "║          ⚡  STARSPACE LOCAL RUNNER  •  Status Monitor         ║" },
-      { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
-      { tone: "muted", text: "" },
-      
-      // Status
-      { tone: "primary", text: "┌─ SESSION STATUS ─────────────────────────────────────────────────┐" },
-      { tone: "value", text: `│  ${clipForUi(formatStatus(childRunning ? "running" : "stopped", spinnerTick), 62).padEnd(62)}  │` },
-      { tone: "value", text: `│  State:  ${clipForUi(runnerState, 52).padEnd(52)}  │` },
-      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
-      { tone: "muted", text: "" },
-      
-      // Configuration (compact)
-      { tone: "primary", text: "┌─ CONFIGURATION ──────────────────────────────────────────────────┐" },
-      { tone: "value", text: `│  Server:  ${clipForUi(apiUrl, 50).padEnd(50)}  │` },
-      { tone: "value", text: `│  Runner:  ${clipForUi(displayName, 50).padEnd(50)}  │` },
-      { tone: "value", text: `│  Host:    ${clipForUi(hostname, 50).padEnd(50)}  │` },
+    // Panel inner width matches createPanel's logic. Truncate input rows so the
+    // INPUT box stays exactly 4 lines tall (top border + 2 content + bottom border)
+    // and never wraps below the visible terminal area.
+    const inputInner = Math.max(18, renderWidth - 4);
+    const statusText = buildInputStatus();
+    const truncatedStatus = statusText.length > inputInner ? statusText.slice(0, Math.max(0, inputInner - 1)) + "…" : statusText;
+    const prompt = `${chatMode ? "❯" : "·"} `;
+    const cursor = chatMode ? "▏" : "";
+    const inputBudget = Math.max(1, inputInner - prompt.length - cursor.length);
+    // Show the tail so the cursor stays visible when text exceeds the width.
+    const visibleInput = chatInput.length > inputBudget ? "…" + chatInput.slice(chatInput.length - (inputBudget - 1)) : chatInput;
+    const chatInputRows: Array<{ tone: keyof typeof THEME; text: string }> = [
       {
-        tone: runnerToken.startsWith("sbr_") ? "success" : "warning",
-        text: `│  Token:   ${clipForUi(runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... ✓` : "Missing (Press k to get)", 50).padEnd(50)}  │`
+        tone: "muted",
+        text: truncatedStatus,
       },
-      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      {
+        tone: chatMode ? "accent1" : "muted",
+        text: `${prompt}${visibleInput}${cursor}`,
+      },
+    ];
+
+    const headerLines: StyledLine[] = buildLogoHeader();
+
+    const topPanels: StyledLine[] = [
+      ...createPanel("◉ AGENT STATUS", statusRows, renderWidth),
       { tone: "muted", text: "" },
-      
-      // Controls
-      { tone: "primary", text: "┌─ KEYBOARD CONTROLS ──────────────────────────────────────────────┐" },
-      { tone: "info", text: "│  [q] Quit  •  [r] Restart  •  [k] Get Token  •  [i] Autostart  │" },
-      ...(ollamaRunning ? [{ tone: "info" as keyof typeof THEME, text: "│  [t] Chat with Ollama (AI Assistant)                            │" }] : []),
-      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      ...createPanel("⚙ RUNTIME CONTEXT", configRows, renderWidth),
       { tone: "muted", text: "" },
-      
-      // Token negotiation
-      ...(tokenNegotiating
-        ? [{ tone: "info" as keyof typeof THEME, text: `│  ${clipForUi(`${getSpinner(spinnerTick)} Negotiating token via browser...`, 60).padEnd(60)}  │` }]
-        : []
-      ),
-      
-      // Manual fallback
-      ...(manualOpenUrl
-        ? [
-          { tone: "primary", text: "┌─ MANUAL TOKEN SETUP ─────────────────────────────────────────────┐" },
-          { tone: "warning", text: "│  Browser did not open automatically. Visit this URL manually:     │" },
-          { tone: "muted", text: `│  ${clipForUi(manualOpenUrl, 60).padEnd(60)}  │` },
-          { tone: "info", text: "│  Press [c] to copy URL to clipboard                              │" },
-          { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
-          { tone: "muted", text: "" },
-        ]
-        : []
-      ),
-      
-      // Recent logs (compact, only show 5 on dashboard)
-      { tone: "primary", text: "┌─ RECENT OUTPUT ──────────────────────────────────────────────────┐" },
-      ...recentLines.slice(-5).map((line) => {
-        let tone: keyof typeof THEME = "value";
-        const lower = line.toLowerCase();
-        if (lower.includes("error") || lower.includes("failed")) tone = "error";
-        else if (lower.includes("success") || lower.includes("connected") || lower.includes("authenticated")) tone = "success";
-        else if (lower.includes("warn")) tone = "warning";
-        return { tone, text: `│  ${clipForUi(line, 60).padEnd(60)}  │` };
-      }),
-      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      ...createPanel("≡ ACTIVITY LOG", logRows, renderWidth),
       { tone: "muted", text: "" },
     ];
+
+    const lines: StyledLine[] = [...headerLines, ...topPanels];
+
+    // Reserve space for bottom stack: agent strip (1) + status bar (1) + input panel (4) = 6 lines
+    const inputPanelHeight = 4;
+    const reservedForBottom = inputPanelHeight + 2;
+
+    // Allocate remaining space to the conversation panel (with min size)
+    const usedSoFar = lines.length;
+    const convoPanelHeight = Math.max(5, renderHeight - usedSoFar - reservedForBottom);
+    const convoContentHeight = Math.max(3, convoPanelHeight - 2);
+
+    const { lines: convoLines } = createScrollablePanel(
+      "✦ CONVERSATION",
+      chatResponseRows,
+      renderWidth,
+      convoContentHeight,
+      chatScrollOffset,
+    );
+    lines.push(...convoLines);
+
+    const bottomStart = renderHeight - reservedForBottom;
+    while (lines.length < bottomStart) {
+      lines.push({ tone: "muted", text: "" });
+    }
+
+    lines.push(buildAgentStrip());
+    lines.push(buildStatusBar());
+    lines.push(...createPanel("INPUT", chatInputRows, renderWidth));
+
+    return lines.slice(0, renderHeight);
   };
 
   const screenLines = buildScreenLines();
 
-  const toneForLine = (line: string, baseTone: keyof typeof THEME): keyof typeof THEME => {
-    const lower = line.toLowerCase();
-    if (lower.includes("│")) return baseTone; // Box drawing - use as-is
-    if (lower.includes("┌") || lower.includes("├") || lower.includes("└") || lower.includes("─") || lower.includes("┘")) return baseTone; // Box drawing
-    if (lower.includes("installed") || lower.includes("active") || lower.includes("ready") || lower.includes("online") || lower.includes("✓")) return "success";
-    if (lower.includes("not installed") || lower.includes("could not") || lower.includes("failed") || lower.includes("missing") || lower.includes("stopped") || lower.includes("✗")) return "warning";
-    if (lower.includes("press") || lower.includes("▪") || lower.includes("↑") || lower.includes("↓")) return "info";
-    if (lower.includes("error") || lower.includes("err ")) return "error";
-    return baseTone;
-  };
-
   return (
-    <box border title={isDarkMode ? "SpaceBot" : "SpaceBot (Light)"} padding={1} style={{ width: "100%", height: "100%" }}>
-      <text wrapMode="char" truncate>
-        {screenLines.map((line, index) => {
-          const normalized = line.text; // Don't clip - we're building fixed-width lines
-          const tone = toneForLine(normalized, line.tone);
+    <text wrapMode="char" truncate>
+      {screenLines.map((line, index) => {
+        const isLast = index >= screenLines.length - 1;
+        if (line.segments && line.segments.length > 0) {
           return (
-            <React.Fragment key={`${index}-${normalized.slice(0, 18)}`}>
-              <span fg={THEME[tone]}>{normalized}</span>
-              {index < screenLines.length - 1 ? <br /> : null}
+            <React.Fragment key={`${index}-seg`}>
+              {line.segments.map((seg, si) => (
+                <span key={si} fg={THEME[seg.tone]}>{seg.text}</span>
+              ))}
+              {!isLast ? <br /> : null}
             </React.Fragment>
           );
-        })}
-      </text>
-    </box>
+        }
+        const normalized = line.text;
+        return (
+          <React.Fragment key={`${index}-${normalized.slice(0, 18)}`}>
+            <span fg={THEME[line.tone]}>{normalized}</span>
+            {!isLast ? <br /> : null}
+          </React.Fragment>
+        );
+      })}
+    </text>
   );
 }
 
