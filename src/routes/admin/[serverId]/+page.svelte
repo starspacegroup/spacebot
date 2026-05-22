@@ -1,10 +1,43 @@
 <script>
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate } from '$lib/timezone.js';
+	import { onMount } from 'svelte';
 
-	let { data, form } = $props();
+	let { data: incomingData, form } = $props();
+	let data = $state(incomingData);
+	let hotloading = $state(false);
+
+	$effect(() => {
+		data = incomingData;
+	});
+
+	onMount(async () => {
+		const params = new URLSearchParams(window.location.search);
+		const isHotloadRequest = params.get('hotload') === '1';
+
+		if (!isHotloadRequest && data.loadMeta?.needsHotload) {
+			hotloading = true;
+			params.set('hotload', '1');
+			await goto(`${window.location.pathname}?${params.toString()}`, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true,
+				invalidateAll: true,
+			});
+			return;
+		}
+
+		if (isHotloadRequest && (data.loadMeta?.source === 'hotload' || data.loadMeta?.source === 'cache')) {
+			params.delete('hotload');
+			const nextQuery = params.toString();
+			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+		}
+
+		hotloading = false;
+	});
 
 	let showToast = $state(true);
 
@@ -88,6 +121,19 @@
 				</div>
 			</div>
 		</header>
+
+		{#if hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.isStale || data.loadMeta?.source === 'cache'}
+			<div class="data-status" class:is-loading={hotloading || data.loadMeta?.source === 'shell'}>
+				<span class="status-dot"></span>
+				{#if hotloading || data.loadMeta?.source === 'shell'}
+					<span>Loading fresh stats now. Showing lightweight view first.</span>
+				{:else if data.loadMeta?.isStale}
+					<span>Showing cached stats while fresh data is prepared.</span>
+				{:else}
+					<span>Showing cached stats for instant load.</span>
+				{/if}
+			</div>
+		{/if}
 		
 		{#if !data.botInGuild}
 			<div class="warning-banner">
@@ -291,6 +337,40 @@
 		margin: 0 auto;
 		padding: 1rem;
 		min-height: 100vh;
+	}
+
+	.data-status {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0.75rem 0 1rem;
+		padding: 0.65rem 0.9rem;
+		border-radius: 10px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(8, 12, 24, 0.55);
+		color: rgba(255, 255, 255, 0.9);
+		font-size: 0.9rem;
+	}
+
+	.status-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #60a5fa;
+	}
+
+	.data-status.is-loading .status-dot {
+		background: #f59e0b;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 0.45;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 	
 	@media (min-width: 640px) {

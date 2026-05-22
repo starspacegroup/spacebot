@@ -1,11 +1,19 @@
 <script>
+	import { goto } from '$app/navigation';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 	
-	let { data } = $props();
+	let { data: incomingData } = $props();
+	let data = $state(incomingData);
+	let hotloading = $state(false);
+
+	$effect(() => {
+		data = incomingData;
+	});
+
 	const periodOptions = $derived(data.periodOptions || []);
 	const selectedPeriod = $derived(data.selectedPeriod || '30d');
 	const selectedPeriodLabel = $derived(data.selectedPeriodLabel || '30 Days');
@@ -70,6 +78,29 @@
 	}
 
 	onMount(() => {
+		const params = new URLSearchParams(window.location.search);
+		const isHotloadRequest = params.get('hotload') === '1';
+
+		if (!isHotloadRequest && data.loadMeta?.needsHotload) {
+			hotloading = true;
+			params.set('hotload', '1');
+			goto(`${window.location.pathname}?${params.toString()}`, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true,
+				invalidateAll: true,
+			});
+			return () => {};
+		}
+
+		if (isHotloadRequest && (data.loadMeta?.source === 'hotload' || data.loadMeta?.source === 'cache')) {
+			params.delete('hotload');
+			const nextQuery = params.toString();
+			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
+		}
+
+		hotloading = false;
+
 		let stream;
 
 		if (liveUpdatesAuth?.signature && liveUpdatesAuth?.userId && liveUpdatesAuth?.expiresAt) {
@@ -692,7 +723,20 @@
 		</div>
 	</header>
 
-	{#if !data.statistics}
+	{#if hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.isStale || data.loadMeta?.source === 'cache'}
+		<div class="data-status" class:is-loading={hotloading || data.loadMeta?.source === 'shell'}>
+			<span class="status-dot"></span>
+			{#if hotloading || data.loadMeta?.source === 'shell'}
+				<span>Hotloading full statistics now. Core layout is ready.</span>
+			{:else if data.loadMeta?.isStale}
+				<span>Showing cached statistics while fresh data is prepared.</span>
+			{:else}
+				<span>Showing cached statistics for instant load.</span>
+			{/if}
+		</div>
+	{/if}
+
+	{#if !data.statistics && !(hotloading || data.loadMeta?.source === 'shell')}
 		<div class="empty-state">
 			<div class="empty-icon">📊</div>
 			<h2>No Statistics Available</h2>
@@ -1612,6 +1656,40 @@
 		width: 100%;
 		margin: 0 auto;
 		padding: 1rem;
+	}
+
+	.data-status {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0 0 1rem;
+		padding: 0.65rem 0.9rem;
+		border-radius: 10px;
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		background: rgba(8, 12, 24, 0.55);
+		color: rgba(255, 255, 255, 0.9);
+		font-size: 0.9rem;
+	}
+
+	.status-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #60a5fa;
+	}
+
+	.data-status.is-loading .status-dot {
+		background: #f59e0b;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 0.45;
+		}
+		50% {
+			opacity: 1;
+		}
 	}
 	
 	@media (min-width: 640px) {

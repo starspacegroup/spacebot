@@ -17,6 +17,9 @@ import { getServerPlan } from "$lib/db/server-plans.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
+const DASHBOARD_CACHE_FRESH_MS = 20 * 1000;
+const DASHBOARD_CACHE_STALE_MS = 10 * 60 * 1000;
+const DASHBOARD_CACHE = globalThis.__spacebotDashboardCache ||= new Map();
 
 /**
  * Fetch a channel's info from Discord API
@@ -80,7 +83,7 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, parent, params }) {
+export async function load({ cookies, platform, parent, params, url }) {
   // Get parent layout data (includes adminGuilds, selectedGuildId, user, etc.)
   const parentData = await parent();
 
@@ -136,6 +139,20 @@ export async function load({ cookies, platform, parent, params }) {
   const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
 
   // Fetch data for the selected guild
+  const forceHotload = url.searchParams.get("hotload") === "1";
+  const cacheKey = `${serverId}`;
+  const cachedEntry = DASHBOARD_CACHE.get(cacheKey);
+  const cacheAgeMs = cachedEntry ? Date.now() - cachedEntry.cachedAt : Number.POSITIVE_INFINITY;
+  const hasFreshCache = cacheAgeMs <= DASHBOARD_CACHE_FRESH_MS;
+  const hasStaleCache = cacheAgeMs <= DASHBOARD_CACHE_STALE_MS;
+
+  let loadMeta = {
+    source: "live",
+    needsHotload: false,
+    isStale: false,
+    updatedAt: null,
+  };
+
   let logStats = null;
   let dbSettings = DEFAULT_SETTINGS;
   let basicStats = null;
@@ -147,14 +164,36 @@ export async function load({ cookies, platform, parent, params }) {
   let featureCounts = { automations: { active: 0, inactive: 0, total: 0 }, commands: { active: 0, inactive: 0, total: 0 }, integrations: { active: 0, inactive: 0, total: 0 } };
   let planLimits = { max_automations: 9, max_commands: 3 };
 
+  if (!forceHotload && hasStaleCache && cachedEntry?.data) {
+    logStats = cachedEntry.data.logStats;
+    dbSettings = cachedEntry.data.dbSettings;
+    basicStats = cachedEntry.data.basicStats;
+    memberGrowthChartData = cachedEntry.data.memberGrowthChartData;
+    voiceActivityChartData = cachedEntry.data.voiceActivityChartData;
+    activityChartData = cachedEntry.data.activityChartData;
+    builtInCmds = cachedEntry.data.builtInCmds;
+    guildMetadata = cachedEntry.data.guildMetadata;
+    featureCounts = cachedEntry.data.featureCounts;
+    planLimits = cachedEntry.data.planLimits;
+    loadMeta = {
+      source: "cache",
+      needsHotload: false,
+      isStale: !hasFreshCache,
+      updatedAt: new Date(cachedEntry.cachedAt).toISOString(),
+    };
+  }
+
   const db = platform?.env?.DB;
-  if (db && botInGuild) {
+  const shouldFetchLive = db && botInGuild && (forceHotload || !hasStaleCache);
+  if (shouldFetchLive) {
     try {
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken);
 
-      // Run stats aggregation to ensure today's hourly data is available for charts
+      // Never block initial render on aggregation. Read available data immediately.
       try {
-        await runStatsAggregation(db, serverId);
+        runStatsAggregation(db, serverId).catch((aggError) => {
+          log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
+        });
       } catch (aggError) {
         log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
       }
@@ -202,9 +241,47 @@ export async function load({ cookies, platform, parent, params }) {
         totalEvents: guildStats?.events?.total || 0,
         eventsToday: guildStats?.events?.today || 0,
       };
+
+      DASHBOARD_CACHE.set(cacheKey, {
+        cachedAt: Date.now(),
+        data: {
+          logStats,
+          dbSettings,
+          basicStats,
+          memberGrowthChartData,
+          voiceActivityChartData,
+          activityChartData,
+          builtInCmds,
+          guildMetadata,
+          featureCounts,
+          planLimits,
+        },
+      });
+
+      loadMeta = {
+        source: forceHotload ? "hotload" : "live",
+        needsHotload: false,
+        isStale: false,
+        updatedAt: new Date().toISOString(),
+      };
     } catch (error) {
       log.error("Failed to fetch data for dashboard:", error);
+      if (forceHotload) {
+        loadMeta = {
+          source: "error",
+          needsHotload: false,
+          isStale: false,
+          updatedAt: null,
+        };
+      }
     }
+  } else if (!hasStaleCache) {
+    loadMeta = {
+      source: "shell",
+      needsHotload: true,
+      isStale: false,
+      updatedAt: null,
+    };
   }
 
   // Fetch channel name if logging channel is configured
@@ -261,6 +338,7 @@ export async function load({ cookies, platform, parent, params }) {
     activityChartData,
     featureCounts,
     planLimits,
+    loadMeta,
   };
 }
 

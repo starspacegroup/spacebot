@@ -35,6 +35,10 @@ import {
 } from "$lib/live-updates.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 
+const STATS_CACHE_FRESH_MS = 30 * 1000;
+const STATS_CACHE_STALE_MS = 15 * 60 * 1000;
+const STATS_CACHE = globalThis.__spacebotStatsPageCache ||= new Map();
+
 const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
 
 function getEnv(platform, name) {
@@ -127,8 +131,21 @@ export async function load({ params, cookies, platform, parent, url }) {
   const periodOptions = buildPeriodOptions(statsRetentionDays);
   const selectedPeriod = normalizeSelectedPeriod(url.searchParams.get("period"), periodOptions);
   const selectedPeriodOption = periodOptions.find((option) => option.value === selectedPeriod) || periodOptions[0];
+  const timezone = parentData.timezone || null;
+  const forceHotload = url.searchParams.get("hotload") === "1";
+  const cacheKey = `${serverId}:${selectedPeriod}:${timezone || "utc"}`;
+  const cachedEntry = STATS_CACHE.get(cacheKey);
+  const cacheAgeMs = cachedEntry ? Date.now() - cachedEntry.cachedAt : Number.POSITIVE_INFINITY;
+  const hasFreshCache = cacheAgeMs <= STATS_CACHE_FRESH_MS;
+  const hasStaleCache = cacheAgeMs <= STATS_CACHE_STALE_MS;
 
   // Fetch comprehensive statistics
+  let loadMeta = {
+    source: "live",
+    needsHotload: false,
+    isStale: false,
+    updatedAt: null,
+  };
   let statistics = null;
   let heatmapData = [];
   let categoryTrends = [];
@@ -155,26 +172,53 @@ export async function load({ params, cookies, platform, parent, url }) {
     updatedAt: null,
   };
 
-  if (db) {
+  if (!forceHotload && hasStaleCache && cachedEntry?.data) {
+    statistics = cachedEntry.data.statistics;
+    heatmapData = cachedEntry.data.heatmapData;
+    categoryTrends = cachedEntry.data.categoryTrends;
+    recentExecutions = cachedEntry.data.recentExecutions;
+    automationHistory = cachedEntry.data.automationHistory;
+    memberStats = cachedEntry.data.memberStats;
+    memberHistory = cachedEntry.data.memberHistory;
+    voiceActivity = cachedEntry.data.voiceActivity;
+    memberGrowth = cachedEntry.data.memberGrowth;
+    memberGrowthChartData = cachedEntry.data.memberGrowthChartData;
+    voiceActivityChartData = cachedEntry.data.voiceActivityChartData;
+    topVoiceUsers = cachedEntry.data.topVoiceUsers;
+    topVideoUsers = cachedEntry.data.topVideoUsers;
+    topScreenshareUsers = cachedEntry.data.topScreenshareUsers;
+    guildMetadata = cachedEntry.data.guildMetadata;
+    cachedRoles = cachedEntry.data.cachedRoles;
+    liveVoiceSnapshot = cachedEntry.data.liveVoiceSnapshot;
+    loadMeta = {
+      source: "cache",
+      needsHotload: false,
+      isStale: !hasFreshCache,
+      updatedAt: new Date(cachedEntry.cachedAt).toISOString(),
+    };
+  }
+
+  const shouldFetchLive = db && (forceHotload || !hasStaleCache);
+  if (shouldFetchLive) {
     try {
       const existingStats = await getLatestServerStats(db, serverId);
       log.debug(`[Stats] Existing stats for ${serverId}:`, existingStats);
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
 
-      // Run stats aggregation on-demand to ensure chart data exists
-      // This is safe to run multiple times - it will only process new data
+      // Never block initial render on aggregation. Read available data immediately.
       try {
-        const aggregationResult = await runStatsAggregation(db, serverId);
-        if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
-          log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
-        }
+        runStatsAggregation(db, serverId)
+          .then((aggregationResult) => {
+            if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
+              log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
+            }
+          })
+          .catch((aggError) => {
+            log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
+          });
       } catch (aggError) {
         log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
-        // Continue - we can still show whatever data exists
       }
-
-      // Now fetch all statistics including aggregated data
-      const timezone = parentData.timezone || null;
 
       [
         statistics, 
@@ -233,9 +277,54 @@ export async function load({ params, cookies, platform, parent, url }) {
       } catch (liveVoiceError) {
         log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
       }
+
+      STATS_CACHE.set(cacheKey, {
+        cachedAt: Date.now(),
+        data: {
+          statistics,
+          heatmapData,
+          categoryTrends,
+          recentExecutions,
+          automationHistory,
+          memberStats,
+          memberHistory,
+          voiceActivity,
+          memberGrowth,
+          memberGrowthChartData,
+          voiceActivityChartData,
+          topVoiceUsers,
+          topVideoUsers,
+          topScreenshareUsers,
+          guildMetadata,
+          cachedRoles,
+          liveVoiceSnapshot,
+        },
+      });
+
+      loadMeta = {
+        source: forceHotload ? "hotload" : "live",
+        needsHotload: false,
+        isStale: false,
+        updatedAt: new Date().toISOString(),
+      };
     } catch (error) {
       log.error("Failed to fetch statistics:", error);
+      if (forceHotload) {
+        loadMeta = {
+          source: "error",
+          needsHotload: false,
+          isStale: false,
+          updatedAt: null,
+        };
+      }
     }
+  } else if (!hasStaleCache) {
+    loadMeta = {
+      source: "shell",
+      needsHotload: true,
+      isStale: false,
+      updatedAt: null,
+    };
   }
 
   const liveUpdateSecret = getEnv(platform, "INTERNAL_API_KEY") || getEnv(platform, "DISCORD_BOT_TOKEN");
@@ -276,6 +365,7 @@ export async function load({ params, cookies, platform, parent, url }) {
     selectedPeriod,
     selectedPeriodDays: selectedPeriodOption?.days || 1,
     selectedPeriodLabel: selectedPeriodOption?.label || "1 Day",
+    loadMeta,
     eventCategories: EVENT_CATEGORIES,
     user: parentData.user,
     isSuperAdmin,
