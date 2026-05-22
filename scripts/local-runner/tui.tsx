@@ -673,6 +673,39 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     return () => clearInterval(interval);
   }, []);
 
+  // Logo eye blink/wink animation. Schedules itself at randomized intervals so
+  // the bot face feels alive instead of robotic. "both" = full blink, "left" /
+  // "right" = wink.
+  const [eyeBlink, setEyeBlink] = useState<null | "both" | "left" | "right">(null);
+  useEffect(() => {
+    let cancelled = false;
+    let timer: NodeJS.Timeout | null = null;
+    const scheduleNext = () => {
+      // 2.5–6.5s between blinks
+      const delay = 2500 + Math.random() * 4000;
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        // ~12% chance to wink (left or right), otherwise full blink
+        const roll = Math.random();
+        const variant: "both" | "left" | "right" =
+          roll < 0.06 ? "left" : roll < 0.12 ? "right" : "both";
+        setEyeBlink(variant);
+        // Hold the closed frame briefly; winks linger a touch longer
+        const closedFor = variant === "both" ? 120 : 220;
+        timer = setTimeout(() => {
+          if (cancelled) return;
+          setEyeBlink(null);
+          scheduleNext();
+        }, closedFor);
+      }, delay);
+    };
+    scheduleNext();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   useEffect(() => {
     const handleResize = () => {
       setTerminalSize({
@@ -1736,7 +1769,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   });
 
   const renderWidth = Math.max(44, terminalSize.width ?? 120);
-  const renderHeight = Math.max(14, terminalSize.height ?? 36);
+  // Reserve one row of headroom: rendering N lines into an N-row terminal
+  // causes the final newline/cursor advance to push the last line below the
+  // viewport (making it scrollable). Using rows-1 keeps everything visible.
+  const renderHeight = Math.max(14, (terminalSize.height ?? 36) - 1);
 
   // Build the unified status bar (one-line ephemeral + persistent hint)
   const buildStatusBar = (): StyledLine => {
@@ -1809,12 +1845,34 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       ];
     }
 
-    // Brand logo (3-line ASCII) — gradient-colored on the left, with subtitle on the right.
+    // Brand logo (3-line ASCII) — square bot helmet matching the bot's Discord avatar.
+    // Width ≈ 2× rows so it reads as a square given terminal cells are ~2:1 tall.
     // Total height matches the previous bordered header (4 lines incl. spacer) so layout math is unchanged.
+    // Only the two top-corner eye glyphs animate. When connected the bot blinks
+    // at randomized intervals and occasionally winks (see eyeBlink state).
+    // While waiting on a response (chatBusy), the eyes squint instead.
+    const openEye = "▀";
+    const closedEye = "─";
+    const squintEye = "_";
+    let leftEye = openEye;
+    let rightEye = openEye;
+    if (childRunning) {
+      if (chatBusy) {
+        leftEye = squintEye;
+        rightEye = squintEye;
+      } else if (eyeBlink === "both") {
+        leftEye = closedEye;
+        rightEye = closedEye;
+      } else if (eyeBlink === "left") {
+        leftEye = closedEye;
+      } else if (eyeBlink === "right") {
+        rightEye = closedEye;
+      }
+    }
     const logoRows = [
-      " ╔═╗╔═╗╔═╗╔═╗╔═╗╔╗ ╔═╗╔╦╗",
-      " ╚═╗╠═╝╠═╣║  ║╣ ╠╩╗║ ║ ║ ",
-      " ╚═╝╩  ╩ ╩╚═╝╚═╝╚═╝╚═╝ ╩ ",
+      " ╭──────╮ ",
+      ` │ ${leftEye}██${rightEye} │ `,
+      " ╰──────╯ ",
     ];
     const subtitleRows = panelsVisible
       ? ["   ✦  SPACEBOT", "   Local Agent Runner", "   Ollama · GitHub Copilot"]
