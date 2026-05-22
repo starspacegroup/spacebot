@@ -763,6 +763,36 @@ function formatServerList(guilds, selectedGuildId) {
 }
 
 /**
+ * Ask the worker API whether the DM author has a registered local runner.
+ * If so, the API will dispatch the message as a job and return dispatch info.
+ *
+ * @param {{ userId: string, userName?: string, content: string, history?: any[] }} args
+ * @returns {Promise<{ dispatched: boolean, jobId?: number, runner?: any, reason?: string } | null>}
+ */
+async function dispatchDMToLocalRunner({ userId, userName, content, history }) {
+  const url = `${API_BASE}/api/gateway/dm-runner`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      },
+      body: JSON.stringify({ userId, userName, content, history }),
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      log.warn(`[DM] dm-runner endpoint returned ${response.status}: ${text.slice(0, 200)}`);
+      return null;
+    }
+    return await response.json();
+  } catch (err) {
+    log.warn("[DM] dm-runner fetch failed:", err?.message || err);
+    return null;
+  }
+}
+
+/**
  * Handle a direct message to the bot
  * @param {Message} message - The DM message
  * @param {Client} client - Discord client
@@ -861,7 +891,28 @@ async function handleDirectMessage(message, client) {
   
   // Add user message to conversation history
   addToConversationHistory(userId, "user", content);
-  
+
+  // If the user has a registered local runner, dispatch the DM to it
+  // instead of going through Workers AI.
+  try {
+    const dispatch = await dispatchDMToLocalRunner({
+      userId,
+      userName,
+      content,
+      history: currentSession.conversationHistory.slice(0, -1),
+    });
+    if (dispatch?.dispatched) {
+      const runnerName = dispatch.runner?.display_name || dispatch.runner?.hostname || "your local runner";
+      const onlineNote = dispatch.runner?.is_online ? "" : " (currently offline — it will pick this up when it reconnects)";
+      await message.reply({
+        content: `📨 Sent to **${runnerName}**${onlineNote}. (job #${dispatch.jobId})`,
+      }).catch((err) => log.error("[DM] Failed to send runner-dispatch reply:", err.message));
+      return;
+    }
+  } catch (err) {
+    log.warn("[DM] Local runner dispatch check failed, falling back to AI:", err?.message || err);
+  }
+
   // Generate AI response with MCP tool access
   const env = {
     ...process.env,
