@@ -4,8 +4,8 @@
  * Tracks applied migrations in a _migrations table to avoid re-running them.
  *
  * Usage:
- *   node scripts/migrate.js         # Run against remote D1
- *   node scripts/migrate.js --local # Run against local D1
+ *   bun scripts/migrate.js         # Run against remote D1
+ *   bun scripts/migrate.js --local # Run against local D1
  */
 
 try {
@@ -15,7 +15,7 @@ try {
   // No .env loader available; continue with existing process environment.
 }
 import { execFileSync, execSync } from "child_process";
-import { existsSync, readdirSync, unlinkSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -61,6 +61,104 @@ function isAlreadyAppliedError(output) {
   );
 }
 
+function shouldFallbackToCommandExecution(output) {
+  const normalized = output.toLowerCase();
+  return (
+    normalized.includes("d1_reset_do") ||
+    normalized.includes("reset before execute completed")
+  );
+}
+
+function splitSqlStatements(sql) {
+  const statements = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < sql.length; i++) {
+    const ch = sql[i];
+    const next = i + 1 < sql.length ? sql[i + 1] : "";
+
+    if (inLineComment) {
+      current += ch;
+      if (ch === "\n") {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += ch;
+      if (ch === "*" && next === "/") {
+        current += next;
+        i++;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (!inSingle && !inDouble) {
+      if (ch === "-" && next === "-") {
+        current += ch + next;
+        i++;
+        inLineComment = true;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        current += ch + next;
+        i++;
+        inBlockComment = true;
+        continue;
+      }
+    }
+
+    if (ch === "'" && !inDouble) {
+      if (inSingle && next === "'") {
+        current += ch + next;
+        i++;
+        continue;
+      }
+      inSingle = !inSingle;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      current += ch;
+      continue;
+    }
+
+    if (ch === ";" && !inSingle && !inDouble) {
+      const stmt = current.trim();
+      if (stmt.length > 0) {
+        statements.push(stmt);
+      }
+      current = "";
+      continue;
+    }
+
+    current += ch;
+  }
+
+  const tail = current.trim();
+  if (tail.length > 0) {
+    statements.push(tail);
+  }
+
+  return statements;
+}
+
+function executeSqlFileViaCommand(filePath) {
+  const sql = readFileSync(filePath, "utf8");
+  const statements = splitSqlStatements(sql);
+  for (const statement of statements) {
+    d1CliExecute(["--command", statement]);
+  }
+}
+
 function commandExists(command) {
   try {
     const probe = process.platform === "win32" ? `where ${command}` : `command -v ${command}`;
@@ -94,16 +192,9 @@ function resolveWranglerCommand() {
       display: "bunx wrangler",
     };
   }
-  if (commandExists("npx")) {
-    return {
-      command: "npx",
-      prefixArgs: ["wrangler"],
-      display: "npx wrangler",
-    };
-  }
 
   throw new Error(
-    "Wrangler CLI not found. Install wrangler or make bunx/npx available in PATH.",
+    "Wrangler CLI not found. Install wrangler or make bunx available in PATH.",
   );
 }
 
@@ -239,6 +330,26 @@ for (const file of migrationFiles) {
       }
       console.log(`     ⏭️  Already applied (skipped)\n`);
       skippedCount++;
+    } else if (!isLocal && shouldFallbackToCommandExecution(errorOutput)) {
+      try {
+        console.log(
+          "     ⚠️  Wrangler file import failed; retrying migration with statement-by-statement execution...",
+        );
+        executeSqlFileViaCommand(filePath);
+
+        try {
+          d1Execute(`INSERT INTO _migrations (name) VALUES ('${file}')`);
+        } catch {
+          console.log(`     ⚠️  Migration ran but failed to record in tracking table\n`);
+        }
+
+        console.log(`     ✅ Success (fallback)\n`);
+        successCount++;
+      } catch (fallbackError) {
+        const fallbackOutput = extractErrorOutput(fallbackError);
+        console.error(`     ❌ Error: ${fallbackOutput || fallbackError.message}\n`);
+        errorCount++;
+      }
     } else {
       console.error(`     ❌ Error: ${errorOutput || error.message}\n`);
       errorCount++;
