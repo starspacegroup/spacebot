@@ -2,6 +2,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
 	
 	let { data } = $props();
@@ -20,6 +21,8 @@
 	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
 	let runnerJobs = $state(untrack(() => data.runnerJobs ?? []));
 	let runnerInstances = $state(untrack(() => data.runnerInstances ?? []));
+	const RUNNER_ONLINE_WINDOW_MS = 90_000;
+	const RUNNER_REFRESH_INTERVAL_MS = 15_000;
 
 	// Create-token form
 	let newRunnerName = $state('');
@@ -36,12 +39,30 @@
 	let dispatching = $state(false);
 	let copilotPrompt = $state('');
 
-	/** Returns true if the runner checked in within the last 45 seconds */
+	/** Returns true if any instance is currently online or token heartbeat is fresh */
 	function isRunnerOnline(token) {
+		if (token.revoked) return false;
+		if (instancesForToken(token.id).some((instance) => instance.is_online)) return true;
 		if (!token.last_seen_at) return false;
 		const age = Date.now() - new Date(token.last_seen_at + 'Z').getTime();
-		return age < 45_000;
+		return age < RUNNER_ONLINE_WINDOW_MS;
 	}
+
+	async function refreshRunnerData() {
+		const listRes = await fetch('/api/account/runners');
+		if (!listRes.ok) return;
+		const listBody = await listRes.json();
+		runnerTokens = listBody.tokens || runnerTokens;
+		runnerJobs = listBody.jobs || runnerJobs;
+		runnerInstances = listBody.instances || runnerInstances;
+	}
+
+	onMount(() => {
+		const refreshTimer = setInterval(() => {
+			refreshRunnerData().catch(() => {});
+		}, RUNNER_REFRESH_INTERVAL_MS);
+		return () => clearInterval(refreshTimer);
+	});
 
 	async function createRunner() {
 		if (!newRunnerName.trim()) return;
@@ -121,13 +142,7 @@
 			dispatchWorkDir = '';
 			dispatchLabel = '';
 			dispatchTokenId = null;
-			// Refresh job list
-			const listRes = await fetch('/api/account/runners');
-			if (listRes.ok) {
-				const listBody = await listRes.json();
-				runnerJobs = listBody.jobs || runnerJobs;
-				runnerInstances = listBody.instances || runnerInstances;
-			}
+			await refreshRunnerData();
 		} catch {
 			toastMessage = 'Network error. Please try again.';
 			toastSuccess = false;
@@ -162,12 +177,7 @@
 			toastSuccess = true;
 			showToast = true;
 
-			const listRes = await fetch('/api/account/runners');
-			if (listRes.ok) {
-				const listBody = await listRes.json();
-				runnerJobs = listBody.jobs || runnerJobs;
-				runnerInstances = listBody.instances || runnerInstances;
-			}
+			await refreshRunnerData();
 		} catch {
 			toastMessage = 'Network error. Please try again.';
 			toastSuccess = false;

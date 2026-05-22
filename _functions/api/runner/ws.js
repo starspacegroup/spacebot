@@ -135,6 +135,13 @@ async function validateToken(db, rawToken, clientIp) {
   return { valid: true, tokenId: row.id, userId: row.user_id };
 }
 
+async function touchRunnerToken(db, tokenId, clientIp) {
+  if (!tokenId) return;
+  await db.prepare(
+    "UPDATE local_runner_tokens SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now') WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))"
+  ).bind(clientIp ?? null, tokenId, `-${TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`).run();
+}
+
 async function registerRunnerInstance(db, auth, instance, clientIp) {
   if (!instance?.instanceKey || !instance?.displayName) {
     throw new Error("Missing runner instance identity");
@@ -647,6 +654,8 @@ export async function onRequestGet(context) {
 
     if (msg.type === "hello") {
       try {
+        touchRunnerToken(db, auth.tokenId, clientIp).catch(() => {});
+
         const instance = await registerRunnerInstance(db, auth, msg.instance ?? {}, clientIp);
         state.instanceId = instance?.id ?? null;
         state.instanceName = instance?.display_name ?? msg.instance?.displayName ?? null;
@@ -681,6 +690,7 @@ export async function onRequestGet(context) {
     }
 
     if (msg.type === "pong") {
+      touchRunnerToken(db, auth.tokenId, clientIp).catch(() => {});
       if (state.instanceId) {
         touchRunnerInstance(db, state.instanceId, clientIp).catch(() => {});
       }
