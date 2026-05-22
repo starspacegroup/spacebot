@@ -923,6 +923,10 @@ async function handleDirectMessage(message, client) {
       let failureMessage;
       if (reason === "no_runner") {
         failureMessage = "I couldn't find any registered local runner systems for your account, so I can't take that screenshot yet.";
+      } else if (reason === "preference_disabled") {
+        failureMessage = "Your account is set to use cloud AI first for DMs. Enable the Local Runners preference to route screenshot requests through your local runner.";
+      } else if (reason === "no_active_runner") {
+        failureMessage = "I can see your local runner systems, but none are active right now. Start one and try again.";
       } else if (reason === "dispatch_failed") {
         failureMessage = `I couldn't queue that screenshot request on your local runner.${detail}`;
       } else {

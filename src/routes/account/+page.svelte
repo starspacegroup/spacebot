@@ -32,9 +32,10 @@
 	let newRawToken = $state(null);
 	let newRawTokenCopied = $state(false);
 	let showRevokedRunners = $state(untrack(() => Boolean(data?.runnerUiPrefs?.showRevoked)));
+	let preferLocalRunnerForDM = $state(untrack(() => Boolean(data?.runnerUiPrefs?.preferLocalRunnerForDM)));
 	let runnerPrefsInitialized = $state(false);
 	let runnerPrefsSaveInFlight = false;
-	let lastSavedRunnerShowRevoked = null;
+	let lastSavedRunnerPrefs = null;
 	let runnerPrefsPendingValue = null;
 	let runnerPrefsSaveStatus = $state('idle'); // idle | saving | saved | error
 	let runnerPrefsSavedTimer = null;
@@ -70,6 +71,11 @@
 			}
 		} catch {}
 
+		lastSavedRunnerPrefs = {
+			showRevoked: showRevokedRunners,
+			preferLocalRunnerForDM,
+		};
+
 		runnerPrefsInitialized = true;
 
 		const refreshTimer = setInterval(() => {
@@ -78,20 +84,25 @@
 		return () => clearInterval(refreshTimer);
 	});
 
-	function persistRunnerUiPreference(nextValue) {
+	function persistRunnerUiPreference(nextPrefs) {
 		if (runnerPrefsSaveInFlight) {
-			runnerPrefsPendingValue = nextValue;
+			runnerPrefsPendingValue = nextPrefs;
 			return;
 		}
 
 		runnerPrefsSaveInFlight = true;
-		lastSavedRunnerShowRevoked = nextValue;
+		lastSavedRunnerPrefs = { ...nextPrefs };
 		runnerPrefsSaveStatus = 'saving';
 
 		fetch('/api/account/preferences', {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ runnerUi: { showRevoked: nextValue } }),
+			body: JSON.stringify({
+				runnerUi: {
+					showRevoked: Boolean(nextPrefs?.showRevoked),
+					preferLocalRunnerForDM: Boolean(nextPrefs?.preferLocalRunnerForDM),
+				},
+			}),
 		})
 			.then((res) => {
 				if (!res.ok) throw new Error('Failed to save');
@@ -102,12 +113,17 @@
 				}, 1800);
 			})
 			.catch(() => {
-				lastSavedRunnerShowRevoked = null;
+				lastSavedRunnerPrefs = null;
 				runnerPrefsSaveStatus = 'error';
 			})
 			.finally(() => {
 				runnerPrefsSaveInFlight = false;
-				if (runnerPrefsPendingValue !== null && runnerPrefsPendingValue !== lastSavedRunnerShowRevoked) {
+				const pendingChanged = runnerPrefsPendingValue !== null
+					&& (
+						runnerPrefsPendingValue.showRevoked !== lastSavedRunnerPrefs?.showRevoked
+						|| runnerPrefsPendingValue.preferLocalRunnerForDM !== lastSavedRunnerPrefs?.preferLocalRunnerForDM
+					);
+				if (pendingChanged) {
 					const pending = runnerPrefsPendingValue;
 					runnerPrefsPendingValue = null;
 					persistRunnerUiPreference(pending);
@@ -119,13 +135,23 @@
 
 	$effect(() => {
 		if (!runnerPrefsInitialized) return;
-		if (lastSavedRunnerShowRevoked === showRevokedRunners) return;
+
+		const nextPrefs = {
+			showRevoked: showRevokedRunners,
+			preferLocalRunnerForDM,
+		};
+
+		if (
+			lastSavedRunnerPrefs
+			&& lastSavedRunnerPrefs.showRevoked === nextPrefs.showRevoked
+			&& lastSavedRunnerPrefs.preferLocalRunnerForDM === nextPrefs.preferLocalRunnerForDM
+		) return;
 
 		try {
 			localStorage.setItem(RUNNER_UI_PREFS_STORAGE_KEY, showRevokedRunners ? '1' : '0');
 		} catch {}
 
-		persistRunnerUiPreference(showRevokedRunners);
+		persistRunnerUiPreference(nextPrefs);
 	});
 
 	async function createRunner() {
@@ -954,6 +980,10 @@
 			<label class="runner-option-toggle">
 				<input type="checkbox" bind:checked={showRevokedRunners} />
 				<span>Show revoked runners</span>
+			</label>
+			<label class="runner-option-toggle">
+				<input type="checkbox" bind:checked={preferLocalRunnerForDM} />
+				<span>Use active local runner first for DMs</span>
 			</label>
 			{#if runnerPrefsSaveStatus === 'saving'}
 				<span class="runner-pref-status">Saving...</span>

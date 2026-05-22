@@ -1,5 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { getRunnerInstances, createRunnerJob } from "$lib/db/local-runners.js";
+import { getUserPreferences } from "$lib/db/users.js";
 
 const SCREENSHOT_REQUEST_RE = /\b(screenshot|screen\s*shot|screen\s*capture|capture\s+(?:the\s+)?screen)\b/i;
 const TARGET_HINT_RE = /\b(?:of|on|from|at|for)\s+([a-z0-9._-]{3,})\b/i;
@@ -145,12 +146,30 @@ export async function POST({ request, platform }) {
     return json({ error: "userId and content are required" }, { status: 400 });
   }
 
+  const isScreenshotRequest = SCREENSHOT_REQUEST_RE.test(content || "");
+  const preferences = await getUserPreferences(db, userId);
+  const preferLocalRunnerForDM = Boolean(preferences?.runnerUi?.preferLocalRunnerForDM);
+
   const instances = await getRunnerInstances(db, userId, { limit: 100 });
   if (!instances.length) {
     return json({ dispatched: false, reason: "no_runner" });
   }
 
-  const target = chooseTargetRunner(instances, content);
+  // DM chat takeover is opt-in at the account level.
+  // Screenshot requests still route to local runners regardless of this toggle.
+  if (!isScreenshotRequest && !preferLocalRunnerForDM) {
+    return json({ dispatched: false, reason: "preference_disabled" });
+  }
+
+  const candidateInstances = !isScreenshotRequest
+    ? instances.filter((instance) => Boolean(instance?.is_online))
+    : instances;
+
+  if (!candidateInstances.length) {
+    return json({ dispatched: false, reason: "no_active_runner" });
+  }
+
+  const target = chooseTargetRunner(candidateInstances, content);
   if (!target) {
     return json({ dispatched: false, reason: "no_runner" });
   }

@@ -34,10 +34,27 @@ export async function PATCH({ request, cookies, platform }) {
   }
 
   const payload = {};
+  const current = await getUserPreferences(db, userId);
+  const currentRunnerUi =
+    current?.runnerUi && typeof current.runnerUi === "object" && !Array.isArray(current.runnerUi)
+      ? current.runnerUi
+      : {};
+
+  const nextRunnerUi = { ...currentRunnerUi };
+  let hasRunnerUiUpdate = false;
+
   if (Object.prototype.hasOwnProperty.call(runnerUi, "showRevoked")) {
-    payload.runnerUi = {
-      showRevoked: Boolean(runnerUi.showRevoked),
-    };
+    nextRunnerUi.showRevoked = Boolean(runnerUi.showRevoked);
+    hasRunnerUiUpdate = true;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(runnerUi, "preferLocalRunnerForDM")) {
+    nextRunnerUi.preferLocalRunnerForDM = Boolean(runnerUi.preferLocalRunnerForDM);
+    hasRunnerUiUpdate = true;
+  }
+
+  if (hasRunnerUiUpdate) {
+    payload.runnerUi = nextRunnerUi;
   }
 
   if (!Object.keys(payload).length) {
