@@ -4,6 +4,13 @@ import { getAutostartPaths } from "./service-manager";
 
 export interface PersistedProviderConfig {
   provider?: "ollama" | "copilot";
+  chain?: Array<{
+    provider: "ollama" | "copilot";
+    model?: string;
+    host?: string;
+    port?: number;
+    via?: "copilot" | "gh";
+  }>;
   ollama?: {
     host: string;
     port: number;

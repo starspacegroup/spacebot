@@ -37,6 +37,14 @@ import { gatherSystemProfile } from "./capabilities";
 import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
 import { collectWorkspaceContext } from "./workspace-context";
 import { resolveEffectiveAllowedPaths } from "./permission-config";
+import {
+  DEFAULT_COPILOT_MODEL,
+  detectCopilotAvailability,
+  getCopilotConfig,
+  runCopilotPrompt,
+} from "./copilot-utils";
+import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig } from "./ollama-utils";
+import { readPersistedProviderConfig } from "./provider-config";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -197,6 +205,262 @@ function parsePayload(value: unknown): Record<string, unknown> {
     }
   }
   return {};
+}
+
+type LlmProvider = "ollama" | "copilot";
+
+interface ProviderChainEntry {
+  provider: LlmProvider;
+  model?: string;
+  host?: string;
+  port?: number;
+  via?: "copilot" | "gh";
+}
+
+interface ProviderAttempt {
+  provider: LlmProvider;
+  model: string;
+  ok: boolean;
+  error?: string;
+  durationMs?: number;
+  via?: string;
+}
+
+let cachedCopilotAvailability: Awaited<ReturnType<typeof detectCopilotAvailability>> | null = null;
+
+function stringifyHistory(history: unknown): string {
+  if (!Array.isArray(history)) return "";
+
+  const lines: string[] = [];
+  for (const entry of history.slice(-20)) {
+    if (!entry || typeof entry !== "object") continue;
+    const role = typeof (entry as Record<string, unknown>).role === "string"
+      ? ((entry as Record<string, unknown>).role as string)
+      : "user";
+    const content = typeof (entry as Record<string, unknown>).content === "string"
+      ? ((entry as Record<string, unknown>).content as string).trim()
+      : "";
+    if (!content) continue;
+    lines.push(`${role}: ${content}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildDmPrompt(payload: Record<string, unknown>): string {
+  const userName = typeof payload.user_name === "string" ? payload.user_name : "Discord user";
+  const userMessage = typeof payload.message === "string" ? payload.message.trim() : "";
+  const historyText = stringifyHistory(payload.history);
+  const contextBlock = historyText
+    ? `Conversation history:\n${historyText}\n\n`
+    : "";
+
+  return [
+    "You are SpaceBot replying in a Discord DM.",
+    "Answer clearly and directly.",
+    "If the request is unclear, ask one concise follow-up question.",
+    "Do not include role labels or metadata in your answer.",
+    "",
+    contextBlock,
+    `${userName} says: ${userMessage}`,
+    "",
+    "Reply:",
+  ].join("\n");
+}
+
+function parseProviderChainInput(value: unknown): ProviderChainEntry[] {
+  const raw = Array.isArray(value) ? value : [];
+  const items: ProviderChainEntry[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidate = entry as Record<string, unknown>;
+    const provider = candidate.provider === "ollama" || candidate.provider === "copilot"
+      ? candidate.provider
+      : null;
+    if (!provider) continue;
+    const item: ProviderChainEntry = { provider };
+    if (typeof candidate.model === "string" && candidate.model.trim()) item.model = candidate.model.trim();
+    if (typeof candidate.host === "string" && candidate.host.trim()) item.host = candidate.host.trim();
+    if (typeof candidate.port === "number" && Number.isFinite(candidate.port)) item.port = Math.trunc(candidate.port);
+    if (candidate.via === "copilot" || candidate.via === "gh") item.via = candidate.via;
+    items.push(item);
+  }
+
+  return items;
+}
+
+function dedupeProviderChain(entries: ProviderChainEntry[]): ProviderChainEntry[] {
+  const out: ProviderChainEntry[] = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    const key = [entry.provider, entry.model ?? "", entry.host ?? "", String(entry.port ?? ""), entry.via ?? ""].join("::");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
+}
+
+function resolveProviderChain(payload: Record<string, unknown>): ProviderChainEntry[] {
+  const persisted = readPersistedProviderConfig();
+
+  const fromPayload = parseProviderChainInput(payload.provider_chain);
+  if (fromPayload.length > 0) return dedupeProviderChain(fromPayload);
+
+  const fromEnv: ProviderChainEntry[] = (() => {
+    try {
+      const raw = process.env.SPACEBOT_PROVIDER_CHAIN;
+      if (!raw) return [];
+      return parseProviderChainInput(JSON.parse(raw));
+    } catch {
+      return [];
+    }
+  })();
+  if (fromEnv.length > 0) return dedupeProviderChain(fromEnv);
+
+  const fromPersisted = parseProviderChainInput(persisted.chain);
+  if (fromPersisted.length > 0) return dedupeProviderChain(fromPersisted);
+
+  const copilotCfg = getCopilotConfig() ?? (persisted.copilot
+    ? { model: persisted.copilot.model, via: persisted.copilot.via }
+    : null);
+  const ollamaCfg = getOllamaConfig() ?? (persisted.ollama
+    ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
+    : null);
+
+  const preferred = process.env.SPACEBOT_LLM_PROVIDER === "copilot" || process.env.SPACEBOT_LLM_PROVIDER === "ollama"
+    ? process.env.SPACEBOT_LLM_PROVIDER
+    : (persisted.provider === "copilot" || persisted.provider === "ollama" ? persisted.provider : null);
+
+  const defaults: ProviderChainEntry[] = [];
+  const addCopilot = () => {
+    if (!copilotCfg) return;
+    defaults.push({ provider: "copilot", model: copilotCfg.model || DEFAULT_COPILOT_MODEL, via: copilotCfg.via });
+  };
+  const addOllama = () => {
+    if (!ollamaCfg) return;
+    defaults.push({ provider: "ollama", model: ollamaCfg.model, host: ollamaCfg.host, port: ollamaCfg.port });
+  };
+
+  if (preferred === "copilot") {
+    addCopilot();
+    addOllama();
+  } else if (preferred === "ollama") {
+    addOllama();
+    addCopilot();
+  } else {
+    addCopilot();
+    addOllama();
+  }
+
+  return dedupeProviderChain(defaults);
+}
+
+async function runPromptThroughProviderChain(prompt: string, payload: Record<string, unknown>): Promise<{
+  ok: boolean;
+  text?: string;
+  attempts: ProviderAttempt[];
+}> {
+  const chain = resolveProviderChain(payload);
+  const attempts: ProviderAttempt[] = [];
+
+  for (const entry of chain) {
+    if (entry.provider === "copilot") {
+      const model = entry.model || DEFAULT_COPILOT_MODEL;
+      if (!cachedCopilotAvailability) {
+        cachedCopilotAvailability = await detectCopilotAvailability();
+      }
+      const availability = cachedCopilotAvailability;
+      if (!availability.copilotCli && !availability.ghCopilot) {
+        attempts.push({
+          provider: "copilot",
+          model,
+          ok: false,
+          error: "Copilot CLI is not available on this runner",
+        });
+        continue;
+      }
+
+      const result = await runCopilotPrompt(prompt, availability, {
+        model,
+        preferVia: entry.via,
+      });
+
+      if (result.ok && typeof result.text === "string" && result.text.trim()) {
+        attempts.push({
+          provider: "copilot",
+          model,
+          ok: true,
+          durationMs: result.durationMs,
+          via: result.via,
+        });
+        return { ok: true, text: result.text.trim(), attempts };
+      }
+
+      attempts.push({
+        provider: "copilot",
+        model,
+        ok: false,
+        error: result.error ?? "Copilot returned no output",
+        durationMs: result.durationMs,
+      });
+      continue;
+    }
+
+    const persisted = readPersistedProviderConfig();
+    const configured = getOllamaConfig() ?? persisted.ollama ?? null;
+    const host = entry.host || configured?.host || "localhost";
+    const port = entry.port || configured?.port || 11434;
+    const model = entry.model || configured?.model || "";
+
+    if (!model) {
+      attempts.push({
+        provider: "ollama",
+        model: "(missing)",
+        ok: false,
+        error: "No Ollama model configured",
+      });
+      continue;
+    }
+
+    const running = await detectOllamaRunning(host, port);
+    if (!running) {
+      attempts.push({
+        provider: "ollama",
+        model,
+        ok: false,
+        error: `Ollama is not reachable at ${host}:${port}`,
+      });
+      continue;
+    }
+
+    const generated = await generateOllamaResponse({
+      host,
+      port,
+      model,
+      prompt,
+    });
+
+    if (generated.ok && generated.text.trim()) {
+      attempts.push({
+        provider: "ollama",
+        model,
+        ok: true,
+        durationMs: generated.stats.totalDurationMs,
+      });
+      return { ok: true, text: generated.text.trim(), attempts };
+    }
+
+    attempts.push({
+      provider: "ollama",
+      model,
+      ok: false,
+      error: generated.ok ? "Ollama returned no output" : generated.error,
+    });
+  }
+
+  return { ok: false, attempts };
 }
 
 interface PreparedArtifact {
@@ -505,12 +769,67 @@ async function executeVscodeDiscover(): Promise<JobResult> {
   };
 }
 
+async function executeDmJob(payload: Record<string, unknown>): Promise<JobResult> {
+  const message = typeof payload.message === "string" ? payload.message.trim() : "";
+  if (!message) {
+    return {
+      status: "failed",
+      output: "dm job requires payload.message",
+      exitCode: 1,
+      truncated: false,
+      result: {
+        done: false,
+        reason: "missing_message",
+      },
+    };
+  }
+
+  const prompt = buildDmPrompt(payload);
+  const run = await runPromptThroughProviderChain(prompt, payload);
+  if (!run.ok || !run.text) {
+    const failureSummary = run.attempts.length > 0
+      ? run.attempts
+        .map((entry) => `${entry.provider}/${entry.model}: ${entry.error || "failed"}`)
+        .join("; ")
+      : "No providers/models were configured.";
+
+    return {
+      status: "failed",
+      output: `Unable to complete dm job: ${failureSummary}`,
+      exitCode: 1,
+      truncated: false,
+      result: {
+        done: false,
+        reason: "all_providers_failed",
+        attempts: run.attempts,
+      },
+    };
+  }
+
+  return {
+    status: "completed",
+    output: run.text,
+    exitCode: 0,
+    truncated: false,
+    result: {
+      done: true,
+      response: run.text,
+      attempts: run.attempts,
+      responseTarget: payload.response_target ?? null,
+    },
+  };
+}
+
 async function executeTypedJob(job: Job): Promise<JobResult | null> {
   const jobType = job.job_type || "shell_command";
   const payload = parsePayload(job.payload_json);
 
   if (jobType === "shell_command") {
     return null;
+  }
+
+  if (jobType === "dm") {
+    return executeDmJob(payload);
   }
 
   if (jobType === "system_profile") {

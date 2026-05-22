@@ -61,6 +61,12 @@ export async function POST({ request, platform }) {
     user_name: typeof body?.userName === "string" ? body.userName : null,
     message: content,
     history: Array.isArray(body?.history) ? body.history.slice(-20) : [],
+    provider_chain: Array.isArray(body?.providerChain) ? body.providerChain : undefined,
+    response_target: {
+      type: "discord_dm",
+      user_id: userId,
+      source: "gateway_dm",
+    },
     received_at: new Date().toISOString(),
   };
 

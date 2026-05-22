@@ -496,6 +496,90 @@ async function storeResult(db, tokenId, instanceId, jobId, {
     .run();
 }
 
+async function getJobContext(db, tokenId, jobId) {
+  return db
+    .prepare(
+      `SELECT id, job_type, payload_json
+       FROM local_runner_jobs
+       WHERE id = ? AND runner_token_id = ?`
+    )
+    .bind(jobId, tokenId)
+    .first();
+}
+
+async function createDiscordDmChannel(botToken, userId) {
+  const dmRes = await fetch("https://discord.com/api/v10/users/@me/channels", {
+    method: "POST",
+    headers: {
+      Authorization: `Bot ${botToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ recipient_id: userId }),
+  });
+  if (!dmRes.ok) return null;
+  const payload = await dmRes.json().catch(() => null);
+  return payload?.id ?? null;
+}
+
+function chunkDiscordContent(text) {
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  if (!trimmed) return [];
+  const chunks = [];
+  for (let i = 0; i < trimmed.length; i += 1990) {
+    chunks.push(trimmed.slice(i, i + 1990));
+  }
+  return chunks;
+}
+
+async function sendDiscordTextDM(env, userId, content) {
+  const botToken = env?.DISCORD_BOT_TOKEN;
+  if (!botToken || !userId) return;
+
+  const channelId = await createDiscordDmChannel(botToken, userId);
+  if (!channelId) return;
+
+  const chunks = chunkDiscordContent(content);
+  for (const chunk of chunks) {
+    await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ content: chunk }),
+    });
+  }
+}
+
+async function sendJobResponseToOrigin(env, auth, jobContext, status, output, resultJson) {
+  if (!jobContext) return;
+  const jobType = typeof jobContext.job_type === "string" ? jobContext.job_type : "";
+  if (jobType !== "dm") return;
+
+  const payload = parseJson(jobContext.payload_json) || {};
+  const responseTarget = payload.response_target && typeof payload.response_target === "object"
+    ? payload.response_target
+    : null;
+
+  const targetType = responseTarget?.type || "discord_dm";
+  if (targetType !== "discord_dm") return;
+
+  const targetUserId = responseTarget?.user_id || payload.user_id || auth.userId;
+  if (!targetUserId) return;
+
+  const explicitResponse = resultJson && typeof resultJson === "object" && typeof resultJson.response === "string"
+    ? resultJson.response
+    : null;
+  const completionText = explicitResponse || (typeof output === "string" ? output : "");
+
+  const content = status === "completed"
+    ? completionText
+    : `I couldn't complete your local-runner request.\n\n${completionText || "No additional error details were returned."}`;
+
+  if (!content.trim()) return;
+  await sendDiscordTextDM(env, targetUserId, content);
+}
+
 async function sendScreenshotDM(env, userId, rawArtifactRefs) {
   const botToken = env?.DISCORD_BOT_TOKEN;
   if (!botToken || !userId) return;
@@ -506,17 +590,8 @@ async function sendScreenshotDM(env, userId, rawArtifactRefs) {
   if (screenshots.length === 0) return;
 
   // Create DM channel
-  const dmRes = await fetch("https://discord.com/api/v10/users/@me/channels", {
-    method: "POST",
-    headers: {
-      Authorization: `Bot ${botToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ recipient_id: userId }),
-  });
-  if (!dmRes.ok) return;
-
-  const { id: channelId } = await dmRes.json();
+  const channelId = await createDiscordDmChannel(botToken, userId);
+  if (!channelId) return;
 
   // Build multipart message with screenshot attachments
   const formData = new FormData();
@@ -754,6 +829,7 @@ export async function GET({ request, platform }) {
         return; // ignore invalid
       }
       try {
+        const jobContext = await getJobContext(db, auth.tokenId, jobId);
         const persistedArtifactRefs = await persistArtifacts(db, auth, state, jobId, artifactRefs);
 
         const update = await storeResult(db, auth.tokenId, state.instanceId, jobId, {
@@ -784,6 +860,8 @@ export async function GET({ request, platform }) {
         if (status === "completed" && Array.isArray(artifactRefs) && artifactRefs.length > 0) {
           sendScreenshotDM(env, auth.userId, artifactRefs).catch(() => {});
         }
+
+        sendJobResponseToOrigin(env, auth, jobContext, status, output, result ?? null).catch(() => {});
 
         server.send(JSON.stringify({ type: "ack", jobId }));
       } catch (e) {
