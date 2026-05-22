@@ -28,6 +28,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:
 import { hostname, release, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { gatherSystemProfile } from "./capabilities";
 import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
 import { collectWorkspaceContext } from "./workspace-context";
@@ -51,6 +52,10 @@ const RECONNECT_MAX_MS = 60_000;
 const MAX_ARTIFACT_BYTES = Number(process.env.RUNNER_MAX_ARTIFACT_BYTES ?? "2000000");
 const HOSTNAME = hostname();
 const RUNNER_VERSION = "2026.05.07";
+const FORCE_HEADLESS = process.argv.includes("--headless")
+  || process.env.RUNNER_TUI_DISABLE === "1"
+  || process.env.RUNNER_TUI_CHILD === "1"
+  || !process.stdin.isTTY;
 const INSTANCE_KEY = process.env.RUNNER_INSTANCE_KEY
   ?? `sbrinst_${createHash("sha256").update([HOSTNAME, process.platform, process.arch, DEFAULT_WORKDIR].join("::")).digest("hex").slice(0, 24)}`;
 const DISPLAY_NAME = process.env.RUNNER_DISPLAY_NAME ?? `${HOSTNAME} (${process.platform}/${process.arch})`;
@@ -926,26 +931,54 @@ function connect() {
 // Entry point
 // ---------------------------------------------------------------------------
 
-if (!TOKEN || !TOKEN.startsWith("sbr_")) {
-  err("SPACEBOT_RUNNER_TOKEN is missing or has an invalid format (expected sbr_…).");
-  err("Set it via environment variable or create a .env file.");
+function validateRunnerToken() {
+  if (!TOKEN || !TOKEN.startsWith("sbr_")) {
+    err("SPACEBOT_RUNNER_TOKEN is missing or has an invalid format (expected sbr_…).");
+    err("Set it via environment variable or create a .env file.");
+    process.exit(1);
+  }
+}
+
+function startHeadlessRunner() {
+  log("SpaceBot Local Runner starting…");
+  log(`  Server: ${API_URL}`);
+  log(`  CWD:    ${DEFAULT_WORKDIR}`);
+  log(`  Name:   ${DISPLAY_NAME}`);
+  log(`  Host:   ${HOSTNAME}`);
+  if (ALLOWED_PATHS.length > 0) {
+    log(`  Allowed paths: ${ALLOWED_PATHS.join(", ")}`);
+  } else {
+    warn("No RUNNER_ALLOWED_PATHS set — any working_dir will be accepted. Consider setting it for safety.");
+  }
+  log("");
+
+  process.on("SIGINT", () => { log("Shutting down…"); running = false; process.exit(0); });
+  process.on("SIGTERM", () => { log("Shutting down…"); running = false; process.exit(0); });
+
+  connect();
+}
+
+async function main() {
+  if (FORCE_HEADLESS) {
+    validateRunnerToken();
+    startHeadlessRunner();
+    return;
+  }
+
+  const { startRunnerTui } = await import("./tui");
+  await startRunnerTui({
+    apiUrl: API_URL,
+    defaultWorkdir: DEFAULT_WORKDIR,
+    displayName: DISPLAY_NAME,
+    hostname: HOSTNAME,
+    allowedPaths: ALLOWED_PATHS,
+    scriptPath: fileURLToPath(import.meta.url),
+    initialToken: TOKEN,
+  });
+}
+
+main().catch((error) => {
+  err("Local runner startup failed:", error);
   process.exit(1);
-}
-
-log("SpaceBot Local Runner starting…");
-log(`  Server: ${API_URL}`);
-log(`  CWD:    ${DEFAULT_WORKDIR}`);
-log(`  Name:   ${DISPLAY_NAME}`);
-log(`  Host:   ${HOSTNAME}`);
-if (ALLOWED_PATHS.length > 0) {
-  log(`  Allowed paths: ${ALLOWED_PATHS.join(", ")}`);
-} else {
-  warn("No RUNNER_ALLOWED_PATHS set — any working_dir will be accepted. Consider setting it for safety.");
-}
-log("");
-
-process.on("SIGINT", () => { log("Shutting down…"); running = false; process.exit(0); });
-process.on("SIGTERM", () => { log("Shutting down…"); running = false; process.exit(0); });
-
-connect();
+});
 

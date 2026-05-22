@@ -2,6 +2,22 @@
 
 This document covers the typed local-runner capabilities added for cross-platform host automation.
 
+## Startup Experience
+
+- `bun run runner` now opens an interactive OpenTUI dashboard when launched from a real terminal.
+- If `SPACEBOT_RUNNER_TOKEN` is missing, press `k` in the dashboard to negotiate a token from the production site.
+- The negotiation flow opens your browser to `/api/account/runners/negotiate`, reuses your logged-in website session, creates a runner token, and sends it back to a localhost callback.
+- On first interactive launch, the runner checks for an existing auto-start entry on the current machine:
+	- Linux: user-level `systemd` service
+	- macOS: `LaunchAgent`
+	- Windows: Startup folder entry
+- If none is present, the TUI offers three paths:
+	- install auto-start now
+	- skip for this session
+	- don't ask again
+- Installed auto-start entries persist the current `SPACEBOT_*` and `RUNNER_*` environment variables so the runner can reconnect without a shell profile.
+- Headless contexts still work by launching `bun run runner:headless` or `bun run scripts/local-runner/index.ts --headless`.
+
 ## Supported Job Types
 
 - `shell_command` (legacy default)

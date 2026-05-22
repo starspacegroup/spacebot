@@ -22,6 +22,7 @@
 		"register-commands": "node scripts/register-commands.js",
 		"register-linked-role": "node scripts/register-linked-role-metadata.js",
 		"runner": "bun run scripts/local-runner/index.ts",
+		"runner:headless": "bun run scripts/local-runner/index.ts --headless",
 		"runner:local": "SPACEBOT_API_URL=http://localhost:4269 bun run scripts/local-runner/index.ts",
 		"runner:bridge:readme": "cat local-runner-vscode-bridge/README.md",
 		"db:create": "wrangler d1 create spacebot-logs",
@@ -52,11 +53,16 @@
 		"better-sqlite3": "^12.6.2"
 	},
 	"dependencies": {
+		"@opentui/core": "^0.2.15",
+		"@opentui/react": "^0.2.15",
 		"@discordjs/rest": "^2.6.0",
 		"@resvg/resvg-wasm": "^2.6.2",
 		"discord-api-types": "^0.38.37",
 		"discord-interactions": "^4.4.0",
 		"discord.js": "^14.25.1",
-		"dotenv": "^17.2.3"
+		"dotenv": "^17.2.3",
+		"react": "^19.2.0",
+		"react-devtools-core": "^7.0.1",
+		"ws": "^8.18.3"
 	}
 }
