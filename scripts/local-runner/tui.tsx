@@ -626,6 +626,8 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const [modelSetupSelection, setModelSetupSelection] = useState(0);
   const [copilotModelSetupSelection, setCopilotModelSetupSelection] = useState(0);
   const [providerSetupError, setProviderSetupError] = useState<string | null>(null);
+  // True when the model picker was opened via /models from the chat rather than the initial wizard.
+  const [modelPickerFromCommand, setModelPickerFromCommand] = useState(false);
 
   // Permission setup wizard state
   const [permissionSetupSelection, setPermissionSetupSelection] = useState(0);
@@ -656,6 +658,28 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   }));
   const [panelsVisible, setPanelsVisible] = useState(true);
 
+  // Slash-command definitions for Tab autocomplete.
+  // Each entry: the full command token (with leading /) and an optional args hint.
+  const SLASH_COMMANDS: ReadonlyArray<{ cmd: string; args?: string }> = [
+    { cmd: "/help" },
+    { cmd: "/models" },
+    { cmd: "/connect", args: "<model>" },
+    { cmd: "/provider", args: "<copilot|ollama>" },
+    { cmd: "/providers" },
+    { cmd: "/config" },
+    { cmd: "/token" },
+    { cmd: "/autostart" },
+    { cmd: "/restart" },
+    { cmd: "/permissions" },
+    { cmd: "/perms" },
+    { cmd: "/panels" },
+    { cmd: "/show-panels" },
+    { cmd: "/hide-panels" },
+    { cmd: "/toggle-panels" },
+    { cmd: "/clear" },
+    { cmd: "/quit" },
+  ];
+
   // Exit confirmation (double Ctrl+C / q to exit)
   const [exitConfirmPending, setExitConfirmPending] = useState(false);
   const exitConfirmTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -677,7 +701,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return;
     }
     setExitConfirmPending(true);
-    flashStatus("warning", "⚠  Press Ctrl+C again to exit · runner stays online if installed as service", 4000);
+    const serviceMsg = autostartStatus.installed
+      ? "⚠  Press Ctrl+C again to exit · background service will keep the runner online"
+      : "⚠  Press Ctrl+C again to exit · runner will stop (no background service installed)";
+    flashStatus("warning", serviceMsg, 4000);
     if (exitConfirmTimerRef.current) clearTimeout(exitConfirmTimerRef.current);
     exitConfirmTimerRef.current = setTimeout(() => setExitConfirmPending(false), 4000);
   };
@@ -960,15 +987,14 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
     if (text === "/models") {
       if (activeProvider === "copilot") {
-        const lines: string[] = ["### Copilot models", "_Cost = GitHub premium-request multiplier per prompt._", ""];
         const current = activeCopilotConfig?.model ?? DEFAULT_COPILOT_MODEL;
-        for (const m of COPILOT_MODELS) {
-          const mark = m.id === current ? "✓" : " ";
-          lines.push(`- ${mark} \`${m.id}\` — ${formatCopilotMultiplier(m.multiplier)} — _${m.label}_`);
-        }
-        lines.push("");
-        lines.push("> Switch with `/connect <id>` (e.g. `/connect auto` or `/connect gpt-5-mini`).");
-        addChatMessage({ type: "system", text: lines.join("\n") });
+        const idx = COPILOT_MODELS.findIndex((m) => m.id === current);
+        setCopilotModelSetupSelection(idx >= 0 ? idx : 0);
+        setModelPickerFromCommand(true);
+        setChatMode(false);
+        setChatInput("");
+        setProviderSetupStep("copilot-model");
+        setMode("provider-setup");
         return;
       }
       if (!ollamaRunning) {
@@ -983,10 +1009,12 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         return;
       }
 
-      const modelList = models
-        .map((m) => `- \`${m.name}\` _(${formatBytes(m.size)})_`)
-        .join("\n");
-      addChatMessage({ type: "system", text: `### Available models\n${modelList}` });
+      setModelSetupSelection(0);
+      setModelPickerFromCommand(true);
+      setChatMode(false);
+      setChatInput("");
+      setProviderSetupStep("model");
+      setMode("provider-setup");
       return;
     }
 
@@ -1687,6 +1715,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     process.env.SPACEBOT_LLM_PROVIDER = "ollama";
     writePersistedProviderConfig({ provider: "ollama", ollama: config });
     addChatMessage({ type: "success", text: `Connected to Ollama model: \`${modelName}\`` });
+    setModelPickerFromCommand(false);
     setMode("dashboard");
   }
 
@@ -1701,6 +1730,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     const costPart = known ? ` · ${formatCopilotMultiplier(known.multiplier)}` : "";
     const label = known?.label ?? modelId;
     addChatMessage({ type: "success", text: `Switched to GitHub Copilot · \`${modelId}\`${costPart} _(${label})_.` });
+    setModelPickerFromCommand(false);
     setMode("dashboard");
   }
 
@@ -1737,8 +1767,13 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     // step === "model"  (ollama)
     if (providerSetupStep === "model") {
       if (key.name === "escape" || (key.name === "tab" && key.shift)) {
-        setProviderSetupStep("provider");
-        setProviderSetupError(null);
+        if (modelPickerFromCommand) {
+          setModelPickerFromCommand(false);
+          setMode("dashboard");
+        } else {
+          setProviderSetupStep("provider");
+          setProviderSetupError(null);
+        }
         return;
       }
       if (key.name === "up") {
@@ -1760,8 +1795,13 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     // step === "copilot-model"
     if (providerSetupStep === "copilot-model") {
       if (key.name === "escape" || (key.name === "tab" && key.shift)) {
-        setProviderSetupStep("provider");
-        setProviderSetupError(null);
+        if (modelPickerFromCommand) {
+          setModelPickerFromCommand(false);
+          setMode("dashboard");
+        } else {
+          setProviderSetupStep("provider");
+          setProviderSetupError(null);
+        }
         return;
       }
       if (key.name === "up") {
@@ -1939,6 +1979,29 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         return;
       }
 
+      // Tab autocomplete for slash commands
+      if (key.name === "tab" && chatInput.startsWith("/")) {
+        // Only autocomplete the command token (before any space)
+        const spaceIdx = chatInput.indexOf(" ");
+        const partial = spaceIdx === -1 ? chatInput : chatInput.slice(0, spaceIdx);
+        const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(partial) && c.cmd !== partial);
+        if (matches.length === 1) {
+          // Unique match — complete it, appending a space if it takes args
+          const completed = matches[0]!.cmd + (matches[0]!.args ? " " : "");
+          setChatInput(completed);
+        } else if (matches.length > 1) {
+          // Find longest common prefix among all matches
+          let prefix = matches[0]!.cmd;
+          for (const m of matches.slice(1)) {
+            let i = 0;
+            while (i < prefix.length && i < m.cmd.length && prefix[i] === m.cmd[i]) i++;
+            prefix = prefix.slice(0, i);
+          }
+          if (prefix.length > partial.length) setChatInput(prefix);
+        }
+        return;
+      }
+
       // Basic text input (limited to printable characters)
       if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
         const maxInput = Math.max(32, terminalSize.width - 26);
@@ -2007,7 +2070,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return { tone: statusFlash.tone, text: fitLine(statusFlash.text, renderWidth) };
     }
     if (exitConfirmPending) {
-      return { tone: "warning", text: fitLine("⚠  Press Ctrl+C again to exit", renderWidth) };
+      const confirmMsg = autostartStatus.installed
+        ? "⚠  Press Ctrl+C again to exit · service keeps running"
+        : "⚠  Press Ctrl+C again to exit · runner will stop";
+      return { tone: "warning", text: fitLine(confirmMsg, renderWidth) };
     }
     const hints = chatMode
       ? "↵ send · esc focus · pgup/pgdn scroll · tab panels · ctrl+c×2 exit · /help"
@@ -2062,6 +2128,28 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     if (c.ghCopilot && c.ghAuthed) return `copilot · ${model} · gh extension`;
     if (c.ghCopilot) return "copilot · run `gh auth login`";
     return "copilot · CLI not installed";
+  };
+
+  /** Returns a dimmed autocomplete hint for the current chatInput, or empty string. */
+  const buildTabHint = (): string => {
+    if (!chatMode || !chatInput.startsWith("/")) return "";
+    const spaceIdx = chatInput.indexOf(" ");
+    if (spaceIdx !== -1) {
+      // Already has a space — show args hint if the command matches
+      const token = chatInput.slice(0, spaceIdx);
+      const def = SLASH_COMMANDS.find((c) => c.cmd === token);
+      return def?.args ? `  ${def.args}` : "";
+    }
+    const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(chatInput) && c.cmd !== chatInput);
+    if (matches.length === 1) {
+      const rest = matches[0]!.cmd.slice(chatInput.length);
+      return rest + (matches[0]!.args ? ` ${matches[0]!.args}` : "");
+    }
+    if (matches.length > 1) {
+      // Show all matches as a compact hint
+      return "  [" + matches.map((m) => m.cmd).join("  ") + "]";
+    }
+    return "";
   };
 
   const buildScreenLines = (): StyledLine[] => {
@@ -2296,9 +2384,12 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
           });
         }
 
+        const ollamaTitle = modelPickerFromCommand
+          ? "SELECT OLLAMA MODEL · Enter to switch · Esc to cancel"
+          : "AI PROVIDER · STEP 2 OF 2 · OLLAMA MODEL";
         const lines: StyledLine[] = [
           ...headerLines,
-          ...createPanel("AI PROVIDER · STEP 2 OF 2 · OLLAMA MODEL", modelRows, renderWidth),
+          ...createPanel(ollamaTitle, modelRows, renderWidth),
         ];
         while (lines.length < renderHeight) lines.push({ tone: "muted", text: "" });
         return lines.slice(0, renderHeight);
@@ -2331,9 +2422,12 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         });
       });
 
+      const copilotTitle = modelPickerFromCommand
+        ? "SELECT COPILOT MODEL · Enter to switch · Esc to cancel"
+        : "AI PROVIDER · STEP 2 OF 2 · COPILOT MODEL";
       const cmLines: StyledLine[] = [
         ...headerLines,
-        ...createPanel("AI PROVIDER · STEP 2 OF 2 · COPILOT MODEL", cmRows, renderWidth),
+        ...createPanel(copilotTitle, cmRows, renderWidth),
       ];
       while (cmLines.length < renderHeight) cmLines.push({ tone: "muted", text: "" });
       return cmLines.slice(0, renderHeight);
@@ -2356,15 +2450,25 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       }
 
       // Chat input panel (compact, 2 content rows + borders)
-      const chatInputRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+      const tabHintCompact = buildTabHint();
+      const chatInputRows: Array<{ tone: keyof typeof THEME; text: string; segments?: Array<{ tone: keyof typeof THEME; text: string }> }> = [
         {
           tone: "muted",
           text: buildInputStatus(),
         },
-        {
-          tone: chatMode ? "accent1" : "muted",
-          text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}`,
-        },
+        tabHintCompact
+          ? {
+              tone: chatMode ? "accent1" : "muted",
+              text: "",
+              segments: [
+                { tone: chatMode ? "accent1" : "muted", text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}` },
+                { tone: "muted", text: tabHintCompact },
+              ],
+            }
+          : {
+              tone: chatMode ? "accent1" : "muted",
+              text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}`,
+            },
       ];
 
       // Build header
@@ -2476,15 +2580,25 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     const inputBudget = Math.max(1, inputInner - prompt.length - cursor.length);
     // Show the tail so the cursor stays visible when text exceeds the width.
     const visibleInput = chatInput.length > inputBudget ? "…" + chatInput.slice(chatInput.length - (inputBudget - 1)) : chatInput;
-    const chatInputRows: Array<{ tone: keyof typeof THEME; text: string }> = [
+    const tabHint = buildTabHint();
+    const chatInputRows: Array<{ tone: keyof typeof THEME; text: string; segments?: Array<{ tone: keyof typeof THEME; text: string }> }> = [
       {
         tone: "muted",
         text: truncatedStatus,
       },
-      {
-        tone: chatMode ? "accent1" : "muted",
-        text: `${prompt}${visibleInput}${cursor}`,
-      },
+      tabHint
+        ? {
+            tone: chatMode ? "accent1" : "muted",
+            text: "",
+            segments: [
+              { tone: chatMode ? "accent1" : "muted", text: `${prompt}${visibleInput}${cursor}` },
+              { tone: "muted", text: tabHint },
+            ],
+          }
+        : {
+            tone: chatMode ? "accent1" : "muted",
+            text: `${prompt}${visibleInput}${cursor}`,
+          },
     ];
 
     const headerLines: StyledLine[] = buildLogoHeader();

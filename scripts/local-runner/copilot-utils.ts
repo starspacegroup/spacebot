@@ -15,23 +15,36 @@ export interface CopilotAvailability {
  * Known Copilot CLI model identifiers. The standalone `copilot` CLI accepts these via `--model`.
  * Kept conservative & curated; users can also pass any identifier the CLI accepts.
  *
- * `multiplier` is the GitHub Copilot premium-request multiplier (per GitHub's published table).
- * 0 = does not consume premium requests on paid plans. Subject to change by GitHub.
+ * `multiplier` is the GitHub Copilot premium-request multiplier (per GitHub's published table
+ * at https://docs.github.com/en/copilot/concepts/billing/copilot-requests#model-multipliers).
+ * 0 = does not consume premium requests on paid plans.
+ * null = varies (e.g. auto model selection picks per-prompt; paid plans get a 10% discount).
+ * Subject to change by GitHub.
  */
-export const COPILOT_MODELS: ReadonlyArray<{ id: string; label: string; multiplier: number }> = [
-  { id: "auto", label: "Auto — let Copilot pick the best model for the task", multiplier: 0 },
+export const COPILOT_MODELS: ReadonlyArray<{ id: string; label: string; multiplier: number | null }> = [
+  { id: "auto", label: "Auto — let Copilot pick the best model (10% discount on paid plans)", multiplier: null },
   { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5 (balanced)", multiplier: 1 },
+  { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", multiplier: 1 },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5 (fast)", multiplier: 0.33 },
-  { id: "gpt-5", label: "GPT-5", multiplier: 1 },
-  { id: "gpt-5-mini", label: "GPT-5 mini (cheap, fast)", multiplier: 0 },
-  { id: "gpt-4.1", label: "GPT-4.1", multiplier: 0 },
-  { id: "o4-mini", label: "o4-mini (reasoning)", multiplier: 0.33 },
+  { id: "claude-opus-4.5", label: "Claude Opus 4.5 (premium)", multiplier: 3 },
+  { id: "claude-opus-4.6", label: "Claude Opus 4.6 (premium)", multiplier: 3 },
+  { id: "claude-opus-4.7", label: "Claude Opus 4.7 (top-tier)", multiplier: 15 },
+  { id: "gpt-5.2", label: "GPT-5.2", multiplier: 1 },
+  { id: "gpt-5.4", label: "GPT-5.4", multiplier: 1 },
+  { id: "gpt-5.4-mini", label: "GPT-5.4 mini (cheap)", multiplier: 0.33 },
+  { id: "gpt-5.4-nano", label: "GPT-5.4 nano (cheapest premium)", multiplier: 0.25 },
+  { id: "gpt-5-mini", label: "GPT-5 mini (included)", multiplier: 0 },
+  { id: "gpt-4.1", label: "GPT-4.1 (included)", multiplier: 0 },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", multiplier: 1 },
+  { id: "gemini-3.1-pro", label: "Gemini 3.1 Pro", multiplier: 1 },
+  { id: "gemini-3-flash", label: "Gemini 3 Flash (fast)", multiplier: 0.33 },
 ];
 
 export const DEFAULT_COPILOT_MODEL = "auto";
 
 /** Formats a request-cost multiplier for compact UI display. */
-export function formatCopilotMultiplier(m: number): string {
+export function formatCopilotMultiplier(m: number | null): string {
+  if (m === null) return "varies";
   if (m === 0) return "0× (included)";
   if (Number.isInteger(m)) return `${m}×`;
   return `${m.toFixed(2).replace(/\.?0+$/, "")}×`;
