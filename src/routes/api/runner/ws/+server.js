@@ -587,18 +587,39 @@ async function sendJobResponseToOrigin(env, auth, jobContext, status, output, re
   await sendDiscordTextDM(env, targetUserId, content);
 }
 
+function getDiscordResponseTargetUserId(auth, jobContext) {
+  if (!jobContext) return auth.userId;
+
+  const payload = parseJson(jobContext.payload_json) || {};
+  const responseTarget = payload.response_target && typeof payload.response_target === "object"
+    ? payload.response_target
+    : null;
+
+  if (responseTarget?.type && responseTarget.type !== "discord_dm") {
+    return null;
+  }
+
+  return responseTarget?.user_id || payload.user_id || auth.userId;
+}
+
 async function sendScreenshotDM(env, userId, rawArtifactRefs) {
   const botToken = env?.DISCORD_BOT_TOKEN;
-  if (!botToken || !userId) return;
+  if (!botToken || !userId) {
+    throw new Error("Missing Discord bot token or user target");
+  }
 
   const screenshots = (rawArtifactRefs ?? []).filter(
     (r) => r && r.artifactType === "screenshot" && typeof r.blobBase64 === "string",
   );
-  if (screenshots.length === 0) return;
+  if (screenshots.length === 0) {
+    throw new Error("No screenshot artifacts were returned");
+  }
 
   // Create DM channel
   const channelId = await createDiscordDmChannel(botToken, userId);
-  if (!channelId) return;
+  if (!channelId) {
+    throw new Error("Failed to create Discord DM channel");
+  }
 
   // Build multipart message with screenshot attachments
   const formData = new FormData();
@@ -614,11 +635,18 @@ async function sendScreenshotDM(env, userId, rawArtifactRefs) {
     formData.append(`files[${i}]`, blob, `screenshot-${label}.png`);
   }
 
-  await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+  const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bot ${botToken}` },
     body: formData,
   });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Discord upload failed (${response.status})${text ? `: ${text.slice(0, 300)}` : ""}`);
+  }
+
+  return screenshots.length;
 }
 
 async function persistArtifacts(db, auth, state, jobId, artifactRefs) {
@@ -916,9 +944,31 @@ export async function GET({ request, platform }) {
           },
         });
 
-        // Send screenshot(s) to the requesting user via Discord DM (fire-and-forget)
-        if (status === "completed" && Array.isArray(artifactRefs) && artifactRefs.length > 0) {
-          sendScreenshotDM(env, auth.userId, artifactRefs).catch(() => {});
+        const isScreenshotJob = jobContext?.job_type === "screenshot_capture";
+        const screenshotTargetUserId = getDiscordResponseTargetUserId(auth, jobContext);
+
+        if (isScreenshotJob && screenshotTargetUserId) {
+          if (status === "completed") {
+            try {
+              await sendScreenshotDM(env, screenshotTargetUserId, artifactRefs);
+            } catch (dmError) {
+              const reason = dmError instanceof Error ? dmError.message : String(dmError);
+              await sendDiscordTextDM(
+                env,
+                screenshotTargetUserId,
+                `❌ I couldn't deliver your screenshot from the local runner.\n\n${reason}`,
+              ).catch(() => {});
+            }
+          } else {
+            const failureText = typeof output === "string" && output.trim()
+              ? output.trim().slice(0, 1200)
+              : "No additional error details were returned.";
+            await sendDiscordTextDM(
+              env,
+              screenshotTargetUserId,
+              `❌ Your screenshot request failed on the local runner.\n\n${failureText}`,
+            ).catch(() => {});
+          }
         }
 
         sendJobResponseToOrigin(env, auth, jobContext, status, output, result ?? null).catch(() => {});

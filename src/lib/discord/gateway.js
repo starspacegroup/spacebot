@@ -33,6 +33,7 @@ import { verifyLiveUpdateAccess } from "../live-updates.js";
 
 // For local development, we'll use a REST endpoint to log events
 const API_BASE = process.env.API_BASE || process.env.APP_URL || "http://localhost:4269";
+const SCREENSHOT_REQUEST_RE = /\b(screenshot|screen\s*shot|screen\s*capture|capture\s+(?:the\s+)?screen)\b/i;
 
 const ORIGINAL_CONSOLE = {
   log: console.log.bind(console),
@@ -891,6 +892,7 @@ async function handleDirectMessage(message, client) {
   
   // Add user message to conversation history
   addToConversationHistory(userId, "user", content);
+  const requestedScreenshot = SCREENSHOT_REQUEST_RE.test(content);
 
   // If the user has a registered local runner, dispatch the DM to it
   // instead of going through Workers AI.
@@ -907,13 +909,40 @@ async function handleDirectMessage(message, client) {
       const isScreenshotJob = dispatch.jobType === "screenshot_capture";
       await message.reply({
         content: isScreenshotJob
-          ? `📸 Capturing a screenshot on **${runnerName}**${onlineNote}. I will DM the image back when it finishes. (job #${dispatch.jobId})`
+          ? `📸 I'm going to take a screenshot on **${runnerName}**${onlineNote}. I'll DM the image back when it finishes. (job #${dispatch.jobId})`
           : `📨 Sent to **${runnerName}**${onlineNote}. (job #${dispatch.jobId})`,
       }).catch((err) => log.error("[DM] Failed to send runner-dispatch reply:", err.message));
       return;
     }
+
+    if (requestedScreenshot) {
+      const reason = dispatch?.reason;
+      const detail = typeof dispatch?.error === "string" && dispatch.error.trim()
+        ? `\n\nDetails: ${dispatch.error.trim().slice(0, 500)}`
+        : "";
+      let failureMessage;
+      if (reason === "no_runner") {
+        failureMessage = "I couldn't find any registered local runner systems for your account, so I can't take that screenshot yet.";
+      } else if (reason === "dispatch_failed") {
+        failureMessage = `I couldn't queue that screenshot request on your local runner.${detail}`;
+      } else {
+        failureMessage = "I couldn't reach your local runner screenshot service right now. Please try again in a moment.";
+      }
+
+      await message.reply({ content: `❌ ${failureMessage}` }).catch((err) =>
+        log.error("[DM] Failed to send screenshot dispatch failure reply:", err.message)
+      );
+      return;
+    }
   } catch (err) {
     log.warn("[DM] Local runner dispatch check failed, falling back to AI:", err?.message || err);
+
+    if (requestedScreenshot) {
+      await message.reply({
+        content: "❌ I couldn't queue the screenshot request on your local runner because the dispatch service is unavailable right now. Please try again shortly.",
+      }).catch((sendErr) => log.error("[DM] Failed to send screenshot dispatch exception reply:", sendErr.message));
+      return;
+    }
   }
 
   // Generate AI response with MCP tool access
