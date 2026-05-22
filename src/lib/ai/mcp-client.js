@@ -478,6 +478,112 @@ export class MCPClient {
     };
   }
 
+  async getLocalRunnerJob(userId, jobId) {
+    if (!userId) throw new Error("userId is required");
+    if (!jobId) throw new Error("jobId is required");
+
+    const result = await this.executeD1Query(
+      `SELECT j.id, j.runner_token_id, j.command, j.working_dir, j.label, j.status,
+              j.target_instance_id, j.claimed_by_instance_id,
+              j.priority, j.max_attempts, j.attempt_count, j.timeout_seconds,
+              j.exit_code, j.output, j.result_json, j.cancel_reason, j.terminal_error,
+              j.created_at, j.updated_at, j.started_at, j.completed_at, j.canceled_at,
+              j.next_retry_at,
+              t.name AS token_name,
+              target.display_name AS target_instance_name,
+              claimed.display_name AS claimed_by_instance_name
+         FROM local_runner_jobs j
+         JOIN local_runner_tokens t ON t.id = j.runner_token_id
+         LEFT JOIN local_runner_instances target ON target.id = j.target_instance_id
+         LEFT JOIN local_runner_instances claimed ON claimed.id = j.claimed_by_instance_id
+        WHERE j.id = ? AND j.user_id = ?
+        LIMIT 1`,
+      [jobId, userId]
+    );
+
+    const row = result.results?.[0];
+    if (!row) return null;
+
+    // Truncate output to keep DM responses reasonable.
+    let output = row.output ?? null;
+    let outputTruncated = false;
+    if (output && output.length > 4000) {
+      output = output.slice(-4000);
+      outputTruncated = true;
+    }
+
+    return {
+      ...row,
+      output,
+      output_truncated: outputTruncated,
+      result_json: parseJsonField(row.result_json),
+    };
+  }
+
+  async cancelLocalRunnerJob(userId, jobId, reason = null) {
+    if (!userId) throw new Error("userId is required");
+    if (!jobId) throw new Error("jobId is required");
+
+    const update = await this.executeD1Query(
+      `UPDATE local_runner_jobs
+         SET status = 'canceled',
+             canceled_at = datetime('now'),
+             cancel_reason = ?,
+             terminal_error = COALESCE(?, terminal_error),
+             completed_at = datetime('now'),
+             started_at = NULL,
+             next_retry_at = NULL,
+             updated_at = datetime('now')
+       WHERE id = ?
+         AND user_id = ?
+         AND status IN ('pending', 'running')`,
+      [reason ?? null, reason ?? null, jobId, userId]
+    );
+
+    const changed = update?.meta?.changes ?? update?.changes ?? 0;
+    if (!changed) {
+      return { success: false, error: "Job not found or cannot be canceled (only pending or running jobs can be canceled)." };
+    }
+
+    const job = await this.getLocalRunnerJob(userId, jobId);
+    return { success: true, job };
+  }
+
+  async retryLocalRunnerJob(userId, jobId) {
+    if (!userId) throw new Error("userId is required");
+    if (!jobId) throw new Error("jobId is required");
+
+    const update = await this.executeD1Query(
+      `UPDATE local_runner_jobs
+         SET status = 'pending',
+             output = NULL,
+             exit_code = NULL,
+             result_json = NULL,
+             artifact_refs_json = NULL,
+             claimed_by_instance_id = NULL,
+             attempt_count = 0,
+             started_at = NULL,
+             next_retry_at = NULL,
+             canceled_at = NULL,
+             cancel_reason = NULL,
+             terminal_error = NULL,
+             completed_at = NULL,
+             updated_at = datetime('now')
+       WHERE id = ?
+         AND user_id = ?
+         AND status IN ('failed', 'canceled')`,
+      [jobId, userId]
+    );
+
+    const changed = update?.meta?.changes ?? update?.changes ?? 0;
+    if (!changed) {
+      return { success: false, error: "Job not found or cannot be retried (only failed or canceled jobs can be retried)." };
+    }
+
+    const job = await this.getLocalRunnerJob(userId, jobId);
+    return { success: true, job };
+  }
+
   /**
    * Get event logs for a guild
    */
@@ -2477,6 +2583,26 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             }),
           };
 
+        case "get_local_runner_job": {
+          const job = await this.getLocalRunnerJob(args.userId, args.jobId);
+          if (!job) return { success: false, error: "Job not found" };
+          return { success: true, data: job };
+        }
+
+        case "cancel_local_runner_job": {
+          const cancelResult = await this.cancelLocalRunnerJob(args.userId, args.jobId, args.reason ?? null);
+          return cancelResult.success
+            ? { success: true, data: cancelResult.job }
+            : { success: false, error: cancelResult.error };
+        }
+
+        case "retry_local_runner_job": {
+          const retryResult = await this.retryLocalRunnerJob(args.userId, args.jobId);
+          return retryResult.success
+            ? { success: true, data: retryResult.job }
+            : { success: false, error: retryResult.error };
+        }
+
         case "get_user_roles":
           return {
             success: true,
@@ -2862,6 +2988,31 @@ export const MCP_TOOLS = [
       maxAttempts: "number (optional) - Retry budget per queued job (default: 5, max: 20)",
       timeoutSeconds: "number (optional) - Per-attempt timeout in seconds (default: 300, range: 30-3600)",
       capabilityRequirements: "object (optional) - Required runner capability flags, e.g. { screenshotAvailable: true }",
+    },
+  },
+  {
+    name: "get_local_runner_job",
+    description: "Get full details (including command output, exit code, status, target system, timestamps) for a single local runner job owned by the DM user. Use this to follow up on a job started with start_local_runner_task, to inspect failures, or before deciding whether to cancel/retry.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the job. Injected automatically in DMs.",
+      jobId: "number (required) - The local runner job ID to inspect.",
+    },
+  },
+  {
+    name: "cancel_local_runner_job",
+    description: "Cancel a pending or running local runner job owned by the DM user. Use when the user asks to 'stop', 'cancel', 'kill', or 'abort' a task. Only works on jobs in 'pending' or 'running' state.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the job. Injected automatically in DMs.",
+      jobId: "number (required) - The local runner job ID to cancel.",
+      reason: "string (optional) - Short human-readable reason recorded with the cancellation.",
+    },
+  },
+  {
+    name: "retry_local_runner_job",
+    description: "Re-queue a failed or canceled local runner job so the owning runner system will pick it up again. The original command, working directory, target system, and limits are preserved.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the job. Injected automatically in DMs.",
+      jobId: "number (required) - The local runner job ID to retry.",
     },
   },
   {

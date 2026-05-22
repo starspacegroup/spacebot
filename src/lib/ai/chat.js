@@ -113,6 +113,11 @@ In DMs, you CAN inspect and control the user's registered local runners using lo
 - For runner discovery/status questions ("can you see my runner", "list my runners", "is my runner online"), use \`list_local_runners\`.
 - For current jobs and event timeline, use \`get_local_runner_activity\`.
 - For executing commands on local systems, use \`start_local_runner_task\`.
+- For inspecting a specific job's output, exit code, or failure, use \`get_local_runner_job\`.
+- For stopping/aborting a pending or running task, use \`cancel_local_runner_job\`.
+- For re-queueing a failed or canceled task, use \`retry_local_runner_job\`.
+
+When the user asks to stop, cancel, kill, abort, retry, or re-run a task, prefer these control tools over starting a new task. If you don't know the job ID, call \`get_local_runner_activity\` first to find it.
 
 Never claim you "don't have access" to local runners without trying these tools first. If no runners are registered, say that clearly and explain how to register one.
 
