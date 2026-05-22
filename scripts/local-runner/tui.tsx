@@ -424,11 +424,49 @@ export async function startRunnerTui(options: RunnerTuiOptions) {
   const renderer = await createCliRenderer({ exitOnCtrlC: false });
   const root = createRoot(renderer);
 
-  const onExit = () => {
-    process.exit(0);
-  };
+  return await new Promise<void>((resolve) => {
+    let cleanedUp = false;
 
-  root.render(<App {...options} onExit={onExit} />);
+    const cleanupTerminal = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
 
-  return new Promise<void>(() => {});
+      try {
+        root.unmount();
+      } catch {
+        // Best effort root teardown.
+      }
+
+      try {
+        renderer.destroy();
+      } catch {
+        // Best effort renderer teardown.
+      }
+
+      try {
+        process.stdout.write("\u001b[0m\u001b[?25h\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?2004l\r\n");
+      } catch {
+        // Best effort ANSI state reset.
+      }
+
+      process.off("SIGINT", handleSignalExit);
+      process.off("SIGTERM", handleSignalExit);
+      resolve();
+    };
+
+    const handleSignalExit = () => {
+      cleanupTerminal();
+      process.exit(0);
+    };
+
+    const onExit = () => {
+      cleanupTerminal();
+      process.exit(0);
+    };
+
+    process.on("SIGINT", handleSignalExit);
+    process.on("SIGTERM", handleSignalExit);
+
+    root.render(<App {...options} onExit={onExit} />);
+  });
 }
