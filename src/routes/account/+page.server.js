@@ -50,6 +50,14 @@ export async function load({ cookies, platform, parent }) {
 
   return {
     dbUser,
+    runnerUiPrefs: dbUser?.preferences_json ? (() => {
+      try {
+        const parsed = JSON.parse(dbUser.preferences_json);
+        return parsed?.runnerUi && typeof parsed.runnerUi === "object" ? parsed.runnerUi : {};
+      } catch {
+        return {};
+      }
+    })() : {},
     serverPlans,
     planTiers: PLAN_TIERS,
     runnerTokens: db ? await getRunnerTokens(db, userId) : [],

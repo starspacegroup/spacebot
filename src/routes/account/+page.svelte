@@ -4,6 +4,8 @@
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
+
+	const RUNNER_UI_PREFS_STORAGE_KEY = 'spacebot.account.runnerUi.showRevoked';
 	
 	let { data } = $props();
 	
@@ -29,7 +31,13 @@
 	// Shown ONCE after creation – user must copy it before dismissing
 	let newRawToken = $state(null);
 	let newRawTokenCopied = $state(false);
-	let showRevokedRunners = $state(false);
+	let showRevokedRunners = $state(untrack(() => Boolean(data?.runnerUiPrefs?.showRevoked)));
+	let runnerPrefsInitialized = $state(false);
+	let runnerPrefsSaveInFlight = false;
+	let lastSavedRunnerShowRevoked = null;
+	let runnerPrefsPendingValue = null;
+	let runnerPrefsSaveStatus = $state('idle'); // idle | saving | saved | error
+	let runnerPrefsSavedTimer = null;
 
 	// Dispatch-job form
 	let dispatchTokenId = $state(null); // which runner to dispatch to
@@ -55,10 +63,69 @@
 	}
 
 	onMount(() => {
+		try {
+			const raw = localStorage.getItem(RUNNER_UI_PREFS_STORAGE_KEY);
+			if (data?.runnerUiPrefs?.showRevoked === undefined && raw !== null) {
+				showRevokedRunners = raw === '1';
+			}
+		} catch {}
+
+		runnerPrefsInitialized = true;
+
 		const refreshTimer = setInterval(() => {
 			refreshRunnerData().catch(() => {});
 		}, RUNNER_REFRESH_INTERVAL_MS);
 		return () => clearInterval(refreshTimer);
+	});
+
+	function persistRunnerUiPreference(nextValue) {
+		if (runnerPrefsSaveInFlight) {
+			runnerPrefsPendingValue = nextValue;
+			return;
+		}
+
+		runnerPrefsSaveInFlight = true;
+		lastSavedRunnerShowRevoked = nextValue;
+		runnerPrefsSaveStatus = 'saving';
+
+		fetch('/api/account/preferences', {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ runnerUi: { showRevoked: nextValue } }),
+		})
+			.then((res) => {
+				if (!res.ok) throw new Error('Failed to save');
+				runnerPrefsSaveStatus = 'saved';
+				if (runnerPrefsSavedTimer) clearTimeout(runnerPrefsSavedTimer);
+				runnerPrefsSavedTimer = setTimeout(() => {
+					runnerPrefsSaveStatus = 'idle';
+				}, 1800);
+			})
+			.catch(() => {
+				lastSavedRunnerShowRevoked = null;
+				runnerPrefsSaveStatus = 'error';
+			})
+			.finally(() => {
+				runnerPrefsSaveInFlight = false;
+				if (runnerPrefsPendingValue !== null && runnerPrefsPendingValue !== lastSavedRunnerShowRevoked) {
+					const pending = runnerPrefsPendingValue;
+					runnerPrefsPendingValue = null;
+					persistRunnerUiPreference(pending);
+				} else {
+					runnerPrefsPendingValue = null;
+				}
+			});
+	}
+
+	$effect(() => {
+		if (!runnerPrefsInitialized) return;
+		if (lastSavedRunnerShowRevoked === showRevokedRunners) return;
+
+		try {
+			localStorage.setItem(RUNNER_UI_PREFS_STORAGE_KEY, showRevokedRunners ? '1' : '0');
+		} catch {}
+
+		persistRunnerUiPreference(showRevokedRunners);
 	});
 
 	async function createRunner() {
@@ -888,6 +955,13 @@
 				<input type="checkbox" bind:checked={showRevokedRunners} />
 				<span>Show revoked runners</span>
 			</label>
+			{#if runnerPrefsSaveStatus === 'saving'}
+				<span class="runner-pref-status">Saving...</span>
+			{:else if runnerPrefsSaveStatus === 'saved'}
+				<span class="runner-pref-status saved">Saved</span>
+			{:else if runnerPrefsSaveStatus === 'error'}
+				<span class="runner-pref-status error">Couldn't save</span>
+			{/if}
 		</div>
 
 		<!-- Show raw token once after creation -->
@@ -2101,6 +2175,19 @@
 		gap: 0.5rem;
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
+	}
+
+	.runner-pref-status {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.runner-pref-status.saved {
+		color: var(--color-success);
+	}
+
+	.runner-pref-status.error {
+		color: var(--color-danger, #dc2626);
 	}
 
 	.runner-name-input {

@@ -91,6 +91,65 @@ export async function getUser(db, userId) {
   }
 }
 
+function safeParseJson(value) {
+  if (!value || typeof value !== "string") return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch account-level user preferences JSON as an object.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @returns {Promise<object>}
+ */
+export async function getUserPreferences(db, userId) {
+  if (!db || !userId) return {};
+  try {
+    const row = await db
+      .prepare("SELECT preferences_json FROM users WHERE id = ?")
+      .bind(userId)
+      .first();
+
+    const parsed = safeParseJson(row?.preferences_json);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    log.error("[Users] Error getting preferences:", userId, error);
+    return {};
+  }
+}
+
+/**
+ * Update account-level user preferences by shallow-merging keys.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {object} updates
+ * @returns {Promise<{success: boolean, preferences?: object, error?: string}>}
+ */
+export async function updateUserPreferences(db, userId, updates) {
+  if (!db || !userId || !updates || typeof updates !== "object" || Array.isArray(updates)) {
+    return { success: false, error: "Invalid preferences payload" };
+  }
+
+  try {
+    const current = await getUserPreferences(db, userId);
+    const merged = { ...current, ...updates };
+
+    await db
+      .prepare("UPDATE users SET preferences_json = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(JSON.stringify(merged), userId)
+      .run();
+
+    return { success: true, preferences: merged };
+  } catch (error) {
+    log.error("[Users] Error updating preferences:", userId, error);
+    return { success: false, error: error.message || String(error) };
+  }
+}
+
 /**
  * Get all tracked users, with optional search/filter.
  *
