@@ -187,9 +187,68 @@
 		return runnerInstances.filter((i) => i.runner_token_id === tokenId);
 	}
 
-	function capabilityLabel(instance, key) {
+	function formatBytes(bytes) {
+		if (!Number.isFinite(bytes) || bytes <= 0) return 'unknown';
+		const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+		let value = bytes;
+		let unitIndex = 0;
+		while (value >= 1024 && unitIndex < units.length - 1) {
+			value /= 1024;
+			unitIndex += 1;
+		}
+		const precision = unitIndex === 0 || value >= 10 ? 0 : 1;
+		return `${value.toFixed(precision)} ${units[unitIndex]}`;
+	}
+
+	function summarizePaths(paths) {
+		if (!Array.isArray(paths) || paths.length === 0) return 'none';
+		const preview = paths.slice(0, 2).join(', ');
+		return paths.length > 2 ? `${preview}, +${paths.length - 2} more` : preview;
+	}
+
+	function getRunnerSystemProfile(instance) {
+		return instance?.metadata?.systemProfile || null;
+	}
+
+	function getRunnerSystemSummary(instance) {
+		const profile = getRunnerSystemProfile(instance);
+		const os = profile?.os || {};
+		const hardware = profile?.hardware || {};
+		const displays = profile?.displays || {};
+		const platformLabel = os.platform || instance?.platform || 'unknown';
+		const archLabel = os.arch || instance?.arch || 'unknown';
+		const cpuCount = Number.isFinite(hardware.cpuCount) ? hardware.cpuCount : null;
+		const memoryLabel = formatBytes(hardware.totalMemoryBytes);
+		const displayCount = Number.isFinite(displays.count) ? displays.count : 0;
+		const arrangementLabel = displays.arrangementKnown ? 'arrangement known' : 'arrangement unknown';
+
+		return `${platformLabel} / ${archLabel}${cpuCount ? ` · ${cpuCount} cores` : ''} · ${memoryLabel} RAM · ${displayCount} display${displayCount === 1 ? '' : 's'} · ${arrangementLabel}`;
+	}
+
+	function getRunnerPermissionsSummary(instance) {
+		const allowedPaths = instance?.metadata?.allowedPaths;
+		return summarizePaths(allowedPaths);
+	}
+
+	function getRunnerCapabilityState(instance, key) {
 		const caps = instance?.metadata?.capabilities || {};
-		return caps[key] ? 'yes' : 'no';
+		if (!(key in caps)) return 'unknown';
+		return caps[key] ? 'ready' : 'unavailable';
+	}
+
+	function getCopilotAvailability(instance) {
+		const caps = instance?.metadata?.capabilities || {};
+		const llm = instance?.metadata?.llm || {};
+		if (caps.copilotMessageAvailable) return 'ready';
+		if (llm.copilot?.configured) return 'configured, bridge unavailable';
+		return 'not configured';
+	}
+
+	function getCopilotConfigSummary(instance) {
+		const llm = instance?.metadata?.llm || {};
+		if (!llm.copilot?.configured) return 'missing';
+		const via = llm.copilot.via ? `via ${llm.copilot.via}` : 'configured';
+		return llm.copilot.model ? `${via} · ${llm.copilot.model}` : via;
 	}
 
 	function providerLabel(instance) {
@@ -854,10 +913,12 @@
 									<div class="runner-instance-row">
 										<div class="runner-instance-main">
 											<strong>{inst.display_name}</strong>
-											<span class="runner-instance-meta">{inst.platform || 'unknown'} / {inst.arch || 'unknown'}</span>
-											<span class="runner-instance-meta">screenshots: {capabilityLabel(inst, 'screenshotAvailable')}</span>
-											<span class="runner-instance-meta">vscode: {capabilityLabel(inst, 'vscodeControlAvailable')}</span>
-											<span class="runner-instance-meta">copilot: {capabilityLabel(inst, 'copilotMessageAvailable')}</span>
+											<span class="runner-instance-meta">system: {getRunnerSystemSummary(inst)}</span>
+											<span class="runner-instance-meta">permissions: {getRunnerPermissionsSummary(inst)}</span>
+											<span class="runner-instance-meta">screenshots: {getRunnerCapabilityState(inst, 'screenshotAvailable')}</span>
+											<span class="runner-instance-meta">vscode: {getRunnerCapabilityState(inst, 'vscodeControlAvailable')}</span>
+											<span class="runner-instance-meta">copilot chat: {getCopilotAvailability(inst)}</span>
+											<span class="runner-instance-meta">copilot config: {getCopilotConfigSummary(inst)}</span>
 											<span class="runner-instance-meta">provider: {providerLabel(inst)}</span>
 											<span class="runner-instance-meta">model: {modelLabel(inst)}</span>
 										</div>
