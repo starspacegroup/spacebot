@@ -28,8 +28,8 @@
 
 import { spawn } from "bun";
 import { join, resolve } from "node:path";
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "node:fs";
-import { hostname, release, tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir, hostname, release, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -70,6 +70,8 @@ const FORCE_HEADLESS = process.argv.includes("--headless")
   || process.env.RUNNER_TUI_DISABLE === "1"
   || process.env.RUNNER_TUI_CHILD === "1"
   || !process.stdin.isTTY;
+const SPACEBOT_STATE_DIR = join(homedir(), ".spacebot");
+const SYSTEM_MD_PATH = join(SPACEBOT_STATE_DIR, "SYSTEM.md");
 const INSTANCE_KEY = process.env.RUNNER_INSTANCE_KEY
   ?? `sbrinst_${createHash("sha256").update([HOSTNAME, process.platform, process.arch, DEFAULT_WORKDIR].join("::")).digest("hex").slice(0, 24)}`;
 const DISPLAY_NAME = process.env.RUNNER_DISPLAY_NAME ?? `${HOSTNAME} (${process.platform}/${process.arch})`;
@@ -1380,6 +1382,46 @@ function validateRunnerToken() {
   }
 }
 
+function buildInitialSystemMarkdown(): string {
+  const nowIso = new Date().toISOString();
+  const today = nowIso.slice(0, 10);
+  return [
+    "# SpaceBot Local Runner System Notes",
+    "",
+    "This file is created automatically on first local-runner startup.",
+    "Use it to track what is available on this system, what has been done, and preferences.",
+    "",
+    "## System Snapshot",
+    "",
+    `- Initialized: ${nowIso}`,
+    `- Hostname: ${HOSTNAME}`,
+    `- Platform: ${process.platform}`,
+    `- Arch: ${process.arch}`,
+    `- OS Release: ${release()}`,
+    `- Runner Version: ${RUNNER_VERSION}`,
+    `- Default Workdir: ${DEFAULT_WORKDIR}`,
+    "",
+    "## Available On This System",
+    "",
+    "- Add installed tools and key capabilities here.",
+    "",
+    "## Activity Log",
+    "",
+    `- ${today}: Initialized by SpaceBot local runner.`,
+    "",
+    "## Preferences",
+    "",
+    "- Add local runner preferences and conventions here.",
+    "",
+  ].join("\n");
+}
+
+function ensureSystemNotesFile() {
+  mkdirSync(SPACEBOT_STATE_DIR, { recursive: true });
+  if (existsSync(SYSTEM_MD_PATH)) return;
+  writeFileSync(SYSTEM_MD_PATH, buildInitialSystemMarkdown(), "utf8");
+}
+
 function startHeadlessRunner() {
   log("SpaceBot Local Runner starting…");
   log(`  Server: ${API_URL}`);
@@ -1414,6 +1456,12 @@ function startHeadlessRunner() {
 }
 
 async function main() {
+  try {
+    ensureSystemNotesFile();
+  } catch (error) {
+    warn(`Failed to initialize ${SYSTEM_MD_PATH}:`, error);
+  }
+
   if (FORCE_HEADLESS) {
     validateRunnerToken();
     startHeadlessRunner();
