@@ -220,6 +220,55 @@ export async function revokeRunnerToken(db, userId, tokenId) {
 }
 
 /**
+ * Permanently delete a revoked runner token and all associated runner data.
+ * Safety: token must already be revoked by the owning user.
+ * @param {D1Database} db
+ * @param {string} userId
+ * @param {number} tokenId
+ */
+export async function deleteRunnerToken(db, userId, tokenId) {
+  if (!db || !userId || !tokenId) return { success: false, error: "Invalid parameters" };
+
+  try {
+    const token = await db
+      .prepare(
+        `SELECT id, revoked
+         FROM local_runner_tokens
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(tokenId, userId)
+      .first();
+
+    if (!token?.id) return { success: false, error: "Token not found" };
+    if (!token.revoked) {
+      return { success: false, error: "Token must be revoked before permanent deletion" };
+    }
+
+    // Delete in dependency-safe order for potential FK enforcement.
+    await db.prepare("DELETE FROM local_runner_artifacts WHERE runner_token_id = ?").bind(tokenId).run();
+    await db.prepare("DELETE FROM local_runner_events WHERE runner_token_id = ?").bind(tokenId).run();
+    await db.prepare("DELETE FROM local_runner_jobs WHERE runner_token_id = ?").bind(tokenId).run();
+    await db.prepare("DELETE FROM local_runner_instances WHERE runner_token_id = ?").bind(tokenId).run();
+
+    const deleted = await db
+      .prepare(
+        `DELETE FROM local_runner_tokens
+         WHERE id = ? AND user_id = ? AND revoked = 1`
+      )
+      .bind(tokenId, userId)
+      .run();
+
+    const changed = deleted?.meta?.changes ?? deleted?.changes ?? 0;
+    if (!changed) return { success: false, error: "Token could not be deleted" };
+
+    return { success: true };
+  } catch (err) {
+    log.error("[LocalRunners] deleteRunnerToken error:", err);
+    return { success: false, error: "Failed to delete token" };
+  }
+}
+
+/**
  * Authenticate a runner token from an Authorization header value (the raw token).
  * Updates last_seen_at / last_seen_ip on success.
  * @param {D1Database} db

@@ -111,6 +111,31 @@
 		}
 	}
 
+	async function deleteRunner(id) {
+		if (!confirm('Permanently delete this revoked runner and all its history? This cannot be undone.')) return;
+		try {
+			const res = await fetch(`/api/account/runners/${id}?permanent=1`, { method: 'DELETE' });
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to delete runner';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			runnerTokens = runnerTokens.filter((t) => t.id !== id);
+			runnerInstances = runnerInstances.filter((i) => i.runner_token_id !== id);
+			runnerJobs = runnerJobs.filter((j) => j.runner_token_id !== id);
+			if (dispatchTokenId === id) dispatchTokenId = null;
+			toastMessage = 'Runner deleted.';
+			toastSuccess = true;
+			showToast = true;
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		}
+	}
+
 	async function dispatchJob() {
 		if (!dispatchCommand.trim() || !dispatchTokenId) return;
 		dispatching = true;
@@ -890,6 +915,7 @@
 							<div class="runner-meta">
 								{#if t.revoked}
 									<span class="status-badge badge-danger">Revoked</span>
+									<button class="btn btn-danger btn-sm" onclick={() => deleteRunner(t.id)}>Delete</button>
 								{:else if isRunnerOnline(t)}
 									<span class="status-badge badge-success">Online</span>
 								{:else}

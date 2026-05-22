@@ -1,8 +1,8 @@
 import { json } from "@sveltejs/kit";
-import { revokeRunnerToken, createRunnerJob } from "$lib/db/local-runners.js";
+import { revokeRunnerToken, deleteRunnerToken, createRunnerJob } from "$lib/db/local-runners.js";
 
-/** DELETE /api/account/runners/[id] — revoke a token */
-export async function DELETE({ params, cookies, platform }) {
+/** DELETE /api/account/runners/[id] — revoke by default, permanent delete with ?permanent=1 */
+export async function DELETE({ params, cookies, platform, url }) {
   const userId = cookies.get("discord_user_id");
   if (!userId) return json({ error: "Unauthorized" }, { status: 401 });
 
@@ -12,10 +12,14 @@ export async function DELETE({ params, cookies, platform }) {
   const tokenId = Number(params.id);
   if (!tokenId) return json({ error: "Invalid ID" }, { status: 400 });
 
-  const result = await revokeRunnerToken(db, userId, tokenId);
+  const permanent = url.searchParams.get("permanent") === "1";
+  const result = permanent
+    ? await deleteRunnerToken(db, userId, tokenId)
+    : await revokeRunnerToken(db, userId, tokenId);
+
   if (!result.success) return json({ error: result.error }, { status: 400 });
 
-  return json({ success: true });
+  return json({ success: true, mode: permanent ? "deleted" : "revoked" });
 }
 
 /** POST /api/account/runners/[id] — queue a job for a specific runner */
