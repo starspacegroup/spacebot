@@ -13,6 +13,7 @@
 	let showToast = $state(true);
 	let processingId = $state(null);
 	let expandedLogId = $state(null);
+	const MAX_VISIBLE_TRIGGERS = 3;
 	
 	function toggleLogExpand(logId) {
 		expandedLogId = expandedLogId === logId ? null : logId;
@@ -334,17 +335,22 @@
 				{#each data.automations as automation}
 					{@const triggers = automation.trigger_events || (automation.trigger_event ? [automation.trigger_event] : [])}
 					{@const displayTriggers = collapseTriggers(triggers)}
+					{@const visibleTriggers = displayTriggers.slice(0, MAX_VISIBLE_TRIGGERS)}
+					{@const hasMoreTriggers = displayTriggers.length > MAX_VISIBLE_TRIGGERS}
 					{@const actionInfo = getActionInfo(automation.action_type)}
 					<div class="automation-card {automation.enabled ? '' : 'disabled'}">
 						<div class="automation-header">
 							<div class="automation-triggers">
-								{#each displayTriggers as trigger}
+								{#each visibleTriggers as trigger}
 									{@const triggerCategoryInfo = getCategoryInfo(trigger.category)}
 									<div class="automation-trigger" style="--category-color: {triggerCategoryInfo.color}">
 										<span class="trigger-icon">{trigger.icon || triggerCategoryInfo.icon}</span>
 										<span class="trigger-event">{trigger.label}</span>
 									</div>
 								{/each}
+								{#if hasMoreTriggers}
+									<div class="automation-trigger-more">and more</div>
+								{/if}
 							</div>
 							<form method="POST" action="?/toggle" use:enhance={() => {
 								processingId = automation.id;
@@ -675,6 +681,20 @@
 			font-size: 0.75rem;
 			gap: 0.5rem;
 			padding: 0.25rem 0.75rem;
+		}
+	}
+
+	.automation-trigger-more {
+		font-size: 0.675rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		color: var(--text-muted, #9ca3af);
+	}
+
+	@media (min-width: 640px) {
+		.automation-trigger-more {
+			font-size: 0.75rem;
 		}
 	}
 	
