@@ -35,6 +35,8 @@ describe('gatherSystemProfile', () => {
 
     vi.doMock('node:child_process', () => ({ spawnSync }));
     vi.stubEnv('RUNNER_VSCODE_BRIDGE_TOKEN', 'token-123');
+    vi.stubEnv('RUNNER_ENABLE_COPILOT_CHAT', '1');
+    vi.stubEnv('RUNNER_ENABLE_SCREENSHOTS', '1');
     vi.stubEnv('DISPLAY', ':0');
 
     const { gatherSystemProfile } = await import('../../scripts/local-runner/capabilities.ts');

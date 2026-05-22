@@ -135,6 +135,13 @@ async function validateToken(db, rawToken, clientIp) {
   return { valid: true, tokenId: row.id, userId: row.user_id };
 }
 
+async function touchRunnerToken(db, tokenId, clientIp) {
+  if (!tokenId) return;
+  await db.prepare(
+    "UPDATE local_runner_tokens SET last_seen_at = datetime('now'), last_seen_ip = ?, updated_at = datetime('now') WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < datetime('now', ?))"
+  ).bind(clientIp ?? null, tokenId, `-${TOKEN_HEARTBEAT_WRITE_WINDOW_SECONDS} seconds`).run();
+}
+
 async function registerRunnerInstance(db, auth, instance, clientIp) {
   if (!instance?.instanceKey || !instance?.displayName) {
     throw new Error("Missing runner instance identity");
@@ -766,6 +773,8 @@ export async function GET({ request, platform }) {
 
     if (msg.type === "hello") {
       try {
+        touchRunnerToken(db, auth.tokenId, clientIp).catch(() => {});
+
         const instance = await registerRunnerInstance(db, auth, msg.instance ?? {}, clientIp);
         state.instanceId = instance?.id ?? null;
         state.instanceName = instance?.display_name ?? msg.instance?.displayName ?? null;
@@ -800,8 +809,59 @@ export async function GET({ request, platform }) {
     }
 
     if (msg.type === "pong") {
+      touchRunnerToken(db, auth.tokenId, clientIp).catch(() => {});
       if (state.instanceId) {
+        if (msg.instance?.instanceKey && msg.instance?.displayName) {
+          registerRunnerInstance(db, auth, msg.instance, clientIp)
+            .then((instance) => {
+              if (!instance) return;
+              state.instanceId = instance.id ?? state.instanceId;
+              state.instanceName = instance.display_name ?? state.instanceName;
+              state.instanceKey = instance.instance_key ?? state.instanceKey;
+            })
+            .catch(() => {});
+        }
         touchRunnerInstance(db, state.instanceId, clientIp).catch(() => {});
+      }
+      return;
+    }
+
+    if (msg.type === "disconnect") {
+      closed = true;
+      try {
+        if (msg.instance?.instanceKey && msg.instance?.displayName) {
+          const refreshed = await registerRunnerInstance(db, auth, msg.instance, clientIp);
+          if (refreshed?.id) {
+            state.instanceId = refreshed.id;
+            state.instanceName = refreshed.display_name ?? state.instanceName;
+            state.instanceKey = refreshed.instance_key ?? state.instanceKey;
+          }
+        }
+      } catch {
+        // Ignore best-effort metadata refresh failures on disconnect.
+      }
+
+      if (state.instanceId) {
+        executionContext?.waitUntil(
+          Promise.allSettled([
+            disconnectRunnerInstance(db, state.instanceId),
+            recordRunnerEvent(db, auth, state, {
+              eventType: "runner.disconnected",
+              message: `${state.instanceName ?? "Runner"} disconnected`,
+              details: {
+                instanceKey: state.instanceKey ?? null,
+                reason: typeof msg.reason === "string" ? msg.reason : null,
+                graceful: true,
+              },
+            }),
+          ])
+        );
+      }
+
+      try {
+        server.close(1000, "Runner disconnected");
+      } catch {
+        closed = true;
       }
       return;
     }

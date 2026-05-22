@@ -121,6 +121,25 @@ interface RunnerHelloPayload {
       vscodeControlAvailable: boolean;
       copilotMessageAvailable: boolean;
     };
+    llm: {
+      preferredProvider: LlmProvider | null;
+      chain: Array<{
+        provider: LlmProvider;
+        model: string | null;
+        via: "copilot" | "gh" | null;
+      }>;
+      copilot: {
+        configured: boolean;
+        model: string | null;
+        via: "copilot" | "gh" | null;
+      };
+      ollama: {
+        configured: boolean;
+        model: string | null;
+        host: string | null;
+        port: number | null;
+      };
+    };
     systemProfile: unknown;
   };
 }
@@ -159,6 +178,48 @@ function sendRunnerEvent(eventType: string, message: string, details?: Record<st
   });
 }
 
+function getPreferredProvider(): LlmProvider | null {
+  const persisted = readPersistedProviderConfig();
+  if (process.env.SPACEBOT_LLM_PROVIDER === "copilot" || process.env.SPACEBOT_LLM_PROVIDER === "ollama") {
+    return process.env.SPACEBOT_LLM_PROVIDER;
+  }
+  if (persisted.provider === "copilot" || persisted.provider === "ollama") {
+    return persisted.provider;
+  }
+  return null;
+}
+
+function buildProviderMetadata() {
+  const persisted = readPersistedProviderConfig();
+  const copilotCfg = getCopilotConfig() ?? (persisted.copilot
+    ? { model: persisted.copilot.model, via: persisted.copilot.via }
+    : null);
+  const ollamaCfg = getOllamaConfig() ?? (persisted.ollama
+    ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
+    : null);
+  const chain = resolveProviderChain({}).map((entry) => ({
+    provider: entry.provider,
+    model: entry.model ?? null,
+    via: entry.via ?? null,
+  }));
+
+  return {
+    preferredProvider: getPreferredProvider(),
+    chain,
+    copilot: {
+      configured: Boolean(copilotCfg),
+      model: copilotCfg?.model ?? null,
+      via: copilotCfg?.via ?? null,
+    },
+    ollama: {
+      configured: Boolean(ollamaCfg),
+      model: ollamaCfg?.model ?? null,
+      host: ollamaCfg?.host ?? null,
+      port: ollamaCfg?.port ?? null,
+    },
+  };
+}
+
 function buildHelloPayload(): RunnerHelloPayload {
   const profile = gatherSystemProfile();
   return {
@@ -177,6 +238,7 @@ function buildHelloPayload(): RunnerHelloPayload {
       maxOutputBytes: MAX_OUTPUT_BYTES,
       maxArtifactBytes: MAX_ARTIFACT_BYTES,
       capabilities: profile.capabilities,
+      llm: buildProviderMetadata(),
       systemProfile: profile,
     },
   };
@@ -1189,6 +1251,43 @@ async function drainQueue(ws: WebSocket) {
 
 let running = true;
 let reconnectAttempts = 0;
+let shuttingDown = false;
+
+async function gracefulShutdown(reason: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  running = false;
+  log(`Shutting down (${reason})…`);
+
+  const ws = activeSocket;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify({ type: "disconnect", reason, instance: buildHelloPayload() }));
+    } catch {
+      // Ignore send failures during shutdown.
+    }
+
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      const timer = setTimeout(finish, 500);
+      ws.addEventListener("close", () => {
+        clearTimeout(timer);
+        finish();
+      }, { once: true });
+      try {
+        ws.close(1000, "Runner shutting down");
+      } catch {
+        clearTimeout(timer);
+        finish();
+      }
+    });
+  }
+}
 
 function connect() {
   if (!running) return;
@@ -1248,7 +1347,7 @@ function connect() {
         break;
 
       case "heartbeat":
-        sendJson({ type: "pong" });
+        sendJson({ type: "pong", instance: buildHelloPayload() });
         break;
     }
   };
@@ -1304,8 +1403,12 @@ function startHeadlessRunner() {
   }
   log("");
 
-  process.on("SIGINT", () => { log("Shutting down…"); running = false; process.exit(0); });
-  process.on("SIGTERM", () => { log("Shutting down…"); running = false; process.exit(0); });
+  process.on("SIGINT", () => {
+    void gracefulShutdown("SIGINT").finally(() => process.exit(0));
+  });
+  process.on("SIGTERM", () => {
+    void gracefulShutdown("SIGTERM").finally(() => process.exit(0));
+  });
 
   connect();
 }

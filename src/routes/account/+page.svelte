@@ -21,7 +21,6 @@
 	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
 	let runnerJobs = $state(untrack(() => data.runnerJobs ?? []));
 	let runnerInstances = $state(untrack(() => data.runnerInstances ?? []));
-	const RUNNER_ONLINE_WINDOW_MS = 90_000;
 	const RUNNER_REFRESH_INTERVAL_MS = 15_000;
 
 	// Create-token form
@@ -39,13 +38,10 @@
 	let dispatching = $state(false);
 	let copilotPrompt = $state('');
 
-	/** Returns true if any instance is currently online or token heartbeat is fresh */
+	/** Returns true only when at least one concrete instance reports online */
 	function isRunnerOnline(token) {
 		if (token.revoked) return false;
-		if (instancesForToken(token.id).some((instance) => instance.is_online)) return true;
-		if (!token.last_seen_at) return false;
-		const age = Date.now() - new Date(token.last_seen_at + 'Z').getTime();
-		return age < RUNNER_ONLINE_WINDOW_MS;
+		return instancesForToken(token.id).some((instance) => instance.is_online);
 	}
 
 	async function refreshRunnerData() {
@@ -194,6 +190,29 @@
 	function capabilityLabel(instance, key) {
 		const caps = instance?.metadata?.capabilities || {};
 		return caps[key] ? 'yes' : 'no';
+	}
+
+	function providerLabel(instance) {
+		const llm = instance?.metadata?.llm;
+		if (!llm) return 'unknown';
+		if (llm.preferredProvider) return llm.preferredProvider;
+		if (Array.isArray(llm.chain) && llm.chain.length > 0) {
+			return llm.chain.map((entry) => entry.provider).join(' -> ');
+		}
+		return 'unconfigured';
+	}
+
+	function modelLabel(instance) {
+		const llm = instance?.metadata?.llm;
+		if (!llm) return 'unknown';
+		const chain = Array.isArray(llm.chain) ? llm.chain : [];
+		const models = chain
+			.map((entry) => entry?.model)
+			.filter((model) => typeof model === 'string' && model.trim().length > 0);
+		if (models.length > 0) return models.join(' -> ');
+		if (llm.copilot?.model) return llm.copilot.model;
+		if (llm.ollama?.model) return llm.ollama.model;
+		return 'unconfigured';
 	}
 
 	function copyRawToken() {
@@ -839,6 +858,8 @@
 											<span class="runner-instance-meta">screenshots: {capabilityLabel(inst, 'screenshotAvailable')}</span>
 											<span class="runner-instance-meta">vscode: {capabilityLabel(inst, 'vscodeControlAvailable')}</span>
 											<span class="runner-instance-meta">copilot: {capabilityLabel(inst, 'copilotMessageAvailable')}</span>
+											<span class="runner-instance-meta">provider: {providerLabel(inst)}</span>
+											<span class="runner-instance-meta">model: {modelLabel(inst)}</span>
 										</div>
 										{#if !t.revoked}
 											<div class="runner-instance-actions">

@@ -692,7 +692,57 @@ export async function onRequestGet(context) {
     if (msg.type === "pong") {
       touchRunnerToken(db, auth.tokenId, clientIp).catch(() => {});
       if (state.instanceId) {
+        if (msg.instance?.instanceKey && msg.instance?.displayName) {
+          registerRunnerInstance(db, auth, msg.instance, clientIp)
+            .then((instance) => {
+              if (!instance) return;
+              state.instanceId = instance.id ?? state.instanceId;
+              state.instanceName = instance.display_name ?? state.instanceName;
+              state.instanceKey = instance.instance_key ?? state.instanceKey;
+            })
+            .catch(() => {});
+        }
         touchRunnerInstance(db, state.instanceId, clientIp).catch(() => {});
+      }
+      return;
+    }
+
+    if (msg.type === "disconnect") {
+      closed = true;
+      try {
+        if (msg.instance?.instanceKey && msg.instance?.displayName) {
+          const refreshed = await registerRunnerInstance(db, auth, msg.instance, clientIp);
+          if (refreshed?.id) {
+            state.instanceId = refreshed.id;
+            state.instanceName = refreshed.display_name ?? state.instanceName;
+            state.instanceKey = refreshed.instance_key ?? state.instanceKey;
+          }
+        }
+      } catch {
+        // Ignore best-effort metadata refresh failures on disconnect.
+      }
+
+      if (state.instanceId) {
+        context.waitUntil(
+          Promise.allSettled([
+            disconnectRunnerInstance(db, state.instanceId),
+            recordRunnerEvent(db, auth, state, {
+              eventType: "runner.disconnected",
+              message: `${state.instanceName ?? "Runner"} disconnected`,
+              details: {
+                instanceKey: state.instanceKey ?? null,
+                reason: typeof msg.reason === "string" ? msg.reason : null,
+                graceful: true,
+              },
+            }),
+          ])
+        );
+      }
+
+      try {
+        server.close(1000, "Runner disconnected");
+      } catch {
+        closed = true;
       }
       return;
     }

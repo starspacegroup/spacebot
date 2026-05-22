@@ -184,6 +184,9 @@ export function gatherSystemProfile(): RunnerSystemProfile {
   const hasCodeCli = commandExists("code");
   const hasBridgeUrl = Boolean(env.RUNNER_VSCODE_BRIDGE_URL || env.RUNNER_VSCODE_BRIDGE_TOKEN);
   const hasBridgeToken = Boolean(env.RUNNER_VSCODE_BRIDGE_TOKEN);
+  const screenshotEnabled = env.RUNNER_ENABLE_SCREENSHOTS === "1";
+  const vscodeControlEnabled = env.RUNNER_ENABLE_VSCODE_CONTROL !== "0";
+  const copilotChatEnabled = env.RUNNER_ENABLE_COPILOT_CHAT === "1";
 
   return {
     collectedAt: new Date().toISOString(),
@@ -216,10 +219,10 @@ export function gatherSystemProfile(): RunnerSystemProfile {
       tools: detectCommonTools(),
     },
     capabilities: {
-      screenshotAvailable: hasDisplayEnv,
+      screenshotAvailable: hasDisplayEnv && screenshotEnabled,
       workspaceMetadataAvailable: platform === "win32" || platform === "darwin" || Boolean(env.DISPLAY),
-      vscodeControlAvailable: hasCodeCli || hasBridgeUrl,
-      copilotMessageAvailable: hasBridgeToken,
+      vscodeControlAvailable: vscodeControlEnabled && (hasCodeCli || hasBridgeUrl),
+      copilotMessageAvailable: copilotChatEnabled && hasBridgeToken,
     },
   };
 }
