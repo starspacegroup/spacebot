@@ -12,6 +12,18 @@ import {
   type RunnerAutostartStatus,
 } from "./service-manager";
 import { copyTextToClipboard, negotiateRunnerTokenViaBrowser } from "./token-negotiation";
+import {
+  detectOllamaInstalled,
+  detectOllamaRunning,
+  getOllamaModels,
+  getOllamaConfig,
+  storeOllamaConfig,
+  formatBytes,
+  type OllamaModel,
+} from "./ollama-utils";
+
+// Spinner frames for loading states
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 interface RunnerTuiOptions {
   apiUrl: string;
@@ -37,27 +49,95 @@ interface AppProps extends RunnerTuiOptions {
 
 const IS_GHOSTTY = /ghostty/i.test(process.env.TERM ?? "") || /ghostty/i.test(process.env.TERM_PROGRAM ?? "");
 
-const THEME = IS_GHOSTTY
-  ? {
-    title: "#7dd3fc",
-    heading: "#93c5fd",
-    key: "#f8fafc",
-    value: "#94a3b8",
-    info: "#22d3ee",
-    warn: "#fde047",
-    ok: "#4ade80",
-    muted: "#64748b",
+/** Detect if the system prefers dark mode */
+function detectDarkMode(): boolean {
+  const colorfgbg = process.env.COLORFGBG ?? "";
+  if (colorfgbg) {
+    const parts = colorfgbg.split(";");
+    const bg = parts[parts.length - 1];
+    if (["7", "15", "230", "231", "232", "233", "234", "235"].includes(bg)) {
+      return false;
+    }
   }
-  : {
-    title: "cyan",
-    heading: "blue",
-    key: "white",
-    value: "gray",
-    info: "cyan",
-    warn: "yellow",
-    ok: "green",
-    muted: "gray",
-  };
+  return true;
+}
+
+const isDarkMode = detectDarkMode();
+
+// Sophisticated theme with accent colors and visual hierarchy
+const THEME = IS_GHOSTTY
+  ? isDarkMode
+    ? {
+      // Dark mode - sophisticated palette
+      primary: "#06b6d4",       // Cyan - main brand color
+      secondary: "#8b5cf6",     // Purple - accent
+      success: "#10b981",       // Emerald - success states
+      warning: "#f59e0b",       // Amber - warnings
+      error: "#ef4444",         // Red - errors
+      info: "#0ea5e9",          // Sky - information
+      title: "#f0f9ff",         // Almost white for titles
+      heading: "#cffafe",       // Light cyan for headings
+      key: "#e0e7ff",           // Indigo wash for keys
+      value: "#cbd5e1",         // Cool gray for values
+      muted: "#64748b",         // Slate for muted text
+      border: "#334155",        // Dark slate for borders
+      bg: "#0f172a",            // Navy black background
+      accent1: "#06b6d4",       // Cyan accent
+      accent2: "#8b5cf6",       // Purple accent
+    }
+    : {
+      // Light mode - sophisticated palette
+      primary: "#0891b2",       // Dark cyan
+      secondary: "#7c3aed",     // Dark purple
+      success: "#059669",       // Dark emerald
+      warning: "#d97706",       // Dark amber
+      error: "#dc2626",         // Dark red
+      info: "#0369a1",          // Dark sky
+      title: "#0f172a",         // Almost black
+      heading: "#1e293b",       // Slate
+      key: "#334155",           // Dark slate
+      value: "#475569",         // Gray slate
+      muted: "#94a3b8",         // Light gray
+      border: "#cbd5e1",        // Light border
+      bg: "#f8fafc",            // Off-white
+      accent1: "#0891b2",       // Cyan accent
+      accent2: "#7c3aed",       // Purple accent
+    }
+  : isDarkMode
+    ? {
+      primary: "cyan",
+      secondary: "magenta",
+      success: "green",
+      warning: "yellow",
+      error: "red",
+      info: "cyan",
+      title: "white",
+      heading: "cyan",
+      key: "white",
+      value: "gray",
+      muted: "gray",
+      border: "gray",
+      bg: "black",
+      accent1: "cyan",
+      accent2: "magenta",
+    }
+    : {
+      primary: "blue",
+      secondary: "magenta",
+      success: "green",
+      warning: "yellow",
+      error: "red",
+      info: "blue",
+      title: "black",
+      heading: "blue",
+      key: "black",
+      value: "gray",
+      muted: "gray",
+      border: "gray",
+      bg: "white",
+      accent1: "blue",
+      accent2: "magenta",
+    };
 
 // Strip common ANSI sequences (CSI/OSC/single-char) to prevent style leakage into TUI rendering.
 const ANSI_ESCAPE_RE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\)|[@-Z\\-_])/g;
@@ -106,6 +186,31 @@ interface StyledLine {
   text: string;
 }
 
+/**
+ * Get spinner character based on current tick
+ */
+function getSpinner(tick: number): string {
+  return SPINNER_FRAMES[tick % SPINNER_FRAMES.length] ?? "⠋";
+}
+
+/**
+ * Format status with visual indicator
+ */
+function formatStatus(status: "running" | "stopped" | "loading" | "ready" | "error", tick?: number): string {
+  switch (status) {
+    case "running":
+      return `${tick !== undefined ? getSpinner(tick) : "▶"} Running`;
+    case "stopped":
+      return "⊘ Stopped";
+    case "loading":
+      return `${tick !== undefined ? getSpinner(tick) : "⠋"} Loading...`;
+    case "ready":
+      return "◉ Ready";
+    case "error":
+      return "✕ Error";
+  }
+}
+
 function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scriptPath, initialToken, onExit }: AppProps) {
   const initialStatus = useMemo(() => detectAutostartStatus(), []);
   const [autostartStatus, setAutostartStatus] = useState(initialStatus);
@@ -129,8 +234,68 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const stdoutCarryRef = useRef("");
   const stderrCarryRef = useRef("");
   const bootedDashboardRef = useRef(false);
+  const [spinnerTick, setSpinnerTick] = useState(0);
 
-  const promptOptions: PromptOption[] = [
+  // Ollama state
+  const [ollamaInstalled, setOllamaInstalled] = useState(false);
+  const [ollamaRunning, setOllamaRunning] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([]);
+  const [ollamaDetecting, setOllamaDetecting] = useState(true);
+  
+  // Chat interface state
+  interface ChatMessage {
+    type: "user" | "system" | "error" | "success";
+    text: string;
+  }
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    { type: "system", text: "Welcome to SpaceBot Runner. Type /help for available commands." },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMode, setChatMode] = useState(false); // Toggle chat at bottom
+
+  // Spinner animation loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSpinnerTick((t) => t + 1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Detect Ollama on startup
+  useEffect(() => {
+    (async () => {
+      try {
+        const installed = await detectOllamaInstalled();
+        setOllamaInstalled(installed);
+
+        if (installed) {
+          const running = await detectOllamaRunning();
+          setOllamaRunning(running);
+
+          if (running) {
+            const models = await getOllamaModels();
+            setOllamaModels(models);
+
+            if (models.length > 0 && !getOllamaConfig()) {
+              setChatMessages((prev) => [
+                ...prev,
+                {
+                  type: "system",
+                  text: `Ollama detected with ${models.length} model(s). Use /models to list or /connect to set up.`,
+                },
+              ]);
+            }
+          }
+        }
+      } catch {
+        // Silently fail Ollama detection
+      } finally {
+        setOllamaDetecting(false);
+      }
+    })();
+  }, []);
+
+  const autostartOptions: PromptOption[] = [
     {
       id: "install",
       title: `Install ${formatInstallKind(autostartStatus.installKind)}`,
@@ -147,6 +312,8 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       description: "Suppress this prompt until you install autostart manually from the dashboard.",
     },
   ];
+
+  const promptOptions = autostartOptions;
 
   function appendLogLines(lines: string[]) {
     if (lines.length === 0) return;
@@ -219,6 +386,65 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         ? `Runner exited after ${signal}.`
         : `Runner exited with code ${code ?? 0}. Press r to restart.`);
     });
+  }
+
+  function handleChatCommand(input: string) {
+    const text = input.trim();
+    
+    // Add user message
+    setChatMessages((prev) => [...prev, { type: "user", text }]);
+    setChatInput("");
+
+    // Parse command
+    if (text === "/help") {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          type: "system",
+          text: "/help - Show this message\n/models - List Ollama models\n/connect <model> - Connect to a model\n/config - Show current setup\n/clear - Clear chat",
+        },
+      ]);
+    } else if (text === "/models") {
+      if (!ollamaRunning) {
+        setChatMessages((prev) => [...prev, { type: "error", text: "Ollama is not running" }]);
+      } else if (ollamaModels.length === 0) {
+        setChatMessages((prev) => [...prev, { type: "error", text: "No models found in Ollama" }]);
+      } else {
+        const modelList = ollamaModels
+          .map((m) => `  • ${m.name} (${formatBytes(m.size)})`)
+          .join("\n");
+        setChatMessages((prev) => [...prev, { type: "system", text: `Available models:\n${modelList}` }]);
+      }
+    } else if (text.startsWith("/connect ")) {
+      const model = text.slice(9).trim();
+      if (!model) {
+        setChatMessages((prev) => [...prev, { type: "error", text: "Usage: /connect <model>" }]);
+      } else if (!ollamaRunning) {
+        setChatMessages((prev) => [...prev, { type: "error", text: "Ollama is not running" }]);
+      } else {
+        storeOllamaConfig({ host: "localhost", port: 11434, model });
+        setChatMessages((prev) => [...prev, { type: "success", text: `Connected to model: ${model}` }]);
+      }
+    } else if (text === "/config") {
+      const config = getOllamaConfig();
+      if (config) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            type: "system",
+            text: `Ollama Config:\nHost: ${config.host}\nPort: ${config.port}\nModel: ${config.model}`,
+          },
+        ]);
+      } else {
+        setChatMessages((prev) => [...prev, { type: "error", text: "No Ollama config set up yet" }]);
+      }
+    } else if (text === "/clear") {
+      setChatMessages([]);
+    } else if (text.startsWith("/")) {
+      setChatMessages((prev) => [...prev, { type: "error", text: `Unknown command: ${text}. Type /help for help.` }]);
+    } else {
+      setChatMessages((prev) => [...prev, { type: "system", text: "Commands start with /. Type /help for available commands." }]);
+    }
   }
 
   function applyPromptChoice(choice: PromptChoice) {
@@ -326,6 +552,38 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   useKeyboard((key) => {
     if (key.repeated) return;
 
+    // Chat mode input handling
+    if (chatMode) {
+      if (key.ctrl && key.name === "c") {
+        setChatMode(false);
+        return;
+      }
+
+      if (key.name === "escape") {
+        setChatMode(false);
+        return;
+      }
+
+      if (key.name === "return") {
+        if (chatInput.trim()) {
+          handleChatCommand(chatInput);
+        }
+        return;
+      }
+
+      if (key.name === "backspace") {
+        setChatInput((prev) => prev.slice(0, -1));
+        return;
+      }
+
+      // Basic text input (limited to printable characters)
+      if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) {
+        setChatInput((prev) => (prev.length < 80 ? prev + key.sequence : prev));
+      }
+      return;
+    }
+
+    // Normal mode input handling
     if (key.ctrl && key.name === "c") {
       stopRunnerChild();
       onExit();
@@ -380,6 +638,13 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
     if (key.name === "i" && !autostartStatus.installed) {
       installFromDashboard();
+      return;
+    }
+
+    // Chat toggle
+    if (key.name === "t" && ollamaRunning) {
+      setChatMode(true);
+      return;
     }
   });
 
@@ -394,6 +659,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... configured` : "missing",
   );
   const statusLabel = childRunning ? "Runner online" : "Runner stopped";
+  
+  // Status icons for better visual feedback
+  const statusIcon = childRunning ? "✓" : "○";
+  const tokenIcon = runnerToken.startsWith("sbr_") ? "✓" : "✗";
+  const autostartIcon = autostartStatus.installed ? "✓" : "○";
 
   const topLines = [
     `State: ${runnerState}`,
@@ -438,33 +708,162 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
   const recentLines = logs.map((line) => line);
 
-  const screenLines: StyledLine[] = [
-    { tone: "title", text: "STARSPACE LOCAL RUNNER" },
-    { tone: "muted", text: "------------------------------------------------------------" },
-    { tone: "heading", text: "RUNNER" },
-    ...topLines.map((line) => ({ tone: "value" as const, text: line })),
-    { tone: "muted", text: "" },
-    { tone: "heading", text: mode === "prompt" ? "AUTOSTART SETUP" : "DASHBOARD" },
-    ...middleLines.map((line) => ({ tone: "value" as const, text: line })),
-    { tone: "muted", text: "" },
-    { tone: "heading", text: "RECENT OUTPUT" },
-    ...recentLines.map((line) => ({ tone: "value" as const, text: line })),
-  ];
+  // Mobile-responsive design
+  const buildScreenLines = (): StyledLine[] => {
+    // Chat mode takes over the whole screen
+    if (chatMode) {
+      return [
+        { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
+        { tone: "title", text: "║            💬 OLLAMA ASSISTANT CHAT                             ║" },
+        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
+        ...chatMessages.slice(-15).map((msg) => {
+          const prefix = msg.type === "user" ? "You: " : `${msg.type}: `;
+          return {
+            tone: (msg.type === "error" ? "error" : msg.type === "success" ? "success" : "value") as keyof typeof THEME,
+            text: `║  ${clipForUi(`${prefix}${msg.text}`, 60).padEnd(60)}  ║`,
+          };
+        }),
+        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
+        { tone: "info", text: `║  Input: ${clipForUi(chatInput, 50).padEnd(50)}  ║` },
+        { tone: "muted", text: "║  (ESC to close, type /help for commands)                        ║" },
+        { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
+      ];
+    }
+
+    // When in prompt mode, show a big modal-like autostart setup
+    if (mode === "prompt") {
+      return [
+        { tone: "muted", text: "" },
+        { tone: "muted", text: "" },
+        { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
+        { tone: "primary", text: "║                                                                ║" },
+        { tone: "title", text: "║              ⚙️  AUTOSTART CONFIGURATION REQUIRED              ║" },
+        { tone: "primary", text: "║                                                                ║" },
+        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
+        { tone: "muted", text: "║                                                                ║" },
+        { tone: "info", text: `║  ${clipForUi(serviceMessage, 60).padEnd(60)}  ║` },
+        { tone: "muted", text: "║                                                                ║" },
+        { tone: "warning", text: "║  Would you like to enable automatic startup on this machine?  ║" },
+        { tone: "muted", text: "║                                                                ║" },
+        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
+        { tone: "muted", text: "║                                                                ║" },
+        ...promptOptions.map((option, idx) => {
+          const isActive = idx === promptSelection;
+          const marker = isActive ? "❯❯" : "  ";
+          const bg = isActive ? "█" : " ";
+          const title = `${marker} ${clipForUi(option.title, 56)}`.padEnd(60);
+          return {
+            tone: (isActive ? "secondary" : "value") as keyof typeof THEME,
+            text: `║${bg}${title}${bg}║`,
+            highlight: isActive,
+          };
+        }),
+        ...promptOptions.flatMap((option, idx) => {
+          const isActive = idx === promptSelection;
+          if (!isActive) return [];
+          const lines: StyledLine[] = [
+            { tone: "muted", text: "║                                                                ║" },
+            { tone: "muted", text: `║  ▪ ${clipForUi(option.description, 54).padEnd(54)}  ║` },
+            { tone: "muted", text: "║                                                                ║" },
+          ];
+          return lines;
+        }),
+        { tone: "primary", text: "╠════════════════════════════════════════════════════════════════╣" },
+        { tone: "muted", text: "║                                                                ║" },
+        { tone: "info", text: "║  Use  ↑  ↓  arrow keys to navigate  •  Press  ENTER  to select ║" },
+        { tone: "muted", text: "║                                                                ║" },
+        { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
+        { tone: "muted", text: "" },
+        { tone: "muted", text: "" },
+      ];
+    }
+
+    // Dashboard mode - compact responsive design
+    return [
+      { tone: "primary", text: "" },
+      { tone: "primary", text: "╔════════════════════════════════════════════════════════════════╗" },
+      { tone: "title", text: "║          ⚡  STARSPACE LOCAL RUNNER  •  Status Monitor         ║" },
+      { tone: "primary", text: "╚════════════════════════════════════════════════════════════════╝" },
+      { tone: "muted", text: "" },
+      
+      // Status
+      { tone: "primary", text: "┌─ SESSION STATUS ─────────────────────────────────────────────────┐" },
+      { tone: "value", text: `│  ${clipForUi(formatStatus(childRunning ? "running" : "stopped", spinnerTick), 62).padEnd(62)}  │` },
+      { tone: "value", text: `│  State:  ${clipForUi(runnerState, 52).padEnd(52)}  │` },
+      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      { tone: "muted", text: "" },
+      
+      // Configuration (compact)
+      { tone: "primary", text: "┌─ CONFIGURATION ──────────────────────────────────────────────────┐" },
+      { tone: "value", text: `│  Server:  ${clipForUi(apiUrl, 50).padEnd(50)}  │` },
+      { tone: "value", text: `│  Runner:  ${clipForUi(displayName, 50).padEnd(50)}  │` },
+      { tone: "value", text: `│  Host:    ${clipForUi(hostname, 50).padEnd(50)}  │` },
+      {
+        tone: runnerToken.startsWith("sbr_") ? "success" : "warning",
+        text: `│  Token:   ${clipForUi(runnerToken.startsWith("sbr_") ? `${runnerToken.slice(0, 8)}... ✓` : "Missing (Press k to get)", 50).padEnd(50)}  │`
+      },
+      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      { tone: "muted", text: "" },
+      
+      // Controls
+      { tone: "primary", text: "┌─ KEYBOARD CONTROLS ──────────────────────────────────────────────┐" },
+      { tone: "info", text: "│  [q] Quit  •  [r] Restart  •  [k] Get Token  •  [i] Autostart  │" },
+      ...(ollamaRunning ? [{ tone: "info" as keyof typeof THEME, text: "│  [t] Chat with Ollama (AI Assistant)                            │" }] : []),
+      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      { tone: "muted", text: "" },
+      
+      // Token negotiation
+      ...(tokenNegotiating
+        ? [{ tone: "info" as keyof typeof THEME, text: `│  ${clipForUi(`${getSpinner(spinnerTick)} Negotiating token via browser...`, 60).padEnd(60)}  │` }]
+        : []
+      ),
+      
+      // Manual fallback
+      ...(manualOpenUrl
+        ? [
+          { tone: "primary", text: "┌─ MANUAL TOKEN SETUP ─────────────────────────────────────────────┐" },
+          { tone: "warning", text: "│  Browser did not open automatically. Visit this URL manually:     │" },
+          { tone: "muted", text: `│  ${clipForUi(manualOpenUrl, 60).padEnd(60)}  │` },
+          { tone: "info", text: "│  Press [c] to copy URL to clipboard                              │" },
+          { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+          { tone: "muted", text: "" },
+        ]
+        : []
+      ),
+      
+      // Recent logs (compact, only show 5 on dashboard)
+      { tone: "primary", text: "┌─ RECENT OUTPUT ──────────────────────────────────────────────────┐" },
+      ...recentLines.slice(-5).map((line) => {
+        let tone: keyof typeof THEME = "value";
+        const lower = line.toLowerCase();
+        if (lower.includes("error") || lower.includes("failed")) tone = "error";
+        else if (lower.includes("success") || lower.includes("connected") || lower.includes("authenticated")) tone = "success";
+        else if (lower.includes("warn")) tone = "warning";
+        return { tone, text: `│  ${clipForUi(line, 60).padEnd(60)}  │` };
+      }),
+      { tone: "primary", text: "└──────────────────────────────────────────────────────────────────┘" },
+      { tone: "muted", text: "" },
+    ];
+  };
+
+  const screenLines = buildScreenLines();
 
   const toneForLine = (line: string, baseTone: keyof typeof THEME): keyof typeof THEME => {
     const lower = line.toLowerCase();
-    if (lower.includes("installed") || lower.includes("active") || lower.includes("ready")) return "ok";
-    if (lower.includes("not installed") || lower.includes("could not") || lower.includes("failed") || lower.includes("missing")) return "warn";
-    if (lower.startsWith("controls:") || lower.startsWith("use up/down")) return "info";
-    if (line.includes(": ")) return "key";
+    if (lower.includes("│")) return baseTone; // Box drawing - use as-is
+    if (lower.includes("┌") || lower.includes("├") || lower.includes("└") || lower.includes("─") || lower.includes("┘")) return baseTone; // Box drawing
+    if (lower.includes("installed") || lower.includes("active") || lower.includes("ready") || lower.includes("online") || lower.includes("✓")) return "success";
+    if (lower.includes("not installed") || lower.includes("could not") || lower.includes("failed") || lower.includes("missing") || lower.includes("stopped") || lower.includes("✗")) return "warning";
+    if (lower.includes("press") || lower.includes("▪") || lower.includes("↑") || lower.includes("↓")) return "info";
+    if (lower.includes("error") || lower.includes("err ")) return "error";
     return baseTone;
   };
 
   return (
-    <box border title="StarSpace Runner Console" padding={1} style={{ width: "100%", height: "100%" }}>
+    <box border title={isDarkMode ? "SpaceBot" : "SpaceBot (Light)"} padding={1} style={{ width: "100%", height: "100%" }}>
       <text wrapMode="char" truncate>
         {screenLines.map((line, index) => {
-          const normalized = clipForUi(normalizeDisplayText(line.text), 170);
+          const normalized = line.text; // Don't clip - we're building fixed-width lines
           const tone = toneForLine(normalized, line.tone);
           return (
             <React.Fragment key={`${index}-${normalized.slice(0, 18)}`}>
