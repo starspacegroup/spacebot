@@ -532,6 +532,39 @@ function buildModelOrder(models, env) {
   return models;
 }
 
+function parseUsageValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function extractUsageMetrics(payload) {
+  const usage = payload?.result?.usage || payload?.usage || null;
+  if (!usage || typeof usage !== "object") {
+    return null;
+  }
+
+  const inputTokens = parseUsageValue(
+    usage.input_tokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.promptTokens,
+  );
+  const outputTokens = parseUsageValue(
+    usage.output_tokens ?? usage.completion_tokens ?? usage.outputTokens ?? usage.completionTokens,
+  );
+
+  let totalTokens = parseUsageValue(
+    usage.total_tokens ?? usage.totalTokens,
+  );
+
+  if (totalTokens === null && inputTokens !== null && outputTokens !== null) {
+    totalTokens = inputTokens + outputTokens;
+  }
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
+}
+
 /**
  * Call the AI API, trying each model in order until one succeeds.
  */
@@ -575,6 +608,7 @@ async function callAI(messages, env) {
       }
 
       const data = await response.json();
+      const usageMetrics = extractUsageMetrics(data);
 
       let responseText;
       if (data.result?.response) {
@@ -587,6 +621,13 @@ async function callAI(messages, env) {
         lastError = new Error("Unexpected response format from AI service");
         continue;
       }
+
+      const provider = gatewayId ? "ai-gateway" : "workers-ai";
+      const usageSummary = usageMetrics
+        ? `input_tokens=${usageMetrics.inputTokens ?? "n/a"} output_tokens=${usageMetrics.outputTokens ?? "n/a"} total_tokens=${usageMetrics.totalTokens ?? "n/a"}`
+        : "input_tokens=n/a output_tokens=n/a total_tokens=n/a";
+
+      console.info(`[AI] Completion provider=${provider} model=${model} ${usageSummary}`);
 
       return responseText;
     } catch (err) {
