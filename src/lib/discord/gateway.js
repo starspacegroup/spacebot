@@ -904,6 +904,9 @@ async function handleDirectMessage(message, client) {
       history: currentSession.conversationHistory.slice(0, -1),
     });
     if (dispatch?.dispatched) {
+      log.info(
+        `[DM] Dispatched to local runner: jobId=${dispatch.jobId || "n/a"} jobType=${dispatch.jobType || "unknown"} runner=${dispatch.runner?.display_name || dispatch.runner?.hostname || "unknown"}`,
+      );
       const runnerName = dispatch.runner?.display_name || dispatch.runner?.hostname || "your local runner";
       const onlineNote = dispatch.runner?.is_online ? "" : " (currently offline — it will pick this up when it reconnects)";
       const isScreenshotJob = dispatch.jobType === "screenshot_capture";
@@ -914,6 +917,10 @@ async function handleDirectMessage(message, client) {
       }).catch((err) => log.error("[DM] Failed to send runner-dispatch reply:", err.message));
       return;
     }
+
+    log.info(
+      `[DM] Local runner not dispatched: reason=${dispatch?.reason || "no_response"} requestedScreenshot=${requestedScreenshot ? "yes" : "no"}`,
+    );
 
     if (requestedScreenshot) {
       const reason = dispatch?.reason;
