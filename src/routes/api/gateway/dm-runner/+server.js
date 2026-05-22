@@ -22,6 +22,40 @@ function sanitizeForMatch(value) {
     .trim();
 }
 
+function hasExplicitRunnerReference(instances, content) {
+  if (!Array.isArray(instances) || instances.length === 0) return false;
+
+  const contentLower = String(content || "").toLowerCase();
+  const normalizedContent = sanitizeForMatch(content);
+  const hint = TARGET_HINT_RE.exec(contentLower)?.[1]?.trim().toLowerCase() || null;
+
+  for (const instance of instances) {
+    const names = [instance.display_name, instance.hostname, instance.token_name]
+      .filter((value) => typeof value === "string" && value.trim().length > 0)
+      .map((value) => value.trim());
+
+    for (const name of names) {
+      const lowerName = name.toLowerCase();
+      const normalizedName = sanitizeForMatch(name);
+      if (!lowerName) continue;
+
+      if (hint && (lowerName.includes(hint) || hint.includes(lowerName))) {
+        return true;
+      }
+
+      if (contentLower.includes(lowerName)) {
+        return true;
+      }
+
+      if (normalizedName && normalizedContent.includes(normalizedName)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 function chooseTargetRunner(instances, content) {
   if (!Array.isArray(instances) || instances.length === 0) return null;
 
@@ -155,9 +189,11 @@ export async function POST({ request, platform }) {
     return json({ dispatched: false, reason: "no_runner" });
   }
 
+  const explicitRunnerReference = hasExplicitRunnerReference(instances, content);
+
   // DM chat takeover is opt-in at the account level.
-  // Screenshot requests still route to local runners regardless of this toggle.
-  if (!isScreenshotRequest && !preferLocalRunnerForDM) {
+  // Screenshot requests and explicit runner-targeted messages bypass this toggle.
+  if (!isScreenshotRequest && !preferLocalRunnerForDM && !explicitRunnerReference) {
     return json({ dispatched: false, reason: "preference_disabled" });
   }
 
