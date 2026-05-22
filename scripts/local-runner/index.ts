@@ -63,6 +63,7 @@ const SHELL = process.env.RUNNER_SHELL ?? (IS_WINDOWS ? "cmd.exe" : "/bin/sh");
 const SHELL_FLAG = IS_WINDOWS ? "/C" : "-c";
 const RECONNECT_BASE_MS = Number(process.env.RUNNER_RECONNECT_BASE_MS ?? "1000");
 const RECONNECT_MAX_MS = 60_000;
+const CLIENT_HEARTBEAT_INTERVAL_MS = Number(process.env.RUNNER_HEARTBEAT_MS ?? "20000");
 const MAX_ARTIFACT_BYTES = Number(process.env.RUNNER_MAX_ARTIFACT_BYTES ?? "2000000");
 const HOSTNAME = hostname();
 const RUNNER_VERSION = "2026.05.07";
@@ -163,6 +164,20 @@ function err(...args: unknown[]) {
 }
 
 let activeSocket: WebSocket | null = null;
+let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopKeepalive() {
+  if (!keepaliveTimer) return;
+  clearInterval(keepaliveTimer);
+  keepaliveTimer = null;
+}
+
+function startKeepalive() {
+  stopKeepalive();
+  keepaliveTimer = setInterval(() => {
+    sendJson({ type: "pong", instance: buildHelloPayload() });
+  }, Math.max(5_000, CLIENT_HEARTBEAT_INTERVAL_MS));
+}
 
 function sendJson(payload: unknown) {
   if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
@@ -1259,6 +1274,7 @@ async function gracefulShutdown(reason: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   running = false;
+  stopKeepalive();
   log(`Shutting down (${reason})…`);
 
   const ws = activeSocket;
@@ -1302,6 +1318,7 @@ function connect() {
   ws.onopen = () => {
     log("WebSocket connected. Waiting for jobs…");
     reconnectAttempts = 0;
+    startKeepalive();
     sendJson({ type: "hello", instance: buildHelloPayload() });
   };
 
@@ -1355,6 +1372,7 @@ function connect() {
   };
 
   ws.onclose = (event: CloseEvent) => {
+    stopKeepalive();
     activeSocket = null;
     if (!running) return;
     reconnectAttempts++;

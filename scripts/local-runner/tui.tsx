@@ -545,6 +545,17 @@ function formatStatus(status: "running" | "stopped" | "loading" | "ready" | "err
   }
 }
 
+type RunnerSocketState = "disconnected" | "connecting" | "connected" | "reconnecting";
+
+function parseRunnerSocketState(line: string): RunnerSocketState | null {
+  const lower = line.toLowerCase();
+  if (lower.includes("websocket connected") || lower.includes("authenticated")) return "connected";
+  if (lower.includes("connecting to") && lower.includes("/api/runner/ws")) return "connecting";
+  if (lower.includes("websocket closed") || lower.includes("reconnecting in")) return "reconnecting";
+  if (lower.includes("shutting down") || lower.includes("runner exited")) return "disconnected";
+  return null;
+}
+
 function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scriptPath, initialToken, onExit }: AppProps) {
   const initialStatus = useMemo(() => detectAutostartStatus(), []);
   // Hydrate persisted provider/ollama/copilot config so users don't re-pick on every launch.
@@ -597,6 +608,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     buildKeyValueLine("Workdir", defaultWorkdir),
   ]);
   const [childRunning, setChildRunning] = useState(false);
+  const [socketState, setSocketState] = useState<RunnerSocketState>("disconnected");
   const [runnerToken, setRunnerToken] = useState(initialToken.trim());
   const [tokenNegotiating, setTokenNegotiating] = useState(false);
   const [manualOpenUrl, setManualOpenUrl] = useState("");
@@ -845,6 +857,13 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       .map((line) => clipForUi(line, 180));
     if (cleaned.length === 0) return;
 
+    let nextSocketState: RunnerSocketState | null = null;
+    for (const line of cleaned) {
+      const parsed = parseRunnerSocketState(line);
+      if (parsed) nextSocketState = parsed;
+    }
+    if (nextSocketState) setSocketState(nextSocketState);
+
     setLogs((current) => trimLogHistory([...current, ...cleaned]));
     const lastSummary = [...cleaned].reverse().map(summarizeRunnerLine).find(Boolean);
     if (lastSummary) setRunnerState(lastSummary);
@@ -864,6 +883,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     stdoutCarryRef.current = "";
     stderrCarryRef.current = "";
     setChildRunning(false);
+    setSocketState("disconnected");
     child.kill("SIGTERM");
   }
 
@@ -877,6 +897,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }
 
     setRunnerState("Starting headless runner process...");
+    setSocketState("connecting");
     const child = spawn(process.execPath, ["run", scriptPath, "--headless"], {
       cwd: process.cwd(),
       env: {
@@ -909,6 +930,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       stderrCarryRef.current = "";
       childRef.current = null;
       setChildRunning(false);
+      setSocketState("disconnected");
       setRunnerState(signal
         ? `Runner exited after ${signal}.`
         : `Runner exited with code ${code ?? 0}. Run /restart to start it again.`);
@@ -2083,8 +2105,18 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
   // Compact one-line agent status badges (always shown in bottom strip)
   const buildAgentStrip = (): StyledLine => {
+    const socketBadge =
+      socketState === "connected"
+        ? "🟢 WS"
+        : socketState === "connecting"
+          ? "🟡 WS"
+          : socketState === "reconnecting"
+            ? "🟠 WS"
+            : "🔴 WS";
+
     const parts = [
       childRunning ? "🟢 Runner" : "🔴 Offline",
+      socketBadge,
       runnerToken.startsWith("sbr_") ? "🔐 Auth" : "🔓 No Auth",
     ];
 
@@ -2507,6 +2539,14 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
     const statusRows: Array<{ tone: keyof typeof THEME; text: string }> = [
       { tone: childRunning ? "success" : "warning", text: `Session: ${formatStatus(childRunning ? "running" : "stopped", spinnerTick)}` },
+      {
+        tone: socketState === "connected" ? "success" : socketState === "disconnected" ? "warning" : "info",
+        text: `WebSocket: ${socketState === "connected"
+          ? formatStatus("ready")
+          : socketState === "disconnected"
+            ? formatStatus("stopped")
+            : `${getSpinner(spinnerTick)} ${socketState === "connecting" ? "Connecting..." : "Reconnecting..."}`}`,
+      },
       { tone: "value", text: `State: ${runnerState}` },
       { tone: tokenNegotiating ? "info" : "muted", text: tokenNegotiating ? `${getSpinner(spinnerTick)} Negotiating token via browser...` : "Token negotiation idle" },
     ];
