@@ -143,6 +143,18 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+
+	/* Prevent top-nav overlap on medium desktop widths. */
+	@media (max-width: 1280px) {
+		.user-button {
+			padding-right: 0.5rem;
+			gap: 0.375rem;
+		}
+
+		.user-name {
+			display: none;
+		}
+	}
 	
 	.chevron {
 		color: var(--color-text-muted);
