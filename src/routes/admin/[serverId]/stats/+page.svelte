@@ -170,6 +170,7 @@
 	let eventTypesPage = $state(0);
 	let channelsPage = $state(0);
 	let usersPage = $state(0);
+	let boostersPage = $state(0);
 	
 	// Master toggle handler
 	function toggleAllBots(value) {
@@ -212,6 +213,32 @@
 	);
 	
 	const usersTotalPages = $derived(Math.ceil(allFilteredTopActors.length / ITEMS_PER_PAGE));
+
+	function getBoostDays(premiumSince) {
+		if (!premiumSince) return 0;
+		const startedAt = parseUTCDate(premiumSince);
+		if (!startedAt) return 0;
+		const elapsedMs = Date.now() - startedAt.getTime();
+		if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return 0;
+		return Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+	}
+
+	const allTopBoosters = $derived(
+		(data.topBoosters || [])
+			.filter((member) => !member.is_bot)
+			.map((member) => ({
+				...member,
+				display_name: member.displayName || member.global_name || member.username || 'Unknown User',
+				boost_days: getBoostDays(member.premium_since),
+			}))
+			.sort((a, b) => b.boost_days - a.boost_days)
+	);
+
+	const filteredTopBoosters = $derived(
+		allTopBoosters.slice(boostersPage * ITEMS_PER_PAGE, (boostersPage + 1) * ITEMS_PER_PAGE)
+	);
+
+	const boostersTotalPages = $derived(Math.ceil(allTopBoosters.length / ITEMS_PER_PAGE));
 	
 	const filteredVoiceUsers = $derived(
 		(data.topVoiceUsers || [])
@@ -1367,6 +1394,69 @@
 							class="pagination-btn" 
 							disabled={usersPage >= usersTotalPages - 1}
 							onclick={() => usersPage++}
+						>
+							→
+						</button>
+					</div>
+				{/if}
+			</section>
+
+			<!-- Server Boosters -->
+			<section class="list-section">
+				<div class="section-header-row">
+					<h2 class="section-title">
+						<span class="section-icon">🚀</span>
+						Server Boosters
+					</h2>
+				</div>
+				<div class="list-container">
+					{#if filteredTopBoosters?.length > 0}
+						{#each filteredTopBoosters as booster, i}
+							{@const maxDays = getMaxValue(allTopBoosters, 'boost_days')}
+							{@const rank = boostersPage * ITEMS_PER_PAGE + i + 1}
+							<div class="list-item">
+								<span class="list-rank">#{rank}</span>
+								<div class="list-info">
+									<span class="list-name">
+										{#if booster.user_id}
+											<img
+												src={getAvatarUrl(booster.user_id, booster.guild_avatar || booster.avatar, booster.discriminator, 20)}
+												alt="{booster.display_name || 'User'} avatar"
+												class="inline-user-avatar"
+												onerror={(e) => { e.target.style.display = 'none'; }}
+											/>
+										{/if}
+										{booster.display_name}
+									</span>
+									<span class="list-meta">Boosting {formatRelativeTime(booster.premium_since)}</span>
+								</div>
+								<div class="list-bar-container">
+									<div
+										class="list-bar"
+										style="width: {(booster.boost_days / maxDays) * 100}%; background: linear-gradient(90deg, #f59e0b, #f97316);"
+									></div>
+								</div>
+								<span class="list-count">{formatNumber(booster.boost_days)}d</span>
+							</div>
+						{/each}
+					{:else}
+						<div class="list-empty">No active boosters found in member cache</div>
+					{/if}
+				</div>
+				{#if boostersTotalPages > 1}
+					<div class="list-pagination">
+						<button
+							class="pagination-btn"
+							disabled={boostersPage === 0}
+							onclick={() => boostersPage--}
+						>
+							←
+						</button>
+						<span class="pagination-info">{boostersPage + 1} / {boostersTotalPages}</span>
+						<button
+							class="pagination-btn"
+							disabled={boostersPage >= boostersTotalPages - 1}
+							onclick={() => boostersPage++}
 						>
 							→
 						</button>

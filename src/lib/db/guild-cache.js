@@ -395,6 +395,54 @@ export async function getRolesFromCache(db, guildId) {
 }
 
 /**
+ * Get active server boosters from members cache.
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @param {number} [limit=100]
+ * @returns {Promise<Array<{user_id: string, username: string, displayName: string, global_name: string|null, nickname: string|null, avatar: string|null, guild_avatar: string|null, discriminator: string, premium_since: string|null, is_bot: boolean}>>}
+ */
+export async function getBoostingMembersFromCache(db, guildId, limit = 100) {
+  if (!db || !guildId) return [];
+
+  try {
+    const result = await db.prepare(`
+      SELECT
+        user_id,
+        username,
+        discriminator,
+        global_name,
+        nickname,
+        avatar,
+        guild_avatar,
+        is_bot,
+        premium_since
+      FROM guild_members_cache
+      WHERE guild_id = ?
+        AND premium_since IS NOT NULL
+        AND TRIM(premium_since) != ''
+      ORDER BY datetime(premium_since) DESC
+      LIMIT ?
+    `).bind(guildId, limit).all();
+
+    return (result.results || []).map((member) => ({
+      user_id: member.user_id,
+      username: member.username,
+      displayName: member.nickname || member.global_name || member.username,
+      global_name: member.global_name,
+      nickname: member.nickname,
+      avatar: member.avatar,
+      guild_avatar: member.guild_avatar,
+      discriminator: member.discriminator || '0',
+      premium_since: member.premium_since,
+      is_bot: Boolean(member.is_bot),
+    }));
+  } catch (error) {
+    log.error(`[MembersCache] Error getting boosters for ${guildId}:`, error);
+    return [];
+  }
+}
+
+/**
  * Get a member from cache
  * @param {D1Database} db
  * @param {string} guildId

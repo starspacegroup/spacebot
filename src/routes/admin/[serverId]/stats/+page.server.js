@@ -27,7 +27,7 @@ import {
 } from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
-import { getRolesFromCache } from "$lib/db/guild-cache.js";
+import { getBoostingMembersFromCache, getRolesFromCache } from "$lib/db/guild-cache.js";
 import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
 import {
   LIVE_UPDATE_TOKEN_TTL_SECONDS,
@@ -160,6 +160,7 @@ export async function load({ params, cookies, platform, parent, url }) {
   let topVoiceUsers = [];
   let topVideoUsers = [];
   let topScreenshareUsers = [];
+  let topBoosters = [];
   let guildMetadata = null;
   let cachedRoles = [];
   let liveUpdatesAuth = null;
@@ -187,6 +188,7 @@ export async function load({ params, cookies, platform, parent, url }) {
     topVoiceUsers = cachedEntry.data.topVoiceUsers;
     topVideoUsers = cachedEntry.data.topVideoUsers;
     topScreenshareUsers = cachedEntry.data.topScreenshareUsers;
+    topBoosters = cachedEntry.data.topBoosters;
     guildMetadata = cachedEntry.data.guildMetadata;
     cachedRoles = cachedEntry.data.cachedRoles;
     liveVoiceSnapshot = cachedEntry.data.liveVoiceSnapshot;
@@ -235,6 +237,7 @@ export async function load({ params, cookies, platform, parent, url }) {
         topVoiceUsers,
         topVideoUsers,
         topScreenshareUsers,
+        topBoosters,
       ] = await Promise.all([
         getGuildStatistics(db, serverId, timezone, selectedPeriod),
         getActivityHeatmap(db, serverId, timezone, selectedPeriod),
@@ -259,6 +262,8 @@ export async function load({ params, cookies, platform, parent, url }) {
         getTopVoiceUsers(db, serverId, 10, selectedPeriod),
         getTopVideoUsers(db, serverId, 10, selectedPeriod),
         getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
+        // Current active boosters from members cache
+        getBoostingMembersFromCache(db, serverId, 50),
       ]);
       // Fetch guild metadata for boost features display
       try {
@@ -295,6 +300,7 @@ export async function load({ params, cookies, platform, parent, url }) {
           topVoiceUsers,
           topVideoUsers,
           topScreenshareUsers,
+          topBoosters,
           guildMetadata,
           cachedRoles,
           liveVoiceSnapshot,
@@ -355,6 +361,7 @@ export async function load({ params, cookies, platform, parent, url }) {
     topVoiceUsers,
     topVideoUsers,
     topScreenshareUsers,
+    topBoosters,
     guildMetadata,
     cachedRoles,
     liveUpdatesAuth,
