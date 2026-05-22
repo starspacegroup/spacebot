@@ -15,7 +15,11 @@
  *   RUNNER_DEFAULT_WORKDIR   – Optional. Default working directory for commands.
  *   RUNNER_MAX_OUTPUT_BYTES  – Optional. Max captured output per job (default 65536).
  *   RUNNER_ALLOWED_PATHS     – Optional. Colon-separated list of path prefixes that
- *                              working_dir must start with (security allowlist).
+ *                              working_dir must start with (security allowlist). When
+ *                              unset, the runner reads ~/.config/spacebot/permissions.json
+ *                              (or the platform equivalent) written by the interactive
+ *                              startup wizard. When that's missing too, all paths are
+ *                              accepted and a loud warning is logged.
  *   RUNNER_SHELL             – Optional. Shell to use (default: /bin/sh on Unix, cmd.exe on Windows).
  *   RUNNER_RECONNECT_BASE_MS – Optional. Base reconnect delay in ms (default 1000).
  *   RUNNER_DISPLAY_NAME      – Optional. Human-readable name for this machine.
@@ -32,6 +36,7 @@ import { fileURLToPath } from "node:url";
 import { gatherSystemProfile } from "./capabilities";
 import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
 import { collectWorkspaceContext } from "./workspace-context";
+import { resolveEffectiveAllowedPaths } from "./permission-config";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -41,9 +46,10 @@ const TOKEN = process.env.SPACEBOT_RUNNER_TOKEN ?? "";
 const API_URL = (process.env.SPACEBOT_API_URL ?? "https://spacebot.starspace.group").replace(/\/$/, "");
 const DEFAULT_WORKDIR = process.env.RUNNER_DEFAULT_WORKDIR ?? process.cwd();
 const MAX_OUTPUT_BYTES = Number(process.env.RUNNER_MAX_OUTPUT_BYTES ?? "65536");
-const ALLOWED_PATHS: string[] = process.env.RUNNER_ALLOWED_PATHS
-  ? process.env.RUNNER_ALLOWED_PATHS.split(":").map((p) => resolve(p))
-  : [];
+const PERMISSION_RESOLUTION = resolveEffectiveAllowedPaths();
+const ALLOWED_PATHS: string[] = PERMISSION_RESOLUTION.paths;
+const PERMISSION_SOURCE = PERMISSION_RESOLUTION.source;
+const PERMISSION_MODE = PERMISSION_RESOLUTION.mode;
 const IS_WINDOWS = process.platform === "win32";
 const SHELL = process.env.RUNNER_SHELL ?? (IS_WINDOWS ? "cmd.exe" : "/bin/sh");
 const SHELL_FLAG = IS_WINDOWS ? "/C" : "-c";
@@ -598,7 +604,7 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
     if (!isAllowedPath(target)) {
       return {
         status: "failed",
-        output: `Path is not permitted by RUNNER_ALLOWED_PATHS: ${target}`,
+        output: `Path is not within the runner's allowed paths: ${target}`,
         exitCode: 1,
         truncated: false,
       };
@@ -700,12 +706,24 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
 function resolveWorkDir(jobDir: string | null): string {
   const base = jobDir ? resolve(jobDir) : resolve(DEFAULT_WORKDIR);
 
+  // If the user hasn't configured any permission scope (no env, no persisted
+  // wizard answer), refuse the job. This is the "by default none" posture —
+  // safer than silently accepting anything.
+  if (ALLOWED_PATHS.length === 0 && PERMISSION_SOURCE === "none") {
+    throw new Error(
+      `Refusing to run: no allowed-paths scope is configured for this runner. ` +
+      `Launch the runner interactively and pick a scope (sandbox / home / root), ` +
+      `or set RUNNER_ALLOWED_PATHS in the environment.`
+    );
+  }
+
   if (ALLOWED_PATHS.length > 0) {
     const allowed = ALLOWED_PATHS.some((p) => base.startsWith(p));
     if (!allowed) {
       throw new Error(
-        `Working directory "${base}" is not in the allowed paths list. ` +
-        `Set RUNNER_ALLOWED_PATHS to permit it.`
+        `Working directory "${base}" is not within the allowed paths for this runner. ` +
+        `Allowed: ${ALLOWED_PATHS.join(", ")}. ` +
+        `Use /permissions in the runner TUI to broaden scope, or set RUNNER_ALLOWED_PATHS.`
       );
     }
   }
@@ -719,7 +737,12 @@ function resolveWorkDir(jobDir: string | null): string {
 
 function isAllowedPath(pathValue: string): boolean {
   const base = resolve(pathValue);
-  if (ALLOWED_PATHS.length === 0) return true;
+  if (ALLOWED_PATHS.length === 0) {
+    // No-scope-configured = deny. Explicit empty-from-env still denies; users
+    // who want unrestricted access must set RUNNER_ALLOWED_PATHS=/ or pick
+    // "Entire filesystem" in the wizard.
+    return false;
+  }
   return ALLOWED_PATHS.some((p) => base.startsWith(p));
 }
 
@@ -946,9 +969,19 @@ function startHeadlessRunner() {
   log(`  Name:   ${DISPLAY_NAME}`);
   log(`  Host:   ${HOSTNAME}`);
   if (ALLOWED_PATHS.length > 0) {
-    log(`  Allowed paths: ${ALLOWED_PATHS.join(", ")}`);
+    const sourceLabel = PERMISSION_SOURCE === "env" ? "env"
+      : PERMISSION_MODE ? `config:${PERMISSION_MODE}`
+      : "config";
+    log(`  Allowed paths (${sourceLabel}): ${ALLOWED_PATHS.join(", ")}`);
+    if (PERMISSION_MODE === "root") {
+      warn("⚠️  PERMISSION MODE = ROOT — the runner can execute commands anywhere on this machine.");
+      warn("⚠️  This is the highest-risk setting. Only use it on dedicated machines you control.");
+    } else if (PERMISSION_MODE === "home") {
+      warn("⚠️  PERMISSION MODE = HOME — the runner can read/write anywhere under your home directory.");
+    }
   } else {
-    warn("No RUNNER_ALLOWED_PATHS set — any working_dir will be accepted. Consider setting it for safety.");
+    warn("⚠️  No allowed-paths scope is configured — ALL jobs will be rejected.");
+    warn("⚠️  Launch the runner interactively and pick a scope (sandbox/home/root), or set RUNNER_ALLOWED_PATHS.");
   }
   log("");
 

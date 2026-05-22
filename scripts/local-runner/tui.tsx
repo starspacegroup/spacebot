@@ -27,6 +27,16 @@ import {
   writePersistedProviderConfig,
 } from "./provider-config";
 import {
+  readPersistedPermissionConfig,
+  writePersistedPermissionConfig,
+  resolvePathsForMode,
+  ensureSandboxDir,
+  getDefaultSandboxPath,
+  describePermissionMode,
+  type PermissionMode,
+  type PersistedPermissionConfig,
+} from "./permission-config";
+import {
   detectCopilotAvailability,
   runCopilotPrompt,
   COPILOT_MODELS,
@@ -560,8 +570,21 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const [autostartStatus, setAutostartStatus] = useState(initialStatus);
   // Default to "skip" so users can dismiss with a single Enter — autostart is recommended, not required.
   const [promptSelection, setPromptSelection] = useState(0);
-  const [mode, setMode] = useState<"prompt" | "provider-setup" | "dashboard">(() => {
+
+  // Permission config (allowed paths) — null means user hasn't picked yet OR they hit Skip last run.
+  const initialPermissionConfig = useMemo(() => readPersistedPermissionConfig(), []);
+  const [permissionConfig, setPermissionConfig] = useState<PersistedPermissionConfig | null>(initialPermissionConfig);
+  // Live allowedPaths used by the dashboard render — env wins, then persisted, else empty.
+  const [effectiveAllowedPaths, setEffectiveAllowedPaths] = useState<string[]>(() => {
+    if (allowedPaths.length > 0) return allowedPaths;
+    return initialPermissionConfig?.paths ?? [];
+  });
+
+  const [mode, setMode] = useState<"prompt" | "permission-setup" | "provider-setup" | "dashboard">(() => {
     if (shouldPromptForAutostart(initialStatus)) return "prompt";
+    // Skip the permission wizard only if the user already configured a mode, or an env override is in effect.
+    const envOverride = allowedPaths.length > 0; // populated from RUNNER_ALLOWED_PATHS at boot
+    if (!initialPermissionConfig && !envOverride) return "permission-setup";
     if (!initialProvider) return "provider-setup";
     return "dashboard";
   });
@@ -603,6 +626,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const [modelSetupSelection, setModelSetupSelection] = useState(0);
   const [copilotModelSetupSelection, setCopilotModelSetupSelection] = useState(0);
   const [providerSetupError, setProviderSetupError] = useState<string | null>(null);
+
+  // Permission setup wizard state
+  const [permissionSetupSelection, setPermissionSetupSelection] = useState(0);
+  const [permissionSetupConfirm, setPermissionSetupConfirm] = useState<null | "home" | "root">(null);
+  const [permissionSetupMessage, setPermissionSetupMessage] = useState<string | null>(null);
   
   // Chat interface state
   interface ChatMessage {
@@ -828,6 +856,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         ...process.env,
         SPACEBOT_RUNNER_TOKEN: effectiveToken,
         RUNNER_TUI_CHILD: "1",
+        // Forward the wizard's chosen permission scope into the headless child.
+        // Falls back to whatever was already in the env if the user skipped the wizard.
+        ...(effectiveAllowedPaths.length > 0
+          ? { RUNNER_ALLOWED_PATHS: effectiveAllowedPaths.join(":") }
+          : {}),
         NO_COLOR: "1",
         FORCE_COLOR: "0",
         CLICOLOR: "0",
@@ -886,6 +919,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         "### Runner",
         "- `/token`               Negotiate a runner token via browser",
         "- `/autostart`           Install autostart service",
+        "- `/permissions`         Re-open the allowed-paths wizard",
         "- `/restart`             Restart the runner child process",
         "- `/quit`                Exit SpaceBot Runner",
         "",
@@ -1057,6 +1091,21 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         startRunnerChild();
       }, 150);
       addChatMessage({ type: "success", text: "Restarting runner child process." });
+      return;
+    }
+
+    if (text === "/permissions" || text === "/perms") {
+      addChatMessage({
+        type: "system",
+        text: permissionConfig
+          ? `Current scope: **${describePermissionMode(permissionConfig.mode)}**\nPaths: \`${permissionConfig.paths.join("`, `")}\`\n\nOpening the wizard to change it…`
+          : "Opening the allowed-paths wizard…",
+      });
+      stopRunnerChild();
+      setPermissionSetupSelection(0);
+      setPermissionSetupConfirm(null);
+      setPermissionSetupMessage(null);
+      setMode("permission-setup");
       return;
     }
 
@@ -1273,7 +1322,126 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       appendLogLines(["Skipped autostart installation for this session."]);
     }
 
-    // After autostart decision, route to provider setup if no provider yet, else dashboard.
+    // After autostart decision, route to permission wizard first, then provider setup, then dashboard.
+    const envOverride = allowedPaths.length > 0;
+    if (!permissionConfig && !envOverride) {
+      setMode("permission-setup");
+      setPermissionSetupSelection(0);
+      setPermissionSetupConfirm(null);
+      setPermissionSetupMessage(null);
+    } else if (!activeProvider) {
+      setMode("provider-setup");
+      setProviderSetupStep("provider");
+      setProviderSetupSelection(0);
+    } else {
+      setMode("dashboard");
+    }
+  }
+
+  // -------- Permission Setup Wizard --------
+
+  interface PermissionOption {
+    id: PermissionMode | "skip";
+    title: string;
+    summary: string;
+    summaryTone: keyof typeof THEME;
+    hint: string;
+    confirm?: "home" | "root";
+  }
+
+  const buildPermissionOptions = (): PermissionOption[] => {
+    return [
+      {
+        id: "sandbox",
+        title: "🟢  Sandbox · ~/spacebot (recommended)",
+        summary: `Only allow jobs inside ${getDefaultSandboxPath()}. Folder will be created if missing.`,
+        summaryTone: "success",
+        hint: "Safest option. Most things you'll ask the runner to do can live in this folder.",
+      },
+      {
+        id: "home",
+        title: "🟡  Home directory · ~/",
+        summary: "Allow jobs anywhere under your home directory. The runner can touch your dotfiles and projects.",
+        summaryTone: "warning",
+        hint: "Convenient, but the runner can read/write your entire home dir. Press Enter, then confirm.",
+        confirm: "home",
+      },
+      {
+        id: "root",
+        title: "🔴  Entire filesystem · /",
+        summary: "Allow jobs anywhere on this machine, including /etc and /usr. STRONGLY DISCOURAGED.",
+        summaryTone: "error",
+        hint: "Only use this on machines you fully control. Requires explicit confirmation.",
+        confirm: "root",
+      },
+      {
+        id: "skip",
+        title: "⏭️   Skip for now — ask me next time",
+        summary: "Continue without setting a scope. The runner will reject every working_dir until you choose one.",
+        summaryTone: "muted",
+        hint: "Nothing is written to disk. The wizard will reappear on next launch.",
+      },
+    ];
+  };
+
+  function commitPermissionMode(targetMode: PermissionMode) {
+    const paths = resolvePathsForMode(targetMode);
+
+    if (targetMode === "sandbox") {
+      const ensure = ensureSandboxDir();
+      if (!ensure.ok) {
+        setPermissionSetupMessage(`Could not create ${ensure.path}: ${ensure.error}`);
+        return;
+      }
+    }
+
+    const config: PersistedPermissionConfig = {
+      mode: targetMode,
+      paths,
+      configuredAt: new Date().toISOString(),
+      acknowledgedRisk: targetMode === "home" || targetMode === "root",
+    };
+    const result = writePersistedPermissionConfig(config);
+    if (!result.ok) {
+      setPermissionSetupMessage(`Failed to save permissions: ${result.error}`);
+      return;
+    }
+
+    setPermissionConfig(config);
+    setEffectiveAllowedPaths(paths);
+    appendLogLines([`Permissions set to ${describePermissionMode(targetMode)} → ${paths.join(", ")}`]);
+    addChatMessage({
+      type: "success",
+      text: `Permissions: **${describePermissionMode(targetMode)}**\n\nAllowed: \`${paths.join("`, `")}\``,
+    });
+
+    setPermissionSetupConfirm(null);
+    setPermissionSetupMessage(null);
+
+    // Advance to provider setup if needed, else dashboard.
+    if (!activeProvider) {
+      setMode("provider-setup");
+      setProviderSetupStep("provider");
+      setProviderSetupSelection(0);
+    } else {
+      setMode("dashboard");
+      // If the dashboard was already booted once (e.g. user re-opened the
+      // wizard via /permissions), the auto-start effect won't fire again —
+      // restart explicitly so the headless child picks up the new scope.
+      if (bootedDashboardRef.current && !childRef.current && runnerToken.startsWith("sbr_")) {
+        setTimeout(() => startRunnerChild(), 100);
+      }
+    }
+  }
+
+  function skipPermissionSetup() {
+    appendLogLines(["Skipped permission setup — will be asked again on next launch."]);
+    addChatMessage({
+      type: "system",
+      text: "Permissions skipped for this session. The runner will reject every working_dir until you choose a scope. Re-run with `/permissions` or restart to pick one.",
+    });
+    setPermissionSetupConfirm(null);
+    setPermissionSetupMessage(null);
     if (!activeProvider) {
       setMode("provider-setup");
       setProviderSetupStep("provider");
@@ -1282,6 +1450,60 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       setMode("dashboard");
     }
   }
+
+  function handlePermissionSetupKey(key: { name?: string; sequence?: string; shift?: boolean; ctrl?: boolean }) {
+    // Confirmation overlay handling
+    if (permissionSetupConfirm) {
+      if (key.name === "escape" || key.name === "backspace") {
+        setPermissionSetupConfirm(null);
+        setPermissionSetupMessage(null);
+        return;
+      }
+      if (key.sequence && (key.sequence.toLowerCase() === "y" || key.name === "return")) {
+        const toCommit: PermissionMode = permissionSetupConfirm;
+        setPermissionSetupConfirm(null);
+        commitPermissionMode(toCommit);
+        return;
+      }
+      if (key.sequence && key.sequence.toLowerCase() === "n") {
+        setPermissionSetupConfirm(null);
+        return;
+      }
+      return;
+    }
+
+    const opts = buildPermissionOptions();
+    if (key.name === "escape") {
+      skipPermissionSetup();
+      return;
+    }
+    if (key.name === "up") {
+      setPermissionSetupSelection((s) => (s + opts.length - 1) % opts.length);
+      setPermissionSetupMessage(null);
+      return;
+    }
+    if (key.name === "down" || key.name === "tab") {
+      setPermissionSetupSelection((s) => (s + 1) % opts.length);
+      setPermissionSetupMessage(null);
+      return;
+    }
+    if (key.name === "return") {
+      const chosen = opts[permissionSetupSelection];
+      if (!chosen) return;
+      if (chosen.id === "skip") {
+        skipPermissionSetup();
+        return;
+      }
+      if (chosen.confirm) {
+        setPermissionSetupConfirm(chosen.confirm);
+        return;
+      }
+      commitPermissionMode(chosen.id as PermissionMode);
+      return;
+    }
+  }
+
+  // -------- end Permission Setup Wizard --------
 
   // -------- Provider Setup Wizard --------
 
@@ -1693,6 +1915,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return;
     }
 
+    if (mode === "permission-setup") {
+      handlePermissionSetupKey(key);
+      return;
+    }
+
     // Chat mode input handling
     if (chatMode) {
       if (key.name === "escape") {
@@ -1931,6 +2158,79 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return lines.slice(0, renderHeight);
     }
 
+    if (mode === "permission-setup") {
+      const opts = buildPermissionOptions();
+      const headerLines: StyledLine[] = buildLogoHeader();
+
+      // Confirmation overlay for risky modes
+      if (permissionSetupConfirm) {
+        const isRoot = permissionSetupConfirm === "root";
+        const rows: Array<{ tone: keyof typeof THEME; text: string }> = [];
+        if (isRoot) {
+          rows.push({ tone: "error", text: "════════════════════════════════════════════════════════════" });
+          rows.push({ tone: "error", text: "⚠️  ROOT FILESYSTEM ACCESS — VERY HIGH RISK ⚠️" });
+          rows.push({ tone: "error", text: "════════════════════════════════════════════════════════════" });
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "warning", text: "You are about to grant the runner permission to execute commands" });
+          rows.push({ tone: "warning", text: "ANYWHERE on this machine, including /etc, /usr, /var, and so on." });
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "error", text: "  • A compromised SpaceBot account can delete or alter system files." });
+          rows.push({ tone: "error", text: "  • A buggy prompt could damage your OS install irrecoverably." });
+          rows.push({ tone: "error", text: "  • Secrets in /etc, /root, browser profiles, etc. are all reachable." });
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "warning", text: "Only continue on machines you fully own and are willing to wipe." });
+        } else {
+          rows.push({ tone: "warning", text: "⚠️  Home directory access" });
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "warning", text: `The runner will be allowed to read and write anywhere under ${resolvePathsForMode("home")[0]}.` });
+          rows.push({ tone: "muted", text: "" });
+          rows.push({ tone: "info", text: "  • This includes your projects, dotfiles, SSH keys, browser profiles, and credentials." });
+          rows.push({ tone: "info", text: "  • Safer alternative: the Sandbox (~/spacebot) scope." });
+        }
+        rows.push({ tone: "muted", text: "" });
+        rows.push({ tone: "secondary", text: "Press  Y  or  Enter  to confirm" });
+        rows.push({ tone: "muted", text: "Press  N  ·  Esc  ·  Backspace  to go back" });
+
+        const lines: StyledLine[] = [
+          ...headerLines,
+          ...createPanel(isRoot ? "CONFIRM · ROOT ACCESS" : "CONFIRM · HOME ACCESS", rows, renderWidth),
+        ];
+        while (lines.length < renderHeight) lines.push({ tone: "muted", text: "" });
+        return lines.slice(0, renderHeight);
+      }
+
+      const rows: Array<{ tone: keyof typeof THEME; text: string }> = [
+        { tone: "info", text: "Where is the runner allowed to execute jobs?" },
+        { tone: "muted", text: "↑/↓ or Tab to move · Enter to choose · Esc to skip for now" },
+        { tone: "muted", text: "" },
+      ];
+
+      opts.forEach((option, idx) => {
+        const active = idx === permissionSetupSelection;
+        const marker = active ? "❯" : " ";
+        rows.push({
+          tone: active ? "secondary" : "value",
+          text: `${marker} ${option.title}`,
+        });
+        rows.push({ tone: option.summaryTone, text: `    ${option.summary}` });
+        if (active && option.hint) {
+          rows.push({ tone: "muted", text: `    ${option.hint}` });
+        }
+      });
+
+      if (permissionSetupMessage) {
+        rows.push({ tone: "muted", text: "" });
+        rows.push({ tone: "error", text: permissionSetupMessage });
+      }
+
+      const lines: StyledLine[] = [
+        ...headerLines,
+        ...createPanel("RUNNER PERMISSIONS · ALLOWED PATHS", rows, renderWidth),
+      ];
+      while (lines.length < renderHeight) lines.push({ tone: "muted", text: "" });
+      return lines.slice(0, renderHeight);
+    }
+
     if (mode === "provider-setup") {
       const opts = buildProviderOptions();
       const headerLines: StyledLine[] = buildLogoHeader();
@@ -2119,7 +2419,9 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         tone: autostartStatus.installed ? "success" : "warning",
         text: buildKeyValueLine(formatInstallKind(autostartStatus.installKind), autostartStatus.installed ? "installed" : "not installed"),
       },
-      { tone: "muted", text: buildKeyValueLine("Paths", allowedPaths.length > 0 ? allowedPaths.join(", ") : "Any path accepted") },
+      { tone: "muted", text: buildKeyValueLine("Paths", effectiveAllowedPaths.length > 0
+        ? `${permissionConfig ? describePermissionMode(permissionConfig.mode) + " · " : ""}${effectiveAllowedPaths.join(", ")}`
+        : "⚠  none configured — runner will reject every job. /permissions to set.") },
       ...(manualOpenUrl
         ? [
           { tone: "warning" as keyof typeof THEME, text: "Manual browser fallback required:" },
