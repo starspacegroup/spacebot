@@ -29,6 +29,7 @@
 	// Shown ONCE after creation – user must copy it before dismissing
 	let newRawToken = $state(null);
 	let newRawTokenCopied = $state(false);
+	let showRevokedRunners = $state(false);
 
 	// Dispatch-job form
 	let dispatchTokenId = $state(null); // which runner to dispatch to
@@ -210,6 +211,11 @@
 
 	function instancesForToken(tokenId) {
 		return runnerInstances.filter((i) => i.runner_token_id === tokenId);
+	}
+
+	function visibleRunnerTokens() {
+		if (showRevokedRunners) return runnerTokens;
+		return runnerTokens.filter((token) => !token.revoked);
 	}
 
 	function formatBytes(bytes) {
@@ -877,6 +883,13 @@
 			</button>
 		</div>
 
+		<div class="runner-options-row">
+			<label class="runner-option-toggle">
+				<input type="checkbox" bind:checked={showRevokedRunners} />
+				<span>Show revoked runners</span>
+			</label>
+		</div>
+
 		<!-- Show raw token once after creation -->
 		{#if newRawToken}
 			<div class="token-reveal">
@@ -902,9 +915,14 @@
 				<span class="empty-icon">🖥️</span>
 				No runners yet. Create one above and run <code>bun run scripts/local-runner/index.ts</code> on your machine.
 			</div>
+		{:else if visibleRunnerTokens().length === 0}
+			<div class="empty-state">
+				<span class="empty-icon">🧹</span>
+				All runners are currently hidden by filter. Enable "Show revoked runners" to view them.
+			</div>
 		{:else}
 			<div class="runners-list">
-				{#each runnerTokens as t (t.id)}
+				{#each visibleRunnerTokens() as t (t.id)}
 					<div class="runner-card" class:revoked={t.revoked}>
 						<div class="runner-card-header">
 							<div class="runner-identity">
@@ -2069,6 +2087,20 @@
 		display: flex;
 		gap: 0.5rem;
 		margin-bottom: 1rem;
+	}
+
+	.runner-options-row {
+		display: flex;
+		align-items: center;
+		margin-bottom: 0.875rem;
+	}
+
+	.runner-option-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
 	}
 
 	.runner-name-input {
