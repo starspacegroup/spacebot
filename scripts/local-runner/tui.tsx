@@ -369,6 +369,7 @@ interface ChatMessageLike {
   type: "user" | "assistant" | "system" | "error" | "success";
   text: string;
   ts: number;
+  author?: string;
   model?: string;
   tokens?: number;
   promptTokens?: number;
@@ -423,7 +424,7 @@ function renderChatMessage(msg: ChatMessageLike): ChatRenderRow[] {
       break;
     default:
       icon = "ℹ";
-      author = "system";
+        author = msg.author ?? "system";
       headerTone = "info";
       bodyTone = "muted";
       break;
@@ -695,13 +696,14 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     type: "user" | "assistant" | "system" | "error" | "success";
     text: string;
     ts: number;
+    author?: string;
     model?: string;
     tokens?: number;
     promptTokens?: number;
     durationMs?: number;
   }
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { type: "system", text: "Welcome to SpaceBot Runner. Type /help for available commands.", ts: Date.now() },
+    { type: "system", text: "Welcome to SpaceBot Runner. Type /help for available commands.", ts: Date.now(), author: displayName },
   ]);
   const [chatScrollOffset, setChatScrollOffset] = useState(0);
   const [chatInput, setChatInput] = useState("");
@@ -767,7 +769,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
   /** Append a chat message with a timestamp and snap the conversation to the latest. */
   const addChatMessage = (msg: Omit<ChatMessage, "ts"> & { ts?: number }) => {
-    const stamped: ChatMessage = { ts: Date.now(), ...msg };
+    const stamped: ChatMessage = {
+      ts: Date.now(),
+      ...(msg.type === "system" && !msg.author ? { author: displayName } : {}),
+      ...msg,
+    };
     setChatMessages((prev) => {
       const next = [...prev, stamped];
       // Keep history bounded to avoid runaway memory
@@ -1244,7 +1250,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }
 
     if (text === "/clear") {
-      setChatMessages([{ type: "system", text: "Chat cleared. Type /help for commands.", ts: Date.now() }]);
+      setChatMessages([{ type: "system", text: "Chat cleared. Type /help for commands.", ts: Date.now(), author: displayName }]);
       setChatScrollOffset(0);
       return;
     }
@@ -2324,8 +2330,8 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       " ╰──────╯ ",
     ];
     const subtitleRows = panelsVisible
-      ? ["   ✦  SPACEBOT", "   Local Agent Runner", "   Ollama · GitHub Copilot"]
-      : ["   ✦  SPACEBOT", "   Chat Mode", "   Ollama · GitHub Copilot"];
+      ? ["   ✦  SPACEBOT", "   Local Agent Runner", ""]
+      : ["   ✦  SPACEBOT", "   Chat Mode", ""];
     const logoTones: Array<keyof typeof THEME> = ["primary", "secondary", "accent2"];
     const subTones: Array<keyof typeof THEME> = ["title", "heading", "muted"];
     const buildLogoHeader = (): StyledLine[] => {
