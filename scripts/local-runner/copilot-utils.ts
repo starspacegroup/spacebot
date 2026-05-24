@@ -23,6 +23,7 @@ export interface CopilotAvailability {
  */
 export const COPILOT_MODELS: ReadonlyArray<{ id: string; label: string; multiplier: number | null }> = [
   { id: "auto", label: "Auto — let Copilot pick the best model (10% discount on paid plans)", multiplier: null },
+  { id: "gpt-5.3-codex", label: "GPT-5.3-Codex", multiplier: 0.9 },
   { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5 (balanced)", multiplier: 1 },
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", multiplier: 1 },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5 (fast)", multiplier: 0.33 },
@@ -121,6 +122,128 @@ export interface CopilotGenerateResult {
   /** Which underlying CLI handled the request. */
   via?: "copilot-cli" | "gh-copilot-suggest" | "gh-copilot-explain";
   durationMs?: number;
+  /** Best-effort selected model reported by the provider/CLI for this response. */
+  selectedModel?: string;
+  /** Best-effort premium multiplier for the selected model. */
+  selectedMultiplier?: number;
+  /** Best-effort token counters for the final assistant turn. */
+  outputTokens?: number;
+  inputTokens?: number;
+}
+
+interface CopilotSelectionMeta {
+  model?: string;
+  multiplier?: number;
+}
+
+function parseMultiplier(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  const parsed = Number(raw.replace(/x$/i, ""));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+/**
+ * Parse provider/CLI diagnostics for model metadata.
+ * Supports lines like: "GPT-5.3-Codex • 0.9x".
+ */
+function parseCopilotSelectionMeta(stdout: string, stderr: string): CopilotSelectionMeta {
+  const combined = `${stdout || ""}\n${stderr || ""}`;
+
+  const bulletMatch = combined.match(/([A-Za-z0-9][A-Za-z0-9 ._\-+]{1,80})\s*[•·]\s*([0-9]+(?:\.[0-9]+)?)x\b/i);
+  if (bulletMatch) {
+    return {
+      model: bulletMatch[1]?.trim(),
+      multiplier: parseMultiplier(bulletMatch[2]),
+    };
+  }
+
+  const modelMatch = combined.match(/\bmodel\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9 ._\-+]{1,80})/i);
+  const multiplierMatch = combined.match(/\b(multiplier|cost)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)x?\b/i);
+
+  const model = modelMatch?.[1]?.trim();
+  const multiplier = parseMultiplier(multiplierMatch?.[2]);
+  if (!model && multiplier === undefined) return {};
+  return { model, multiplier };
+}
+
+function normalizeModelId(model: string | undefined): string | undefined {
+  if (!model) return undefined;
+  const normalized = model.trim().toLowerCase().replace(/\s+/g, "-");
+  return normalized || undefined;
+}
+
+function inferMultiplierFromModel(model: string | undefined): number | undefined {
+  const normalizedId = normalizeModelId(model);
+  if (!normalizedId) return undefined;
+  const known = COPILOT_MODELS.find((entry) => entry.id === normalizedId);
+  return typeof known?.multiplier === "number" ? known.multiplier : undefined;
+}
+
+interface ParsedCopilotJsonResult {
+  text?: string;
+  model?: string;
+  outputTokens?: number;
+  inputTokens?: number;
+  premiumRequests?: number;
+}
+
+function parseCopilotJsonOutput(stdout: string): ParsedCopilotJsonResult {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let text: string | undefined;
+  let model: string | undefined;
+  let outputTokens: number | undefined;
+  let inputTokens: number | undefined;
+  let premiumRequests: number | undefined;
+
+  for (const line of lines) {
+    let payload: any;
+    try {
+      payload = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    if (payload?.type === "assistant.message" && payload?.data) {
+      const content = typeof payload.data.content === "string" ? payload.data.content : "";
+      if (content.trim()) {
+        text = content;
+      }
+      if (typeof payload.data.model === "string" && payload.data.model.trim()) {
+        model = payload.data.model.trim();
+      }
+      if (typeof payload.data.outputTokens === "number" && Number.isFinite(payload.data.outputTokens)) {
+        outputTokens = payload.data.outputTokens;
+      }
+      if (typeof payload.data.inputTokens === "number" && Number.isFinite(payload.data.inputTokens)) {
+        inputTokens = payload.data.inputTokens;
+      }
+      continue;
+    }
+
+    if (payload?.type === "result" && payload?.usage) {
+      if (typeof payload.usage.premiumRequests === "number" && Number.isFinite(payload.usage.premiumRequests)) {
+        premiumRequests = payload.usage.premiumRequests;
+      }
+    }
+  }
+
+  // If the provider reports one premium request and we know the model multiplier,
+  // the UI can still show multiplier even if the explicit field was absent.
+  if (!text) {
+    return {};
+  }
+
+  return {
+    text,
+    model,
+    outputTokens,
+    inputTokens,
+    premiumRequests,
+  };
 }
 
 /**
@@ -146,18 +269,37 @@ export async function runCopilotPrompt(
 
   // 1. Standalone `copilot` CLI (preferred unless explicitly told to use gh)
   if (availability.copilotCli && preferStandalone) {
-    const args = ["--no-color", "--allow-all-tools"];
+    const args = ["--no-color", "--allow-all-tools", "--output-format", "json"];
     if (opts?.model && opts.model !== "auto") {
       args.push("--model", opts.model);
     }
     args.push("-p", trimmed);
     const r = await runChild("copilot", args, 60000);
     if (r.ok && r.stdout.trim()) {
+      const parsed = parseCopilotJsonOutput(r.stdout);
+      if (parsed.text) {
+        const inferredMultiplier = inferMultiplierFromModel(parsed.model);
+        return {
+          ok: true,
+          text: parsed.text,
+          via: "copilot-cli",
+          durationMs: Date.now() - startedAt,
+          selectedModel: parsed.model,
+          selectedMultiplier: inferredMultiplier,
+          outputTokens: parsed.outputTokens,
+          inputTokens: parsed.inputTokens,
+        };
+      }
+
+      const selection = parseCopilotSelectionMeta(r.stdout, r.stderr);
+      const inferredMultiplier = selection.multiplier ?? inferMultiplierFromModel(selection.model);
       return {
         ok: true,
         text: cleanCopilotCliOutput(r.stdout),
         via: "copilot-cli",
         durationMs: Date.now() - startedAt,
+        selectedModel: selection.model,
+        selectedMultiplier: inferredMultiplier,
       };
     }
     // If the standalone CLI failed AND no gh fallback is available, surface its error.

@@ -261,18 +261,42 @@ function formatTimestamp(ts: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function formatTokenStat(tokens?: number, durationMs?: number): string {
-  if (typeof tokens !== "number" || tokens <= 0) return "";
-  const parts: string[] = [`${tokens} tok`];
-  if (typeof durationMs === "number" && durationMs > 0) {
+function formatTokenStat(promptTokens?: number, completionTokens?: number, durationMs?: number): string {
+  const hasPromptTokens = typeof promptTokens === "number" && promptTokens >= 0;
+  const hasCompletionTokens = typeof completionTokens === "number" && completionTokens >= 0;
+  const safePromptTokens = hasPromptTokens ? Number(promptTokens) : null;
+  const safeCompletionTokens = hasCompletionTokens ? Number(completionTokens) : null;
+
+  if (!hasPromptTokens && !hasCompletionTokens) {
+    return "tok n/a";
+  }
+
+  const parts: string[] = [
+    `tok in ${safePromptTokens ?? "n/a"}`,
+    `out ${safeCompletionTokens ?? "n/a"}`,
+  ];
+
+  if (safePromptTokens !== null && safeCompletionTokens !== null) {
+    parts.push(`total ${safePromptTokens + safeCompletionTokens}`);
+  }
+
+  if (safeCompletionTokens !== null && typeof durationMs === "number" && durationMs > 0) {
     const seconds = durationMs / 1000;
     if (seconds >= 0.1) {
-      const rate = tokens / seconds;
+      const rate = safeCompletionTokens / seconds;
       parts.push(`${seconds.toFixed(seconds < 10 ? 1 : 0)}s`);
       if (rate >= 1) parts.push(`${rate.toFixed(rate < 10 ? 1 : 0)} t/s`);
     }
   }
+
   return parts.join(" · ");
+}
+
+function formatMultiplierTag(multiplier?: number): string {
+  if (typeof multiplier !== "number" || !Number.isFinite(multiplier) || multiplier < 0) return "";
+  const rounded = Number(multiplier.toFixed(2));
+  const text = Number.isInteger(rounded) ? `${rounded}` : `${rounded}`.replace(/\.0+$/, "");
+  return `${text}x`;
 }
 
 /**
@@ -394,7 +418,7 @@ function renderChatMessage(msg: ChatMessageLike): ChatRenderRow[] {
   let author: string;
   let headerTone: keyof typeof THEME;
   let bodyTone: keyof typeof THEME;
-  let meta = "";
+  let meta = formatTokenStat();
 
   switch (msg.type) {
     case "user":
@@ -408,7 +432,7 @@ function renderChatMessage(msg: ChatMessageLike): ChatRenderRow[] {
       author = msg.model ?? "assistant";
       headerTone = "accent1";
       bodyTone = "heading";
-      meta = formatTokenStat(msg.tokens, msg.durationMs);
+      meta = formatTokenStat(msg.promptTokens, msg.tokens, msg.durationMs);
       break;
     case "error":
       icon = "✕";
@@ -1420,10 +1444,19 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         });
         return;
       }
+      const selectedModel = result.selectedModel?.trim();
+      const selectedMultiplier = formatMultiplierTag(result.selectedMultiplier);
+      const modelLabel = selectedModel
+        ? selectedMultiplier
+          ? `${selectedModel} · ${selectedMultiplier}`
+          : selectedModel
+        : `copilot · ${model}`;
       addChatMessage({
         type: "assistant",
         text: result.text ?? "",
-        model: `copilot · ${model}`,
+        model: modelLabel,
+        tokens: result.outputTokens,
+        promptTokens: result.inputTokens,
         durationMs: result.durationMs,
       });
       return;
