@@ -30,6 +30,14 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # CLOUDFLARE_AI_GATEWAY_ID = ""
 # CLOUDFLARE_AI_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast"
 
+# AI Autopilot Orchestration
+# DM_AUTOPILOT_ENABLED=true makes gateway DMs enqueue async AI jobs first.
+# AI_AUTOPILOT_INTERNAL_KEY secures internal execution endpoints used by the orchestrator worker.
+# AI_RETRY_ASSESSOR_MODE can be: bounded (default) or llm (bounded stub in current implementation).
+# DM_AUTOPILOT_ENABLED = "false"
+# AI_AUTOPILOT_INTERNAL_KEY = ""
+# AI_RETRY_ASSESSOR_MODE = "bounded"
+
 # Stripe Billing Configuration
 # Set these for plan management and subscription billing:
 # - STRIPE_SECRET_KEY: Stripe secret key (sk_test_... or sk_live_...)
@@ -45,3 +53,8 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 # Use an external cron service to call /api/cron endpoints instead:
 # - "0 * * * *" = Every hour (stats aggregation) → POST /api/cron with job=hourly_aggregation
 # - "0 0 * * *" = Daily at midnight (cleanup) → POST /api/cron with job=daily_refresh
+
+# Queue producer for AI autopilot orchestration jobs.
+[[queues.producers]]
+binding = "AI_AUTOPILOT_QUEUE"
+queue = "spacebot-ai-autopilot"

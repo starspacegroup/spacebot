@@ -1,0 +1,16 @@
+name = "spacebot-ai-orchestrator"
+main = "src/index.js"
+compatibility_date = "2024-01-26"
+
+# Bind this consumer to the queue used by the Pages producer.
+[[queues.consumers]]
+queue = "spacebot-ai-autopilot"
+max_batch_size = 10
+max_batch_timeout = 5
+
+[vars]
+# Base URL for the Pages app API (local or production)
+# SPACEBOT_API_BASE = "https://spacebot.pages.dev"
+
+# Internal shared key used by /api/ai/jobs/execute and /api/ai/jobs/sweep
+# AI_AUTOPILOT_INTERNAL_KEY = ""

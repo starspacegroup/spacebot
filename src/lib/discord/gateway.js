@@ -794,6 +794,53 @@ async function dispatchDMToLocalRunner({ userId, userName, content, history }) {
 }
 
 /**
+ * Enqueue an asynchronous AI autopilot job for DM handling.
+ *
+ * @param {{ userId: string, userName?: string, content: string, history?: any[], managedGuilds?: any[], selectedGuild?: any, isSuperAdmin?: boolean }} args
+ * @returns {Promise<{ queued: boolean, jobId?: number, correlationId?: string, queueAccepted?: boolean, reason?: string } | null>}
+ */
+async function dispatchDMToAutopilot({
+  userId,
+  userName,
+  content,
+  history,
+  managedGuilds,
+  selectedGuild,
+  isSuperAdmin,
+}) {
+  const url = `${API_BASE}/api/gateway/dm-autopilot`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      },
+      body: JSON.stringify({
+        userId,
+        userName,
+        content,
+        history,
+        managedGuilds,
+        selectedGuild,
+        isSuperAdmin,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      log.warn(`[DM] dm-autopilot endpoint returned ${response.status}: ${text.slice(0, 200)}`);
+      return null;
+    }
+
+    return await response.json();
+  } catch (err) {
+    log.warn("[DM] dm-autopilot fetch failed:", err?.message || err);
+    return null;
+  }
+}
+
+/**
  * Handle a direct message to the bot
  * @param {Message} message - The DM message
  * @param {Client} client - Discord client
@@ -889,6 +936,10 @@ async function handleDirectMessage(message, client) {
   if (isSuperAdmin) {
     log.info(`[DM] User ${userName} is a superadmin`);
   }
+
+  const autopilotEnabled = String(process.env.DM_AUTOPILOT_ENABLED || "")
+    .trim()
+    .toLowerCase() === "true";
   
   // Add user message to conversation history
   addToConversationHistory(userId, "user", content);
@@ -953,6 +1004,33 @@ async function handleDirectMessage(message, client) {
         content: "❌ I couldn't queue the screenshot request on your local runner because the dispatch service is unavailable right now. Please try again shortly.",
       }).catch((sendErr) => log.error("[DM] Failed to send screenshot dispatch exception reply:", sendErr.message));
       return;
+    }
+  }
+
+  if (autopilotEnabled) {
+    try {
+      const dispatch = await dispatchDMToAutopilot({
+        userId,
+        userName,
+        content,
+        history: currentSession.conversationHistory.slice(0, -1),
+        managedGuilds,
+        selectedGuild,
+        isSuperAdmin,
+      });
+
+      if (dispatch?.queued) {
+        log.info(
+          `[DM] Enqueued autopilot job: jobId=${dispatch.jobId || "n/a"} correlationId=${dispatch.correlationId || "n/a"} queueAccepted=${dispatch.queueAccepted ? "yes" : "no"}`,
+        );
+
+        await message.reply({
+          content: `🛫 Autopilot accepted your request and will keep working until it completes.\nJob: **${dispatch.correlationId || `#${dispatch.jobId}`}**\nI'll DM you with progress and the final result.`,
+        }).catch((err) => log.error("[DM] Failed to send autopilot enqueue reply:", err.message));
+        return;
+      }
+    } catch (err) {
+      log.warn("[DM] Autopilot enqueue failed, falling back to direct AI:", err?.message || err);
     }
   }
 
