@@ -745,6 +745,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   // Ephemeral status message shown in unified status bar (auto-clears)
   const [statusFlash, setStatusFlash] = useState<{ tone: keyof typeof THEME; text: string } | null>(null);
   const statusFlashTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mouseSeqCarryRef = useRef("");
 
   const flashStatus = (tone: keyof typeof THEME, text: string, ms = 3000) => {
     setStatusFlash({ tone, text });
@@ -789,6 +790,62 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }, 100);
     return () => clearInterval(interval);
   }, []);
+
+  // Mouse wheel scrolling for the conversation pane (xterm SGR mouse mode).
+  useEffect(() => {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) return;
+
+    const enableMouse = "\u001b[?1000h\u001b[?1006h";
+    const disableMouse = "\u001b[?1000l\u001b[?1006l";
+
+    try {
+      process.stdout.write(enableMouse);
+    } catch {
+      // Best effort enable.
+    }
+
+    const onStdinData = (chunk: Buffer | string) => {
+      if (mode !== "dashboard") return;
+      const input = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      if (!input.includes("\u001b[<")) return;
+
+      let buf = mouseSeqCarryRef.current + input;
+      const mouseRegex = /\u001b\[<(\d+);(\d+);(\d+)([mM])/g;
+      let lastConsumed = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = mouseRegex.exec(buf)) !== null) {
+        lastConsumed = mouseRegex.lastIndex;
+        const code = Number(match[1] ?? "0");
+
+        // Mouse wheel events set bit 6 (64): 64 = wheel up, 65 = wheel down.
+        if ((code & 64) !== 64) continue;
+
+        const wheelDown = (code & 1) === 1;
+        if (wheelDown) {
+          setChatScrollOffset((o) => Math.max(0, o - 3));
+        } else {
+          setChatScrollOffset((o) => o + 3);
+        }
+      }
+
+      if (lastConsumed > 0) {
+        buf = buf.slice(lastConsumed);
+      }
+      mouseSeqCarryRef.current = buf.length > 64 ? buf.slice(-64) : buf;
+    };
+
+    process.stdin.on("data", onStdinData);
+    return () => {
+      process.stdin.off("data", onStdinData);
+      mouseSeqCarryRef.current = "";
+      try {
+        process.stdout.write(disableMouse);
+      } catch {
+        // Best effort disable.
+      }
+    };
+  }, [mode]);
 
   useEffect(() => {
     if (!childRunning) {
@@ -1065,6 +1122,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         "### Keyboard",
         "- **PgUp / PgDn**        Scroll conversation by page",
         "- **Shift+Up / Down**    Scroll conversation by line",
+        "- **Mouse wheel**        Scroll conversation",
         "- **Ctrl+End**           Jump to latest message",
         "- **Esc**                Unfocus chat input",
         "- **Tab**                Toggle panels",
