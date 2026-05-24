@@ -349,6 +349,8 @@
 	const groupedMessages = $derived(groupByDate(showDMHistory ? dmMessages : messages));
 
 	const displayMessages = $derived(showDMHistory ? dmMessages : messages);
+	const sessionCount = $derived(sessions.length);
+	const messageCount = $derived(displayMessages.length);
 
 	// ─── Init ───
 	onMount(() => {
@@ -395,13 +397,13 @@
 				<span class="session-icon">💬</span>
 				<div class="session-info">
 					<span class="session-title">Discord DM History</span>
-					<span class="session-sub">Messages with the bot</span>
+					<span class="session-sub">Imported from Discord</span>
 				</div>
 			</button>
 
 			{#if sessions.length > 0}
 				<div class="sidebar-divider">
-					<span>Your Chats</span>
+					<span>Chats</span>
 				</div>
 			{/if}
 
@@ -458,44 +460,50 @@
 
 	<!-- Main chat area -->
 	<div class="chat-main">
-		{#if !data.aiEnabled}
-			<div class="chat-disabled">
-				<div class="chat-disabled-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
-				<h2>AI Chat Not Available</h2>
-				<p>AI features are not configured for this instance.</p>
+		<!-- Chat header -->
+		<header class="chat-header">
+			<button class="menu-btn" onclick={() => sidebarOpen = true} aria-label="Open chat menu">
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+			</button>
+			<div class="chat-header-info">
+				{#if showDMHistory}
+					<h1>💬 Discord DM History</h1>
+					<p class="chat-header-sub">Read-only timeline from Discord</p>
+				{:else if activeSession}
+					<h1><img src="/logo.webp" alt="" class="inline-logo" /> {activeSession.title}</h1>
+					<p class="chat-header-sub">
+						{#if data.guild?.name}
+							Server: <strong>{data.guild.name}</strong>
+						{:else}
+							SpaceBot Assistant
+						{/if}
+					</p>
+				{:else}
+					<h1><img src="/logo.webp" alt="" class="inline-logo" /> AI Assistant</h1>
+					<p class="chat-header-sub">Start a chat or open DM history</p>
+				{/if}
 			</div>
-		{:else}
-			<!-- Chat header -->
-			<header class="chat-header">
-				<button class="menu-btn" onclick={() => sidebarOpen = true} aria-label="Open chat menu">
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-				</button>
-				<div class="chat-header-info">
-					{#if showDMHistory}
-						<h1>💬 Discord DM History</h1>
-						<p class="chat-header-sub">Previous messages with the bot via Discord DM</p>
-					{:else if activeSession}
-						<h1><img src="/logo.webp" alt="" class="inline-logo" /> {activeSession.title}</h1>
-						<p class="chat-header-sub">
-							{#if data.guild?.name}
-								Chatting about <strong>{data.guild.name}</strong>
-							{:else}
-								Chat with SpaceBot
-							{/if}
-						</p>
-					{:else}
-						<h1><img src="/logo.webp" alt="" class="inline-logo" /> AI Assistant</h1>
-						<p class="chat-header-sub">Start a new chat or view history</p>
-					{/if}
-				</div>
-				<button class="new-chat-header-btn" onclick={createSession} aria-label="New chat" title="New chat">
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-				</button>
-			</header>
+			<button class="new-chat-header-btn" onclick={createSession} aria-label="New chat" title="New chat">
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+			</button>
+		</header>
 
-			<!-- Chat messages -->
-			<div class="chat-container" bind:this={chatContainer}>
-				{#if showDMHistory && dmLoading}
+		<div class="chat-meta-bar" aria-label="Chat context">
+			<span class="meta-chip">{showDMHistory ? 'DM History' : 'Live Chat'}</span>
+			<span class="meta-chip">{messageCount} messages</span>
+			<span class="meta-chip">{sessionCount} chats</span>
+			<span class="meta-note">Verify critical actions before applying them.</span>
+		</div>
+
+		<!-- Chat messages -->
+		<div class="chat-container" bind:this={chatContainer}>
+				{#if !data.aiEnabled && !showDMHistory}
+					<div class="chat-disabled">
+						<div class="chat-disabled-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
+						<h2>AI Chat Not Available</h2>
+						<p>This server has AI disabled. You can still browse Discord DM history.</p>
+					</div>
+				{:else if showDMHistory && dmLoading}
 					<div class="chat-loading">
 						<div class="typing-dots"><span></span><span></span><span></span></div>
 						<p>Loading DM history...</p>
@@ -528,7 +536,7 @@
 					<div class="chat-empty">
 						<div class="chat-empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
 						<h3>SpaceBot AI Assistant</h3>
-						<p>Ask about your server stats, manage automations, query logs, or get help — all in natural language.</p>
+						<p>Ask about stats, automations, logs, and settings.</p>
 						<div class="chat-suggestions">
 							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('How active has my server been this week?')); }}>📊 Server activity</button>
 							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('List my automations')); }}>⚡ Automations</button>
@@ -540,7 +548,7 @@
 					<div class="chat-empty">
 						<div class="chat-empty-icon">💬</div>
 						<h3>Start a conversation</h3>
-						<p>Ask me about your server stats, automations, commands, or anything else.</p>
+						<p>Try one of these quick prompts.</p>
 						<div class="chat-suggestions">
 							<button class="suggestion" onclick={() => sendMessage('How active has my server been this week?')}>📊 Server activity this week</button>
 							<button class="suggestion" onclick={() => sendMessage('List my automations')}>⚡ List automations</button>
@@ -556,37 +564,36 @@
 						{/each}
 					{/each}
 				{/if}
-			</div>
+		</div>
 
-			<!-- Input area -->
-			{#if !showDMHistory}
-				<div class="chat-input-area">
-					<div class="chat-input-wrapper">
-						<textarea
-							bind:this={inputEl}
-							bind:value={input}
-							onkeydown={handleKeydown}
-							placeholder={activeSession ? 'Type a message...' : 'Type to start a new chat...'}
-							rows="1"
-							disabled={sending}
-							class="chat-input"
-						></textarea>
-						<button
-							class="send-btn"
-							onclick={() => sendMessage()}
-							disabled={sending || !input.trim()}
-							aria-label="Send message"
-						>
-							{#if sending}
-								<svg class="send-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/><animate attributeName="stroke-dashoffset" values="32;0;32" dur="1.5s" repeatCount="indefinite"/></circle></svg>
-							{:else}
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-							{/if}
-						</button>
-					</div>
-					<p class="chat-disclaimer">AI responses may be inaccurate. Verify important information in the dashboard.</p>
+		<!-- Input area -->
+		{#if !showDMHistory}
+			<div class="chat-input-area">
+				<div class="chat-input-wrapper">
+					<textarea
+						bind:this={inputEl}
+						bind:value={input}
+						onkeydown={handleKeydown}
+						placeholder={data.aiEnabled ? (activeSession ? 'Type a message...' : 'Type to start a new chat...') : 'AI is disabled for this server'}
+						rows="1"
+						disabled={sending || !data.aiEnabled}
+						class="chat-input"
+					></textarea>
+					<button
+						class="send-btn"
+						onclick={() => sendMessage()}
+						disabled={sending || !input.trim() || !data.aiEnabled}
+						aria-label="Send message"
+					>
+						{#if sending}
+							<svg class="send-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/><animate attributeName="stroke-dashoffset" values="32;0;32" dur="1.5s" repeatCount="indefinite"/></circle></svg>
+						{:else}
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+						{/if}
+					</button>
 				</div>
-			{/if}
+				<p class="chat-disclaimer">AI can be wrong. Confirm important changes.</p>
+			</div>
 		{/if}
 	</div>
 </div>
@@ -865,9 +872,10 @@
 	/* ─── Main chat ─── */
 	.chat-main {
 		flex: 1;
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-rows: auto auto minmax(0, 1fr) auto;
 		min-width: 0;
+		min-height: 0;
 		overflow: hidden;
 	}
 
@@ -880,7 +888,38 @@
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-surface);
 		flex-shrink: 0;
-		min-height: 52px;
+		min-height: 48px;
+		max-height: 72px;
+		overflow: hidden;
+	}
+
+	.chat-meta-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.5rem 1rem;
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-bg, var(--color-surface));
+		overflow-x: auto;
+		white-space: nowrap;
+	}
+
+	.meta-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.2rem 0.5rem;
+		border-radius: var(--radius-full, 999px);
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--color-text-secondary);
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+	}
+
+	.meta-note {
+		font-size: 0.7rem;
+		color: var(--color-text-secondary);
+		margin-left: 0.2rem;
 	}
 
 	.menu-btn {
@@ -904,18 +943,23 @@
 	}
 
 	.chat-header-info h1 {
-		font-size: 1rem;
+		font-size: 16px;
 		margin: 0;
 		color: var(--color-text);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		line-height: 1.2;
 	}
 
 	.chat-header-sub {
-		font-size: 0.75rem;
+		font-size: 12px;
 		color: var(--color-text-secondary);
 		margin: 0.1rem 0 0;
+		line-height: 1.2;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.new-chat-header-btn {
@@ -953,6 +997,7 @@
 	/* Chat container */
 	.chat-container {
 		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
 		padding: 0.75rem 1rem;
 		display: flex;
@@ -995,7 +1040,7 @@
 		color: var(--color-text-secondary);
 		max-width: 400px;
 		line-height: 1.5;
-		margin-bottom: 1.25rem;
+		margin-bottom: 0.9rem;
 		font-size: 0.9rem;
 	}
 
@@ -1161,8 +1206,11 @@
 
 	/* Input area */
 	.chat-input-area {
+		position: sticky;
+		bottom: 0;
+		z-index: 20;
 		border-top: 1px solid var(--color-border);
-		padding: 0.65rem 1rem;
+		padding: 0.65rem 1rem calc(0.65rem + env(safe-area-inset-bottom));
 		background: var(--color-surface);
 		flex-shrink: 0;
 	}
@@ -1187,13 +1235,13 @@
 		border: none;
 		background: none;
 		color: var(--color-text);
-		font-size: 0.9rem;
+		font-size: 14px;
 		font-family: inherit;
 		resize: none;
 		outline: none;
 		padding: 0.2rem 0;
 		min-height: 1.4em;
-		max-height: 120px;
+		max-height: 84px;
 		line-height: 1.4;
 	}
 
@@ -1221,9 +1269,59 @@
 
 	.chat-disclaimer {
 		text-align: center;
-		font-size: 0.65rem;
+		font-size: 11px;
 		color: var(--color-text-light);
-		margin: 0.4rem 0 0;
+		margin: 0.3rem 0 0;
+	}
+
+	/* Keep composer visible under oversized fonts / short viewports */
+	@media (max-height: 900px) {
+		.chat-meta-bar {
+			display: none;
+		}
+
+		.chat-header-sub {
+			display: none;
+		}
+
+		.chat-header {
+			padding: 0.45rem 0.75rem;
+			min-height: 44px;
+		}
+
+		.chat-container {
+			padding: 0.5rem 0.75rem;
+		}
+
+		.chat-input-area {
+			padding: 0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom));
+		}
+
+		.chat-disclaimer {
+			display: none;
+		}
+	}
+
+	@media (max-height: 700px) {
+		.sidebar {
+			display: none;
+		}
+
+		.sidebar-overlay {
+			display: none;
+		}
+
+		.menu-btn {
+			display: none;
+		}
+
+		.new-chat-header-btn {
+			padding: 0.3rem;
+		}
+
+		.chat-header-info h1 {
+			font-size: 14px;
+		}
 	}
 
 	/* ─── Mobile: < 768px ─── */
@@ -1279,6 +1377,14 @@
 			max-width: 300px;
 		}
 
+		.chat-meta-bar {
+			padding: 0.45rem 0.75rem;
+		}
+
+		.meta-note {
+			display: none;
+		}
+
 		.suggestion {
 			width: 100%;
 		}
@@ -1299,7 +1405,7 @@
 		}
 
 		.chat-input-area {
-			padding: 0.75rem 1.5rem;
+			padding: 0.75rem 1.5rem calc(0.75rem + env(safe-area-inset-bottom));
 		}
 	}
 

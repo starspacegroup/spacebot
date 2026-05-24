@@ -441,7 +441,35 @@ function renderChatMessage(msg: ChatMessageLike): ChatRenderRow[] {
   return rows;
 }
 
-function createPanel(title: string, rows: Array<{ tone: keyof typeof THEME; text: string }>, width: number): StyledLine[] {
+function fitSegmentsToWidth(
+  segments: Array<{ tone: keyof typeof THEME; text: string }>,
+  width: number,
+): Array<{ tone: keyof typeof THEME; text: string }> {
+  const out: Array<{ tone: keyof typeof THEME; text: string }> = [];
+  let remaining = Math.max(0, width);
+
+  for (const segment of segments) {
+    if (remaining <= 0) break;
+    if (!segment.text) continue;
+    const clipped = segment.text.length > remaining ? segment.text.slice(0, remaining) : segment.text;
+    if (clipped.length > 0) {
+      out.push({ tone: segment.tone, text: clipped });
+      remaining -= clipped.length;
+    }
+  }
+
+  if (remaining > 0) {
+    out.push({ tone: "muted", text: repeatChar(" ", remaining) });
+  }
+
+  return out;
+}
+
+function createPanel(
+  title: string,
+  rows: Array<{ tone: keyof typeof THEME; text: string; segments?: Array<{ tone: keyof typeof THEME; text: string }> }>,
+  width: number,
+): StyledLine[] {
   const inner = Math.max(18, width - 4);
   const titlePrefix = `─ ${title} `;
   const titleFill = Math.max(0, inner - titlePrefix.length);
@@ -451,6 +479,21 @@ function createPanel(title: string, rows: Array<{ tone: keyof typeof THEME; text
   ];
 
   for (const row of rows) {
+    if (row.segments && row.segments.length > 0) {
+      const clippedSegments = fitSegmentsToWidth(row.segments, inner);
+      const bodyText = clippedSegments.map((seg) => seg.text).join("");
+      lines.push({
+        tone: row.tone,
+        text: `│${bodyText}│`,
+        segments: [
+          { tone: "primary", text: "│" },
+          ...clippedSegments,
+          { tone: "primary", text: "│" },
+        ],
+      });
+      continue;
+    }
+
     for (const wrapped of wrapForUi(row.text, inner)) {
       lines.push({ tone: row.tone, text: `│${fitLine(wrapped, inner)}│` });
     }
@@ -2159,6 +2202,20 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       runnerToken.startsWith("sbr_") ? "🔐 Auth" : "🔓 No Auth",
     ];
 
+    const serviceKindCompact = autostartStatus.installKind === "systemd-user"
+      ? "systemd"
+      : autostartStatus.installKind === "launch-agent"
+        ? "launchd"
+        : "startup";
+    const serviceBadge = !autostartStatus.installed
+      ? `⚠ ${serviceKindCompact} off`
+      : autostartStatus.running === true
+        ? `🟢 ${serviceKindCompact} on`
+        : autostartStatus.running === false
+          ? `🟡 ${serviceKindCompact} idle`
+          : `🟢 ${serviceKindCompact} installed`;
+    parts.push(serviceBadge);
+
     if (childRunning && disconnectAlert) {
       parts.unshift("🚨 CONNECTION LOST");
     }
@@ -2213,7 +2270,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       // Already has a space — show args hint if the command matches
       const token = chatInput.slice(0, spaceIdx);
       const def = SLASH_COMMANDS.find((c) => c.cmd === token);
-      return def?.args ? `  ${def.args}` : "";
+      return def?.args ? def.args : "";
     }
     const matches = SLASH_COMMANDS.filter((c) => c.cmd.startsWith(chatInput) && c.cmd !== chatInput);
     if (matches.length === 1) {
@@ -2221,8 +2278,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       return rest + (matches[0]!.args ? ` ${matches[0]!.args}` : "");
     }
     if (matches.length > 1) {
-      // Show all matches as a compact hint
-      return "  [" + matches.map((m) => m.cmd).join("  ") + "]";
+      // Show only a short list to avoid overflowing the input row.
+      const preview = matches.slice(0, 4).map((m) => m.cmd).join("  ");
+      const extra = matches.length - 4;
+      return extra > 0 ? `[${preview}  +${extra}]` : `[${preview}]`;
     }
     return "";
   };
@@ -2289,6 +2348,11 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       out.push({ tone: "muted", text: "" });
       return out;
     };
+
+    // Ensure the bottom conversation/input stack is always visible on short
+    // terminals (for example with large font sizes).
+    const MIN_HEIGHT_FOR_FULL_DASHBOARD = 40;
+    const forceCompactDashboard = mode === "dashboard" && renderHeight < MIN_HEIGHT_FOR_FULL_DASHBOARD;
 
     if (mode === "prompt") {
       const promptRows: Array<{ tone: keyof typeof THEME; text: string }> = [
@@ -2509,7 +2573,8 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }
 
     // Collapsed layout for chat-focused mode (input stuck to bottom)
-    if (!panelsVisible && mode === "dashboard") {
+    // and automatic fallback when terminal height is limited.
+    if (mode === "dashboard" && (!panelsVisible || forceCompactDashboard)) {
       // Bottom stack: agent strip (1) + status bar (1) + input panel (4) = 6 lines reserved
       const inputPanelHeight = 4;
       const reservedForBottom = inputPanelHeight + 2; // input + agent strip + status bar
@@ -2525,24 +2590,43 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       }
 
       // Chat input panel (compact, 2 content rows + borders)
+      // Keep input tail visible and prevent wrapping/clipping on narrow terminals.
+      const inputInnerCompact = Math.max(18, renderWidth - 4);
+      const statusCompact = buildInputStatus();
+      const truncatedStatusCompact = statusCompact.length > inputInnerCompact
+        ? statusCompact.slice(0, Math.max(0, inputInnerCompact - 1)) + "…"
+        : statusCompact;
+      const promptCompact = `${chatMode ? "❯" : "·"} `;
+      const cursorCompact = chatMode ? "▏" : "";
+      const inputBudgetCompact = Math.max(1, inputInnerCompact - promptCompact.length - cursorCompact.length);
+      const visibleInputCompact = chatInput.length > inputBudgetCompact
+        ? "…" + chatInput.slice(chatInput.length - (inputBudgetCompact - 1))
+        : chatInput;
       const tabHintCompact = buildTabHint();
+      const tabHintDecoratedCompact = tabHintCompact ? `  ⇥ ${tabHintCompact}` : "";
+      const hintBudgetCompact = Math.max(0, inputInnerCompact - (promptCompact.length + visibleInputCompact.length + cursorCompact.length));
+      const visibleTabHintCompact = hintBudgetCompact > 0
+        ? (tabHintDecoratedCompact.length > hintBudgetCompact
+            ? tabHintDecoratedCompact.slice(0, Math.max(0, hintBudgetCompact - 1)) + "…"
+            : tabHintDecoratedCompact)
+        : "";
       const chatInputRows: Array<{ tone: keyof typeof THEME; text: string; segments?: Array<{ tone: keyof typeof THEME; text: string }> }> = [
         {
           tone: "muted",
-          text: buildInputStatus(),
+          text: truncatedStatusCompact,
         },
-        tabHintCompact
+        visibleTabHintCompact
           ? {
               tone: chatMode ? "accent1" : "muted",
               text: "",
               segments: [
-                { tone: chatMode ? "accent1" : "muted", text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}` },
-                { tone: "muted", text: tabHintCompact },
+                { tone: chatMode ? "accent1" : "muted", text: `${promptCompact}${visibleInputCompact}${cursorCompact}` },
+                { tone: "muted", text: visibleTabHintCompact },
               ],
             }
           : {
               tone: chatMode ? "accent1" : "muted",
-              text: `${chatMode ? "❯" : "·"} ${chatInput}${chatMode ? "▏" : ""}`,
+              text: `${promptCompact}${visibleInputCompact}${cursorCompact}`,
             },
       ];
 
@@ -2609,7 +2693,16 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       },
       {
         tone: autostartStatus.installed ? "success" : "warning",
-        text: buildKeyValueLine(formatInstallKind(autostartStatus.installKind), autostartStatus.installed ? "installed" : "not installed"),
+        text: buildKeyValueLine(
+          formatInstallKind(autostartStatus.installKind),
+          autostartStatus.installed
+            ? (autostartStatus.running === true
+                ? "installed · running"
+                : autostartStatus.running === false
+                  ? "installed · not running"
+                  : "installed")
+            : "not installed"
+        ),
       },
       { tone: "muted", text: buildKeyValueLine("Paths", effectiveAllowedPaths.length > 0
         ? `${permissionConfig ? describePermissionMode(permissionConfig.mode) + " · " : ""}${effectiveAllowedPaths.join(", ")}`
@@ -2669,18 +2762,25 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     // Show the tail so the cursor stays visible when text exceeds the width.
     const visibleInput = chatInput.length > inputBudget ? "…" + chatInput.slice(chatInput.length - (inputBudget - 1)) : chatInput;
     const tabHint = buildTabHint();
+    const tabHintDecorated = tabHint ? `  ⇥ ${tabHint}` : "";
+    const hintBudget = Math.max(0, inputInner - (prompt.length + visibleInput.length + cursor.length));
+    const visibleTabHint = hintBudget > 0
+      ? (tabHintDecorated.length > hintBudget
+          ? tabHintDecorated.slice(0, Math.max(0, hintBudget - 1)) + "…"
+          : tabHintDecorated)
+      : "";
     const chatInputRows: Array<{ tone: keyof typeof THEME; text: string; segments?: Array<{ tone: keyof typeof THEME; text: string }> }> = [
       {
         tone: "muted",
         text: truncatedStatus,
       },
-      tabHint
+      visibleTabHint
         ? {
             tone: chatMode ? "accent1" : "muted",
             text: "",
             segments: [
               { tone: chatMode ? "accent1" : "muted", text: `${prompt}${visibleInput}${cursor}` },
-              { tone: "muted", text: tabHint },
+              { tone: "muted", text: visibleTabHint },
             ],
           }
         : {

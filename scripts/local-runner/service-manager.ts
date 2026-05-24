@@ -22,6 +22,7 @@ export interface RunnerAutostartPaths {
 export interface RunnerAutostartStatus {
   supported: boolean;
   installed: boolean;
+  running: boolean | null;
   suppressed: boolean;
   installKind: RunnerAutostartPaths["installKind"];
   serviceLabel: string;
@@ -290,14 +291,18 @@ export function detectAutostartStatus(options: {
   const paths = getAutostartPaths(options);
   const preference = readAutostartPreference(options);
   let installed = existsSync(paths.serviceFile);
+  let running: boolean | null = null;
   let detail = installed
     ? `Detected ${paths.installKind} at ${paths.serviceFile}`
     : `No ${paths.installKind} detected at ${paths.serviceFile}`;
 
   if (paths.platform === "linux" && installed) {
     installed = commandSucceeded("systemctl", ["--user", "is-enabled", `${paths.serviceLabel}.service`]);
+    running = commandSucceeded("systemctl", ["--user", "is-active", `${paths.serviceLabel}.service`]);
     detail = installed
-      ? `systemd user service ${paths.serviceLabel}.service is enabled`
+      ? (running
+          ? `systemd user service ${paths.serviceLabel}.service is enabled and running`
+          : `systemd user service ${paths.serviceLabel}.service is enabled but not running`)
       : `systemd unit file exists but ${paths.serviceLabel}.service is not enabled`;
   }
 
@@ -305,6 +310,7 @@ export function detectAutostartStatus(options: {
     try {
       const uid = userInfo().uid;
       installed = commandSucceeded("launchctl", ["print", `gui/${uid}/${paths.serviceLabel}`]);
+      running = installed;
       detail = installed
         ? `launchd agent ${paths.serviceLabel} is loaded`
         : `LaunchAgent file exists but ${paths.serviceLabel} is not loaded`;
@@ -313,9 +319,16 @@ export function detectAutostartStatus(options: {
     }
   }
 
+  if (paths.platform === "win32" && installed) {
+    // Startup-folder installs run at sign-in; running state isn't reliably
+    // discoverable without process probing, so leave it unknown.
+    running = null;
+  }
+
   return {
     supported: true,
     installed,
+    running,
     suppressed: preference.suppressServicePrompt,
     installKind: paths.installKind,
     serviceLabel: paths.serviceLabel,
