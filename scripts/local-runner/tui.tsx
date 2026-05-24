@@ -551,7 +551,7 @@ function parseRunnerSocketState(line: string): RunnerSocketState | null {
   const lower = line.toLowerCase();
   if (lower.includes("websocket connected") || lower.includes("authenticated")) return "connected";
   if (lower.includes("connecting to") && lower.includes("/api/runner/ws")) return "connecting";
-  if (lower.includes("websocket closed") || lower.includes("reconnecting in")) return "reconnecting";
+  if (lower.includes("websocket closed") || lower.includes("websocket error") || lower.includes("reconnecting in")) return "reconnecting";
   if (lower.includes("shutting down") || lower.includes("runner exited")) return "disconnected";
   return null;
 }
@@ -609,6 +609,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   ]);
   const [childRunning, setChildRunning] = useState(false);
   const [socketState, setSocketState] = useState<RunnerSocketState>("disconnected");
+  const [disconnectAlert, setDisconnectAlert] = useState<string | null>(null);
   const [runnerToken, setRunnerToken] = useState(initialToken.trim());
   const [tokenNegotiating, setTokenNegotiating] = useState(false);
   const [manualOpenUrl, setManualOpenUrl] = useState("");
@@ -739,6 +740,33 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }, 100);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!childRunning) {
+      setDisconnectAlert(null);
+      return;
+    }
+
+    if (socketState === "connected") {
+      if (disconnectAlert) {
+        flashStatus("success", "WebSocket reconnected. Runner is receiving jobs again.", 3000);
+      }
+      setDisconnectAlert(null);
+      return;
+    }
+
+    if (socketState === "reconnecting" || socketState === "disconnected") {
+      const alertText = socketState === "reconnecting"
+        ? "WEBSOCKET CONNECTION LOST - reconnecting now"
+        : "WEBSOCKET DISCONNECTED - runner cannot receive jobs";
+      setDisconnectAlert(alertText);
+      setRunnerState(alertText);
+      flashStatus("error", alertText, 3500);
+      return;
+    }
+
+    setDisconnectAlert(null);
+  }, [childRunning, disconnectAlert, socketState]);
 
   // Logo eye blink/wink animation. Schedules itself at randomized intervals so
   // the bot face feels alive instead of robotic. "both" = full blink, "left" /
@@ -931,6 +959,14 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       childRef.current = null;
       setChildRunning(false);
       setSocketState("disconnected");
+
+      if (code === 75) {
+        appendLogLines(["Code update detected. Restarting runner child automatically..."]);
+        setRunnerState("Code updated - restarting runner child...");
+        setTimeout(() => startRunnerChild(), 200);
+        return;
+      }
+
       setRunnerState(signal
         ? `Runner exited after ${signal}.`
         : `Runner exited with code ${code ?? 0}. Run /restart to start it again.`);
@@ -2088,6 +2124,9 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
   // Build the unified status bar (one-line ephemeral + persistent hint)
   const buildStatusBar = (): StyledLine => {
+    if (childRunning && disconnectAlert) {
+      return { tone: "error", text: fitLine(`🚨 ${disconnectAlert}`, renderWidth) };
+    }
     if (statusFlash) {
       return { tone: statusFlash.tone, text: fitLine(statusFlash.text, renderWidth) };
     }
@@ -2119,6 +2158,10 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       socketBadge,
       runnerToken.startsWith("sbr_") ? "🔐 Auth" : "🔓 No Auth",
     ];
+
+    if (childRunning && disconnectAlert) {
+      parts.unshift("🚨 CONNECTION LOST");
+    }
 
     // Active provider badge
     if (activeProvider === "ollama") {
@@ -2540,13 +2583,18 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     const statusRows: Array<{ tone: keyof typeof THEME; text: string }> = [
       { tone: childRunning ? "success" : "warning", text: `Session: ${formatStatus(childRunning ? "running" : "stopped", spinnerTick)}` },
       {
-        tone: socketState === "connected" ? "success" : socketState === "disconnected" ? "warning" : "info",
+        tone: socketState === "connected" ? "success" : socketState === "disconnected" ? "error" : socketState === "reconnecting" ? "error" : "info",
         text: `WebSocket: ${socketState === "connected"
           ? formatStatus("ready")
           : socketState === "disconnected"
-            ? formatStatus("stopped")
+            ? "✕ DISCONNECTED - not receiving jobs"
+            : socketState === "reconnecting"
+              ? `${getSpinner(spinnerTick)} RECONNECTING - jobs may be delayed`
             : `${getSpinner(spinnerTick)} ${socketState === "connecting" ? "Connecting..." : "Reconnecting..."}`}`,
       },
+      ...(childRunning && disconnectAlert
+        ? [{ tone: "error" as keyof typeof THEME, text: `!!! ${disconnectAlert} !!!` }]
+        : []),
       { tone: "value", text: `State: ${runnerState}` },
       { tone: tokenNegotiating ? "info" : "muted", text: tokenNegotiating ? `${getSpinner(spinnerTick)} Negotiating token via browser...` : "Token negotiation idle" },
     ];

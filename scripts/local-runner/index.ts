@@ -27,8 +27,8 @@
  */
 
 import { spawn } from "bun";
-import { join, resolve } from "node:path";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { delimiter, dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir, hostname, release, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -64,6 +64,7 @@ const SHELL_FLAG = IS_WINDOWS ? "/C" : "-c";
 const RECONNECT_BASE_MS = Number(process.env.RUNNER_RECONNECT_BASE_MS ?? "1000");
 const RECONNECT_MAX_MS = 60_000;
 const CLIENT_HEARTBEAT_INTERVAL_MS = Number(process.env.RUNNER_HEARTBEAT_MS ?? "20000");
+const CODE_WATCH_INTERVAL_MS = Number(process.env.RUNNER_CODE_WATCH_INTERVAL_MS ?? "3000");
 const MAX_ARTIFACT_BYTES = Number(process.env.RUNNER_MAX_ARTIFACT_BYTES ?? "2000000");
 const HOSTNAME = hostname();
 const RUNNER_VERSION = "2026.05.07";
@@ -73,9 +74,16 @@ const FORCE_HEADLESS = process.argv.includes("--headless")
   || !process.stdin.isTTY;
 const SPACEBOT_STATE_DIR = join(homedir(), ".spacebot");
 const SYSTEM_MD_PATH = join(SPACEBOT_STATE_DIR, "SYSTEM.md");
+const SCRIPT_PATH = fileURLToPath(import.meta.url);
+const LOCAL_RUNNER_DIR = resolve(dirname(SCRIPT_PATH));
+const REPO_ROOT_DIR = resolve(LOCAL_RUNNER_DIR, "..", "..");
 const INSTANCE_KEY = process.env.RUNNER_INSTANCE_KEY
   ?? `sbrinst_${createHash("sha256").update([HOSTNAME, process.platform, process.arch, DEFAULT_WORKDIR].join("::")).digest("hex").slice(0, 24)}`;
 const DISPLAY_NAME = process.env.RUNNER_DISPLAY_NAME ?? `${HOSTNAME} (${process.platform}/${process.arch})`;
+const WATCH_PATH_SPLIT = process.env.RUNNER_WATCH_PATHS
+  ? process.env.RUNNER_WATCH_PATHS.split(delimiter)
+  : [LOCAL_RUNNER_DIR, join(REPO_ROOT_DIR, "package.json"), join(REPO_ROOT_DIR, "bun.lock")];
+const RUNNER_WATCH_PATHS = WATCH_PATH_SPLIT.map((entry) => resolve(entry.trim())).filter(Boolean);
 
 // Build the WebSocket URL (http→ws, https→wss)
 const WS_URL = API_URL.replace(/^http/, "ws") + `/api/runner/ws?token=${encodeURIComponent(TOKEN)}`;
@@ -165,6 +173,9 @@ function err(...args: unknown[]) {
 
 let activeSocket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let codeWatchTimer: ReturnType<typeof setInterval> | null = null;
+let codeWatchSignature = "";
+let codeRestartRequested = false;
 
 function stopKeepalive() {
   if (!keepaliveTimer) return;
@@ -177,6 +188,81 @@ function startKeepalive() {
   keepaliveTimer = setInterval(() => {
     sendJson({ type: "pong", instance: buildHelloPayload() });
   }, Math.max(5_000, CLIENT_HEARTBEAT_INTERVAL_MS));
+}
+
+function stopCodeWatcher() {
+  if (!codeWatchTimer) return;
+  clearInterval(codeWatchTimer);
+  codeWatchTimer = null;
+}
+
+function collectWatchFiles(targetPath: string, output: string[]) {
+  let stat;
+  try {
+    stat = statSync(targetPath);
+  } catch {
+    return;
+  }
+
+  if (stat.isFile()) {
+    output.push(targetPath);
+    return;
+  }
+  if (!stat.isDirectory()) return;
+
+  let entries: string[] = [];
+  try {
+    entries = readdirSync(targetPath);
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (entry === ".git" || entry === "node_modules" || entry.startsWith(".")) continue;
+    collectWatchFiles(join(targetPath, entry), output);
+  }
+}
+
+function computeCodeWatchSignature(paths: string[]): string {
+  const files: string[] = [];
+  for (const path of paths) {
+    collectWatchFiles(path, files);
+  }
+
+  if (files.length === 0) return "";
+
+  let newestTime = 0;
+  let newestFile = files[0] ?? "";
+  for (const file of files) {
+    try {
+      const mtime = statSync(file).mtimeMs;
+      if (mtime > newestTime) {
+        newestTime = mtime;
+        newestFile = file;
+      }
+    } catch {
+      // File vanished between directory scan and stat.
+    }
+  }
+
+  return `${files.length}:${Math.floor(newestTime)}:${newestFile}`;
+}
+
+function startCodeWatcher() {
+  if (CODE_WATCH_INTERVAL_MS <= 0 || RUNNER_WATCH_PATHS.length === 0) return;
+  codeWatchSignature = computeCodeWatchSignature(RUNNER_WATCH_PATHS);
+
+  codeWatchTimer = setInterval(() => {
+    if (!running || shuttingDown || codeRestartRequested) return;
+    const nextSignature = computeCodeWatchSignature(RUNNER_WATCH_PATHS);
+    if (!nextSignature || nextSignature === codeWatchSignature) return;
+
+    codeRestartRequested = true;
+    const message = "Code update detected. Restarting runner to load latest changes.";
+    warn(message);
+    sendRunnerEvent("runner.restarting", message, { watchPaths: RUNNER_WATCH_PATHS }, "warn");
+    void gracefulShutdown("codebase update detected").finally(() => process.exit(75));
+  }, CODE_WATCH_INTERVAL_MS);
 }
 
 function sendJson(payload: unknown) {
@@ -1275,6 +1361,7 @@ async function gracefulShutdown(reason: string) {
   shuttingDown = true;
   running = false;
   stopKeepalive();
+  stopCodeWatcher();
   log(`Shutting down (${reason})…`);
 
   const ws = activeSocket;
@@ -1446,6 +1533,9 @@ function startHeadlessRunner() {
   log(`  CWD:    ${DEFAULT_WORKDIR}`);
   log(`  Name:   ${DISPLAY_NAME}`);
   log(`  Host:   ${HOSTNAME}`);
+  if (RUNNER_WATCH_PATHS.length > 0 && CODE_WATCH_INTERVAL_MS > 0) {
+    log(`  Watch:  ${RUNNER_WATCH_PATHS.join(", ")} (every ${CODE_WATCH_INTERVAL_MS}ms)`);
+  }
   if (ALLOWED_PATHS.length > 0) {
     const sourceLabel = PERMISSION_SOURCE === "env" ? "env"
       : PERMISSION_MODE ? `config:${PERMISSION_MODE}`
@@ -1470,6 +1560,7 @@ function startHeadlessRunner() {
     void gracefulShutdown("SIGTERM").finally(() => process.exit(0));
   });
 
+  startCodeWatcher();
   connect();
 }
 
@@ -1493,7 +1584,7 @@ async function main() {
     displayName: DISPLAY_NAME,
     hostname: HOSTNAME,
     allowedPaths: ALLOWED_PATHS,
-    scriptPath: fileURLToPath(import.meta.url),
+    scriptPath: SCRIPT_PATH,
     initialToken: TOKEN,
   });
 }
