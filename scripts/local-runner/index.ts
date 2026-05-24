@@ -173,6 +173,10 @@ function err(...args: unknown[]) {
 
 let activeSocket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let lastServerMessageAt = 0;
+// Server sends a heartbeat every 30 s. If we go 3× that without any server
+// message the TCP connection has silently died and we must force-reconnect.
+const DEAD_SOCKET_THRESHOLD_MS = 90_000;
 let codeWatchTimer: ReturnType<typeof setInterval> | null = null;
 let codeWatchSignature = "";
 let codeRestartRequested = false;
@@ -186,6 +190,19 @@ function stopKeepalive() {
 function startKeepalive() {
   stopKeepalive();
   keepaliveTimer = setInterval(() => {
+    // Watchdog: detect silent TCP drops where no close/error event fires.
+    if (lastServerMessageAt > 0 && Date.now() - lastServerMessageAt > DEAD_SOCKET_THRESHOLD_MS) {
+      const dead = activeSocket;
+      activeSocket = null;
+      stopKeepalive();
+      if (dead) { try { dead.close(); } catch {} }
+      if (!running) return;
+      reconnectAttempts++;
+      const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
+      warn(`WebSocket closed (code 0). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
+      setTimeout(connect, delay);
+      return;
+    }
     sendJson({ type: "pong", instance: buildHelloPayload() });
   }, Math.max(5_000, CLIENT_HEARTBEAT_INTERVAL_MS));
 }
@@ -1405,11 +1422,13 @@ function connect() {
   ws.onopen = () => {
     log("WebSocket connected. Waiting for jobs…");
     reconnectAttempts = 0;
+    lastServerMessageAt = Date.now();
     startKeepalive();
     sendJson({ type: "hello", instance: buildHelloPayload() });
   };
 
   ws.onmessage = (event: MessageEvent) => {
+    lastServerMessageAt = Date.now();
     let msg: { type: string; job?: Job; jobId?: number; instanceId?: number; instanceName?: string; };
     try {
       msg = JSON.parse(event.data as string);
