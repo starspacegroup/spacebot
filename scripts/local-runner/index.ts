@@ -674,8 +674,13 @@ function encodeArtifact(buffer: Buffer, options: { width?: number; height?: numb
 function captureScreenshotBuffer(): Buffer {
   const tempPath = `${tmpdir()}/spacebot-runner-${Date.now()}-${Math.random().toString(16).slice(2)}.png`;
 
+  const SCREENSHOT_TIMEOUT_MS = 30_000;
+
   if (process.platform === "darwin") {
-    const result = spawnSync("screencapture", ["-x", tempPath], { encoding: "utf8" });
+    const result = spawnSync("screencapture", ["-x", tempPath], { encoding: "utf8", timeout: SCREENSHOT_TIMEOUT_MS });
+    if (result.signal === "SIGTERM" || result.error?.message?.includes("ETIMEDOUT")) {
+      throw new Error("screencapture timed out (30s) — is the display available?");
+    }
     if (result.status !== 0) {
       throw new Error(result.stderr?.trim() || "screencapture failed");
     }
@@ -695,8 +700,12 @@ function captureScreenshotBuffer(): Buffer {
     const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
       encoding: "utf8",
       windowsHide: true,
+      timeout: SCREENSHOT_TIMEOUT_MS,
     });
 
+    if (result.signal === "SIGTERM" || result.error?.message?.includes("ETIMEDOUT")) {
+      throw new Error("PowerShell screenshot timed out (30s)");
+    }
     if (result.status !== 0) {
       throw new Error(result.stderr?.trim() || "PowerShell screenshot failed");
     }
@@ -708,7 +717,10 @@ function captureScreenshotBuffer(): Buffer {
       "else exit 127; fi",
     ].join(" ");
 
-    const result = spawnSync(SHELL, [SHELL_FLAG, command, "--", tempPath], { encoding: "utf8" });
+    const result = spawnSync(SHELL, [SHELL_FLAG, command, "--", tempPath], { encoding: "utf8", timeout: SCREENSHOT_TIMEOUT_MS });
+    if (result.signal === "SIGTERM" || result.error?.message?.includes("ETIMEDOUT")) {
+      throw new Error("Screenshot tool timed out (30s) — is WAYLAND_DISPLAY or DISPLAY set?");
+    }
     if (result.status !== 0) {
       throw new Error(result.stderr?.trim() || "No Linux screenshot utility available");
     }
@@ -751,8 +763,13 @@ function captureWindowsPerDisplayArtifacts(): PreparedArtifact[] {
   const result = spawnSync("powershell", ["-NoProfile", "-Command", script], {
     encoding: "utf8",
     windowsHide: true,
+    timeout: 30_000,
   });
 
+  if (result.signal === "SIGTERM" || result.error?.message?.includes("ETIMEDOUT")) {
+    rmSync(tempDir, { recursive: true, force: true });
+    throw new Error("PowerShell per-display screenshot timed out (30s)");
+  }
   if (result.status !== 0) {
     rmSync(tempDir, { recursive: true, force: true });
     throw new Error(result.stderr?.trim() || "PowerShell per-display screenshot failed");
@@ -792,8 +809,8 @@ function captureMacPerDisplayArtifacts(displayItems: Array<Record<string, unknow
     const displayCount = Math.max(displayItems.length, 1);
     for (let i = 1; i <= displayCount; i++) {
       const tempPath = join(tempDir, `screen-${i}.png`);
-      const result = spawnSync("screencapture", ["-x", "-D", String(i), tempPath], { encoding: "utf8" });
-      if (result.status !== 0) {
+      const result = spawnSync("screencapture", ["-x", "-D", String(i), tempPath], { encoding: "utf8", timeout: 30_000 });
+      if (result.signal === "SIGTERM" || result.status !== 0) {
         continue;
       }
       if (!existsSync(tempPath)) {
@@ -842,8 +859,8 @@ function captureLinuxPerDisplayArtifacts(displayItems: Array<Record<string, unkn
     for (let i = 0; i < outputs.length; i++) {
       const outputName = outputs[i];
       const tempPath = join(tempDir, `screen-${i}.png`);
-      const result = spawnSync("grim", ["-o", outputName, tempPath], { encoding: "utf8" });
-      if (result.status !== 0 || !existsSync(tempPath)) {
+      const result = spawnSync("grim", ["-o", outputName, tempPath], { encoding: "utf8", timeout: 30_000 });
+      if (result.signal === "SIGTERM" || result.status !== 0 || !existsSync(tempPath)) {
         continue;
       }
 
@@ -1345,6 +1362,47 @@ async function drainQueue(ws: WebSocket) {
       result = { status: "failed", output: `Unexpected runner error: ${e}`, exitCode: 1, truncated: false };
     }
 
+    // Upload large artifacts (e.g. screenshots) via HTTP before sending the WS
+    // result message.  Cloudflare has a ~1 MB WebSocket message limit; a 2 MB
+    // PNG base64-encodes to ~2.7 MB which would silently drop the connection.
+    let uploadedArtifactIds: number[] | undefined;
+    if (result.artifactRefs && result.artifactRefs.length > 0) {
+      const ids: number[] = [];
+      let allUploaded = true;
+      for (const artifact of result.artifactRefs) {
+        try {
+          const res = await fetch(`${API_URL}/api/runner/artifacts/upload`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${TOKEN}`,
+            },
+            body: JSON.stringify({ jobId: job.id, artifact }),
+          });
+          if (res.ok) {
+            const data = await res.json() as { success: boolean; artifactId: number };
+            if (data.success && typeof data.artifactId === "number") {
+              ids.push(data.artifactId);
+            } else {
+              allUploaded = false;
+            }
+          } else {
+            allUploaded = false;
+            err(`Artifact upload failed (HTTP ${res.status}) for job #${job.id}`);
+          }
+        } catch (uploadErr) {
+          allUploaded = false;
+          err(`Artifact upload error for job #${job.id}: ${uploadErr}`);
+        }
+      }
+      if (allUploaded && ids.length === result.artifactRefs.length) {
+        uploadedArtifactIds = ids;
+        // Strip inline blobs from the WS result — server reads them from D1
+        result = { ...result, artifactRefs: undefined };
+      }
+      // If any upload failed, fall back to inline sending (best-effort)
+    }
+
     try {
       ws.send(JSON.stringify({
         type: "result",
@@ -1355,6 +1413,7 @@ async function drainQueue(ws: WebSocket) {
         truncated: result.truncated,
         result: result.result,
         artifactRefs: result.artifactRefs,
+        uploadedArtifactIds,
       }));
     } catch {
       err(`Failed to send result for job #${job.id} — connection lost.`);

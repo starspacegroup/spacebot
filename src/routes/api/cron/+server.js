@@ -13,6 +13,7 @@ import { recordServerStats, fetchGuildStatsFromDiscord, pruneOldStats } from "$l
 import { refreshGuildCache } from "$lib/db/guild-cache.js";
 import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { processScheduledMessages } from "$lib/db/scheduled-messages.js";
+import { sweepAllTimedOutRunnerJobs } from "$lib/db/local-runners.js";
 import { log } from "$lib/log.js";
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 30;
@@ -680,6 +681,9 @@ export async function POST({ request, cookies, platform }) {
   try {
     if (jobName === 'hourly_aggregation') {
       result = await runHourlyAggregation(db);
+      // Also sweep any runner jobs that timed out since the last poll cycle.
+      const runnerSweep = await sweepAllTimedOutRunnerJobs(db);
+      result = { ...result, runnerSweep };
     } else if (jobName === 'daily_refresh') {
       if (!botToken) {
         throw new Error("Bot token not configured");

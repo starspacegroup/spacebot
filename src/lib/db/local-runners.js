@@ -1212,3 +1212,61 @@ export async function retryRunnerJob(db, userId, jobId) {
     return { success: false, error: "Failed to retry job" };
   }
 }
+
+/**
+ * Sweep ALL timed-out running jobs across all users/tokens.
+ * Safe to call from a cron job because it only touches rows whose timeout has
+ * actually elapsed, and it is idempotent.
+ *
+ * @param {D1Database} db
+ * @returns {Promise<{ retried: number, failed: number }>}
+ */
+export async function sweepAllTimedOutRunnerJobs(db) {
+  if (!db) return { retried: 0, failed: 0 };
+
+  try {
+    const retryResult = await db
+      .prepare(
+        `UPDATE local_runner_jobs
+         SET status = 'pending',
+             claimed_by_instance_id = NULL,
+             started_at = NULL,
+             next_retry_at = datetime('now', ?),
+             updated_at = datetime('now'),
+             terminal_error = 'Execution timed out before completion'
+         WHERE status = 'running'
+           AND started_at IS NOT NULL
+           AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+           AND attempt_count < max_attempts`,
+      )
+      .bind(`+${RETRY_BACKOFF_SECONDS} seconds`)
+      .run();
+
+    const failResult = await db
+      .prepare(
+        `UPDATE local_runner_jobs
+         SET status = 'failed',
+             completed_at = datetime('now'),
+             started_at = NULL,
+             updated_at = datetime('now'),
+             terminal_error = 'Execution timed out and retry budget exhausted'
+         WHERE status = 'running'
+           AND started_at IS NOT NULL
+           AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+           AND attempt_count >= max_attempts`,
+      )
+      .run();
+
+    const retried = retryResult?.meta?.changes ?? retryResult?.changes ?? 0;
+    const failed = failResult?.meta?.changes ?? failResult?.changes ?? 0;
+
+    if (retried > 0 || failed > 0) {
+      log.info(`[LocalRunners] Timeout sweep: ${retried} retried, ${failed} failed permanently`);
+    }
+
+    return { retried, failed };
+  } catch (err) {
+    log.error("[LocalRunners] sweepAllTimedOutRunnerJobs error:", err);
+    return { retried: 0, failed: 0 };
+  }
+}

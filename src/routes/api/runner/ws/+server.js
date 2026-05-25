@@ -912,13 +912,61 @@ export async function GET({ request, platform }) {
 
     if (msg.type === "result") {
       if (!state.instanceId) return;
-      const { jobId, status, output, exitCode, result, artifactRefs } = msg;
+      const { jobId, status, output, exitCode, result, artifactRefs, uploadedArtifactIds } = msg;
       if (typeof jobId !== "number" || (status !== "completed" && status !== "failed")) {
         return; // ignore invalid
       }
       try {
         const jobContext = await getJobContext(db, auth.tokenId, jobId);
-        const persistedArtifactRefs = await persistArtifacts(db, auth, state, jobId, artifactRefs);
+
+        // If the runner uploaded artifacts via HTTP before sending the result,
+        // link those already-persisted artifacts to the WS instance context and
+        // skip the inline persistArtifacts path.
+        let persistedArtifactRefs = [];
+        const hasPreUploaded =
+          Array.isArray(uploadedArtifactIds) && uploadedArtifactIds.length > 0;
+
+        if (hasPreUploaded) {
+          // Stamp uploaded artifacts with the instance ID (not available during HTTP upload)
+          if (state.instanceId) {
+            await db
+              .prepare(
+                `UPDATE local_runner_artifacts
+                 SET runner_instance_id = ?
+                 WHERE id IN (${uploadedArtifactIds.map(() => "?").join(",")})
+                   AND user_id = ?
+                   AND job_id = ?`,
+              )
+              .bind(state.instanceId, ...uploadedArtifactIds, auth.userId, jobId)
+              .run()
+              .catch(() => {});
+          }
+          // Fetch the artifact rows for the DM send below
+          const rows = await db
+            .prepare(
+              `SELECT id, artifact_type, mime_type, blob_base64, byte_size,
+                      width, height, capture_source, capture_index, storage_mode
+               FROM local_runner_artifacts
+               WHERE id IN (${uploadedArtifactIds.map(() => "?").join(",")})
+                 AND user_id = ?`,
+            )
+            .bind(...uploadedArtifactIds, auth.userId)
+            .all();
+          persistedArtifactRefs = (rows.results ?? []).map((r) => ({
+            artifactId: r.id,
+            artifactType: r.artifact_type,
+            mimeType: r.mime_type,
+            blobBase64: r.blob_base64,
+            byteSize: r.byte_size,
+            width: r.width,
+            height: r.height,
+            captureSource: r.capture_source,
+            captureIndex: r.capture_index,
+            storageMode: r.storage_mode,
+          }));
+        } else {
+          persistedArtifactRefs = await persistArtifacts(db, auth, state, jobId, artifactRefs);
+        }
 
         const update = await storeResult(db, auth.tokenId, state.instanceId, jobId, {
           status,
@@ -941,6 +989,7 @@ export async function GET({ request, platform }) {
             outputBytes: typeof output === "string" ? output.length : 0,
             hasStructuredResult: Boolean(result),
             artifactCount: persistedArtifactRefs.length,
+            preUploaded: hasPreUploaded,
           },
         });
 
@@ -949,8 +998,10 @@ export async function GET({ request, platform }) {
 
         if (isScreenshotJob && screenshotTargetUserId) {
           if (status === "completed") {
+            // Use pre-uploaded artifacts (from D1) or inline artifact refs
+            const dmArtifacts = hasPreUploaded ? persistedArtifactRefs : (artifactRefs ?? []);
             try {
-              await sendScreenshotDM(env, screenshotTargetUserId, artifactRefs);
+              await sendScreenshotDM(env, screenshotTargetUserId, dmArtifacts);
             } catch (dmError) {
               const reason = dmError instanceof Error ? dmError.message : String(dmError);
               await sendDiscordTextDM(
