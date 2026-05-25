@@ -268,6 +268,70 @@
 				<span class="step-label">Monitor & Manage</span>
 			</div>
 		</div>
+
+		<div class="how-it-works-subflow">
+			<h3>Run Local Runner Access</h3>
+			<p class="how-it-works-subtitle">Use SpaceBot in Discord to securely reach tools and services running on your own workstation.</p>
+
+			<div class="steps steps-local-runner">
+				<div class="step">
+					<div class="step-card">
+						<div class="mock-terminal">
+							<div class="mock-terminal-header">
+								<span></span><span></span><span></span>
+							</div>
+							<div class="mock-terminal-line">$ bun run runner:start</div>
+							<div class="mock-terminal-line ok">runner online</div>
+						</div>
+					</div>
+					<span class="step-label">Start Local Runner</span>
+				</div>
+
+				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+				<div class="step">
+					<div class="step-card">
+						<div class="mock-chat mock-chat-local">
+							<div class="mock-message">
+								<div class="mock-msg-avatar">
+									<img src="/logo.webp" alt="" width="24" height="24" />
+								</div>
+								<div class="mock-msg-body">
+									<span class="mock-msg-name">SpaceBot</span>
+									<span class="mock-msg-text"><span class="mock-slash">/</span>runner connect</span>
+								</div>
+							</div>
+						</div>
+					</div>
+					<span class="step-label">Connect in Discord</span>
+				</div>
+
+				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+				<div class="step">
+					<div class="step-card">
+						<div class="mock-bridge-status">
+							<div class="mock-status-dot"></div>
+							<span>Tunnel Active</span>
+							<small>localhost:3000</small>
+						</div>
+					</div>
+					<span class="step-label">Bridge Your Local Service</span>
+				</div>
+
+				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+
+				<div class="step">
+					<div class="step-card">
+						<div class="mock-browser-card">
+							<div class="mock-browser-url">http://localhost:3000</div>
+							<div class="mock-browser-window"></div>
+						</div>
+					</div>
+					<span class="step-label">Access Workstation Tools</span>
+				</div>
+			</div>
+		</div>
 	</section>
 
 	<!-- CTA Section -->
@@ -689,6 +753,27 @@
 		color: var(--color-text);
 	}
 
+	.how-it-works-subflow {
+		margin-top: 3rem;
+		padding-top: 2rem;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.how-it-works-subflow h3 {
+		text-align: center;
+		font-size: 1.35rem;
+		margin-bottom: 0.5rem;
+		color: var(--color-text);
+	}
+
+	.how-it-works-subtitle {
+		text-align: center;
+		color: var(--color-text-muted);
+		max-width: 700px;
+		margin: 0 auto 2rem;
+		line-height: 1.5;
+	}
+
 	.steps {
 		display: flex;
 		align-items: center;
@@ -883,6 +968,100 @@
 
 	.mock-bar:nth-child(even) {
 		opacity: 0.5;
+	}
+
+	/* Local runner subflow mocks */
+	.steps-local-runner .step-card {
+		max-width: 200px;
+	}
+
+	.mock-terminal {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		padding: 10px;
+		gap: 8px;
+	}
+
+	.mock-terminal-header {
+		display: flex;
+		gap: 5px;
+	}
+
+	.mock-terminal-header span {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: #3f4147;
+	}
+
+	.mock-terminal-line {
+		font-size: 0.67rem;
+		color: #b5bac1;
+		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.mock-terminal-line.ok {
+		color: #57f287;
+	}
+
+	.mock-chat-local {
+		display: flex;
+		align-items: center;
+		height: 100%;
+	}
+
+	.mock-bridge-status {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.78rem;
+		color: #dbdee1;
+	}
+
+	.mock-status-dot {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: #57f287;
+		box-shadow: 0 0 0 5px rgba(87, 242, 135, 0.2);
+	}
+
+	.mock-bridge-status small {
+		font-size: 0.65rem;
+		color: #b5bac1;
+	}
+
+	.mock-browser-card {
+		width: 100%;
+		height: 100%;
+		padding: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.mock-browser-url {
+		font-size: 0.62rem;
+		padding: 0.3rem 0.45rem;
+		background: #2b2d31;
+		border-radius: 6px;
+		color: #b5bac1;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.mock-browser-window {
+		flex: 1;
+		border-radius: 8px;
+		background: linear-gradient(135deg, rgba(88, 101, 242, 0.28), rgba(87, 242, 135, 0.18));
+		border: 1px solid rgba(255, 255, 255, 0.08);
 	}
 
 	@media (max-width: 700px) {
