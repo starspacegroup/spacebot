@@ -9,7 +9,10 @@ import { DEFAULT_MODEL } from "$lib/ai/chat.js";
 
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
+  const adminUserIds =
+    platform?.env?.ADMIN_USER_IDS ||
+    (typeof process !== "undefined" ? process.env?.ADMIN_USER_IDS : undefined) ||
+    "";
   return adminUserIds
     .split(",")
     .map((id) => id.trim())

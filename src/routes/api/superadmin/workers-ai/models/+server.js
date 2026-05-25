@@ -18,16 +18,14 @@ function getAdminUserIds(platform) {
     .filter(Boolean);
 }
 
-function checkIsSuperAdmin(request, platform) {
-  const cookie = request.headers.get("cookie") || "";
-  const match = cookie.match(/discord_user_id=([^;]+)/);
-  const userId = match ? decodeURIComponent(match[1]) : null;
+function checkIsSuperAdmin(userId, platform) {
   const adminIds = getAdminUserIds(platform);
   return userId && adminIds.includes(userId);
 }
 
-export async function GET({ request, platform, url }) {
-  if (!checkIsSuperAdmin(request, platform)) {
+export async function GET({ cookies, platform, url }) {
+  const userId = cookies.get("discord_user_id");
+  if (!checkIsSuperAdmin(userId, platform)) {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
   }
 
@@ -36,7 +34,7 @@ export async function GET({ request, platform, url }) {
 
   try {
     let { models, syncedAt } = await getCachedWorkersAICatalog(db);
-    const stale = isCatalogStale(syncedAt);
+    let stale = isCatalogStale(syncedAt);
     let source = "cache";
     let warning = null;
 
@@ -45,6 +43,7 @@ export async function GET({ request, platform, url }) {
         const synced = await syncWorkersAICatalog(db, platform);
         models = synced.models;
         syncedAt = synced.syncedAt;
+        stale = isCatalogStale(syncedAt);
         source = "cloudflare";
       } catch (err) {
         warning = `Could not sync from Cloudflare: ${err.message}`;
@@ -72,8 +71,9 @@ export async function GET({ request, platform, url }) {
   }
 }
 
-export async function PATCH({ request, platform }) {
-  if (!checkIsSuperAdmin(request, platform)) {
+export async function PATCH({ request, cookies, platform }) {
+  const userId = cookies.get("discord_user_id");
+  if (!checkIsSuperAdmin(userId, platform)) {
     return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 });
   }
 
