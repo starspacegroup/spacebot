@@ -155,6 +155,28 @@
 		if (val === null || val === undefined) return '∞';
 		return val.toString();
 	}
+
+	function getBotPresenceLabel(presence) {
+		switch (presence) {
+			case 'in':
+				return 'In';
+			case 'not_in':
+				return 'Not In';
+			default:
+				return 'Unknown';
+		}
+	}
+
+	function getBotPresenceClass(presence) {
+		switch (presence) {
+			case 'in':
+				return 'bot-presence-in';
+			case 'not_in':
+				return 'bot-presence-out';
+			default:
+				return 'bot-presence-unknown';
+		}
+	}
 </script>
 
 <svelte:head>
@@ -293,6 +315,7 @@
 				<thead>
 					<tr>
 						<th>Server</th>
+						<th>Bot</th>
 						<th>Plan</th>
 						<th class="numeric">Members</th>
 						<th class="numeric">Commands</th>
@@ -324,6 +347,14 @@
 										<span class="server-id">{server.guild_id}</span>
 									</div>
 								</a>
+							</td>
+							<td>
+								<span
+									class="bot-presence-badge {getBotPresenceClass(server.bot_presence)}"
+									title={server.bot_presence === 'unknown' ? 'Discord API unavailable, status could not be verified right now.' : ''}
+								>
+									{getBotPresenceLabel(server.bot_presence)}
+								</span>
 							</td>
 							<td>
 								<span class="plan-badge {getPlanBadgeClass(plan)}">
@@ -496,7 +527,7 @@
 		border-collapse: separate;
 		border-spacing: 0;
 		font-size: 0.8rem;
-		min-width: 700px;
+		min-width: 820px;
 	}
 
 	@media (min-width: 768px) {
@@ -648,6 +679,34 @@
 	.badge-free { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
 	.badge-pro { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
 	.badge-ultimate { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+
+	/* Bot presence */
+	.bot-presence-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.15rem 0.5rem;
+		border-radius: var(--radius-full);
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+
+	.bot-presence-in {
+		background: rgba(34, 197, 94, 0.15);
+		color: #86efac;
+	}
+
+	.bot-presence-out {
+		background: rgba(239, 68, 68, 0.15);
+		color: #fca5a5;
+	}
+
+	.bot-presence-unknown {
+		background: rgba(245, 158, 11, 0.15);
+		color: #fcd34d;
+	}
 
 	/* Usage counts */
 	.usage-counts {

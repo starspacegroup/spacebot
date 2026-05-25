@@ -10,10 +10,12 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /**
- * Get all guilds the bot is in from the Discord API
+ * Get all guilds the bot is currently in from the Discord API.
  */
 async function getBotGuilds(botToken) {
-	if (!botToken) return [];
+	if (!botToken) {
+		return { guilds: [], available: false };
+	}
 
 	try {
 		const response = await fetch("https://discord.com/api/v10/users/@me/guilds?with_counts=true", {
@@ -22,13 +24,14 @@ async function getBotGuilds(botToken) {
 
 		if (!response.ok) {
 			log.warn(`[Superadmin Servers] Failed to fetch bot guilds: ${response.status}`);
-			return [];
+			return { guilds: [], available: false };
 		}
 
-		return await response.json();
+		const guilds = await response.json();
+		return { guilds, available: true };
 	} catch (error) {
 		log.error("[Superadmin Servers] Failed to fetch bot guilds:", error);
-		return [];
+		return { guilds: [], available: false };
 	}
 }
 
@@ -90,12 +93,14 @@ export async function load({ cookies, platform }) {
 	const db = platform?.env?.DB;
 	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
-	const [botGuilds, allMetadata, allPlans, usageMap] = await Promise.all([
+	const [botGuildsResult, allMetadata, allPlans, usageMap] = await Promise.all([
 		getBotGuilds(botToken),
 		db ? getAllGuildMetadata(db) : [],
 		db ? getAllServerPlans(db) : [],
 		db ? getGuildUsageCounts(db) : new Map(),
 	]);
+	const botGuilds = botGuildsResult.guilds;
+	const botPresenceReliable = botGuildsResult.available;
 
 	// Build lookup maps
 	const planMap = new Map(allPlans.map((p) => [p.guild_id, p]));
@@ -120,6 +125,7 @@ export async function load({ cookies, platform }) {
 			features: meta?.features || apiGuild.features || [],
 			fetched_at: meta?.fetched_at || null,
 			plan: planMap.get(apiGuild.id) || null,
+			bot_presence: "in",
 			usage,
 		});
 	}
@@ -139,6 +145,7 @@ export async function load({ cookies, platform }) {
 			features: guild.features,
 			fetched_at: guild.fetched_at,
 			plan: planMap.get(guild.guild_id) || null,
+			bot_presence: botPresenceReliable ? "not_in" : "unknown",
 			usage,
 		});
 	}
