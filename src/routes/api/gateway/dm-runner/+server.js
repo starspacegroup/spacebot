@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { getRunnerInstances, createRunnerJob } from "$lib/db/local-runners.js";
 import { getUserPreferences } from "$lib/db/users.js";
+import { evaluateLocalRunnerAssistAccess } from "$lib/local-runner-assist-policy.js";
 
 const SCREENSHOT_REQUEST_RE = /\b(screenshot|screen\s*shot|screen\s*capture|capture\s+(?:the\s+)?screen)\b/i;
 const TARGET_HINT_RE = /\b(?:of|on|from|at|for)\s+([a-z0-9._-]{3,})\b/i;
@@ -176,8 +177,16 @@ export async function POST({ request, platform }) {
 
   const userId = typeof body?.userId === "string" ? body.userId.trim() : "";
   const content = typeof body?.content === "string" ? body.content : "";
+  const selectedGuildId = typeof body?.selectedGuild?.id === "string"
+    ? body.selectedGuild.id.trim()
+    : (typeof body?.selectedGuildId === "string" ? body.selectedGuildId.trim() : "");
   if (!userId || !content.trim()) {
     return json({ error: "userId and content are required" }, { status: 400 });
+  }
+
+  const access = await evaluateLocalRunnerAssistAccess(db, { guildId: selectedGuildId, userId });
+  if (!access.allowed) {
+    return json({ dispatched: false, reason: access.reason });
   }
 
   const isScreenshotRequest = SCREENSHOT_REQUEST_RE.test(content || "");
@@ -214,6 +223,7 @@ export async function POST({ request, platform }) {
   const inferredJob = inferDmJob(content, userId, body?.userName, history, target);
   const payload = {
     ...inferredJob.payload,
+    guild_id: access.guildId,
     provider_chain: Array.isArray(body?.providerChain) ? body.providerChain : undefined,
   };
 

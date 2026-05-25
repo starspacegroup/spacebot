@@ -767,10 +767,10 @@ function formatServerList(guilds, selectedGuildId) {
  * Ask the worker API whether the DM author has a registered local runner.
  * If so, the API will dispatch the message as a job and return dispatch info.
  *
- * @param {{ userId: string, userName?: string, content: string, history?: any[] }} args
+ * @param {{ userId: string, userName?: string, content: string, history?: any[], selectedGuild?: any, selectedGuildId?: string }} args
  * @returns {Promise<{ dispatched: boolean, jobId?: number, runner?: any, reason?: string } | null>}
  */
-async function dispatchDMToLocalRunner({ userId, userName, content, history }) {
+async function dispatchDMToLocalRunner({ userId, userName, content, history, selectedGuild, selectedGuildId }) {
   const url = `${API_BASE}/api/gateway/dm-runner`;
   try {
     const response = await fetch(url, {
@@ -779,7 +779,14 @@ async function dispatchDMToLocalRunner({ userId, userName, content, history }) {
         "Content-Type": "application/json",
         Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
       },
-      body: JSON.stringify({ userId, userName, content, history }),
+      body: JSON.stringify({
+        userId,
+        userName,
+        content,
+        history,
+        selectedGuild,
+        selectedGuildId: selectedGuildId || selectedGuild?.id || null,
+      }),
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
@@ -953,6 +960,8 @@ async function handleDirectMessage(message, client) {
       userName,
       content,
       history: currentSession.conversationHistory.slice(0, -1),
+      selectedGuild,
+      selectedGuildId: currentSession.selectedGuildId,
     });
     if (dispatch?.dispatched) {
       log.info(
@@ -981,6 +990,12 @@ async function handleDirectMessage(message, client) {
       let failureMessage;
       if (reason === "no_runner") {
         failureMessage = "I couldn't find any registered local runner systems for your account, so I can't take that screenshot yet.";
+      } else if (reason === "no_guild_context") {
+        failureMessage = "Pick a server first (for example: `switch to <server name>`), then try the screenshot again.";
+      } else if (reason === "guild_not_enabled") {
+        failureMessage = "Local runner assist is disabled for this server. The server owner can enable it in Server Settings.";
+      } else if (reason === "user_not_allowed") {
+        failureMessage = "You're not on this server's local runner allow list. Ask the server owner to grant access.";
       } else if (reason === "preference_disabled") {
         failureMessage = "Your account is set to use cloud AI first for DMs. Enable the Local Runners preference to route screenshot requests through your local runner.";
       } else if (reason === "no_active_runner") {

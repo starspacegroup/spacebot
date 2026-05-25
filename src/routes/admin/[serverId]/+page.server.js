@@ -6,7 +6,7 @@ import {
   log,
 } from "$lib/db/logger.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
-import { getGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
+import { getGuildSettings, DEFAULT_SETTINGS, normalizeLocalRunnerAssistPolicy } from "$lib/db/settings.js";
 import { getGuildStatistics } from "$lib/db/statistics.js";
 import { syncServerStatsIfStale } from "$lib/db/server-stats.js";
 import { getMemberGrowthChart, getVoiceActivityChart, runStatsAggregation } from "$lib/db/stats-aggregation.js";
@@ -164,6 +164,7 @@ export async function load({ cookies, platform, parent, params, url }) {
   let guildMetadata = null;
   let featureCounts = { automations: { active: 0, inactive: 0, total: 0 }, commands: { active: 0, inactive: 0, total: 0 }, integrations: { active: 0, inactive: 0, total: 0 } };
   let planLimits = { max_automations: 9, max_commands: 3 };
+  let localRunnerAssist = normalizeLocalRunnerAssistPolicy(null);
   let aiAutopilotSummary = {
     total: 0,
     pending: 0,
@@ -185,6 +186,7 @@ export async function load({ cookies, platform, parent, params, url }) {
     guildMetadata = cachedEntry.data.guildMetadata;
     featureCounts = cachedEntry.data.featureCounts;
     planLimits = cachedEntry.data.planLimits;
+    localRunnerAssist = normalizeLocalRunnerAssistPolicy(cachedEntry.data.localRunnerAssist);
     aiAutopilotSummary = cachedEntry.data.aiAutopilotSummary || aiAutopilotSummary;
     loadMeta = {
       source: "cache",
@@ -239,6 +241,7 @@ export async function load({ cookies, platform, parent, params, url }) {
         max_commands: serverPlan.max_commands,
         plan: serverPlan.plan || 'free',
       };
+      localRunnerAssist = normalizeLocalRunnerAssistPolicy(settings?.permission_settings?.localRunnerAssist);
       logStats = stats;
       dbSettings = settings;
       memberGrowthChartData = memberGrowth || [];
@@ -246,26 +249,28 @@ export async function load({ cookies, platform, parent, params, url }) {
       activityChartData = guildStats?.timeSeries?.daily || [];
       builtInCmds = builtIn || [];
       guildMetadata = metadata || null;
-      const aiJobs = await listAIJobsForGuild(db, serverId, { limit: 100 });
-      aiAutopilotSummary = {
-        total: aiJobs.length,
-        pending: aiJobs.filter((job) => job.status === "pending").length,
-        running: aiJobs.filter((job) => job.status === "running").length,
-        completed: aiJobs.filter((job) => job.status === "completed").length,
-        failed_terminal: aiJobs.filter((job) => job.status === "failed_terminal").length,
-        canceled: aiJobs.filter((job) => job.status === "canceled").length,
-        latest: aiJobs[0]
-          ? {
-              id: aiJobs[0].id,
-              correlationId: aiJobs[0].correlation_id,
-              status: aiJobs[0].status,
-              requestText: aiJobs[0].request_text,
-              attemptCount: aiJobs[0].attempt_count,
-              maxAttempts: aiJobs[0].max_attempts,
-              updatedAt: aiJobs[0].updated_at,
-            }
-          : null,
-      };
+      if (localRunnerAssist.enabled) {
+        const aiJobs = await listAIJobsForGuild(db, serverId, { limit: 100 });
+        aiAutopilotSummary = {
+          total: aiJobs.length,
+          pending: aiJobs.filter((job) => job.status === "pending").length,
+          running: aiJobs.filter((job) => job.status === "running").length,
+          completed: aiJobs.filter((job) => job.status === "completed").length,
+          failed_terminal: aiJobs.filter((job) => job.status === "failed_terminal").length,
+          canceled: aiJobs.filter((job) => job.status === "canceled").length,
+          latest: aiJobs[0]
+            ? {
+                id: aiJobs[0].id,
+                correlationId: aiJobs[0].correlation_id,
+                status: aiJobs[0].status,
+                requestText: aiJobs[0].request_text,
+                attemptCount: aiJobs[0].attempt_count,
+                maxAttempts: aiJobs[0].max_attempts,
+                updatedAt: aiJobs[0].updated_at,
+              }
+            : null,
+        };
+      }
       basicStats = {
         members: memberStats?.member_count || 0,
         humanMembers: memberStats?.human_count || 0,
@@ -286,6 +291,7 @@ export async function load({ cookies, platform, parent, params, url }) {
           guildMetadata,
           featureCounts,
           planLimits,
+          localRunnerAssist,
           aiAutopilotSummary,
         },
       });
@@ -370,6 +376,7 @@ export async function load({ cookies, platform, parent, params, url }) {
     activityChartData,
     featureCounts,
     planLimits,
+    localRunnerAssist,
     aiAutopilotSummary,
     loadMeta,
   };

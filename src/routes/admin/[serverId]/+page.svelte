@@ -260,7 +260,7 @@
 				</div>
 			</section>
 
-		{#if data.botInGuild}
+		{#if data.botInGuild && data.localRunnerAssist?.enabled}
 			<section class="ai-autopilot-section">
 				<div class="ai-autopilot-header">
 					<h2>

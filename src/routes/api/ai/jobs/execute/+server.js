@@ -10,6 +10,7 @@ import {
 } from "$lib/db/ai-orchestration.js";
 import { chooseRetryDecision } from "$lib/ai/retry-policy.js";
 import { createRunnerJob, getRunnerInstances } from "$lib/db/local-runners.js";
+import { evaluateLocalRunnerAssistAccess } from "$lib/local-runner-assist-policy.js";
 
 function getEnv(platform, name) {
   return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
@@ -65,6 +66,14 @@ async function sendDiscordDm(env, userId, content) {
 }
 
 async function dispatchToLocalRunnerFallback(db, job) {
+  const access = await evaluateLocalRunnerAssistAccess(db, {
+    guildId: job?.guild_id,
+    userId: job?.user_id,
+  });
+  if (!access.allowed) {
+    return { dispatched: false, reason: access.reason };
+  }
+
   const instances = await getRunnerInstances(db, job.user_id, { limit: 100 });
   if (!instances.length) {
     return { dispatched: false, reason: "no_runner" };
@@ -94,6 +103,7 @@ async function dispatchToLocalRunnerFallback(db, job) {
         correlation_id: job.correlation_id,
         source_job_id: job.id,
       },
+      guild_id: access.guildId,
     },
     priority: 20,
     max_attempts: 1,

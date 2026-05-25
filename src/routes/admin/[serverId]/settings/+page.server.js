@@ -1,6 +1,11 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
-import { getGuildSettings, saveGuildSettings, DEFAULT_SETTINGS } from "$lib/db/settings.js";
+import {
+  getGuildSettings,
+  saveGuildSettings,
+  DEFAULT_SETTINGS,
+  normalizeLocalRunnerAssistPolicy,
+} from "$lib/db/settings.js";
 import { getGuildWebhooks, createWebhook, updateWebhook, deleteWebhook } from "$lib/db/webhooks.js";
 import { hasFullAdminPermission } from "$lib/discord/guilds.js";
 
@@ -103,6 +108,7 @@ export async function load({ cookies, platform, parent, params }) {
       permission: "ADMINISTRATOR",
       roles: [], // Cannot be overridden - always requires admin
     },
+    localRunnerAssist: normalizeLocalRunnerAssistPolicy(dbPermSettings.localRunnerAssist),
   };
 
   // Load webhooks for this guild
@@ -191,6 +197,14 @@ export const actions = {
     const viewLogsPerm = formData.get("viewLogsPerm") || "MANAGE_GUILD";
     const manageAutomationsPerm = formData.get("manageAutomationsPerm") || "MANAGE_GUILD";
     const manageCommandsPerm = formData.get("manageCommandsPerm") || "MANAGE_GUILD";
+    const localRunnerEnabled = formData.get("localRunnerEnabled") === "on";
+    const localRunnerAllowedUsersRaw = String(formData.get("localRunnerAllowedUsers") || "");
+    const localRunnerAllowedUsers = [...new Set(
+      localRunnerAllowedUsersRaw
+        .split(/[\s,]+/)
+        .map((id) => id.trim())
+        .filter((id) => /^\d{17,20}$/.test(id))
+    )];
 
     log.info(`[Settings] Updating settings for server ${serverId}:`, {
       loggingChannelId,
@@ -198,6 +212,8 @@ export const actions = {
       viewLogsPerm,
       manageAutomationsPerm,
       manageCommandsPerm,
+      localRunnerEnabled,
+      localRunnerAllowedUsersCount: localRunnerAllowedUsers.length,
     });
 
     // Save settings to database
@@ -219,6 +235,10 @@ export const actions = {
           manageAutomations: { permission: manageAutomationsPerm, roles: [] },
           manageCommands: { permission: manageCommandsPerm, roles: [] },
           manageSettings: { permission: "ADMINISTRATOR", roles: [] },
+          localRunnerAssist: {
+            enabled: localRunnerEnabled,
+            allowedUserIds: localRunnerAllowedUsers,
+          },
         },
       });
 

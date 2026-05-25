@@ -6,6 +6,25 @@
 
 import { log } from "./logger.js";
 
+export const DEFAULT_LOCAL_RUNNER_ASSIST = {
+  enabled: false,
+  allowedUserIds: [],
+};
+
+export function normalizeLocalRunnerAssistPolicy(value) {
+  const enabled = Boolean(value?.enabled);
+  const allowedUserIds = Array.isArray(value?.allowedUserIds)
+    ? value.allowedUserIds
+      .map((id) => String(id || "").trim())
+      .filter((id, index, arr) => /^\d{17,20}$/.test(id) && arr.indexOf(id) === index)
+    : [];
+
+  return {
+    enabled,
+    allowedUserIds,
+  };
+}
+
 /**
  * Default settings for a new guild
  */
@@ -24,6 +43,7 @@ const DEFAULT_SETTINGS = {
     manageAutomations: { permission: "MANAGE_GUILD", roles: [] },
     manageCommands: { permission: "MANAGE_GUILD", roles: [] },
     manageSettings: { permission: "ADMINISTRATOR", roles: [] },
+    localRunnerAssist: { ...DEFAULT_LOCAL_RUNNER_ASSIST },
   },
 };
 
@@ -60,7 +80,14 @@ export async function getGuildSettings(db, guildId) {
       excluded_categories: parseJSON(result.excluded_categories, []),
       log_embed_colors: parseJSON(result.log_embed_colors, {}),
       timezone: result.timezone || null,
-      permission_settings: parseJSON(result.permission_settings, DEFAULT_SETTINGS.permission_settings),
+      permission_settings: (() => {
+        const parsedPermissionSettings = parseJSON(result.permission_settings, DEFAULT_SETTINGS.permission_settings);
+        return {
+          ...DEFAULT_SETTINGS.permission_settings,
+          ...(parsedPermissionSettings || {}),
+          localRunnerAssist: normalizeLocalRunnerAssistPolicy(parsedPermissionSettings?.localRunnerAssist),
+        };
+      })(),
       created_at: result.created_at,
       updated_at: result.updated_at,
     };

@@ -118,6 +118,10 @@
 	let manageAutomationsPerm = $state(data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD');
 	// svelte-ignore state_referenced_locally
 	let manageCommandsPerm = $state(data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD');
+	// svelte-ignore state_referenced_locally
+	let localRunnerEnabled = $state(Boolean(data.permissionSettings?.localRunnerAssist?.enabled));
+	// svelte-ignore state_referenced_locally
+	let localRunnerAllowedUsers = $state((data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n'));
 	
 	// Role overrides for permissions
 	// svelte-ignore state_referenced_locally
@@ -187,6 +191,8 @@
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
 		manageAutomationsPerm = data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
 		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
+		localRunnerEnabled = Boolean(data.permissionSettings?.localRunnerAssist?.enabled);
+		localRunnerAllowedUsers = (data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n');
 		viewDashboardRoles = data.permissionSettings?.viewDashboard?.roles || [];
 		viewLogsRoles = data.permissionSettings?.viewLogs?.roles || [];
 		manageAutomationsRoles = data.permissionSettings?.manageAutomations?.roles || [];
@@ -330,6 +336,36 @@
 							<span class="lock-icon">🔒</span>
 							Administrator Only
 						</span>
+					</div>
+				</div>
+
+				<div class="permission-row">
+					<div class="permission-info">
+						<span class="permission-label">🤖 Local Runner Assist</span>
+						<span class="permission-desc">Default is off. Enable this server if local runners are allowed to assist here.</span>
+					</div>
+					<div class="permission-control">
+						<label class="runner-option-toggle">
+							<input type="checkbox" name="localRunnerEnabled" bind:checked={localRunnerEnabled} onchange={autoSave} />
+							<span>{localRunnerEnabled ? 'Enabled' : 'Disabled'}</span>
+						</label>
+					</div>
+				</div>
+
+				<div class="permission-row">
+					<div class="permission-info">
+						<span class="permission-label">👥 Allowed User IDs</span>
+						<span class="permission-desc">Optional. One Discord user ID per line. Leave empty to allow any manager in this server.</span>
+					</div>
+					<div class="permission-control">
+						<textarea
+							name="localRunnerAllowedUsers"
+							class="form-textarea"
+							rows="4"
+							bind:value={localRunnerAllowedUsers}
+							onchange={autoSave}
+							placeholder="123456789012345678\n234567890123456789"
+						></textarea>
 					</div>
 				</div>
 			</div>
