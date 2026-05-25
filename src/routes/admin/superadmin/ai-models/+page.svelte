@@ -14,15 +14,16 @@
 	let routingStrategy = $state("fallback");
 
 	$effect(() => {
+		const incomingSelection = incomingData?.selection ?? null;
 		catalog = incomingData?.catalog ?? [];
 		syncedAt = incomingData?.syncedAt ?? null;
 		stale = incomingData?.stale ?? false;
 		source = incomingData?.source ?? "cache";
 		warning = incomingData?.warning ?? null;
-		selection = incomingData?.selection ?? null;
-		selectedModelIds = [...(selection?.selectedModelIds ?? [])];
-		primaryModelId = selection?.primaryModelId ?? null;
-		routingStrategy = selection?.routingStrategy ?? "fallback";
+		selection = incomingSelection;
+		selectedModelIds = [...(incomingSelection?.selectedModelIds ?? [])];
+		primaryModelId = incomingSelection?.primaryModelId ?? null;
+		routingStrategy = incomingSelection?.routingStrategy ?? "fallback";
 	});
 
 	let search = $state("");
