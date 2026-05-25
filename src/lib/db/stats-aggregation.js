@@ -1118,6 +1118,9 @@ async function getCurrentHourPartialStats(db, guildId = null) {
     `).bind(...params).first();
 
     // Voice time from sessions active during the current hour
+    // IMPORTANT: Only count sessions from the current hour to avoid counting stale/orphaned sessions
+    // that weren't properly closed. Sessions from previous hours that are still open are handled
+    // by reconciliation and shouldn't appear in the current hour stats.
     const voiceStats = await db.prepare(`
       SELECT 
         COUNT(DISTINCT user_id) as unique_users,
@@ -1129,7 +1132,8 @@ async function getCurrentHourPartialStats(db, guildId = null) {
           AS INTEGER)
         ), 0) as total_seconds
       FROM voice_sessions
-      WHERE joined_at < datetime('now')
+      WHERE joined_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+        AND joined_at < datetime('now')
         AND (left_at IS NULL OR left_at > strftime('%Y-%m-%d %H:00:00', 'now'))
         ${guildFilter}
     `).bind(...params).first();
@@ -1183,6 +1187,43 @@ function fillDateGaps(data, days, defaults = {}, timezone = null) {
   }
   
   return filled;
+}
+
+/**
+ * Close stale orphaned voice sessions that haven't been properly closed.
+ * Sessions older than 24 hours without a leave event are marked as closed.
+ * @param {D1Database} db
+ * @param {string|null} guildId - Optional guild ID, closes all if not provided
+ * @returns {Promise<{closed: number, error?: string}>}
+ */
+export async function closeStaleVoiceSessions(db, guildId = null) {
+  if (!db) {
+    return { closed: 0, error: "No database connection" };
+  }
+
+  try {
+    const guildFilter = guildId ? "AND guild_id = ?" : "";
+    const params = guildId ? [guildId] : [];
+
+    // Close sessions that joined more than 24 hours ago and have no leave_at
+    const result = await db.prepare(`
+      UPDATE voice_sessions
+      SET left_at = datetime('now'), duration_seconds = CAST((julianday('now') - julianday(joined_at)) * 86400 AS INTEGER)
+      WHERE left_at IS NULL
+        AND joined_at < datetime('now', '-24 hours')
+        ${guildFilter}
+    `).bind(...params).run();
+
+    const closed = result.meta?.changes || 0;
+    if (closed > 0) {
+      log.warn(`[Stats] Closed ${closed} stale orphaned voice sessions${guildId ? ` for ${guildId}` : " globally"}`);
+    }
+
+    return { closed };
+  } catch (error) {
+    log.error("Failed to close stale voice sessions:", error);
+    return { closed: 0, error: error.message };
+  }
 }
 
 /**

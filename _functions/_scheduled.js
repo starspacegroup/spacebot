@@ -620,13 +620,25 @@ async function runDailyRefresh(env) {
   // Cleanup old data
   const cleanup = await cleanupOldData(db);
   
+  // Close stale orphaned voice sessions (older than 24 hours without a leave event)
+  const staleVoiceResult = await db.prepare(`
+    UPDATE voice_sessions
+    SET left_at = datetime('now'), duration_seconds = CAST((julianday('now') - julianday(joined_at)) * 86400 AS INTEGER)
+    WHERE left_at IS NULL
+      AND joined_at < datetime('now', '-24 hours')
+  `).run();
+  const staleClosed = staleVoiceResult.meta?.changes || 0;
+  if (staleClosed > 0) {
+    console.log(`[Scheduled] Closed ${staleClosed} stale orphaned voice sessions`);
+  }
+  
   // Prune old server_stats
   await db.prepare(`DELETE FROM server_stats WHERE recorded_at < datetime('now', '-90 days')`).run();
 
   const duration = Date.now() - startTime;
   console.log(`[Scheduled] Daily refresh completed: ${results.processed} guilds in ${duration}ms`);
 
-  return { success: true, ...results, cleanup, duration };
+  return { success: true, ...results, cleanup, staleClosed, duration };
 }
 
 /**
