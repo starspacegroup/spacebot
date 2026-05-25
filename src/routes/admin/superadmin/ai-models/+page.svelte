@@ -396,14 +396,14 @@
 	}
 
 	.btn-primary {
-		background: var(--primary, #5865f2);
-		color: #fff;
+		background: var(--color-primary-button, #4f46e5);
+		color: var(--color-primary-button-text, #fff);
 	}
 
 	.btn-secondary {
-		background: var(--surface-2, #2d2f36);
-		color: var(--text, #e0e0e0);
-		border: 1px solid var(--border, #444);
+		background: var(--color-surface-elevated, #f3f4f6);
+		color: var(--color-text, #111827);
+		border: 1px solid var(--color-border, #d1d5db);
 	}
 
 	.alert-warning {
@@ -435,7 +435,11 @@
 
 	.toast-success { background: #16a34a; color: #fff; }
 	.toast-error { background: #dc2626; color: #fff; }
-	.toast-info { background: var(--surface-2, #2d2f36); color: var(--text, #e0e0e0); border: 1px solid var(--border, #444); }
+	.toast-info {
+		background: var(--color-surface-elevated, #f3f4f6);
+		color: var(--color-text, #111827);
+		border: 1px solid var(--color-border, #d1d5db);
+	}
 
 	.stats-grid {
 		display: grid;
@@ -444,8 +448,8 @@
 	}
 
 	.stat-card {
-		background: var(--surface-2, #1e1f24);
-		border: 1px solid var(--border, #333);
+		background: var(--color-surface, #ffffff);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 8px;
 		padding: 0.75rem 1rem;
 		display: flex;
@@ -467,7 +471,7 @@
 
 	.meta-item { display: flex; gap: 0.35rem; }
 	.meta-key { font-weight: 600; }
-	.meta-val { color: var(--text, #e0e0e0); }
+	.meta-val { color: var(--color-text, #111827); }
 	.mono { font-family: monospace; font-size: 0.8em; }
 
 	.badge {
@@ -487,8 +491,8 @@
 	.badge-paid { background: rgba(99, 102, 241, 0.12); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
 
 	.selection-panel {
-		background: var(--surface-2, #1e1f24);
-		border: 1px solid var(--border, #333);
+		background: var(--color-surface, #ffffff);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 8px;
 		padding: 1rem;
 	}
@@ -514,10 +518,10 @@
 	}
 
 	.select {
-		background: var(--surface-3, #25262e);
-		border: 1px solid var(--border, #444);
+		background: var(--color-surface-elevated, #f3f4f6);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 6px;
-		color: var(--text, #e0e0e0);
+		color: var(--color-text, #111827);
 		padding: 0.35rem 0.6rem;
 		font-size: 0.875rem;
 		min-width: 200px;
@@ -534,8 +538,8 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
-		background: var(--surface-3, #25262e);
-		border: 1px solid var(--border, #444);
+		background: var(--color-surface-elevated, #f3f4f6);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 99px;
 		padding: 0.2rem 0.5rem 0.2rem 0.75rem;
 		font-size: 0.75rem;
@@ -543,14 +547,14 @@
 	}
 
 	.chip-primary {
-		border-color: var(--primary, #5865f2);
-		background: rgba(88, 101, 242, 0.1);
+		border-color: var(--color-primary, #5865f2);
+		background: var(--color-primary-soft, rgba(88, 101, 242, 0.1));
 	}
 
 	.chip-tag {
 		font-size: 0.6rem;
 		font-weight: 700;
-		background: var(--primary, #5865f2);
+		background: var(--color-primary-button, #4f46e5);
 		color: #fff;
 		border-radius: 99px;
 		padding: 0.1rem 0.35rem;
@@ -579,10 +583,10 @@
 	.search-input {
 		flex: 1;
 		min-width: 200px;
-		background: var(--surface-2, #1e1f24);
-		border: 1px solid var(--border, #444);
+		background: var(--color-surface, #ffffff);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 6px;
-		color: var(--text, #e0e0e0);
+		color: var(--color-text, #111827);
 		padding: 0.4rem 0.75rem;
 		font-size: 0.875rem;
 	}
@@ -613,8 +617,8 @@
 	}
 
 	.model-card {
-		background: var(--surface-2, #1e1f24);
-		border: 1px solid var(--border, #333);
+		background: var(--color-surface, #ffffff);
+		border: 1px solid var(--color-border, #d1d5db);
 		border-radius: 8px;
 		padding: 0.85rem;
 		display: flex;
@@ -624,12 +628,12 @@
 	}
 
 	.model-card.selected {
-		border-color: var(--primary, #5865f2);
+		border-color: var(--color-primary, #5865f2);
 	}
 
 	.model-card.is-primary {
-		border-color: var(--primary, #5865f2);
-		box-shadow: 0 0 0 1px var(--primary, #5865f2);
+		border-color: var(--color-primary, #5865f2);
+		box-shadow: 0 0 0 1px var(--color-primary, #5865f2);
 	}
 
 	.card-header {
@@ -652,7 +656,7 @@
 
 	.author-chip {
 		font-size: 0.7rem;
-		background: var(--surface-3, #25262e);
+		background: var(--color-surface-elevated, #f3f4f6);
 		color: var(--text-muted, #888);
 		border-radius: 99px;
 		padding: 0.1rem 0.5rem;
@@ -690,11 +694,11 @@
 
 	.task-tag {
 		font-size: 0.68rem;
-		background: var(--surface-3, #25262e);
+		background: var(--color-surface-elevated, #f3f4f6);
 		color: var(--text-muted, #999);
 		border-radius: 4px;
 		padding: 0.1rem 0.45rem;
-		border: 1px solid var(--border, #3a3a3a);
+		border: 1px solid var(--color-border, #d1d5db);
 	}
 
 	.card-actions {
@@ -703,7 +707,7 @@
 		gap: 1rem;
 		margin-top: auto;
 		padding-top: 0.25rem;
-		border-top: 1px solid var(--border, #2a2a2a);
+		border-top: 1px solid var(--color-border, #d1d5db);
 	}
 
 	.context-window {
