@@ -1,17 +1,17 @@
 <script>
-	let { data } = $props();
+	let { data: incomingData } = $props();
 
-	let catalog = $state(data?.catalog ?? []);
-	let syncedAt = $state(data?.syncedAt ?? null);
-	let stale = $state(data?.stale ?? false);
-	let source = $state(data?.source ?? "cache");
-	let warning = $state(data?.warning ?? null);
-	let selection = $state(data?.selection ?? null);
-	const envModel = $derived(data?.defaults?.envModel ?? null);
+	let catalog = $state([]);
+	let syncedAt = $state(null);
+	let stale = $state(false);
+	let source = $state("cache");
+	let warning = $state(null);
+	let selection = $state(null);
+	const envModel = $derived(incomingData?.defaults?.envModel ?? null);
 
-	let selectedModelIds = $state([...(selection?.selectedModelIds ?? [])]);
-	let primaryModelId = $state(selection?.primaryModelId ?? null);
-	let routingStrategy = $state(selection?.routingStrategy ?? "fallback");
+	let selectedModelIds = $state([]);
+	let primaryModelId = $state(null);
+	let routingStrategy = $state("fallback");
 
 	let search = $state("");
 	let taskFilter = $state("all");
@@ -22,6 +22,18 @@
 	let syncing = $state(false);
 	let saving = $state(false);
 	let toast = $state(null);
+
+	$effect(() => {
+		catalog = incomingData?.catalog ?? [];
+		syncedAt = incomingData?.syncedAt ?? null;
+		stale = incomingData?.stale ?? false;
+		source = incomingData?.source ?? "cache";
+		warning = incomingData?.warning ?? null;
+		selection = incomingData?.selection ?? null;
+		selectedModelIds = [...(selection?.selectedModelIds ?? [])];
+		primaryModelId = selection?.primaryModelId ?? null;
+		routingStrategy = selection?.routingStrategy ?? "fallback";
+	});
 
 	function showToast(message, type = "info") {
 		toast = { message, type };

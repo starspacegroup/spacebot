@@ -40,14 +40,14 @@
 	const initialVoiceLogFilters = $derived(getInitialVoiceLogFilters(data.voiceActivityFilters));
 	const initialVoiceLogPagination = $derived(normalizeVoiceLogPagination(data.voiceActivityPagination));
 
-	let voiceLogEntries = $state(voiceActivityLog);
-	let voiceLogPagination = $state(initialVoiceLogPagination);
-	let voiceLogPageSize = $state(initialVoiceLogPagination.pageSize);
-	let voiceLogSearch = $state(initialVoiceLogFilters.search);
-	let voiceLogEventType = $state(initialVoiceLogFilters.eventType);
-	let voiceLogSortOrder = $state(initialVoiceLogFilters.sortOrder);
-	let voiceLogStartDate = $state(initialVoiceLogFilters.startDate);
-	let voiceLogEndDate = $state(initialVoiceLogFilters.endDate);
+	let voiceLogEntries = $state([]);
+	let voiceLogPagination = $state(normalizeVoiceLogPagination());
+	let voiceLogPageSize = $state(30);
+	let voiceLogSearch = $state('');
+	let voiceLogEventType = $state('');
+	let voiceLogSortOrder = $state('desc');
+	let voiceLogStartDate = $state('');
+	let voiceLogEndDate = $state('');
 	let voiceLogLoading = $state(false);
 	let voiceLogError = $state('');
 

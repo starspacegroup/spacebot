@@ -6,13 +6,8 @@
 	import { formatChartDate } from '$lib/timezone.js';
 	import { onMount } from 'svelte';
 
-	let { data: incomingData, form } = $props();
-	let data = $state(incomingData);
+	let { data, form } = $props();
 	let hotloading = $state(false);
-
-	$effect(() => {
-		data = incomingData;
-	});
 
 	onMount(async () => {
 		const params = new URLSearchParams(window.location.search);
