@@ -233,17 +233,17 @@ export async function load({ cookies, platform, url }) {
       });
     }
 
-    // Kick off guild fetch but do NOT await it — return as a Promise so SvelteKit
-    // streams the page HTML to the browser immediately and resolves the guild list
-    // in the background. The server selector will appear once it resolves.
-    adminGuilds = buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+    // Resolve guilds before returning so child server loaders always receive an array.
+    // Returning a Promise here can surface as runtime TypeErrors in routes that call
+    // array helpers such as .filter/.some/.find on parentData.adminGuilds.
+    adminGuilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
 
     return {
       isLoggedIn: true,
       isAdmin: true, // Logged-in user is on an admin page; individual pages guard auth
       isSuperAdmin,
       user,
-      adminGuilds, // Promise — streamed to client
+      adminGuilds,
       selectedGuildId,
     };
   }
