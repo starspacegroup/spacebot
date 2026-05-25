@@ -38,7 +38,7 @@ This document covers the typed local-runner capabilities added for cross-platfor
 - `RUNNER_ENABLE_SCREENSHOTS=1`
 - `RUNNER_ENABLE_VSCODE_CONTROL=1`
 - `RUNNER_ENABLE_COPILOT_CHAT=1`
-- `RUNNER_MAX_ARTIFACT_BYTES=2000000`
+- `RUNNER_MAX_ARTIFACT_BYTES=8000000`
 
 ## VS Code Bridge Setup
 
