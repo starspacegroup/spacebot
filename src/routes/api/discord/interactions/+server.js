@@ -210,6 +210,31 @@ export async function POST({ request, platform }) {
 		const { data } = body;
 		const guildId = body.guild_id;
 
+		// DM slash commands do not include guild_id. Provide a built-in /help response there.
+		if (!guildId && data.name === "help") {
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: {
+					embeds: [
+						{
+							title: "🚀 SpaceBot Help",
+							description:
+								"Welcome to SpaceBot! Use /ping to check if the bot is online, /info for bot details, and /help for this message. Custom commands are configured by your server admin.",
+							color: 0x57F287,
+							fields: [
+								{
+									name: "🔗 Links",
+									value: "[GitHub](https://github.com/starspacegroup/spacebot)",
+									inline: false,
+								},
+							],
+							footer: { text: "Use /command to run a command" },
+						},
+					],
+				},
+			});
+		}
+
 		// Handle /stats built-in command (generates chart image)
 		if (data.name === "stats" && guildId) {
 			const applicationId = body.application_id;

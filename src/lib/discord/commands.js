@@ -33,6 +33,7 @@ export const commands = [
 		name: "help",
 		description: "Get help with bot commands",
 		type: 1, // CHAT_INPUT
+		dm_permission: true,
 	},
 	{
 		name: "stats",

@@ -1143,6 +1143,7 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
   {
     name: "help",
     description: "Get help with bot commands",
+    dm_permission: true,
     response_type: "embed",
     response_content: null,
     response_embed: {
@@ -1222,8 +1223,8 @@ export async function ensureBuiltInCommands(db) {
             options, ephemeral, defer,
             action_type, action_config,
             response_type, response_content, response_embed,
-            created_by
-          ) VALUES (?, ?, ?, 1, 1, ?, 0, 0, 'NONE', '{}', ?, ?, ?, 'system')
+            dm_permission, created_by
+          ) VALUES (?, ?, ?, 1, 1, ?, 0, 0, 'NONE', '{}', ?, ?, ?, ?, 'system')
         `).bind(
           BUILT_IN_GUILD_ID,
           cmd.name,
@@ -1232,6 +1233,7 @@ export async function ensureBuiltInCommands(db) {
           cmd.response_type,
           cmd.response_content,
           cmd.response_embed ? JSON.stringify(cmd.response_embed) : null,
+          cmd.dm_permission ? 1 : 0,
         ).run();
 
         log.info(`Created built-in command: ${cmd.name}`);
@@ -1246,6 +1248,13 @@ export async function ensureBuiltInCommands(db) {
           cmd.description,
           existing.id,
         ).run();
+      } else if (cmd.name === "help") {
+        // Keep /help available in DMs for existing databases.
+        await db.prepare(`
+          UPDATE commands
+          SET dm_permission = 1, updated_at = datetime('now')
+          WHERE id = ?
+        `).bind(existing.id).run();
       }
     }
   } catch (error) {
