@@ -464,6 +464,10 @@
 	const serversWithBilling = $derived(
 		serverPlans.filter(s => s.stripeCustomerId)
 	);
+
+	const activeBillingSubscriptions = $derived(
+		serversWithBilling.filter(s => s.stripeSubscriptionId)
+	);
 	
 	function formatDate(dateStr) {
 		if (!dateStr) return 'N/A';
@@ -584,6 +588,14 @@
 		}
 	}
 	
+	function getBillingReturnUrl() {
+		if (typeof window === 'undefined') return '/account';
+		const url = new URL(window.location.href);
+		url.search = '';
+		url.hash = '';
+		return url.toString();
+	}
+
 	async function openBillingPortal(guildId, guildName) {
 		portalLoading = guildId;
 		try {
@@ -594,19 +606,27 @@
 					action: 'portal',
 					guildId,
 					guildName,
-					returnUrl: window.location.href,
+					returnUrl: getBillingReturnUrl(),
 				}),
 			});
-			const result = await res.json();
+
+			const result = await res.json().catch(() => ({}));
+
+			if (!res.ok) {
+				toastMessage = result.error || 'Could not open billing portal right now. Please try again.';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+
 			if (result.url) {
 				window.location.href = result.url;
 				return;
 			}
-			if (result.error) {
-				toastMessage = result.error;
-				toastSuccess = false;
-				showToast = true;
-			}
+
+			toastMessage = 'Billing portal is temporarily unavailable. Please try again in a moment.';
+			toastSuccess = false;
+			showToast = true;
 		} catch {
 			toastMessage = 'Failed to open billing portal. Please try again.';
 			toastSuccess = false;
@@ -996,25 +1016,31 @@
 				<p>No payment methods on file. Payment methods are added when you upgrade a server to Pro.</p>
 			</div>
 		{:else}
-			<div class="payment-portal-card">
-				<div class="payment-portal-info">
-					<h3>Manage Payment Methods</h3>
-					<p>Add, update, or remove your credit cards and payment methods. View invoices and receipts.</p>
+			<div class="payment-hero-card">
+				<div class="payment-hero-main">
+					<h3>Your Billing Portal</h3>
+					<p>Update payment methods, download invoices, and manage subscriptions for each server.</p>
 				</div>
-				<button 
-					class="btn btn-primary btn-sm" 
-					onclick={() => openBillingPortal(serversWithBilling[0].guildId, serversWithBilling[0].guildName)}
-					disabled={portalLoading !== null}
-				>
-					{portalLoading !== null ? 'Opening...' : 'Open Billing Portal'}
-				</button>
+				<div class="payment-hero-metrics">
+					<div class="payment-metric">
+						<span class="payment-metric-label">Billing Accounts</span>
+						<strong>{serversWithBilling.length}</strong>
+					</div>
+					<div class="payment-metric">
+						<span class="payment-metric-label">Active Subs</span>
+						<strong>{activeBillingSubscriptions.length}</strong>
+					</div>
+					<div class="payment-metric">
+						<span class="payment-metric-label">Monthly Total</span>
+						<strong>{formatPrice(totalMonthlySpend)}</strong>
+					</div>
+				</div>
 			</div>
 			
-			{#if serversWithBilling.some(s => s.stripeSubscriptionId)}
-				<div class="active-subscriptions">
-					<h4>Active Subscriptions</h4>
-					{#each serversWithBilling.filter(s => s.stripeSubscriptionId) as server}
-						<div class="subscription-row">
+			<div class="billing-servers-grid">
+				{#each serversWithBilling as server}
+					<div class="billing-server-card">
+						<div class="billing-server-header">
 							<div class="subscription-info">
 								{#if server.guildIcon}
 									<img 
@@ -1027,13 +1053,41 @@
 										{(server.guildName || 'S').charAt(0)}
 									</div>
 								{/if}
-								<span class="subscription-name">{server.guildName}</span>
+								<div class="billing-server-title-wrap">
+									<span class="subscription-name">{server.guildName}</span>
+									<span class="billing-server-id">{server.guildId}</span>
+								</div>
 							</div>
-							<span class="subscription-price">{formatPrice(server.priceCents)}/mo</span>
+							<span class="status-badge {getStatusBadgeClass(server.plan, server.stripeStatus, server.stripeSubscriptionId)}">
+								{getStatusLabel(server.plan, server.stripeStatus, server.stripeSubscriptionId)}
+							</span>
 						</div>
-					{/each}
-				</div>
-			{/if}
+
+						<div class="billing-server-meta">
+							<span>
+								{#if server.stripeSubscriptionId}
+									{formatPrice(server.priceCents)}/mo
+								{:else}
+									No active subscription
+								{/if}
+							</span>
+							{#if server.stripeCurrentPeriodEnd}
+								<span>Renews {formatDate(server.stripeCurrentPeriodEnd)}</span>
+							{/if}
+						</div>
+
+						<div class="billing-server-actions">
+							<button 
+								class="btn btn-primary btn-sm" 
+								onclick={() => openBillingPortal(server.guildId, server.guildName)}
+								disabled={portalLoading !== null}
+							>
+								{portalLoading === server.guildId ? 'Opening...' : 'Open Billing Portal'}
+							</button>
+						</div>
+					</div>
+				{/each}
+			</div>
 		{/if}
 	</section>
 	
@@ -1788,42 +1842,114 @@
 	}
 	
 	/* Payment Methods Section */
-	.payment-portal-card {
+	.payment-hero-card {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		padding: 1.25rem;
+		border-radius: var(--radius-md);
+		border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--color-primary) 10%, var(--color-surface)) 0%,
+			var(--color-surface) 100%
+		);
+	}
+
+	.payment-hero-main h3 {
+		font-size: 1rem;
+		font-weight: 700;
+		margin: 0 0 0.25rem;
+		color: var(--color-text);
+	}
+
+	.payment-hero-main p {
+		font-size: 0.8125rem;
+		line-height: 1.45;
+		margin: 0;
+		color: var(--color-text-muted);
+	}
+
+	.payment-hero-metrics {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.5rem;
+		min-width: 19rem;
+	}
+
+	.payment-metric {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		padding: 0.5rem 0.625rem;
+		border-radius: var(--radius-sm);
+		background: color-mix(in srgb, var(--color-surface) 82%, white 18%);
+		border: 1px solid color-mix(in srgb, var(--color-border) 85%, var(--color-primary) 15%);
+	}
+
+	.payment-metric-label {
+		font-size: 0.675rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
+	}
+
+	.payment-metric strong {
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.billing-servers-grid {
+		margin-top: 1rem;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.billing-server-card {
+		padding: 0.875rem;
+		border-radius: var(--radius-md);
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
 	}
-	
-	.payment-portal-info h3 {
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin: 0 0 0.25rem;
+
+	.billing-server-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 0.5rem;
 	}
-	
-	.payment-portal-info p {
-		font-size: 0.8125rem;
+
+	.billing-server-title-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.billing-server-id {
+		font-size: 0.6875rem;
+		font-family: monospace;
 		color: var(--color-text-muted);
-		margin: 0;
-		line-height: 1.4;
 	}
-	
-	.active-subscriptions {
-		margin-top: 1rem;
-	}
-	
-	.active-subscriptions h4 {
-		font-size: 0.8125rem;
-		font-weight: 600;
+
+	.billing-server-meta {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+		font-size: 0.75rem;
 		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		margin: 0 0 0.5rem;
+	}
+
+	.billing-server-actions {
+		display: flex;
+		justify-content: flex-end;
 	}
 	
 	.subscription-row {
@@ -1879,10 +2005,21 @@
 	}
 	
 	@media (max-width: 640px) {
-		.payment-portal-card {
+		.payment-hero-card {
 			flex-direction: column;
 			align-items: flex-start;
 			gap: 0.75rem;
+		}
+
+		.payment-hero-metrics {
+			width: 100%;
+			min-width: 0;
+		}
+
+		.billing-server-meta {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.25rem;
 		}
 	}
 	
