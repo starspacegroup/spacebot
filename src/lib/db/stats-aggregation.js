@@ -1125,31 +1125,69 @@ async function getCurrentHourPartialStats(db, guildId = null) {
         ${guildFilter}
     `).bind(...params).first();
 
-    // Voice time from sessions active during the current hour
-    // IMPORTANT: Only count sessions from the current hour to avoid counting stale/orphaned sessions
-    // that weren't properly closed. Sessions from previous hours that are still open are handled
-    // by reconciliation and shouldn't appear in the current hour stats.
+    // Voice time from sessions overlapping the current hour.
+    // Include sessions that started in previous hours and continued into this one,
+    // while still capping to a 24h lookback to avoid stale orphaned sessions.
     const voiceStats = await db.prepare(`
       SELECT 
         COUNT(DISTINCT user_id) as unique_users,
         COALESCE(SUM(
           CAST(
-            (julianday(COALESCE(left_at, datetime('now'))) - 
+            (julianday(MIN(COALESCE(left_at, datetime('now')), datetime('now'))) - 
              julianday(MAX(joined_at, strftime('%Y-%m-%d %H:00:00', 'now')))) 
             * 86400 
           AS INTEGER)
         ), 0) as total_seconds
       FROM voice_sessions
-      WHERE joined_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+      WHERE joined_at < datetime('now')
+        AND joined_at >= datetime('now', '-24 hours')
+        AND COALESCE(left_at, datetime('now')) > strftime('%Y-%m-%d %H:00:00', 'now')
         AND joined_at < datetime('now')
-        AND (left_at IS NULL OR left_at > strftime('%Y-%m-%d %H:00:00', 'now'))
         ${guildFilter}
+    `).bind(...params).first();
+
+    // Compute a partial peak concurrent value for the in-progress hour using
+    // baseline-at-hour-start + join/leave deltas within this hour.
+    const peakConcurrent = await db.prepare(`
+      WITH baseline AS (
+        SELECT COUNT(*) as base_count
+        FROM voice_sessions
+        WHERE joined_at < strftime('%Y-%m-%d %H:00:00', 'now')
+          AND joined_at >= datetime('now', '-24 hours')
+          AND (left_at IS NULL OR left_at >= strftime('%Y-%m-%d %H:00:00', 'now'))
+          ${guildFilter}
+      ),
+      voice_events AS (
+        SELECT
+          created_at as event_time,
+          id,
+          CASE
+            WHEN event_type = 'VOICE_JOIN' THEN 1
+            WHEN event_type = 'VOICE_LEAVE' THEN -1
+            ELSE 0
+          END as delta
+        FROM event_logs
+        WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+          AND created_at < datetime('now')
+          AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
+          ${guildFilter}
+      ),
+      running_count AS (
+        SELECT
+          event_time,
+          (SELECT base_count FROM baseline) + SUM(delta) OVER (
+            ORDER BY event_time ASC, id ASC ROWS UNBOUNDED PRECEDING
+          ) as concurrent
+        FROM voice_events
+      )
+      SELECT COALESCE(MAX(concurrent), (SELECT base_count FROM baseline), 0) as peak
+      FROM running_count
     `).bind(...params).first();
 
     return {
       voice_total_seconds: Math.max(voiceStats?.total_seconds || 0, 0),
       voice_unique_users: voiceStats?.unique_users || 0,
-      voice_peak_concurrent: 0,
+      voice_peak_concurrent: Math.max(peakConcurrent?.peak || 0, 0),
       member_joins: currentHour?.member_joins || 0,
       member_leaves: currentHour?.member_leaves || 0,
       member_net_change: (currentHour?.member_joins || 0) - (currentHour?.member_leaves || 0),
@@ -1393,6 +1431,7 @@ export async function getVoiceActivityChart(db, guildId, period = "30d", timezon
       existingToday.totalMinutes = Math.round(totalSeconds / 60);
       existingToday.totalHours = Math.round(totalSeconds / 3600 * 10) / 10;
       existingToday.uniqueUsers = Math.max(existingToday.uniqueUsers, partial.voice_unique_users);
+      existingToday.peakConcurrent = Math.max(existingToday.peakConcurrent || 0, partial.voice_peak_concurrent || 0);
     } else {
       rawData.push({
         date: today,
