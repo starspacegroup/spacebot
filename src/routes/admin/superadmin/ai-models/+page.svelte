@@ -13,16 +13,6 @@
 	let primaryModelId = $state(null);
 	let routingStrategy = $state("fallback");
 
-	let search = $state("");
-	let taskFilter = $state("all");
-	let sortBy = $state("stability");
-	let showBetaOnly = $state(false);
-	let showStableOnly = $state(false);
-
-	let syncing = $state(false);
-	let saving = $state(false);
-	let toast = $state(null);
-
 	$effect(() => {
 		catalog = incomingData?.catalog ?? [];
 		syncedAt = incomingData?.syncedAt ?? null;
@@ -34,6 +24,16 @@
 		primaryModelId = selection?.primaryModelId ?? null;
 		routingStrategy = selection?.routingStrategy ?? "fallback";
 	});
+
+	let search = $state("");
+	let taskFilter = $state("all");
+	let sortBy = $state("stability");
+	let showBetaOnly = $state(false);
+	let showStableOnly = $state(false);
+
+	let syncing = $state(false);
+	let saving = $state(false);
+	let toast = $state(null);
 
 	function showToast(message, type = "info") {
 		toast = { message, type };
@@ -263,10 +263,18 @@
 			<option value="author">Sort: Author</option>
 		</select>
 		<label class="checkbox-label">
-			<input type="checkbox" bind:checked={showBetaOnly} /> BETA only
+			<input
+				type="checkbox"
+				checked={showBetaOnly}
+				onchange={() => { showBetaOnly = !showBetaOnly; if (showBetaOnly) showStableOnly = false; }}
+			/> BETA only
 		</label>
 		<label class="checkbox-label">
-			<input type="checkbox" bind:checked={showStableOnly} /> Stable only
+			<input
+				type="checkbox"
+				checked={showStableOnly}
+				onchange={() => { showStableOnly = !showStableOnly; if (showStableOnly) showBetaOnly = false; }}
+			/> Stable only
 		</label>
 	</div>
 
