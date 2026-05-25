@@ -35,6 +35,18 @@
 	let saving = $state(false);
 	let toast = $state(null);
 
+	function applyBetaOnly(checked) {
+		showBetaOnly = checked;
+		if (checked) showStableOnly = false;
+		search = "";
+	}
+
+	function applyStableOnly(checked) {
+		showStableOnly = checked;
+		if (checked) showBetaOnly = false;
+		search = "";
+	}
+
 	function showToast(message, type = "info") {
 		toast = { message, type };
 		setTimeout(() => {
@@ -266,14 +278,14 @@
 			<input
 				type="checkbox"
 				checked={showBetaOnly}
-				onchange={() => { showBetaOnly = !showBetaOnly; if (showBetaOnly) showStableOnly = false; }}
+				onchange={(event) => applyBetaOnly(event.currentTarget.checked)}
 			/> BETA only
 		</label>
 		<label class="checkbox-label">
 			<input
 				type="checkbox"
 				checked={showStableOnly}
-				onchange={() => { showStableOnly = !showStableOnly; if (showStableOnly) showBetaOnly = false; }}
+				onchange={(event) => applyStableOnly(event.currentTarget.checked)}
 			/> Stable only
 		</label>
 	</div>
