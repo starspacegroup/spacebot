@@ -226,6 +226,22 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
+					<a href="/admin/{data.serverId}/stats" class="quick-link-card">
+						<div class="quick-link-icon">📈</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">Server Stats</span>
+							<span class="quick-link-desc">See growth, events, and voice trends</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
+					<a href="/admin/{data.serverId}/logs" class="quick-link-card">
+						<div class="quick-link-icon">🧾</div>
+						<div class="quick-link-info">
+							<span class="quick-link-title">Event Logs</span>
+							<span class="quick-link-desc">Review moderation and automation events</span>
+						</div>
+						<span class="quick-link-arrow">→</span>
+					</a>
 					<a href="/admin/{data.serverId}/import-export" class="quick-link-card">
 						<div class="quick-link-icon">📦</div>
 						<div class="quick-link-info">
@@ -253,6 +269,14 @@
 										<span class="usage-plan-badge plan-{data.planLimits.plan}">{data.planLimits.plan}</span> plan
 									</span>
 								{/if}
+							</div>
+							<span class="quick-link-arrow">→</span>
+						</a>
+						<a href="/admin/{data.serverId}/settings" class="quick-link-card">
+							<div class="quick-link-icon">🛠️</div>
+							<div class="quick-link-info">
+								<span class="quick-link-title">Server Settings</span>
+								<span class="quick-link-desc">Configure permissions and behavior</span>
 							</div>
 							<span class="quick-link-arrow">→</span>
 						</a>
@@ -309,7 +333,9 @@
 					<p class="ai-empty">No AI jobs recorded for this server yet.</p>
 				{/if}
 			</section>
+		{/if}
 
+		{#if data.botInGuild}
 			<!-- Statistics Overview -->
 			<section class="stats-section">
 				<div class="stats-header">

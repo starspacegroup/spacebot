@@ -1,6 +1,7 @@
 <script>
 	import { log } from '$lib/log.js';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	
 	let { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
@@ -26,6 +27,16 @@
 	
 	function selectGuild(guildId) {
 		closeDropdown();
+		const pathname = $page.url.pathname;
+		const search = $page.url.search || '';
+		const adminRouteMatch = pathname.match(/^\/admin\/\d{17,20}(\/.*)?$/);
+
+		if (adminRouteMatch) {
+			const suffix = adminRouteMatch[1] || '';
+			goto(`/admin/${guildId}${suffix}${search}`, { invalidateAll: true });
+			return;
+		}
+
 		goto(`${basePath}/${guildId}`, { invalidateAll: true });
 	}
 	

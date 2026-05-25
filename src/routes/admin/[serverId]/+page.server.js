@@ -124,6 +124,14 @@ export async function load({ cookies, platform, parent, params, url }) {
     adminGuilds.some((g) => g.id === serverId);
 
   if (!hasAccessToServer) {
+    // Prevent redirect loops when a stale last_viewed_guild cookie points to
+    // a server the user can no longer access.
+    cookies.delete("last_viewed_guild", {
+      path: "/",
+      httpOnly: false,
+      secure: false,
+      sameSite: "lax",
+    });
     throw redirect(302, "/admin");
   }
 
