@@ -232,7 +232,7 @@ export async function processVoiceSessions(db, guildId) {
   
   // Get unprocessed voice events
   const events = await db.prepare(`
-    SELECT id, event_type, actor_id, channel_id, channel_name, created_at
+    SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at
     FROM event_logs
     WHERE guild_id = ? 
       AND id > ?
@@ -251,9 +251,17 @@ export async function processVoiceSessions(db, guildId) {
 
   for (const event of events.results) {
     lastEventId = event.id;
+    const voiceUserId = event.actor_id || event.target_id || null;
+
+    if (!voiceUserId) {
+      log.warn(
+        `[VoiceSessions] Skipping ${event.event_type} ${event.id} in guild ${guildId}: missing actor_id and target_id`
+      );
+      continue;
+    }
 
     if (event.event_type === "VOICE_JOIN") {
-      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
       const matchingSession = openSessions.find((session) => session.channel_id === event.channel_id);
 
       if (matchingSession) {
@@ -261,12 +269,12 @@ export async function processVoiceSessions(db, guildId) {
         if (staleSessions.length > 0) {
           sessionsClosed += await closeVoiceSessions(db, staleSessions, event.created_at);
           log.warn(
-            `[VoiceSessions] Closed ${staleSessions.length} stale duplicate session(s) for ${event.actor_id} in guild ${guildId} on duplicate join`
+            `[VoiceSessions] Closed ${staleSessions.length} stale duplicate session(s) for ${voiceUserId} in guild ${guildId} on duplicate join`
           );
         }
 
         log.warn(
-          `[VoiceSessions] Ignoring duplicate VOICE_JOIN for ${event.actor_id} in guild ${guildId} channel ${event.channel_id}`
+          `[VoiceSessions] Ignoring duplicate VOICE_JOIN for ${voiceUserId} in guild ${guildId} channel ${event.channel_id}`
         );
         continue;
       }
@@ -274,7 +282,7 @@ export async function processVoiceSessions(db, guildId) {
       if (openSessions.length > 0) {
         sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
         log.warn(
-          `[VoiceSessions] Auto-closed ${openSessions.length} stale open session(s) for ${event.actor_id} in guild ${guildId} before new join`
+          `[VoiceSessions] Auto-closed ${openSessions.length} stale open session(s) for ${voiceUserId} in guild ${guildId} before new join`
         );
       }
 
@@ -283,7 +291,7 @@ export async function processVoiceSessions(db, guildId) {
         VALUES (?, ?, ?, ?, ?, ?)
       `).bind(
         guildId,
-        event.actor_id,
+        voiceUserId,
         event.channel_id,
         event.channel_name,
         event.created_at,
@@ -291,17 +299,17 @@ export async function processVoiceSessions(db, guildId) {
       ).run();
       sessionsCreated++;
     } else if (event.event_type === "VOICE_LEAVE") {
-      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
       if (!openSessions.length) {
         log.warn(
-          `[VoiceSessions] Received VOICE_LEAVE with no open session for ${event.actor_id} in guild ${guildId}`
+          `[VoiceSessions] Received VOICE_LEAVE with no open session for ${voiceUserId} in guild ${guildId}`
         );
         continue;
       }
 
       sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at, event.id);
     } else if (event.event_type === "VOICE_MOVE") {
-      const openSessions = await getOpenVoiceSessions(db, guildId, event.actor_id);
+      const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
       sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
 
       // Then create new session in new channel
@@ -310,7 +318,7 @@ export async function processVoiceSessions(db, guildId) {
         VALUES (?, ?, ?, ?, ?, ?)
       `).bind(
         guildId,
-        event.actor_id,
+        voiceUserId,
         event.channel_id,
         event.channel_name,
         event.created_at,

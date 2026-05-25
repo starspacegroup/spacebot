@@ -675,29 +675,29 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
     const result = await db.prepare(`
       WITH voice_events AS (
         SELECT
-          actor_id,
-          actor_name,
+          COALESCE(actor_id, target_id) as voice_user_id,
+          COALESCE(NULLIF(actor_name, ''), NULLIF(target_name, ''), 'Unknown member') as voice_user_name,
           actor_is_bot,
           event_type,
           created_at,
-          LEAD(event_type) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_type,
-          LEAD(created_at) OVER (PARTITION BY actor_id ORDER BY created_at) as next_event_time
+          LEAD(event_type) OVER (PARTITION BY COALESCE(actor_id, target_id) ORDER BY created_at) as next_event_type,
+          LEAD(created_at) OVER (PARTITION BY COALESCE(actor_id, target_id) ORDER BY created_at) as next_event_time
         FROM event_logs
         WHERE guild_id = ?
-          AND actor_id IS NOT NULL
+          AND COALESCE(actor_id, target_id) IS NOT NULL
           AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
           AND created_at >= datetime('now', ?)
       )
       SELECT
-        actor_id,
-        actor_name,
-        actor_is_bot,
+        voice_user_id as actor_id,
+        MAX(voice_user_name) as actor_name,
+        MAX(COALESCE(actor_is_bot, 0)) as actor_is_bot,
         (
-          SELECT l.actor_avatar
+          SELECT COALESCE(l.actor_avatar, l.target_avatar)
           FROM event_logs l
           WHERE l.guild_id = ?
-            AND l.actor_id = voice_events.actor_id
-            AND l.actor_avatar IS NOT NULL
+            AND COALESCE(l.actor_id, l.target_id) = voice_events.voice_user_id
+            AND COALESCE(l.actor_avatar, l.target_avatar) IS NOT NULL
           ORDER BY l.created_at DESC, l.id DESC
           LIMIT 1
         ) as actor_avatar,
@@ -705,7 +705,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
           SELECT COALESCE(l.actor_discriminator, '0')
           FROM event_logs l
           WHERE l.guild_id = ?
-            AND l.actor_id = voice_events.actor_id
+            AND COALESCE(l.actor_id, l.target_id) = voice_events.voice_user_id
           ORDER BY l.created_at DESC, l.id DESC
           LIMIT 1
         ) as actor_discriminator,
@@ -720,7 +720,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = "30d") 
         ), 0) as total_seconds,
         MAX(created_at) as last_active
       FROM voice_events
-      GROUP BY actor_id
+      GROUP BY voice_user_id
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?

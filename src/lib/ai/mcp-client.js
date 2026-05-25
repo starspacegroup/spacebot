@@ -645,15 +645,20 @@ export class MCPClient {
       ),
       // Unique users in voice
       this.executeD1Query(
-        `SELECT COUNT(DISTINCT actor_id) as count FROM event_logs 
+        `SELECT COUNT(DISTINCT COALESCE(actor_id, target_id)) as count FROM event_logs 
          WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?`,
         [guildId, sinceDate]
       ),
       // Top voice users
       this.executeD1Query(
-        `SELECT actor_name, actor_id, COUNT(*) as join_count FROM event_logs 
+        `SELECT 
+           COALESCE(NULLIF(actor_name, ''), NULLIF(target_name, ''), 'Unknown member') as actor_name,
+           COALESCE(actor_id, target_id) as actor_id,
+           COUNT(*) as join_count
+         FROM event_logs 
          WHERE guild_id = ? AND event_type = 'VOICE_JOIN' AND created_at >= ?
-         GROUP BY actor_id ORDER BY join_count DESC LIMIT 10`,
+           AND COALESCE(actor_id, target_id) IS NOT NULL
+         GROUP BY COALESCE(actor_id, target_id) ORDER BY join_count DESC LIMIT 10`,
         [guildId, sinceDate]
       ),
       // Top voice channels
@@ -665,9 +670,15 @@ export class MCPClient {
       ),
       // Voice join/leave pairs for duration calculation
       this.executeD1Query(
-        `SELECT actor_id, actor_name, event_type, created_at FROM event_logs 
+        `SELECT 
+           COALESCE(actor_id, target_id) as actor_id,
+           COALESCE(NULLIF(actor_name, ''), NULLIF(target_name, ''), 'Unknown member') as actor_name,
+           event_type,
+           created_at
+         FROM event_logs 
          WHERE guild_id = ? AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE') AND created_at >= ?
-         ORDER BY actor_id, created_at`,
+           AND COALESCE(actor_id, target_id) IS NOT NULL
+         ORDER BY COALESCE(actor_id, target_id), created_at`,
         [guildId, sinceDate]
       ),
     ]);

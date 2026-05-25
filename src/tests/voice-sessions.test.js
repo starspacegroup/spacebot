@@ -72,16 +72,17 @@ class FakeVoiceSessionDb {
 			return { success: true };
 		}
 
-		if (sql.includes('SELECT id, event_type, actor_id, channel_id, channel_name, created_at') && mode === 'all') {
+		if (sql.includes('SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at') && mode === 'all') {
 			const [guildId, lastEventId] = args;
 			return {
 				results: this.events
 					.filter((event) => event.guild_id === guildId && event.id > lastEventId)
 					.sort((left, right) => left.id - right.id)
-					.map(({ id, event_type, actor_id, channel_id, channel_name, created_at }) => ({
+					.map(({ id, event_type, actor_id, target_id, channel_id, channel_name, created_at }) => ({
 						id,
 						event_type,
 						actor_id,
+						target_id,
 						channel_id,
 						channel_name,
 						created_at,
@@ -172,6 +173,25 @@ describe('processVoiceSessions', () => {
 			join_event_id: 1,
 			leave_event_id: 3,
 			left_at: '2026-04-08 04:07:27',
+		});
+	});
+
+	it('uses target_id fallback when actor_id is missing', async () => {
+		const db = new FakeVoiceSessionDb();
+		db.seedEvents([
+			{ id: 20, guild_id: 'guild-1', event_type: 'VOICE_JOIN', actor_id: null, target_id: 'user-fallback', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 05:00:00' },
+			{ id: 21, guild_id: 'guild-1', event_type: 'VOICE_LEAVE', actor_id: null, target_id: 'user-fallback', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 05:10:00' },
+		]);
+
+		const result = await processVoiceSessions(db, 'guild-1');
+
+		expect(result).toMatchObject({ processed: 2, sessionsCreated: 1, sessionsClosed: 1 });
+		expect(db.sessions).toHaveLength(1);
+		expect(db.sessions[0]).toMatchObject({
+			user_id: 'user-fallback',
+			join_event_id: 20,
+			leave_event_id: 21,
+			left_at: '2026-04-08 05:10:00',
 		});
 	});
 });
