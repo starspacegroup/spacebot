@@ -167,6 +167,25 @@ Cloudflare Pages automatically deploys your site when you push to the configured
 - **Push to main branch** → Deploys to production
 - **Push to other branches** → Creates preview deployments
 
+The AI queue consumer worker is deployed separately by GitHub Actions on every push to `main`.
+
+Workflow file:
+
+- `.github/workflows/deploy-orchestrator-worker.yml`
+
+Required GitHub repository secrets for this workflow:
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `ORCHESTRATOR_SPACEBOT_API_BASE` (for example `https://spacebot.pages.dev`)
+- `AI_AUTOPILOT_INTERNAL_KEY` (must match the same value configured in Cloudflare Pages)
+
+Recommended rollout for first enablement:
+
+1. Deploy Pages with the new API routes and queue producer binding.
+2. Deploy the orchestrator worker and confirm queue consumption is healthy.
+3. Set `DM_AUTOPILOT_ENABLED=true` in Pages.
+
 Database migrations run automatically during every build (before the SvelteKit build step). The migration runner is idempotent — already-applied migrations are skipped. If a migration fails, the build will fail and the deploy will be blocked.
 
 ## Troubleshooting

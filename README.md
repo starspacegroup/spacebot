@@ -345,6 +345,13 @@ SpaceBot captures and logs all Discord events:
 
 6. **Deploy** Future pushes to `main` will auto-deploy.
 
+   AI queue orchestration also auto-deploys via GitHub Actions in `.github/workflows/deploy-orchestrator-worker.yml`.
+   Configure these repository secrets so worker deploys can run:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+   - `ORCHESTRATOR_SPACEBOT_API_BASE`
+   - `AI_AUTOPILOT_INTERNAL_KEY`
+
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
 ## 📁 Project Structure

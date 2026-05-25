@@ -1,0 +1,35 @@
+name: Deploy AI Orchestrator Worker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ai-orchestrator-worker-prod
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Cloudflare Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config orchestrator-worker/wrangler.toml
+          secrets: |
+            SPACEBOT_API_BASE
+            AI_AUTOPILOT_INTERNAL_KEY
+        env:
+          SPACEBOT_API_BASE: ${{ secrets.ORCHESTRATOR_SPACEBOT_API_BASE }}
+          AI_AUTOPILOT_INTERNAL_KEY: ${{ secrets.AI_AUTOPILOT_INTERNAL_KEY }}
