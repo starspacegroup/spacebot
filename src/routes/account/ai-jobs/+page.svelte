@@ -54,6 +54,11 @@
     if (value.length <= len) return value;
     return `${value.slice(0, len - 1)}...`;
   }
+
+  function submitClosestForm(event) {
+    const form = event.currentTarget?.closest("form");
+    form?.requestSubmit();
+  }
 </script>
 
 <svelte:head>
@@ -104,6 +109,7 @@
     <input type="hidden" name="offset" value="0" />
     <button type="submit">Apply</button>
   </form>
+  <p class="filters-scope">Status, search, and pagination controls apply to AI autopilot jobs below.</p>
 
   <p class="meta">
     Showing {pagination.returned} job{pagination.returned === 1 ? '' : 's'}
@@ -116,7 +122,7 @@
     .
   </p>
 
-  {#if data.runnerRecentJobs?.length}
+  {#if filters.runnerJobType || data.runnerRecentJobs?.length}
     <section class="runner-jobs">
       <h2>Runner Jobs</h2>
       <div class="runner-jobs-toolbar">
@@ -127,7 +133,7 @@
           {#if filters.q}<input type="hidden" name="q" value={filters.q} />{/if}
           <label>
             Type
-            <select name="runnerJobType" onchange="this.form.submit()">
+            <select name="runnerJobType" on:change={submitClosestForm}>
               <option value="" selected={!filters.runnerJobType}>all</option>
               <option value="screenshot_capture" selected={filters.runnerJobType === 'screenshot_capture'}>screenshot</option>
               <option value="shell_command" selected={filters.runnerJobType === 'shell_command'}>shell</option>
@@ -137,35 +143,42 @@
             </select>
           </label>
         </form>
+        {#if filters.runnerJobType}
+          <a class="clear-filter" href={queryHref({ runnerJobType: '', offset: 0 })}>Clear type filter</a>
+        {/if}
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Attempts</th>
-              <th>Runner</th>
-              <th>Updated</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.runnerRecentJobs as job}
+      {#if data.runnerRecentJobs?.length}
+        <div class="table-wrap">
+          <table>
+            <thead>
               <tr>
-                <td class="mono">#{job.id}</td>
-                <td>{job.jobType}</td>
-                <td><span class={`badge ${statusClass(job.status)}`}>{job.status}</span></td>
-                <td>{job.attemptCount}/{job.maxAttempts}</td>
-                <td>{job.claimedByInstanceName || job.targetInstanceName || '-'}</td>
-                <td>{formatDate(job.updatedAt)}</td>
-                <td title={job.terminalError || job.command || job.label}>{truncate(job.terminalError || job.label || job.command || '', 100) || '-'}</td>
+                <th>ID</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Runner</th>
+                <th>Updated</th>
+                <th>Details</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {#each data.runnerRecentJobs as job}
+                <tr>
+                  <td class="mono">#{job.id}</td>
+                  <td>{job.jobType}</td>
+                  <td><span class={`badge ${statusClass(job.status)}`}>{job.status}</span></td>
+                  <td>{job.attemptCount}/{job.maxAttempts}</td>
+                  <td>{job.claimedByInstanceName || job.targetInstanceName || '-'}</td>
+                  <td>{formatDate(job.updatedAt)}</td>
+                  <td title={job.terminalError || job.command || job.label}>{truncate(job.terminalError || job.label || job.command || '', 100) || '-'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <p class="muted">No runner jobs match the selected type.</p>
+      {/if}
     </section>
   {/if}
 
@@ -253,6 +266,12 @@
     border-radius: 0.5rem;
   }
 
+  .filters-scope {
+    margin: 0.4rem 0 0;
+    opacity: 0.7;
+    font-size: 0.8rem;
+  }
+
   .filters label {
     display: grid;
     gap: 0.35rem;
@@ -291,6 +310,10 @@
 
   .runner-jobs-toolbar {
     margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
   }
 
   .runner-type-filter {
@@ -308,6 +331,16 @@
 
   .runner-type-filter select {
     min-height: 1.9rem;
+  }
+
+  .clear-filter {
+    font-size: 0.82rem;
+    text-decoration: none;
+    color: var(--color-primary, #0d6efd);
+  }
+
+  .clear-filter:hover {
+    text-decoration: underline;
   }
 
   .empty {

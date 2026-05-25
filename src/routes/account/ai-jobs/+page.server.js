@@ -20,9 +20,11 @@ export async function load({ cookies, platform, url }) {
   const q = (url.searchParams.get("q") || "").trim();
 
   const jobs = await listAIJobsForUser(db, userId, { limit, offset, status });
-  const runnerJobs = await getRunnerJobs(db, userId, null, { limit: 100 });
+  const runnerJobs = await getRunnerJobs(db, userId, null, {
+    limit: 50,
+    ...(runnerJobType ? { jobType: runnerJobType } : {}),
+  });
   const runnerRecentJobs = runnerJobs
-    .filter((job) => !runnerJobType || job.job_type === runnerJobType)
     .slice(0, 50)
     .map((job) => ({
       id: job.id,

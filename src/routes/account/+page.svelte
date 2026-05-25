@@ -6,6 +6,9 @@
 	import { untrack } from 'svelte';
 
 	const RUNNER_UI_PREFS_STORAGE_KEY = 'spacebot.account.runnerUi.showRevoked';
+	const RUNNER_DEFAULT_MAX_ATTEMPTS = 5;
+	const RUNNER_MIN_MAX_ATTEMPTS = 1;
+	const RUNNER_MAX_MAX_ATTEMPTS = 20;
 	
 	let { data } = $props();
 	
@@ -13,6 +16,12 @@
 	let toastSuccess = $state(true);
 	let showToast = $state(false);
 	let portalLoading = $state(null); // guildId of server currently loading portal
+
+	function normalizeRunnerMaxAttempts(value) {
+		const raw = Number(value);
+		if (!Number.isFinite(raw)) return RUNNER_DEFAULT_MAX_ATTEMPTS;
+		return Math.max(RUNNER_MIN_MAX_ATTEMPTS, Math.min(RUNNER_MAX_MAX_ATTEMPTS, Math.round(raw)));
+	}
 	
 	// Active section for navigation
 	let activeSection = $state('profile');
@@ -21,7 +30,6 @@
 	// Runner state
 	// -------------------------------------------------------------------------
 	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
-	let runnerJobs = $state(untrack(() => data.runnerJobs ?? []));
 	let runnerInstances = $state(untrack(() => data.runnerInstances ?? []));
 	const RUNNER_REFRESH_INTERVAL_MS = 15_000;
 
@@ -33,7 +41,7 @@
 	let newRawTokenCopied = $state(false);
 	let showRevokedRunners = $state(untrack(() => Boolean(data?.runnerUiPrefs?.showRevoked)));
 	let preferLocalRunnerForDM = $state(untrack(() => Boolean(data?.runnerUiPrefs?.preferLocalRunnerForDM)));
-	let defaultMaxAttempts = $state(untrack(() => Number(data?.runnerUiPrefs?.defaultMaxAttempts ?? 5)));
+	let defaultMaxAttempts = $state(untrack(() => normalizeRunnerMaxAttempts(data?.runnerUiPrefs?.defaultMaxAttempts)));
 	let runnerPrefsInitialized = $state(false);
 	let runnerPrefsSaveInFlight = false;
 	let lastSavedRunnerPrefs = null;
@@ -60,7 +68,6 @@
 		if (!listRes.ok) return;
 		const listBody = await listRes.json();
 		runnerTokens = listBody.tokens || runnerTokens;
-		runnerJobs = listBody.jobs || runnerJobs;
 		runnerInstances = listBody.instances || runnerInstances;
 	}
 
@@ -95,6 +102,7 @@
 		runnerPrefsSaveInFlight = true;
 		lastSavedRunnerPrefs = { ...nextPrefs };
 		runnerPrefsSaveStatus = 'saving';
+		const normalizedMaxAttempts = normalizeRunnerMaxAttempts(nextPrefs?.defaultMaxAttempts);
 
 		fetch('/api/account/preferences', {
 			method: 'PATCH',
@@ -103,7 +111,7 @@
 				runnerUi: {
 					showRevoked: Boolean(nextPrefs?.showRevoked),
 					preferLocalRunnerForDM: Boolean(nextPrefs?.preferLocalRunnerForDM),
-					defaultMaxAttempts: Number(nextPrefs?.defaultMaxAttempts ?? 5),
+					defaultMaxAttempts: normalizedMaxAttempts,
 				},
 			}),
 		})
@@ -143,7 +151,7 @@
 		const nextPrefs = {
 			showRevoked: showRevokedRunners,
 			preferLocalRunnerForDM,
-			defaultMaxAttempts: Number(defaultMaxAttempts),
+			defaultMaxAttempts: normalizeRunnerMaxAttempts(defaultMaxAttempts),
 		};
 
 		if (
@@ -224,7 +232,6 @@
 			}
 			runnerTokens = runnerTokens.filter((t) => t.id !== id);
 			runnerInstances = runnerInstances.filter((i) => i.runner_token_id !== id);
-			runnerJobs = runnerJobs.filter((j) => j.runner_token_id !== id);
 			if (dispatchTokenId === id) dispatchTokenId = null;
 			toastMessage = 'Runner deleted.';
 			toastSuccess = true;
@@ -240,6 +247,7 @@
 		if (!dispatchCommand.trim() || !dispatchTokenId) return;
 		dispatching = true;
 		try {
+			const maxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts);
 			const res = await fetch(`/api/account/runners/${dispatchTokenId}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -247,6 +255,7 @@
 					command: dispatchCommand.trim(),
 					working_dir: dispatchWorkDir.trim() || undefined,
 					label: dispatchLabel.trim() || undefined,
+					max_attempts: maxAttempts,
 				}),
 			});
 			const body = await res.json();
@@ -276,6 +285,10 @@
 	async function queueTypedJob(tokenId, jobType, payload = {}, label = null, targetInstanceId = undefined) {
 		dispatching = true;
 		try {
+			const oneShotJobTypes = new Set(['screenshot_capture', 'dm']);
+			const maxAttempts = oneShotJobTypes.has(jobType)
+				? 1
+				: normalizeRunnerMaxAttempts(defaultMaxAttempts);
 			const res = await fetch(`/api/account/runners/${tokenId}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -284,6 +297,7 @@
 					payload_json: payload,
 					label,
 					target_instance_id: targetInstanceId,
+					max_attempts: maxAttempts,
 				}),
 			});
 			const body = await res.json();
@@ -1265,6 +1279,7 @@
 						min="1"
 						max="20"
 						bind:value={defaultMaxAttempts}
+						onblur={() => { defaultMaxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts); }}
 						style="width: 5rem; text-align: center;"
 					/>
 				</div>

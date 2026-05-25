@@ -1,9 +1,8 @@
 import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
 import { getUser } from "$lib/db/users.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import { getBillingHistory } from "$lib/db/billing-history.js";
-import { getRunnerTokens, getRunnerJobs, getRunnerInstances, getRunnerEvents } from "$lib/db/local-runners.js";
+import { getRunnerTokens, getRunnerInstances, getRunnerEvents } from "$lib/db/local-runners.js";
 import { listAIJobsForUser } from "$lib/db/ai-orchestration.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -97,7 +96,6 @@ export async function load({ cookies, platform, parent }) {
     serverPlans,
     planTiers: PLAN_TIERS,
     runnerTokens: db ? await getRunnerTokens(db, userId) : [],
-    runnerJobs: db ? await getRunnerJobs(db, userId, null, 25) : [],
     runnerInstances: db ? await getRunnerInstances(db, userId, { limit: 100 }) : [],
     runnerEvents: db ? await getRunnerEvents(db, userId, { limit: 50 }) : [],
     aiJobSummary,
