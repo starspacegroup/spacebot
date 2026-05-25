@@ -190,6 +190,32 @@ export async function listAIJobsForUser(db, userId, options = {}) {
   return (result.results || []).map(normalizeJob);
 }
 
+export async function listAIJobsForGuild(db, guildId, options = {}) {
+  if (!db || !guildId) return [];
+
+  const limit = clampInt(options.limit, 25, 1, 500);
+  const status = typeof options.status === "string" && options.status.trim()
+    ? options.status.trim()
+    : null;
+
+  const statusSql = status ? "AND status = ?" : "";
+  const binds = status ? [guildId, status, limit] : [guildId, limit];
+
+  const result = await db
+    .prepare(
+      `SELECT *
+       FROM ai_jobs
+       WHERE guild_id = ?
+         ${statusSql}
+       ORDER BY created_at DESC
+       LIMIT ?`
+    )
+    .bind(...binds)
+    .all();
+
+  return (result.results || []).map(normalizeJob);
+}
+
 export async function claimAIJobForExecution(db, jobId) {
   if (!db || !jobId) return { success: false, error: "Invalid parameters" };
 

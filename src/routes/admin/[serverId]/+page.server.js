@@ -14,6 +14,7 @@ import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { getAutomations } from "$lib/db/automations.js";
 import { getGuildIntegrations } from "$lib/db/integrations.js";
 import { getServerPlan } from "$lib/db/server-plans.js";
+import { listAIJobsForGuild } from "$lib/db/ai-orchestration.js";
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -163,6 +164,15 @@ export async function load({ cookies, platform, parent, params, url }) {
   let guildMetadata = null;
   let featureCounts = { automations: { active: 0, inactive: 0, total: 0 }, commands: { active: 0, inactive: 0, total: 0 }, integrations: { active: 0, inactive: 0, total: 0 } };
   let planLimits = { max_automations: 9, max_commands: 3 };
+  let aiAutopilotSummary = {
+    total: 0,
+    pending: 0,
+    running: 0,
+    completed: 0,
+    failed_terminal: 0,
+    canceled: 0,
+    latest: null,
+  };
 
   if (!forceHotload && hasStaleCache && cachedEntry?.data) {
     logStats = cachedEntry.data.logStats;
@@ -175,6 +185,7 @@ export async function load({ cookies, platform, parent, params, url }) {
     guildMetadata = cachedEntry.data.guildMetadata;
     featureCounts = cachedEntry.data.featureCounts;
     planLimits = cachedEntry.data.planLimits;
+    aiAutopilotSummary = cachedEntry.data.aiAutopilotSummary || aiAutopilotSummary;
     loadMeta = {
       source: "cache",
       needsHotload: false,
@@ -235,6 +246,26 @@ export async function load({ cookies, platform, parent, params, url }) {
       activityChartData = guildStats?.timeSeries?.daily || [];
       builtInCmds = builtIn || [];
       guildMetadata = metadata || null;
+      const aiJobs = await listAIJobsForGuild(db, serverId, { limit: 100 });
+      aiAutopilotSummary = {
+        total: aiJobs.length,
+        pending: aiJobs.filter((job) => job.status === "pending").length,
+        running: aiJobs.filter((job) => job.status === "running").length,
+        completed: aiJobs.filter((job) => job.status === "completed").length,
+        failed_terminal: aiJobs.filter((job) => job.status === "failed_terminal").length,
+        canceled: aiJobs.filter((job) => job.status === "canceled").length,
+        latest: aiJobs[0]
+          ? {
+              id: aiJobs[0].id,
+              correlationId: aiJobs[0].correlation_id,
+              status: aiJobs[0].status,
+              requestText: aiJobs[0].request_text,
+              attemptCount: aiJobs[0].attempt_count,
+              maxAttempts: aiJobs[0].max_attempts,
+              updatedAt: aiJobs[0].updated_at,
+            }
+          : null,
+      };
       basicStats = {
         members: memberStats?.member_count || 0,
         humanMembers: memberStats?.human_count || 0,
@@ -255,6 +286,7 @@ export async function load({ cookies, platform, parent, params, url }) {
           guildMetadata,
           featureCounts,
           planLimits,
+          aiAutopilotSummary,
         },
       });
 
@@ -338,6 +370,7 @@ export async function load({ cookies, platform, parent, params, url }) {
     activityChartData,
     featureCounts,
     planLimits,
+    aiAutopilotSummary,
     loadMeta,
   };
 }

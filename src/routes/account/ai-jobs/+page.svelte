@@ -1,6 +1,33 @@
 <script>
   let { data } = $props();
 
+  const filters = $derived(data.filters || { limit: 50, offset: 0, status: null, q: "" });
+  const pagination = $derived(
+    data.pagination || {
+      limit: filters.limit || 50,
+      offset: filters.offset || 0,
+      hasPrev: false,
+      hasNext: false,
+      returned: 0,
+      loaded: 0,
+    }
+  );
+
+  function queryHref(next = {}) {
+    const params = new URLSearchParams();
+    const limit = Number(next.limit ?? filters.limit ?? 50) || 50;
+    const offset = Math.max(0, Number(next.offset ?? filters.offset ?? 0) || 0);
+    const status = String(next.status ?? filters.status ?? "").trim();
+    const q = String(next.q ?? filters.q ?? "").trim();
+
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    if (status) params.set("status", status);
+    if (q) params.set("q", q);
+
+    return `?${params.toString()}`;
+  }
+
   function statusClass(status) {
     if (status === "completed") return "badge-success";
     if (status === "running") return "badge-warning";
@@ -31,9 +58,59 @@
 
 <div class="container">
   <header class="header">
-    <h1>AI Jobs</h1>
-    <p class="muted">Autopilot timeline and terminal outcomes for your async requests.</p>
+    <div>
+      <h1>AI Jobs</h1>
+      <p class="muted">Autopilot timeline and terminal outcomes for your async requests.</p>
+    </div>
+    <a class="back-link" href="/account">Back to account</a>
   </header>
+
+  <form class="filters" method="GET" action="/account/ai-jobs">
+    <label>
+      Status
+      <select name="status">
+        <option value="" selected={!filters.status}>all</option>
+        <option value="pending" selected={filters.status === 'pending'}>pending</option>
+        <option value="running" selected={filters.status === 'running'}>running</option>
+        <option value="completed" selected={filters.status === 'completed'}>completed</option>
+        <option value="failed_terminal" selected={filters.status === 'failed_terminal'}>failed_terminal</option>
+        <option value="canceled" selected={filters.status === 'canceled'}>canceled</option>
+      </select>
+    </label>
+
+    <label class="search">
+      Search
+      <input
+        type="search"
+        name="q"
+        placeholder="correlation, request, error"
+        value={filters.q || ''}
+      />
+    </label>
+
+    <label>
+      Per page
+      <select name="limit">
+        <option value="25" selected={Number(filters.limit) === 25}>25</option>
+        <option value="50" selected={Number(filters.limit) === 50}>50</option>
+        <option value="100" selected={Number(filters.limit) === 100}>100</option>
+      </select>
+    </label>
+
+    <input type="hidden" name="offset" value="0" />
+    <button type="submit">Apply</button>
+  </form>
+
+  <p class="meta">
+    Showing {pagination.returned} job{pagination.returned === 1 ? '' : 's'}
+    {#if filters.q}
+      matching "{filters.q}"
+    {/if}
+    {#if filters.status}
+      in status "{filters.status}"
+    {/if}
+    .
+  </p>
 
   {#if !data.jobs?.length}
     <div class="empty">No AI jobs yet.</div>
@@ -66,6 +143,20 @@
         </tbody>
       </table>
     </div>
+
+    <div class="pager">
+      {#if pagination.hasPrev}
+        <a class="pager-btn" href={queryHref({ offset: Math.max(0, Number(filters.offset || 0) - Number(filters.limit || 50)) })}>Previous</a>
+      {:else}
+        <span class="pager-btn disabled">Previous</span>
+      {/if}
+
+      {#if pagination.hasNext}
+        <a class="pager-btn" href={queryHref({ offset: Number(filters.offset || 0) + Number(filters.limit || 50) })}>Next</a>
+      {:else}
+        <span class="pager-btn disabled">Next</span>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -79,6 +170,52 @@
   .header h1 {
     margin: 0;
     font-size: 1.6rem;
+  }
+
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .back-link {
+    text-decoration: none;
+    color: var(--color-primary, #0d6efd);
+    font-size: 0.9rem;
+  }
+
+  .filters {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+    padding: 0.9rem;
+    border: 1px solid var(--border-color, #333);
+    border-radius: 0.5rem;
+  }
+
+  .filters label {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+  }
+
+  .filters input,
+  .filters select,
+  .filters button {
+    min-height: 2rem;
+  }
+
+  .filters button {
+    cursor: pointer;
+  }
+
+  .meta {
+    margin-top: 0.6rem;
+    opacity: 0.75;
+    font-size: 0.9rem;
   }
 
   .muted {
@@ -96,6 +233,26 @@
   .table-wrap {
     margin-top: 1rem;
     overflow-x: auto;
+  }
+
+  .pager {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+
+  .pager-btn {
+    text-decoration: none;
+    border: 1px solid var(--border-color, #333);
+    border-radius: 0.35rem;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.85rem;
+  }
+
+  .pager-btn.disabled {
+    opacity: 0.5;
+    pointer-events: none;
   }
 
   table {

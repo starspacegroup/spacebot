@@ -15,11 +15,27 @@ export async function load({ cookies, platform, url }) {
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || "50") || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset") || "0") || 0);
   const status = url.searchParams.get("status") || null;
+  const q = (url.searchParams.get("q") || "").trim();
 
   const jobs = await listAIJobsForUser(db, userId, { limit, offset, status });
+  const filteredJobs = q
+    ? jobs.filter((job) => {
+        const haystack = [
+          job.correlation_id,
+          job.request_text,
+          job.last_error,
+          job.status,
+          job.source,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(q.toLowerCase());
+      })
+    : jobs;
 
   return {
-    jobs: jobs.map((job) => ({
+    jobs: filteredJobs.map((job) => ({
       id: job.id,
       correlationId: job.correlation_id,
       source: job.source,
@@ -38,6 +54,15 @@ export async function load({ cookies, platform, url }) {
       limit,
       offset,
       status,
+      q,
+    },
+    pagination: {
+      limit,
+      offset,
+      hasPrev: offset > 0,
+      hasNext: jobs.length >= limit,
+      returned: filteredJobs.length,
+      loaded: jobs.length,
     },
   };
 }

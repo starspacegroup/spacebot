@@ -4,6 +4,7 @@ import { getUser } from "$lib/db/users.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import { getBillingHistory } from "$lib/db/billing-history.js";
 import { getRunnerTokens, getRunnerJobs, getRunnerInstances, getRunnerEvents } from "$lib/db/local-runners.js";
+import { listAIJobsForUser } from "$lib/db/ai-orchestration.js";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent }) {
@@ -24,6 +25,41 @@ export async function load({ cookies, platform, parent }) {
 
   // Fetch plans and billing for all servers the user manages
   const serverPlans = [];
+  const aiJobs = db ? await listAIJobsForUser(db, userId, { limit: 100 }) : [];
+
+  const aiJobSummary = (() => {
+    const summary = {
+      total: aiJobs.length,
+      pending: 0,
+      running: 0,
+      completed: 0,
+      failed_terminal: 0,
+      canceled: 0,
+      latest: null,
+    };
+
+    for (const job of aiJobs) {
+      if (Object.prototype.hasOwnProperty.call(summary, job.status)) {
+        summary[job.status] += 1;
+      }
+    }
+
+    if (aiJobs.length > 0) {
+      const latest = aiJobs[0];
+      summary.latest = {
+        id: latest.id,
+        correlationId: latest.correlation_id,
+        status: latest.status,
+        requestText: latest.request_text,
+        attemptCount: latest.attempt_count,
+        maxAttempts: latest.max_attempts,
+        updatedAt: latest.updated_at,
+      };
+    }
+
+    return summary;
+  })();
+
   if (db && adminGuilds.length > 0) {
     const planPromises = adminGuilds
       .filter((g) => g.botIsInServer !== false)
@@ -64,5 +100,6 @@ export async function load({ cookies, platform, parent }) {
     runnerJobs: db ? await getRunnerJobs(db, userId, null, 25) : [],
     runnerInstances: db ? await getRunnerInstances(db, userId, { limit: 100 }) : [],
     runnerEvents: db ? await getRunnerEvents(db, userId, { limit: 50 }) : [],
+    aiJobSummary,
   };
 }

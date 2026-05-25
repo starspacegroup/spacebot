@@ -66,6 +66,32 @@
 	const memberJoins = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[0]?.value || 0), 0));
 	const memberLeaves = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[1]?.value || 0), 0));
 	const peakVoiceUsers = $derived(Math.max(...voiceData.map(d => d.value), 0));
+	const aiAutopilotSummary = $derived(data.aiAutopilotSummary || {
+		total: 0,
+		pending: 0,
+		running: 0,
+		completed: 0,
+		failed_terminal: 0,
+		canceled: 0,
+		latest: null,
+	});
+
+	function formatAutopilotStatus(status) {
+		switch (status) {
+			case 'pending': return { label: 'Queued', cls: 'badge-neutral' };
+			case 'running': return { label: 'Running', cls: 'badge-info' };
+			case 'completed': return { label: 'Completed', cls: 'badge-success' };
+			case 'failed_terminal': return { label: 'Failed', cls: 'badge-danger' };
+			case 'canceled': return { label: 'Canceled', cls: 'badge-warning' };
+			default: return { label: status || 'Unknown', cls: 'badge-neutral' };
+		}
+	}
+
+	function truncateText(value, max = 140) {
+		if (!value || typeof value !== 'string') return '';
+		if (value.length <= max) return value;
+		return `${value.slice(0, max - 1)}...`;
+	}
 </script>
 
 <svelte:head>
@@ -240,6 +266,55 @@
 			</section>
 
 		{#if data.botInGuild}
+			<section class="ai-autopilot-section">
+				<div class="ai-autopilot-header">
+					<h2>
+						<span class="section-icon">🤖</span>
+						AI Autopilot
+					</h2>
+					<a href="/account/ai-jobs" class="btn btn-secondary btn-sm">Open All AI Jobs →</a>
+				</div>
+
+				<div class="ai-autopilot-grid">
+					<div class="ai-stat-card">
+						<span class="ai-stat-value">{aiAutopilotSummary.total}</span>
+						<span class="ai-stat-label">Total</span>
+					</div>
+					<div class="ai-stat-card">
+						<span class="ai-stat-value">{aiAutopilotSummary.pending + aiAutopilotSummary.running}</span>
+						<span class="ai-stat-label">Active</span>
+					</div>
+					<div class="ai-stat-card success">
+						<span class="ai-stat-value">{aiAutopilotSummary.completed}</span>
+						<span class="ai-stat-label">Completed</span>
+					</div>
+					<div class="ai-stat-card danger">
+						<span class="ai-stat-value">{aiAutopilotSummary.failed_terminal}</span>
+						<span class="ai-stat-label">Failed</span>
+					</div>
+				</div>
+
+				{#if aiAutopilotSummary.latest}
+					{@const latestStatus = formatAutopilotStatus(aiAutopilotSummary.latest.status)}
+					<div class="ai-latest-job">
+						<div class="ai-latest-main">
+							<div class="ai-latest-top">
+								<strong>Latest Job</strong>
+								<span class="status-badge {latestStatus.cls}">{latestStatus.label}</span>
+							</div>
+							<div class="ai-latest-meta mono">{aiAutopilotSummary.latest.correlationId}</div>
+							<div class="ai-latest-meta">{truncateText(aiAutopilotSummary.latest.requestText, 180)}</div>
+							<div class="ai-latest-meta">Attempts {aiAutopilotSummary.latest.attemptCount}/{aiAutopilotSummary.latest.maxAttempts} · Updated {new Date(aiAutopilotSummary.latest.updatedAt).toLocaleString()}</div>
+						</div>
+						<div class="ai-latest-actions">
+							<a class="btn btn-outline btn-sm" href={`/api/ai/jobs/${aiAutopilotSummary.latest.id}`} target="_blank" rel="noreferrer">Timeline JSON</a>
+						</div>
+					</div>
+				{:else}
+					<p class="ai-empty">No AI jobs recorded for this server yet.</p>
+				{/if}
+			</section>
+
 			<!-- Statistics Overview -->
 			<section class="stats-section">
 				<div class="stats-header">
@@ -673,6 +748,108 @@
 
 	
 	/* Statistics Section */
+	.ai-autopilot-section {
+		margin-top: 1.5rem;
+	}
+
+	@media (min-width: 640px) {
+		.ai-autopilot-section {
+			margin-top: 2rem;
+		}
+	}
+
+	.ai-autopilot-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.ai-autopilot-header h2 {
+		font-size: 1.1rem;
+		font-weight: 600;
+		margin: 0;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--color-text);
+	}
+
+	.ai-autopilot-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+	}
+
+	@media (min-width: 960px) {
+		.ai-autopilot-grid {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.ai-stat-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		padding: 0.65rem 0.75rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+	}
+
+	.ai-stat-card.success {
+		border-color: rgba(34, 197, 94, 0.35);
+	}
+
+	.ai-stat-card.danger {
+		border-color: rgba(239, 68, 68, 0.35);
+	}
+
+	.ai-stat-value {
+		font-size: 1.15rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+
+	.ai-stat-label {
+		font-size: 0.74rem;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
+	}
+
+	.ai-latest-job {
+		margin-top: 0.75rem;
+		padding: 0.75rem;
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.ai-latest-top {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.ai-latest-meta {
+		font-size: 0.78rem;
+		color: var(--color-text-muted);
+		line-height: 1.35;
+		margin-top: 0.2rem;
+	}
+
+	.ai-empty {
+		margin: 0.75rem 0 0;
+		font-size: 0.82rem;
+		color: var(--color-text-muted);
+	}
+
 	.stats-section {
 		margin-top: 1.5rem;
 	}

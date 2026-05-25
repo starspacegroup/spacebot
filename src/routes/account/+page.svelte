@@ -420,6 +420,15 @@
 	const user = $derived(data.user);
 	const serverPlans = $derived(data.serverPlans || []);
 	const planTiers = $derived(data.planTiers);
+	const aiJobSummary = $derived(data.aiJobSummary || {
+		total: 0,
+		pending: 0,
+		running: 0,
+		completed: 0,
+		failed_terminal: 0,
+		canceled: 0,
+		latest: null,
+	});
 	
 	// Billing summary
 	const totalServers = $derived(serverPlans.length);
@@ -543,6 +552,17 @@
 			minute: '2-digit',
 		});
 	}
+
+	function formatAIJobStatus(status) {
+		switch (status) {
+			case 'pending': return { label: 'Queued', cls: 'badge-neutral' };
+			case 'running': return { label: 'Running', cls: 'badge-info' };
+			case 'completed': return { label: 'Completed', cls: 'badge-success' };
+			case 'failed_terminal': return { label: 'Failed', cls: 'badge-danger' };
+			case 'canceled': return { label: 'Canceled', cls: 'badge-warning' };
+			default: return { label: status || 'Unknown', cls: 'badge-neutral' };
+		}
+	}
 	
 	async function openBillingPortal(guildId, guildName) {
 		portalLoading = guildId;
@@ -647,6 +667,10 @@
 			<span class="nav-icon">🖥️</span>
 			Runners
 		</button>
+		<a class="section-nav-item" href="/account/ai-jobs">
+			<span class="nav-icon">🤖</span>
+			AI Jobs
+		</a>
 	</nav>
 	
 	<!-- Profile Section -->
@@ -716,6 +740,47 @@
 					<span class="stat-label">Starter</span>
 				</div>
 			</div>
+		</div>
+
+		<div class="autopilot-summary">
+			<div class="autopilot-summary-header">
+				<h3>AI Autopilot</h3>
+				<a class="btn btn-outline btn-sm" href="/account/ai-jobs">Open AI Jobs</a>
+			</div>
+			<div class="server-stats-row">
+				<div class="stat-chip">
+					<span class="stat-value">{aiJobSummary.total}</span>
+					<span class="stat-label">Total</span>
+				</div>
+				<div class="stat-chip">
+					<span class="stat-value">{aiJobSummary.pending + aiJobSummary.running}</span>
+					<span class="stat-label">Active</span>
+				</div>
+				<div class="stat-chip pro">
+					<span class="stat-value">{aiJobSummary.completed}</span>
+					<span class="stat-label">Completed</span>
+				</div>
+				<div class="stat-chip">
+					<span class="stat-value">{aiJobSummary.failed_terminal}</span>
+					<span class="stat-label">Failed</span>
+				</div>
+			</div>
+
+			{#if aiJobSummary.latest}
+				{@const latestState = formatAIJobStatus(aiJobSummary.latest.status)}
+				<div class="autopilot-latest">
+					<div class="autopilot-latest-main">
+						<div class="autopilot-latest-row">
+							<strong>Latest Job</strong>
+							<span class="status-badge {latestState.cls}">{latestState.label}</span>
+						</div>
+						<div class="autopilot-latest-meta mono">{aiJobSummary.latest.correlationId}</div>
+						<div class="autopilot-latest-meta">{aiJobSummary.latest.requestText?.slice(0, 140)}</div>
+						<div class="autopilot-latest-meta">Attempts {aiJobSummary.latest.attemptCount}/{aiJobSummary.latest.maxAttempts} · Updated {formatDateTime(aiJobSummary.latest.updatedAt)}</div>
+					</div>
+					<a class="btn btn-sm btn-outline" href={`/api/ai/jobs/${aiJobSummary.latest.id}`} target="_blank" rel="noreferrer">Timeline JSON</a>
+				</div>
+			{/if}
 		</div>
 	</section>
 	
@@ -1292,6 +1357,7 @@
 		cursor: pointer;
 		transition: all var(--transition-fast);
 		white-space: nowrap;
+		text-decoration: none;
 	}
 	
 	.section-nav-item:hover {
@@ -1440,6 +1506,52 @@
 		font-weight: 600;
 		color: var(--color-text);
 		margin: 0 0 0.75rem;
+	}
+
+	.autopilot-summary {
+		margin-top: 1.25rem;
+		padding: 1rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: var(--color-surface);
+	}
+
+	.autopilot-summary-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.autopilot-summary-header h3 {
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--color-text);
+		margin: 0;
+	}
+
+	.autopilot-latest {
+		margin-top: 0.85rem;
+		padding-top: 0.85rem;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.autopilot-latest-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.autopilot-latest-meta {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin-top: 0.25rem;
+		line-height: 1.35;
 	}
 	
 	.server-stats-row {
