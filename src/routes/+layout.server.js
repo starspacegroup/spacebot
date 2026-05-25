@@ -11,6 +11,41 @@ import {
 const GUILD_FETCH_TIMEOUT = 10000;
 
 /**
+ * Fetch and process the admin guild list for a user.
+ * Returns a sorted array of guilds with botIsInServer flags.
+ */
+async function buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies) {
+  const [allUserGuilds, botGuildIds, allBotGuilds] = await withTimeout(
+    Promise.all([
+      getUserGuilds(accessToken, cookies),
+      getBotGuildIds(botToken, cookies),
+      isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
+    ]),
+    GUILD_FETCH_TIMEOUT,
+    [[], new Set(), []]
+  );
+
+  let adminGuilds = [];
+
+  if (isSuperAdmin) {
+    adminGuilds = [...allBotGuilds];
+    const addedGuildIds = new Set(allBotGuilds.map((g) => g.id));
+    filterAdminGuilds(allUserGuilds).forEach((guild) => {
+      if (!addedGuildIds.has(guild.id)) {
+        adminGuilds.push({ ...guild, botIsInServer: botGuildIds.has(guild.id) });
+      }
+    });
+  } else {
+    adminGuilds = filterAdminGuilds(allUserGuilds)
+      .filter((guild) => botGuildIds.has(guild.id))
+      .map((guild) => ({ ...guild, botIsInServer: true }));
+  }
+
+  adminGuilds.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  return adminGuilds;
+}
+
+/**
  * Wrap a promise with a timeout to prevent hanging
  * @param {Promise<T>} promise - The promise to wrap
  * @param {number} ms - Timeout in milliseconds
@@ -124,7 +159,7 @@ export async function load({ cookies, platform, url }) {
     if (devAuthEnabled && isDevMockToken && devGuildId) {
       // In dev mode with bypass, use the DISCORD_GUILD_ID as a mock server
       log.debug("[Layout] DEV MODE - Using mock guild:", devGuildId);
-      adminGuilds = [{
+      const mockGuilds = [{
         id: devGuildId,
         name: "Dev Test Server",
         icon: null,
@@ -132,15 +167,13 @@ export async function load({ cookies, platform, url }) {
         permissions: "2147483647", // All permissions
         botIsInServer: true,
       }];
-      selectedGuildId = devGuildId;
-
       return {
         isLoggedIn: true,
         isAdmin: true,
         isSuperAdmin: true,
         user,
-        adminGuilds,
-        selectedGuildId,
+        adminGuilds: mockGuilds,
+        selectedGuildId: devGuildId,
       };
     }
 
@@ -154,177 +187,73 @@ export async function load({ cookies, platform, url }) {
       !!botToken,
     );
 
-    // Fetch user's guilds and bot guilds in parallel (with caching and timeout)
-    // Use timeout wrapper to prevent layout from hanging if Discord API is slow
-    const [allUserGuilds, botGuildIds, allBotGuilds] = await withTimeout(
-      Promise.all([
-        getUserGuilds(accessToken, cookies),
-        getBotGuildIds(botToken, cookies),
-        // Only fetch bot guild details for superadmins
-        isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
-      ]),
-      GUILD_FETCH_TIMEOUT,
-      [[], new Set(), []] // Fallback: empty arrays/set if timeout
-    );
+    // Determine selectedGuildId immediately from URL path or cookie — no API call needed
+    const pathMatch = url.pathname.match(/^\/admin\/(\d+)/);
+    const selectedFromUrl = url.searchParams.get("guild") || pathMatch?.[1] || null;
+    selectedGuildId = selectedFromUrl || lastViewedGuildId || null;
 
-    log.debug(
-      "[Layout] User guilds:",
-      allUserGuilds.length,
-      "Bot guilds:",
-      botGuildIds.size,
-    );
-
-    if (isSuperAdmin) {
-      // Superadmin sees ALL guilds where the bot is a member plus their admin guilds
-      const userAdminGuilds = filterAdminGuilds(allUserGuilds);
-
-      log.debug(
-        "[Layout] SUPERADMIN - Bot guilds:",
-        allBotGuilds.map((g) => g.name),
-      );
-      log.debug(
-        "[Layout] SUPERADMIN - User admin guilds:",
-        userAdminGuilds.map((g) => g.name),
-      );
-
-      // Start with bot guilds
-      adminGuilds = [...allBotGuilds];
-      const addedGuildIds = new Set(allBotGuilds.map((g) => g.id));
-
-      // Add user's admin guilds, marking whether bot is in them or not
-      userAdminGuilds.forEach((guild) => {
-        if (!addedGuildIds.has(guild.id)) {
-          // Guild not already added from bot guilds
-          if (botGuildIds.has(guild.id)) {
-            // Bot IS in this guild
-            adminGuilds.push({ ...guild, botIsInServer: true });
-          } else {
-            // Bot is NOT in this guild
-            adminGuilds.push({ ...guild, botIsInServer: false });
-          }
-        }
-      });
-
-      // Sort alphabetically by name for consistent ordering
-      adminGuilds.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-      log.debug(
-        "[Layout] SUPERADMIN - Final combined guilds:",
-        adminGuilds.map((g) => ({
-          name: g.name,
-          botIsInServer: g.botIsInServer,
-        })),
-      );
-    } else {
-      // Regular users: only guilds where they have admin permissions AND bot is present
-      const userAdminGuilds = filterAdminGuilds(allUserGuilds);
-      log.debug(
-        "[Layout] User admin guilds:",
-        userAdminGuilds.map((g) => g.name),
-      );
-      log.debug("[Layout] Bot guild IDs:", [...botGuildIds]);
-      // Filter to only guilds where bot is present AND mark them as botIsInServer: true
-      adminGuilds = userAdminGuilds
-        .filter((guild) => botGuildIds.has(guild.id))
-        .map((guild) => ({ ...guild, botIsInServer: true }));
-      // Sort alphabetically by name for consistent ordering
-      adminGuilds.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-      log.debug(
-        "[Layout] Intersection (admin guilds with bot):",
-        adminGuilds.map((g) => g.name),
-      );
-    }
-
-    // Get selected guild from URL params, path params, or cookie
-    // First check URL query param
-    let selectedFromUrl = url.searchParams.get("guild");
-
-    // If not in query, check if we're on a /admin/{serverId}/* route
-    if (!selectedFromUrl) {
-      const pathMatch = url.pathname.match(/^\/admin\/(\d+)/);
-      if (pathMatch) {
-        selectedFromUrl = pathMatch[1];
+    // For /admin exact: redirect immediately using the last-viewed cookie.
+    // This avoids blocking the redirect on a Discord API round-trip.
+    if (url.pathname === "/admin" && !selectedFromUrl) {
+      if (lastViewedGuildId) {
+        log.debug("[Layout] Fast redirect to last viewed guild:", lastViewedGuildId);
+        throw redirect(302, `/admin/${lastViewedGuildId}`);
       }
+      // No cookie (first-ever visit): must fetch guilds to find somewhere to land.
+      const guilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+      const firstGuild = guilds.find((g) => g.botIsInServer !== false) || guilds[0];
+      if (firstGuild) {
+        cookies.set("last_viewed_guild", firstGuild.id, {
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 365,
+        });
+        throw redirect(302, `/admin/${firstGuild.id}`);
+      }
+      return {
+        isLoggedIn: true,
+        isAdmin: isSuperAdmin || guilds.length > 0,
+        isSuperAdmin,
+        user,
+        adminGuilds: guilds,
+        selectedGuildId: null,
+      };
     }
 
-    // Check for last viewed guild in cookie
-    const lastViewedGuildId = cookies.get("last_viewed_guild");
-
-    // Filter guilds where bot is actually installed (for default selection)
-    const guildsWithBot = adminGuilds.filter((g) => g.botIsInServer !== false);
-
-    log.debug(
-      "[Layout] selectedFromUrl:",
-      selectedFromUrl,
-      "lastViewedGuildId:",
-      lastViewedGuildId,
-      "guildsWithBot:",
-      guildsWithBot.length,
-    );
-
-    // Determine selected guild: URL > cookie (if bot is in it) > first guild with bot > first guild
-    if (selectedFromUrl) {
-      selectedGuildId = selectedFromUrl;
-    } else if (
-      lastViewedGuildId && guildsWithBot.some((g) => g.id === lastViewedGuildId)
-    ) {
-      // Cookie guild is valid AND bot is in it
-      selectedGuildId = lastViewedGuildId;
-    } else if (guildsWithBot.length > 0) {
-      // Default to first guild where bot is installed
-      selectedGuildId = guildsWithBot[0].id;
-    } else if (adminGuilds.length > 0) {
-      // Fallback to first guild even if bot isn't in it
-      selectedGuildId = adminGuilds[0].id;
-    }
-
-    // If we're on the base /admin page and no guild in URL, redirect to /admin/{selectedGuildId}
-    if (!selectedFromUrl && selectedGuildId && url.pathname === "/admin") {
-      log.debug(
-        "[Layout] Redirecting to server-specific admin URL:",
-        selectedGuildId,
-      );
-      throw redirect(302, `/admin/${selectedGuildId}`);
-    }
-
-    // Store the selected guild in a cookie for next visit
+    // Store selected guild in cookie immediately (we know it from URL/cookie already)
     if (selectedGuildId) {
       cookies.set("last_viewed_guild", selectedGuildId, {
         path: "/",
         httpOnly: false,
-        secure: false, // Allow on localhost
+        secure: false,
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 365, // 1 year
+        maxAge: 60 * 60 * 24 * 365,
       });
     }
 
-    log.debug(
-      "[Layout] Final adminGuilds:",
-      adminGuilds.length,
-      "guildsWithBot:",
-      guildsWithBot.map((g) => ({
-        id: g.id,
-        name: g.name,
-        botIsInServer: g.botIsInServer,
-      })),
-      "selectedGuildId:",
+    // Kick off guild fetch but do NOT await it — return as a Promise so SvelteKit
+    // streams the page HTML to the browser immediately and resolves the guild list
+    // in the background. The server selector will appear once it resolves.
+    adminGuilds = buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+
+    return {
+      isLoggedIn: true,
+      isAdmin: true, // Logged-in user is on an admin page; individual pages guard auth
+      isSuperAdmin,
+      user,
+      adminGuilds, // Promise — streamed to client
       selectedGuildId,
-      "guilds:",
-      adminGuilds.map((g) => ({
-        id: g.id,
-        name: g.name,
-        botIsInServer: g.botIsInServer,
-      })),
-    );
+    };
   }
 
   return {
     isLoggedIn: true,
-    isAdmin: isSuperAdmin || adminGuilds.length > 0,
+    isAdmin: isSuperAdmin,
     isSuperAdmin,
     user,
-    adminGuilds,
+    adminGuilds: [],
     selectedGuildId,
   };
 }

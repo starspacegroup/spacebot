@@ -48,9 +48,26 @@
 	// Use data prop for layout data
 	const isLoggedIn = $derived(data?.isLoggedIn ?? false);
 	const user = $derived(data?.user ?? null);
-	const adminGuilds = $derived(data?.adminGuilds ?? []);
 	const selectedGuildId = $derived(data?.selectedGuildId ?? $page.url.searchParams.get('guild'));
 	const isSuperAdmin = $derived(data?.isSuperAdmin ?? false);
+
+	// adminGuilds may arrive as a streamed Promise (to avoid blocking page render on Discord API).
+	// Resolve it reactively so the server selector appears once the list is ready.
+	let adminGuilds = $state([]);
+	$effect(() => {
+		const raw = data?.adminGuilds;
+		if (!raw) {
+			adminGuilds = [];
+			return;
+		}
+		if (typeof raw?.then === 'function') {
+			// Streamed Promise — page already rendered, now fill in the guild list
+			raw.then((guilds) => { adminGuilds = guilds ?? []; }).catch(() => { adminGuilds = []; });
+		} else {
+			// Already resolved array (dev bypass, first-ever visit, or non-admin page)
+			adminGuilds = raw;
+		}
+	});
 	
 	// Only show login button after initialization to prevent flash
 	const showLoginButton = $derived(hasInitialized && !isLoggedIn);

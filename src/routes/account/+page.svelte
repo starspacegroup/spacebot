@@ -1122,9 +1122,6 @@
 								{/if}
 								{#if !t.revoked}
 									<button class="btn btn-danger btn-sm" onclick={() => revokeRunner(t.id)}>Revoke</button>
-									<button class="btn btn-outline btn-sm" onclick={() => { dispatchTokenId = t.id; dispatchCommand = ''; }}>
-										Run Script
-									</button>
 								{/if}
 							</div>
 						</div>
@@ -1144,13 +1141,6 @@
 											<span class="runner-instance-meta">provider: {providerLabel(inst)}</span>
 											<span class="runner-instance-meta">model: {modelLabel(inst)}</span>
 										</div>
-										{#if !t.revoked}
-											<div class="runner-instance-actions">
-												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'system_profile', {}, 'Collect System Profile', inst.id)} disabled={dispatching}>Profile</button>
-												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'screenshot_capture', { mode: 'all_displays' }, 'Capture Screenshot', inst.id)} disabled={dispatching}>Screenshot</button>
-												<button class="btn btn-outline btn-sm" onclick={() => queueTypedJob(t.id, 'vscode_discover_instances', {}, 'Discover VS Code', inst.id)} disabled={dispatching}>VS Code</button>
-											</div>
-										{/if}
 									</div>
 								{/each}
 							</div>
