@@ -53,6 +53,12 @@ export async function PATCH({ request, cookies, platform }) {
     hasRunnerUiUpdate = true;
   }
 
+  if (Object.prototype.hasOwnProperty.call(runnerUi, "defaultMaxAttempts")) {
+    const raw = Number(runnerUi.defaultMaxAttempts);
+    nextRunnerUi.defaultMaxAttempts = Number.isFinite(raw) ? Math.max(1, Math.min(20, Math.round(raw))) : 5;
+    hasRunnerUiUpdate = true;
+  }
+
   if (hasRunnerUiUpdate) {
     payload.runnerUi = nextRunnerUi;
   }

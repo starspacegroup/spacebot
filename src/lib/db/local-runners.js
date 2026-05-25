@@ -633,6 +633,7 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
       status = null,
       instanceId = null,
       offset = 0,
+      jobType = null,
     } = options;
 
     const boundedLimit = clampInteger(options.limit, 50, 1, 200);
@@ -670,6 +671,11 @@ export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
     if (instanceId) {
       query += ` AND (j.target_instance_id = ? OR j.claimed_by_instance_id = ?)`;
       params.push(instanceId, instanceId);
+    }
+
+    if (jobType) {
+      query += ` AND j.job_type = ?`;
+      params.push(jobType);
     }
 
     query += ` ORDER BY j.created_at DESC LIMIT ? OFFSET ?`;

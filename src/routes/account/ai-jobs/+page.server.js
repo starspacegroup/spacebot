@@ -16,13 +16,14 @@ export async function load({ cookies, platform, url }) {
   const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || "50") || 50));
   const offset = Math.max(0, Number(url.searchParams.get("offset") || "0") || 0);
   const status = url.searchParams.get("status") || null;
+  const runnerJobType = url.searchParams.get("runnerJobType") || null;
   const q = (url.searchParams.get("q") || "").trim();
 
   const jobs = await listAIJobsForUser(db, userId, { limit, offset, status });
   const runnerJobs = await getRunnerJobs(db, userId, null, { limit: 100 });
   const runnerRecentJobs = runnerJobs
-    .filter((job) => ["dm", "screenshot_capture"].includes(job.job_type))
-    .slice(0, 25)
+    .filter((job) => !runnerJobType || job.job_type === runnerJobType)
+    .slice(0, 50)
     .map((job) => ({
       id: job.id,
       jobType: job.job_type,
@@ -40,6 +41,7 @@ export async function load({ cookies, platform, url }) {
       completedAt: job.completed_at,
       updatedAt: job.updated_at,
     }));
+
   const filteredJobs = q
     ? jobs.filter((job) => {
         const haystack = [
@@ -76,6 +78,7 @@ export async function load({ cookies, platform, url }) {
       limit,
       offset,
       status,
+      runnerJobType,
       q,
     },
     pagination: {

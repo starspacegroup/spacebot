@@ -33,6 +33,7 @@
 	let newRawTokenCopied = $state(false);
 	let showRevokedRunners = $state(untrack(() => Boolean(data?.runnerUiPrefs?.showRevoked)));
 	let preferLocalRunnerForDM = $state(untrack(() => Boolean(data?.runnerUiPrefs?.preferLocalRunnerForDM)));
+	let defaultMaxAttempts = $state(untrack(() => Number(data?.runnerUiPrefs?.defaultMaxAttempts ?? 5)));
 	let runnerPrefsInitialized = $state(false);
 	let runnerPrefsSaveInFlight = false;
 	let lastSavedRunnerPrefs = null;
@@ -74,6 +75,7 @@
 		lastSavedRunnerPrefs = {
 			showRevoked: showRevokedRunners,
 			preferLocalRunnerForDM,
+			defaultMaxAttempts: Number(defaultMaxAttempts),
 		};
 
 		runnerPrefsInitialized = true;
@@ -101,6 +103,7 @@
 				runnerUi: {
 					showRevoked: Boolean(nextPrefs?.showRevoked),
 					preferLocalRunnerForDM: Boolean(nextPrefs?.preferLocalRunnerForDM),
+					defaultMaxAttempts: Number(nextPrefs?.defaultMaxAttempts ?? 5),
 				},
 			}),
 		})
@@ -122,6 +125,7 @@
 					&& (
 						runnerPrefsPendingValue.showRevoked !== lastSavedRunnerPrefs?.showRevoked
 						|| runnerPrefsPendingValue.preferLocalRunnerForDM !== lastSavedRunnerPrefs?.preferLocalRunnerForDM
+						|| runnerPrefsPendingValue.defaultMaxAttempts !== lastSavedRunnerPrefs?.defaultMaxAttempts
 					);
 				if (pendingChanged) {
 					const pending = runnerPrefsPendingValue;
@@ -139,12 +143,14 @@
 		const nextPrefs = {
 			showRevoked: showRevokedRunners,
 			preferLocalRunnerForDM,
+			defaultMaxAttempts: Number(defaultMaxAttempts),
 		};
 
 		if (
 			lastSavedRunnerPrefs
 			&& lastSavedRunnerPrefs.showRevoked === nextPrefs.showRevoked
 			&& lastSavedRunnerPrefs.preferLocalRunnerForDM === nextPrefs.preferLocalRunnerForDM
+			&& lastSavedRunnerPrefs.defaultMaxAttempts === nextPrefs.defaultMaxAttempts
 		) return;
 
 		try {
@@ -669,7 +675,7 @@
 		</button>
 		<a class="section-nav-item" href="/account/ai-jobs">
 			<span class="nav-icon">🤖</span>
-			AI Jobs
+			Jobs
 		</a>
 	</nav>
 	
@@ -1046,17 +1052,6 @@
 				<input type="checkbox" bind:checked={showRevokedRunners} />
 				<span>Show revoked runners</span>
 			</label>
-			<label class="runner-option-toggle">
-				<input type="checkbox" bind:checked={preferLocalRunnerForDM} />
-				<span>Use active local runner first for DMs</span>
-			</label>
-			{#if runnerPrefsSaveStatus === 'saving'}
-				<span class="runner-pref-status">Saving...</span>
-			{:else if runnerPrefsSaveStatus === 'saved'}
-				<span class="runner-pref-status saved">Saved</span>
-			{:else if runnerPrefsSaveStatus === 'error'}
-				<span class="runner-pref-status error">Couldn't save</span>
-			{/if}
 		</div>
 
 		<!-- Show raw token once after creation -->
@@ -1195,47 +1190,9 @@
 		{/if}
 
 		<!-- Job history -->
-		{#if runnerJobs.length > 0}
-			<div class="runner-jobs">
-				<h3>Recent Jobs</h3>
-				<div class="jobs-list">
-					{#each runnerJobs as job (job.id)}
-						{@const s = formatJobStatus(job.status)}
-						<div class="job-card">
-							<div class="job-header">
-								<span class="job-runner-name">{job.runner_name}</span>
-								<span class="status-badge {s.cls}">{s.label}</span>
-								{#if job.job_type && job.job_type !== 'shell_command'}
-									<span class="job-type-badge">{job.job_type}</span>
-								{/if}
-								{#if job.exit_code !== null}
-									<code class="job-exit-code">exit {job.exit_code}</code>
-								{/if}
-								<span class="job-time">{formatDate(job.created_at)}</span>
-							</div>
-							<code class="job-command">{job.label || job.command}</code>
-							{#if job.output}
-								<pre class="job-output">{job.output.length > 2000 ? job.output.slice(-2000) + '\n…(truncated)' : job.output}</pre>
-							{/if}
-							{#if job.result_json}
-								<pre class="job-result-json">{JSON.stringify(job.result_json, null, 2)}</pre>
-							{/if}
-							{#if job.artifact_refs_json && job.artifact_refs_json.length > 0}
-								<div class="job-artifacts">
-									{#each job.artifact_refs_json as a}
-										{#if a.id}
-											<a class="btn btn-outline btn-sm" href={`/api/account/runners/artifacts/${a.id}?raw=1`} target="_blank" rel="noreferrer">
-												Open {a.artifactType || 'Artifact'} #{a.id}
-											</a>
-										{/if}
-									{/each}
-								</div>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			</div>
-		{/if}
+		<div class="runner-jobs-link">
+			<a href="/account/ai-jobs" class="btn btn-outline btn-sm">View all jobs →</a>
+		</div>
 	</section>
 
 	<!-- Settings Section -->
@@ -1281,6 +1238,45 @@
 		</div>
 	</section>
 </div>
+
+		<div class="settings-group">
+			<h3>Runner Behavior</h3>
+			<div class="setting-item">
+				<div class="setting-info">
+					<span class="setting-label">Route DMs to local runner</span>
+					<span class="setting-desc">When you DM the bot, use your active local runner first instead of the cloud pipeline.</span>
+				</div>
+				<div class="setting-control">
+					<label class="runner-option-toggle">
+						<input type="checkbox" bind:checked={preferLocalRunnerForDM} />
+						<span class="toggle-label">{preferLocalRunnerForDM ? 'On' : 'Off'}</span>
+					</label>
+				</div>
+			</div>
+			<div class="setting-item">
+				<div class="setting-info">
+					<span class="setting-label">Default max retries</span>
+					<span class="setting-desc">How many times to retry a failed runner job before giving up (1–20). Screenshot and DM jobs ignore this and always use 1.</span>
+				</div>
+				<div class="setting-control">
+					<input
+						class="input"
+						type="number"
+						min="1"
+						max="20"
+						bind:value={defaultMaxAttempts}
+						style="width: 5rem; text-align: center;"
+					/>
+				</div>
+			</div>
+			{#if runnerPrefsSaveStatus === 'saving'}
+				<p class="runner-pref-status">Saving...</p>
+			{:else if runnerPrefsSaveStatus === 'saved'}
+				<p class="runner-pref-status saved">Saved ✓</p>
+			{:else if runnerPrefsSaveStatus === 'error'}
+				<p class="runner-pref-status error">Couldn't save</p>
+			{/if}
+		</div>
 
 <style>
 	.account-page {
@@ -2322,6 +2318,7 @@
 	.runner-pref-status {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+		margin: 0.5rem 0 0;
 	}
 
 	.runner-pref-status.saved {
@@ -2508,105 +2505,10 @@
 	}
 
 	/* Job history */
-	.runner-jobs h3 {
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--color-text);
-		margin: 0 0 0.75rem;
-	}
-
-	.jobs-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.job-card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		padding: 0.75rem 1rem;
-	}
-
-	.job-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-		margin-bottom: 0.375rem;
-	}
-
-	.job-runner-name {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-	}
-
-	.job-exit-code {
-		font-family: monospace;
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-	}
-
-	.job-time {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		margin-left: auto;
-	}
-
-	.job-type-badge {
-		font-size: 0.6875rem;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		padding: 0.125rem 0.375rem;
-		border-radius: 999px;
-		border: 1px solid var(--color-border);
-		background: var(--color-surface-elevated, hsla(var(--hue), 25%, 96%, 0.2));
-		color: var(--color-text-muted);
-	}
-
-	.job-command {
-		display: block;
-		font-family: monospace;
-		font-size: 0.8125rem;
-		color: var(--color-text);
-		margin-bottom: 0.375rem;
-	}
-
-	.job-output {
-		background: var(--color-code-bg, hsla(var(--hue), 10%, 8%, 0.6));
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: 0.5rem 0.75rem;
-		font-family: monospace;
-		font-size: 0.75rem;
-		color: var(--color-text);
-		white-space: pre-wrap;
-		word-break: break-word;
-		max-height: 200px;
-		overflow-y: auto;
-		margin: 0;
-	}
-
-	.job-result-json {
-		margin-top: 0.375rem;
-		background: var(--color-surface-elevated, hsla(var(--hue), 25%, 96%, 0.2));
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		padding: 0.5rem 0.75rem;
-		font-family: monospace;
-		font-size: 0.7rem;
-		max-height: 180px;
-		overflow-y: auto;
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-
-	.job-artifacts {
-		display: flex;
-		gap: 0.375rem;
-		flex-wrap: wrap;
-		margin-top: 0.5rem;
+	.runner-jobs-link {
+		margin-top: 1.25rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--color-border);
 	}
 
 	/* Generic input used in inline forms */
