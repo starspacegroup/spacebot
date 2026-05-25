@@ -641,7 +641,7 @@
 				<span class="header-icon">👤</span>
 				My Account
 			</h1>
-			<p class="header-desc">Manage your profile, billing, and preferences</p>
+			<p class="header-desc">Manage your profile, billing, jobs, and local runner preferences.</p>
 		</div>
 	</header>
 	
@@ -673,19 +673,19 @@
 		</button>
 		<button 
 			class="section-nav-item" 
-			class:active={activeSection === 'settings'}
-			onclick={() => scrollToSection('settings')}
-		>
-			<span class="nav-icon">⚙️</span>
-			Settings
-		</button>
-		<button 
-			class="section-nav-item" 
 			class:active={activeSection === 'runners'}
 			onclick={() => scrollToSection('runners')}
 		>
 			<span class="nav-icon">🖥️</span>
 			Runners
+		</button>
+		<button 
+			class="section-nav-item" 
+			class:active={activeSection === 'settings'}
+			onclick={() => scrollToSection('settings')}
+		>
+			<span class="nav-icon">⚙️</span>
+			Settings
 		</button>
 		<a class="section-nav-item" href="/account/ai-jobs">
 			<span class="nav-icon">🤖</span>
@@ -1224,6 +1224,46 @@
 				</div>
 			</div>
 		</div>
+
+		<div class="settings-group">
+			<h3>Runner Behavior</h3>
+			<div class="setting-item">
+				<div class="setting-info">
+					<span class="setting-label">Route DMs to local runner</span>
+					<span class="setting-desc">When you DM the bot, use your active local runner first instead of the cloud pipeline.</span>
+				</div>
+				<div class="setting-control">
+					<label class="runner-option-toggle">
+						<input type="checkbox" bind:checked={preferLocalRunnerForDM} />
+						<span class="toggle-label">{preferLocalRunnerForDM ? 'On' : 'Off'}</span>
+					</label>
+				</div>
+			</div>
+			<div class="setting-item">
+				<div class="setting-info">
+					<span class="setting-label">Default max retries</span>
+					<span class="setting-desc">How many times to retry a failed runner job before giving up (1-20). Screenshot and DM jobs ignore this and always use 1.</span>
+				</div>
+				<div class="setting-control">
+					<input
+						class="input"
+						type="number"
+						min="1"
+						max="20"
+						bind:value={defaultMaxAttempts}
+						onblur={() => { defaultMaxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts); }}
+						style="width: 5rem; text-align: center;"
+					/>
+				</div>
+			</div>
+			{#if runnerPrefsSaveStatus === 'saving'}
+				<p class="runner-pref-status">Saving...</p>
+			{:else if runnerPrefsSaveStatus === 'saved'}
+				<p class="runner-pref-status saved">Saved ✓</p>
+			{:else if runnerPrefsSaveStatus === 'error'}
+				<p class="runner-pref-status error">Couldn't save</p>
+			{/if}
+		</div>
 		
 		<div class="settings-group">
 			<h3>Connected Account</h3>
@@ -1252,46 +1292,6 @@
 		</div>
 	</section>
 </div>
-
-		<div class="settings-group">
-			<h3>Runner Behavior</h3>
-			<div class="setting-item">
-				<div class="setting-info">
-					<span class="setting-label">Route DMs to local runner</span>
-					<span class="setting-desc">When you DM the bot, use your active local runner first instead of the cloud pipeline.</span>
-				</div>
-				<div class="setting-control">
-					<label class="runner-option-toggle">
-						<input type="checkbox" bind:checked={preferLocalRunnerForDM} />
-						<span class="toggle-label">{preferLocalRunnerForDM ? 'On' : 'Off'}</span>
-					</label>
-				</div>
-			</div>
-			<div class="setting-item">
-				<div class="setting-info">
-					<span class="setting-label">Default max retries</span>
-					<span class="setting-desc">How many times to retry a failed runner job before giving up (1–20). Screenshot and DM jobs ignore this and always use 1.</span>
-				</div>
-				<div class="setting-control">
-					<input
-						class="input"
-						type="number"
-						min="1"
-						max="20"
-						bind:value={defaultMaxAttempts}
-						onblur={() => { defaultMaxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts); }}
-						style="width: 5rem; text-align: center;"
-					/>
-				</div>
-			</div>
-			{#if runnerPrefsSaveStatus === 'saving'}
-				<p class="runner-pref-status">Saving...</p>
-			{:else if runnerPrefsSaveStatus === 'saved'}
-				<p class="runner-pref-status saved">Saved ✓</p>
-			{:else if runnerPrefsSaveStatus === 'error'}
-				<p class="runner-pref-status error">Couldn't save</p>
-			{/if}
-		</div>
 
 <style>
 	.account-page {
