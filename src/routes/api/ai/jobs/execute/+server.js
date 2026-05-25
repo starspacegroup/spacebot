@@ -9,6 +9,7 @@ import {
   scheduleAIJobRetry,
 } from "$lib/db/ai-orchestration.js";
 import { chooseRetryDecision } from "$lib/ai/retry-policy.js";
+import { createRunnerJob, getRunnerInstances } from "$lib/db/local-runners.js";
 
 function getEnv(platform, name) {
   return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
@@ -61,6 +62,58 @@ async function sendDiscordDm(env, userId, content) {
       throw new Error(`Failed to send DM chunk (${messageResponse.status})`);
     }
   }
+}
+
+async function dispatchToLocalRunnerFallback(db, job) {
+  const instances = await getRunnerInstances(db, job.user_id, { limit: 100 });
+  if (!instances.length) {
+    return { dispatched: false, reason: "no_runner" };
+  }
+
+  const target = instances.find((instance) => instance.is_online) || instances[0];
+  if (!target) {
+    return { dispatched: false, reason: "no_target" };
+  }
+
+  const result = await createRunnerJob(db, job.user_id, target.runner_token_id, {
+    job_type: "dm",
+    label: `Autopilot fallback DM for ${job.user_name || job.user_id}`,
+    target_instance_id: target.id,
+    payload_json: {
+      user_id: job.user_id,
+      user_name: job.user_name || null,
+      message: job.request_text,
+      history: Array.isArray(job.history_json) ? job.history_json : [],
+      response_target: {
+        type: "discord_dm",
+        user_id: job.user_id,
+        source: "autopilot_runner_fallback",
+      },
+      received_at: new Date().toISOString(),
+      autopilot: {
+        correlation_id: job.correlation_id,
+        source_job_id: job.id,
+      },
+    },
+    priority: 20,
+    max_attempts: 1,
+    timeout_seconds: 300,
+  });
+
+  if (!result.success) {
+    return { dispatched: false, reason: "dispatch_failed", error: result.error || "Failed to create runner job" };
+  }
+
+  return {
+    dispatched: true,
+    runnerJobId: result.jobId,
+    runner: {
+      id: target.id,
+      display_name: target.display_name,
+      hostname: target.hostname,
+      is_online: Boolean(target.is_online),
+    },
+  };
 }
 
 export async function POST({ request, platform }) {
@@ -159,6 +212,67 @@ export async function POST({ request, platform }) {
       providerChain: Array.isArray(latest?.provider_chain_json) ? latest.provider_chain_json : [],
       mode: getEnv(platform, "AI_RETRY_ASSESSOR_MODE") || "bounded",
     });
+
+    const shouldTryRunnerFallback = Boolean(decision.retry) && (
+      decision?.providerSwitchHint?.to === "runner" ||
+      (Array.isArray(latest?.provider_chain_json) && latest.provider_chain_json.includes("runner"))
+    );
+
+    if (shouldTryRunnerFallback) {
+      const fallback = await dispatchToLocalRunnerFallback(db, latest || job);
+      if (fallback.dispatched) {
+        await appendAIJobEvent(db, job.id, {
+          eventType: "job.runner_fallback_dispatched",
+          source: "autopilot_executor",
+          step: "runner_fallback",
+          message: "Dispatched to local runner as provider fallback",
+          metadata: {
+            runnerJobId: fallback.runnerJobId,
+            runner: fallback.runner,
+            decision,
+          },
+        });
+
+        await completeAIJob(db, job.id, {
+          runnerFallback: true,
+          runnerJobId: fallback.runnerJobId,
+          runner: fallback.runner,
+          decision,
+        });
+
+        try {
+          const runnerName = fallback.runner?.display_name || fallback.runner?.hostname || "your local runner";
+          await sendDiscordDm(
+            env,
+            job.user_id,
+            `I switched execution to ${runnerName} for reliability. Your request is queued there now. (job ${job.correlation_id}, runner job #${fallback.runnerJobId})`,
+          );
+        } catch {
+          // Best effort: fallback dispatch and completion are already persisted.
+        }
+
+        return json({
+          ok: true,
+          status: "completed",
+          jobId: job.id,
+          runnerFallback: true,
+          runnerJobId: fallback.runnerJobId,
+          decision,
+        });
+      }
+
+      await appendAIJobEvent(db, job.id, {
+        eventType: "job.runner_fallback_failed",
+        source: "autopilot_executor",
+        step: "runner_fallback",
+        message: "Runner fallback failed; continuing retry flow",
+        metadata: {
+          reason: fallback.reason,
+          error: fallback.error || null,
+          decision,
+        },
+      });
+    }
 
     if (decision.retry) {
       await scheduleAIJobRetry(db, job.id, error?.message || String(error), decision);

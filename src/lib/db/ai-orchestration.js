@@ -154,6 +154,42 @@ export async function getAIJobById(db, jobId) {
   return normalizeJob(row);
 }
 
+export async function getAIJobByCorrelationId(db, correlationId) {
+  if (!db || !correlationId) return null;
+  const row = await db
+    .prepare(`SELECT * FROM ai_jobs WHERE correlation_id = ?`)
+    .bind(correlationId)
+    .first();
+  return normalizeJob(row);
+}
+
+export async function listAIJobsForUser(db, userId, options = {}) {
+  if (!db || !userId) return [];
+
+  const limit = clampInt(options.limit, 25, 1, 200);
+  const offset = Math.max(0, Number(options.offset) || 0);
+  const status = typeof options.status === "string" && options.status.trim()
+    ? options.status.trim()
+    : null;
+
+  const statusSql = status ? "AND status = ?" : "";
+  const binds = status ? [userId, status, limit, offset] : [userId, limit, offset];
+
+  const result = await db
+    .prepare(
+      `SELECT *
+       FROM ai_jobs
+       WHERE user_id = ?
+         ${statusSql}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .bind(...binds)
+    .all();
+
+  return (result.results || []).map(normalizeJob);
+}
+
 export async function claimAIJobForExecution(db, jobId) {
   if (!db || !jobId) return { success: false, error: "Invalid parameters" };
 
