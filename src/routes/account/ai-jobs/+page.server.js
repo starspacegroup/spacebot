@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { listAIJobsForUser } from "$lib/db/ai-orchestration.js";
+import { getRunnerJobs } from "$lib/db/local-runners.js";
 
 export async function load({ cookies, platform, url }) {
   const userId = cookies.get("discord_user_id");
@@ -18,6 +19,27 @@ export async function load({ cookies, platform, url }) {
   const q = (url.searchParams.get("q") || "").trim();
 
   const jobs = await listAIJobsForUser(db, userId, { limit, offset, status });
+  const runnerJobs = await getRunnerJobs(db, userId, null, { limit: 100 });
+  const runnerRecentJobs = runnerJobs
+    .filter((job) => ["dm", "screenshot_capture"].includes(job.job_type))
+    .slice(0, 25)
+    .map((job) => ({
+      id: job.id,
+      jobType: job.job_type,
+      status: job.status,
+      label: job.label,
+      command: job.command,
+      targetInstanceName: job.target_instance_name,
+      claimedByInstanceName: job.claimed_by_instance_name,
+      attemptCount: job.attempt_count,
+      maxAttempts: job.max_attempts,
+      timeoutSeconds: job.timeout_seconds,
+      terminalError: job.terminal_error,
+      createdAt: job.created_at,
+      startedAt: job.started_at,
+      completedAt: job.completed_at,
+      updatedAt: job.updated_at,
+    }));
   const filteredJobs = q
     ? jobs.filter((job) => {
         const haystack = [
@@ -64,5 +86,6 @@ export async function load({ cookies, platform, url }) {
       returned: filteredJobs.length,
       loaded: jobs.length,
     },
+    runnerRecentJobs,
   };
 }

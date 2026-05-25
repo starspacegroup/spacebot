@@ -623,6 +623,8 @@ export async function getRunnerEvents(db, userId, options = {}) {
 export async function getRunnerJobs(db, userId, tokenId = null, limit = 50) {
   if (!db || !userId) return [];
   try {
+    await sweepTimedOutRunnerJobsForUser(db, userId);
+
     const options = typeof limit === "object" && limit !== null
       ? limit
       : { limit };
@@ -906,6 +908,45 @@ async function requeueTimedOutRunnerJobs(db, tokenId) {
          AND attempt_count >= max_attempts`
     )
     .bind(tokenId)
+    .run();
+}
+
+async function sweepTimedOutRunnerJobsForUser(db, userId) {
+  if (!db || !userId) return;
+
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'pending',
+           claimed_by_instance_id = NULL,
+           started_at = NULL,
+           next_retry_at = datetime('now', ?),
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out before completion'
+       WHERE user_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count < max_attempts`
+    )
+    .bind(`+${RETRY_BACKOFF_SECONDS} seconds`, userId)
+    .run();
+
+  await db
+    .prepare(
+      `UPDATE local_runner_jobs
+       SET status = 'failed',
+           completed_at = datetime('now'),
+           started_at = NULL,
+           updated_at = datetime('now'),
+           terminal_error = 'Execution timed out and retry budget exhausted'
+       WHERE user_id = ?
+         AND status = 'running'
+         AND started_at IS NOT NULL
+         AND datetime(started_at, '+' || timeout_seconds || ' seconds') <= datetime('now')
+         AND attempt_count >= max_attempts`
+    )
+    .bind(userId)
     .run();
 }
 

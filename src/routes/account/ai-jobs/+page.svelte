@@ -31,7 +31,9 @@
   function statusClass(status) {
     if (status === "completed") return "badge-success";
     if (status === "running") return "badge-warning";
+    if (status === "pending") return "badge-info";
     if (status === "failed_terminal") return "badge-danger";
+    if (status === "failed") return "badge-danger";
     if (status === "canceled") return "badge-neutral";
     return "badge-neutral";
   }
@@ -61,6 +63,7 @@
     <div>
       <h1>AI Jobs</h1>
       <p class="muted">Autopilot timeline and terminal outcomes for your async requests.</p>
+      <p class="scope-note">Note: this page now also shows local runner DM and screenshot jobs for easier debugging.</p>
     </div>
     <a class="back-link" href="/account">Back to account</a>
   </header>
@@ -111,6 +114,41 @@
     {/if}
     .
   </p>
+
+  {#if data.runnerRecentJobs?.length}
+    <section class="runner-jobs">
+      <h2>Local Runner Jobs</h2>
+      <p class="muted">These are local-runner tasks (including screenshot captures) and are separate from autopilot queue jobs.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Attempts</th>
+              <th>Runner</th>
+              <th>Updated</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each data.runnerRecentJobs as job}
+              <tr>
+                <td class="mono">#{job.id}</td>
+                <td>{job.jobType}</td>
+                <td><span class={`badge ${statusClass(job.status)}`}>{job.status}</span></td>
+                <td>{job.attemptCount}/{job.maxAttempts}</td>
+                <td>{job.claimedByInstanceName || job.targetInstanceName || '-'}</td>
+                <td>{formatDate(job.updatedAt)}</td>
+                <td title={job.terminalError || job.command || job.label}>{truncate(job.terminalError || job.label || job.command || '', 100) || '-'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {/if}
 
   {#if !data.jobs?.length}
     <div class="empty">No AI jobs yet.</div>
@@ -223,6 +261,21 @@
     margin-top: 0.25rem;
   }
 
+  .scope-note {
+    opacity: 0.8;
+    margin-top: 0.35rem;
+    font-size: 0.9rem;
+  }
+
+  .runner-jobs {
+    margin-top: 1.25rem;
+  }
+
+  .runner-jobs h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.1rem;
+  }
+
   .empty {
     margin-top: 1rem;
     padding: 1rem;
@@ -291,6 +344,12 @@
     color: #664d03;
     background: #fff3cd;
     border-color: #ffecb5;
+  }
+
+  .badge-info {
+    color: #084298;
+    background: #cfe2ff;
+    border-color: #b6d4fe;
   }
 
   .badge-danger {
