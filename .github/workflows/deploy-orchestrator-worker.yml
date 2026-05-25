@@ -31,7 +31,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --config orchestrator-worker/wrangler.toml
+          workingDirectory: orchestrator-worker
+          command: deploy --config wrangler.toml
           secrets: |
             SPACEBOT_API_BASE
             AI_AUTOPILOT_INTERNAL_KEY
