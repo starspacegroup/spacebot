@@ -614,6 +614,24 @@ function formatStatus(status: "running" | "stopped" | "loading" | "ready" | "err
 }
 
 type RunnerSocketState = "disconnected" | "connecting" | "connected" | "reconnecting";
+const STATUS_FRAME_PREFIX = "__SPACEBOT_STATUS__";
+
+interface RunnerStatusFrame {
+  state?: RunnerSocketState | "heartbeat";
+  ts?: number;
+}
+
+function parseRunnerStatusFrame(line: string): RunnerStatusFrame | null {
+  const idx = line.indexOf(STATUS_FRAME_PREFIX);
+  if (idx < 0) return null;
+  const raw = line.slice(idx + STATUS_FRAME_PREFIX.length).trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as RunnerStatusFrame;
+  } catch {
+    return null;
+  }
+}
 
 function parseRunnerSocketState(line: string): RunnerSocketState | null {
   const lower = line.toLowerCase();
@@ -685,6 +703,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   const stdoutCarryRef = useRef("");
   const stderrCarryRef = useRef("");
   const bootedDashboardRef = useRef(false);
+  const lastSocketHeartbeatAtRef = useRef(0);
   const [spinnerTick, setSpinnerTick] = useState(0);
 
   // Ollama state
@@ -898,6 +917,19 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     setDisconnectAlert(null);
   }, [childRunning, disconnectAlert, socketState]);
 
+  useEffect(() => {
+    if (!childRunning) return;
+    const timer = setInterval(() => {
+      if (socketState !== "connected") return;
+      const lastHeartbeat = lastSocketHeartbeatAtRef.current;
+      if (!lastHeartbeat) return;
+      if (Date.now() - lastHeartbeat > 95_000) {
+        setSocketState("reconnecting");
+      }
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [childRunning, socketState]);
+
   // Logo eye blink/wink animation. Schedules itself at randomized intervals so
   // the bot face feels alive instead of robotic. "both" = full blink, "left" /
   // "right" = wink.
@@ -1016,14 +1048,27 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     if (cleaned.length === 0) return;
 
     let nextSocketState: RunnerSocketState | null = null;
+    const visibleLines: string[] = [];
     for (const line of cleaned) {
+      const frame = parseRunnerStatusFrame(line);
+      if (frame) {
+        if (frame.state === "heartbeat" || frame.state === "connected") {
+          lastSocketHeartbeatAtRef.current = Date.now();
+        }
+        if (frame.state && frame.state !== "heartbeat") {
+          nextSocketState = frame.state;
+        }
+        continue;
+      }
       const parsed = parseRunnerSocketState(line);
       if (parsed) nextSocketState = parsed;
+      visibleLines.push(line);
     }
     if (nextSocketState) setSocketState(nextSocketState);
+    if (visibleLines.length === 0) return;
 
-    setLogs((current) => trimLogHistory([...current, ...cleaned]));
-    const lastSummary = [...cleaned].reverse().map(summarizeRunnerLine).find(Boolean);
+    setLogs((current) => trimLogHistory([...current, ...visibleLines]));
+    const lastSummary = [...visibleLines].reverse().map(summarizeRunnerLine).find(Boolean);
     if (lastSummary) setRunnerState(lastSummary);
   }
 
@@ -1042,6 +1087,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     stderrCarryRef.current = "";
     setChildRunning(false);
     setSocketState("disconnected");
+    lastSocketHeartbeatAtRef.current = 0;
     child.kill("SIGTERM");
   }
 
@@ -1056,6 +1102,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
     setRunnerState("Starting headless runner process...");
     setSocketState("connecting");
+    lastSocketHeartbeatAtRef.current = Date.now();
     const child = spawn(process.execPath, ["run", scriptPath, "--headless"], {
       cwd: process.cwd(),
       env: {
@@ -1089,6 +1136,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       childRef.current = null;
       setChildRunning(false);
       setSocketState("disconnected");
+      lastSocketHeartbeatAtRef.current = 0;
 
       if (code === 75) {
         appendLogLines(["Code update detected. Restarting runner child automatically..."]);
@@ -2988,6 +3036,7 @@ export async function startRunnerTui(options: RunnerTuiOptions) {
 
       process.off("SIGINT", handleSignalExit);
       process.off("SIGTERM", handleSignalExit);
+      process.off("SIGTSTP", handleSuspendSignal);
       resolve();
     };
 
@@ -3001,8 +3050,17 @@ export async function startRunnerTui(options: RunnerTuiOptions) {
       process.exit(0);
     };
 
+    const handleSuspendSignal = () => {
+      try {
+        process.stdout.write("\r\n[SpaceBot] Ignoring Ctrl+Z to keep runner connected. Use /quit to exit.\r\n");
+      } catch {
+        // Best effort warning.
+      }
+    };
+
     process.on("SIGINT", handleSignalExit);
     process.on("SIGTERM", handleSignalExit);
+    process.on("SIGTSTP", handleSuspendSignal);
 
     root.render(<App {...options} onExit={onExit} />);
   });

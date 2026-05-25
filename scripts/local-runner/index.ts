@@ -171,6 +171,19 @@ function err(...args: unknown[]) {
   console.error(`[${new Date().toISOString()}] ERR`, ...args);
 }
 
+const STATUS_FRAME_PREFIX = "__SPACEBOT_STATUS__";
+
+function emitStatusFrame(
+  state: "connecting" | "connected" | "reconnecting" | "disconnected" | "heartbeat",
+  details?: Record<string, unknown>,
+) {
+  try {
+    console.log(`${STATUS_FRAME_PREFIX} ${JSON.stringify({ state, ts: Date.now(), ...details })}`);
+  } catch {
+    // Never let status frame writes interrupt runner behavior.
+  }
+}
+
 let activeSocket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 let lastServerMessageAt = 0;
@@ -199,10 +212,12 @@ function startKeepalive() {
       if (!running) return;
       reconnectAttempts++;
       const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
+      emitStatusFrame("reconnecting", { reason: "watchdog-timeout", code: 0, attempt: reconnectAttempts, delayMs: delay });
       warn(`WebSocket closed (code 0). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
       setTimeout(connect, delay);
       return;
     }
+    emitStatusFrame("heartbeat");
     sendJson({ type: "pong", instance: buildHelloPayload() });
   }, Math.max(5_000, CLIENT_HEARTBEAT_INTERVAL_MS));
 }
@@ -1438,6 +1453,7 @@ async function gracefulShutdown(reason: string) {
   running = false;
   stopKeepalive();
   stopCodeWatcher();
+  emitStatusFrame("disconnected", { reason });
   log(`Shutting down (${reason})…`);
 
   const ws = activeSocket;
@@ -1474,12 +1490,14 @@ function connect() {
   if (!running) return;
 
   log(`Connecting to ${API_URL}/api/runner/ws …`);
+  emitStatusFrame("connecting", { apiUrl: API_URL });
 
   const ws = new WebSocket(WS_URL);
   activeSocket = ws;
 
   ws.onopen = () => {
     log("WebSocket connected. Waiting for jobs…");
+    emitStatusFrame("connected", { phase: "open" });
     reconnectAttempts = 0;
     lastServerMessageAt = Date.now();
     startKeepalive();
@@ -1498,6 +1516,7 @@ function connect() {
     switch (msg.type) {
       case "connected":
         log(`Authenticated — runner ready as ${msg.instanceName ?? DISPLAY_NAME}.`);
+        emitStatusFrame("connected", { phase: "authenticated", instanceName: msg.instanceName ?? DISPLAY_NAME });
         sendRunnerEvent(
           "runner.ready",
           `Runner ready on ${DISPLAY_NAME}`,
@@ -1542,6 +1561,7 @@ function connect() {
     if (!running) return;
     reconnectAttempts++;
     const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
+    emitStatusFrame("reconnecting", { code: event.code, attempt: reconnectAttempts, delayMs: delay });
     warn(`WebSocket closed (code ${event.code}). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
     setTimeout(connect, delay);
   };
@@ -1564,6 +1584,11 @@ function validateRunnerToken() {
     process.exit(1);
   }
 }
+
+process.on("SIGTSTP", () => {
+  // Keep the runner online even if Ctrl+Z is pressed in the parent terminal.
+  warn("Ignoring SIGTSTP (Ctrl+Z) to keep local runner connected.");
+});
 
 function buildInitialSystemMarkdown(): string {
   const nowIso = new Date().toISOString();
