@@ -1,7 +1,7 @@
 <script>
 	import { goto } from '$app/navigation';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
-	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
+	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
@@ -145,14 +145,12 @@
 	let showBotsGlobal = $state(false);
 	
 	// Toggle states for showing bots in different sections
-	let showBotsInActiveUsers = $state(false);
 	let showBotsInVoiceUsers = $state(false);
 	let showBotsInVideoUsers = $state(false);
 	let showBotsInScreenshareUsers = $state(false);
 	
 	// Time unit toggle for voice activity cards: 'hours', 'minutes', 'seconds'
 	let voiceTimeUnit = $state('hours');
-	let showBotsInEventTypes = $state(false);
 	let showBotsInChannels = $state(false);
 	let showBotsInCategories = $state(false);
 	let showBotsInActivityChart = $state(false);
@@ -162,19 +160,15 @@
 	
 	// Pagination state for list sections
 	const ITEMS_PER_PAGE = 5;
-	let eventTypesPage = $state(0);
 	let channelsPage = $state(0);
-	let usersPage = $state(0);
 	let boostersPage = $state(0);
 	
 	// Master toggle handler
 	function toggleAllBots(value) {
 		showBotsGlobal = value;
-		showBotsInActiveUsers = value;
 		showBotsInVoiceUsers = value;
 		showBotsInVideoUsers = value;
 		showBotsInScreenshareUsers = value;
-		showBotsInEventTypes = value;
 		showBotsInChannels = value;
 		showBotsInCategories = value;
 		showBotsInActivityChart = value;
@@ -197,18 +191,6 @@
 			   name.includes('dyno');
 	}
 	
-	// Filtered data based on toggle states
-	const allFilteredTopActors = $derived(
-		(data.statistics?.topActors || [])
-			.filter(actor => showBotsInActiveUsers || !isBot(actor))
-	);
-	
-	const filteredTopActors = $derived(
-		allFilteredTopActors.slice(usersPage * ITEMS_PER_PAGE, (usersPage + 1) * ITEMS_PER_PAGE)
-	);
-	
-	const usersTotalPages = $derived(Math.ceil(allFilteredTopActors.length / ITEMS_PER_PAGE));
-
 	function getBoostDays(premiumSince) {
 		if (!premiumSince) return 0;
 		const startedAt = parseUTCDate(premiumSince);
@@ -252,23 +234,6 @@
 			.filter(user => showBotsInScreenshareUsers || !isBot(user))
 			.slice(0, 5)
 	);
-	
-	// Filtered event types based on toggle - use non_bot_count when hiding bots
-	const allFilteredEventTypes = $derived(
-		(data.statistics?.events?.byType || [])
-			.map(et => ({
-				...et,
-				display_count: showBotsInEventTypes ? et.count : (et.non_bot_count || 0)
-			}))
-			.filter(et => et.display_count > 0)
-			.sort((a, b) => b.display_count - a.display_count)
-	);
-	
-	const filteredEventTypes = $derived(
-		allFilteredEventTypes.slice(eventTypesPage * ITEMS_PER_PAGE, (eventTypesPage + 1) * ITEMS_PER_PAGE)
-	);
-	
-	const eventTypesTotalPages = $derived(Math.ceil(allFilteredEventTypes.length / ITEMS_PER_PAGE));
 	
 	// Filtered channels based on toggle - use non_bot_count when hiding bots
 	const allFilteredChannels = $derived(
@@ -1206,67 +1171,6 @@
 		</section>
 		
 		<div class="two-column-section">
-			<!-- Top Event Types -->
-			<section class="list-section">
-				<div class="section-header-row">
-					<h2 class="section-title">
-						<span class="section-icon">🏆</span>
-						Top Event Types
-					</h2>
-					<label class="bot-toggle">
-						<input type="checkbox" bind:checked={showBotsInEventTypes} onchange={() => eventTypesPage = 0} />
-						<span class="toggle-switch"></span>
-						<span class="toggle-label">🤖 Bots</span>
-					</label>
-				</div>
-				<div class="list-container">
-					{#if filteredEventTypes?.length > 0}
-						{#each filteredEventTypes as eventType, i}
-							{@const maxCount = getMaxValue(allFilteredEventTypes, 'display_count')}
-							{@const rank = eventTypesPage * ITEMS_PER_PAGE + i + 1}
-							{@const eventMeta = getDiscordEventTypeMeta(eventType.event_type, { fallbackCategory: eventType.event_category })}
-							<div class="list-item">
-								<span class="list-rank">#{rank}</span>
-								<div class="list-info">
-									<span class="list-name">{eventMeta.icon} {eventMeta.description}</span>
-									<span class="list-category" style="color: {getCategoryColor(eventType.event_category)}">
-										{getCategoryIcon(eventType.event_category)} {eventType.event_category}
-									</span>
-								</div>
-								<div class="list-bar-container">
-									<div 
-										class="list-bar" 
-										style="width: {(eventType.display_count / maxCount) * 100}%; background-color: {getCategoryColor(eventType.event_category)}"
-									></div>
-								</div>
-								<span class="list-count">{formatNumber(eventType.display_count)}</span>
-							</div>
-						{/each}
-					{:else}
-						<div class="list-empty">No event data available</div>
-					{/if}
-				</div>
-				{#if eventTypesTotalPages > 1}
-					<div class="list-pagination">
-						<button 
-							class="pagination-btn" 
-							disabled={eventTypesPage === 0}
-							onclick={() => eventTypesPage--}
-						>
-							←
-						</button>
-						<span class="pagination-info">{eventTypesPage + 1} / {eventTypesTotalPages}</span>
-						<button 
-							class="pagination-btn" 
-							disabled={eventTypesPage >= eventTypesTotalPages - 1}
-							onclick={() => eventTypesPage++}
-						>
-							→
-						</button>
-					</div>
-				{/if}
-			</section>
-			
 			<!-- Top Channels -->
 			<section class="list-section">
 				<div class="section-header-row">
@@ -1318,77 +1222,6 @@
 							class="pagination-btn" 
 							disabled={channelsPage >= channelsTotalPages - 1}
 							onclick={() => channelsPage++}
-						>
-							→
-						</button>
-					</div>
-				{/if}
-			</section>
-		</div>
-		
-		<div class="two-column-section">
-			<!-- Top Users -->
-			<section class="list-section">
-				<div class="section-header-row">
-					<h2 class="section-title">
-						<span class="section-icon">👤</span>
-						Most Active Users
-					</h2>
-					<label class="bot-toggle">
-						<input type="checkbox" bind:checked={showBotsInActiveUsers} onchange={() => usersPage = 0} />
-						<span class="toggle-switch"></span>
-						<span class="toggle-label">🤖 Bots</span>
-					</label>
-				</div>
-				<div class="list-container">
-					{#if filteredTopActors?.length > 0}
-						{#each filteredTopActors as actor, i}
-							{@const maxCount = getMaxValue(allFilteredTopActors, 'event_count')}
-							{@const rank = usersPage * ITEMS_PER_PAGE + i + 1}
-							<div class="list-item">
-								<span class="list-rank">#{rank}</span>
-								<div class="list-info">
-									<span class="list-name">
-										{#if actor.actor_id}
-											<img
-												src={getAvatarUrl(actor.actor_id, actor.actor_avatar, actor.actor_discriminator, 20)}
-												alt="{actor.actor_name || 'User'} avatar"
-												class="inline-user-avatar"
-												onerror={(e) => { e.target.style.display = 'none'; }}
-											/>
-										{/if}
-										{actor.actor_name || 'Unknown User'}
-										{#if isBot(actor)}<span class="bot-badge">🤖</span>{/if}
-									</span>
-									<span class="list-meta">{actor.event_types} event types</span>
-								</div>
-								<div class="list-bar-container">
-									<div 
-										class="list-bar" 
-										style="width: {(actor.event_count / maxCount) * 100}%"
-									></div>
-								</div>
-								<span class="list-count">{formatNumber(actor.event_count)}</span>
-							</div>
-						{/each}
-					{:else}
-						<div class="list-empty">No user data available</div>
-					{/if}
-				</div>
-				{#if usersTotalPages > 1}
-					<div class="list-pagination">
-						<button 
-							class="pagination-btn" 
-							disabled={usersPage === 0}
-							onclick={() => usersPage--}
-						>
-							←
-						</button>
-						<span class="pagination-info">{usersPage + 1} / {usersTotalPages}</span>
-						<button 
-							class="pagination-btn" 
-							disabled={usersPage >= usersTotalPages - 1}
-							onclick={() => usersPage++}
 						>
 							→
 						</button>
