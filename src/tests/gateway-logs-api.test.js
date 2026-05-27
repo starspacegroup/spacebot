@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { handleGatewayLogsApi } from '../lib/server/gateway-logs-api.js';
 
 const CAPTURE_KEY = 'gateway_log_capture_enabled';
+const UPDATE_REQUIRED_KEY = 'gateway_update_required_version';
+const UPDATE_LAST_ATTEMPT_KEY = 'gateway_update_last_attempt';
 
 class FakeStatement {
 	constructor(db, sql) {
@@ -127,6 +129,7 @@ function createEvent({
 describe('gateway logs API', () => {
 	it('records a gateway heartbeat on bot GET requests', async () => {
 		const db = new FakeDb();
+		db.globalSettings.set(UPDATE_REQUIRED_KEY, '2026.05.27.2');
 
 		const response = await handleGatewayLogsApi(createEvent({
 			headers: { Authorization: 'Bot bot-token' },
@@ -139,6 +142,37 @@ describe('gateway logs API', () => {
 		expect(body.enabled).toBe(false);
 		expect(body.status.lastGatewaySeenAt).toBeTruthy();
 		expect(body.status.lastGatewayConnected).toBe(true);
+		expect(body.gatewayUpdate.requiredVersion).toBe('2026.05.27.2');
+		expect(body.gatewayUpdate.suggestedCommand).toBe('git pull && bun run gateway');
+	});
+
+	it('stores gateway self-update attempt records via bot PUT', async () => {
+		const db = new FakeDb();
+
+		const response = await handleGatewayLogsApi(createEvent({
+			method: 'PUT',
+			headers: {
+				Authorization: 'Bot bot-token',
+				'Content-Type': 'application/json',
+			},
+			body: {
+				type: 'gateway_update_attempt',
+				targetVersion: '2026.05.27.9',
+				gatewayVersion: '2026.05.27.1',
+				status: 'started',
+			},
+			db,
+		}));
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.success).toBe(true);
+		expect(body.attempt.targetVersion).toBe('2026.05.27.9');
+
+		const persisted = JSON.parse(db.globalSettings.get(UPDATE_LAST_ATTEMPT_KEY));
+		expect(persisted.targetVersion).toBe('2026.05.27.9');
+		expect(persisted.gatewayVersion).toBe('2026.05.27.1');
+		expect(persisted.status).toBe('started');
 	});
 
 	it('stores bot log batches and exposes status metadata to superadmins', async () => {

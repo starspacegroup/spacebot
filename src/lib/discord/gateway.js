@@ -11,6 +11,7 @@
 import "dotenv/config";
 import { loadSecrets } from "../secrets.js";
 await loadSecrets();
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -47,6 +48,9 @@ const GATEWAY_LOG_CONFIG_SYNC_MS = 5_000;
 const GATEWAY_LOG_FLUSH_MS = 1_500;
 const GATEWAY_LOG_BATCH_SIZE = 50;
 const GATEWAY_LOG_MAX_QUEUE = 500;
+const GATEWAY_VERSION = process.env.GATEWAY_RUNTIME_VERSION || "2026.05.27.1";
+const GATEWAY_SELF_UPDATE_COMMAND = process.env.GATEWAY_SELF_UPDATE_COMMAND || "git pull && bun run gateway";
+const GATEWAY_SELF_UPDATE_WORKDIR = process.env.GATEWAY_SELF_UPDATE_WORKDIR || process.cwd();
 const VOICE_SESSION_RECONCILE_COOLDOWN_MS = 60_000;
 const VOICE_SESSION_POLL_INTERVAL_MS = 60_000;
 const WORKERS_AI_MODEL_CONFIG_CACHE_MS = 0;
@@ -57,11 +61,114 @@ let gatewayLogFlushTimer = null;
 let gatewayLogConfigPoll = null;
 let gatewayLogFlushInFlight = false;
 let gatewayConsoleCaptureInstalled = false;
+let gatewayUpdateInFlight = false;
+let gatewayAttemptedVersionLocal = null;
 let lastVoiceSessionReconcileAt = 0;
 let voiceSessionReconcileInFlight = false;
 let voiceSessionPollTimer = null;
 let cachedWorkersAIModelConfig = null;
 const liveUpdateClientsByGuild = new Map();
+
+function parseVersionParts(value) {
+  if (typeof value !== "string") return [];
+  return value
+    .trim()
+    .split(/[^0-9]+/)
+    .filter(Boolean)
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part));
+}
+
+function compareVersionStrings(left, right) {
+  const leftParts = parseVersionParts(left);
+  const rightParts = parseVersionParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let i = 0; i < length; i += 1) {
+    const leftValue = leftParts[i] ?? 0;
+    const rightValue = rightParts[i] ?? 0;
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+
+  return 0;
+}
+
+async function persistGatewayUpdateAttempt(targetVersion, status = "started", errorText = null) {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) return;
+
+  try {
+    await fetch(`${API_BASE}/api/gateway/logs`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bot ${token}`,
+      },
+      body: JSON.stringify({
+        type: "gateway_update_attempt",
+        targetVersion,
+        gatewayVersion: GATEWAY_VERSION,
+        status,
+        command: GATEWAY_SELF_UPDATE_COMMAND,
+        error: errorText,
+      }),
+    });
+  } catch {
+    // Best effort only; we still keep local guards to prevent loops.
+  }
+}
+
+async function triggerGatewaySelfUpdate(targetVersion) {
+  if (!targetVersion || gatewayUpdateInFlight) return;
+
+  gatewayUpdateInFlight = true;
+  gatewayAttemptedVersionLocal = targetVersion;
+
+  await persistGatewayUpdateAttempt(targetVersion, "started", null);
+
+  try {
+    const child = spawn(GATEWAY_SELF_UPDATE_COMMAND, {
+      cwd: GATEWAY_SELF_UPDATE_WORKDIR,
+      shell: true,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+
+    log.warn(
+      `[GatewayUpdate] Frontend requires ${targetVersion}; current gateway ${GATEWAY_VERSION}. ` +
+      `Launching one-shot self-update command: ${GATEWAY_SELF_UPDATE_COMMAND}`
+    );
+
+    setTimeout(() => {
+      gracefulShutdown("SELF_UPDATE");
+    }, 500);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.error(`[GatewayUpdate] Failed to start self-update command: ${message}`);
+    await persistGatewayUpdateAttempt(targetVersion, "spawn_failed", message);
+  }
+}
+
+function maybeScheduleGatewayUpdate(gatewayUpdate) {
+  const targetVersion = typeof gatewayUpdate?.requiredVersion === "string"
+    ? gatewayUpdate.requiredVersion.trim()
+    : "";
+  if (!targetVersion) return;
+
+  if (compareVersionStrings(targetVersion, GATEWAY_VERSION) <= 0) return;
+
+  const attemptedTarget = typeof gatewayUpdate?.lastAttempt?.targetVersion === "string"
+    ? gatewayUpdate.lastAttempt.targetVersion.trim()
+    : "";
+
+  if (attemptedTarget === targetVersion || gatewayAttemptedVersionLocal === targetVersion) {
+    return;
+  }
+
+  void triggerGatewaySelfUpdate(targetVersion);
+}
 
 function getLiveUpdateSecret() {
   return process.env.INTERNAL_API_KEY || process.env.DISCORD_BOT_TOKEN || "";
@@ -346,6 +453,7 @@ async function syncGatewayLogCaptureSetting() {
 
     const result = await response.json();
     setGatewayLogCaptureEnabled(result.enabled === true);
+    maybeScheduleGatewayUpdate(result.gatewayUpdate);
   } catch {
     // Best effort only. The gateway should keep running even if log sync fails.
   }
