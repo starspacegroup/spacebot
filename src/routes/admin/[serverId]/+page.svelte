@@ -250,13 +250,25 @@
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
-					<a href="/admin/{data.serverId}/chat" class="quick-link-card">
+					<a
+						href="/admin/{data.serverId}/chat"
+						class="quick-link-card quick-link-card-coming-soon"
+						class:quick-link-card-disabled={!data.isSuperAdmin}
+						aria-disabled={!data.isSuperAdmin}
+						on:click={(event) => {
+							if (!data.isSuperAdmin) event.preventDefault();
+						}}
+					>
 						<div class="quick-link-icon"><img src="/logo.webp" alt="" class="inline-logo" /></div>
 						<div class="quick-link-info">
 							<span class="quick-link-title">AI Assistant</span>
 							<span class="quick-link-desc">Chat with SpaceBot about this server</span>
+							{#if !data.isSuperAdmin}
+								<span class="quick-link-usage">Superadmin preview only</span>
+							{/if}
 						</div>
 						<span class="quick-link-arrow">→</span>
+						<span class="coming-soon-badge">COMING SOON</span>
 					</a>
 					{#if data.hasFullAdminAccess}
 						<a href="/admin/{data.serverId}/account" class="quick-link-card">
@@ -670,6 +682,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.625rem;
+		position: relative;
 		padding: 0.625rem 0.75rem;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -683,6 +696,21 @@
 		transform: translateY(-2px);
 		box-shadow: var(--shadow-md);
 		border-color: var(--color-primary);
+	}
+
+	.quick-link-card-coming-soon {
+		overflow: hidden;
+	}
+
+	.quick-link-card-disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+	}
+
+	.quick-link-card-disabled:hover {
+		transform: none;
+		box-shadow: none;
+		border-color: var(--color-border);
 	}
 	
 	.quick-link-icon {
@@ -764,6 +792,26 @@
 	.quick-link-card:hover .quick-link-arrow {
 		transform: translateX(4px);
 		color: var(--color-primary);
+	}
+
+	.quick-link-card-disabled:hover .quick-link-arrow {
+		transform: none;
+		color: var(--color-text-muted);
+	}
+
+	.coming-soon-badge {
+		position: absolute;
+		top: 0.5rem;
+		right: 0.5rem;
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		padding: 0.15rem 0.4rem;
+		border-radius: 999px;
+		background: rgba(245, 158, 11, 0.18);
+		border: 1px solid rgba(245, 158, 11, 0.5);
+		color: #f59e0b;
+		pointer-events: none;
 	}
 	
 

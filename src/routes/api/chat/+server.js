@@ -36,6 +36,10 @@ export async function GET({ cookies, platform, url }) {
     return json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  if (!checkIsSuperAdmin(userId, platform)) {
+    return json({ error: "Access denied. Superadmin privileges required." }, { status: 403 });
+  }
+
   const botToken = getEnv("DISCORD_BOT_TOKEN", platform);
   if (!botToken) {
     return json({ error: "Bot token not configured" }, { status: 500 });
@@ -123,6 +127,10 @@ export async function POST({ request, cookies, platform }) {
     return json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  if (!checkIsSuperAdmin(userId, platform)) {
+    return json({ error: "Access denied. Superadmin privileges required." }, { status: 403 });
+  }
+
   const db = platform?.env?.DB;
   const envModel = getEnv("CLOUDFLARE_AI_MODEL", platform);
   const runtimeModelConfig = await resolveRuntimeModelConfig(db, envModel);
@@ -151,7 +159,7 @@ export async function POST({ request, cookies, platform }) {
     return json({ error: "Message is required" }, { status: 400 });
   }
 
-  const isSuperAdmin = checkIsSuperAdmin(userId, platform);
+  const isSuperAdmin = true;
 
   // Get user's managed guilds for AI context
   let managedGuilds = [];

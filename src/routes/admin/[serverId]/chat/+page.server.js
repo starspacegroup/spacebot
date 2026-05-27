@@ -18,6 +18,10 @@ export async function load({ cookies, platform, params, parent }) {
     throw redirect(302, "/login");
   }
 
+  if (!parentData.isSuperAdmin) {
+    throw redirect(302, `/admin/${params.serverId}`);
+  }
+
   const env = {
     CLOUDFLARE_ACCOUNT_ID: getEnv("CLOUDFLARE_ACCOUNT_ID", platform),
     CLOUDFLARE_AI_TOKEN: getEnv("CLOUDFLARE_AI_TOKEN", platform),
