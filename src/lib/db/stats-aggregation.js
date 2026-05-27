@@ -7,6 +7,9 @@
 import { log } from "../log.js";
 import { getTimezoneOffsetSQL } from "../timezone.js";
 
+const HOURLY_REPAIR_DAYS = 7;
+const DAILY_REPAIR_DAYS = 14;
+
 function toSqlDateTime(value = new Date()) {
   if (typeof value === "string") {
     return value.replace("T", " ").replace(/\.\d+Z$/, "").replace(/Z$/, "");
@@ -350,6 +353,9 @@ export async function buildHourlyStats(db, guildId) {
   }
 
   try {
+    // Prevent stale open rows from inflating baseline/peak concurrent metrics.
+    await closeStaleVoiceSessions(db, guildId);
+
     // First, process any new voice sessions
     await processVoiceSessions(db, guildId);
 
@@ -376,6 +382,14 @@ export async function buildHourlyStats(db, guildId) {
       startTime = earliest?.earliest || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     }
 
+    const repairWindowStart = new Date(Date.now() - HOURLY_REPAIR_DAYS * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+    const effectiveStart = !startTime || Date.parse(startTime) > Date.parse(repairWindowStart)
+      ? repairWindowStart
+      : startTime;
+
     // Get hours that need processing (completed hours only, not the current hour)
     const hoursToProcess = await db.prepare(`
       SELECT DISTINCT 
@@ -386,7 +400,7 @@ export async function buildHourlyStats(db, guildId) {
         AND created_at >= ?
         AND created_at < strftime('%Y-%m-%d %H:00:00', 'now')
       ORDER BY period_start ASC
-    `).bind(guildId, startTime).all();
+    `).bind(guildId, effectiveStart).all();
 
     if (!hoursToProcess.results?.length) {
       return { success: true, periodsProcessed: 0, eventsProcessed: 0 };
@@ -396,16 +410,6 @@ export async function buildHourlyStats(db, guildId) {
     let periodsProcessed = 0;
 
     for (const period of hoursToProcess.results) {
-      // Check if this period already exists
-      const existing = await db.prepare(`
-        SELECT id FROM aggregated_stats
-        WHERE guild_id = ? AND period_type = 'hourly' AND period_start = ?
-      `).bind(guildId, period.period_start).first();
-
-      if (existing) {
-        continue; // Skip already processed periods
-      }
-
       // Aggregate member events
       const memberStats = await db.prepare(`
         SELECT 
@@ -511,6 +515,20 @@ export async function buildHourlyStats(db, guildId) {
           message_count, message_unique_users,
           total_events, last_event_id
         ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(guild_id, period_type, period_start)
+        DO UPDATE SET
+          period_end = excluded.period_end,
+          member_joins = excluded.member_joins,
+          member_leaves = excluded.member_leaves,
+          member_net_change = excluded.member_net_change,
+          voice_total_seconds = excluded.voice_total_seconds,
+          voice_unique_users = excluded.voice_unique_users,
+          voice_peak_concurrent = excluded.voice_peak_concurrent,
+          message_count = excluded.message_count,
+          message_unique_users = excluded.message_unique_users,
+          total_events = excluded.total_events,
+          last_event_id = excluded.last_event_id,
+          processed_at = CURRENT_TIMESTAMP
       `).bind(
         guildId,
         period.period_start,
@@ -550,12 +568,21 @@ export async function buildDailyStats(db, guildId) {
   }
 
   try {
+    const dailyRepairStart = new Date(Date.now() - DAILY_REPAIR_DAYS * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 19)
+      .replace("T", " ");
+
     // Get the last fully processed day
     const lastAggregated = await db.prepare(`
       SELECT MAX(period_end) as last_period
       FROM aggregated_stats
       WHERE guild_id = ? AND period_type = 'daily'
     `).bind(guildId).first();
+
+    const effectiveDailyStart = !lastAggregated?.last_period || Date.parse(lastAggregated.last_period) > Date.parse(dailyRepairStart)
+      ? dailyRepairStart
+      : lastAggregated.last_period;
 
     // Get days that have hourly data and aren't today
     const daysToProcess = await db.prepare(`
@@ -571,7 +598,7 @@ export async function buildDailyStats(db, guildId) {
       GROUP BY strftime('%Y-%m-%d', period_start)
       HAVING hour_count >= 1
       ORDER BY day_start ASC
-    `).bind(guildId, lastAggregated?.last_period).all();
+    `).bind(guildId, effectiveDailyStart).all();
 
     if (!daysToProcess.results?.length) {
       return { success: true, periodsProcessed: 0, eventsProcessed: 0 };
@@ -580,16 +607,6 @@ export async function buildDailyStats(db, guildId) {
     let periodsProcessed = 0;
 
     for (const day of daysToProcess.results) {
-      // Check if this day already exists
-      const existing = await db.prepare(`
-        SELECT id FROM aggregated_stats
-        WHERE guild_id = ? AND period_type = 'daily' AND period_start = ?
-      `).bind(guildId, day.day_start).first();
-
-      if (existing) {
-        continue;
-      }
-
       // Roll up hourly stats into daily
       const dayStats = await db.prepare(`
         SELECT 
@@ -618,6 +635,20 @@ export async function buildDailyStats(db, guildId) {
           message_count, message_unique_users,
           total_events, last_event_id
         ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(guild_id, period_type, period_start)
+        DO UPDATE SET
+          period_end = excluded.period_end,
+          member_joins = excluded.member_joins,
+          member_leaves = excluded.member_leaves,
+          member_net_change = excluded.member_net_change,
+          voice_total_seconds = excluded.voice_total_seconds,
+          voice_unique_users = excluded.voice_unique_users,
+          voice_peak_concurrent = excluded.voice_peak_concurrent,
+          message_count = excluded.message_count,
+          message_unique_users = excluded.message_unique_users,
+          total_events = excluded.total_events,
+          last_event_id = excluded.last_event_id,
+          processed_at = CURRENT_TIMESTAMP
       `).bind(
         guildId,
         day.day_start,

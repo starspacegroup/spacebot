@@ -210,11 +210,9 @@ export async function load({ cookies, platform, parent, params, url }) {
     try {
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken);
 
-      // Never block initial render on aggregation. Read available data immediately.
+      // Block on aggregation so overview charts do not read stale periods.
       try {
-        runStatsAggregation(db, serverId).catch((aggError) => {
-          log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
-        });
+        await runStatsAggregation(db, serverId);
       } catch (aggError) {
         log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
       }
