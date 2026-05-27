@@ -69,6 +69,30 @@ function shouldFallbackToCommandExecution(output) {
   );
 }
 
+function parseAppliedMigrations(output, migrationFiles) {
+  const applied = new Set();
+
+  // Wrangler output format can vary (table/json/plain). Handle all known variants.
+  const jsonMatches = output.matchAll(/"name":\s*"([^"]+)"/g);
+  for (const match of jsonMatches) {
+    applied.add(match[1]);
+  }
+
+  const singleQuotedMatches = output.matchAll(/'name':\s*'([^']+)'/g);
+  for (const match of singleQuotedMatches) {
+    applied.add(match[1]);
+  }
+
+  // Final fallback: detect known migration filenames directly in output.
+  for (const file of migrationFiles) {
+    if (output.includes(file)) {
+      applied.add(file);
+    }
+  }
+
+  return applied;
+}
+
 function splitSqlStatements(sql) {
   const statements = [];
   let current = "";
@@ -264,19 +288,6 @@ d1Execute(
   "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
 );
 
-// Get the set of already-applied migrations
-let appliedMigrations = new Set();
-try {
-  const output = d1Execute("SELECT name FROM _migrations");
-  // Parse migration names from wrangler output
-  const matches = output.matchAll(/"name":\s*"([^"]+)"/g);
-  for (const match of matches) {
-    appliedMigrations.add(match[1]);
-  }
-} catch {
-  // Table may be empty or output parsing failed — treat as no applied migrations
-}
-
 // Get all .sql files sorted alphabetically (ensures order like 0001, 0002, etc.)
 const migrationFiles = readdirSync(migrationsDir)
   .filter((file) => file.endsWith(".sql"))
@@ -285,6 +296,15 @@ const migrationFiles = readdirSync(migrationsDir)
 if (migrationFiles.length === 0) {
   console.log("No migration files found.");
   process.exit(0);
+}
+
+// Get the set of already-applied migrations
+let appliedMigrations = new Set();
+try {
+  const output = d1Execute("SELECT name FROM _migrations");
+  appliedMigrations = parseAppliedMigrations(output, migrationFiles);
+} catch {
+  // Table may be empty or output parsing failed — treat as no applied migrations
 }
 
 console.log(`Found ${migrationFiles.length} migration file(s):\n`);
@@ -310,10 +330,16 @@ for (const file of migrationFiles) {
 
     // Record successful migration
     try {
-      d1Execute(`INSERT INTO _migrations (name) VALUES ('${file}')`);
-    } catch {
+      d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
+      appliedMigrations.add(file);
+    } catch (trackingError) {
       // Non-fatal: migration ran but tracking insert failed
+      const trackingOutput = extractErrorOutput(trackingError);
+      if (trackingOutput) {
+        console.log(`     ⚠️  Migration ran but failed to record in tracking table: ${trackingOutput.trim()}\n`);
+      } else {
       console.log(`     ⚠️  Migration ran but failed to record in tracking table\n`);
+      }
     }
 
     console.log(`     ✅ Success\n`);
@@ -325,6 +351,7 @@ for (const file of migrationFiles) {
       // Migration was already applied before tracking existed — record it now
       try {
         d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
+        appliedMigrations.add(file);
       } catch {
         // Non-fatal
       }
@@ -338,9 +365,15 @@ for (const file of migrationFiles) {
         executeSqlFileViaCommand(filePath);
 
         try {
-          d1Execute(`INSERT INTO _migrations (name) VALUES ('${file}')`);
-        } catch {
+          d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
+          appliedMigrations.add(file);
+        } catch (trackingError) {
+          const trackingOutput = extractErrorOutput(trackingError);
+          if (trackingOutput) {
+            console.log(`     ⚠️  Migration ran but failed to record in tracking table: ${trackingOutput.trim()}\n`);
+          } else {
           console.log(`     ⚠️  Migration ran but failed to record in tracking table\n`);
+          }
         }
 
         console.log(`     ✅ Success (fallback)\n`);
