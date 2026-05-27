@@ -20,6 +20,11 @@ const MAX_MAX_ATTEMPTS = 20;
 const DEFAULT_TIMEOUT_SECONDS = 300;
 const MIN_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 3600;
+const RUNNER_ONLINE_WINDOW_SECONDS = 90;
+const DEFAULT_RUNNER_STRATEGY = "pinned";
+const ALLOWED_RUNNER_STRATEGIES = new Set(["pinned", "any_online", "all_online"]);
+const ALLOWED_MODEL_MODE = new Set(["first_success", "fanout_all"]);
+const ALLOWED_MODEL_PROVIDERS = new Set(["copilot", "ollama"]);
 
 function clampInteger(value, fallback, min, max) {
   const numeric = Number(value);
@@ -44,6 +49,10 @@ function normalizeWorkflowRow(row) {
     ...row,
     enabled: Boolean(row.enabled),
     capability_requirements_json: parseJson(row.capability_requirements_json),
+    allowed_runner_token_ids_json: parseJson(row.allowed_runner_token_ids_json),
+    allowed_runner_instance_ids_json: parseJson(row.allowed_runner_instance_ids_json),
+    model_preferences_json: parseJson(row.model_preferences_json),
+    runner_strategy: row.runner_strategy || DEFAULT_RUNNER_STRATEGY,
   };
 }
 
@@ -64,6 +73,247 @@ function normalizeCapabilityRequirements(value) {
   } catch {
     return { error: "capability_requirements_json must be serializable JSON" };
   }
+}
+
+function normalizeRunnerStrategy(value) {
+  const candidate = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!candidate) return DEFAULT_RUNNER_STRATEGY;
+  return ALLOWED_RUNNER_STRATEGIES.has(candidate) ? candidate : null;
+}
+
+function normalizeJsonIdList(value, fieldName) {
+  if (value === undefined) return { present: false, value: null, parsed: null };
+  if (value === null) return { present: true, value: null, parsed: null };
+  if (!Array.isArray(value)) {
+    return { error: `${fieldName} must be an array of positive integers` };
+  }
+
+  const normalized = [...new Set(
+    value
+      .map((entry) => Number(entry))
+      .filter((entry) => Number.isInteger(entry) && entry > 0)
+  )];
+
+  if (normalized.length !== value.length) {
+    return { error: `${fieldName} must be an array of positive integers` };
+  }
+
+  return {
+    present: true,
+    value: JSON.stringify(normalized),
+    parsed: normalized,
+  };
+}
+
+function normalizeProviderChain(chain) {
+  if (chain === undefined) return { present: false, value: null, parsed: [] };
+  if (!Array.isArray(chain)) {
+    return { error: "model_preferences_json.provider_chain must be an array" };
+  }
+
+  const parsed = [];
+  for (const raw of chain) {
+    if (!raw || typeof raw !== "object") {
+      return { error: "Each provider_chain entry must be an object" };
+    }
+
+    const provider = typeof raw.provider === "string" ? raw.provider.trim().toLowerCase() : "";
+    if (!ALLOWED_MODEL_PROVIDERS.has(provider)) {
+      return { error: "provider_chain.provider must be one of: copilot, ollama" };
+    }
+
+    const entry = {
+      provider,
+      model: typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : null,
+      via: typeof raw.via === "string" && raw.via.trim() ? raw.via.trim() : null,
+    };
+    parsed.push(entry);
+  }
+
+  return { present: true, parsed };
+}
+
+function normalizeModelPreferences(value) {
+  if (value === undefined) return { present: false, value: null, parsed: null };
+  if (value === null) return { present: true, value: null, parsed: null };
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { error: "model_preferences_json must be an object" };
+  }
+
+  const modeRaw = typeof value.mode === "string" ? value.mode.trim().toLowerCase() : "first_success";
+  if (!ALLOWED_MODEL_MODE.has(modeRaw)) {
+    return { error: "model_preferences_json.mode must be first_success or fanout_all" };
+  }
+
+  const chain = normalizeProviderChain(value.provider_chain ?? []);
+  if (chain.error) return { error: chain.error };
+
+  const parsed = {
+    mode: modeRaw,
+    provider_chain: chain.parsed,
+  };
+
+  return {
+    present: true,
+    value: JSON.stringify(parsed),
+    parsed,
+  };
+}
+
+function parseIdListFromWorkflow(value) {
+  if (!Array.isArray(value)) return null;
+  const normalized = value
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isInteger(entry) && entry > 0);
+  return normalized.length > 0 ? new Set(normalized) : null;
+}
+
+async function listOnlineRunnerInstances(db, userId) {
+  const rows = await db
+    .prepare(
+      `SELECT i.id, i.runner_token_id, i.display_name, i.last_seen_at, i.metadata
+       FROM local_runner_instances i
+       JOIN local_runner_tokens t ON t.id = i.runner_token_id
+       WHERE i.user_id = ?
+         AND t.user_id = ?
+         AND t.revoked = 0
+         AND i.last_seen_at IS NOT NULL
+         AND i.last_seen_at >= datetime('now', ?)
+       ORDER BY i.last_seen_at DESC, i.id DESC`
+    )
+    .bind(userId, userId, `-${RUNNER_ONLINE_WINDOW_SECONDS} seconds`)
+    .all();
+
+  return (rows.results || []).map((row) => ({
+    id: Number(row.id),
+    tokenId: Number(row.runner_token_id),
+    displayName: row.display_name,
+    lastSeenAt: row.last_seen_at,
+    metadata: parseJson(row.metadata),
+  }));
+}
+
+async function resolvePinnedTarget(db, userId, workflow, payload) {
+  const overrideTokenId = Number(payload?.target_runner_token_id);
+  const overrideInstanceId = Number(payload?.target_runner_instance_id);
+  const tokenId = Number.isInteger(overrideTokenId) && overrideTokenId > 0
+    ? overrideTokenId
+    : workflow.target_runner_token_id;
+  const instanceId = Number.isInteger(overrideInstanceId) && overrideInstanceId > 0
+    ? overrideInstanceId
+    : workflow.target_runner_instance_id;
+
+  const validation = await validateTargets(db, userId, tokenId, instanceId);
+  if (!validation.success || !validation.tokenId) {
+    return { success: false, error: "Pinned strategy requires a valid target runner token or instance" };
+  }
+
+  return {
+    success: true,
+    targets: [{
+      tokenId: validation.tokenId,
+      instanceId: validation.instanceId,
+      displayName: validation.instanceId ? `instance-${validation.instanceId}` : null,
+    }],
+  };
+}
+
+async function resolveOnlineTargets(db, userId, workflow, payload, strategy) {
+  const onlineInstances = await listOnlineRunnerInstances(db, userId);
+  const allowedTokenSet = parseIdListFromWorkflow(workflow.allowed_runner_token_ids_json);
+  const allowedInstanceSet = parseIdListFromWorkflow(workflow.allowed_runner_instance_ids_json);
+
+  const overrideTokenId = Number(payload?.target_runner_token_id);
+  const overrideInstanceId = Number(payload?.target_runner_instance_id);
+  const pinnedTokenId = workflow.target_runner_token_id ? Number(workflow.target_runner_token_id) : null;
+  const pinnedInstanceId = workflow.target_runner_instance_id ? Number(workflow.target_runner_instance_id) : null;
+
+  const candidates = onlineInstances.filter((instance) => {
+    if (Number.isInteger(overrideInstanceId) && overrideInstanceId > 0 && instance.id !== overrideInstanceId) {
+      return false;
+    }
+    if (Number.isInteger(overrideTokenId) && overrideTokenId > 0 && instance.tokenId !== overrideTokenId) {
+      return false;
+    }
+    if (!(Number.isInteger(overrideTokenId) && overrideTokenId > 0)
+      && !(Number.isInteger(overrideInstanceId) && overrideInstanceId > 0)
+      && Number.isInteger(pinnedInstanceId)
+      && pinnedInstanceId > 0
+      && instance.id !== pinnedInstanceId) {
+      return false;
+    }
+    if (!(Number.isInteger(overrideTokenId) && overrideTokenId > 0)
+      && !(Number.isInteger(overrideInstanceId) && overrideInstanceId > 0)
+      && Number.isInteger(pinnedTokenId)
+      && pinnedTokenId > 0
+      && instance.tokenId !== pinnedTokenId) {
+      return false;
+    }
+    if (allowedTokenSet && !allowedTokenSet.has(instance.tokenId)) return false;
+    if (allowedInstanceSet && !allowedInstanceSet.has(instance.id)) return false;
+    return true;
+  });
+
+  if (candidates.length === 0) {
+    return { success: false, error: "No eligible online runner instances match this workflow" };
+  }
+
+  const selected = strategy === "all_online" ? candidates : [candidates[0]];
+  return {
+    success: true,
+    targets: selected.map((instance) => ({
+      tokenId: instance.tokenId,
+      instanceId: instance.id,
+      displayName: instance.displayName || `instance-${instance.id}`,
+    })),
+  };
+}
+
+function buildModelVariants(modelPreferences) {
+  const mode = modelPreferences?.mode === "fanout_all" ? "fanout_all" : "first_success";
+  const providerChain = Array.isArray(modelPreferences?.provider_chain)
+    ? modelPreferences.provider_chain
+    : [];
+
+  if (providerChain.length === 0) {
+    return [{ providerChain: null, suffix: null, mode }];
+  }
+
+  if (mode === "fanout_all") {
+    return providerChain.map((entry) => ({
+      providerChain: [entry],
+      suffix: entry.model ? `${entry.provider}:${entry.model}` : entry.provider,
+      mode,
+    }));
+  }
+
+  return [{ providerChain, suffix: null, mode }];
+}
+
+function mergePayloadWithProviderChain(payloadJson, providerChain) {
+  if (!providerChain || providerChain.length === 0) return payloadJson;
+
+  if (payloadJson && typeof payloadJson === "object" && !Array.isArray(payloadJson)) {
+    if (Array.isArray(payloadJson.provider_chain)) {
+      return payloadJson;
+    }
+    return {
+      ...payloadJson,
+      provider_chain: providerChain,
+    };
+  }
+
+  return {
+    input: payloadJson ?? null,
+    provider_chain: providerChain,
+  };
+}
+
+function labelForVariant(base, variant, target, targetCount) {
+  const parts = [base];
+  if (variant?.suffix) parts.push(`[${variant.suffix}]`);
+  if (targetCount > 1 && target?.displayName) parts.push(`@${target.displayName}`);
+  return parts.join(" ");
 }
 
 async function validateTargets(db, userId, tokenId, instanceId) {
@@ -161,6 +411,14 @@ export async function createUserWorkflow(db, userId, input) {
   const enabled = input?.enabled === undefined ? 1 : (input.enabled ? 1 : 0);
   const capability = normalizeCapabilityRequirements(input?.capability_requirements_json);
   if (capability.error) return { success: false, error: capability.error };
+  const runnerStrategy = normalizeRunnerStrategy(input?.runner_strategy);
+  if (!runnerStrategy) return { success: false, error: "Unsupported runner_strategy" };
+  const allowedRunnerTokens = normalizeJsonIdList(input?.allowed_runner_token_ids_json, "allowed_runner_token_ids_json");
+  if (allowedRunnerTokens.error) return { success: false, error: allowedRunnerTokens.error };
+  const allowedRunnerInstances = normalizeJsonIdList(input?.allowed_runner_instance_ids_json, "allowed_runner_instance_ids_json");
+  if (allowedRunnerInstances.error) return { success: false, error: allowedRunnerInstances.error };
+  const modelPreferences = normalizeModelPreferences(input?.model_preferences_json);
+  if (modelPreferences.error) return { success: false, error: modelPreferences.error };
 
   const targetValidation = await validateTargets(
     db,
@@ -180,8 +438,9 @@ export async function createUserWorkflow(db, userId, input) {
         `INSERT INTO user_workflows (
           user_id, name, description, enabled, job_type,
           target_runner_token_id, target_runner_instance_id,
-          capability_requirements_json, priority, max_attempts, timeout_seconds
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          capability_requirements_json, priority, max_attempts, timeout_seconds,
+          runner_strategy, allowed_runner_token_ids_json, allowed_runner_instance_ids_json, model_preferences_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING *`
       )
       .bind(
@@ -195,7 +454,11 @@ export async function createUserWorkflow(db, userId, input) {
         capability.present ? capability.value : null,
         priority,
         maxAttempts,
-        timeoutSeconds
+        timeoutSeconds,
+        runnerStrategy,
+        allowedRunnerTokens.present ? allowedRunnerTokens.value : null,
+        allowedRunnerInstances.present ? allowedRunnerInstances.value : null,
+        modelPreferences.present ? modelPreferences.value : null
       )
       .first();
 
@@ -228,6 +491,17 @@ export async function updateUserWorkflow(db, userId, workflowId, patch) {
 
   const capability = normalizeCapabilityRequirements(patch?.capability_requirements_json);
   if (capability.error) return { success: false, error: capability.error };
+  const runnerStrategy = patch?.runner_strategy === undefined
+    ? (current.runner_strategy || DEFAULT_RUNNER_STRATEGY)
+    : normalizeRunnerStrategy(patch?.runner_strategy);
+  if (!runnerStrategy) return { success: false, error: "Unsupported runner_strategy" };
+
+  const allowedRunnerTokens = normalizeJsonIdList(patch?.allowed_runner_token_ids_json, "allowed_runner_token_ids_json");
+  if (allowedRunnerTokens.error) return { success: false, error: allowedRunnerTokens.error };
+  const allowedRunnerInstances = normalizeJsonIdList(patch?.allowed_runner_instance_ids_json, "allowed_runner_instance_ids_json");
+  if (allowedRunnerInstances.error) return { success: false, error: allowedRunnerInstances.error };
+  const modelPreferences = normalizeModelPreferences(patch?.model_preferences_json);
+  if (modelPreferences.error) return { success: false, error: modelPreferences.error };
 
   const targetValidation = await validateTargets(
     db,
@@ -251,6 +525,15 @@ export async function updateUserWorkflow(db, userId, workflowId, patch) {
   const capabilityRequirementsJson = capability.present
     ? capability.value
     : (current.capability_requirements_json ? JSON.stringify(current.capability_requirements_json) : null);
+  const allowedRunnerTokensJson = allowedRunnerTokens.present
+    ? allowedRunnerTokens.value
+    : (Array.isArray(current.allowed_runner_token_ids_json) ? JSON.stringify(current.allowed_runner_token_ids_json) : null);
+  const allowedRunnerInstancesJson = allowedRunnerInstances.present
+    ? allowedRunnerInstances.value
+    : (Array.isArray(current.allowed_runner_instance_ids_json) ? JSON.stringify(current.allowed_runner_instance_ids_json) : null);
+  const modelPreferencesJson = modelPreferences.present
+    ? modelPreferences.value
+    : (current.model_preferences_json ? JSON.stringify(current.model_preferences_json) : null);
 
   try {
     const row = await db
@@ -266,6 +549,10 @@ export async function updateUserWorkflow(db, userId, workflowId, patch) {
              priority = ?,
              max_attempts = ?,
              timeout_seconds = ?,
+             runner_strategy = ?,
+             allowed_runner_token_ids_json = ?,
+             allowed_runner_instance_ids_json = ?,
+             model_preferences_json = ?,
              updated_at = datetime('now')
          WHERE id = ? AND user_id = ?
          RETURNING *`
@@ -281,6 +568,10 @@ export async function updateUserWorkflow(db, userId, workflowId, patch) {
         priority,
         maxAttempts,
         timeoutSeconds,
+        runnerStrategy,
+        allowedRunnerTokensJson,
+        allowedRunnerInstancesJson,
+        modelPreferencesJson,
         workflowId,
         userId
       )
@@ -317,44 +608,77 @@ export async function dispatchWorkflowJob(db, userId, workflowId, payload = {}) 
   if (!workflow) return { success: false, error: "Workflow not found" };
   if (!workflow.enabled) return { success: false, error: "Workflow is disabled" };
 
-  const workflowTokenId = workflow.target_runner_token_id ? Number(workflow.target_runner_token_id) : null;
-  const tokenId = payload?.target_runner_token_id
-    ? Number(payload.target_runner_token_id)
-    : workflowTokenId;
-
-  if (!tokenId) {
-    return { success: false, error: "Workflow does not have a target runner token" };
-  }
-
   const effectiveJobType = payload?.job_type ? normalizeJobType(payload.job_type) : workflow.job_type;
   if (!effectiveJobType) return { success: false, error: "Unsupported job_type" };
+
+  const runnerStrategy = payload?.runner_strategy
+    ? normalizeRunnerStrategy(payload.runner_strategy)
+    : (workflow.runner_strategy || DEFAULT_RUNNER_STRATEGY);
+  if (!runnerStrategy) return { success: false, error: "Unsupported runner_strategy" };
 
   const capabilityRequirements = payload?.capability_requirements_json !== undefined
     ? payload.capability_requirements_json
     : workflow.capability_requirements_json;
 
-  const targetInstanceId = payload?.target_runner_instance_id !== undefined
-    ? payload.target_runner_instance_id
-    : workflow.target_runner_instance_id;
+  const modelPreferencesNormalized = normalizeModelPreferences(
+    payload?.model_preferences_json !== undefined
+      ? payload.model_preferences_json
+      : workflow.model_preferences_json
+  );
+  if (modelPreferencesNormalized.error) {
+    return { success: false, error: modelPreferencesNormalized.error };
+  }
+  const modelPreferences = modelPreferencesNormalized.present
+    ? modelPreferencesNormalized.parsed
+    : null;
 
-  const createResult = await createRunnerJob(db, userId, tokenId, {
-    command: payload?.command,
-    job_type: effectiveJobType,
-    payload_json: payload?.payload_json,
-    capability_requirements_json: capabilityRequirements,
-    working_dir: payload?.working_dir,
-    label: payload?.label || `${workflow.name} (${effectiveJobType})`,
-    target_instance_id: targetInstanceId,
-    priority: payload?.priority ?? workflow.priority,
-    max_attempts: payload?.max_attempts ?? workflow.max_attempts,
-    timeout_seconds: payload?.timeout_seconds ?? workflow.timeout_seconds,
-  });
+  const targets = runnerStrategy === "pinned"
+    ? await resolvePinnedTarget(db, userId, workflow, payload)
+    : await resolveOnlineTargets(db, userId, workflow, payload, runnerStrategy);
+  if (!targets.success) return targets;
 
-  if (!createResult.success) return createResult;
+  const variants = buildModelVariants(modelPreferences);
+  const createdJobs = [];
+  const baseLabel = payload?.label || `${workflow.name} (${effectiveJobType})`;
+  for (const target of targets.targets) {
+    for (const variant of variants) {
+      const payloadJson = mergePayloadWithProviderChain(payload?.payload_json, variant.providerChain);
+      const label = labelForVariant(baseLabel, variant, target, targets.targets.length);
+
+      const createResult = await createRunnerJob(db, userId, target.tokenId, {
+        command: payload?.command,
+        job_type: effectiveJobType,
+        payload_json: payloadJson,
+        capability_requirements_json: capabilityRequirements,
+        working_dir: payload?.working_dir,
+        label,
+        target_instance_id: target.instanceId,
+        priority: payload?.priority ?? workflow.priority,
+        max_attempts: payload?.max_attempts ?? workflow.max_attempts,
+        timeout_seconds: payload?.timeout_seconds ?? workflow.timeout_seconds,
+      });
+
+      if (!createResult.success) return createResult;
+      createdJobs.push({
+        jobId: createResult.jobId,
+        tokenId: target.tokenId,
+        instanceId: target.instanceId,
+        label,
+      });
+    }
+  }
+
+  if (createdJobs.length === 0) {
+    return { success: false, error: "No jobs were created for this workflow dispatch" };
+  }
 
   return {
     success: true,
-    jobId: createResult.jobId,
+    jobId: createdJobs[0].jobId,
+    jobIds: createdJobs.map((entry) => entry.jobId),
+    createdJobs,
+    runnerStrategy,
+    modelMode: modelPreferences?.mode || "first_success",
     workflow,
   };
 }

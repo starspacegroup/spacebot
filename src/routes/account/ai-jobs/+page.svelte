@@ -110,8 +110,19 @@
       <h1>Jobs</h1>
       <p class="muted">Forensic view of AI autopilot and local runner activity with status rollups, event stream, and job-level diagnostics.</p>
     </div>
-    <a class="back-link" href="/account">Back to account</a>
+    <div class="header-actions">
+      <a class="manage-link" href="/account/operations">Manage workflows and runners</a>
+      <a class="back-link" href="/account">Back to account</a>
+    </div>
   </header>
+
+  <section class="ops-callout">
+    <div>
+      <h3>Operations Console</h3>
+      <p class="muted">Use the operations hub to edit workflow routing rules, target specific runners, and tune queue behavior without leaving account settings.</p>
+    </div>
+    <a class="ops-callout-btn" href="/account/operations">Open Operations Console</a>
+  </section>
 
   <section class="summary-grid">
     <article class="summary-card">
@@ -268,7 +279,7 @@
           {#if filters.q}<input type="hidden" name="q" value={filters.q} />{/if}
           <label>
             Type
-            <select name="runnerJobType" on:change={submitClosestForm}>
+            <select name="runnerJobType" onchange={submitClosestForm}>
               <option value="" selected={!filters.runnerJobType}>all</option>
               <option value="screenshot_capture" selected={filters.runnerJobType === 'screenshot_capture'}>screenshot</option>
               <option value="shell_command" selected={filters.runnerJobType === 'shell_command'}>shell</option>
@@ -464,10 +475,64 @@
     gap: 1rem;
   }
 
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .manage-link {
+    text-decoration: none;
+    color: var(--color-text, #f5f5f5);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    font-size: 0.8rem;
+    background: color-mix(in oklab, var(--card-bg, #121019) 80%, #2a1f4f 20%);
+  }
+
+  .manage-link:hover {
+    border-color: var(--color-primary, #0d6efd);
+  }
+
   .back-link {
     text-decoration: none;
     color: var(--color-primary, #0d6efd);
     font-size: 0.9rem;
+  }
+
+  .ops-callout {
+    margin-top: 1rem;
+    border: 1px solid var(--border-color, #333);
+    border-radius: 0.55rem;
+    padding: 0.85rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    background: color-mix(in oklab, var(--card-bg, #121019) 78%, #0f3558 22%);
+  }
+
+  .ops-callout h3 {
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
+  .ops-callout .muted {
+    margin: 0.25rem 0 0;
+    font-size: 0.84rem;
+  }
+
+  .ops-callout-btn {
+    text-decoration: none;
+    border: 1px solid var(--color-primary, #0d6efd);
+    color: var(--color-primary, #0d6efd);
+    border-radius: 0.4rem;
+    padding: 0.42rem 0.65rem;
+    font-size: 0.84rem;
+    white-space: nowrap;
   }
 
   .filters {
@@ -735,5 +800,21 @@
   details > summary {
     cursor: pointer;
     font-size: 0.82rem;
+  }
+
+  @media (max-width: 900px) {
+    .header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .header-actions {
+      justify-content: flex-start;
+    }
+
+    .ops-callout {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 </style>

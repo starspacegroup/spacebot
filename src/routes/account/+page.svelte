@@ -846,14 +846,10 @@
 			<span class="nav-icon">💰</span>
 			Payment
 		</button>
-		<button 
-			class="section-nav-item" 
-			class:active={activeSection === 'runners'}
-			onclick={() => scrollToSection('runners')}
-		>
-			<span class="nav-icon">🖥️</span>
-			Runners
-		</button>
+		<a class="section-nav-item" href="/account/operations">
+			<span class="nav-icon">🧭</span>
+			Operations
+		</a>
 		<button 
 			class="section-nav-item" 
 			class:active={activeSection === 'settings'}
@@ -1246,14 +1242,20 @@
 		{/if}
 	</section>
 	
-	<!-- Local Runners Section -->
+	<!-- Operations Section -->
 	<section id="section-runners" class="content-section">
-		<h2><span class="section-icon">🖥️</span> Local Runners</h2>
+		<h2><span class="section-icon">🧭</span> Operations Hub</h2>
 
 		<p class="section-intro">
-			Local runners let you run shell commands and scripts on your own machine, triggered from
-			SpaceBot. Each runner authenticates with a secret token and polls for queued jobs.
+			Manage queue workflows, local runner fleet, and live queue activity from one place.
+			Runners authenticate with a secret token and pick up queued jobs according to workflow rules.
 		</p>
+
+		<div class="operations-links">
+			<a href="/account/operations" class="btn btn-outline btn-sm">Open Operations Console</a>
+			<a href="/account/ai-jobs" class="btn btn-outline btn-sm">Open Queue & Jobs</a>
+			<a href="/account#section-settings" class="btn btn-ghost btn-sm">Runner defaults</a>
+		</div>
 
 		<div class="workflow-panel">
 			<div class="workflow-panel-header">
@@ -2671,7 +2673,7 @@
 	}
 
 	/* -------------------------------------------------------------------------
-	 * Local Runners Section
+	 * Operations Hub Section
 	 * ----------------------------------------------------------------------- */
 
 	.section-intro {
@@ -2679,6 +2681,13 @@
 		color: var(--color-text-muted);
 		margin: 0 0 1.25rem;
 		line-height: 1.5;
+	}
+
+	.operations-links {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin: 0 0 1rem;
 	}
 
 	.workflow-panel {

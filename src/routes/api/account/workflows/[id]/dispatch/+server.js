@@ -26,6 +26,10 @@ export async function POST({ params, request, cookies, platform }) {
     success: true,
     workflowId,
     jobId: result.jobId,
+    jobIds: result.jobIds || [result.jobId],
+    createdJobs: result.createdJobs || [],
+    runnerStrategy: result.runnerStrategy,
+    modelMode: result.modelMode,
     workflow: result.workflow,
   }, { status: 201 });
 }
