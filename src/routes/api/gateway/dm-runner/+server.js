@@ -100,8 +100,15 @@ function chooseTargetRunner(instances, content) {
   return online || instances[0];
 }
 
-function inferDmJob(content, userId, userName, history, targetInstance) {
+function inferDmJob(content, userId, userName, history, targetInstance, context = {}) {
   const isScreenshotRequest = SCREENSHOT_REQUEST_RE.test(content || "");
+  const managedGuilds = Array.isArray(context.managedGuilds) ? context.managedGuilds : [];
+  const selectedGuild = context.selectedGuild && typeof context.selectedGuild === "object"
+    ? context.selectedGuild
+    : null;
+  const selectedGuildId = typeof context.selectedGuildId === "string" && context.selectedGuildId.trim()
+    ? context.selectedGuildId.trim()
+    : (typeof selectedGuild?.id === "string" ? selectedGuild.id.trim() : null);
 
   if (isScreenshotRequest) {
     return {
@@ -138,6 +145,9 @@ function inferDmJob(content, userId, userName, history, targetInstance) {
       user_name: typeof userName === "string" ? userName : null,
       message: content,
       history,
+      managedGuilds,
+      selectedGuild,
+      selectedGuildId,
       response_target: {
         type: "discord_dm",
         user_id: userId,
@@ -177,6 +187,10 @@ export async function POST({ request, platform }) {
 
   const userId = typeof body?.userId === "string" ? body.userId.trim() : "";
   const content = typeof body?.content === "string" ? body.content : "";
+  const managedGuilds = Array.isArray(body?.managedGuilds) ? body.managedGuilds : [];
+  const selectedGuild = body?.selectedGuild && typeof body.selectedGuild === "object"
+    ? body.selectedGuild
+    : null;
   const selectedGuildId = typeof body?.selectedGuild?.id === "string"
     ? body.selectedGuild.id.trim()
     : (typeof body?.selectedGuildId === "string" ? body.selectedGuildId.trim() : "");
@@ -220,7 +234,11 @@ export async function POST({ request, platform }) {
   }
 
   const history = Array.isArray(body?.history) ? body.history.slice(-20) : [];
-  const inferredJob = inferDmJob(content, userId, body?.userName, history, target);
+  const inferredJob = inferDmJob(content, userId, body?.userName, history, target, {
+    managedGuilds,
+    selectedGuild,
+    selectedGuildId,
+  });
   const payload = {
     ...inferredJob.payload,
     guild_id: access.guildId,

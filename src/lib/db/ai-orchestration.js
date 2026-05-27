@@ -163,6 +163,35 @@ export async function getAIJobByCorrelationId(db, correlationId) {
   return normalizeJob(row);
 }
 
+export async function getLatestAIContextSnapshotForUser(db, userId) {
+  if (!db || !userId) return null;
+
+  const row = await db
+    .prepare(
+      `SELECT user_name, managed_guilds_json, selected_guild_json, metadata_json, created_at
+         FROM ai_jobs
+         WHERE user_id = ?
+           AND (
+             (managed_guilds_json IS NOT NULL AND managed_guilds_json != '[]')
+             OR selected_guild_json IS NOT NULL
+           )
+         ORDER BY created_at DESC
+         LIMIT 1`
+    )
+    .bind(userId)
+    .first();
+
+  if (!row) return null;
+
+  return {
+    userName: row.user_name || null,
+    managedGuilds: parseJson(row.managed_guilds_json) || [],
+    selectedGuild: parseJson(row.selected_guild_json) || null,
+    metadata: parseJson(row.metadata_json) || null,
+    createdAt: row.created_at || null,
+  };
+}
+
 export async function listAIJobsForUser(db, userId, options = {}) {
   if (!db || !userId) return [];
 

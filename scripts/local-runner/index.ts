@@ -45,6 +45,7 @@ import {
 } from "./copilot-utils";
 import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig } from "./ollama-utils";
 import { readPersistedProviderConfig } from "./provider-config";
+import { callRunnerAssistant } from "./spacebot-assistant";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -1009,6 +1010,32 @@ async function executeDmJob(payload: Record<string, unknown>): Promise<JobResult
     };
   }
 
+  const assistantResult = await callRunnerAssistant(API_URL, TOKEN, {
+    message,
+    history: Array.isArray(payload.history) ? payload.history as Array<{ role: string; content: string }> : [],
+    userName: typeof payload.user_name === "string" ? payload.user_name : null,
+    managedGuilds: Array.isArray(payload.managedGuilds) ? payload.managedGuilds : [],
+    selectedGuild: payload.selectedGuild && typeof payload.selectedGuild === "object"
+      ? payload.selectedGuild as Record<string, unknown>
+      : null,
+    selectedGuildId: typeof payload.selectedGuildId === "string" ? payload.selectedGuildId : null,
+  });
+  if (assistantResult.success && assistantResult.response?.trim()) {
+    return {
+      status: "completed",
+      output: assistantResult.response,
+      exitCode: 0,
+      truncated: false,
+      result: {
+        done: true,
+        response: assistantResult.response,
+        toolsUsed: assistantResult.toolsUsed || [],
+        responseTarget: payload.response_target ?? null,
+        contextSource: assistantResult.contextSource ?? null,
+      },
+    };
+  }
+
   const prompt = buildDmPrompt(payload);
   const run = await runPromptThroughProviderChain(prompt, payload);
   if (!run.ok || !run.text) {
@@ -1041,6 +1068,7 @@ async function executeDmJob(payload: Record<string, unknown>): Promise<JobResult
       response: run.text,
       attempts: run.attempts,
       responseTarget: payload.response_target ?? null,
+        assistantError: assistantResult.error || null,
     },
   };
 }

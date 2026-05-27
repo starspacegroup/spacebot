@@ -47,6 +47,7 @@ import {
   type CopilotAvailability,
   type CopilotConfig,
 } from "./copilot-utils";
+import { callRunnerAssistant, isSpaceBotManagementRequest } from "./spacebot-assistant";
 
 type LlmProvider = "ollama" | "copilot";
 
@@ -73,6 +74,17 @@ interface PromptOption {
 
 interface AppProps extends RunnerTuiOptions {
   onExit: () => void;
+}
+
+function toAssistantHistory(messages: Array<{ type: string; text: string }>) {
+  return messages
+    .filter((message) => message.type === "user" || message.type === "assistant")
+    .slice(-20)
+    .map((message) => ({
+      role: message.type === "assistant" ? "assistant" : "user",
+      content: message.text,
+    }))
+    .filter((entry) => entry.content.trim());
 }
 
 const IS_GHOSTTY = /ghostty/i.test(process.env.TERM ?? "") || /ghostty/i.test(process.env.TERM_PROGRAM ?? "");
@@ -1471,6 +1483,36 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     }
 
     // ---- LLM dispatch ----
+    const shouldUseSpaceBotAssistant = isSpaceBotManagementRequest(text) && runnerToken.startsWith("sbr_");
+    if (shouldUseSpaceBotAssistant) {
+      setChatBusy(true);
+      const startedAt = Date.now();
+      const result = await callRunnerAssistant(apiUrl, runnerToken, {
+        message: text,
+        history: toAssistantHistory(chatMessages),
+        userName: displayName,
+      });
+      setChatBusy(false);
+
+      if (result.success && result.response?.trim()) {
+        const toolsSuffix = result.toolsUsed && result.toolsUsed.length > 0
+          ? `\n\n_Tools: ${result.toolsUsed.join(", ")}_`
+          : "";
+        addChatMessage({
+          type: "assistant",
+          text: `${result.response}${toolsSuffix}`,
+          model: "SpaceBot cloud tools",
+          durationMs: Date.now() - startedAt,
+        });
+        return;
+      }
+
+      addChatMessage({
+        type: "error",
+        text: `SpaceBot assistant: ${result.error ?? "unavailable"}\n_Falling back to your local provider._`,
+      });
+    }
+
     // If no provider chosen yet, prompt the user.
     if (!activeProvider) {
       addChatMessage({

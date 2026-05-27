@@ -93,6 +93,9 @@ async function dispatchToLocalRunnerFallback(db, job) {
       user_name: job.user_name || null,
       message: job.request_text,
       history: Array.isArray(job.history_json) ? job.history_json : [],
+      managedGuilds: Array.isArray(job.managed_guilds_json) ? job.managed_guilds_json : [],
+      selectedGuild: job.selected_guild_json || null,
+      selectedGuildId: job.selected_guild_json?.id || null,
       response_target: {
         type: "discord_dm",
         user_id: job.user_id,

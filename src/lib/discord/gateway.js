@@ -877,10 +877,10 @@ function formatServerList(guilds, selectedGuildId) {
  * Ask the worker API whether the DM author has a registered local runner.
  * If so, the API will dispatch the message as a job and return dispatch info.
  *
- * @param {{ userId: string, userName?: string, content: string, history?: any[], selectedGuild?: any, selectedGuildId?: string }} args
+ * @param {{ userId: string, userName?: string, content: string, history?: any[], managedGuilds?: any[], selectedGuild?: any, selectedGuildId?: string }} args
  * @returns {Promise<{ dispatched: boolean, jobId?: number, runner?: any, reason?: string } | null>}
  */
-async function dispatchDMToLocalRunner({ userId, userName, content, history, selectedGuild, selectedGuildId }) {
+async function dispatchDMToLocalRunner({ userId, userName, content, history, managedGuilds, selectedGuild, selectedGuildId }) {
   const url = `${API_BASE}/api/gateway/dm-runner`;
   try {
     const response = await fetch(url, {
@@ -894,6 +894,7 @@ async function dispatchDMToLocalRunner({ userId, userName, content, history, sel
         userName,
         content,
         history,
+        managedGuilds,
         selectedGuild,
         selectedGuildId: selectedGuildId || selectedGuild?.id || null,
       }),
@@ -1070,6 +1071,7 @@ async function handleDirectMessage(message, client) {
       userName,
       content,
       history: currentSession.conversationHistory.slice(0, -1),
+      managedGuilds,
       selectedGuild,
       selectedGuildId: currentSession.selectedGuildId,
     });
