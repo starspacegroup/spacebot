@@ -186,6 +186,7 @@ function emitStatusFrame(
 
 let activeSocket: WebSocket | null = null;
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let lastServerMessageAt = 0;
 // Server sends a heartbeat every 30 s. If we go 3× that without any server
 // message the TCP connection has silently died and we must force-reconnect.
@@ -200,6 +201,21 @@ function stopKeepalive() {
   keepaliveTimer = null;
 }
 
+function scheduleReconnect(reason: string, code: number) {
+  if (!running) return;
+  if (reconnectTimer) return;
+
+  reconnectAttempts++;
+  const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
+  emitStatusFrame("reconnecting", { reason, code, attempt: reconnectAttempts, delayMs: delay });
+  warn(`WebSocket closed (code ${code}). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect();
+  }, delay);
+}
+
 function startKeepalive() {
   stopKeepalive();
   keepaliveTimer = setInterval(() => {
@@ -209,12 +225,7 @@ function startKeepalive() {
       activeSocket = null;
       stopKeepalive();
       if (dead) { try { dead.close(); } catch {} }
-      if (!running) return;
-      reconnectAttempts++;
-      const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
-      emitStatusFrame("reconnecting", { reason: "watchdog-timeout", code: 0, attempt: reconnectAttempts, delayMs: delay });
-      warn(`WebSocket closed (code 0). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
-      setTimeout(connect, delay);
+      scheduleReconnect("watchdog-timeout", 0);
       return;
     }
     emitStatusFrame("heartbeat");
@@ -1496,6 +1507,10 @@ function connect() {
   activeSocket = ws;
 
   ws.onopen = () => {
+    if (activeSocket !== ws) {
+      try { ws.close(); } catch {}
+      return;
+    }
     log("WebSocket connected. Waiting for jobs…");
     emitStatusFrame("connected", { phase: "open" });
     reconnectAttempts = 0;
@@ -1505,6 +1520,7 @@ function connect() {
   };
 
   ws.onmessage = (event: MessageEvent) => {
+    if (activeSocket !== ws) return;
     lastServerMessageAt = Date.now();
     let msg: { type: string; job?: Job; jobId?: number; instanceId?: number; instanceName?: string; };
     try {
@@ -1556,17 +1572,15 @@ function connect() {
   };
 
   ws.onclose = (event: CloseEvent) => {
+    if (activeSocket !== ws) return;
     stopKeepalive();
     activeSocket = null;
     if (!running) return;
-    reconnectAttempts++;
-    const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_MS);
-    emitStatusFrame("reconnecting", { code: event.code, attempt: reconnectAttempts, delayMs: delay });
-    warn(`WebSocket closed (code ${event.code}). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`);
-    setTimeout(connect, delay);
+    scheduleReconnect("socket-close", event.code);
   };
 
   ws.onerror = (event: Event) => {
+    if (activeSocket !== ws) return;
     err("WebSocket error:", (event as ErrorEvent).message ?? event.type);
     sendRunnerEvent("runner.error", `WebSocket error: ${(event as ErrorEvent).message ?? event.type}`, undefined, "error");
     // onclose fires after onerror — reconnect is handled there
@@ -1588,6 +1602,16 @@ function validateRunnerToken() {
 process.on("SIGTSTP", () => {
   // Keep the runner online even if Ctrl+Z is pressed in the parent terminal.
   warn("Ignoring SIGTSTP (Ctrl+Z) to keep local runner connected.");
+});
+
+process.on("SIGTTIN", () => {
+  // Backgrounded terminal jobs can receive SIGTTIN on tty reads.
+  warn("Ignoring SIGTTIN to keep local runner connected while terminal is backgrounded.");
+});
+
+process.on("SIGTTOU", () => {
+  // Backgrounded terminal jobs can receive SIGTTOU on tty writes.
+  warn("Ignoring SIGTTOU to keep local runner connected while terminal is backgrounded.");
 });
 
 function buildInitialSystemMarkdown(): string {

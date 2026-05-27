@@ -642,6 +642,21 @@ function parseRunnerSocketState(line: string): RunnerSocketState | null {
   return null;
 }
 
+function formatHeartbeatAgeMs(ageMs: number): string {
+  const safeMs = Math.max(0, Math.floor(ageMs));
+  if (safeMs < 1_000) return `${safeMs}ms`;
+  if (safeMs < 60_000) return `${Math.floor(safeMs / 1_000)}s`;
+  const minutes = Math.floor(safeMs / 60_000);
+  const seconds = Math.floor((safeMs % 60_000) / 1_000);
+  return `${minutes}m ${seconds}s`;
+}
+
+function getHeartbeatHealthTone(ageMs: number): keyof typeof THEME {
+  if (ageMs < 35_000) return "success";
+  if (ageMs < 90_000) return "warning";
+  return "error";
+}
+
 function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scriptPath, initialToken, onExit }: AppProps) {
   const initialStatus = useMemo(() => detectAutostartStatus(), []);
   // Hydrate persisted provider/ollama/copilot config so users don't re-pick on every launch.
@@ -2309,6 +2324,15 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   // causes the final newline/cursor advance to push the last line below the
   // viewport (making it scrollable). Using rows-1 keeps everything visible.
   const renderHeight = Math.max(14, (terminalSize.height ?? 36) - 1);
+  const heartbeatAgeMs = lastSocketHeartbeatAtRef.current > 0
+    ? Math.max(0, Date.now() - lastSocketHeartbeatAtRef.current)
+    : null;
+  const heartbeatAgeText = heartbeatAgeMs === null
+    ? "n/a"
+    : formatHeartbeatAgeMs(heartbeatAgeMs);
+  const heartbeatAgeTone: keyof typeof THEME = heartbeatAgeMs === null
+    ? "muted"
+    : getHeartbeatHealthTone(heartbeatAgeMs);
 
   // Build the unified status bar (one-line ephemeral + persistent hint)
   const buildStatusBar = (): StyledLine => {
@@ -2332,20 +2356,16 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
 
   // Compact one-line agent status badges (always shown in bottom strip)
   const buildAgentStrip = (): StyledLine => {
-    const socketBadge =
-      socketState === "connected"
-        ? "🟢 WS"
-        : socketState === "connecting"
-          ? "🟡 WS"
-          : socketState === "reconnecting"
-            ? "🟠 WS"
-            : "🔴 WS";
+    const parts: string[] = [];
 
-    const parts = [
-      childRunning ? "🟢 Runner" : "🔴 Offline",
-      socketBadge,
-      runnerToken.startsWith("sbr_") ? "🔐 Auth" : "🔓 No Auth",
-    ];
+    const hbBadge = socketState === "connected"
+      ? `💓 WS ${heartbeatAgeText}`
+      : socketState === "connecting"
+        ? "💓 WS waiting"
+        : socketState === "reconnecting"
+          ? "💓 WS stale"
+          : "💓 WS down";
+    parts.push(hbBadge);
 
     const serviceKindCompact = autostartStatus.installKind === "systemd-user"
       ? "systemd"
@@ -2372,18 +2392,18 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       const c = copilotAvailability;
       const ready = c && (c.copilotCli || (c.ghCopilot && c.ghAuthed));
       const m = (activeCopilotConfig ?? getCopilotConfig())?.model ?? DEFAULT_COPILOT_MODEL;
-      parts.push(ready ? `🐙 ${m}` : "🐙 Copilot (setup needed)");
+      const autoCompact = autostartStatus.installed
+        ? autostartStatus.running === false
+          ? "idle"
+          : "on"
+        : "off";
+      parts.push(ready ? `🦑 auto ${autoCompact} · ${m}` : `🦑 auto ${autoCompact} · Copilot setup`);
     } else {
       parts.push("⚙ No Provider");
     }
 
     // Availability badges (small)
-    parts.push(ollamaRunning ? "✨ Ollama" : "❌ Ollama");
-    if (copilotAvailability) {
-      const c = copilotAvailability;
-      const ok = c.copilotCli || (c.ghCopilot && c.ghAuthed);
-      parts.push(ok ? "✨ Copilot" : "❌ Copilot");
-    }
+    if (ollamaRunning) parts.push("✨ Ollama");
 
     return { tone: "info", text: fitLine(parts.join("  ·  "), renderWidth) };
   };
@@ -2821,6 +2841,16 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
               ? `${getSpinner(spinnerTick)} RECONNECTING - jobs may be delayed`
             : `${getSpinner(spinnerTick)} ${socketState === "connecting" ? "Connecting..." : "Reconnecting..."}`}`,
       },
+      {
+        tone: heartbeatAgeTone,
+        text: `Heartbeat age: ${socketState === "connected"
+          ? heartbeatAgeText
+          : socketState === "connecting"
+            ? "waiting for first heartbeat"
+            : socketState === "reconnecting"
+              ? `stale (${heartbeatAgeText})`
+              : "down"}`,
+      },
       ...(childRunning && disconnectAlert
         ? [{ tone: "error" as keyof typeof THEME, text: `!!! ${disconnectAlert} !!!` }]
         : []),
@@ -3037,6 +3067,8 @@ export async function startRunnerTui(options: RunnerTuiOptions) {
       process.off("SIGINT", handleSignalExit);
       process.off("SIGTERM", handleSignalExit);
       process.off("SIGTSTP", handleSuspendSignal);
+      process.off("SIGTTIN", handleSigTtin);
+      process.off("SIGTTOU", handleSigTtou);
       resolve();
     };
 
@@ -3058,9 +3090,27 @@ export async function startRunnerTui(options: RunnerTuiOptions) {
       }
     };
 
+    const handleBackgroundIoSignal = (signal: "SIGTTIN" | "SIGTTOU") => {
+      try {
+        process.stdout.write(`\r\n[SpaceBot] Ignoring ${signal} to keep runner connected while terminal is backgrounded. Use /quit to exit.\r\n`);
+      } catch {
+        // Best effort warning.
+      }
+    };
+
+    const handleSigTtin = () => {
+      handleBackgroundIoSignal("SIGTTIN");
+    };
+
+    const handleSigTtou = () => {
+      handleBackgroundIoSignal("SIGTTOU");
+    };
+
     process.on("SIGINT", handleSignalExit);
     process.on("SIGTERM", handleSignalExit);
     process.on("SIGTSTP", handleSuspendSignal);
+    process.on("SIGTTIN", handleSigTtin);
+    process.on("SIGTTOU", handleSigTtou);
 
     root.render(<App {...options} onExit={onExit} />);
   });
