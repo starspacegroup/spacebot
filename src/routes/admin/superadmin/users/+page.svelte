@@ -14,7 +14,17 @@
 	let search = $state('');
 	$effect(() => { search = initialSearch; });
 	let editingUser = $state(null);
+	let activityUser = $state(null);
 	let saving = $state(false);
+	let activityLoading = $state(false);
+	let activityError = $state('');
+	let activityEntries = $state([]);
+	let activitySummary = $state({ pageViews: 0, apiActions: 0, actions: 0, lastSeenAt: null });
+	let activityPage = $state(1);
+	let activityTotalPages = $state(0);
+	let activityType = $state('all');
+	let activityMethod = $state('all');
+	let activityPathPrefix = $state('');
 	let toast = $state(null);
 	
 	function formatDate(dateStr) {
@@ -26,6 +36,12 @@
 	
 	function getAvatarUrl(user) {
 		return getDiscordAvatarUrl(user?.id, user?.avatar, user?.discriminator, 32);
+	}
+
+	function formatActivityType(type) {
+		if (type === 'page_view') return 'Page View';
+		if (type === 'api_action') return 'API Action';
+		return 'Action';
 	}
 	
 	async function doSearch() {
@@ -43,6 +59,66 @@
 	
 	function startEditUser(user) {
 		editingUser = { ...user };
+	}
+
+	async function loadActivity(page = 1) {
+		if (!activityUser) return;
+		activityLoading = true;
+		activityError = '';
+
+		try {
+			const params = new URLSearchParams();
+			params.set('page', String(page));
+			params.set('pageSize', '25');
+			if (activityType !== 'all') params.set('type', activityType);
+			if (activityMethod !== 'all') params.set('method', activityMethod);
+			if (activityPathPrefix.trim()) params.set('pathPrefix', activityPathPrefix.trim());
+
+			const response = await fetch(`/api/superadmin/users/${activityUser.id}/activity?${params.toString()}`);
+			const payload = await response.json();
+
+			if (!response.ok) {
+				throw new Error(payload.error || 'Failed to load activity');
+			}
+
+			activityEntries = payload.entries || [];
+			activitySummary = payload.summary || { pageViews: 0, apiActions: 0, actions: 0, lastSeenAt: null };
+			activityPage = payload.page || page;
+			activityTotalPages = payload.totalPages || 0;
+		} catch (error) {
+			activityError = error?.message || 'Failed to load activity';
+			activityEntries = [];
+			activityTotalPages = 0;
+		} finally {
+			activityLoading = false;
+		}
+	}
+
+	async function openActivity(user) {
+		activityUser = { ...user };
+		activityType = 'all';
+		activityMethod = 'all';
+		activityPathPrefix = '';
+		activityEntries = [];
+		activitySummary = { pageViews: 0, apiActions: 0, actions: 0, lastSeenAt: null };
+		activityPage = 1;
+		activityTotalPages = 0;
+		await loadActivity(1);
+	}
+
+	function closeActivity() {
+		activityUser = null;
+		activityError = '';
+	}
+
+	async function applyActivityFilters(event) {
+		event.preventDefault();
+		await loadActivity(1);
+	}
+
+	async function goToActivityPage(page) {
+		if (page < 1 || (activityTotalPages > 0 && page > activityTotalPages)) return;
+		await loadActivity(page);
 	}
 	
 	async function saveUser() {
@@ -260,6 +336,9 @@
 								<button class="btn btn-sm btn-secondary" onclick={() => startEditUser(user)}>
 									Edit
 								</button>
+								<button class="btn btn-sm btn-secondary" onclick={() => openActivity(user)}>
+									Activity
+								</button>
 								<button 
 									class="btn btn-sm {user.banned ? 'btn-success' : 'btn-warning'}" 
 									onclick={() => toggleBan(user)}
@@ -293,6 +372,130 @@
 		<div class="empty-state">
 			<div class="empty-icon">👥</div>
 			<p>{search ? 'No users match your search.' : 'No tracked users yet. Users appear here when they log in via Discord OAuth.'}</p>
+		</div>
+	{/if}
+
+	{#if activityUser}
+		<div class="modal-backdrop" onclick={closeActivity} role="presentation">
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_interactive_supports_focus -->
+			<div class="modal activity-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+				<div class="modal-header">
+					<div class="modal-user-info">
+						<img src={getAvatarUrl(activityUser)} alt="" class="modal-avatar" />
+						<div>
+							<h2>{activityUser.global_name || activityUser.username} Activity</h2>
+							<span class="user-tag">@{activityUser.username}</span>
+						</div>
+					</div>
+					<button class="modal-close" onclick={closeActivity}>✕</button>
+				</div>
+
+				<div class="modal-body activity-body">
+					<div class="activity-summary-grid">
+						<div class="activity-card">
+							<span class="activity-card-label">Page Views</span>
+							<strong>{activitySummary.pageViews || 0}</strong>
+						</div>
+						<div class="activity-card">
+							<span class="activity-card-label">API Actions</span>
+							<strong>{activitySummary.apiActions || 0}</strong>
+						</div>
+						<div class="activity-card">
+							<span class="activity-card-label">Other Actions</span>
+							<strong>{activitySummary.actions || 0}</strong>
+						</div>
+						<div class="activity-card">
+							<span class="activity-card-label">Last Seen</span>
+							<strong>{formatDate(activitySummary.lastSeenAt)}</strong>
+						</div>
+					</div>
+
+					<form class="activity-filters" onsubmit={applyActivityFilters}>
+						<select bind:value={activityType} class="filter-select">
+							<option value="all">All Types</option>
+							<option value="page_view">Page Views</option>
+							<option value="api_action">API Actions</option>
+							<option value="action">Other Actions</option>
+						</select>
+						<select bind:value={activityMethod} class="filter-select">
+							<option value="all">All Methods</option>
+							<option value="GET">GET</option>
+							<option value="POST">POST</option>
+							<option value="PUT">PUT</option>
+							<option value="PATCH">PATCH</option>
+							<option value="DELETE">DELETE</option>
+						</select>
+						<input
+							type="text"
+							placeholder="Path starts with... (e.g. /admin/superadmin)"
+							bind:value={activityPathPrefix}
+							class="search-input"
+						/>
+						<button class="btn btn-primary btn-sm" type="submit" disabled={activityLoading}>Apply</button>
+					</form>
+
+					{#if activityError}
+						<div class="toast toast-error">
+							<span>✗</span> {activityError}
+						</div>
+					{:else if activityLoading}
+						<div class="empty-state compact-empty">
+							<p>Loading activity...</p>
+						</div>
+					{:else if activityEntries.length === 0}
+						<div class="empty-state compact-empty">
+							<p>No activity found for these filters.</p>
+						</div>
+					{:else}
+						<div class="table-wrapper activity-table-wrapper">
+							<table class="data-table activity-table">
+								<thead>
+									<tr>
+										<th>Time</th>
+										<th>Type</th>
+										<th>Method</th>
+										<th>Path</th>
+										<th>Status</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each activityEntries as entry (entry.id)}
+										<tr>
+											<td class="date-cell">{formatDate(entry.created_at)}</td>
+											<td><span class="status-badge badge-active">{formatActivityType(entry.activity_type)}</span></td>
+											<td class="mono">{entry.method}</td>
+											<td>
+												<div class="activity-path mono">{entry.path}</div>
+												{#if entry.query_string}
+													<div class="activity-query">?{entry.query_string}</div>
+												{/if}
+											</td>
+											<td>{entry.status_code || '-'}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+
+						{#if activityTotalPages > 1}
+							<div class="pagination">
+								<button class="btn btn-sm btn-secondary" onclick={() => goToActivityPage(activityPage - 1)} disabled={activityPage <= 1}>
+									← Prev
+								</button>
+								<span class="page-info">Page {activityPage} of {activityTotalPages}</span>
+								<button class="btn btn-sm btn-secondary" onclick={() => goToActivityPage(activityPage + 1)} disabled={activityPage >= activityTotalPages}>
+									Next →
+								</button>
+							</div>
+						{/if}
+					{/if}
+				</div>
+
+				<div class="modal-footer">
+					<button class="btn btn-secondary" onclick={closeActivity}>Close</button>
+				</div>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -615,6 +818,10 @@
 		overflow-y: auto;
 	}
 
+	.activity-modal {
+		max-width: 1100px;
+	}
+
 	.modal-header {
 		display: flex;
 		align-items: center;
@@ -671,6 +878,12 @@
 
 	.modal-body {
 		padding: 1.25rem;
+	}
+
+	.activity-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
 	}
 
 	@media (min-width: 640px) {
@@ -759,6 +972,83 @@
 		font-size: 0.9rem;
 		font-family: inherit;
 		resize: vertical;
+	}
+
+	.activity-summary-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.65rem;
+	}
+
+	@media (min-width: 768px) {
+		.activity-summary-grid {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.activity-card {
+		padding: 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		background: rgba(255, 255, 255, 0.02);
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.activity-card-label {
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
+	}
+
+	.activity-card strong {
+		font-size: 1rem;
+		color: var(--color-text);
+	}
+
+	.activity-filters {
+		display: grid;
+		grid-template-columns: 1fr;
+		gap: 0.5rem;
+	}
+
+	@media (min-width: 768px) {
+		.activity-filters {
+			grid-template-columns: 160px 160px 1fr auto;
+		}
+	}
+
+	.filter-select {
+		padding: 0.55rem 0.65rem;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font-size: 0.85rem;
+	}
+
+	.activity-table-wrapper {
+		max-height: 420px;
+	}
+
+	.activity-table {
+		min-width: 900px;
+	}
+
+	.activity-path {
+		word-break: break-all;
+	}
+
+	.activity-query {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		word-break: break-all;
+	}
+
+	.compact-empty {
+		padding: 1rem;
 	}
 
 	/* Empty state */

@@ -1,6 +1,7 @@
 import { json, redirect } from "@sveltejs/kit";
 import { log } from "$lib/log.js";
 import { upsertUser } from "$lib/db/users.js";
+import { trackUserActivity } from "$lib/db/user-activity.js";
 import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
 
 /**
@@ -23,6 +24,94 @@ import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
  */
 function getEnv(name, platform) {
   return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
+
+function shouldTrackPath(pathname) {
+  if (!pathname || pathname.startsWith("/_app/") || pathname.startsWith("/_functions/")) {
+    return false;
+  }
+
+  if (
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/manifest.webmanifest"
+  ) {
+    return false;
+  }
+
+  return !/\.(?:css|js|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|json)$/i.test(pathname);
+}
+
+function classifyActivityType(pathname, method) {
+  if (pathname.startsWith("/api/")) return "api_action";
+  if (method === "GET") return "page_view";
+  return "action";
+}
+
+function sanitizeQueryString(searchParams) {
+  if (!searchParams || typeof searchParams.entries !== "function") return "";
+
+  const redactedKeys = new Set([
+    "code",
+    "state",
+    "token",
+    "access_token",
+    "refresh_token",
+    "password",
+    "secret",
+    "api_key",
+    "key",
+  ]);
+
+  const next = new URLSearchParams();
+  for (const [key, value] of searchParams.entries()) {
+    if (redactedKeys.has(String(key).toLowerCase())) {
+      next.set(key, "[redacted]");
+    } else {
+      next.set(key, value);
+    }
+  }
+
+  return next.toString();
+}
+
+function getRequestIp(event) {
+  const cfIp = event.request.headers.get("cf-connecting-ip");
+  if (cfIp) return cfIp;
+
+  const forwarded = event.request.headers.get("x-forwarded-for");
+  if (!forwarded) return null;
+
+  const [first] = forwarded.split(",");
+  return first?.trim() || null;
+}
+
+async function trackAuthenticatedRequestActivity(event, statusCode, details = null) {
+  const userId = event.cookies.get("discord_user_id");
+  if (!userId) return;
+
+  const db = event.platform?.env?.DB;
+  if (!db) return;
+
+  const pathname = event.url.pathname;
+  if (!shouldTrackPath(pathname)) return;
+
+  const method = String(event.request.method || "GET").toUpperCase();
+  const queryString = sanitizeQueryString(event.url.searchParams);
+
+  await trackUserActivity(db, {
+    userId,
+    activityType: classifyActivityType(pathname, method),
+    method,
+    path: pathname,
+    queryString: queryString || null,
+    statusCode,
+    referrer: event.request.headers.get("referer") || null,
+    ipAddress: getRequestIp(event),
+    userAgent: event.request.headers.get("user-agent") || null,
+    details,
+  });
 }
 
 /**
@@ -171,7 +260,9 @@ export async function handle({ event, resolve }) {
     event.locals.devAuthEnabled = devAuthEnabled;
 
     if (url.pathname === "/api/gateway/logs") {
-      return handleGatewayLogsApi(event);
+      const response = await handleGatewayLogsApi(event);
+      await trackAuthenticatedRequestActivity(event, response?.status || 200);
+      return response;
     }
 
     const response = await resolve(event);
@@ -185,6 +276,8 @@ export async function handle({ event, resolve }) {
       response.headers.set('Pragma', 'no-cache');
       response.headers.set('Expires', '0');
     }
+
+    await trackAuthenticatedRequestActivity(event, response?.status || 200);
 
     return response;
   } catch (error) {
@@ -210,9 +303,11 @@ export async function handle({ event, resolve }) {
     });
 
     if (url.pathname.startsWith('/api/')) {
+      await trackAuthenticatedRequestActivity(event, 500, { internalError: true });
       return json({ error: "Internal server error" }, { status: 500 });
     }
 
+    await trackAuthenticatedRequestActivity(event, 500, { internalError: true });
     return new Response("Internal server error", {
       status: 500,
       headers: {
