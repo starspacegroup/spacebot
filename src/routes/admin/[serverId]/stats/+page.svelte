@@ -546,18 +546,31 @@
 	
 
 	
-	// Derive member count history from current count + aggregated net changes
+	// Build member count history from authoritative server_stats snapshots
 	let showBotsInMemberChart = $state(false);
 	
 	const memberCountHistory = $derived.by(() => {
+		const history = data.memberHistory || [];
 		const latest = data.memberStats?.latest;
 		const currentCount = showBotsInMemberChart
 			? (latest?.member_count || 0)
 			: (latest?.human_count ?? latest?.member_count ?? 0);
-		const growthData = data.memberGrowthChartData || [];
-		const netChangeKey = showBotsInMemberChart ? 'netChange' : 'netChangeHuman';
-		if (!currentCount || growthData.length === 0) {
-			// Even with no growth data, show at least today's point from server_stats
+
+		const points = history.map((d) => {
+			const memberCount = d.member_count || 0;
+			const resolvedHumanCount = d.human_count ?? (d.bot_count !== null && d.bot_count !== undefined
+				? Math.max(0, memberCount - d.bot_count)
+				: memberCount);
+
+			return {
+				date: d.period || d.last_recorded,
+				label: formatChartDate(d.period || d.last_recorded, data.timezone),
+				value: showBotsInMemberChart ? memberCount : resolvedHumanCount,
+				hasData: true,
+			};
+		}).filter((point) => !!point.date);
+
+		if (points.length === 0) {
 			if (currentCount > 0) {
 				const today = getTodayLocal(data.timezone);
 				return [{
@@ -569,21 +582,6 @@
 			}
 			return [];
 		}
-		
-		// Calculate cumulative net change from end to start
-		// Then work backwards from current count
-		const totalNetChange = growthData.reduce((sum, d) => sum + (d[netChangeKey] || 0), 0);
-		let runningCount = currentCount - totalNetChange;
-		
-		const points = growthData.map(d => {
-			runningCount += (d[netChangeKey] || 0);
-			return {
-				date: d.date,
-				label: formatChartDate(d.date, data.timezone),
-				value: runningCount,
-				hasData: d.hasData !== false,
-			};
-		});
 		
 		// Ensure today is always represented with the actual current count
 		const todayForChart = getTodayLocal(data.timezone);

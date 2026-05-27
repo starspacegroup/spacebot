@@ -301,15 +301,36 @@ export async function getServerStatsHistory(db, guildId, options = {}) {
 
   try {
     const result = await db.prepare(`
-      SELECT 
-        strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}')) as period,
-        ROUND(AVG(member_count)) as member_count,
-        ROUND(AVG(online_count)) as online_count,
-        ROUND(AVG(bot_count)) as bot_count,
-        MAX(recorded_at) as last_recorded
-      FROM server_stats 
-      WHERE guild_id = ? AND recorded_at >= datetime('now', ?)
-      GROUP BY strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}'))
+      WITH bucketed AS (
+        SELECT
+          strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}')) as period,
+          member_count,
+          online_count,
+          bot_count,
+          human_count,
+          recorded_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY strftime('${groupFormat}', datetime(recorded_at, '${tzOffset}'))
+            ORDER BY recorded_at DESC
+          ) as rn
+        FROM server_stats
+        WHERE guild_id = ? AND recorded_at >= datetime('now', ?)
+      )
+      SELECT
+        period,
+        member_count,
+        online_count,
+        bot_count,
+        COALESCE(
+          human_count,
+          CASE
+            WHEN bot_count IS NOT NULL THEN MAX(member_count - bot_count, 0)
+            ELSE NULL
+          END
+        ) as human_count,
+        recorded_at as last_recorded
+      FROM bucketed
+      WHERE rn = 1
       ORDER BY period ASC
     `).bind(guildId, timeRange).all();
 
@@ -435,9 +456,15 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
     return {
       // Total member counts (including bots)
       current: currentCount,
-      day: dayAgo?.member_count ? currentCount - dayAgo.member_count : 0,
-      week: weekAgo?.member_count ? currentCount - weekAgo.member_count : 0,
-      month: monthAgo?.member_count ? currentCount - monthAgo.member_count : 0,
+      day: dayAgo?.member_count !== null && dayAgo?.member_count !== undefined
+        ? currentCount - dayAgo.member_count
+        : 0,
+      week: weekAgo?.member_count !== null && weekAgo?.member_count !== undefined
+        ? currentCount - weekAgo.member_count
+        : 0,
+      month: monthAgo?.member_count !== null && monthAgo?.member_count !== undefined
+        ? currentCount - monthAgo.member_count
+        : 0,
       
       // Human (non-bot) member counts
       currentHuman: currentHuman,

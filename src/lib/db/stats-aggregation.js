@@ -725,6 +725,9 @@ export async function getVoiceActivitySummary(db, guildId, period = "7d") {
         AND period_start >= datetime('now', ?)
     `).bind(guildId, timeRange).first();
 
+    // Add the current in-progress hour so summaries stay aligned with live activity.
+    const partial = await getCurrentHourPartialStats(db, guildId);
+
     // Get session stats for more detail
     const sessions = await db.prepare(`
       SELECT 
@@ -733,17 +736,17 @@ export async function getVoiceActivitySummary(db, guildId, period = "7d") {
         AVG(duration_seconds) as avg_duration
       FROM voice_sessions
       WHERE guild_id = ? 
-        AND joined_at >= datetime('now', ?)
-        AND duration_seconds IS NOT NULL
+        AND joined_at < datetime('now')
+        AND COALESCE(left_at, datetime('now')) > datetime('now', ?)
     `).bind(guildId, timeRange).first();
 
-    const totalSeconds = aggregated?.total_seconds || 0;
+    const totalSeconds = (aggregated?.total_seconds || 0) + (partial?.voice_total_seconds || 0);
 
     return {
       totalSeconds,
       totalMinutes: Math.round(totalSeconds / 60),
       totalHours: Math.round(totalSeconds / 3600 * 10) / 10,
-      uniqueUsers: sessions?.unique_users || aggregated?.unique_users || 0,
+      uniqueUsers: sessions?.unique_users || aggregated?.unique_users || partial?.voice_unique_users || 0,
       sessionCount: sessions?.session_count || 0,
       avgSessionMinutes: Math.round((sessions?.avg_duration || 0) / 60),
     };

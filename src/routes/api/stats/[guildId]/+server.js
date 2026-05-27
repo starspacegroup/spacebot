@@ -67,12 +67,12 @@ export async function GET({ params, url, platform, cookies }) {
       guildId,
       period,
       current: {
-        memberCount: latest?.member_count || changes.current,
-        humanCount: latest?.human_count || changes.currentHuman || null,
-        onlineCount: latest?.online_count || null,
-        botCount: latest?.bot_count || changes.botCount || null,
-        boostCount: latest?.boost_count || null,
-        boostLevel: latest?.boost_level || null,
+        memberCount: latest?.member_count ?? changes.current,
+        humanCount: latest?.human_count ?? changes.currentHuman ?? null,
+        onlineCount: latest?.online_count ?? null,
+        botCount: latest?.bot_count ?? changes.botCount ?? null,
+        boostCount: latest?.boost_count ?? null,
+        boostLevel: latest?.boost_level ?? null,
         lastUpdated: latest?.recorded_at || null,
       },
       changes: {
