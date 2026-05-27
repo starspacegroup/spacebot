@@ -69,18 +69,38 @@ function shouldFallbackToCommandExecution(output) {
   );
 }
 
-function parseAppliedMigrations(output, migrationFiles) {
-  const applied = new Set();
+function parseMarkerValue(output, markerPrefix) {
+  const escapedPrefix = markerPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = output.match(new RegExp(`${escapedPrefix}([^\n\r\"'|\\s]*)`));
+  return match ? match[1] : null;
+}
 
-  // Wrangler output format can vary (table/json/plain). Handle all known variants.
+function parseMigrationNamesFromOutput(output) {
+  const names = new Set();
+
   const jsonMatches = output.matchAll(/"name":\s*"([^"]+)"/g);
   for (const match of jsonMatches) {
-    applied.add(match[1]);
+    names.add(match[1]);
   }
 
   const singleQuotedMatches = output.matchAll(/'name':\s*'([^']+)'/g);
   for (const match of singleQuotedMatches) {
-    applied.add(match[1]);
+    names.add(match[1]);
+  }
+
+  const filenameMatches = output.matchAll(/\b\d{4}_[a-z0-9_\-]+\.sql\b/gi);
+  for (const match of filenameMatches) {
+    names.add(match[0]);
+  }
+
+  return names;
+}
+
+function parseAppliedMigrations(output, migrationFiles) {
+  const applied = new Set();
+
+  for (const name of parseMigrationNamesFromOutput(output)) {
+    applied.add(name);
   }
 
   // Final fallback: detect known migration filenames directly in output.
@@ -227,6 +247,18 @@ const wranglerCommand = resolveWranglerCommand();
 console.log(`🗄️  Running migrations ${isLocal ? "(local)" : "(remote)"}...\n`);
 console.log(`Using Wrangler command: ${wranglerCommand.display}`);
 
+// Get all .sql files sorted alphabetically (ensures order like 0001, 0002, etc.)
+const migrationFiles = readdirSync(migrationsDir)
+  .filter((file) => file.endsWith(".sql"))
+  .sort();
+
+if (migrationFiles.length === 0) {
+  console.log("No migration files found.");
+  process.exit(0);
+}
+
+const latestLocalMigration = migrationFiles[migrationFiles.length - 1];
+
 function d1CliExecute(args) {
   let lastError;
   for (let attempt = 1; attempt <= maxD1Retries; attempt++) {
@@ -288,14 +320,29 @@ d1Execute(
   "CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))",
 );
 
-// Get all .sql files sorted alphabetically (ensures order like 0001, 0002, etc.)
-const migrationFiles = readdirSync(migrationsDir)
-  .filter((file) => file.endsWith(".sql"))
-  .sort();
+// Smart no-op path: skip migration loop entirely when DB is already at latest.
+try {
+  const latestOutput = d1Execute(
+    "SELECT '__MIGLATEST__' || COALESCE(MAX(name), '') AS marker FROM _migrations",
+  );
+  const countOutput = d1Execute(
+    "SELECT '__MIGCOUNT__' || COUNT(*) AS marker FROM _migrations",
+  );
 
-if (migrationFiles.length === 0) {
-  console.log("No migration files found.");
-  process.exit(0);
+  const latestAppliedMigration = parseMarkerValue(latestOutput, "__MIGLATEST__") || "";
+  const appliedCountRaw = parseMarkerValue(countOutput, "__MIGCOUNT__");
+  const appliedCount = Number.parseInt(appliedCountRaw || "0", 10);
+
+  if (
+    latestAppliedMigration === latestLocalMigration &&
+    Number.isFinite(appliedCount) &&
+    appliedCount >= migrationFiles.length
+  ) {
+    console.log(`\n✅ No new migrations to apply (${migrationFiles.length} tracked).`);
+    process.exit(0);
+  }
+} catch {
+  // If preflight metadata queries fail, continue with normal migration flow.
 }
 
 // Get the set of already-applied migrations
