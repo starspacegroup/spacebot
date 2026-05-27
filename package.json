@@ -27,6 +27,7 @@
 		"runner:bridge:readme": "cat local-runner-vscode-bridge/README.md",
 		"db:create": "wrangler d1 create spacebot-logs",
 		"db:migrate": "bun scripts/migrate.js",
+		"db:migrate:smart": "bun scripts/migrate-if-needed.js",
 		"db:migrate:local": "bun scripts/migrate.js --local",
 		"gateway:latency": "bun scripts/gateway-latency.js",
 		"gateway:latency:history": "bun scripts/gateway-latency.js --history",

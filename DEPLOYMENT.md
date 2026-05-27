@@ -50,7 +50,7 @@ Enter the following build configuration:
 
 - **Project name**: `spacebot` (or your preferred name)
 - **Production branch**: `main` (or your default branch)
-- **Build command**: `bun run db:migrate && bun run build`
+- **Build command**: `bun run db:migrate:smart && bun run build`
 - **Build output directory**: `.svelte-kit/cloudflare`
 - **Root directory**: `/` (leave empty)
 
@@ -186,7 +186,7 @@ Recommended rollout for first enablement:
 2. Deploy the orchestrator worker and confirm queue consumption is healthy.
 3. Set `DM_AUTOPILOT_ENABLED=true` in Pages.
 
-Database migrations run automatically during every build (before the SvelteKit build step). The migration runner is idempotent — already-applied migrations are skipped. If a migration fails, the build will fail and the deploy will be blocked.
+Database migrations run automatically during builds only when migration SQL files changed in the commit (before the SvelteKit build step). Set `DB_MIGRATE_FORCE=1` to force migrations regardless of git diff. If a migration fails, the build will fail and the deploy will be blocked.
 
 ## Troubleshooting
 
