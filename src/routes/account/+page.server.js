@@ -3,6 +3,7 @@ import { getUser } from "$lib/db/users.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import { getBillingHistory } from "$lib/db/billing-history.js";
 import { getRunnerTokens, getRunnerInstances, getRunnerEvents } from "$lib/db/local-runners.js";
+import { listUserWorkflows } from "$lib/db/workflows.js";
 import { listAIJobsForUser } from "$lib/db/ai-orchestration.js";
 
 /** @type {import('./$types').PageServerLoad} */
@@ -98,6 +99,7 @@ export async function load({ cookies, platform, parent }) {
     runnerTokens: db ? await getRunnerTokens(db, userId) : [],
     runnerInstances: db ? await getRunnerInstances(db, userId, { limit: 100 }) : [],
     runnerEvents: db ? await getRunnerEvents(db, userId, { limit: 50 }) : [],
+    workflows: db ? await listUserWorkflows(db, userId, { limit: 100 }) : [],
     aiJobSummary,
   };
 }

@@ -57,6 +57,19 @@
 	let dispatching = $state(false);
 	let copilotPrompt = $state('');
 
+	// Workflow management state
+	let workflows = $state(untrack(() => data.workflows ?? []));
+	let newWorkflowName = $state('');
+	let newWorkflowDescription = $state('');
+	let newWorkflowJobType = $state('shell_command');
+	let newWorkflowTargetTokenId = $state('');
+	let creatingWorkflow = $state(false);
+	let workflowDispatchId = $state('');
+	let workflowDispatchCommand = $state('');
+	let workflowDispatchLabel = $state('');
+	let workflowDispatchPayload = $state('');
+	let dispatchingWorkflow = $state(false);
+
 	/** Returns true only when at least one concrete instance reports online */
 	function isRunnerOnline(token) {
 		if (token.revoked) return false;
@@ -69,6 +82,13 @@
 		const listBody = await listRes.json();
 		runnerTokens = listBody.tokens || runnerTokens;
 		runnerInstances = listBody.instances || runnerInstances;
+	}
+
+	async function refreshWorkflows() {
+		const res = await fetch('/api/account/workflows');
+		if (!res.ok) return;
+		const body = await res.json();
+		workflows = body.workflows || workflows;
 	}
 
 	onMount(() => {
@@ -89,9 +109,141 @@
 
 		const refreshTimer = setInterval(() => {
 			refreshRunnerData().catch(() => {});
+			refreshWorkflows().catch(() => {});
 		}, RUNNER_REFRESH_INTERVAL_MS);
 		return () => clearInterval(refreshTimer);
 	});
+
+	async function createWorkflow() {
+		if (!newWorkflowName.trim()) return;
+		creatingWorkflow = true;
+		try {
+			const res = await fetch('/api/account/workflows', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					name: newWorkflowName.trim(),
+					description: newWorkflowDescription.trim() || undefined,
+					job_type: newWorkflowJobType,
+					target_runner_token_id: Number(newWorkflowTargetTokenId) || undefined,
+				}),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to create workflow';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			workflows = [body.workflow, ...workflows];
+			newWorkflowName = '';
+			newWorkflowDescription = '';
+			newWorkflowJobType = 'shell_command';
+			newWorkflowTargetTokenId = '';
+			toastMessage = 'Workflow created.';
+			toastSuccess = true;
+			showToast = true;
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		} finally {
+			creatingWorkflow = false;
+		}
+	}
+
+	async function setWorkflowEnabled(workflow, enabled) {
+		try {
+			const res = await fetch(`/api/account/workflows/${workflow.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled }),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to update workflow';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			workflows = workflows.map((item) => item.id === workflow.id ? body.workflow : item);
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		}
+	}
+
+	async function deleteWorkflow(id) {
+		if (!confirm('Delete this workflow? This cannot be undone.')) return;
+		try {
+			const res = await fetch(`/api/account/workflows/${id}`, { method: 'DELETE' });
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to delete workflow';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			workflows = workflows.filter((item) => item.id !== id);
+			if (String(workflowDispatchId) === String(id)) workflowDispatchId = '';
+			toastMessage = 'Workflow deleted.';
+			toastSuccess = true;
+			showToast = true;
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		}
+	}
+
+	async function dispatchWorkflowNow() {
+		if (!workflowDispatchId) return;
+		dispatchingWorkflow = true;
+		try {
+			let payloadJson = undefined;
+			if (workflowDispatchPayload.trim()) {
+				try {
+					payloadJson = JSON.parse(workflowDispatchPayload);
+				} catch {
+					toastMessage = 'Payload JSON is invalid';
+					toastSuccess = false;
+					showToast = true;
+					return;
+				}
+			}
+
+			const res = await fetch(`/api/account/workflows/${workflowDispatchId}/dispatch`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					command: workflowDispatchCommand.trim() || undefined,
+					label: workflowDispatchLabel.trim() || undefined,
+					payload_json: payloadJson,
+				}),
+			});
+			const body = await res.json();
+			if (!res.ok) {
+				toastMessage = body.error || 'Failed to dispatch workflow';
+				toastSuccess = false;
+				showToast = true;
+				return;
+			}
+			toastMessage = `Workflow queued job #${body.jobId}.`;
+			toastSuccess = true;
+			showToast = true;
+			workflowDispatchCommand = '';
+			workflowDispatchLabel = '';
+			workflowDispatchPayload = '';
+			await refreshRunnerData();
+		} catch {
+			toastMessage = 'Network error. Please try again.';
+			toastSuccess = false;
+			showToast = true;
+		} finally {
+			dispatchingWorkflow = false;
+		}
+	}
 
 	function persistRunnerUiPreference(nextPrefs) {
 		if (runnerPrefsSaveInFlight) {
@@ -356,17 +508,20 @@
 
 	function getRunnerSystemSummary(instance) {
 		const profile = getRunnerSystemProfile(instance);
+		const machine = profile?.machine || {};
 		const os = profile?.os || {};
 		const hardware = profile?.hardware || {};
 		const displays = profile?.displays || {};
 		const platformLabel = os.platform || instance?.platform || 'unknown';
+		const osFamilyLabel = machine.osFamily || 'unknown';
+		const machineClassLabel = machine.class || 'unknown';
 		const archLabel = os.arch || instance?.arch || 'unknown';
 		const cpuCount = Number.isFinite(hardware.cpuCount) ? hardware.cpuCount : null;
 		const memoryLabel = formatBytes(hardware.totalMemoryBytes);
 		const displayCount = Number.isFinite(displays.count) ? displays.count : 0;
 		const arrangementLabel = displays.arrangementKnown ? 'arrangement known' : 'arrangement unknown';
 
-		return `${platformLabel} / ${archLabel}${cpuCount ? ` · ${cpuCount} cores` : ''} · ${memoryLabel} RAM · ${displayCount} display${displayCount === 1 ? '' : 's'} · ${arrangementLabel}`;
+		return `${machineClassLabel} · ${osFamilyLabel} (${platformLabel}/${archLabel})${cpuCount ? ` · ${cpuCount} cores` : ''} · ${memoryLabel} RAM · ${displayCount} display${displayCount === 1 ? '' : 's'} · ${arrangementLabel}`;
 	}
 
 	function getRunnerPermissionsSummary(instance) {
@@ -1099,6 +1254,95 @@
 			Local runners let you run shell commands and scripts on your own machine, triggered from
 			SpaceBot. Each runner authenticates with a secret token and polls for queued jobs.
 		</p>
+
+		<div class="workflow-panel">
+			<div class="workflow-panel-header">
+				<h3>Queue Workflows</h3>
+				<span class="workflow-count">{workflows.length} total</span>
+			</div>
+			<p class="workflow-help">Define reusable queue rules so specific job types route to selected runners and instances.</p>
+
+			<div class="workflow-create-grid">
+				<input
+					class="input"
+					type="text"
+					placeholder="Workflow name"
+					bind:value={newWorkflowName}
+					disabled={creatingWorkflow}
+				/>
+				<input
+					class="input"
+					type="text"
+					placeholder="Description (optional)"
+					bind:value={newWorkflowDescription}
+					disabled={creatingWorkflow}
+				/>
+				<select class="input" bind:value={newWorkflowJobType} disabled={creatingWorkflow}>
+					<option value="shell_command">shell_command</option>
+					<option value="screenshot_capture">screenshot_capture</option>
+					<option value="system_profile">system_profile</option>
+					<option value="vscode_discover_instances">vscode_discover_instances</option>
+					<option value="vscode_send_copilot_message">vscode_send_copilot_message</option>
+					<option value="dm">dm</option>
+				</select>
+				<select class="input" bind:value={newWorkflowTargetTokenId} disabled={creatingWorkflow}>
+					<option value="">No target runner</option>
+					{#each runnerTokens.filter((token) => !token.revoked) as token (token.id)}
+						<option value={token.id}>{token.name} ({token.token_prefix}...)</option>
+					{/each}
+				</select>
+				<button class="btn btn-primary btn-sm" onclick={createWorkflow} disabled={creatingWorkflow || !newWorkflowName.trim()}>
+					{creatingWorkflow ? 'Creating…' : 'Create Workflow'}
+				</button>
+			</div>
+
+			<div class="workflow-dispatch-row">
+				<select class="input" bind:value={workflowDispatchId}>
+					<option value="">Select workflow to dispatch</option>
+					{#each workflows.filter((workflow) => workflow.enabled) as workflow (workflow.id)}
+						<option value={workflow.id}>{workflow.name} ({workflow.job_type})</option>
+					{/each}
+				</select>
+				<input class="input" type="text" placeholder="Command override (optional)" bind:value={workflowDispatchCommand} />
+				<input class="input" type="text" placeholder="Label override (optional)" bind:value={workflowDispatchLabel} />
+				<input class="input" type="text" placeholder="Payload JSON (optional)" bind:value={workflowDispatchPayload} />
+				<button class="btn btn-outline btn-sm" onclick={dispatchWorkflowNow} disabled={dispatchingWorkflow || !workflowDispatchId}>
+					{dispatchingWorkflow ? 'Queuing…' : 'Run Workflow'}
+				</button>
+			</div>
+
+			{#if workflows.length > 0}
+				<div class="workflow-list">
+					{#each workflows as workflow (workflow.id)}
+						<div class="workflow-row" class:workflow-disabled={!workflow.enabled}>
+							<div class="workflow-main">
+								<strong>{workflow.name}</strong>
+								<span class="workflow-meta">type: {workflow.job_type}</span>
+								<span class="workflow-meta">token: {workflow.target_runner_token_id || 'none'}</span>
+								<span class="workflow-meta">instance: {workflow.target_runner_instance_id || 'auto'}</span>
+								<span class="workflow-meta">priority: {workflow.priority}, retries: {workflow.max_attempts}, timeout: {workflow.timeout_seconds}s</span>
+								{#if workflow.description}
+									<span class="workflow-meta">{workflow.description}</span>
+								{/if}
+							</div>
+							<div class="workflow-actions">
+								<label class="runner-option-toggle">
+									<input
+										type="checkbox"
+										checked={Boolean(workflow.enabled)}
+										onchange={(event) => setWorkflowEnabled(workflow, event.currentTarget.checked)}
+									/>
+									<span>{workflow.enabled ? 'Enabled' : 'Disabled'}</span>
+								</label>
+								<button class="btn btn-danger btn-sm" onclick={() => deleteWorkflow(workflow.id)}>Delete</button>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{:else}
+				<p class="workflow-empty">No workflows yet. Create one to start routing jobs by policy.</p>
+			{/if}
+		</div>
 
 		<!-- Token creation -->
 		<div class="runner-create-row">
@@ -2435,6 +2679,86 @@
 		color: var(--color-text-muted);
 		margin: 0 0 1.25rem;
 		line-height: 1.5;
+	}
+
+	.workflow-panel {
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.875rem 1rem;
+		margin-bottom: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.workflow-panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.workflow-panel-header h3 {
+		font-size: 0.9375rem;
+		margin: 0;
+	}
+
+	.workflow-count {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.workflow-help {
+		margin: 0;
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+	}
+
+	.workflow-create-grid,
+	.workflow-dispatch-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.workflow-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.workflow-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.625rem 0.75rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+	}
+
+	.workflow-row.workflow-disabled {
+		opacity: 0.65;
+	}
+
+	.workflow-main {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.workflow-meta,
+	.workflow-empty {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.workflow-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
 	}
 
 	.runner-create-row {

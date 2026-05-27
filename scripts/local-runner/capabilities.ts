@@ -14,6 +14,11 @@ export interface RunnerDisplay {
 
 export interface RunnerSystemProfile {
   collectedAt: string;
+  machine: {
+    class: "workstation" | "server" | "unknown";
+    osFamily: "windows" | "linux" | "macos" | "unknown";
+    hasDisplay: boolean;
+  };
   os: {
     platform: string;
     release: string;
@@ -178,6 +183,28 @@ function detectCommonTools(): Record<string, boolean> {
   return Object.fromEntries(entries);
 }
 
+function detectOsFamily(): "windows" | "linux" | "macos" | "unknown" {
+  if (platform === "win32") return "windows";
+  if (platform === "linux") return "linux";
+  if (platform === "darwin") return "macos";
+  return "unknown";
+}
+
+function detectMachineClass(hasDisplayEnv: boolean): "workstation" | "server" | "unknown" {
+  const override = String(env.RUNNER_MACHINE_CLASS || "").trim().toLowerCase();
+  if (override === "workstation" || override === "server") {
+    return override;
+  }
+
+  const cpuCount = cpus().length;
+  const totalMemoryBytes = totalmem();
+  const hasServerSignals = !hasDisplayEnv && (cpuCount >= 8 || totalMemoryBytes >= 16 * 1024 * 1024 * 1024);
+
+  if (hasServerSignals) return "server";
+  if (hasDisplayEnv) return "workstation";
+  return "unknown";
+}
+
 export function gatherSystemProfile(): RunnerSystemProfile {
   const displays = detectDisplays();
   const hasDisplayEnv = Boolean(env.DISPLAY || env.WAYLAND_DISPLAY || platform === "win32" || platform === "darwin");
@@ -187,9 +214,15 @@ export function gatherSystemProfile(): RunnerSystemProfile {
   const screenshotEnabled = env.RUNNER_ENABLE_SCREENSHOTS === "1";
   const vscodeControlEnabled = env.RUNNER_ENABLE_VSCODE_CONTROL !== "0";
   const copilotChatEnabled = env.RUNNER_ENABLE_COPILOT_CHAT === "1";
+  const machineClass = detectMachineClass(hasDisplayEnv);
 
   return {
     collectedAt: new Date().toISOString(),
+    machine: {
+      class: machineClass,
+      osFamily: detectOsFamily(),
+      hasDisplay: hasDisplayEnv,
+    },
     os: {
       platform,
       release: release(),
