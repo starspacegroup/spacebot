@@ -31,6 +31,10 @@
   let dispatchPayload = $state("");
   let dispatching = $state(false);
 
+  let queueStatusFilter = $state("all");
+  let queueTypeFilter = $state("all");
+  let queueSearch = $state("");
+
   function showToast(message, ok = true) {
     toast = { show: true, message, ok };
     setTimeout(() => {
@@ -266,6 +270,46 @@
     if (status === "canceled") return "mute";
     return "info";
   }
+
+  const queueJobTypes = $derived(() => {
+    const types = new Set();
+    for (const job of runnerJobs || []) {
+      if (job?.job_type) {
+        types.add(job.job_type);
+      }
+    }
+    return [...types].sort();
+  });
+
+  const filteredRunnerJobs = $derived(() => {
+    const search = queueSearch.trim().toLowerCase();
+    return (runnerJobs || []).filter((job) => {
+      if (queueStatusFilter !== "all" && job.status !== queueStatusFilter) {
+        return false;
+      }
+      if (queueTypeFilter !== "all" && job.job_type !== queueTypeFilter) {
+        return false;
+      }
+      if (!search) {
+        return true;
+      }
+
+      const haystack = [
+        String(job.id || ""),
+        String(job.job_type || ""),
+        String(job.status || ""),
+        String(job.label || ""),
+        String(job.command || ""),
+        String(job.runner_name || ""),
+        String(job.target_instance_name || ""),
+        String(job.claimed_by_instance_name || ""),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(search);
+    });
+  });
 </script>
 
 <svelte:head>
@@ -275,14 +319,33 @@
 <div class="ops-page">
   <header class="ops-header">
     <div>
-      <h1>Operations Console</h1>
-      <p>Manage workflow routing, model strategy, runner placement, and queue execution from one screen.</p>
+      <h1>Automation Console</h1>
+      <p>Build workflow templates, dispatch jobs, and manage queue execution in one place.</p>
     </div>
     <div class="ops-header-links">
       <a href="/account">Account</a>
-      <a href="/account/ai-jobs">Jobs</a>
+      <a href="#jobs">Queue</a>
     </div>
   </header>
+
+  <section class="panel quickstart-panel">
+    <h2>Start Here</h2>
+    <p class="muted">Use this order for day-to-day operations: define a workflow, dispatch it, then monitor/cancel/retry in queue.</p>
+    <div class="quickstart-grid">
+      <a class="quickstart-card" href="#workflow-builder">
+        <strong>1. Build workflow</strong>
+        <span>Set job type, machine strategy, and model behavior.</span>
+      </a>
+      <a class="quickstart-card" href="#dispatch">
+        <strong>2. Dispatch</strong>
+        <span>Queue jobs from a workflow with optional command/payload override.</span>
+      </a>
+      <a class="quickstart-card" href="#jobs">
+        <strong>3. Run queue</strong>
+        <span>Filter jobs, inspect status, and cancel/retry with one click.</span>
+      </a>
+    </div>
+  </section>
 
   {#if toast.show}
     <div class={`toast ${toast.ok ? "ok" : "err"}`}>{toast.message}</div>
@@ -306,13 +369,13 @@
     </article>
   </section>
 
-  <section class="panel">
+  <section id="workflow-builder" class="panel">
     <h2>Create Workflow</h2>
-    <p class="muted">Define job type, machine strategy, and model execution behavior. Use fanout mode to try all models or all machines.</p>
+    <p class="muted">Create a reusable template for how jobs are routed and executed. Leave allow-lists blank to allow all available runners.</p>
 
     <div class="form-grid">
-      <input class="input" type="text" placeholder="Workflow name" bind:value={formName} />
-      <input class="input" type="text" placeholder="Description (optional)" bind:value={formDescription} />
+      <input class="input" type="text" placeholder="Workflow template name" bind:value={formName} />
+      <input class="input" type="text" placeholder="Description (what this workflow should do)" bind:value={formDescription} />
 
       <select class="input" bind:value={formJobType}>
         <option value="shell_command">shell_command</option>
@@ -344,8 +407,8 @@
       </select>
 
       <select class="input" bind:value={formModelMode}>
-        <option value="first_success">model mode: first_success</option>
-        <option value="fanout_all">model mode: fanout_all</option>
+        <option value="first_success">first_success (fallback chain)</option>
+        <option value="fanout_all">fanout_all (one job per model)</option>
       </select>
 
       <textarea class="input" rows="3" bind:value={formModelChain} placeholder="Model chain, one per line (provider:model[:via])"></textarea>
@@ -363,6 +426,8 @@
       </select>
     </div>
 
+    <p class="muted form-hint">Model chain format: one entry per line, for example <code>copilot:gpt-4.1</code> or <code>ollama:llama3</code>.</p>
+
     <div class="capability-row">
       <label><input type="checkbox" bind:checked={formRequireScreenshots} /> require screenshots</label>
       <label><input type="checkbox" bind:checked={formRequireVscode} /> require vscode control</label>
@@ -374,7 +439,7 @@
     </button>
   </section>
 
-  <section class="panel">
+  <section id="workflow-inventory" class="panel">
     <h2>Workflow Inventory</h2>
     <div class="workflow-list">
       {#if workflows.length === 0}
@@ -404,7 +469,7 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section id="dispatch" class="panel">
     <h2>Dispatch Workflow</h2>
     <div class="dispatch-grid">
       <select class="input" bind:value={dispatchWorkflowId}>
@@ -422,8 +487,37 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section id="jobs" class="panel">
     <h2>Queue Control</h2>
+    <p class="muted">This is your live operations board for queued work across all workflows.</p>
+
+    <div class="queue-toolbar">
+      <select class="input" bind:value={queueStatusFilter}>
+        <option value="all">All statuses</option>
+        <option value="pending">pending</option>
+        <option value="running">running</option>
+        <option value="completed">completed</option>
+        <option value="failed">failed</option>
+        <option value="canceled">canceled</option>
+      </select>
+
+      <select class="input" bind:value={queueTypeFilter}>
+        <option value="all">All job types</option>
+        {#each queueJobTypes as type (type)}
+          <option value={type}>{type}</option>
+        {/each}
+      </select>
+
+      <input
+        class="input"
+        type="text"
+        placeholder="Search id, type, label, command, or runner"
+        bind:value={queueSearch}
+      />
+    </div>
+
+    <p class="meta">Showing {Math.min(filteredRunnerJobs.length, 80)} of {filteredRunnerJobs.length} matching job(s).</p>
+
     <div class="table-wrap">
       <table>
         <thead>
@@ -438,7 +532,12 @@
           </tr>
         </thead>
         <tbody>
-          {#each runnerJobs.slice(0, 80) as job (job.id)}
+          {#if filteredRunnerJobs.length === 0}
+            <tr>
+              <td colspan="7" class="muted">No jobs match the current queue filters.</td>
+            </tr>
+          {:else}
+            {#each filteredRunnerJobs.slice(0, 80) as job (job.id)}
             <tr>
               <td>#{job.id}</td>
               <td>{job.job_type}</td>
@@ -456,7 +555,8 @@
                 {/if}
               </td>
             </tr>
-          {/each}
+            {/each}
+          {/if}
         </tbody>
       </table>
     </div>
@@ -559,6 +659,33 @@
     font-size: 1rem;
   }
 
+  .quickstart-panel {
+    padding-top: 0.75rem;
+  }
+
+  .quickstart-grid {
+    margin-top: 0.65rem;
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .quickstart-card {
+    border: 1px solid var(--color-border, #333);
+    border-radius: 0.45rem;
+    padding: 0.65rem;
+    text-decoration: none;
+    color: inherit;
+    display: grid;
+    gap: 0.25rem;
+    background: color-mix(in oklab, var(--color-surface, #0f0f12) 85%, #1e293b 15%);
+  }
+
+  .quickstart-card span {
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+  }
+
   .muted {
     color: var(--color-text-muted);
     font-size: 0.82rem;
@@ -584,6 +711,17 @@
     gap: 0.8rem;
     flex-wrap: wrap;
     font-size: 0.82rem;
+  }
+
+  .form-hint {
+    margin-top: 0.45rem;
+  }
+
+  .queue-toolbar {
+    margin-top: 0.65rem;
+    display: grid;
+    grid-template-columns: 180px 220px minmax(240px, 1fr);
+    gap: 0.5rem;
   }
 
   .input {
@@ -707,6 +845,10 @@
 
     .workflow-card {
       flex-direction: column;
+    }
+
+    .queue-toolbar {
+      grid-template-columns: 1fr;
     }
   }
 </style>

@@ -1244,16 +1244,16 @@
 	
 	<!-- Operations Section -->
 	<section id="section-runners" class="content-section">
-		<h2><span class="section-icon">🧭</span> Operations Hub</h2>
+		<h2><span class="section-icon">🧭</span> Automation Hub</h2>
 
 		<p class="section-intro">
-			Manage queue workflows, local runner fleet, and live queue activity from one place.
-			Runners authenticate with a secret token and pick up queued jobs according to workflow rules.
+			Manage workflows, dispatch jobs, and run queue operations from one interface.
+			Runners authenticate with a secret token and execute jobs based on workflow routing rules.
 		</p>
 
 		<div class="operations-links">
-			<a href="/account/operations" class="btn btn-outline btn-sm">Open Operations Console</a>
-			<a href="/account/ai-jobs" class="btn btn-outline btn-sm">Open Queue & Jobs</a>
+			<a href="/account/operations" class="btn btn-outline btn-sm">Open Automation Console</a>
+			<a href="/account/operations#jobs" class="btn btn-outline btn-sm">Open Queue Board</a>
 			<a href="/account#section-settings" class="btn btn-ghost btn-sm">Runner defaults</a>
 		</div>
 
