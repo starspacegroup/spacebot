@@ -675,6 +675,44 @@ export async function POST({ request, cookies, platform }) {
   const triggeredBy = isBearerAuth ? 'cron_scheduler' : 'manual';
   const jobId = await recordJobStart(db, jobName, triggeredBy, isBearerAuth ? null : userId);
 
+  // Rebuild can be very long-running. Queue it in the background when waitUntil is available
+  // so the request returns immediately and the superadmin UI can keep polling status.
+  if (jobName === 'rebuild_stats' && platform?.context?.waitUntil) {
+    platform.context.waitUntil((async () => {
+      let result;
+      let jobError = null;
+
+      try {
+        result = await runRebuildStats(db);
+      } catch (error) {
+        jobError = error;
+      }
+
+      const duration = Date.now() - startTime;
+      await recordJobComplete(
+        db,
+        jobId,
+        !jobError,
+        jobError ? null : result,
+        jobError?.message || null,
+        duration,
+      );
+
+      if (jobError) {
+        log.error(`[Cron API] Background job ${jobName} failed:`, jobError);
+      } else {
+        log.info(`[Cron API] Background job ${jobName} completed successfully in ${duration}ms`);
+      }
+    })());
+
+    return json({
+      success: true,
+      queued: true,
+      jobId,
+      message: 'Rebuild started in background. Refresh status to monitor progress.',
+    });
+  }
+
   let result;
   let jobError = null;
 

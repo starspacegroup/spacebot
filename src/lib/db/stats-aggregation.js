@@ -9,6 +9,7 @@ import { getTimezoneOffsetSQL } from "../timezone.js";
 
 const HOURLY_REPAIR_DAYS = 7;
 const DAILY_REPAIR_DAYS = 14;
+const HOURLY_BOOTSTRAP_MAX_DAYS = 14;
 
 function toSqlDateTime(value = new Date()) {
   if (typeof value === "string") {
@@ -378,8 +379,15 @@ export async function buildHourlyStats(db, guildId) {
         FROM event_logs
         WHERE guild_id = ? AND created_at >= datetime('now', '-90 days')
       `).bind(guildId).first();
-      
-      startTime = earliest?.earliest || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // First-run / rebuild safety cap: avoid unbounded historical scans in one request.
+      const bootstrapStart = new Date(Date.now() - HOURLY_BOOTSTRAP_MAX_DAYS * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+      startTime = earliest?.earliest && Date.parse(earliest.earliest) > Date.parse(bootstrapStart)
+        ? earliest.earliest
+        : bootstrapStart;
     }
 
     const repairWindowStart = new Date(Date.now() - HOURLY_REPAIR_DAYS * 24 * 60 * 60 * 1000)

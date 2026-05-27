@@ -48,6 +48,7 @@ const GATEWAY_LOG_FLUSH_MS = 1_500;
 const GATEWAY_LOG_BATCH_SIZE = 50;
 const GATEWAY_LOG_MAX_QUEUE = 500;
 const VOICE_SESSION_RECONCILE_COOLDOWN_MS = 60_000;
+const VOICE_SESSION_POLL_INTERVAL_MS = 60_000;
 const WORKERS_AI_MODEL_CONFIG_CACHE_MS = 0;
 
 let gatewayLogCaptureEnabled = false;
@@ -58,6 +59,7 @@ let gatewayLogFlushInFlight = false;
 let gatewayConsoleCaptureInstalled = false;
 let lastVoiceSessionReconcileAt = 0;
 let voiceSessionReconcileInFlight = false;
+let voiceSessionPollTimer = null;
 let cachedWorkersAIModelConfig = null;
 const liveUpdateClientsByGuild = new Map();
 
@@ -1231,13 +1233,14 @@ async function syncGuildLiveVoiceSnapshot(guild, reason) {
   }
 }
 
-async function reconcileVoiceSessionsViaAPI(client, reason) {
+async function reconcileVoiceSessionsViaAPI(client, reason, options = {}) {
+  const { force = false } = options;
   const now = Date.now();
   if (voiceSessionReconcileInFlight) {
     return;
   }
 
-  if (now - lastVoiceSessionReconcileAt < VOICE_SESSION_RECONCILE_COOLDOWN_MS) {
+  if (!force && now - lastVoiceSessionReconcileAt < VOICE_SESSION_RECONCILE_COOLDOWN_MS) {
     log.debug(`[VoiceSessions] Skipping reconciliation for ${reason}; cooldown active`);
     return;
   }
@@ -1272,6 +1275,25 @@ async function reconcileVoiceSessionsViaAPI(client, reason) {
   } finally {
     voiceSessionReconcileInFlight = false;
   }
+}
+
+function stopVoiceSessionPolling() {
+  if (voiceSessionPollTimer) {
+    clearInterval(voiceSessionPollTimer);
+    voiceSessionPollTimer = null;
+  }
+}
+
+function startVoiceSessionPolling(client) {
+  if (voiceSessionPollTimer) {
+    return;
+  }
+
+  voiceSessionPollTimer = setInterval(() => {
+    void reconcileVoiceSessionsViaAPI(client, "minute_poll", { force: true });
+  }, VOICE_SESSION_POLL_INTERVAL_MS);
+
+  log.info(`[VoiceSessions] Minute reconciliation poll started (${VOICE_SESSION_POLL_INTERVAL_MS / 1000}s interval)`);
 }
 
 /**
@@ -3959,6 +3981,8 @@ function setupEventHandlers(client, logFn) {
       log.warn("[VoiceSessions] ClientReady reconciliation failed:", error.message);
     });
 
+    startVoiceSessionPolling(c);
+
     // Start gateway benchmark reporting (every 60 seconds)
     startBenchmarkReporting(c);
   });
@@ -4125,6 +4149,7 @@ async function recoverGatewayClient(reason) {
   benchmarkRecoveryInFlight = true;
   benchmarkLastRecoveryAt = Date.now();
   stopBenchmarkReporting();
+  stopVoiceSessionPolling();
 
   const previousClient = discordClient;
   log.error(`[BenchmarkWatchdog] ${reason}. Recycling Discord client.`);
@@ -4348,6 +4373,7 @@ function gracefulShutdown(signal) {
   log.info(`\n🛑 Received ${signal}, shutting down gracefully...`);
   clearGatewayLogFlushTimer();
   stopBenchmarkReporting();
+  stopVoiceSessionPolling();
   if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
   if (httpServer) httpServer.close();
   if (discordClient) {
