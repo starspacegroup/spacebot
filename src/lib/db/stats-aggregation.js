@@ -1289,39 +1289,13 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
   const tzOffset = getTimezoneOffsetSQL(timezone);
 
   try {
-    // Use hourly records grouped by local date for proper timezone alignment.
-    // Daily records cover UTC days so shifting their labels doesn't realign
-    // the underlying data to local calendar days.
+    // Source growth directly from raw member events so charts remain accurate
+    // even if aggregation jobs are delayed.
     const result = await db.prepare(`
       SELECT 
-        date(datetime(period_start, '${tzOffset}')) as date,
-        SUM(member_joins) as joins,
-        SUM(member_leaves) as leaves,
-        SUM(member_net_change) as net_change
-      FROM aggregated_stats
-      WHERE guild_id = ?
-        AND period_type = 'hourly'
-        AND period_start >= datetime('now', ?)
-      GROUP BY date
-      ORDER BY date ASC
-    `).bind(guildId, timeRange).all();
-
-    const rawData = (result.results || []).map(row => ({
-      date: row.date,
-      joins: row.joins || 0,
-      leaves: row.leaves || 0,
-      netChange: row.net_change || 0,
-      joinsHuman: 0,
-      leavesHuman: 0,
-      netChangeHuman: 0,
-      hasData: true,
-    }));
-
-    // Also compute human-only member deltas directly from event logs so
-    // charts can stay stable when bots join/leave.
-    const humanResult = await db.prepare(`
-      SELECT
         date(datetime(created_at, '${tzOffset}')) as date,
+        SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END) as joins,
+        SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END) as leaves,
         SUM(CASE WHEN event_type = 'MEMBER_JOIN' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as joins_human,
         SUM(CASE WHEN event_type = 'MEMBER_LEAVE' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as leaves_human
       FROM event_logs
@@ -1332,24 +1306,18 @@ export async function getMemberGrowthChart(db, guildId, period = "30d", timezone
       ORDER BY date ASC
     `).bind(guildId, timeRange).all();
 
+    const rawData = (result.results || []).map(row => ({
+      date: row.date,
+      joins: row.joins || 0,
+      leaves: row.leaves || 0,
+      netChange: (row.joins || 0) - (row.leaves || 0),
+      joinsHuman: row.joins_human || 0,
+      leavesHuman: row.leaves_human || 0,
+      netChangeHuman: (row.joins_human || 0) - (row.leaves_human || 0),
+      hasData: true,
+    }));
+
     const rawByDate = new Map(rawData.map((row) => [row.date, row]));
-    for (const row of humanResult.results || []) {
-      const existing = rawByDate.get(row.date) || {
-        date: row.date,
-        joins: 0,
-        leaves: 0,
-        netChange: 0,
-        joinsHuman: 0,
-        leavesHuman: 0,
-        netChangeHuman: 0,
-        hasData: true,
-      };
-      existing.joinsHuman = row.joins_human || 0;
-      existing.leavesHuman = row.leaves_human || 0;
-      existing.netChangeHuman = existing.joinsHuman - existing.leavesHuman;
-      existing.hasData = true;
-      rawByDate.set(row.date, existing);
-    }
 
     // Add the current (incomplete) hour's data to today's local date
     const today = getTodayDateString(timezone);

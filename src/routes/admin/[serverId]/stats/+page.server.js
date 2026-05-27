@@ -207,17 +207,12 @@ export async function load({ params, cookies, platform, parent, url }) {
       log.debug(`[Stats] Existing stats for ${serverId}:`, existingStats);
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
 
-      // Never block initial render on aggregation. Read available data immediately.
+      // Block on aggregation so chart queries always read the latest processed data.
       try {
-        runStatsAggregation(db, serverId)
-          .then((aggregationResult) => {
-            if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
-              log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
-            }
-          })
-          .catch((aggError) => {
-            log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
-          });
+        const aggregationResult = await runStatsAggregation(db, serverId);
+        if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
+          log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
+        }
       } catch (aggError) {
         log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
       }
