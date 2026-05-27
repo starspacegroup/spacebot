@@ -485,6 +485,22 @@ export async function buildHourlyStats(db, guildId) {
         FROM running_count
       `).bind(guildId, period.period_start, period.period_end, baselineCount, baselineCount).first();
 
+      // Guardrails: prevent mathematically impossible voice metrics from
+      // duplicate/missed gateway events from poisoning historical charts.
+      const uniqueUsers = Math.max(voiceStats?.unique_users || 0, 0);
+      const rawTotalSeconds = Math.max(voiceStats?.total_seconds || 0, 0);
+      const maxPossibleSeconds = uniqueUsers * 3600;
+      const safeTotalSeconds = Math.min(rawTotalSeconds, maxPossibleSeconds);
+      const rawPeakConcurrent = Math.max(peakConcurrent?.peak || 0, 0);
+      const safePeakConcurrent = Math.min(rawPeakConcurrent, uniqueUsers);
+
+      if (rawPeakConcurrent !== safePeakConcurrent || rawTotalSeconds !== safeTotalSeconds) {
+        log.warn(
+          `[Stats] Clamped impossible voice metrics for ${guildId} ${period.period_start}: ` +
+          `rawPeak=${rawPeakConcurrent}, rawSeconds=${rawTotalSeconds}, unique=${uniqueUsers}`
+        );
+      }
+
       // Aggregate message activity
       const messageStats = await db.prepare(`
         SELECT 
@@ -536,9 +552,9 @@ export async function buildHourlyStats(db, guildId) {
         memberStats?.joins || 0,
         memberStats?.leaves || 0,
         (memberStats?.joins || 0) - (memberStats?.leaves || 0),
-        voiceStats?.total_seconds || 0,
-        voiceStats?.unique_users || 0,
-        peakConcurrent?.peak || 0,
+        safeTotalSeconds,
+        uniqueUsers,
+        safePeakConcurrent,
         messageStats?.count || 0,
         messageStats?.unique_users || 0,
         totalEvents?.count || 0,
@@ -1218,10 +1234,17 @@ async function getCurrentHourPartialStats(db, guildId = null) {
       FROM running_count
     `).bind(...params).first();
 
+    const partialUniqueUsers = Math.max(voiceStats?.unique_users || 0, 0);
+    const partialRawSeconds = Math.max(voiceStats?.total_seconds || 0, 0);
+    const partialMaxSeconds = partialUniqueUsers * 3600;
+    const partialSafeSeconds = Math.min(partialRawSeconds, partialMaxSeconds);
+    const partialRawPeak = Math.max(peakConcurrent?.peak || 0, 0);
+    const partialSafePeak = Math.min(partialRawPeak, partialUniqueUsers);
+
     return {
-      voice_total_seconds: Math.max(voiceStats?.total_seconds || 0, 0),
-      voice_unique_users: voiceStats?.unique_users || 0,
-      voice_peak_concurrent: Math.max(peakConcurrent?.peak || 0, 0),
+      voice_total_seconds: partialSafeSeconds,
+      voice_unique_users: partialUniqueUsers,
+      voice_peak_concurrent: partialSafePeak,
       member_joins: currentHour?.member_joins || 0,
       member_leaves: currentHour?.member_leaves || 0,
       member_net_change: (currentHour?.member_joins || 0) - (currentHour?.member_leaves || 0),
