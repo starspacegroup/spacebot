@@ -20,6 +20,10 @@
 			<span class="nav-icon">📡</span>
 			Gateway
 		</a>
+		<a href="/admin/superadmin/workflows" class="nav-link">
+			<span class="nav-icon">🧭</span>
+			Workflows
+		</a>
 		<a href="/admin/superadmin/stats-import" class="nav-link">
 			<span class="nav-icon">📥</span>
 			Stats Import
