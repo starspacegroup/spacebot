@@ -22,7 +22,6 @@
 	let historyStack = $state([]);
 	let historyIndex = $state(-1);
 	let skipHistorySnapshot = $state(false);
-	let canvasZoom = $state(1);
 	let runFilter = $state('all');
 	let runSearch = $state('');
 	let runInputJson = $state('');
@@ -478,8 +477,8 @@
 		const scrollX = canvasElement.scrollLeft;
 		const scrollY = canvasElement.scrollTop;
 		return {
-			x: (clientX - rect.left + scrollX) / canvasZoom,
-			y: (clientY - rect.top + scrollY) / canvasZoom,
+			x: clientX - rect.left + scrollX,
+			y: clientY - rect.top + scrollY,
 		};
 	}
 
@@ -643,8 +642,8 @@
 		const scrollY = canvasElement.scrollTop;
 		dragState = {
 			nodeId,
-			offsetX: (event.clientX - rect.left + scrollX) / canvasZoom - (node.position?.x || 0),
-			offsetY: (event.clientY - rect.top + scrollY) / canvasZoom - (node.position?.y || 0),
+			offsetX: (event.clientX - rect.left + scrollX) - (node.position?.x || 0),
+			offsetY: (event.clientY - rect.top + scrollY) - (node.position?.y || 0),
 		};
 	}
 
@@ -690,10 +689,6 @@
 		if (edgeDragState) {
 			finishEdgeDrag();
 		}
-	}
-
-	function resetZoom() {
-		canvasZoom = 1;
 	}
 
 	function nudgeSelectedNode(deltaX, deltaY) {
@@ -1201,17 +1196,8 @@
 						<button class="btn btn-outline btn-sm" onclick={redoCanvas} disabled={!canRedo()}>Redo</button>
 					</div>
 				</div>
-				<div class="canvas-controls-row">
-					<div class="zoom-controls">
-						<label>
-							<span>Zoom</span>
-							<input type="range" min="0.6" max="1.4" step="0.05" bind:value={canvasZoom} />
-						</label>
-						<button class="btn btn-outline btn-sm" onclick={resetZoom}>100%</button>
-					</div>
-					<div class="keyboard-hints">
-						<span>Shortcuts: arrows move node, Ctrl/Cmd+D duplicate, Delete remove, Ctrl/Cmd+Z/Y undo/redo.</span>
-					</div>
+				<div class="keyboard-hints">
+					<span>Shortcuts: arrows move node, Ctrl/Cmd+D duplicate, Delete remove, Ctrl/Cmd+Z/Y undo/redo.</span>
 				</div>
 				<div class="node-legend" role="list" aria-label="Node type legend">
 					{#each Object.entries(NODE_TYPE_META) as [key, meta]}
@@ -1251,7 +1237,7 @@
 			{/if}
 
 			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
-				<div class="canvas-stage" style={`transform: scale(${canvasZoom}); width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
+				<div class="canvas-stage" style={`width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
 					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
 						<defs>
 							<marker id="workflow-edge-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
@@ -1711,29 +1697,6 @@
 		margin-top: 1rem;
 	}
 
-	.canvas-controls-row {
-		display: grid;
-		gap: 0.65rem;
-	}
-
-	.zoom-controls {
-		display: flex;
-		gap: 0.65rem;
-		align-items: end;
-		flex-wrap: wrap;
-	}
-
-	.zoom-controls label {
-		display: grid;
-		gap: 0.3rem;
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
-	}
-
-	.zoom-controls input[type='range'] {
-		width: min(220px, 100%);
-	}
-
 	.keyboard-hints {
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
@@ -2182,11 +2145,6 @@
 			overflow: visible;
 		}
 
-		.canvas-controls-row {
-			grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-			align-items: end;
-		}
-
 		.connection-form {
 			grid-template-columns: 1fr 1fr 1fr auto;
 		}
@@ -2230,10 +2188,6 @@
 
 		.canvas-surface {
 			min-height: 500px;
-		}
-
-		.canvas-controls-row {
-			gap: 0.45rem;
 		}
 
 		.keyboard-hints {
