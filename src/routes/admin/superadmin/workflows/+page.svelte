@@ -50,6 +50,17 @@
 		{ id: '0 0 * * 1', label: 'Weekly (Monday)' },
 	];
 	const TRIGGER_CUSTOM_CRON_VALUE = '__custom__';
+	const BRANCH_OPERATORS = [
+		{ id: 'equals', label: 'equals' },
+		{ id: 'not_equals', label: 'does not equal' },
+		{ id: 'contains', label: 'contains' },
+		{ id: 'starts_with', label: 'starts with' },
+		{ id: 'ends_with', label: 'ends with' },
+		{ id: 'gt', label: 'greater than' },
+		{ id: 'gte', label: 'greater or equal' },
+		{ id: 'lt', label: 'less than' },
+		{ id: 'lte', label: 'less or equal' },
+	];
 	const NODE_TYPE_META = {
 		trigger: {
 			label: 'Trigger',
@@ -299,16 +310,59 @@
 				parts.push(`Source: ${node.data.source}`);
 			}
 		}
+		if (node?.type === 'task') {
+			if (node?.data?.operation) {
+				parts.push(`Operation: ${node.data.operation}`);
+			}
+			if (node?.data?.batch_size) {
+				parts.push(`Batch: ${node.data.batch_size}`);
+			}
+			if (node?.data?.destructive) {
+				parts.push('Destructive step');
+			}
+		}
+		if (node?.type === 'approval') {
+			if (node?.data?.requiresConfirmation) {
+				parts.push('Requires explicit confirmation');
+			}
+			if (node?.data?.approver_role_id) {
+				parts.push(`Role gate: ${node.data.approver_role_id}`);
+			}
+			if (node?.data?.decision_timeout_minutes) {
+				parts.push(`Decision timeout: ${node.data.decision_timeout_minutes}m`);
+			}
+		}
+		if (node?.type === 'branch') {
+			if (node?.data?.condition_mode) {
+				parts.push(`Mode: ${node.data.condition_mode}`);
+			}
+			if (node?.data?.left_operand && node?.data?.operator) {
+				parts.push(`Rule: ${node.data.left_operand} ${node.data.operator} ${node.data.right_operand || ''}`.trim());
+			}
+		}
 		if (node?.data?.queue_key) {
 			parts.push(`Queue: ${node.data.queue_key}`);
 		}
 		if (node?.data?.retry_policy) {
 			parts.push(`Retry: ${node.data.retry_policy}`);
 		}
-		if (node?.data?.condition) {
+		if (node?.data?.condition && node?.type !== 'branch') {
 			parts.push(`When: ${node.data.condition}`);
 		}
 		return parts.join(' ');
+	}
+
+	function nodeDataValue(node, key, fallback = '') {
+		const value = node?.data?.[key];
+		return value === null || value === undefined ? fallback : value;
+	}
+
+	function nodeDataBoolean(node, key, fallback = false) {
+		const value = node?.data?.[key];
+		if (typeof value === 'boolean') return value;
+		if (value === 'true') return true;
+		if (value === 'false') return false;
+		return fallback;
 	}
 
 	function cronPresetLabel(expression = '') {
@@ -413,6 +467,16 @@
 			schedule: normalized,
 		});
 		syncDraftScheduleFromTrigger(nodeId);
+	}
+
+	function updateNodeNumberData(nodeId, key, rawValue) {
+		const normalized = String(rawValue || '').trim();
+		if (!normalized) {
+			updateNodeData(nodeId, key, '');
+			return;
+		}
+		const parsed = Number(normalized);
+		updateNodeData(nodeId, key, Number.isFinite(parsed) ? parsed : '');
 	}
 
 	function suggestEdgeLabel(sourceId, sourceHandleId = '') {
@@ -1898,24 +1962,102 @@
 								</label>
 							{/if}
 							<p class="inspector-note">Trigger cadence is configurable here. For the primary trigger, this syncs the template schedule fields above.</p>
-						{:else}
+						{:else if selectedNodeRef.type === 'task'}
+							<label>
+								<span>Operation key</span>
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'operation', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'operation', event.currentTarget.value)} placeholder="runStatsAggregation" />
+							</label>
 							<label>
 								<span>Queue key</span>
-								<input class="input" type="text" value={selectedNodeRef.data?.queue_key || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'queue_key', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
 							</label>
 							<label>
 								<span>Retry policy</span>
-								<input class="input" type="text" value={selectedNodeRef.data?.retry_policy || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'retry_policy', event.currentTarget.value)} placeholder="exponential:3" />
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'retry_policy', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'retry_policy', event.currentTarget.value)} placeholder="exponential:3" />
 							</label>
 							<label>
 								<span>Timeout (seconds)</span>
-								<input class="input" type="number" min="0" value={selectedNodeRef.data?.timeout_seconds || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'timeout_seconds', event.currentTarget.value ? Number(event.currentTarget.value) : '')} placeholder="120" />
+								<input class="input" type="number" min="0" value={nodeDataValue(selectedNodeRef, 'timeout_seconds', '')} oninput={(event) => updateNodeNumberData(selectedNodeRef.id, 'timeout_seconds', event.currentTarget.value)} placeholder="120" />
 							</label>
+							<label>
+								<span>Batch size</span>
+								<input class="input" type="number" min="1" value={nodeDataValue(selectedNodeRef, 'batch_size', '')} oninput={(event) => updateNodeNumberData(selectedNodeRef.id, 'batch_size', event.currentTarget.value)} placeholder="100" />
+							</label>
+							<label>
+								<span>Legacy job bridge</span>
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'legacyJob', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'legacyJob', event.currentTarget.value)} placeholder="hourly_aggregation" />
+							</label>
+							<label class="toggle-row checkbox-row">
+								<input type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'destructive', false)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'destructive', event.currentTarget.checked ? true : '')} />
+								<span>Mark as destructive action</span>
+							</label>
+							<label>
+								<span>Condition expression</span>
+								<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{nodeDataValue(selectedNodeRef, 'condition', '')}</textarea>
+							</label>
+							<p class="inspector-note">Task modules now expose operation, batching, and safeguards directly in the editor.</p>
+						{:else if selectedNodeRef.type === 'approval'}
+							<label class="toggle-row checkbox-row">
+								<input type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'requiresConfirmation', true)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'requiresConfirmation', event.currentTarget.checked)} />
+								<span>Require explicit operator confirmation</span>
+							</label>
+							<label>
+								<span>Approver role gate</span>
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'approver_role_id', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'approver_role_id', event.currentTarget.value)} placeholder="discord-role-id (optional)" />
+							</label>
+							<label>
+								<span>Decision timeout (minutes)</span>
+								<input class="input" type="number" min="1" value={nodeDataValue(selectedNodeRef, 'decision_timeout_minutes', '')} oninput={(event) => updateNodeNumberData(selectedNodeRef.id, 'decision_timeout_minutes', event.currentTarget.value)} placeholder="30" />
+							</label>
+							<label>
+								<span>Timeout route</span>
+								<select class="input" value={nodeDataValue(selectedNodeRef, 'timeout_route', 'rejected')} onchange={(event) => updateNodeData(selectedNodeRef.id, 'timeout_route', event.currentTarget.value)}>
+									<option value="rejected">rejected</option>
+									<option value="approved">approved</option>
+								</select>
+							</label>
+							<label>
+								<span>Approval note</span>
+								<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{nodeDataValue(selectedNodeRef, 'condition', '')}</textarea>
+							</label>
+							<p class="inspector-note">Approval modules can now define role-gated human checks and timeout behavior.</p>
+						{:else if selectedNodeRef.type === 'branch'}
+							<label>
+								<span>Condition mode</span>
+								<select class="input" value={nodeDataValue(selectedNodeRef, 'condition_mode', 'expression')} onchange={(event) => updateNodeData(selectedNodeRef.id, 'condition_mode', event.currentTarget.value)}>
+									<option value="expression">expression</option>
+									<option value="rule">rule</option>
+								</select>
+							</label>
+							{#if nodeDataValue(selectedNodeRef, 'condition_mode', 'expression') === 'rule'}
+								<label>
+									<span>Left operand</span>
+									<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'left_operand', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'left_operand', event.currentTarget.value)} placeholder="payload.member_count" />
+								</label>
+								<label>
+									<span>Operator</span>
+									<select class="input" value={nodeDataValue(selectedNodeRef, 'operator', 'equals')} onchange={(event) => updateNodeData(selectedNodeRef.id, 'operator', event.currentTarget.value)}>
+										{#each BRANCH_OPERATORS as operator (operator.id)}
+											<option value={operator.id}>{operator.label}</option>
+										{/each}
+									</select>
+								</label>
+								<label>
+									<span>Right operand</span>
+									<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'right_operand', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'right_operand', event.currentTarget.value)} placeholder="100" />
+								</label>
+							{:else}
+								<label>
+									<span>Expression</span>
+									<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{nodeDataValue(selectedNodeRef, 'condition', '')}</textarea>
+								</label>
+							{/if}
+							<label>
+								<span>Else route label</span>
+								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'else_label', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'else_label', event.currentTarget.value)} placeholder="else" />
+							</label>
+							<p class="inspector-note">Branch modules support either freeform expressions or operand-based rules.</p>
 						{/if}
-						<label>
-							<span>Condition expression</span>
-							<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{selectedNodeRef.data?.condition || ''}</textarea>
-						</label>
 					{:else}
 						<p class="empty-state compact">Select a node to edit behavior and execution metadata.</p>
 					{/if}
