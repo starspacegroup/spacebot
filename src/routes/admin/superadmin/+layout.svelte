@@ -41,6 +41,7 @@
 		max-width: 1400px;
 		margin: 0 auto;
 		padding: 1rem;
+		min-width: 0;
 	}
 
 	@media (min-width: 640px) {
@@ -50,22 +51,29 @@
 	}
 
 	.superadmin-nav {
-		display: flex;
-		gap: 0.35rem;
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.3rem;
 		margin-bottom: 1.25rem;
 		padding: 0.375rem;
 		background: var(--color-surface);
 		border-radius: var(--radius-lg);
 		border: 1px solid var(--color-border);
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
 	}
 
 	@media (min-width: 640px) {
 		.superadmin-nav {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 			gap: 0.5rem;
 			padding: 0.5rem;
 			margin-bottom: 1.5rem;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.superadmin-nav {
+			display: flex;
+			flex-wrap: wrap;
 		}
 	}
 
@@ -80,8 +88,10 @@
 		font-size: 0.85rem;
 		font-weight: 500;
 		transition: all var(--transition-fast);
-		white-space: nowrap;
-		flex-shrink: 0;
+		white-space: normal;
+		justify-content: center;
+		text-align: center;
+		min-width: 0;
 	}
 
 	@media (min-width: 640px) {
@@ -89,6 +99,15 @@
 			gap: 0.5rem;
 			padding: 0.625rem 1rem;
 			font-size: 0.9rem;
+			justify-content: flex-start;
+			text-align: left;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.nav-link {
+			white-space: nowrap;
+			flex-shrink: 0;
 		}
 	}
 
