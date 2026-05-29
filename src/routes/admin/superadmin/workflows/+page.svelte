@@ -36,6 +36,12 @@
 	const STAGE_WIDTH = 1200;
 	const STAGE_HEIGHT = 760;
 	const NODE_PADDING = 16;
+	const AUTO_LAYOUT_BASE_X = 56;
+	const AUTO_LAYOUT_BASE_Y = 72;
+	const AUTO_LAYOUT_COLUMN_GAP = 300;
+	const AUTO_LAYOUT_ROW_GAP = 238;
+	const CROWDED_VERTICAL_THRESHOLD = 170;
+	const CROWDED_HORIZONTAL_THRESHOLD = 160;
 	const NODE_TYPE_META = {
 		trigger: {
 			label: 'Trigger',
@@ -123,6 +129,7 @@
 		const selected = templates.find((template) => template.id === selectedTemplateId);
 		if (selected) {
 			draft = cloneTemplate(selected);
+			draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 		}
 	});
 
@@ -168,7 +175,7 @@
 			title: String(node?.title || safeNodeTitle(String(node?.type || 'task'), index)),
 			position: {
 				x: Number(node?.position?.x ?? 56),
-				y: Number(node?.position?.y ?? 72 + (index - 1) * 170),
+				y: Number(node?.position?.y ?? AUTO_LAYOUT_BASE_Y + (index - 1) * AUTO_LAYOUT_ROW_GAP),
 			},
 			data: typeof node?.data === 'object' && node?.data !== null ? node.data : {},
 		};
@@ -176,15 +183,59 @@
 
 	function getNextNodePosition(index) {
 		const maxColumns = 3;
-		const baseX = 56;
-		const baseY = 72;
+		const baseX = AUTO_LAYOUT_BASE_X;
+		const baseY = AUTO_LAYOUT_BASE_Y;
 		const columnGap = 330;
-		const rowGap = 190;
+		const rowGap = AUTO_LAYOUT_ROW_GAP;
 		const col = index % maxColumns;
 		const row = Math.floor(index / maxColumns);
 		const x = Math.min(baseX + col * columnGap, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING);
 		const y = Math.min(baseY + row * rowGap, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING);
 		return { x, y };
+	}
+
+	function autoLayoutNodes(nodes = [], direction = 'vertical') {
+		const ordered = [...nodes].sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0));
+		const maxColumns = direction === 'horizontal' ? 4 : 1;
+		return ordered.map((node, index) => {
+			const col = index % maxColumns;
+			const row = Math.floor(index / maxColumns);
+			const x = AUTO_LAYOUT_BASE_X + col * AUTO_LAYOUT_COLUMN_GAP;
+			const y = AUTO_LAYOUT_BASE_Y + row * AUTO_LAYOUT_ROW_GAP;
+			return {
+				...node,
+				position: {
+					x: Math.min(x, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING),
+					y: Math.min(y, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING),
+				},
+			};
+		});
+	}
+
+	function hasCrowdedLayout(nodes = []) {
+		for (let index = 0; index < nodes.length; index += 1) {
+			for (let compareIndex = index + 1; compareIndex < nodes.length; compareIndex += 1) {
+				const left = nodes[index];
+				const right = nodes[compareIndex];
+				const deltaX = Math.abs((left.position?.x || 0) - (right.position?.x || 0));
+				const deltaY = Math.abs((left.position?.y || 0) - (right.position?.y || 0));
+				if (deltaX < CROWDED_HORIZONTAL_THRESHOLD && deltaY < CROWDED_VERTICAL_THRESHOLD) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	function maybeSpaceCanvas(canvas) {
+		const normalized = normalizedCanvas(canvas);
+		if (!hasCrowdedLayout(normalized.nodes)) {
+			return normalized;
+		}
+		return {
+			...normalized,
+			nodes: autoLayoutNodes(normalized.nodes, 'vertical'),
+		};
 	}
 
 	function typeMeta(type) {
@@ -420,21 +471,7 @@
 		ensureDraftShape();
 		const nodes = draft.canvas_json.nodes || [];
 		if (nodes.length === 0) return;
-		const ordered = [...nodes].sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0));
-		draft.canvas_json.nodes = ordered.map((node, index) => {
-			const maxColumns = direction === 'horizontal' ? 4 : 1;
-			const col = index % maxColumns;
-			const row = Math.floor(index / maxColumns);
-			const x = 56 + col * 300;
-			const y = 72 + row * 185;
-			return {
-				...node,
-				position: {
-					x: Math.min(x, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING),
-					y: Math.min(y, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING),
-				},
-			};
-		});
+		draft.canvas_json.nodes = autoLayoutNodes(nodes, direction);
 		commitCanvasSnapshot('auto-layout');
 	}
 
@@ -461,6 +498,7 @@
 			id: null,
 			slug: `${starter.slug}-${Date.now()}`.slice(0, 80),
 		};
+		draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 		historyStack = [];
 		historyIndex = -1;
 		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
@@ -481,6 +519,7 @@
 	function selectTemplate(template) {
 		selectedTemplateId = template.id;
 		draft = cloneTemplate(template);
+		draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 		historyStack = [];
 		historyIndex = -1;
 		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
@@ -1103,6 +1142,7 @@
 				const fresh = templates.find((template) => template.id === selectedTemplateId);
 				if (fresh) {
 					draft = cloneTemplate(fresh);
+					draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 					historyStack = [];
 					historyIndex = -1;
 					selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
@@ -1150,6 +1190,7 @@
 			}
 			selectedTemplateId = savedTemplate.id;
 			draft = cloneTemplate(savedTemplate);
+			draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 			historyStack = [];
 			historyIndex = -1;
 			selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
@@ -1176,6 +1217,7 @@
 				draft = selectedTemplateId
 					? cloneTemplate(templates.find((item) => item.id === selectedTemplateId) || emptyDraft())
 					: emptyDraft();
+				draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
 			}
 			showToast('Workflow archived');
 		} catch (error) {
@@ -1195,7 +1237,10 @@
 			const result = await response.json();
 			if (!response.ok) throw new Error(result.error || 'Failed to update workflow');
 			templates = templates.map((item) => item.id === template.id ? result.template : item);
-			if (selectedTemplateId === template.id) draft = cloneTemplate(result.template);
+			if (selectedTemplateId === template.id) {
+				draft = cloneTemplate(result.template);
+				draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
+			}
 		} catch (error) {
 			showToast(error.message, 'error');
 		}
