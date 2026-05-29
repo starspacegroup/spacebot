@@ -114,3 +114,34 @@ describe('CSS contrast: ButtonEditor preview must not use a theme-aware backgrou
 		expect(hasCssVar, `.button-preview must use a fixed colour (e.g. #313338), not a CSS variable.\nThis ensures button previews always render against a dark Discord-style background regardless of light/dark mode.\n\nCurrent rule:\n${block}`).toBe(false);
 	});
 });
+
+describe('CSS contrast: superadmin workflows page must stay theme-safe', () => {
+	it('does not hardcode light-only surface colours', () => {
+		const workflowsPagePath = files.find(f => f.endsWith('routes/admin/superadmin/workflows/+page.svelte'));
+		expect(workflowsPagePath, 'superadmin workflows page not found').toBeTruthy();
+
+		const content = fs.readFileSync(workflowsPagePath, 'utf8');
+		const styleMatch = /<style>([\s\S]*?)<\/style>/.exec(content);
+		expect(styleMatch, 'No <style> block found in superadmin workflows page').toBeTruthy();
+
+		const style = styleMatch[1];
+		const hardcodedLightSurfacePatterns = [
+			/rgba?\(\s*255\s*,\s*255\s*,\s*255\b/i,
+			/rgba?\(\s*246\s*,\s*248\s*,\s*252\b/i,
+			/rgba?\(\s*245\s*,\s*249\s*,\s*255\b/i,
+			/rgba?\(\s*239\s*,\s*244\s*,\s*252\b/i,
+		];
+
+		const violations = [];
+		for (const pattern of hardcodedLightSurfacePatterns) {
+			if (pattern.test(style)) {
+				violations.push(String(pattern));
+			}
+		}
+
+		expect(
+			violations,
+			`\nThe superadmin workflows page includes hardcoded light-only surface colours.\nUse semantic theme variables such as --color-surface / --color-surface-elevated instead.\n\nMatched patterns:\n${violations.join('\n')}\n`
+		).toHaveLength(0);
+	});
+});

@@ -624,12 +624,12 @@
 
 	.panel {
 		background:
-			radial-gradient(circle at top left, rgba(38, 109, 211, 0.16), transparent 38%),
-			linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(246, 248, 252, 0.98));
+			radial-gradient(circle at top left, hsla(var(--hue), 82%, 62%, 0.18), transparent 38%),
+			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
 		border: 1px solid var(--color-border);
 		border-radius: 1.25rem;
 		padding: 1rem;
-		box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+		box-shadow: var(--shadow-lg);
 	}
 
 	.hero {
@@ -674,9 +674,9 @@
 		display: grid;
 		gap: 0.2rem;
 		padding: 0.85rem;
-		background: rgba(255, 255, 255, 0.76);
+		background: var(--color-surface);
 		border-radius: 1rem;
-		border: 1px solid rgba(38, 109, 211, 0.16);
+		border: 1px solid var(--color-border);
 	}
 
 	.stat-card strong {
@@ -711,9 +711,9 @@
 	.starter-card,
 	.inventory-card,
 	.run-card {
-		border: 1px solid rgba(15, 23, 42, 0.08);
+		border: 1px solid var(--color-border);
 		border-radius: 1rem;
-		background: rgba(255, 255, 255, 0.84);
+		background: var(--color-surface-elevated);
 	}
 
 	.starter-card {
@@ -745,7 +745,7 @@
 	}
 
 	.inventory-card.selected {
-		outline: 2px solid rgba(38, 109, 211, 0.4);
+		outline: 2px solid hsla(var(--hue), 82%, 62%, 0.55);
 		outline-offset: 2px;
 	}
 
@@ -773,18 +773,18 @@
 		border-radius: 999px;
 		font-size: 0.75rem;
 		font-weight: 700;
-		background: rgba(15, 23, 42, 0.08);
+		background: var(--color-surface-hover);
 	}
 
 	.tag-live,
 	.run-ok {
-		background: rgba(31, 161, 98, 0.16);
-		color: #0f7a45;
+		background: var(--color-success-soft);
+		color: var(--color-success-hover);
 	}
 
 	.run-pending {
-		background: rgba(38, 109, 211, 0.12);
-		color: #265ea8;
+		background: var(--color-info-soft);
+		color: var(--color-info-hover);
 	}
 
 	.form-grid {
@@ -829,11 +829,11 @@
 		min-height: 520px;
 		margin-top: 0.85rem;
 		border-radius: 1rem;
-		border: 1px dashed rgba(38, 109, 211, 0.24);
+		border: 1px dashed hsla(var(--hue), 82%, 62%, 0.36);
 		background:
-			linear-gradient(transparent 31px, rgba(38, 109, 211, 0.06) 32px),
-			linear-gradient(90deg, transparent 31px, rgba(38, 109, 211, 0.06) 32px),
-			linear-gradient(180deg, rgba(245, 249, 255, 0.96), rgba(239, 244, 252, 0.96));
+			linear-gradient(transparent 31px, hsla(var(--hue), 82%, 62%, 0.14) 32px),
+			linear-gradient(90deg, transparent 31px, hsla(var(--hue), 82%, 62%, 0.14) 32px),
+			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
 		background-size: 32px 32px, 32px 32px, 100% 100%;
 		overflow: hidden;
 	}
@@ -848,7 +848,7 @@
 
 	.edge-layer path {
 		fill: none;
-		stroke: rgba(38, 109, 211, 0.42);
+		stroke: hsla(var(--hue), 82%, 62%, 0.66);
 		stroke-width: 3;
 		stroke-linecap: round;
 	}
@@ -858,13 +858,13 @@
 		width: 220px;
 		padding: 0.7rem;
 		border-radius: 1rem;
-		background: rgba(255, 255, 255, 0.96);
-		border: 1px solid rgba(15, 23, 42, 0.08);
-		box-shadow: 0 14px 28px rgba(15, 23, 42, 0.12);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		box-shadow: var(--shadow-md);
 	}
 
 	.canvas-node.dragging {
-		box-shadow: 0 18px 34px rgba(38, 109, 211, 0.24);
+		box-shadow: 0 0 0 2px hsla(var(--hue), 82%, 62%, 0.5), var(--shadow-lg);
 		transform: scale(1.01);
 	}
 
@@ -883,8 +883,8 @@
 		width: 1.8rem;
 		height: 1.8rem;
 		border-radius: 999px;
-		background: rgba(220, 38, 38, 0.1);
-		color: #b91c1c;
+		background: var(--color-danger-soft);
+		color: var(--color-danger-hover);
 	}
 
 	.node-input,
@@ -893,8 +893,9 @@
 		width: 100%;
 		padding: 0.75rem 0.9rem;
 		border-radius: 0.85rem;
-		border: 1px solid rgba(15, 23, 42, 0.12);
-		background: rgba(255, 255, 255, 0.94);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+		color: var(--color-text);
 		font: inherit;
 	}
 
@@ -924,14 +925,14 @@
 	}
 
 	.toast-success {
-		background: rgba(31, 161, 98, 0.14);
-		color: #0f7a45;
+		background: var(--color-success-soft);
+		color: var(--color-success-hover);
 	}
 
 	.toast-error,
 	.run-error {
-		background: rgba(220, 38, 38, 0.1);
-		color: #b91c1c;
+		background: var(--color-danger-soft);
+		color: var(--color-danger-hover);
 	}
 
 	.compact {
