@@ -27,12 +27,40 @@
 	let runSearch = $state('');
 	let runInputJson = $state('');
 	let triggerSource = $state('manual');
+	let edgeDragState = $state(null);
+	let edgeDragHoverTargetId = $state('');
 
 	const NODE_WIDTH = 220;
 	const NODE_HEIGHT = 128;
 	const STAGE_WIDTH = 1200;
 	const STAGE_HEIGHT = 760;
 	const NODE_PADDING = 16;
+	const NODE_TYPE_META = {
+		trigger: {
+			label: 'Trigger',
+			description: 'Entry point that starts a workflow run.',
+			accent: 'var(--color-info)',
+			defaultRoute: 'start',
+		},
+		task: {
+			label: 'Task',
+			description: 'Executes work on queue/runner infrastructure.',
+			accent: 'var(--color-primary-button)',
+			defaultRoute: 'next',
+		},
+		approval: {
+			label: 'Approval',
+			description: 'Human gate requiring explicit accept/reject routing.',
+			accent: 'var(--color-warning)',
+			defaultRoute: 'approved',
+		},
+		branch: {
+			label: 'Branch',
+			description: 'Conditional split. Route labels define path intent.',
+			accent: 'var(--color-success)',
+			defaultRoute: 'route',
+		},
+	};
 
 	function emptyDraft() {
 		return {
@@ -131,6 +159,41 @@
 		const x = Math.min(baseX + col * columnGap, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING);
 		const y = Math.min(baseY + row * rowGap, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING);
 		return { x, y };
+	}
+
+	function typeMeta(type) {
+		return NODE_TYPE_META[type] || NODE_TYPE_META.task;
+	}
+
+	function nodeTitle(nodeId) {
+		const node = getNodeById(nodeId);
+		return node?.title || nodeId;
+	}
+
+	function nodeSubtitle(node) {
+		const meta = typeMeta(node?.type);
+		const parts = [meta.description];
+		if (node?.data?.queue_key) {
+			parts.push(`Queue: ${node.data.queue_key}`);
+		}
+		if (node?.data?.retry_policy) {
+			parts.push(`Retry: ${node.data.retry_policy}`);
+		}
+		if (node?.data?.condition) {
+			parts.push(`When: ${node.data.condition}`);
+		}
+		return parts.join(' ');
+	}
+
+	function suggestEdgeLabel(sourceId) {
+		const source = getNodeById(sourceId);
+		if (!source) return '';
+		const meta = typeMeta(source.type);
+		if (source.type === 'branch') {
+			const branchCount = (draft.canvas_json?.edges || []).filter((edge) => edge.source === sourceId).length;
+			return `${meta.defaultRoute}_${branchCount + 1}`;
+		}
+		return meta.defaultRoute;
 	}
 
 	function normalizeEdge(edge, index = 1) {
@@ -381,9 +444,10 @@
 		const existing = draft.canvas_json.edges.some((edge) => edge.source === pendingEdgeSource && edge.target === pendingEdgeTarget);
 		if (existing) return;
 		const edgeId = `edge-${Date.now()}`;
+		const nextLabel = pendingEdgeLabel.trim() || suggestEdgeLabel(pendingEdgeSource);
 		draft.canvas_json.edges = [
 			...draft.canvas_json.edges,
-			{ id: edgeId, source: pendingEdgeSource, target: pendingEdgeTarget, label: pendingEdgeLabel.trim() },
+			{ id: edgeId, source: pendingEdgeSource, target: pendingEdgeTarget, label: nextLabel },
 		];
 		selectedEdgeId = edgeId;
 		selectedNodeId = '';
@@ -408,6 +472,85 @@
 		}
 	}
 
+	function stagePointFromClient(clientX, clientY) {
+		if (!canvasElement) return { x: 0, y: 0 };
+		const rect = canvasElement.getBoundingClientRect();
+		const scrollX = canvasElement.scrollLeft;
+		const scrollY = canvasElement.scrollTop;
+		return {
+			x: (clientX - rect.left + scrollX) / canvasZoom,
+			y: (clientY - rect.top + scrollY) / canvasZoom,
+		};
+	}
+
+	function findNodeAtPoint(pointX, pointY, ignoredNodeId = '') {
+		const nodes = draft.canvas_json?.nodes || [];
+		for (let index = nodes.length - 1; index >= 0; index -= 1) {
+			const node = nodes[index];
+			if (node.id === ignoredNodeId) continue;
+			const x = node.position?.x || 0;
+			const y = node.position?.y || 0;
+			if (pointX >= x && pointX <= x + NODE_WIDTH && pointY >= y && pointY <= y + NODE_HEIGHT) {
+				return node;
+			}
+		}
+		return null;
+	}
+
+	function startEdgeDrag(event, nodeId) {
+		event.stopPropagation();
+		ensureDraftShape();
+		const source = getNodeById(nodeId);
+		if (!source) return;
+
+		const point = stagePointFromClient(event.clientX, event.clientY);
+		pendingEdgeSource = source.id;
+		if (!pendingEdgeLabel) {
+			pendingEdgeLabel = suggestEdgeLabel(source.id);
+		}
+		edgeDragHoverTargetId = '';
+		edgeDragState = {
+			sourceId: source.id,
+			pointerX: point.x,
+			pointerY: point.y,
+		};
+	}
+
+	function edgeDragPath() {
+		if (!edgeDragState) return '';
+		const sourceNode = getNodeById(edgeDragState.sourceId);
+		if (!sourceNode) return '';
+
+		const pseudoTarget = {
+			position: {
+				x: edgeDragState.pointerX,
+				y: edgeDragState.pointerY - NODE_HEIGHT / 2,
+			},
+		};
+		const from = getNodeAnchor(sourceNode, 'source', pseudoTarget);
+		const toX = edgeDragState.pointerX;
+		const toY = edgeDragState.pointerY;
+		const distanceX = Math.abs(toX - from.x);
+		const curve = Math.max(60, Math.min(220, distanceX * 0.45));
+		const fromDirection = from.side === 'right' ? 1 : -1;
+		const towardRight = toX >= from.x ? 1 : -1;
+		const c1x = from.x + fromDirection * curve;
+		const c2x = toX - towardRight * curve;
+		return `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${toY}, ${toX} ${toY}`;
+	}
+
+	function finishEdgeDrag() {
+		if (!edgeDragState) return;
+		if (edgeDragHoverTargetId) {
+			pendingEdgeTarget = edgeDragHoverTargetId;
+			if (pendingEdgeSource && pendingEdgeSource !== pendingEdgeTarget) {
+				addEdge();
+			}
+		}
+		edgeDragHoverTargetId = '';
+		edgeDragState = null;
+	}
+
 	function upsertQuickEdge(fromNodeId, toNodeId) {
 		if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
 		ensureDraftShape();
@@ -416,7 +559,7 @@
 		const edgeId = `edge-${Date.now()}`;
 		draft.canvas_json.edges = [
 			...draft.canvas_json.edges,
-			{ id: edgeId, source: fromNodeId, target: toNodeId, label: '' },
+			{ id: edgeId, source: fromNodeId, target: toNodeId, label: suggestEdgeLabel(fromNodeId) },
 		];
 		selectedEdgeId = edgeId;
 		selectedNodeId = '';
@@ -479,8 +622,18 @@
 		return edgeGeometry(edge)?.path || '';
 	}
 
+	function edgeMidpoint(edge) {
+		const geometry = edgeGeometry(edge);
+		if (!geometry) return { x: 0, y: 0 };
+		const { from, to } = geometry;
+		const midX = (from.x + to.x) / 2;
+		const midY = (from.y + to.y) / 2;
+		return { x: midX, y: midY };
+	}
+
 	function beginDrag(event, nodeId) {
 		if (!canvasElement) return;
+		if (edgeDragState) return;
 		const node = getNodeById(nodeId);
 		if (!node) return;
 		selectNode(nodeId);
@@ -496,12 +649,23 @@
 	}
 
 	function handlePointerMove(event) {
-		if (!dragState || !canvasElement) return;
-		const rect = canvasElement.getBoundingClientRect();
-		const scrollX = canvasElement.scrollLeft;
-		const scrollY = canvasElement.scrollTop;
-		const pointerX = (event.clientX - rect.left + scrollX) / canvasZoom;
-		const pointerY = (event.clientY - rect.top + scrollY) / canvasZoom;
+		if (!canvasElement) return;
+		const point = stagePointFromClient(event.clientX, event.clientY);
+
+		if (edgeDragState) {
+			edgeDragState = {
+				...edgeDragState,
+				pointerX: point.x,
+				pointerY: point.y,
+			};
+			const hovered = findNodeAtPoint(point.x, point.y, edgeDragState.sourceId);
+			edgeDragHoverTargetId = hovered?.id || '';
+			return;
+		}
+
+		if (!dragState) return;
+		const pointerX = point.x;
+		const pointerY = point.y;
 		const nextX = Math.max(12, Math.min(STAGE_WIDTH - NODE_WIDTH - NODE_PADDING, pointerX - dragState.offsetX));
 		const nextY = Math.max(12, Math.min(STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING, pointerY - dragState.offsetY));
 
@@ -517,6 +681,15 @@
 			commitCanvasSnapshot('drag');
 		}
 		dragState = null;
+	}
+
+	function endPointerInteraction() {
+		if (dragState) {
+			endDrag();
+		}
+		if (edgeDragState) {
+			finishEdgeDrag();
+		}
 	}
 
 	function resetZoom() {
@@ -604,7 +777,7 @@
 
 	onMount(() => {
 		const onMove = (event) => handlePointerMove(event);
-		const onUp = () => endDrag();
+		const onUp = () => endPointerInteraction();
 		const onKeyDown = (event) => {
 			if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) {
 				return;
@@ -1014,17 +1187,19 @@
 			<div class="canvas-toolbar">
 				<div class="toolbar-title">
 					<h3>Canvas</h3>
-					<p>Drag steps, quick-link flows, edit node behavior, and validate execution safety in real time.</p>
+					<p>Phone-first graph composer with explicit flow direction, node intent, and queue routing visibility.</p>
 				</div>
-				<div class="toolbar-actions">
-					<button class="btn btn-outline btn-sm" onclick={() => addNode('trigger')}>Add trigger</button>
-					<button class="btn btn-outline btn-sm" onclick={() => addNode('task')}>Add task</button>
-					<button class="btn btn-outline btn-sm" onclick={() => addNode('approval')}>Add approval</button>
-					<button class="btn btn-outline btn-sm" onclick={() => addNode('branch')}>Add branch</button>
-					<button class="btn btn-outline btn-sm" onclick={() => autoLayout('vertical')}>Auto stack</button>
-					<button class="btn btn-outline btn-sm" onclick={() => autoLayout('horizontal')}>Auto row</button>
-					<button class="btn btn-outline btn-sm" onclick={undoCanvas} disabled={!canUndo()}>Undo</button>
-					<button class="btn btn-outline btn-sm" onclick={redoCanvas} disabled={!canRedo()}>Redo</button>
+				<div class="toolbar-actions-scroller">
+					<div class="toolbar-actions">
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('trigger')}>Add trigger</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('task')}>Add task</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('approval')}>Add approval</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('branch')}>Add branch</button>
+						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('vertical')}>Auto stack</button>
+						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('horizontal')}>Auto row</button>
+						<button class="btn btn-outline btn-sm" onclick={undoCanvas} disabled={!canUndo()}>Undo</button>
+						<button class="btn btn-outline btn-sm" onclick={redoCanvas} disabled={!canRedo()}>Redo</button>
+					</div>
 				</div>
 				<div class="canvas-controls-row">
 					<div class="zoom-controls">
@@ -1037,6 +1212,17 @@
 					<div class="keyboard-hints">
 						<span>Shortcuts: arrows move node, Ctrl/Cmd+D duplicate, Delete remove, Ctrl/Cmd+Z/Y undo/redo.</span>
 					</div>
+				</div>
+				<div class="node-legend" role="list" aria-label="Node type legend">
+					{#each Object.entries(NODE_TYPE_META) as [key, meta]}
+						<div class="legend-item" role="listitem">
+							<span class="legend-dot" style={`background: ${meta.accent};`}></span>
+							<div>
+								<strong>{meta.label}</strong>
+								<small>{meta.description}</small>
+							</div>
+						</div>
+					{/each}
 				</div>
 				<div class="pending-link-hint">
 					<span>
@@ -1067,15 +1253,25 @@
 			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
 				<div class="canvas-stage" style={`transform: scale(${canvasZoom}); width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
 					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
+						<defs>
+							<marker id="workflow-edge-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+								<polygon points="0 0, 9 3.5, 0 7" fill="currentColor"></polygon>
+							</marker>
+						</defs>
+						{#if edgeDragState}
+							<path class="edge-ghost" d={edgeDragPath()} marker-end="url(#workflow-edge-arrow)"></path>
+						{/if}
 						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
 							{@const geometry = edgeGeometry(edge)}
+							<path class="edge-hit" d={edgePath(edge)} onpointerdown={(event) => {
+								event.stopPropagation();
+								selectEdge(edge.id);
+							}}></path>
 							<path
 								d={edgePath(edge)}
 								class:selected={selectedEdgeId === edge.id}
-								onpointerdown={(event) => {
-									event.stopPropagation();
-									selectEdge(edge.id);
-								}}
+								class="edge-visual"
+								marker-end="url(#workflow-edge-arrow)"
 							></path>
 							{#if geometry}
 								<circle class="edge-anchor" cx={geometry.from.x} cy={geometry.from.y} r="4"></circle>
@@ -1083,10 +1279,30 @@
 							{/if}
 						{/each}
 					</svg>
+					<div class="edge-label-layer">
+						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
+							{@const mid = edgeMidpoint(edge)}
+							<button
+								type="button"
+								class:selected={selectedEdgeId === edge.id}
+								class="edge-chip"
+								style:left={`${mid.x}px`}
+								style:top={`${mid.y}px`}
+								onpointerdown={(event) => {
+									event.stopPropagation();
+									selectEdge(edge.id);
+								}}
+							>
+								{edge.label || 'route'}
+							</button>
+						{/each}
+					</div>
 					{#each draft.canvas_json?.nodes || [] as node (node.id)}
 						<div
 							class:dragging={dragState?.nodeId === node.id}
 							class:selected={selectedNodeId === node.id}
+							class:link-drag-source={edgeDragState?.sourceId === node.id}
+							class:link-drag-target={edgeDragHoverTargetId === node.id}
 							class="canvas-node"
 							style:left={`${node.position?.x || 0}px`}
 							style:top={`${node.position?.y || 0}px`}
@@ -1110,16 +1326,16 @@
 								class="node-port node-port-out"
 								title="Source port"
 								onpointerdown={(event) => {
-									event.stopPropagation();
-									chooseEdgeEndpoint(node.id, 'source');
+									startEdgeDrag(event, node.id);
 									selectNode(node.id);
 								}}
 							></button>
 							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
-								<span class="node-type">{node.type}</span>
+								<span class="node-type" style={`--node-accent: ${typeMeta(node.type).accent};`}>{typeMeta(node.type).label}</span>
 								<button class="node-remove" onclick={() => removeNode(node.id)} disabled={node.id === 'start'}>x</button>
 							</div>
 							<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
+							<div class="node-purpose">{nodeSubtitle(node)}</div>
 							<div class="node-meta">{node.id}</div>
 							<div class="node-quick-actions">
 								<button class="btn btn-outline btn-sm" onclick={() => duplicateNode(node.id)}>Duplicate</button>
@@ -1128,6 +1344,8 @@
 										Link from selected
 									</button>
 								{/if}
+								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source')}>Set as source</button>
+								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target')}>Set as target</button>
 							</div>
 						</div>
 					{/each}
@@ -1157,7 +1375,7 @@
 					{:else}
 						{#each draft.canvas_json.edges as edge (edge.id)}
 							<div class:selected={selectedEdgeId === edge.id} class="edge-row" onpointerdown={() => selectEdge(edge.id)}>
-								<span>{edge.source} -> {edge.target}</span>
+								<span>{nodeTitle(edge.source)} -> {nodeTitle(edge.target)}</span>
 								<input
 									class="node-input edge-input"
 									type="text"
@@ -1547,6 +1765,62 @@
 		grid-template-columns: repeat(1, minmax(0, 1fr));
 	}
 
+	.toolbar-actions-scroller {
+		overflow-x: auto;
+		overflow-y: hidden;
+		padding-bottom: 0.25rem;
+	}
+
+	.toolbar-actions-scroller::-webkit-scrollbar {
+		height: 6px;
+	}
+
+	.toolbar-actions {
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: max-content;
+		gap: 0.55rem;
+		width: max-content;
+	}
+
+	.node-legend {
+		display: grid;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+		gap: 0.45rem;
+	}
+
+	.legend-item {
+		display: flex;
+		gap: 0.55rem;
+		align-items: flex-start;
+		padding: 0.5rem 0.6rem;
+		border-radius: 0.75rem;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+	}
+
+	.legend-item strong {
+		display: block;
+		font-size: 0.83rem;
+		line-height: 1.2;
+	}
+
+	.legend-item small {
+		display: block;
+		margin-top: 0.15rem;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		line-height: 1.3;
+	}
+
+	.legend-dot {
+		width: 11px;
+		height: 11px;
+		margin-top: 0.2rem;
+		border-radius: 999px;
+		flex-shrink: 0;
+	}
+
 	.canvas-surface {
 		position: relative;
 		min-height: 600px;
@@ -1559,6 +1833,7 @@
 			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
 		background-size: 32px 32px, 32px 32px, 100% 100%;
 		overflow: auto;
+		touch-action: pan-x pan-y;
 	}
 
 	.canvas-stage {
@@ -1583,6 +1858,29 @@
 		transition: stroke var(--transition-fast), stroke-width var(--transition-fast);
 	}
 
+	.edge-hit {
+		fill: none;
+		stroke: transparent;
+		stroke-width: 16;
+		cursor: pointer;
+	}
+
+	.edge-visual {
+		fill: none;
+		stroke: hsla(var(--hue), 82%, 62%, 0.72);
+		stroke-width: 3;
+		color: hsla(var(--hue), 82%, 62%, 0.72);
+	}
+
+	.edge-ghost {
+		fill: none;
+		stroke: hsla(var(--hue), 82%, 62%, 0.88);
+		stroke-width: 3;
+		stroke-dasharray: 7 7;
+		color: hsla(var(--hue), 82%, 62%, 0.88);
+		filter: drop-shadow(0 0 6px hsla(var(--hue), 82%, 62%, 0.35));
+	}
+
 	.edge-layer path.selected {
 		stroke: var(--color-primary-button);
 		stroke-width: 4;
@@ -1593,6 +1891,30 @@
 		stroke: var(--color-surface);
 		stroke-width: 1.5;
 		opacity: 0.95;
+	}
+
+	.edge-label-layer {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.edge-chip {
+		position: absolute;
+		transform: translate(-50%, -50%);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-elevated);
+		color: var(--color-text);
+		font-size: 0.72rem;
+		font-weight: 700;
+		padding: 0.2rem 0.5rem;
+		border-radius: 999px;
+		pointer-events: auto;
+	}
+
+	.edge-chip.selected {
+		border-color: var(--color-primary);
+		background: var(--color-primary-soft);
 	}
 
 	.canvas-node {
@@ -1616,6 +1938,17 @@
 		outline-offset: 2px;
 	}
 
+	.canvas-node.link-drag-source {
+		outline: 2px solid var(--color-info);
+		outline-offset: 2px;
+	}
+
+	.canvas-node.link-drag-target {
+		outline: 2px solid var(--color-success);
+		outline-offset: 2px;
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 20%, transparent), var(--shadow-lg);
+	}
+
 	.canvas-node-head {
 		cursor: grab;
 		margin-bottom: 0.55rem;
@@ -1625,6 +1958,22 @@
 	.node-meta {
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
+	}
+
+	.node-type {
+		background: color-mix(in srgb, var(--node-accent) 22%, transparent);
+		color: var(--node-accent);
+		padding: 0.2rem 0.5rem;
+		border-radius: 999px;
+		font-weight: 700;
+	}
+
+	.node-purpose {
+		margin-top: 0.45rem;
+		font-size: 0.76rem;
+		line-height: 1.32;
+		color: var(--color-text-muted);
+		min-height: 2.3em;
 	}
 
 	.node-quick-actions {
@@ -1791,9 +2140,19 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
-		.toolbar-actions,
 		.connection-form {
 			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+
+		.toolbar-actions {
+			grid-auto-flow: row;
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+			grid-auto-columns: unset;
+			width: 100%;
+		}
+
+		.toolbar-actions-scroller {
+			overflow: visible;
 		}
 
 		.canvas-controls-row {
@@ -1806,6 +2165,10 @@
 		}
 
 		.inspector-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.node-legend {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
@@ -1830,7 +2193,7 @@
 		}
 
 		.canvas-node {
-			width: min(220px, calc(100vw - 6rem));
+			width: min(235px, calc(100vw - 4.5rem));
 		}
 
 		.canvas-stage {
@@ -1850,6 +2213,18 @@
 
 		.canvas-surface {
 			min-height: 500px;
+		}
+
+		.canvas-controls-row {
+			gap: 0.45rem;
+		}
+
+		.keyboard-hints {
+			font-size: 0.75rem;
+		}
+
+		.pending-link-hint {
+			font-size: 0.76rem;
 		}
 	}
 </style>
