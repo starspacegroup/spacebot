@@ -1479,10 +1479,6 @@
 </div>
 
 <style>
-	:global(.superadmin-layout) {
-		max-width: 1500px;
-	}
-
 	.workflow-shell {
 		display: grid;
 		gap: 1rem;
@@ -2106,7 +2102,6 @@
 
 	@media (min-width: 900px) {
 		.workflow-grid {
-			grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.5fr);
 			align-items: start;
 		}
 
