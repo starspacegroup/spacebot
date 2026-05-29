@@ -1648,6 +1648,8 @@
 	const selectedRuns = $derived(selectedTemplateId
 		? runs.filter((run) => run.template_id === selectedTemplateId)
 		: runs);
+	const templateSchedule = $derived(templateScheduleBuilder());
+	const selectedTriggerSchedule = $derived(selectedNodeRef ? triggerScheduleBuilder(selectedNodeRef) : createDefaultScheduleBuilder('manual'));
 
 	const filteredRuns = $derived(selectedRuns.filter((run) => {
 		if (runFilter !== 'all' && run.status !== runFilter) return false;
@@ -1813,54 +1815,70 @@
 						<option value="queue_orchestrator">queue_orchestrator</option>
 					</select>
 				</label>
-				<label>
-					<span>Time trigger</span>
-					<select class="input" value={templateScheduleBuilder().mode} onchange={(event) => updateDraftScheduleMode(event.currentTarget.value)}>
-						{#each SCHEDULE_MODE_OPTIONS as option (option.id)}
-							<option value={option.id}>{option.label}</option>
-						{/each}
-					</select>
-				</label>
-				{#if templateScheduleBuilder().mode === 'hourly' || templateScheduleBuilder().mode === 'every_n_hours' || templateScheduleBuilder().mode === 'daily' || templateScheduleBuilder().mode === 'weekly' || templateScheduleBuilder().mode === 'monthly'}
-					<label>
-						<span>Minute</span>
-						<input class="input" type="number" min="0" max="59" value={templateScheduleBuilder().minute} oninput={(event) => updateDraftScheduleField('minute', event.currentTarget.value)} />
-					</label>
-				{/if}
-				{#if templateScheduleBuilder().mode === 'daily' || templateScheduleBuilder().mode === 'weekly' || templateScheduleBuilder().mode === 'monthly'}
-					<label>
-						<span>Hour (UTC)</span>
-						<input class="input" type="number" min="0" max="23" value={templateScheduleBuilder().hour} oninput={(event) => updateDraftScheduleField('hour', event.currentTarget.value)} />
-					</label>
-				{/if}
-				{#if templateScheduleBuilder().mode === 'every_n_hours'}
-					<label>
-						<span>Interval hours</span>
-						<input class="input" type="number" min="1" max="23" value={templateScheduleBuilder().everyHours} oninput={(event) => updateDraftScheduleField('everyHours', event.currentTarget.value)} />
-					</label>
-				{/if}
-				{#if templateScheduleBuilder().mode === 'weekly'}
-					<label>
-						<span>Day of week</span>
-						<select class="input" value={templateScheduleBuilder().weekday} onchange={(event) => updateDraftScheduleField('weekday', event.currentTarget.value)}>
-							{#each WEEKDAY_OPTIONS as day (day.id)}
-								<option value={day.id}>{day.label}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
-				{#if templateScheduleBuilder().mode === 'monthly'}
-					<label>
-						<span>Day of month</span>
-						<input class="input" type="number" min="1" max="31" value={templateScheduleBuilder().monthday} oninput={(event) => updateDraftScheduleField('monthday', event.currentTarget.value)} />
-					</label>
-				{/if}
-				<div class="full-width schedule-summary-card">
-					<span>Current trigger schedule</span>
-					<strong>{scheduleLabelFromCron(draft.schedule_type, draft.cron_expression)}</strong>
-					{#if templateScheduleBuilder().unsupported}
-						<small>Legacy custom schedule is loaded. Choose a time trigger option above to replace it.</small>
-					{/if}
+				<div class="full-width">
+					<div class="full-width schedule-builder-card">
+						<div class="schedule-builder-head">
+							<div>
+								<p class="schedule-eyebrow">Schedule builder</p>
+								<h3>Time trigger</h3>
+								<p class="schedule-helper">Choose a cadence, then tune the timing fields below. The schedule stays readable and cron stays hidden.</p>
+							</div>
+							<div class="schedule-summary-pill">
+								<span>Current</span>
+								<strong>{scheduleLabelFromCron(draft.schedule_type, draft.cron_expression)}</strong>
+							</div>
+						</div>
+						<div class="schedule-builder-grid">
+							<label class="schedule-field schedule-field-full">
+								<span>Cadence</span>
+								<select class="input" value={templateSchedule.mode} onchange={(event) => updateDraftScheduleMode(event.currentTarget.value)}>
+									{#each SCHEDULE_MODE_OPTIONS as option (option.id)}
+										<option value={option.id}>{option.label}</option>
+									{/each}
+								</select>
+							</label>
+							{#if templateSchedule.mode === 'hourly' || templateSchedule.mode === 'every_n_hours' || templateSchedule.mode === 'daily' || templateSchedule.mode === 'weekly' || templateSchedule.mode === 'monthly'}
+								<label class="schedule-field">
+									<span>Minute</span>
+									<input class="input" type="number" min="0" max="59" value={templateSchedule.minute} oninput={(event) => updateDraftScheduleField('minute', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if templateSchedule.mode === 'daily' || templateSchedule.mode === 'weekly' || templateSchedule.mode === 'monthly'}
+								<label class="schedule-field">
+									<span>Hour (UTC)</span>
+									<input class="input" type="number" min="0" max="23" value={templateSchedule.hour} oninput={(event) => updateDraftScheduleField('hour', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if templateSchedule.mode === 'every_n_hours'}
+								<label class="schedule-field">
+									<span>Interval hours</span>
+									<input class="input" type="number" min="1" max="23" value={templateSchedule.everyHours} oninput={(event) => updateDraftScheduleField('everyHours', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if templateSchedule.mode === 'weekly'}
+								<label class="schedule-field">
+									<span>Day of week</span>
+									<select class="input" value={templateSchedule.weekday} onchange={(event) => updateDraftScheduleField('weekday', event.currentTarget.value)}>
+										{#each WEEKDAY_OPTIONS as day (day.id)}
+											<option value={day.id}>{day.label}</option>
+										{/each}
+									</select>
+								</label>
+							{/if}
+							{#if templateSchedule.mode === 'monthly'}
+								<label class="schedule-field">
+									<span>Day of month</span>
+									<input class="input" type="number" min="1" max="31" value={templateSchedule.monthday} oninput={(event) => updateDraftScheduleField('monthday', event.currentTarget.value)} />
+								</label>
+							{/if}
+						</div>
+						{#if templateSchedule.unsupported}
+							<div class="schedule-warning">
+								<span>Legacy custom schedule is loaded.</span>
+								<p>Switch cadence to replace the old expression with a readable schedule.</p>
+							</div>
+						{/if}
+					</div>
 				</div>
 				<label>
 					<span>Gateway compatibility job</span>
@@ -2129,7 +2147,7 @@
 							</select>
 						</label>
 						{#if selectedNodeRef.type === 'trigger'}
-							{@const nodeSchedule = triggerScheduleBuilder(selectedNodeRef)}
+							{@const nodeSchedule = selectedTriggerSchedule}
 							<label>
 								<span>Trigger source</span>
 								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
@@ -2176,9 +2194,10 @@
 									<input class="input" type="number" min="1" max="31" value={nodeSchedule.monthday} oninput={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'monthday', event.currentTarget.value)} />
 								</label>
 							{/if}
-							<div class="schedule-summary-card">
+							<div class="schedule-summary-card schedule-summary-card-tight">
 								<span>Current trigger schedule</span>
 								<strong>{scheduleLabelFromCron(selectedNodeRef.data?.schedule_type, selectedNodeRef.data?.schedule)}</strong>
+								<small>{nodeSchedule.mode === 'manual' ? 'This trigger runs only when started by the workflow.' : 'Changes sync back to the template schedule.'}</small>
 								{#if nodeSchedule.unsupported}
 									<small>Legacy custom schedule is loaded. Adjust this trigger to replace it with a structured time rule.</small>
 								{/if}
@@ -2550,6 +2569,109 @@
 		font-weight: 600;
 	}
 
+	.schedule-builder-card {
+		display: grid;
+		gap: 0.9rem;
+		padding: 0.95rem;
+		border: 1px solid color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
+		border-radius: 1rem;
+		background:
+			radial-gradient(circle at top right, color-mix(in srgb, var(--color-info) 18%, transparent), transparent 42%),
+			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
+	}
+
+	.schedule-builder-head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.schedule-eyebrow {
+		margin: 0 0 0.25rem;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		font-size: 0.68rem;
+		font-weight: 800;
+		color: var(--color-info-hover);
+	}
+
+	.schedule-builder-head h3 {
+		margin: 0;
+		font-size: 1rem;
+		line-height: 1.2;
+	}
+
+	.schedule-helper {
+		margin-top: 0.28rem;
+		max-width: 60ch;
+		font-size: 0.82rem;
+		line-height: 1.4;
+		color: var(--color-text-muted);
+	}
+
+	.schedule-summary-pill {
+		display: grid;
+		gap: 0.18rem;
+		padding: 0.7rem 0.8rem;
+		min-width: min(100%, 220px);
+		border-radius: 0.9rem;
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-surface-elevated) 80%, transparent);
+	}
+
+	.schedule-summary-pill span,
+	.schedule-summary-card span {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		font-weight: 700;
+		color: var(--color-text-muted);
+	}
+
+	.schedule-summary-pill strong {
+		font-size: 0.9rem;
+		line-height: 1.25;
+	}
+
+	.schedule-builder-grid {
+		display: grid;
+		gap: 0.8rem;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+	}
+
+	.schedule-field {
+		min-width: 0;
+	}
+
+	.schedule-field-full {
+		grid-column: 1 / -1;
+	}
+
+	.schedule-warning {
+		display: grid;
+		gap: 0.2rem;
+		padding: 0.72rem 0.8rem;
+		border-radius: 0.85rem;
+		border: 1px solid var(--color-warning);
+		background: var(--color-warning-soft);
+	}
+
+	.schedule-warning span {
+		font-size: 0.78rem;
+		font-weight: 800;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--color-warning-hover);
+	}
+
+	.schedule-warning p {
+		font-size: 0.82rem;
+		line-height: 1.4;
+		color: var(--color-text-muted);
+	}
+
 	.full-width {
 		grid-column: 1 / -1;
 	}
@@ -2576,6 +2698,10 @@
 	.schedule-summary-card small {
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
+	}
+
+	.schedule-summary-card-tight {
+		padding: 0.8rem 0.9rem;
 	}
 
 	.canvas-toolbar,
