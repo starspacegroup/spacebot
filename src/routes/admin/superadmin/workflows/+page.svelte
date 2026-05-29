@@ -32,15 +32,15 @@
 	let edgeDragHoverTarget = $state(null);
 
 	const NODE_WIDTH = 220;
-	const NODE_HEIGHT = 252;
+	const NODE_HEIGHT = 324;
 	const STAGE_WIDTH = 1200;
-	const STAGE_HEIGHT = 1280;
+	const STAGE_HEIGHT = 4200;
 	const NODE_PADDING = 16;
 	const AUTO_LAYOUT_BASE_X = 56;
 	const AUTO_LAYOUT_BASE_Y = 72;
 	const AUTO_LAYOUT_COLUMN_GAP = 300;
-	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 44;
-	const CROWDED_VERTICAL_THRESHOLD = 170;
+	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 56;
+	const CROWDED_VERTICAL_THRESHOLD = NODE_HEIGHT - 24;
 	const CROWDED_HORIZONTAL_THRESHOLD = 160;
 	const NODE_TYPE_META = {
 		trigger: {
@@ -2229,7 +2229,7 @@
 	.canvas-node {
 		position: absolute;
 		width: 220px;
-		min-height: 252px;
+		min-height: 324px;
 		padding: 0.7rem;
 		border-radius: 1rem;
 		background: var(--color-surface);
