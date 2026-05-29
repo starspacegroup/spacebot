@@ -816,7 +816,7 @@
 				<span class="header-icon">👤</span>
 				My Account
 			</h1>
-			<p class="header-desc">Manage your profile, billing, jobs, and local runner preferences.</p>
+			<p class="header-desc">Manage your profile, billing, AI workflows, and local runner preferences.</p>
 		</div>
 	</header>
 	
@@ -846,9 +846,9 @@
 			<span class="nav-icon">💰</span>
 			Payment
 		</button>
-		<a class="section-nav-item" href="/account/operations">
+		<a class="section-nav-item" href="/account/ai-workflows">
 			<span class="nav-icon">🧭</span>
-			Operations
+			AI Workflows
 		</a>
 		<button 
 			class="section-nav-item" 
@@ -858,10 +858,6 @@
 			<span class="nav-icon">⚙️</span>
 			Settings
 		</button>
-		<a class="section-nav-item" href="/account/ai-jobs">
-			<span class="nav-icon">🤖</span>
-			Jobs
-		</a>
 	</nav>
 	
 	<!-- Profile Section -->
@@ -1252,8 +1248,8 @@
 		</p>
 
 		<div class="operations-links">
-			<a href="/account/operations" class="btn btn-outline btn-sm">Open Automation Console</a>
-			<a href="/account/operations#jobs" class="btn btn-outline btn-sm">Open Queue Board</a>
+			<a href="/account/ai-workflows" class="btn btn-outline btn-sm">Open Automation Console</a>
+			<a href="/account/ai-workflows#jobs" class="btn btn-outline btn-sm">Open Queue Board</a>
 			<a href="/account#section-settings" class="btn btn-ghost btn-sm">Runner defaults</a>
 		</div>
 

@@ -111,7 +111,7 @@
       <p class="muted">Forensic view of AI autopilot and local runner activity with status rollups, event stream, and job-level diagnostics.</p>
     </div>
     <div class="header-actions">
-      <a class="manage-link" href="/account/operations">Manage workflows and runners</a>
+      <a class="manage-link" href="/account/ai-workflows">Manage workflows and runners</a>
       <a class="back-link" href="/account">Back to account</a>
     </div>
   </header>
@@ -121,7 +121,7 @@
       <h3>Operations Console</h3>
       <p class="muted">Use the operations hub to edit workflow routing rules, target specific runners, and tune queue behavior without leaving account settings.</p>
     </div>
-    <a class="ops-callout-btn" href="/account/operations">Open Operations Console</a>
+    <a class="ops-callout-btn" href="/account/ai-workflows">Open Operations Console</a>
   </section>
 
   <section class="summary-grid">

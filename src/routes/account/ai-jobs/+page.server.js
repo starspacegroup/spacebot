@@ -2,5 +2,5 @@ import { redirect } from "@sveltejs/kit";
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load() {
-  throw redirect(302, "/account/operations#jobs");
+  throw redirect(302, "/account/ai-workflows#jobs");
 }

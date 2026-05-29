@@ -313,7 +313,7 @@
 </script>
 
 <svelte:head>
-  <title>Operations | SpaceBot</title>
+  <title>AI Workflows | SpaceBot</title>
 </svelte:head>
 
 <div class="ops-page">
