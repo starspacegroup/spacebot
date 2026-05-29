@@ -2063,16 +2063,19 @@
 							<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
 							<div class="node-purpose">{nodeSubtitle(node)}</div>
 							<div class="node-meta">{node.id}</div>
-							<div class="node-quick-actions">
-								<button class="btn btn-outline btn-sm" onclick={() => duplicateNode(node.id)}>Duplicate</button>
-								{#if selectedNodeId && selectedNodeId !== node.id}
-									<button class="btn btn-outline btn-sm" onclick={() => upsertQuickEdge(selectedNodeId, node.id)}>
-										Link from selected
-									</button>
-								{/if}
-								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source', defaultSourceHandle(node.id))}>Set as source</button>
-								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target', defaultTargetHandle(node.id))}>Set as target</button>
-							</div>
+							<details class="node-actions">
+								<summary>Actions</summary>
+								<div class="node-quick-actions">
+									<button class="btn btn-outline btn-sm" onclick={() => duplicateNode(node.id)}>Duplicate</button>
+									{#if selectedNodeId && selectedNodeId !== node.id}
+										<button class="btn btn-outline btn-sm" onclick={() => upsertQuickEdge(selectedNodeId, node.id)}>
+											Link from selected
+										</button>
+									{/if}
+									<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source', defaultSourceHandle(node.id))}>Set as source</button>
+									<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target', defaultTargetHandle(node.id))}>Set as target</button>
+								</div>
+							</details>
 						</div>
 					{/each}
 				</div>
@@ -2975,6 +2978,48 @@
 		gap: 0.45rem;
 		flex-wrap: wrap;
 		margin-top: 0.55rem;
+	}
+
+	.node-actions {
+		margin-top: 0.55rem;
+		padding: 0.3rem 0.45rem 0.45rem;
+		border-radius: 0.85rem;
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+	}
+
+	.node-actions > summary {
+		cursor: pointer;
+		list-style: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.18rem 0.45rem;
+		border-radius: 999px;
+		font-size: 0.72rem;
+		font-weight: 800;
+		color: var(--color-text-muted);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+	}
+
+	.node-actions > summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.node-actions[open] > summary {
+		color: var(--color-text);
+		background: var(--color-primary-soft);
+		border-color: var(--color-primary);
+	}
+
+	.node-actions .node-quick-actions {
+		margin-top: 0.45rem;
+		gap: 0.35rem;
+	}
+
+	.node-actions .node-quick-actions .btn {
+		flex: 1 1 100%;
 	}
 
 	.node-port {
