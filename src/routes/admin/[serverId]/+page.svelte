@@ -8,6 +8,7 @@
 
 	let { data, form } = $props();
 	let hotloading = $state(false);
+	const isDashboardLoading = $derived(Boolean(hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.needsHotload));
 
 	onMount(async () => {
 		const params = new URLSearchParams(window.location.search);
@@ -143,19 +144,6 @@
 			</div>
 		</header>
 
-		{#if hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.isStale || data.loadMeta?.source === 'cache'}
-			<div class="data-status" class:is-loading={hotloading || data.loadMeta?.source === 'shell'}>
-				<span class="status-dot"></span>
-				{#if hotloading || data.loadMeta?.source === 'shell'}
-					<span>Loading fresh stats now. Showing lightweight view first.</span>
-				{:else if data.loadMeta?.isStale}
-					<span>Showing cached stats while fresh data is prepared.</span>
-				{:else}
-					<span>Showing cached stats for instant load.</span>
-				{/if}
-			</div>
-		{/if}
-		
 		{#if !data.botInGuild}
 			<div class="warning-banner">
 				<span class="warning-icon">⚠️</span>
@@ -366,6 +354,7 @@
 						title="Member Growth"
 						subtitle="Last 30 days"
 						icon="👥"
+						loading={isDashboardLoading}
 						stats={[
 							{ value: data.basicStats?.members?.toLocaleString() ?? '—', label: 'Members' },
 							{ value: `+${memberJoins}`, label: 'Joined', color: '#22c55e' },
@@ -376,6 +365,7 @@
 						<BarChart
 							data={memberGrowthData}
 							title="Member Growth"
+							loading={isDashboardLoading}
 							emptyMessage="No member growth data yet"
 						/>
 					</ChartCard>
@@ -384,6 +374,7 @@
 						title="Voice Activity"
 						subtitle="Last 30 days"
 						icon="🎙️"
+						loading={isDashboardLoading}
 						stats={[
 							{ value: peakVoiceUsers, label: 'Peak Unique Voice Users' },
 						]}
@@ -393,6 +384,7 @@
 							color="#22c55e"
 							gradientId="dashVoice"
 							title="Unique Users in Voice"
+							loading={isDashboardLoading}
 							emptyMessage="No voice activity data yet"
 							showPoints={false}
 						/>

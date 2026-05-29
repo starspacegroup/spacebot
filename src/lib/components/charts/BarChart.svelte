@@ -10,7 +10,8 @@
 		title = '',
 		emptyMessage = 'No data available',
 		height = 'auto',
-		showLegend = true
+		showLegend = true,
+		loading = false
 	} = $props();
 	
 	// Tooltip state
@@ -117,7 +118,16 @@
 
 <div class="chart-wrapper" style:--chart-height={height}>
 	<ChartTooltip {tooltip} />
-	{#if chartData && chartData.bars.length > 0}
+	{#if loading}
+		<div class="chart-skeleton" aria-hidden="true">
+			<div class="chart-skeleton-grid"></div>
+			<div class="chart-skeleton-bars">
+				{#each Array(10) as _, index}
+					<span class="chart-skeleton-bar" style:left={`${6 + index * 8}%`} style:height={`${28 + (index % 5) * 10}%`}></span>
+				{/each}
+			</div>
+		</div>
+	{:else if chartData && chartData.bars.length > 0}
 		<svg 
 			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}" 
 			class="bar-chart"
@@ -217,6 +227,50 @@
 		width: 100%;
 		position: relative;
 		container-type: inline-size;
+	}
+
+	.chart-skeleton {
+		position: relative;
+		width: 100%;
+		min-height: 180px;
+		border-radius: var(--radius-lg, 12px);
+		background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+		overflow: hidden;
+	}
+
+	.chart-skeleton-grid,
+	.chart-skeleton-bars {
+		position: absolute;
+		inset: 0;
+	}
+
+	.chart-skeleton-grid {
+		background-image:
+			linear-gradient(to bottom, transparent 0%, transparent 24%, rgba(255,255,255,0.05) 24%, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 49%, rgba(255,255,255,0.05) 49%, rgba(255,255,255,0.05) 50%, transparent 50%, transparent 74%, rgba(255,255,255,0.05) 74%, rgba(255,255,255,0.05) 75%, transparent 75%),
+			linear-gradient(to right, transparent 0%, transparent 10%, rgba(255,255,255,0.04) 10%, rgba(255,255,255,0.04) 11%, transparent 11%, transparent 21%, rgba(255,255,255,0.04) 21%, rgba(255,255,255,0.04) 22%, transparent 22%, transparent 32%, rgba(255,255,255,0.04) 32%, rgba(255,255,255,0.04) 33%, transparent 33%, transparent 43%, rgba(255,255,255,0.04) 43%, rgba(255,255,255,0.04) 44%, transparent 44%, transparent 54%, rgba(255,255,255,0.04) 54%, rgba(255,255,255,0.04) 55%, transparent 55%, transparent 65%, rgba(255,255,255,0.04) 65%, rgba(255,255,255,0.04) 66%, transparent 66%, transparent 76%, rgba(255,255,255,0.04) 76%, rgba(255,255,255,0.04) 77%, transparent 77%, transparent 87%, rgba(255,255,255,0.04) 87%, rgba(255,255,255,0.04) 88%, transparent 88%);
+	}
+
+	.chart-skeleton-bars {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-around;
+		padding: 2rem 1.5rem 3rem;
+		gap: 0.3rem;
+	}
+
+	.chart-skeleton-bar {
+		display: block;
+		width: 5%;
+		min-width: 0.7rem;
+		border-radius: 999px 999px 0 0;
+		background: linear-gradient(180deg, rgba(96,165,250,0.45), rgba(96,165,250,0.18));
+		animation: shimmer 1.8s ease-in-out infinite;
+	}
+
+	@keyframes shimmer {
+		0% { opacity: 0.5; transform: translateY(0); }
+		50% { opacity: 1; transform: translateY(-2px); }
+		100% { opacity: 0.5; transform: translateY(0); }
 	}
 	
 	.bar-chart {

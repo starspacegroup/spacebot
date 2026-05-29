@@ -14,7 +14,8 @@
 		emptyMessage = 'No data available',
 		showPoints = true,
 		height = 'auto',
-		secondaryLines = []
+		secondaryLines = [],
+		loading = false
 	} = $props();
 	
 	// Tooltip state
@@ -163,7 +164,17 @@
 
 <div class="chart-wrapper" style:--chart-color={color} style:--chart-height={height}>
 	<ChartTooltip {tooltip} />
-	{#if chartData && chartData.points.length > 0}
+	{#if loading}
+		<div class="chart-skeleton" aria-hidden="true">
+			<div class="chart-skeleton-grid"></div>
+			<div class="chart-skeleton-line"></div>
+			<div class="chart-skeleton-points">
+				{#each Array(8) as _, index}
+					<span class="chart-skeleton-point" style:left={`${8 + index * 12}%`}></span>
+				{/each}
+			</div>
+		</div>
+	{:else if chartData && chartData.points.length > 0}
 		<svg 
 			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}" 
 			class="area-chart"
@@ -321,6 +332,56 @@
 		width: 100%;
 		position: relative;
 		container-type: inline-size;
+	}
+
+	.chart-skeleton {
+		position: relative;
+		width: 100%;
+		min-height: 180px;
+		border-radius: var(--radius-lg, 12px);
+		background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+		overflow: hidden;
+	}
+
+	.chart-skeleton-grid,
+	.chart-skeleton-line,
+	.chart-skeleton-points {
+		position: absolute;
+		inset: 0;
+	}
+
+	.chart-skeleton-grid {
+		background-image:
+			linear-gradient(to bottom, transparent 0%, transparent 24%, rgba(255,255,255,0.05) 24%, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 49%, rgba(255,255,255,0.05) 49%, rgba(255,255,255,0.05) 50%, transparent 50%, transparent 74%, rgba(255,255,255,0.05) 74%, rgba(255,255,255,0.05) 75%, transparent 75%),
+			linear-gradient(to right, transparent 0%, transparent 12%, rgba(255,255,255,0.04) 12%, rgba(255,255,255,0.04) 13%, transparent 13%, transparent 25%, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.04) 26%, transparent 26%, transparent 38%, rgba(255,255,255,0.04) 38%, rgba(255,255,255,0.04) 39%, transparent 39%, transparent 51%, rgba(255,255,255,0.04) 51%, rgba(255,255,255,0.04) 52%, transparent 52%, transparent 64%, rgba(255,255,255,0.04) 64%, rgba(255,255,255,0.04) 65%, transparent 65%, transparent 77%, rgba(255,255,255,0.04) 77%, rgba(255,255,255,0.04) 78%, transparent 78%, transparent 90%, rgba(255,255,255,0.04) 90%, rgba(255,255,255,0.04) 91%, transparent 91%);
+		background-size: 100% 100%;
+		opacity: 0.9;
+	}
+
+	.chart-skeleton-line {
+		background: linear-gradient(90deg, transparent 0%, rgba(34, 197, 94, 0.15) 10%, rgba(34, 197, 94, 0.55) 50%, rgba(34, 197, 94, 0.15) 90%, transparent 100%);
+		mask-image: linear-gradient(to top, transparent 58%, #000 58%, #000 76%, transparent 76%);
+		animation: shimmer 1.8s ease-in-out infinite;
+	}
+
+	.chart-skeleton-points {
+		pointer-events: none;
+	}
+
+	.chart-skeleton-point {
+		position: absolute;
+		top: 44%;
+		width: 0.7rem;
+		height: 0.7rem;
+		border-radius: 999px;
+		background: rgba(34, 197, 94, 0.65);
+		box-shadow: 0 0 0 0.35rem rgba(34, 197, 94, 0.08);
+	}
+
+	@keyframes shimmer {
+		0% { transform: translateX(-12%); opacity: 0.55; }
+		50% { opacity: 0.95; }
+		100% { transform: translateX(12%); opacity: 0.55; }
 	}
 	
 	.area-chart {

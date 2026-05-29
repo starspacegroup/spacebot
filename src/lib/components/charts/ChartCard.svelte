@@ -8,20 +8,25 @@
 		subtitle = '',
 		icon = '📊',
 		stats = [],
+		loading = false,
 		children,
 		headerAction
 	} = $props();
 </script>
 
-<div class="chart-card">
+<div class="chart-card" class:loading>
 	<!-- Header -->
 	{#if title}
 		<header class="chart-header">
 			<h3 class="chart-title">
 				<span class="chart-icon">{icon}</span>
-				<span class="title-text">{title}</span>
-				{#if subtitle}
-					<span class="chart-subtitle">{subtitle}</span>
+				{#if loading}
+					<span class="skeleton skeleton-title"></span>
+				{:else}
+					<span class="title-text">{title}</span>
+					{#if subtitle}
+						<span class="chart-subtitle">{subtitle}</span>
+					{/if}
 				{/if}
 			</h3>
 			{#if headerAction}
@@ -37,12 +42,17 @@
 		<div class="chart-stats">
 			{#each stats as stat}
 				<div class="stat-item">
-					{#if stat.icon}
+					{#if stat.icon && !loading}
 						<span class="stat-icon">{stat.icon}</span>
 					{/if}
 					<div class="stat-content">
-						<span class="stat-value" style:color={stat.color}>{stat.value}</span>
-						<span class="stat-label">{stat.label}</span>
+						{#if loading}
+							<span class="stat-value skeleton skeleton-value"></span>
+							<span class="stat-label skeleton skeleton-label"></span>
+						{:else}
+							<span class="stat-value" style:color={stat.color}>{stat.value}</span>
+							<span class="stat-label">{stat.label}</span>
+						{/if}
 					</div>
 				</div>
 			{/each}
@@ -62,6 +72,11 @@
 		border-radius: var(--radius-lg, 12px);
 		padding: 1rem;
 		container-type: inline-size;
+	}
+
+	.chart-card.loading {
+		position: relative;
+		overflow: hidden;
 	}
 	
 	@container (min-width: 400px) {
@@ -113,6 +128,41 @@
 		font-size: 0.8rem;
 		font-weight: 400;
 		color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
+	}
+
+	.skeleton {
+		display: inline-block;
+		border-radius: 999px;
+		background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.05) 63%);
+		background-size: 400% 100%;
+		animation: shimmer 1.6s ease-in-out infinite;
+	}
+
+	.skeleton-title {
+		width: 10rem;
+		height: 1rem;
+	}
+
+	.skeleton-value {
+		width: 3.5rem;
+		height: 1.15rem;
+		margin-bottom: 0.2rem;
+	}
+
+	.skeleton-label {
+		width: 4.5rem;
+		height: 0.7rem;
+	}
+
+	.chart-card.loading .chart-title,
+	.chart-card.loading .stat-value,
+	.chart-card.loading .stat-label {
+		color: transparent;
+	}
+
+	@keyframes shimmer {
+		0% { background-position: 100% 0; }
+		100% { background-position: 0 0; }
 	}
 	
 	.chart-stats {

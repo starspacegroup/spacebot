@@ -8,6 +8,33 @@
 	
 	let { data } = $props();
 	let hotloading = $state(false);
+	const isStatisticsLoading = $derived(Boolean(hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.needsHotload));
+	const hasStatisticsData = $derived(Boolean(data.statistics));
+
+	function createEmptyStatistics() {
+		return {
+			automations: { active: 0, total: 0, totalExecutions: 0, successfulExecutions: 0 },
+			commands: { active: 0, total: 0, totalUsage: 0 },
+			events: {
+				total: 0,
+				totalNonBot: 0,
+				today: 0,
+				todayNonBot: 0,
+				thisWeek: 0,
+				thisWeekNonBot: 0,
+				thisMonth: 0,
+				thisMonthNonBot: 0,
+				byCategory: {},
+				byCategoryNonBot: {},
+			},
+			timeSeries: { daily: [] },
+			topChannels: [],
+			commandUsage: [],
+			automationPerformance: [],
+		};
+	}
+
+	const statistics = $derived(data.statistics || createEmptyStatistics());
 
 	const periodOptions = $derived(data.periodOptions || []);
 	const selectedPeriod = $derived(data.selectedPeriod || '30d');
@@ -237,7 +264,7 @@
 	
 	// Filtered channels based on toggle - use non_bot_count when hiding bots
 	const allFilteredChannels = $derived(
-		(data.statistics?.topChannels || [])
+		(statistics.topChannels || [])
 			.map(ch => ({
 				...ch,
 				display_count: showBotsInChannels ? ch.event_count : (ch.non_bot_count || 0)
@@ -254,8 +281,8 @@
 	
 	// Filtered categories based on toggle
 	const filteredCategories = $derived(() => {
-		const categories = data.statistics?.events?.byCategory || {};
-		const categoriesNonBot = data.statistics?.events?.byCategoryNonBot || {};
+		const categories = statistics.events?.byCategory || {};
+		const categoriesNonBot = statistics.events?.byCategoryNonBot || {};
 		
 		return Object.entries(categories).map(([category, count]) => ({
 			category,
@@ -271,7 +298,7 @@
 	);
 	
 	// Calculate percentages for category breakdown - use $derived for reactivity
-	const categoryTotal = $derived(Object.values(data.statistics?.events?.byCategory || {}).reduce((a, b) => a + b, 0));
+	const categoryTotal = $derived(Object.values(statistics.events?.byCategory || {}).reduce((a, b) => a + b, 0));
 	
 	function getCategoryPercentage(count, total) {
 		if (!total) return 0;
@@ -429,7 +456,7 @@
 	
 	// Daily chart data - filtered by bot toggle
 	const dailyChartData = $derived.by(() => {
-		const data_array = data.statistics?.timeSeries?.daily || [];
+		const data_array = statistics.timeSeries?.daily || [];
 		const countKey = showBotsInActivityChart ? 'count' : 'non_bot_count';
 		const counts = data_array.map(d => d[countKey] || 0);
 		const maxCount = Math.max(...counts, 1);
@@ -708,20 +735,7 @@
 		</div>
 	</header>
 
-	{#if hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.isStale || data.loadMeta?.source === 'cache'}
-		<div class="data-status" class:is-loading={hotloading || data.loadMeta?.source === 'shell'}>
-			<span class="status-dot"></span>
-			{#if hotloading || data.loadMeta?.source === 'shell'}
-				<span>Hotloading full statistics now. Core layout is ready.</span>
-			{:else if data.loadMeta?.isStale}
-				<span>Showing cached statistics while fresh data is prepared.</span>
-			{:else}
-				<span>Showing cached statistics for instant load.</span>
-			{/if}
-		</div>
-	{/if}
-
-	{#if !data.statistics && !(hotloading || data.loadMeta?.source === 'shell')}
+	{#if !hasStatisticsData && !isStatisticsLoading}
 		<div class="empty-state">
 			<div class="empty-icon">📊</div>
 			<h2>No Statistics Available</h2>
@@ -736,7 +750,7 @@
 			</h2>
 			<div class="overview-grid">
 				<!-- Members Card -->
-				<div class="stat-card primary members">
+				<div class="stat-card primary members" class:loading={isStatisticsLoading}>
 					<div class="stat-card-header">
 						<div class="stat-icon">👥</div>
 						<label class="bot-toggle-sm" title="Toggle to show only human members (excludes bots)">
@@ -768,49 +782,49 @@
 				</div>
 				
 				<!-- Automations Card -->
-				<div class="stat-card">
+				<div class="stat-card" class:loading={isStatisticsLoading}>
 					<div class="stat-icon">⚡</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(data.statistics.automations.active)}</span>
+						<span class="stat-value">{formatNumber(statistics.automations.active)}</span>
 						<span class="stat-label">Active Automations</span>
 					</div>
 					<div class="stat-breakdown">
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.automations.total)}</span>
+							<span class="breakdown-value">{formatNumber(statistics.automations.total)}</span>
 							<span class="breakdown-label">Total</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.automations.totalExecutions)}</span>
+							<span class="breakdown-value">{formatNumber(statistics.automations.totalExecutions)}</span>
 							<span class="breakdown-label">Executions</span>
 						</div>
 						<div class="breakdown-item success">
-							<span class="breakdown-value">{getSuccessRate(data.statistics.automations.successfulExecutions, data.statistics.automations.totalExecutions)}%</span>
+							<span class="breakdown-value">{getSuccessRate(statistics.automations.successfulExecutions, statistics.automations.totalExecutions)}%</span>
 							<span class="breakdown-label">Success Rate</span>
 						</div>
 					</div>
 				</div>
 				
 				<!-- Commands Card -->
-				<div class="stat-card">
+				<div class="stat-card" class:loading={isStatisticsLoading}>
 					<div class="stat-icon">💬</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(data.statistics.commands.active)}</span>
+						<span class="stat-value">{formatNumber(statistics.commands.active)}</span>
 						<span class="stat-label">Active Commands</span>
 					</div>
 					<div class="stat-breakdown">
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.commands.total)}</span>
+							<span class="breakdown-value">{formatNumber(statistics.commands.total)}</span>
 							<span class="breakdown-label">Total</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(data.statistics.commands.totalUsage)}</span>
+							<span class="breakdown-value">{formatNumber(statistics.commands.totalUsage)}</span>
 							<span class="breakdown-label">Total Uses</span>
 						</div>
 					</div>
 				</div>
 				
 				<!-- Total Events Card -->
-				<div class="stat-card">
+				<div class="stat-card" class:loading={isStatisticsLoading}>
 					<div class="stat-card-header">
 						<div class="stat-icon">📊</div>
 						<label class="bot-toggle-sm">
@@ -820,20 +834,20 @@
 						</label>
 					</div>
 					<div class="stat-content">
-						<span class="stat-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.total : data.statistics.events.totalNonBot)}</span>
+						<span class="stat-value">{formatNumber(showBotsInTotalEvents ? statistics.events.total : statistics.events.totalNonBot)}</span>
 						<span class="stat-label">Total Events</span>
 					</div>
 					<div class="stat-breakdown">
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.today : data.statistics.events.todayNonBot)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? statistics.events.today : statistics.events.todayNonBot)}</span>
 							<span class="breakdown-label">Today</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisWeek : data.statistics.events.thisWeekNonBot)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? statistics.events.thisWeek : statistics.events.thisWeekNonBot)}</span>
 							<span class="breakdown-label">This Week</span>
 						</div>
 						<div class="breakdown-item">
-							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? data.statistics.events.thisMonth : data.statistics.events.thisMonthNonBot)}</span>
+							<span class="breakdown-value">{formatNumber(showBotsInTotalEvents ? statistics.events.thisMonth : statistics.events.thisMonthNonBot)}</span>
 							<span class="breakdown-label">This Month</span>
 						</div>
 					</div>
@@ -848,6 +862,7 @@
 					title={showBotsInMemberChart ? 'Server Members' : 'Human Members'}
 					subtitle={data.memberStats?.latest?.recorded_at ? `Updated ${formatRelativeTime(data.memberStats.latest.recorded_at)}` : 'Current'}
 					icon="👥"
+					loading={isStatisticsLoading}
 					stats={[
 						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (data.memberStats?.latest?.member_count || 0) : (data.memberStats?.latest?.human_count ?? data.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
 					]}
@@ -864,6 +879,7 @@
 						color="#5865F2"
 						gradientId="memberCountGradient"
 						title="Member Count"
+						loading={isStatisticsLoading}
 						emptyMessage="Member count history will appear as data is collected over time."
 					/>
 				</ChartCard>
@@ -881,6 +897,7 @@
 				<ChartCard 
 					title="Voice Time" 
 					icon="⏱️"
+					loading={isStatisticsLoading}
 					stats={voiceActivityStats ? [
 						{ icon: '⏱️', value: voiceActivityStats.totalHours >= 1 ? `${voiceActivityStats.totalHours.toFixed(1)}` : `${voiceActivityStats.totalMinutes}`, label: voiceActivityStats.useHours ? 'Total Hours' : 'Total Minutes', color: '#FEE75C' },
 					] : []}
@@ -891,6 +908,7 @@
 						gradientId="voiceGradientServer"
 						unit={voiceActivityStats?.useHours ? 'h' : 'm'}
 						title="Voice Time"
+						loading={isStatisticsLoading}
 						emptyMessage="No voice activity data yet."
 					/>
 				</ChartCard>
@@ -898,6 +916,7 @@
 				<ChartCard 
 					title="Peak Unique Voice Users" 
 					icon="👥"
+					loading={isStatisticsLoading}
 					stats={voiceActivityStats ? [
 						{ icon: '👥', value: formatNumber(voiceActivityStats.uniqueUsers || 0), label: 'Peak Unique', color: '#5865F2' },
 						{ icon: '👤', value: voiceActivityStats.avgUniqueUsers || 0, label: 'Avg Unique', color: '#9B84EE' },
@@ -909,6 +928,7 @@
 						gradientId="peakUsersGradient"
 						unit=""
 						title="Peak Unique Voice Users"
+						loading={isStatisticsLoading}
 						emptyMessage="No unique voice user data yet."
 					/>
 				</ChartCard>
@@ -916,6 +936,7 @@
 				<ChartCard 
 					title="Peak Concurrent Voice Users" 
 					icon="📊"
+					loading={isStatisticsLoading}
 					stats={voiceActivityStats ? [
 						{ icon: '📊', value: formatNumber(voiceActivityStats.peakConcurrent || 0), label: 'Peak Concurrent', color: '#57F287' },
 						{ icon: '📉', value: voiceActivityStats.avgConcurrent || 0, label: 'Avg Concurrent', color: '#2ECC71' },
@@ -927,6 +948,7 @@
 						gradientId="peakConcurrentGradient"
 						unit=""
 						title="Peak Concurrent Voice Users"
+						loading={isStatisticsLoading}
 						emptyMessage="No peak concurrent data yet."
 					/>
 				</ChartCard>
@@ -939,6 +961,7 @@
 				title="Member Growth" 
 				subtitle={selectedPeriodLabel}
 				icon="📈"
+				loading={isStatisticsLoading}
 				stats={memberGrowthStats ? [
 					{ icon: '➕', value: `+${formatNumber(memberGrowthStats.totalJoins)}`, label: 'Joined', color: '#22c55e' },
 					{ icon: '➖', value: `-${formatNumber(memberGrowthStats.totalLeaves)}`, label: 'Left', color: '#ef4444' },
@@ -952,6 +975,7 @@
 				<BarChart 
 					data={memberGrowthBarData}
 					title="Member Growth"
+					loading={isStatisticsLoading}
 					emptyMessage="No member growth data yet. Stats are collected when members join or leave."
 				/>
 			</ChartCard>
@@ -962,6 +986,7 @@
 			<ChartCard
 				title="Roles"
 				icon="🏷️"
+				loading={isStatisticsLoading}
 				stats={[
 					{ icon: '🏷️', value: formatNumber(roleBreakdown?.total || data.memberStats?.latest?.role_count || 0), label: 'Total Roles', color: '#EB459E' },
 					{ icon: '🎨', value: formatNumber(roleBreakdown?.custom || 0), label: 'Custom', color: '#5865F2' },
@@ -1009,6 +1034,7 @@
 				<ChartCard
 					title="Server Boosts"
 					icon="💎"
+					loading={isStatisticsLoading}
 					stats={[
 						{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: 'Boosts', color: '#F47FFF' },
 						{ icon: '🏆', value: `Level ${data.memberStats.latest.boost_level}`, label: 'Boost Tier', color: '#F47FFF' },
@@ -1448,9 +1474,9 @@
 				<span class="section-icon">💬</span>
 				Command Usage
 			</h2>
-			{#if data.statistics.commandUsage?.length > 0}
+			{#if statistics.commandUsage?.length > 0}
 				<div class="performance-grid">
-					{#each data.statistics.commandUsage as command}
+					{#each statistics.commandUsage as command}
 						<div class="performance-card">
 							<div class="performance-header">
 								<span class="performance-name">/{command.name}</span>
@@ -1483,9 +1509,9 @@
 				<span class="section-icon">⚡</span>
 				Automation Performance
 			</h2>
-			{#if data.statistics.automationPerformance?.length > 0}
+			{#if statistics.automationPerformance?.length > 0}
 				<div class="performance-grid">
-					{#each data.statistics.automationPerformance as automation}
+					{#each statistics.automationPerformance as automation}
 						{@const history = data.automationHistory?.[automation.id] || []}
 						{@const sparklineData = buildSparkline(history)}
 						<div class="performance-card">
@@ -1861,11 +1887,46 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		padding: 1.25rem;
+		position: relative;
+		overflow: hidden;
 	}
 	
 	.stat-card.primary {
 		border-color: var(--color-primary);
 		background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-primary-soft) 100%);
+	}
+
+	.stat-card.loading .stat-value,
+	.stat-card.loading .breakdown-value {
+		color: transparent;
+		border-radius: 999px;
+		background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.13) 37%, rgba(255,255,255,0.05) 63%);
+		background-size: 400% 100%;
+		animation: statShimmer 1.5s ease-in-out infinite;
+	}
+
+	.stat-card.loading .stat-value {
+		display: inline-block;
+		min-width: 6.5rem;
+		min-height: 2.1rem;
+	}
+
+	.stat-card.loading .breakdown-value {
+		display: inline-block;
+		min-width: 3.5rem;
+		min-height: 1.1rem;
+	}
+
+	.stat-card.loading .bot-toggle-sm,
+	.stat-card.loading .toggle-switch-sm,
+	.stat-card.loading .toggle-label-sm {
+		opacity: 0.35;
+		pointer-events: none;
+	}
+
+	@keyframes statShimmer {
+		0% { background-position: 100% 0; }
+		100% { background-position: 0 0; }
 	}
 	
 	.stat-card-header {
