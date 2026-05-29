@@ -22,6 +22,14 @@ This project uses:
 - **Wrangler** for local development and deployment
 - **D1** for the database
 
+## Package Manager Preference
+
+Use **Bun** commands for this project by default.
+
+- Prefer `bun install` over `npm install`
+- Prefer `bun run <script>` over `npm run <script>`
+- Avoid introducing new npm commands in instructions, docs, or task notes unless explicitly requested
+
 The user manages their own development servers via separate terminal instances.
 
 ## Local Development URLs
