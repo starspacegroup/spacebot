@@ -16,6 +16,17 @@
 	let toast = $state(null);
 	let canvasElement = $state(null);
 	let dragState = $state(null);
+	let selectedNodeId = $state('start');
+	let selectedEdgeId = $state('');
+	let pendingEdgeLabel = $state('');
+	let historyStack = $state([]);
+	let historyIndex = $state(-1);
+	let skipHistorySnapshot = $state(false);
+	let canvasZoom = $state(1);
+	let runFilter = $state('all');
+	let runSearch = $state('');
+	let runInputJson = $state('');
+	let triggerSource = $state('manual');
 
 	function emptyDraft() {
 		return {
@@ -85,6 +96,196 @@
 		if (!Array.isArray(draft.canvas_json.edges)) draft.canvas_json.edges = [];
 	}
 
+	function safeNodeTitle(type, index) {
+		return `${type[0].toUpperCase()}${type.slice(1)} ${index}`;
+	}
+
+	function normalizeNode(node, index = 1) {
+		const fallbackId = `step-${Date.now()}-${index}`;
+		return {
+			id: String(node?.id || fallbackId),
+			type: String(node?.type || 'task'),
+			title: String(node?.title || safeNodeTitle(String(node?.type || 'task'), index)),
+			position: {
+				x: Number(node?.position?.x ?? 24),
+				y: Number(node?.position?.y ?? 32 + (index - 1) * 110),
+			},
+			data: typeof node?.data === 'object' && node?.data !== null ? node.data : {},
+		};
+	}
+
+	function normalizeEdge(edge, index = 1) {
+		return {
+			id: String(edge?.id || `edge-${Date.now()}-${index}`),
+			source: String(edge?.source || ''),
+			target: String(edge?.target || ''),
+			label: String(edge?.label || ''),
+		};
+	}
+
+	function normalizedCanvas(canvas) {
+		const normalizedNodes = (canvas?.nodes || []).map((node, index) => normalizeNode(node, index + 1));
+		const nodeIds = new Set(normalizedNodes.map((node) => node.id));
+		const normalizedEdges = (canvas?.edges || [])
+			.map((edge, index) => normalizeEdge(edge, index + 1))
+			.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target) && edge.source && edge.target);
+		return {
+			nodes: normalizedNodes,
+			edges: normalizedEdges,
+		};
+	}
+
+	function cloneCanvasSnapshot(canvas) {
+		return JSON.parse(JSON.stringify(normalizedCanvas(canvas)));
+	}
+
+	function commitCanvasSnapshot(reason = 'change') {
+		ensureDraftShape();
+		const snapshot = cloneCanvasSnapshot(draft.canvas_json);
+		const previous = historyStack[historyIndex];
+		if (previous && JSON.stringify(previous) === JSON.stringify(snapshot)) {
+			return;
+		}
+
+		const nextStack = historyStack.slice(0, historyIndex + 1);
+		nextStack.push(snapshot);
+		if (nextStack.length > 80) {
+			nextStack.shift();
+		}
+		historyStack = nextStack;
+		historyIndex = historyStack.length - 1;
+		if (reason !== 'seed' && reason !== 'drag') {
+			skipHistorySnapshot = true;
+		}
+	}
+
+	function restoreCanvasFromHistory(index) {
+		const snapshot = historyStack[index];
+		if (!snapshot) return;
+		skipHistorySnapshot = true;
+		draft.canvas_json = cloneCanvasSnapshot(snapshot);
+		historyIndex = index;
+		const nodes = draft.canvas_json.nodes || [];
+		if (selectedNodeId && !nodes.some((node) => node.id === selectedNodeId)) {
+			selectedNodeId = nodes[0]?.id || '';
+		}
+		if (selectedEdgeId && !draft.canvas_json.edges.some((edge) => edge.id === selectedEdgeId)) {
+			selectedEdgeId = '';
+		}
+	}
+
+	function canUndo() {
+		return historyIndex > 0;
+	}
+
+	function canRedo() {
+		return historyIndex >= 0 && historyIndex < historyStack.length - 1;
+	}
+
+	function undoCanvas() {
+		if (!canUndo()) return;
+		restoreCanvasFromHistory(historyIndex - 1);
+	}
+
+	function redoCanvas() {
+		if (!canRedo()) return;
+		restoreCanvasFromHistory(historyIndex + 1);
+	}
+
+	function selectNode(nodeId) {
+		selectedNodeId = nodeId;
+		selectedEdgeId = '';
+	}
+
+	function selectEdge(edgeId) {
+		selectedEdgeId = edgeId;
+		selectedNodeId = '';
+	}
+
+	function clearSelection() {
+		selectedNodeId = '';
+		selectedEdgeId = '';
+	}
+
+	function selectedNode() {
+		return getNodeById(selectedNodeId);
+	}
+
+	function selectedEdge() {
+		return draft.canvas_json?.edges?.find((edge) => edge.id === selectedEdgeId) || null;
+	}
+
+	function updateNodeData(nodeId, key, value) {
+		ensureDraftShape();
+		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => {
+			if (node.id !== nodeId) return node;
+			const nextData = { ...(node.data || {}) };
+			if (value === '' || value == null) {
+				delete nextData[key];
+			} else {
+				nextData[key] = value;
+			}
+			return { ...node, data: nextData };
+		});
+		commitCanvasSnapshot('node-data');
+	}
+
+	function duplicateNode(nodeId) {
+		const node = getNodeById(nodeId);
+		if (!node) return;
+		ensureDraftShape();
+		const duplicateId = `step-${Date.now()}`;
+		draft.canvas_json.nodes = [
+			...draft.canvas_json.nodes,
+			{
+				...JSON.parse(JSON.stringify(node)),
+				id: duplicateId,
+				title: `${node.title} copy`,
+				position: {
+					x: Math.min((node.position?.x || 0) + 36, 640),
+					y: Math.min((node.position?.y || 0) + 36, 420),
+				},
+			},
+		];
+		selectedNodeId = duplicateId;
+		selectedEdgeId = '';
+		commitCanvasSnapshot('duplicate');
+	}
+
+	function autoLayout(direction = 'vertical') {
+		ensureDraftShape();
+		const nodes = draft.canvas_json.nodes || [];
+		if (nodes.length === 0) return;
+		const ordered = [...nodes].sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0));
+		draft.canvas_json.nodes = ordered.map((node, index) => {
+			const x = direction === 'horizontal' ? 24 + index * 250 : 24;
+			const y = direction === 'horizontal' ? 40 : 28 + index * 118;
+			return {
+				...node,
+				position: {
+					x: Math.min(x, 640),
+					y: Math.min(y, 460),
+				},
+			};
+		});
+		commitCanvasSnapshot('auto-layout');
+	}
+
+	function parseRunInputJson() {
+		if (!runInputJson.trim()) {
+			return {};
+		}
+		try {
+			const parsed = JSON.parse(runInputJson);
+			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+				throw new Error('Run payload must be a JSON object');
+			}
+			return parsed;
+		} catch (error) {
+			throw new Error(error.message || 'Invalid JSON payload');
+		}
+	}
+
 	function applyStarter(starter) {
 		selectedTemplateId = null;
 		draft = {
@@ -93,37 +294,59 @@
 			id: null,
 			slug: `${starter.slug}-${Date.now()}`.slice(0, 80),
 		};
+		historyStack = [];
+		historyIndex = -1;
+		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
+		selectedEdgeId = '';
 	}
 
 	function startNewWorkflow() {
 		selectedTemplateId = null;
 		draft = emptyDraft();
+		historyStack = [];
+		historyIndex = -1;
+		selectedNodeId = 'start';
+		selectedEdgeId = '';
 	}
 
 	function selectTemplate(template) {
 		selectedTemplateId = template.id;
 		draft = cloneTemplate(template);
+		historyStack = [];
+		historyIndex = -1;
+		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
+		selectedEdgeId = '';
 	}
 
 	function addNode(type = 'task') {
 		ensureDraftShape();
 		const nextIndex = draft.canvas_json.nodes.length + 1;
+		const nodeId = `step-${Date.now()}`;
 		draft.canvas_json.nodes = [
 			...draft.canvas_json.nodes,
 			{
-				id: `step-${Date.now()}`,
+				id: nodeId,
 				type,
-				title: `${type[0].toUpperCase()}${type.slice(1)} ${nextIndex}`,
+				title: safeNodeTitle(type, nextIndex),
 				position: { x: 32, y: 48 + (nextIndex - 1) * 110 },
 				data: {},
 			},
 		];
+		selectedNodeId = nodeId;
+		selectedEdgeId = '';
+		commitCanvasSnapshot('add-node');
 	}
 
 	function removeNode(nodeId) {
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.filter((node) => node.id !== nodeId);
 		draft.canvas_json.edges = draft.canvas_json.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId);
+		if (selectedNodeId === nodeId) selectedNodeId = draft.canvas_json.nodes[0]?.id || '';
+		if (selectedEdgeId) {
+			const stillExists = draft.canvas_json.edges.some((edge) => edge.id === selectedEdgeId);
+			if (!stillExists) selectedEdgeId = '';
+		}
+		commitCanvasSnapshot('remove-node');
 	}
 
 	let pendingEdgeSource = $state('');
@@ -134,22 +357,51 @@
 		if (!pendingEdgeSource || !pendingEdgeTarget || pendingEdgeSource === pendingEdgeTarget) return;
 		const existing = draft.canvas_json.edges.some((edge) => edge.source === pendingEdgeSource && edge.target === pendingEdgeTarget);
 		if (existing) return;
+		const edgeId = `edge-${Date.now()}`;
 		draft.canvas_json.edges = [
 			...draft.canvas_json.edges,
-			{ id: `edge-${Date.now()}`, source: pendingEdgeSource, target: pendingEdgeTarget, label: '' },
+			{ id: edgeId, source: pendingEdgeSource, target: pendingEdgeTarget, label: pendingEdgeLabel.trim() },
 		];
+		selectedEdgeId = edgeId;
+		selectedNodeId = '';
 		pendingEdgeSource = '';
 		pendingEdgeTarget = '';
+		pendingEdgeLabel = '';
+		commitCanvasSnapshot('add-edge');
+	}
+
+	function upsertQuickEdge(fromNodeId, toNodeId) {
+		if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
+		ensureDraftShape();
+		const exists = draft.canvas_json.edges.some((edge) => edge.source === fromNodeId && edge.target === toNodeId);
+		if (exists) return;
+		const edgeId = `edge-${Date.now()}`;
+		draft.canvas_json.edges = [
+			...draft.canvas_json.edges,
+			{ id: edgeId, source: fromNodeId, target: toNodeId, label: '' },
+		];
+		selectedEdgeId = edgeId;
+		selectedNodeId = '';
+		commitCanvasSnapshot('quick-connect');
 	}
 
 	function removeEdge(edgeId) {
 		ensureDraftShape();
 		draft.canvas_json.edges = draft.canvas_json.edges.filter((edge) => edge.id !== edgeId);
+		if (selectedEdgeId === edgeId) selectedEdgeId = '';
+		commitCanvasSnapshot('remove-edge');
+	}
+
+	function updateEdge(edgeId, updates) {
+		ensureDraftShape();
+		draft.canvas_json.edges = draft.canvas_json.edges.map((edge) => edge.id === edgeId ? { ...edge, ...updates } : edge);
+		commitCanvasSnapshot('update-edge');
 	}
 
 	function updateNode(nodeId, field, value) {
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => node.id === nodeId ? { ...node, [field]: value } : node);
+		commitCanvasSnapshot('update-node');
 	}
 
 	function getNodeById(nodeId) {
@@ -173,42 +425,192 @@
 		if (!canvasElement) return;
 		const node = getNodeById(nodeId);
 		if (!node) return;
+		selectNode(nodeId);
 
 		const rect = canvasElement.getBoundingClientRect();
 		dragState = {
 			nodeId,
-			offsetX: event.clientX - rect.left - (node.position?.x || 0),
-			offsetY: event.clientY - rect.top - (node.position?.y || 0),
+			offsetX: (event.clientX - rect.left) / canvasZoom - (node.position?.x || 0),
+			offsetY: (event.clientY - rect.top) / canvasZoom - (node.position?.y || 0),
 		};
 	}
 
 	function handlePointerMove(event) {
 		if (!dragState || !canvasElement) return;
 		const rect = canvasElement.getBoundingClientRect();
-		const nextX = Math.max(12, Math.min(rect.width - 220, event.clientX - rect.left - dragState.offsetX));
-		const nextY = Math.max(12, Math.min(rect.height - 84, event.clientY - rect.top - dragState.offsetY));
+		const stageWidth = 900;
+		const stageHeight = 520;
+		const pointerX = (event.clientX - rect.left) / canvasZoom;
+		const pointerY = (event.clientY - rect.top) / canvasZoom;
+		const nextX = Math.max(12, Math.min(stageWidth - 220, pointerX - dragState.offsetX));
+		const nextY = Math.max(12, Math.min(stageHeight - 84, pointerY - dragState.offsetY));
 
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => node.id === dragState.nodeId
 			? { ...node, position: { x: nextX, y: nextY } }
 			: node);
+		skipHistorySnapshot = true;
 	}
 
 	function endDrag() {
+		if (dragState) {
+			commitCanvasSnapshot('drag');
+		}
 		dragState = null;
 	}
+
+	function resetZoom() {
+		canvasZoom = 1;
+	}
+
+	function nudgeSelectedNode(deltaX, deltaY) {
+		const node = selectedNode();
+		if (!node) return;
+		const nextX = Math.max(12, Math.min(680, (node.position?.x || 0) + deltaX));
+		const nextY = Math.max(12, Math.min(460, (node.position?.y || 0) + deltaY));
+		updateNode(node.id, 'position', { x: nextX, y: nextY });
+	}
+
+	function runGraphValidation() {
+		ensureDraftShape();
+		const issues = [];
+		const nodes = draft.canvas_json.nodes || [];
+		const edges = draft.canvas_json.edges || [];
+		if (nodes.length === 0) {
+			issues.push('No nodes exist in this workflow.');
+			return issues;
+		}
+
+		const triggerNodes = nodes.filter((node) => node.type === 'trigger');
+		if (triggerNodes.length === 0) {
+			issues.push('Add at least one trigger node to start the workflow.');
+		}
+
+		const incomingByNode = new Map(nodes.map((node) => [node.id, 0]));
+		const outgoingByNode = new Map(nodes.map((node) => [node.id, 0]));
+		for (const edge of edges) {
+			incomingByNode.set(edge.target, (incomingByNode.get(edge.target) || 0) + 1);
+			outgoingByNode.set(edge.source, (outgoingByNode.get(edge.source) || 0) + 1);
+		}
+
+		for (const node of nodes) {
+			if (node.type !== 'trigger' && (incomingByNode.get(node.id) || 0) === 0) {
+				issues.push(`Node "${node.title}" is unreachable.`);
+			}
+			if (node.type !== 'branch' && node.type !== 'approval' && (outgoingByNode.get(node.id) || 0) === 0) {
+				issues.push(`Node "${node.title}" has no outbound path.`);
+			}
+		}
+
+		const adjacency = new Map(nodes.map((node) => [node.id, []]));
+		for (const edge of edges) {
+			if (adjacency.has(edge.source)) {
+				adjacency.get(edge.source).push(edge.target);
+			}
+		}
+		const visiting = new Set();
+		const visited = new Set();
+		let hasCycle = false;
+
+		function dfs(nodeId) {
+			if (visiting.has(nodeId)) {
+				hasCycle = true;
+				return;
+			}
+			if (visited.has(nodeId) || hasCycle) return;
+			visiting.add(nodeId);
+			for (const next of adjacency.get(nodeId) || []) {
+				dfs(next);
+			}
+			visiting.delete(nodeId);
+			visited.add(nodeId);
+		}
+
+		for (const node of nodes) {
+			dfs(node.id);
+			if (hasCycle) break;
+		}
+
+		if (hasCycle) {
+			issues.push('Cycle detected in workflow graph. Use branch nodes for divergence and keep execution acyclic.');
+		}
+
+		return issues;
+	}
+
+	const graphIssues = $derived(runGraphValidation());
+	const selectedNodeRef = $derived(selectedNode());
+	const selectedEdgeRef = $derived(selectedEdge());
 
 	onMount(() => {
 		const onMove = (event) => handlePointerMove(event);
 		const onUp = () => endDrag();
+		const onKeyDown = (event) => {
+			if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) {
+				return;
+			}
+
+			if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+				event.preventDefault();
+				if (event.shiftKey) {
+					redoCanvas();
+				} else {
+					undoCanvas();
+				}
+				return;
+			}
+
+			if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+				event.preventDefault();
+				redoCanvas();
+				return;
+			}
+
+			if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd' && selectedNodeId) {
+				event.preventDefault();
+				duplicateNode(selectedNodeId);
+				return;
+			}
+
+			if (event.key === 'Delete' || event.key === 'Backspace') {
+				if (selectedNodeId && selectedNodeId !== 'start') {
+					event.preventDefault();
+					removeNode(selectedNodeId);
+					return;
+				}
+				if (selectedEdgeId) {
+					event.preventDefault();
+					removeEdge(selectedEdgeId);
+					return;
+				}
+			}
+
+			if (selectedNodeId) {
+				if (event.key === 'ArrowUp') {
+					event.preventDefault();
+					nudgeSelectedNode(0, -8);
+				} else if (event.key === 'ArrowDown') {
+					event.preventDefault();
+					nudgeSelectedNode(0, 8);
+				} else if (event.key === 'ArrowLeft') {
+					event.preventDefault();
+					nudgeSelectedNode(-8, 0);
+				} else if (event.key === 'ArrowRight') {
+					event.preventDefault();
+					nudgeSelectedNode(8, 0);
+				}
+			}
+		};
 		window.addEventListener('pointermove', onMove);
 		window.addEventListener('pointerup', onUp);
 		window.addEventListener('pointercancel', onUp);
+		window.addEventListener('keydown', onKeyDown);
 
 		return () => {
 			window.removeEventListener('pointermove', onMove);
 			window.removeEventListener('pointerup', onUp);
 			window.removeEventListener('pointercancel', onUp);
+			window.removeEventListener('keydown', onKeyDown);
 		};
 	});
 
@@ -224,7 +626,13 @@
 			runs = result.runs || [];
 			if (selectedTemplateId) {
 				const fresh = templates.find((template) => template.id === selectedTemplateId);
-				if (fresh) draft = cloneTemplate(fresh);
+				if (fresh) {
+					draft = cloneTemplate(fresh);
+					historyStack = [];
+					historyIndex = -1;
+					selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
+					selectedEdgeId = '';
+				}
 			}
 		} catch (error) {
 			showToast(error.message, 'error');
@@ -267,6 +675,10 @@
 			}
 			selectedTemplateId = savedTemplate.id;
 			draft = cloneTemplate(savedTemplate);
+			historyStack = [];
+			historyIndex = -1;
+			selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
+			selectedEdgeId = '';
 			showToast(isUpdate ? 'Workflow updated' : 'Workflow created');
 		} catch (error) {
 			showToast(error.message, 'error');
@@ -317,16 +729,18 @@
 	async function runTemplate(template) {
 		runningTemplateId = template.id;
 		try {
+			const mergedInput = {
+				requested_from: 'superadmin_workflows_ui',
+				legacy_job_name: template.legacy_job_name || null,
+				...parseRunInputJson(),
+			};
 			const response = await fetch(`/api/superadmin/workflows/${template.id}/runs`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					trigger_source: 'manual',
+					trigger_source: triggerSource,
 					execute_now: Boolean(template.legacy_job_name),
-					input_json: {
-						requested_from: 'superadmin_workflows_ui',
-						legacy_job_name: template.legacy_job_name || null,
-					},
+					input_json: mergedInput,
 				}),
 			});
 			const result = await response.json();
@@ -346,8 +760,33 @@
 		? runs.filter((run) => run.template_id === selectedTemplateId)
 		: runs);
 
+	const filteredRuns = $derived(selectedRuns.filter((run) => {
+		if (runFilter !== 'all' && run.status !== runFilter) return false;
+		if (!runSearch.trim()) return true;
+		const search = runSearch.trim().toLowerCase();
+		const haystack = [
+			String(run.id || ''),
+			String(run.status || ''),
+			String(run.trigger_source || ''),
+			String(run.error_message || ''),
+			String(run.template_id || ''),
+		].join(' ').toLowerCase();
+		return haystack.includes(search);
+	}));
+
 	const totalEnabled = $derived(templates.filter((template) => template.enabled).length);
 	const migrationCandidates = $derived(templates.filter((template) => template.legacy_job_name).length);
+
+	$effect(() => {
+		ensureDraftShape();
+		if (skipHistorySnapshot) {
+			skipHistorySnapshot = false;
+			return;
+		}
+		if (historyIndex === -1 || historyStack.length === 0) {
+			commitCanvasSnapshot('seed');
+		}
+	});
 </script>
 
 <svelte:head>
@@ -515,37 +954,91 @@
 			<div class="canvas-toolbar">
 				<div class="toolbar-title">
 					<h3>Canvas</h3>
-					<p>Drag steps to map the mobile workflow layout. Connections remain editable below.</p>
+					<p>Drag steps, quick-link flows, edit node behavior, and validate execution safety in real time.</p>
 				</div>
 				<div class="toolbar-actions">
 					<button class="btn btn-outline btn-sm" onclick={() => addNode('trigger')}>Add trigger</button>
 					<button class="btn btn-outline btn-sm" onclick={() => addNode('task')}>Add task</button>
 					<button class="btn btn-outline btn-sm" onclick={() => addNode('approval')}>Add approval</button>
 					<button class="btn btn-outline btn-sm" onclick={() => addNode('branch')}>Add branch</button>
+					<button class="btn btn-outline btn-sm" onclick={() => autoLayout('vertical')}>Auto stack</button>
+					<button class="btn btn-outline btn-sm" onclick={() => autoLayout('horizontal')}>Auto row</button>
+					<button class="btn btn-outline btn-sm" onclick={undoCanvas} disabled={!canUndo()}>Undo</button>
+					<button class="btn btn-outline btn-sm" onclick={redoCanvas} disabled={!canRedo()}>Redo</button>
+				</div>
+				<div class="canvas-controls-row">
+					<div class="zoom-controls">
+						<label>
+							<span>Zoom</span>
+							<input type="range" min="0.6" max="1.4" step="0.05" bind:value={canvasZoom} />
+						</label>
+						<button class="btn btn-outline btn-sm" onclick={resetZoom}>100%</button>
+					</div>
+					<div class="keyboard-hints">
+						<span>Shortcuts: arrows move node, Ctrl/Cmd+D duplicate, Delete remove, Ctrl/Cmd+Z/Y undo/redo.</span>
+					</div>
 				</div>
 			</div>
 
-			<div bind:this={canvasElement} class="canvas-surface">
-				<svg class="edge-layer" viewBox="0 0 900 520" preserveAspectRatio="none">
-					{#each draft.canvas_json?.edges || [] as edge (edge.id)}
-						<path d={edgePath(edge)}></path>
-					{/each}
-				</svg>
-				{#each draft.canvas_json?.nodes || [] as node (node.id)}
-					<div
-						class:dragging={dragState?.nodeId === node.id}
-						class="canvas-node"
-						style:left={`${node.position?.x || 0}px`}
-						style:top={`${node.position?.y || 0}px`}
-					>
-						<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
-							<span class="node-type">{node.type}</span>
-							<button class="node-remove" onclick={() => removeNode(node.id)}>x</button>
+			{#if graphIssues.length > 0}
+				<div class="validation-panel">
+					<strong>Workflow checks ({graphIssues.length})</strong>
+					<ul>
+						{#each graphIssues as issue}
+							<li>{issue}</li>
+						{/each}
+					</ul>
+				</div>
+			{:else}
+				<div class="validation-panel ok">
+					<strong>Workflow checks</strong>
+					<span>Graph is structurally healthy and ready to run.</span>
+				</div>
+			{/if}
+
+			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
+				<div class="canvas-stage" style={`transform: scale(${canvasZoom});`}>
+					<svg class="edge-layer" viewBox="0 0 900 520" preserveAspectRatio="none">
+						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
+							<path
+								d={edgePath(edge)}
+								class:selected={selectedEdgeId === edge.id}
+								onpointerdown={(event) => {
+									event.stopPropagation();
+									selectEdge(edge.id);
+								}}
+							></path>
+						{/each}
+					</svg>
+					{#each draft.canvas_json?.nodes || [] as node (node.id)}
+						<div
+							class:dragging={dragState?.nodeId === node.id}
+							class:selected={selectedNodeId === node.id}
+							class="canvas-node"
+							style:left={`${node.position?.x || 0}px`}
+							style:top={`${node.position?.y || 0}px`}
+							onpointerdown={(event) => {
+								event.stopPropagation();
+								selectNode(node.id);
+							}}
+						>
+							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
+								<span class="node-type">{node.type}</span>
+								<button class="node-remove" onclick={() => removeNode(node.id)} disabled={node.id === 'start'}>x</button>
+							</div>
+							<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
+							<div class="node-meta">{node.id}</div>
+							<div class="node-quick-actions">
+								<button class="btn btn-outline btn-sm" onclick={() => duplicateNode(node.id)}>Duplicate</button>
+								{#if selectedNodeId && selectedNodeId !== node.id}
+									<button class="btn btn-outline btn-sm" onclick={() => upsertQuickEdge(selectedNodeId, node.id)}>
+										Link from selected
+									</button>
+								{/if}
+							</div>
 						</div>
-						<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
-						<div class="node-meta">{node.id}</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
 
 			<div class="connection-editor">
@@ -562,6 +1055,7 @@
 							<option value={node.id}>{node.title}</option>
 						{/each}
 					</select>
+					<input class="input" type="text" bind:value={pendingEdgeLabel} placeholder="Connection label (optional)" />
 					<button class="btn btn-outline btn-sm" onclick={addEdge}>Add connection</button>
 				</div>
 				<div class="edge-list">
@@ -569,13 +1063,72 @@
 						<p class="empty-state compact">No connections yet.</p>
 					{:else}
 						{#each draft.canvas_json.edges as edge (edge.id)}
-							<div class="edge-row">
+							<div class:selected={selectedEdgeId === edge.id} class="edge-row" onpointerdown={() => selectEdge(edge.id)}>
 								<span>{edge.source} -> {edge.target}</span>
+								<input
+									class="node-input edge-input"
+									type="text"
+									value={edge.label}
+									placeholder="label"
+									onclick={(event) => event.stopPropagation()}
+									oninput={(event) => updateEdge(edge.id, { label: event.currentTarget.value })}
+								/>
 								<button class="btn btn-danger btn-sm" onclick={() => removeEdge(edge.id)}>Remove</button>
 							</div>
 						{/each}
 					{/if}
 				</div>
+			</div>
+
+			<div class="inspector-grid">
+				<section class="inspector-card">
+					<h4>Node inspector</h4>
+					{#if selectedNodeRef}
+						<label>
+							<span>Type</span>
+							<select class="input" value={selectedNodeRef.type} onchange={(event) => updateNode(selectedNodeRef.id, 'type', event.currentTarget.value)}>
+								<option value="trigger">trigger</option>
+								<option value="task">task</option>
+								<option value="approval">approval</option>
+								<option value="branch">branch</option>
+							</select>
+						</label>
+						<label>
+							<span>Queue key</span>
+							<input class="input" type="text" value={selectedNodeRef.data?.queue_key || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
+						</label>
+						<label>
+							<span>Retry policy</span>
+							<input class="input" type="text" value={selectedNodeRef.data?.retry_policy || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'retry_policy', event.currentTarget.value)} placeholder="exponential:3" />
+						</label>
+						<label>
+							<span>Timeout (seconds)</span>
+							<input class="input" type="number" min="0" value={selectedNodeRef.data?.timeout_seconds || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'timeout_seconds', event.currentTarget.value ? Number(event.currentTarget.value) : '')} placeholder="120" />
+						</label>
+						<label>
+							<span>Condition expression</span>
+							<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{selectedNodeRef.data?.condition || ''}</textarea>
+						</label>
+					{:else}
+						<p class="empty-state compact">Select a node to edit behavior and execution metadata.</p>
+					{/if}
+				</section>
+
+				<section class="inspector-card">
+					<h4>Edge inspector</h4>
+					{#if selectedEdgeRef}
+						<div class="meta-row">
+							<span>{selectedEdgeRef.source} -> {selectedEdgeRef.target}</span>
+						</div>
+						<label>
+							<span>Route label</span>
+							<input class="input" type="text" value={selectedEdgeRef.label || ''} oninput={(event) => updateEdge(selectedEdgeRef.id, { label: event.currentTarget.value })} placeholder="success / failure / else" />
+						</label>
+						<button class="btn btn-danger btn-sm" onclick={() => removeEdge(selectedEdgeRef.id)}>Remove edge</button>
+					{:else}
+						<p class="empty-state compact">Select a connection path to edit labels and routing intent.</p>
+					{/if}
+				</section>
 			</div>
 		</section>
 	</div>
@@ -587,11 +1140,27 @@
 				<p>{selectedTemplateId ? 'Showing runs for the selected workflow.' : 'Showing recent workflow runs.'}</p>
 			</div>
 		</div>
+		<div class="run-controls">
+			<select class="input" bind:value={triggerSource}>
+				<option value="manual">manual trigger</option>
+				<option value="cron">cron replay</option>
+				<option value="migration">migration</option>
+			</select>
+			<input class="input" type="text" bind:value={runSearch} placeholder="Search run id, status, trigger, error" />
+			<select class="input" bind:value={runFilter}>
+				<option value="all">all statuses</option>
+				<option value="queued">queued</option>
+				<option value="running">running</option>
+				<option value="completed">completed</option>
+				<option value="failed">failed</option>
+			</select>
+		</div>
+		<textarea class="input textarea run-input" rows="2" bind:value={runInputJson} placeholder="Optional run payload JSON object"></textarea>
 		<div class="runs-list">
-			{#if selectedRuns.length === 0}
+			{#if filteredRuns.length === 0}
 				<p class="empty-state">No runs yet. Queue one from the template inventory.</p>
 			{:else}
-				{#each selectedRuns as run (run.id)}
+				{#each filteredRuns as run (run.id)}
 					<article class="run-card">
 						<div class="run-topline">
 							<strong>Run #{run.id}</strong>
@@ -817,6 +1386,56 @@
 		margin-top: 1rem;
 	}
 
+	.canvas-controls-row {
+		display: grid;
+		gap: 0.65rem;
+	}
+
+	.zoom-controls {
+		display: flex;
+		gap: 0.65rem;
+		align-items: end;
+		flex-wrap: wrap;
+	}
+
+	.zoom-controls label {
+		display: grid;
+		gap: 0.3rem;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+
+	.zoom-controls input[type='range'] {
+		width: 220px;
+	}
+
+	.keyboard-hints {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+
+	.validation-panel {
+		margin-top: 0.8rem;
+		padding: 0.85rem 0.95rem;
+		border-radius: 0.9rem;
+		border: 1px solid var(--color-warning);
+		background: var(--color-warning-soft);
+		display: grid;
+		gap: 0.45rem;
+	}
+
+	.validation-panel ul {
+		margin: 0;
+		padding-left: 1.2rem;
+		display: grid;
+		gap: 0.2rem;
+	}
+
+	.validation-panel.ok {
+		border-color: var(--color-success);
+		background: var(--color-success-soft);
+	}
+
 	.toolbar-actions,
 	.connection-form {
 		display: grid;
@@ -838,12 +1457,19 @@
 		overflow: hidden;
 	}
 
+	.canvas-stage {
+		position: relative;
+		width: 900px;
+		height: 520px;
+		transform-origin: top left;
+	}
+
 	.edge-layer {
 		position: absolute;
 		inset: 0;
 		width: 100%;
 		height: 100%;
-		pointer-events: none;
+		pointer-events: auto;
 	}
 
 	.edge-layer path {
@@ -851,6 +1477,13 @@
 		stroke: hsla(var(--hue), 82%, 62%, 0.66);
 		stroke-width: 3;
 		stroke-linecap: round;
+		cursor: pointer;
+		transition: stroke var(--transition-fast), stroke-width var(--transition-fast);
+	}
+
+	.edge-layer path.selected {
+		stroke: var(--color-primary-button);
+		stroke-width: 4;
 	}
 
 	.canvas-node {
@@ -868,6 +1501,11 @@
 		transform: scale(1.01);
 	}
 
+	.canvas-node.selected {
+		outline: 2px solid hsla(var(--hue), 82%, 62%, 0.58);
+		outline-offset: 2px;
+	}
+
 	.canvas-node-head {
 		cursor: grab;
 		margin-bottom: 0.55rem;
@@ -877,6 +1515,13 @@
 	.node-meta {
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
+	}
+
+	.node-quick-actions {
+		display: flex;
+		gap: 0.45rem;
+		flex-wrap: wrap;
+		margin-top: 0.55rem;
 	}
 
 	.node-remove {
@@ -908,9 +1553,64 @@
 		gap: 0.55rem;
 	}
 
+	.edge-input {
+		max-width: 220px;
+		padding: 0.45rem 0.6rem;
+		font-size: 0.82rem;
+	}
+
 	.edge-row,
 	.run-card {
 		padding: 0.85rem 0.95rem;
+	}
+
+	.edge-row {
+		border: 1px solid var(--color-border);
+		border-radius: 0.85rem;
+		background: var(--color-surface);
+	}
+
+	.edge-row.selected {
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 1px var(--color-primary-soft);
+	}
+
+	.inspector-grid {
+		display: grid;
+		gap: 0.8rem;
+		margin-top: 1rem;
+	}
+
+	.inspector-card {
+		display: grid;
+		gap: 0.65rem;
+		padding: 0.85rem;
+		border: 1px solid var(--color-border);
+		border-radius: 0.95rem;
+		background: var(--color-surface);
+	}
+
+	.inspector-card h4 {
+		margin: 0;
+		font-size: 0.92rem;
+	}
+
+	.inspector-card label {
+		display: grid;
+		gap: 0.3rem;
+		font-size: 0.82rem;
+		font-weight: 600;
+	}
+
+	.run-controls {
+		display: grid;
+		gap: 0.65rem;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+		margin-bottom: 0.7rem;
+	}
+
+	.run-input {
+		margin-bottom: 0.8rem;
 	}
 
 	.run-card {
@@ -959,6 +1659,23 @@
 			grid-template-columns: repeat(4, minmax(0, 1fr));
 		}
 
+		.canvas-controls-row {
+			grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+			align-items: end;
+		}
+
+		.connection-form {
+			grid-template-columns: 1fr 1fr 1fr auto;
+		}
+
+		.inspector-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.run-controls {
+			grid-template-columns: 220px minmax(0, 1fr) 220px;
+		}
+
 		.starter-grid {
 			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
@@ -977,6 +1694,10 @@
 
 		.canvas-node {
 			width: min(220px, calc(100vw - 6rem));
+		}
+
+		.canvas-stage {
+			width: 900px;
 		}
 	}
 
