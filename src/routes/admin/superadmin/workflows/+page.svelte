@@ -32,14 +32,14 @@
 	let edgeDragHoverTarget = $state(null);
 
 	const NODE_WIDTH = 220;
-	const NODE_HEIGHT = 128;
+	const NODE_HEIGHT = 252;
 	const STAGE_WIDTH = 1200;
-	const STAGE_HEIGHT = 760;
+	const STAGE_HEIGHT = 1280;
 	const NODE_PADDING = 16;
 	const AUTO_LAYOUT_BASE_X = 56;
 	const AUTO_LAYOUT_BASE_Y = 72;
 	const AUTO_LAYOUT_COLUMN_GAP = 300;
-	const AUTO_LAYOUT_ROW_GAP = 238;
+	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 44;
 	const CROWDED_VERTICAL_THRESHOLD = 170;
 	const CROWDED_HORIZONTAL_THRESHOLD = 160;
 	const NODE_TYPE_META = {
@@ -498,7 +498,11 @@
 			id: null,
 			slug: `${starter.slug}-${Date.now()}`.slice(0, 80),
 		};
-		draft.canvas_json = maybeSpaceCanvas(draft.canvas_json);
+		const normalizedCanvasDraft = normalizedCanvas(draft.canvas_json);
+		draft.canvas_json = {
+			...normalizedCanvasDraft,
+			nodes: autoLayoutNodes(normalizedCanvasDraft.nodes, 'vertical'),
+		};
 		historyStack = [];
 		historyIndex = -1;
 		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
@@ -2225,6 +2229,7 @@
 	.canvas-node {
 		position: absolute;
 		width: 220px;
+		min-height: 252px;
 		padding: 0.7rem;
 		border-radius: 1rem;
 		background: var(--color-surface);
