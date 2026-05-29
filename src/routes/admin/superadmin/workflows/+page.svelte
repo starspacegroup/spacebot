@@ -42,14 +42,23 @@
 	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 56;
 	const CROWDED_VERTICAL_THRESHOLD = NODE_HEIGHT - 24;
 	const CROWDED_HORIZONTAL_THRESHOLD = 160;
-	const TRIGGER_CRON_PRESETS = [
-		{ id: '* * * * *', label: 'Every minute' },
-		{ id: '0 * * * *', label: 'Hourly' },
-		{ id: '0 */6 * * *', label: 'Every 6 hours' },
-		{ id: '0 0 * * *', label: 'Daily' },
-		{ id: '0 0 * * 1', label: 'Weekly (Monday)' },
+	const SCHEDULE_MODE_OPTIONS = [
+		{ id: 'manual', label: 'Manual only' },
+		{ id: 'hourly', label: 'Hourly' },
+		{ id: 'every_n_hours', label: 'Every N hours' },
+		{ id: 'daily', label: 'Daily' },
+		{ id: 'weekly', label: 'Weekly' },
+		{ id: 'monthly', label: 'Monthly' },
 	];
-	const TRIGGER_CUSTOM_CRON_VALUE = '__custom__';
+	const WEEKDAY_OPTIONS = [
+		{ id: 0, label: 'Sunday' },
+		{ id: 1, label: 'Monday' },
+		{ id: 2, label: 'Tuesday' },
+		{ id: 3, label: 'Wednesday' },
+		{ id: 4, label: 'Thursday' },
+		{ id: 5, label: 'Friday' },
+		{ id: 6, label: 'Saturday' },
+	];
 	const BRANCH_OPERATORS = [
 		{ id: 'equals', label: 'equals' },
 		{ id: 'not_equals', label: 'does not equal' },
@@ -300,12 +309,7 @@
 		const meta = typeMeta(node?.type);
 		const parts = [meta.description];
 		if (node?.type === 'trigger') {
-			const schedule = String(node?.data?.schedule || '').trim();
-			if (schedule) {
-				parts.push(`Runs: ${cronPresetLabel(schedule)} (${schedule})`);
-			} else {
-				parts.push('Runs: manual');
-			}
+			parts.push(`Runs: ${scheduleLabelFromCron(node?.data?.schedule_type, node?.data?.schedule)}`);
 			if (node?.data?.source) {
 				parts.push(`Source: ${node.data.source}`);
 			}
@@ -365,24 +369,161 @@
 		return fallback;
 	}
 
-	function cronPresetLabel(expression = '') {
-		const normalized = String(expression || '').trim();
-		return TRIGGER_CRON_PRESETS.find((preset) => preset.id === normalized)?.label || 'Custom cadence';
+	function clampNumber(value, minimum, maximum, fallback) {
+		const parsed = Number(value);
+		if (!Number.isFinite(parsed)) return fallback;
+		const integer = Math.trunc(parsed);
+		return Math.min(maximum, Math.max(minimum, integer));
 	}
 
-	function triggerScheduleMode(node) {
-		if (!node || node.type !== 'trigger') return 'manual';
-		if (String(node?.data?.schedule_type || '').trim() === 'cron') return 'cron';
-		return String(node?.data?.schedule || '').trim() ? 'cron' : 'manual';
+	function pad2(value) {
+		return String(clampNumber(value, 0, 59, 0)).padStart(2, '0');
 	}
 
-	function triggerCadencePresetValue(node) {
-		if (!node || node.type !== 'trigger') return 'manual';
-		const schedule = String(node?.data?.schedule || '').trim();
-		if (!schedule) return 'manual';
-		return TRIGGER_CRON_PRESETS.some((preset) => preset.id === schedule)
-			? schedule
-			: TRIGGER_CUSTOM_CRON_VALUE;
+	function normalizeWeekday(value, fallback = 1) {
+		const parsed = clampNumber(value, 0, 7, fallback);
+		return parsed === 7 ? 0 : parsed;
+	}
+
+	function createDefaultScheduleBuilder(mode = 'manual') {
+		return {
+			mode,
+			minute: 0,
+			hour: 9,
+			everyHours: 6,
+			weekday: 1,
+			monthday: 1,
+			unsupported: false,
+			legacyExpression: '',
+		};
+	}
+
+	function parseCronToScheduleBuilder(scheduleType, cronExpression) {
+		const normalizedType = String(scheduleType || '').trim();
+		const expression = String(cronExpression || '').trim();
+		if (normalizedType !== 'cron' || !expression) {
+			return createDefaultScheduleBuilder('manual');
+		}
+
+		const parts = expression.split(/\s+/);
+		if (parts.length !== 5) {
+			return {
+				...createDefaultScheduleBuilder('daily'),
+				unsupported: true,
+				legacyExpression: expression,
+			};
+		}
+
+		const [minutePart, hourPart, dayOfMonthPart, monthPart, dayOfWeekPart] = parts;
+		const minute = Number(minutePart);
+		const hour = Number(hourPart);
+		const dayOfMonth = Number(dayOfMonthPart);
+		const dayOfWeek = Number(dayOfWeekPart);
+
+		if (Number.isInteger(minute) && hourPart === '*' && dayOfMonthPart === '*' && monthPart === '*' && dayOfWeekPart === '*') {
+			return {
+				...createDefaultScheduleBuilder('hourly'),
+				minute: clampNumber(minute, 0, 59, 0),
+			};
+		}
+
+		const intervalHoursMatch = /^\*\/(\d{1,2})$/.exec(hourPart);
+		if (Number.isInteger(minute) && intervalHoursMatch && dayOfMonthPart === '*' && monthPart === '*' && dayOfWeekPart === '*') {
+			return {
+				...createDefaultScheduleBuilder('every_n_hours'),
+				minute: clampNumber(minute, 0, 59, 0),
+				everyHours: clampNumber(Number(intervalHoursMatch[1]), 1, 23, 6),
+			};
+		}
+
+		if (Number.isInteger(minute) && Number.isInteger(hour) && dayOfMonthPart === '*' && monthPart === '*' && dayOfWeekPart === '*') {
+			return {
+				...createDefaultScheduleBuilder('daily'),
+				minute: clampNumber(minute, 0, 59, 0),
+				hour: clampNumber(hour, 0, 23, 9),
+			};
+		}
+
+		if (Number.isInteger(minute) && Number.isInteger(hour) && dayOfMonthPart === '*' && monthPart === '*' && Number.isInteger(dayOfWeek)) {
+			return {
+				...createDefaultScheduleBuilder('weekly'),
+				minute: clampNumber(minute, 0, 59, 0),
+				hour: clampNumber(hour, 0, 23, 9),
+				weekday: normalizeWeekday(dayOfWeek, 1),
+			};
+		}
+
+		if (Number.isInteger(minute) && Number.isInteger(hour) && Number.isInteger(dayOfMonth) && monthPart === '*' && dayOfWeekPart === '*') {
+			return {
+				...createDefaultScheduleBuilder('monthly'),
+				minute: clampNumber(minute, 0, 59, 0),
+				hour: clampNumber(hour, 0, 23, 9),
+				monthday: clampNumber(dayOfMonth, 1, 31, 1),
+			};
+		}
+
+		return {
+			...createDefaultScheduleBuilder('daily'),
+			minute: Number.isInteger(minute) ? clampNumber(minute, 0, 59, 0) : 0,
+			hour: Number.isInteger(hour) ? clampNumber(hour, 0, 23, 9) : 9,
+			unsupported: true,
+			legacyExpression: expression,
+		};
+	}
+
+	function cronFromScheduleBuilder(builder) {
+		const mode = String(builder?.mode || 'manual');
+		const minute = clampNumber(builder?.minute, 0, 59, 0);
+		const hour = clampNumber(builder?.hour, 0, 23, 9);
+		const everyHours = clampNumber(builder?.everyHours, 1, 23, 6);
+		const weekday = normalizeWeekday(builder?.weekday, 1);
+		const monthday = clampNumber(builder?.monthday, 1, 31, 1);
+
+		if (mode === 'hourly') return `${minute} * * * *`;
+		if (mode === 'every_n_hours') return `${minute} */${everyHours} * * *`;
+		if (mode === 'daily') return `${minute} ${hour} * * *`;
+		if (mode === 'weekly') return `${minute} ${hour} * * ${weekday}`;
+		if (mode === 'monthly') return `${minute} ${hour} ${monthday} * *`;
+		return '';
+	}
+
+	function scheduleLabelFromBuilder(builder) {
+		const mode = String(builder?.mode || 'manual');
+		const minute = clampNumber(builder?.minute, 0, 59, 0);
+		const hour = clampNumber(builder?.hour, 0, 23, 9);
+		const everyHours = clampNumber(builder?.everyHours, 1, 23, 6);
+		const weekday = normalizeWeekday(builder?.weekday, 1);
+		const monthday = clampNumber(builder?.monthday, 1, 31, 1);
+		const timeLabel = `${pad2(hour)}:${pad2(minute)} UTC`;
+
+		if (mode === 'hourly') return `Every hour at minute ${pad2(minute)}`;
+		if (mode === 'every_n_hours') return `Every ${everyHours} hours at minute ${pad2(minute)}`;
+		if (mode === 'daily') return `Daily at ${timeLabel}`;
+		if (mode === 'weekly') {
+			const weekdayLabel = WEEKDAY_OPTIONS.find((option) => option.id === weekday)?.label || 'Monday';
+			return `Weekly on ${weekdayLabel} at ${timeLabel}`;
+		}
+		if (mode === 'monthly') return `Monthly on day ${monthday} at ${timeLabel}`;
+		return 'Manual only';
+	}
+
+	function scheduleLabelFromCron(scheduleType, cronExpression) {
+		const builder = parseCronToScheduleBuilder(scheduleType, cronExpression);
+		if (builder.unsupported) {
+			return 'Legacy custom schedule';
+		}
+		return scheduleLabelFromBuilder(builder);
+	}
+
+	function templateScheduleBuilder() {
+		return parseCronToScheduleBuilder(draft.schedule_type, draft.cron_expression);
+	}
+
+	function triggerScheduleBuilder(node) {
+		if (!node || node.type !== 'trigger') {
+			return createDefaultScheduleBuilder('manual');
+		}
+		return parseCronToScheduleBuilder(node?.data?.schedule_type, node?.data?.schedule);
 	}
 
 	function primaryTriggerNode() {
@@ -421,53 +562,80 @@
 		});
 	}
 
-	function updateDraftScheduleType(nextType) {
-		draft.schedule_type = nextType === 'cron' ? 'cron' : 'manual';
-		if (draft.schedule_type === 'cron' && !String(draft.cron_expression || '').trim()) {
-			draft.cron_expression = '0 * * * *';
-		}
-		if (draft.schedule_type !== 'cron') {
+	function applyDraftScheduleBuilder(builder) {
+		const nextCron = cronFromScheduleBuilder(builder);
+		if (!nextCron) {
+			draft.schedule_type = 'manual';
 			draft.cron_expression = '';
-		}
-		syncPrimaryTriggerFromDraft();
-	}
-
-	function updateDraftCronExpression(value) {
-		draft.cron_expression = String(value || '').trim();
-		if (draft.schedule_type !== 'cron') {
+		} else {
 			draft.schedule_type = 'cron';
+			draft.cron_expression = nextCron;
 		}
 		syncPrimaryTriggerFromDraft();
 	}
 
-	function applyTriggerCadencePreset(nodeId, presetValue) {
+	function updateDraftScheduleMode(nextMode) {
+		const current = templateScheduleBuilder();
+		applyDraftScheduleBuilder({
+			...current,
+			mode: nextMode,
+			unsupported: false,
+			legacyExpression: '',
+		});
+	}
+
+	function updateDraftScheduleField(key, rawValue) {
+		const current = templateScheduleBuilder();
+		const next = {
+			...current,
+			unsupported: false,
+			legacyExpression: '',
+		};
+		if (key === 'minute') next.minute = clampNumber(rawValue, 0, 59, 0);
+		if (key === 'hour') next.hour = clampNumber(rawValue, 0, 23, 9);
+		if (key === 'everyHours') next.everyHours = clampNumber(rawValue, 1, 23, 6);
+		if (key === 'weekday') next.weekday = normalizeWeekday(rawValue, 1);
+		if (key === 'monthday') next.monthday = clampNumber(rawValue, 1, 31, 1);
+		applyDraftScheduleBuilder(next);
+	}
+
+	function applyTriggerScheduleBuilder(nodeId, builder) {
 		if (!nodeId) return;
-		if (presetValue === 'manual') {
-			updateNodeDataPatch(nodeId, {
-				schedule_type: 'manual',
-				schedule: '',
-			});
-			syncDraftScheduleFromTrigger(nodeId);
-			return;
-		}
-		const normalized = String(presetValue || '').trim();
-		if (!normalized) return;
+		const nextCron = cronFromScheduleBuilder(builder);
 		updateNodeDataPatch(nodeId, {
-			schedule_type: 'cron',
-			schedule: normalized,
+			schedule_type: nextCron ? 'cron' : 'manual',
+			schedule: nextCron,
 		});
 		syncDraftScheduleFromTrigger(nodeId);
 	}
 
-	function updateTriggerCronExpression(nodeId, value) {
-		if (!nodeId) return;
-		const normalized = String(value || '').trim();
-		updateNodeDataPatch(nodeId, {
-			schedule_type: normalized ? 'cron' : 'manual',
-			schedule: normalized,
+	function updateTriggerScheduleMode(nodeId, nextMode) {
+		const node = getNodeById(nodeId);
+		const current = triggerScheduleBuilder(node);
+		applyTriggerScheduleBuilder(nodeId, {
+			...current,
+			mode: nextMode,
+			unsupported: false,
+			legacyExpression: '',
 		});
-		syncDraftScheduleFromTrigger(nodeId);
 	}
+
+	function updateTriggerScheduleField(nodeId, key, rawValue) {
+		const node = getNodeById(nodeId);
+		const current = triggerScheduleBuilder(node);
+		const next = {
+			...current,
+			unsupported: false,
+			legacyExpression: '',
+		};
+		if (key === 'minute') next.minute = clampNumber(rawValue, 0, 59, 0);
+		if (key === 'hour') next.hour = clampNumber(rawValue, 0, 23, 9);
+		if (key === 'everyHours') next.everyHours = clampNumber(rawValue, 1, 23, 6);
+		if (key === 'weekday') next.weekday = normalizeWeekday(rawValue, 1);
+		if (key === 'monthday') next.monthday = clampNumber(rawValue, 1, 31, 1);
+		applyTriggerScheduleBuilder(nodeId, next);
+	}
+
 
 	function updateNodeNumberData(nodeId, key, rawValue) {
 		const normalized = String(rawValue || '').trim();
@@ -1360,7 +1528,7 @@
 			return;
 		}
 		if (draft.schedule_type === 'cron' && !String(draft.cron_expression || '').trim()) {
-			showToast('Cron expression is required for cron schedules', 'error');
+			showToast('A valid time trigger is required for scheduled workflows', 'error');
 			return;
 		}
 
@@ -1559,7 +1727,7 @@
 				<button class="starter-card" onclick={() => applyStarter(starter)}>
 					<strong>{starter.name}</strong>
 					<span>{starter.description}</span>
-					<small>{starter.legacy_job_name || 'custom'} {starter.cron_expression ? `- ${starter.cron_expression}` : '- manual'}</small>
+					<small>{starter.legacy_job_name || 'custom'} - {scheduleLabelFromCron(starter.schedule_type, starter.cron_expression)}</small>
 				</button>
 			{/each}
 		</div>
@@ -1589,7 +1757,7 @@
 								<p>{template.description || 'No description yet.'}</p>
 								<div class="meta-row">
 									<span>{template.category}</span>
-									<span>{template.schedule_type === 'cron' ? template.cron_expression || 'cron' : 'manual'}</span>
+									<span>{scheduleLabelFromCron(template.schedule_type, template.cron_expression)}</span>
 									<span>{template.execution_backend}</span>
 								</div>
 							</button>
@@ -1615,7 +1783,7 @@
 			<div class="section-head">
 				<div>
 					<h2>{draft.id ? 'Edit workflow' : 'New workflow'}</h2>
-					<p>Mobile-first editor for template metadata, trigger cadence, and sequenced job layout.</p>
+					<p>Mobile-first editor for template metadata, clean time triggers, and sequenced job layout.</p>
 				</div>
 				<button class="btn btn-primary" onclick={saveDraft} disabled={saving}>{saving ? 'Saving...' : draft.id ? 'Save changes' : 'Create workflow'}</button>
 			</div>
@@ -1646,16 +1814,54 @@
 					</select>
 				</label>
 				<label>
-					<span>Schedule type</span>
-					<select class="input" bind:value={draft.schedule_type} onchange={(event) => updateDraftScheduleType(event.currentTarget.value)}>
-						<option value="manual">manual</option>
-						<option value="cron">cron</option>
+					<span>Time trigger</span>
+					<select class="input" value={templateScheduleBuilder().mode} onchange={(event) => updateDraftScheduleMode(event.currentTarget.value)}>
+						{#each SCHEDULE_MODE_OPTIONS as option (option.id)}
+							<option value={option.id}>{option.label}</option>
+						{/each}
 					</select>
 				</label>
-				<label>
-					<span>Cron expression</span>
-					<input class="input" type="text" bind:value={draft.cron_expression} onchange={(event) => updateDraftCronExpression(event.currentTarget.value)} placeholder="0 0 * * *" disabled={draft.schedule_type !== 'cron'} />
-				</label>
+				{#if templateScheduleBuilder().mode === 'hourly' || templateScheduleBuilder().mode === 'every_n_hours' || templateScheduleBuilder().mode === 'daily' || templateScheduleBuilder().mode === 'weekly' || templateScheduleBuilder().mode === 'monthly'}
+					<label>
+						<span>Minute</span>
+						<input class="input" type="number" min="0" max="59" value={templateScheduleBuilder().minute} oninput={(event) => updateDraftScheduleField('minute', event.currentTarget.value)} />
+					</label>
+				{/if}
+				{#if templateScheduleBuilder().mode === 'daily' || templateScheduleBuilder().mode === 'weekly' || templateScheduleBuilder().mode === 'monthly'}
+					<label>
+						<span>Hour (UTC)</span>
+						<input class="input" type="number" min="0" max="23" value={templateScheduleBuilder().hour} oninput={(event) => updateDraftScheduleField('hour', event.currentTarget.value)} />
+					</label>
+				{/if}
+				{#if templateScheduleBuilder().mode === 'every_n_hours'}
+					<label>
+						<span>Interval hours</span>
+						<input class="input" type="number" min="1" max="23" value={templateScheduleBuilder().everyHours} oninput={(event) => updateDraftScheduleField('everyHours', event.currentTarget.value)} />
+					</label>
+				{/if}
+				{#if templateScheduleBuilder().mode === 'weekly'}
+					<label>
+						<span>Day of week</span>
+						<select class="input" value={templateScheduleBuilder().weekday} onchange={(event) => updateDraftScheduleField('weekday', event.currentTarget.value)}>
+							{#each WEEKDAY_OPTIONS as day (day.id)}
+								<option value={day.id}>{day.label}</option>
+							{/each}
+						</select>
+					</label>
+				{/if}
+				{#if templateScheduleBuilder().mode === 'monthly'}
+					<label>
+						<span>Day of month</span>
+						<input class="input" type="number" min="1" max="31" value={templateScheduleBuilder().monthday} oninput={(event) => updateDraftScheduleField('monthday', event.currentTarget.value)} />
+					</label>
+				{/if}
+				<div class="full-width schedule-summary-card">
+					<span>Current trigger schedule</span>
+					<strong>{scheduleLabelFromCron(draft.schedule_type, draft.cron_expression)}</strong>
+					{#if templateScheduleBuilder().unsupported}
+						<small>Legacy custom schedule is loaded. Choose a time trigger option above to replace it.</small>
+					{/if}
+				</div>
 				<label>
 					<span>Gateway compatibility job</span>
 					<select class="input" bind:value={draft.legacy_job_name}>
@@ -1923,45 +2129,61 @@
 							</select>
 						</label>
 						{#if selectedNodeRef.type === 'trigger'}
+							{@const nodeSchedule = triggerScheduleBuilder(selectedNodeRef)}
 							<label>
 								<span>Trigger source</span>
-								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-cron" />
+								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
 							</label>
 							<label>
-								<span>Run mode</span>
-								<select class="input" value={triggerScheduleMode(selectedNodeRef)} onchange={(event) => {
-									const mode = event.currentTarget.value;
-									if (mode === 'manual') {
-										applyTriggerCadencePreset(selectedNodeRef.id, 'manual');
-										return;
-									}
-									const currentSchedule = String(selectedNodeRef.data?.schedule || '').trim() || '0 * * * *';
-									applyTriggerCadencePreset(selectedNodeRef.id, currentSchedule);
-								}}>
-									<option value="manual">manual</option>
-									<option value="cron">cron</option>
+								<span>Time trigger</span>
+								<select class="input" value={nodeSchedule.mode} onchange={(event) => updateTriggerScheduleMode(selectedNodeRef.id, event.currentTarget.value)}>
+									{#each SCHEDULE_MODE_OPTIONS as option (option.id)}
+										<option value={option.id}>{option.label}</option>
+									{/each}
 								</select>
 							</label>
-							{#if triggerScheduleMode(selectedNodeRef) === 'cron'}
+							{#if nodeSchedule.mode === 'hourly' || nodeSchedule.mode === 'every_n_hours' || nodeSchedule.mode === 'daily' || nodeSchedule.mode === 'weekly' || nodeSchedule.mode === 'monthly'}
 								<label>
-									<span>Cadence preset</span>
-									<select class="input" value={triggerCadencePresetValue(selectedNodeRef)} onchange={(event) => {
-										const preset = event.currentTarget.value;
-										if (preset === TRIGGER_CUSTOM_CRON_VALUE) return;
-										applyTriggerCadencePreset(selectedNodeRef.id, preset);
-									}}>
-										<option value={TRIGGER_CUSTOM_CRON_VALUE}>custom cron</option>
-										{#each TRIGGER_CRON_PRESETS as preset (preset.id)}
-											<option value={preset.id}>{preset.label}</option>
+									<span>Minute</span>
+									<input class="input" type="number" min="0" max="59" value={nodeSchedule.minute} oninput={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'minute', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if nodeSchedule.mode === 'every_n_hours'}
+								<label>
+									<span>Interval hours</span>
+									<input class="input" type="number" min="1" max="23" value={nodeSchedule.everyHours} oninput={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'everyHours', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if nodeSchedule.mode === 'daily' || nodeSchedule.mode === 'weekly' || nodeSchedule.mode === 'monthly'}
+								<label>
+									<span>Hour (UTC)</span>
+									<input class="input" type="number" min="0" max="23" value={nodeSchedule.hour} oninput={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'hour', event.currentTarget.value)} />
+								</label>
+							{/if}
+							{#if nodeSchedule.mode === 'weekly'}
+								<label>
+									<span>Day of week</span>
+									<select class="input" value={nodeSchedule.weekday} onchange={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'weekday', event.currentTarget.value)}>
+										{#each WEEKDAY_OPTIONS as day (day.id)}
+											<option value={day.id}>{day.label}</option>
 										{/each}
 									</select>
 								</label>
+							{/if}
+							{#if nodeSchedule.mode === 'monthly'}
 								<label>
-									<span>Cron expression</span>
-									<input class="input" type="text" value={selectedNodeRef.data?.schedule || ''} onchange={(event) => updateTriggerCronExpression(selectedNodeRef.id, event.currentTarget.value)} placeholder="0 * * * *" />
+									<span>Day of month</span>
+									<input class="input" type="number" min="1" max="31" value={nodeSchedule.monthday} oninput={(event) => updateTriggerScheduleField(selectedNodeRef.id, 'monthday', event.currentTarget.value)} />
 								</label>
 							{/if}
-							<p class="inspector-note">Trigger cadence is configurable here. For the primary trigger, this syncs the template schedule fields above.</p>
+							<div class="schedule-summary-card">
+								<span>Current trigger schedule</span>
+								<strong>{scheduleLabelFromCron(selectedNodeRef.data?.schedule_type, selectedNodeRef.data?.schedule)}</strong>
+								{#if nodeSchedule.unsupported}
+									<small>Legacy custom schedule is loaded. Adjust this trigger to replace it with a structured time rule.</small>
+								{/if}
+							</div>
+							<p class="inspector-note">Primary trigger updates stay synced with the template time trigger settings above.</p>
 						{:else if selectedNodeRef.type === 'task'}
 							<label>
 								<span>Operation key</span>
@@ -2092,7 +2314,7 @@
 		<div class="run-controls">
 			<select class="input" bind:value={triggerSource}>
 				<option value="manual">manual trigger</option>
-				<option value="cron">cron replay</option>
+				<option value="cron">scheduled replay</option>
 				<option value="migration">migration</option>
 			</select>
 			<input class="input" type="text" bind:value={runSearch} placeholder="Search run id, status, trigger, error" />
@@ -2336,6 +2558,24 @@
 		justify-content: flex-start;
 		align-self: end;
 		padding: 0.85rem 0;
+	}
+
+	.schedule-summary-card {
+		display: grid;
+		gap: 0.28rem;
+		padding: 0.75rem 0.85rem;
+		border-radius: 0.85rem;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface-elevated);
+	}
+
+	.schedule-summary-card strong {
+		font-size: 0.95rem;
+	}
+
+	.schedule-summary-card small {
+		font-size: 0.78rem;
+		color: var(--color-text-muted);
 	}
 
 	.canvas-toolbar,
