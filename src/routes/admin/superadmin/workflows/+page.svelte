@@ -19,6 +19,8 @@
 	let selectedNodeId = $state('start');
 	let selectedEdgeId = $state('');
 	let pendingEdgeLabel = $state('');
+	let pendingEdgeSourceHandle = $state('');
+	let pendingEdgeTargetHandle = $state('');
 	let historyStack = $state([]);
 	let historyIndex = $state(-1);
 	let skipHistorySnapshot = $state(false);
@@ -27,7 +29,7 @@
 	let runInputJson = $state('');
 	let triggerSource = $state('manual');
 	let edgeDragState = $state(null);
-	let edgeDragHoverTargetId = $state('');
+	let edgeDragHoverTarget = $state(null);
 
 	const NODE_WIDTH = 220;
 	const NODE_HEIGHT = 128;
@@ -40,24 +42,49 @@
 			description: 'Entry point that starts a workflow run.',
 			accent: 'var(--color-info)',
 			defaultRoute: 'start',
+			outputs: [
+				{ id: 'start', label: 'start' },
+			],
 		},
 		task: {
 			label: 'Task',
 			description: 'Executes work on queue/runner infrastructure.',
 			accent: 'var(--color-primary-button)',
 			defaultRoute: 'next',
+			inputs: [
+				{ id: 'in', label: 'in' },
+			],
+			outputs: [
+				{ id: 'next', label: 'next' },
+				{ id: 'error', label: 'error' },
+			],
 		},
 		approval: {
 			label: 'Approval',
 			description: 'Human gate requiring explicit accept/reject routing.',
 			accent: 'var(--color-warning)',
 			defaultRoute: 'approved',
+			inputs: [
+				{ id: 'in', label: 'in' },
+			],
+			outputs: [
+				{ id: 'approved', label: 'approved' },
+				{ id: 'rejected', label: 'rejected' },
+			],
 		},
 		branch: {
 			label: 'Branch',
 			description: 'Conditional split. Route labels define path intent.',
 			accent: 'var(--color-success)',
-			defaultRoute: 'route',
+			defaultRoute: 'true',
+			inputs: [
+				{ id: 'in', label: 'in' },
+			],
+			outputs: [
+				{ id: 'true', label: 'true' },
+				{ id: 'false', label: 'false' },
+				{ id: 'else', label: 'else' },
+			],
 		},
 	};
 
@@ -164,6 +191,36 @@
 		return NODE_TYPE_META[type] || NODE_TYPE_META.task;
 	}
 
+	function inputHandles(nodeOrType) {
+		const type = typeof nodeOrType === 'string' ? nodeOrType : nodeOrType?.type;
+		return typeMeta(type).inputs || [];
+	}
+
+	function outputHandles(nodeOrType) {
+		const type = typeof nodeOrType === 'string' ? nodeOrType : nodeOrType?.type;
+		return typeMeta(type).outputs || [];
+	}
+
+	function defaultSourceHandle(sourceId) {
+		const source = getNodeById(sourceId);
+		return outputHandles(source)[0]?.id || '';
+	}
+
+	function defaultTargetHandle(targetId) {
+		const target = getNodeById(targetId);
+		return inputHandles(target)[0]?.id || '';
+	}
+
+	function outputHandleLabel(nodeId, handleId) {
+		const node = getNodeById(nodeId);
+		return outputHandles(node).find((handle) => handle.id === handleId)?.label || handleId || 'route';
+	}
+
+	function inputHandleLabel(nodeId, handleId) {
+		const node = getNodeById(nodeId);
+		return inputHandles(node).find((handle) => handle.id === handleId)?.label || handleId || 'in';
+	}
+
 	function nodeTitle(nodeId) {
 		const node = getNodeById(nodeId);
 		return node?.title || nodeId;
@@ -184,22 +241,25 @@
 		return parts.join(' ');
 	}
 
-	function suggestEdgeLabel(sourceId) {
+	function suggestEdgeLabel(sourceId, sourceHandleId = '') {
 		const source = getNodeById(sourceId);
 		if (!source) return '';
-		const meta = typeMeta(source.type);
-		if (source.type === 'branch') {
-			const branchCount = (draft.canvas_json?.edges || []).filter((edge) => edge.source === sourceId).length;
-			return `${meta.defaultRoute}_${branchCount + 1}`;
-		}
-		return meta.defaultRoute;
+		const sourceHandle = sourceHandleId || defaultSourceHandle(sourceId);
+		if (sourceHandle) return outputHandleLabel(sourceId, sourceHandle);
+		return typeMeta(source.type).defaultRoute;
 	}
 
 	function normalizeEdge(edge, index = 1) {
+		const source = String(edge?.source || '');
+		const target = String(edge?.target || '');
+		const sourceHandle = String(edge?.source_handle || edge?.sourceHandle || '');
+		const targetHandle = String(edge?.target_handle || edge?.targetHandle || '');
 		return {
 			id: String(edge?.id || `edge-${Date.now()}-${index}`),
-			source: String(edge?.source || ''),
-			target: String(edge?.target || ''),
+			source,
+			target,
+			source_handle: sourceHandle || defaultSourceHandle(source),
+			target_handle: targetHandle || defaultTargetHandle(target),
 			label: String(edge?.label || ''),
 		};
 	}
@@ -207,9 +267,32 @@
 	function normalizedCanvas(canvas) {
 		const normalizedNodes = (canvas?.nodes || []).map((node, index) => normalizeNode(node, index + 1));
 		const nodeIds = new Set(normalizedNodes.map((node) => node.id));
-		const normalizedEdges = (canvas?.edges || [])
+		const parsedEdges = (canvas?.edges || [])
 			.map((edge, index) => normalizeEdge(edge, index + 1))
 			.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target) && edge.source && edge.target);
+
+		const bySourceHandle = new Map();
+		const byTargetHandle = new Map();
+		for (const edge of parsedEdges) {
+			const sourceKey = `${edge.source}:${edge.source_handle}`;
+			const targetKey = `${edge.target}:${edge.target_handle}`;
+			bySourceHandle.set(sourceKey, edge);
+			byTargetHandle.set(targetKey, edge);
+		}
+
+		const normalizedEdges = [];
+		const seenIds = new Set();
+		for (const edge of parsedEdges) {
+			const sourceKey = `${edge.source}:${edge.source_handle}`;
+			const targetKey = `${edge.target}:${edge.target_handle}`;
+			const latestBySource = bySourceHandle.get(sourceKey);
+			const latestByTarget = byTargetHandle.get(targetKey);
+			if (!latestBySource || !latestByTarget) continue;
+			if (latestBySource.id !== edge.id || latestByTarget.id !== edge.id) continue;
+			if (seenIds.has(edge.id)) continue;
+			seenIds.add(edge.id);
+			normalizedEdges.push(edge);
+		}
 		return {
 			nodes: normalizedNodes,
 			edges: normalizedEdges,
@@ -382,6 +465,7 @@
 		historyIndex = -1;
 		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
 		selectedEdgeId = '';
+		clearPendingConnection();
 	}
 
 	function startNewWorkflow() {
@@ -391,6 +475,7 @@
 		historyIndex = -1;
 		selectedNodeId = 'start';
 		selectedEdgeId = '';
+		clearPendingConnection();
 	}
 
 	function selectTemplate(template) {
@@ -400,6 +485,7 @@
 		historyIndex = -1;
 		selectedNodeId = draft.canvas_json?.nodes?.[0]?.id || '';
 		selectedEdgeId = '';
+		clearPendingConnection();
 	}
 
 	function addNode(type = 'task') {
@@ -437,38 +523,106 @@
 	let pendingEdgeSource = $state('');
 	let pendingEdgeTarget = $state('');
 
-	function addEdge() {
+	function edgeRouteDisplay(edge) {
+		const sourceName = nodeTitle(edge.source);
+		const targetName = nodeTitle(edge.target);
+		const sourceRoute = outputHandleLabel(edge.source, edge.source_handle);
+		const targetPort = inputHandleLabel(edge.target, edge.target_handle);
+		return `${sourceName}.${sourceRoute} -> ${targetName}.${targetPort}`;
+	}
+
+	function setPendingSource(nodeId, handleId = '') {
+		pendingEdgeSource = nodeId;
+		pendingEdgeSourceHandle = handleId || defaultSourceHandle(nodeId);
+		if (!pendingEdgeLabel) {
+			pendingEdgeLabel = suggestEdgeLabel(nodeId, pendingEdgeSourceHandle);
+		}
+	}
+
+	function setPendingTarget(nodeId, handleId = '') {
+		pendingEdgeTarget = nodeId;
+		pendingEdgeTargetHandle = handleId || defaultTargetHandle(nodeId);
+	}
+
+	function clearPendingConnection() {
+		pendingEdgeSource = '';
+		pendingEdgeTarget = '';
+		pendingEdgeSourceHandle = '';
+		pendingEdgeTargetHandle = '';
+		pendingEdgeLabel = '';
+	}
+
+	function canConnect(sourceId, sourceHandleId, targetId, targetHandleId) {
+		if (!sourceId || !targetId) return false;
+		if (!sourceHandleId || !targetHandleId) return false;
+		if (sourceId === targetId) return false;
+
+		const sourceNode = getNodeById(sourceId);
+		const targetNode = getNodeById(targetId);
+		if (!sourceNode || !targetNode) return false;
+
+		const sourceHandleExists = outputHandles(sourceNode).some((handle) => handle.id === sourceHandleId);
+		const targetHandleExists = inputHandles(targetNode).some((handle) => handle.id === targetHandleId);
+		if (!sourceHandleExists || !targetHandleExists) return false;
+
+		return true;
+	}
+
+	function edgeConflicts(edge, sourceId, sourceHandleId, targetId, targetHandleId) {
+		if (edge.source === sourceId && edge.source_handle === sourceHandleId) {
+			return true;
+		}
+		if (edge.target === targetId && edge.target_handle === targetHandleId) {
+			return true;
+		}
+		return false;
+	}
+
+	function upsertEdge(sourceId, sourceHandleId, targetId, targetHandleId, label = '', reason = 'add-edge') {
 		ensureDraftShape();
-		if (!pendingEdgeSource || !pendingEdgeTarget || pendingEdgeSource === pendingEdgeTarget) return;
-		const existing = draft.canvas_json.edges.some((edge) => edge.source === pendingEdgeSource && edge.target === pendingEdgeTarget);
-		if (existing) return;
+		if (!canConnect(sourceId, sourceHandleId, targetId, targetHandleId)) return false;
+
+		const alreadyExists = draft.canvas_json.edges.some((edge) => edge.source === sourceId
+			&& edge.source_handle === sourceHandleId
+			&& edge.target === targetId
+			&& edge.target_handle === targetHandleId);
+		if (alreadyExists) return false;
+
 		const edgeId = `edge-${Date.now()}`;
-		const nextLabel = pendingEdgeLabel.trim() || suggestEdgeLabel(pendingEdgeSource);
+		const nextLabel = label.trim() || suggestEdgeLabel(sourceId, sourceHandleId);
+		const nextEdges = (draft.canvas_json.edges || []).filter((edge) => !edgeConflicts(edge, sourceId, sourceHandleId, targetId, targetHandleId));
 		draft.canvas_json.edges = [
-			...draft.canvas_json.edges,
-			{ id: edgeId, source: pendingEdgeSource, target: pendingEdgeTarget, label: nextLabel },
+			...nextEdges,
+			{
+				id: edgeId,
+				source: sourceId,
+				source_handle: sourceHandleId,
+				target: targetId,
+				target_handle: targetHandleId,
+				label: nextLabel,
+			},
 		];
 		selectedEdgeId = edgeId;
 		selectedNodeId = '';
-		pendingEdgeSource = '';
-		pendingEdgeTarget = '';
-		pendingEdgeLabel = '';
-		commitCanvasSnapshot('add-edge');
+		commitCanvasSnapshot(reason);
+		return true;
 	}
 
-	function chooseEdgeEndpoint(nodeId, mode) {
+	function addEdge() {
+		const sourceHandle = pendingEdgeSourceHandle || defaultSourceHandle(pendingEdgeSource);
+		const targetHandle = pendingEdgeTargetHandle || defaultTargetHandle(pendingEdgeTarget);
+		const created = upsertEdge(pendingEdgeSource, sourceHandle, pendingEdgeTarget, targetHandle, pendingEdgeLabel, 'add-edge');
+		if (created) {
+			clearPendingConnection();
+		}
+	}
+
+	function chooseEdgeEndpoint(nodeId, mode, handleId = '') {
 		if (mode === 'source') {
-			pendingEdgeSource = nodeId;
-			if (pendingEdgeTarget && pendingEdgeTarget !== pendingEdgeSource) {
-				addEdge();
-			}
+			setPendingSource(nodeId, handleId);
 			return;
 		}
-
-		pendingEdgeTarget = nodeId;
-		if (pendingEdgeSource && pendingEdgeSource !== pendingEdgeTarget) {
-			addEdge();
-		}
+		setPendingTarget(nodeId, handleId);
 	}
 
 	function stagePointFromClient(clientX, clientY) {
@@ -496,20 +650,60 @@
 		return null;
 	}
 
-	function startEdgeDrag(event, nodeId) {
+	function handleOffsetY(index, total) {
+		if (total <= 1) return NODE_HEIGHT / 2;
+		const topPadding = 34;
+		const bottomPadding = 34;
+		const usableHeight = NODE_HEIGHT - topPadding - bottomPadding;
+		return topPadding + (usableHeight / (total - 1)) * index;
+	}
+
+	function nodeHandleAnchor(node, direction, handleId = '') {
+		const handles = direction === 'out' ? outputHandles(node) : inputHandles(node);
+		const index = Math.max(0, handles.findIndex((handle) => handle.id === handleId));
+		const localY = handleOffsetY(index, Math.max(1, handles.length));
+		const baseX = node.position?.x || 0;
+		const baseY = node.position?.y || 0;
+		return {
+			x: direction === 'out' ? baseX + NODE_WIDTH + 6 : baseX - 6,
+			y: baseY + localY,
+		};
+	}
+
+	function findInputHandleAtPoint(pointX, pointY, ignoredNodeId = '') {
+		const nodes = draft.canvas_json?.nodes || [];
+		const hitRadius = 18;
+		for (let index = nodes.length - 1; index >= 0; index -= 1) {
+			const node = nodes[index];
+			if (node.id === ignoredNodeId) continue;
+			const handles = inputHandles(node);
+			for (const handle of handles) {
+				const anchor = nodeHandleAnchor(node, 'in', handle.id);
+				if (Math.abs(pointX - anchor.x) <= hitRadius && Math.abs(pointY - anchor.y) <= hitRadius) {
+					return { nodeId: node.id, handleId: handle.id };
+				}
+			}
+		}
+		return null;
+	}
+
+	function startEdgeDrag(event, nodeId, sourceHandleId = '') {
 		event.stopPropagation();
 		ensureDraftShape();
 		const source = getNodeById(nodeId);
 		if (!source) return;
+		const sourceHandle = sourceHandleId || defaultSourceHandle(source.id);
+		if (!sourceHandle) return;
 
 		const point = stagePointFromClient(event.clientX, event.clientY);
-		pendingEdgeSource = source.id;
+		setPendingSource(source.id, sourceHandle);
 		if (!pendingEdgeLabel) {
-			pendingEdgeLabel = suggestEdgeLabel(source.id);
+			pendingEdgeLabel = suggestEdgeLabel(source.id, sourceHandle);
 		}
-		edgeDragHoverTargetId = '';
+		edgeDragHoverTarget = null;
 		edgeDragState = {
 			sourceId: source.id,
+			sourceHandleId: sourceHandle,
 			pointerX: point.x,
 			pointerY: point.y,
 		};
@@ -520,49 +714,54 @@
 		const sourceNode = getNodeById(edgeDragState.sourceId);
 		if (!sourceNode) return '';
 
-		const pseudoTarget = {
-			position: {
-				x: edgeDragState.pointerX,
-				y: edgeDragState.pointerY - NODE_HEIGHT / 2,
-			},
-		};
-		const from = getNodeAnchor(sourceNode, 'source', pseudoTarget);
+		const from = nodeHandleAnchor(sourceNode, 'out', edgeDragState.sourceHandleId);
 		const toX = edgeDragState.pointerX;
 		const toY = edgeDragState.pointerY;
 		const distanceX = Math.abs(toX - from.x);
 		const curve = Math.max(60, Math.min(220, distanceX * 0.45));
-		const fromDirection = from.side === 'right' ? 1 : -1;
 		const towardRight = toX >= from.x ? 1 : -1;
-		const c1x = from.x + fromDirection * curve;
+		const c1x = from.x + curve;
 		const c2x = toX - towardRight * curve;
 		return `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${toY}, ${toX} ${toY}`;
 	}
 
+	function completeEdgeDrag(targetNodeId, targetHandleId) {
+		if (!edgeDragState) return;
+		const created = upsertEdge(
+			edgeDragState.sourceId,
+			edgeDragState.sourceHandleId,
+			targetNodeId,
+			targetHandleId,
+			pendingEdgeLabel,
+			'drag-connect',
+		);
+		if (created) {
+			clearPendingConnection();
+		}
+		edgeDragHoverTarget = null;
+		edgeDragState = null;
+	}
+
 	function finishEdgeDrag() {
 		if (!edgeDragState) return;
-		if (edgeDragHoverTargetId) {
-			pendingEdgeTarget = edgeDragHoverTargetId;
-			if (pendingEdgeSource && pendingEdgeSource !== pendingEdgeTarget) {
-				addEdge();
-			}
+		if (edgeDragHoverTarget) {
+			completeEdgeDrag(edgeDragHoverTarget.nodeId, edgeDragHoverTarget.handleId);
+			return;
 		}
-		edgeDragHoverTargetId = '';
+		edgeDragHoverTarget = null;
 		edgeDragState = null;
 	}
 
 	function upsertQuickEdge(fromNodeId, toNodeId) {
 		if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
-		ensureDraftShape();
-		const exists = draft.canvas_json.edges.some((edge) => edge.source === fromNodeId && edge.target === toNodeId);
-		if (exists) return;
-		const edgeId = `edge-${Date.now()}`;
-		draft.canvas_json.edges = [
-			...draft.canvas_json.edges,
-			{ id: edgeId, source: fromNodeId, target: toNodeId, label: suggestEdgeLabel(fromNodeId) },
-		];
-		selectedEdgeId = edgeId;
-		selectedNodeId = '';
-		commitCanvasSnapshot('quick-connect');
+		upsertEdge(
+			fromNodeId,
+			defaultSourceHandle(fromNodeId),
+			toNodeId,
+			defaultTargetHandle(toNodeId),
+			suggestEdgeLabel(fromNodeId, defaultSourceHandle(fromNodeId)),
+			'quick-connect',
+		);
 	}
 
 	function removeEdge(edgeId) {
@@ -581,6 +780,29 @@
 	function updateNode(nodeId, field, value) {
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => node.id === nodeId ? { ...node, [field]: value } : node);
+		if (field === 'type') {
+			const nextNode = getNodeById(nodeId);
+			const validInputHandles = new Set(inputHandles(nextNode).map((handle) => handle.id));
+			const validOutputHandles = new Set(outputHandles(nextNode).map((handle) => handle.id));
+			const fallbackIn = defaultTargetHandle(nodeId);
+			const fallbackOut = defaultSourceHandle(nodeId);
+			draft.canvas_json.edges = (draft.canvas_json.edges || []).map((edge) => {
+				if (edge.source === nodeId && !validOutputHandles.has(edge.source_handle)) {
+					return {
+						...edge,
+						source_handle: fallbackOut,
+						label: edge.label || suggestEdgeLabel(nodeId, fallbackOut),
+					};
+				}
+				if (edge.target === nodeId && !validInputHandles.has(edge.target_handle)) {
+					return {
+						...edge,
+						target_handle: fallbackIn,
+					};
+				}
+				return edge;
+			});
+		}
 		commitCanvasSnapshot('update-node');
 	}
 
@@ -588,31 +810,18 @@
 		return draft.canvas_json?.nodes?.find((node) => node.id === nodeId) || null;
 	}
 
-	function getNodeAnchor(node, mode, otherNode = null) {
-		const baseX = node.position?.x || 0;
-		const baseY = node.position?.y || 0;
-		const otherX = otherNode?.position?.x ?? (baseX + NODE_WIDTH);
-		const useRight = mode === 'source' ? otherX >= baseX : otherX < baseX;
-		return {
-			x: baseX + (useRight ? NODE_WIDTH + 6 : -6),
-			y: baseY + NODE_HEIGHT / 2,
-			side: useRight ? 'right' : 'left',
-		};
-	}
-
 	function edgeGeometry(edge) {
 		const source = getNodeById(edge.source);
 		const target = getNodeById(edge.target);
 		if (!source || !target) return null;
 
-		const from = getNodeAnchor(source, 'source', target);
-		const to = getNodeAnchor(target, 'target', source);
+		const from = nodeHandleAnchor(source, 'out', edge.source_handle || defaultSourceHandle(source.id));
+		const to = nodeHandleAnchor(target, 'in', edge.target_handle || defaultTargetHandle(target.id));
 		const horizontalDistance = Math.abs(to.x - from.x);
 		const curve = Math.max(80, Math.min(280, horizontalDistance * 0.5));
-		const fromDirection = from.side === 'right' ? 1 : -1;
-		const toDirection = to.side === 'right' ? 1 : -1;
-		const c1x = from.x + fromDirection * curve;
-		const c2x = to.x + toDirection * curve;
+		const towardRight = to.x >= from.x ? 1 : -1;
+		const c1x = from.x + curve;
+		const c2x = to.x - towardRight * curve;
 		const path = `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
 		return { from, to, path };
 	}
@@ -657,8 +866,21 @@
 				pointerX: point.x,
 				pointerY: point.y,
 			};
-			const hovered = findNodeAtPoint(point.x, point.y, edgeDragState.sourceId);
-			edgeDragHoverTargetId = hovered?.id || '';
+			const hoveredHandle = findInputHandleAtPoint(point.x, point.y, edgeDragState.sourceId);
+			if (hoveredHandle) {
+				edgeDragHoverTarget = hoveredHandle;
+				return;
+			}
+
+			const hoveredNode = findNodeAtPoint(point.x, point.y, edgeDragState.sourceId);
+			if (hoveredNode) {
+				edgeDragHoverTarget = {
+					nodeId: hoveredNode.id,
+					handleId: defaultTargetHandle(hoveredNode.id),
+				};
+			} else {
+				edgeDragHoverTarget = null;
+			}
 			return;
 		}
 
@@ -716,9 +938,15 @@
 
 		const incomingByNode = new Map(nodes.map((node) => [node.id, 0]));
 		const outgoingByNode = new Map(nodes.map((node) => [node.id, 0]));
+		const outgoingByHandle = new Map();
+		const incomingByHandle = new Map();
 		for (const edge of edges) {
 			incomingByNode.set(edge.target, (incomingByNode.get(edge.target) || 0) + 1);
 			outgoingByNode.set(edge.source, (outgoingByNode.get(edge.source) || 0) + 1);
+			const sourceHandleKey = `${edge.source}:${edge.source_handle || defaultSourceHandle(edge.source)}`;
+			const targetHandleKey = `${edge.target}:${edge.target_handle || defaultTargetHandle(edge.target)}`;
+			outgoingByHandle.set(sourceHandleKey, (outgoingByHandle.get(sourceHandleKey) || 0) + 1);
+			incomingByHandle.set(targetHandleKey, (incomingByHandle.get(targetHandleKey) || 0) + 1);
 		}
 
 		for (const node of nodes) {
@@ -727,6 +955,25 @@
 			}
 			if (node.type !== 'branch' && node.type !== 'approval' && (outgoingByNode.get(node.id) || 0) === 0) {
 				issues.push(`Node "${node.title}" has no outbound path.`);
+			}
+
+			for (const handle of outputHandles(node)) {
+				const key = `${node.id}:${handle.id}`;
+				const count = outgoingByHandle.get(key) || 0;
+				if (count > 1) {
+					issues.push(`Node "${node.title}" route "${handle.label}" has multiple outbound connections.`);
+				}
+				if ((node.type === 'branch' || node.type === 'approval') && count === 0) {
+					issues.push(`Node "${node.title}" route "${handle.label}" is not connected.`);
+				}
+			}
+
+			for (const handle of inputHandles(node)) {
+				const key = `${node.id}:${handle.id}`;
+				const count = incomingByHandle.get(key) || 0;
+				if (count > 1) {
+					issues.push(`Node "${node.title}" input "${handle.label}" receives multiple inbound connections.`);
+				}
 			}
 		}
 
@@ -1213,9 +1460,9 @@
 				<div class="pending-link-hint">
 					<span>
 						Link builder:
-						<strong>{pendingEdgeSource || 'choose source port'}</strong>
+						<strong>{pendingEdgeSource ? `${nodeTitle(pendingEdgeSource)}.${outputHandleLabel(pendingEdgeSource, pendingEdgeSourceHandle || defaultSourceHandle(pendingEdgeSource))}` : 'choose source port'}</strong>
 						->
-						<strong>{pendingEdgeTarget || 'choose target port'}</strong>
+						<strong>{pendingEdgeTarget ? `${nodeTitle(pendingEdgeTarget)}.${inputHandleLabel(pendingEdgeTarget, pendingEdgeTargetHandle || defaultTargetHandle(pendingEdgeTarget))}` : 'choose target port'}</strong>
 					</span>
 				</div>
 			</div>
@@ -1279,16 +1526,18 @@
 									selectEdge(edge.id);
 								}}
 							>
-								{edge.label || 'route'}
+								{edge.label || outputHandleLabel(edge.source, edge.source_handle)}
 							</button>
 						{/each}
 					</div>
 					{#each draft.canvas_json?.nodes || [] as node (node.id)}
+						{@const inputPorts = inputHandles(node)}
+						{@const outputPorts = outputHandles(node)}
 						<div
 							class:dragging={dragState?.nodeId === node.id}
 							class:selected={selectedNodeId === node.id}
 							class:link-drag-source={edgeDragState?.sourceId === node.id}
-							class:link-drag-target={edgeDragHoverTargetId === node.id}
+							class:link-drag-target={edgeDragHoverTarget?.nodeId === node.id}
 							class="canvas-node"
 							style:left={`${node.position?.x || 0}px`}
 							style:top={`${node.position?.y || 0}px`}
@@ -1297,25 +1546,45 @@
 								selectNode(node.id);
 							}}
 						>
-							<button
-								type="button"
-								class="node-port node-port-in"
-								title="Target port"
-								onpointerdown={(event) => {
-									event.stopPropagation();
-									chooseEdgeEndpoint(node.id, 'target');
-									selectNode(node.id);
-								}}
-							></button>
-							<button
-								type="button"
-								class="node-port node-port-out"
-								title="Source port"
-								onpointerdown={(event) => {
-									startEdgeDrag(event, node.id);
-									selectNode(node.id);
-								}}
-							></button>
+							{#each inputPorts as handle, index (handle.id)}
+								<button
+									type="button"
+									class:active={edgeDragHoverTarget?.nodeId === node.id && edgeDragHoverTarget?.handleId === handle.id}
+									class="node-port node-port-in"
+									style:top={`${handleOffsetY(index, Math.max(1, inputPorts.length))}px`}
+									title={`Target port: ${handle.label}`}
+									onpointerdown={(event) => {
+										event.stopPropagation();
+										if (edgeDragState) {
+											completeEdgeDrag(node.id, handle.id);
+										} else {
+											chooseEdgeEndpoint(node.id, 'target', handle.id);
+											selectNode(node.id);
+										}
+									}}
+								></button>
+								<span
+									class="node-port-label node-port-label-in"
+									style:top={`${handleOffsetY(index, Math.max(1, inputPorts.length))}px`}
+								>{handle.label}</span>
+							{/each}
+							{#each outputPorts as handle, index (handle.id)}
+								<button
+									type="button"
+									class:active={edgeDragState?.sourceId === node.id && edgeDragState?.sourceHandleId === handle.id}
+									class="node-port node-port-out"
+									style:top={`${handleOffsetY(index, Math.max(1, outputPorts.length))}px`}
+									title={`Source route: ${handle.label}`}
+									onpointerdown={(event) => {
+										startEdgeDrag(event, node.id, handle.id);
+										selectNode(node.id);
+									}}
+								></button>
+								<span
+									class="node-port-label node-port-label-out"
+									style:top={`${handleOffsetY(index, Math.max(1, outputPorts.length))}px`}
+								>{handle.label}</span>
+							{/each}
 							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
 								<span class="node-type" style={`--node-accent: ${typeMeta(node.type).accent};`}>{typeMeta(node.type).label}</span>
 								<button class="node-remove" onclick={() => removeNode(node.id)} disabled={node.id === 'start'}>x</button>
@@ -1330,8 +1599,8 @@
 										Link from selected
 									</button>
 								{/if}
-								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source')}>Set as source</button>
-								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target')}>Set as target</button>
+								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source', defaultSourceHandle(node.id))}>Set as source</button>
+								<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target', defaultTargetHandle(node.id))}>Set as target</button>
 							</div>
 						</div>
 					{/each}
@@ -1340,16 +1609,32 @@
 
 			<div class="connection-editor">
 				<div class="connection-form">
-					<select class="input" bind:value={pendingEdgeSource}>
+					<select class="input" bind:value={pendingEdgeSource} onchange={(event) => setPendingSource(event.currentTarget.value)}>
 						<option value="">Connect from</option>
 						{#each draft.canvas_json?.nodes || [] as node (node.id)}
-							<option value={node.id}>{node.title}</option>
+							{#if outputHandles(node).length > 0}
+								<option value={node.id}>{node.title}</option>
+							{/if}
 						{/each}
 					</select>
-					<select class="input" bind:value={pendingEdgeTarget}>
+					<select class="input" bind:value={pendingEdgeSourceHandle} disabled={!pendingEdgeSource}>
+						<option value="">From route</option>
+						{#each outputHandles(getNodeById(pendingEdgeSource)) as handle (handle.id)}
+							<option value={handle.id}>{handle.label}</option>
+						{/each}
+					</select>
+					<select class="input" bind:value={pendingEdgeTarget} onchange={(event) => setPendingTarget(event.currentTarget.value)}>
 						<option value="">Connect to</option>
 						{#each draft.canvas_json?.nodes || [] as node (node.id)}
-							<option value={node.id}>{node.title}</option>
+							{#if inputHandles(node).length > 0}
+								<option value={node.id}>{node.title}</option>
+							{/if}
+						{/each}
+					</select>
+					<select class="input" bind:value={pendingEdgeTargetHandle} disabled={!pendingEdgeTarget}>
+						<option value="">To port</option>
+						{#each inputHandles(getNodeById(pendingEdgeTarget)) as handle (handle.id)}
+							<option value={handle.id}>{handle.label}</option>
 						{/each}
 					</select>
 					<input class="input" type="text" bind:value={pendingEdgeLabel} placeholder="Connection label (optional)" />
@@ -1361,7 +1646,7 @@
 					{:else}
 						{#each draft.canvas_json.edges as edge (edge.id)}
 							<div class:selected={selectedEdgeId === edge.id} class="edge-row" onpointerdown={() => selectEdge(edge.id)}>
-								<span>{nodeTitle(edge.source)} -> {nodeTitle(edge.target)}</span>
+								<span>{edgeRouteDisplay(edge)}</span>
 								<input
 									class="node-input edge-input"
 									type="text"
@@ -1415,7 +1700,7 @@
 					<h4>Edge inspector</h4>
 					{#if selectedEdgeRef}
 						<div class="meta-row">
-							<span>{selectedEdgeRef.source} -> {selectedEdgeRef.target}</span>
+							<span>{edgeRouteDisplay(selectedEdgeRef)}</span>
 						</div>
 						<label>
 							<span>Route label</span>
@@ -1972,6 +2257,11 @@
 		z-index: 3;
 	}
 
+	.node-port.active {
+		background: var(--color-success);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent), var(--shadow-md);
+	}
+
 	.node-port:hover {
 		transform: scale(1.12);
 		box-shadow: 0 0 0 3px hsla(var(--hue), 82%, 62%, 0.6), var(--shadow-md);
@@ -1983,6 +2273,28 @@
 
 	.node-port-out {
 		right: -13px;
+	}
+
+	.node-port-label {
+		position: absolute;
+		transform: translateY(-50%);
+		font-size: 0.66rem;
+		line-height: 1;
+		padding: 0.14rem 0.38rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
+		border: 1px solid var(--color-border);
+		color: var(--color-text-muted);
+		pointer-events: none;
+		z-index: 2;
+	}
+
+	.node-port-label-in {
+		left: 14px;
+	}
+
+	.node-port-label-out {
+		right: 14px;
 	}
 
 	.node-remove {
@@ -2126,7 +2438,7 @@
 		}
 
 		.connection-form {
-			grid-template-columns: repeat(4, minmax(0, 1fr));
+			grid-template-columns: repeat(6, minmax(0, 1fr));
 		}
 
 		.toolbar-actions {
@@ -2141,7 +2453,7 @@
 		}
 
 		.connection-form {
-			grid-template-columns: 1fr 1fr 1fr auto;
+			grid-template-columns: 1fr 0.9fr 1fr 0.9fr 1fr auto;
 		}
 
 		.inspector-grid {

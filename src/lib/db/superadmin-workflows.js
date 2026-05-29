@@ -50,6 +50,8 @@ function normalizeCanvas(canvas) {
       id: String(edge?.id || `edge-${index + 1}`),
       source: String(edge?.source || ""),
       target: String(edge?.target || ""),
+      source_handle: String(edge?.source_handle || edge?.sourceHandle || "out"),
+      target_handle: String(edge?.target_handle || edge?.targetHandle || "in"),
       label: edge?.label ? String(edge.label) : "",
     })).filter((edge) => edge.source && edge.target),
   };
