@@ -783,7 +783,7 @@
 	.modal-backdrop {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.6);
+		background: var(--color-overlay-scrim);
 		display: flex;
 		align-items: center;
 		justify-content: center;

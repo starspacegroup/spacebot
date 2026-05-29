@@ -49,6 +49,82 @@ function extractCssBlocks(filePath, content) {
 	return blocks;
 }
 
+function extractStyleSlices(filePath, content) {
+	if (filePath.endsWith('.css')) return [{ text: content, offset: 0 }];
+
+	const slices = [];
+	const styleRe = /<style[^>]*>([\s\S]*?)<\/style>/g;
+	let match;
+	while ((match = styleRe.exec(content)) !== null) {
+		slices.push({ text: match[1], offset: match.index });
+	}
+	return slices;
+}
+
+function parseHexColour(value) {
+	let hex = value.slice(1);
+	if (hex.length === 3 || hex.length === 4) {
+		hex = hex.split('').map(ch => ch + ch).join('');
+	}
+	if (hex.length === 6) {
+		return {
+			r: parseInt(hex.slice(0, 2), 16),
+			g: parseInt(hex.slice(2, 4), 16),
+			b: parseInt(hex.slice(4, 6), 16),
+			a: 1,
+		};
+	}
+	if (hex.length === 8) {
+		return {
+			r: parseInt(hex.slice(0, 2), 16),
+			g: parseInt(hex.slice(2, 4), 16),
+			b: parseInt(hex.slice(4, 6), 16),
+			a: parseInt(hex.slice(6, 8), 16) / 255,
+		};
+	}
+	return null;
+}
+
+function parseRgbColour(value) {
+	const match = value.match(/rgba?\(([^)]+)\)/i);
+	if (!match) return null;
+	const parts = match[1].split(',').map(part => part.trim());
+	if (parts.length < 3) return null;
+
+	const to255 = (input) => input.endsWith('%') ? Math.round(parseFloat(input) * 2.55) : parseFloat(input);
+	const r = to255(parts[0]);
+	const g = to255(parts[1]);
+	const b = to255(parts[2]);
+	const a = parts[3] !== undefined ? parseFloat(parts[3]) : 1;
+
+	if (![r, g, b, a].every(Number.isFinite)) return null;
+	return { r, g, b, a };
+}
+
+function luminance(r, g, b) {
+	const toLinear = (channel) => {
+		const normalized = channel / 255;
+		return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+	};
+
+	const lr = toLinear(r);
+	const lg = toLinear(g);
+	const lb = toLinear(b);
+	return 0.2126 * lr + 0.7152 * lg + 0.0722 * lb;
+}
+
+function isExtremeNeutralSurface(colour) {
+	if (!colour) return false;
+	if (colour.a < 0.55) return false;
+
+	const range = Math.max(colour.r, colour.g, colour.b) - Math.min(colour.r, colour.g, colour.b);
+	const isNeutral = range <= 18;
+	if (!isNeutral) return false;
+
+	const y = luminance(colour.r, colour.g, colour.b);
+	return y >= 0.82 || y <= 0.08;
+}
+
 // Semantic background variables that produce a mid-lightness colour in light mode.
 // White text on these has ~2:1 contrast — unacceptable.
 const SEMANTIC_BG_RE =
@@ -99,7 +175,7 @@ describe('CSS contrast: ButtonEditor preview must not use a theme-aware backgrou
 	 * button colour previews look correct regardless of app theme.
 	 * Guard against accidentally reverting .button-preview back to a CSS variable.
 	 */
-	it('.button-preview uses a fixed dark background, not a CSS variable', () => {
+	it('.button-preview uses a dedicated fixed-surface token', () => {
 		const buttonEditorPath = files.find(f => f.endsWith('ButtonEditor.svelte'));
 		expect(buttonEditorPath, 'ButtonEditor.svelte not found').toBeTruthy();
 
@@ -110,8 +186,50 @@ describe('CSS contrast: ButtonEditor preview must not use a theme-aware backgrou
 		expect(match, '.button-preview CSS rule not found').toBeTruthy();
 
 		const block = match[1];
-		const hasCssVar = /background(?:-color)?\s*:\s*var\(/.test(block);
-		expect(hasCssVar, `.button-preview must use a fixed colour (e.g. #313338), not a CSS variable.\nThis ensures button previews always render against a dark Discord-style background regardless of light/dark mode.\n\nCurrent rule:\n${block}`).toBe(false);
+		const usesFixedSurfaceToken = /background(?:-color)?\s*:\s*var\(--color-fixed-surface-discord-alt\)/.test(block);
+		expect(usesFixedSurfaceToken, `.button-preview must use --color-fixed-surface-discord-alt so the preview remains fixed without hardcoding a literal in component CSS.\n\nCurrent rule:\n${block}`).toBe(true);
+	});
+});
+
+describe('CSS theme safety: no hardcoded extreme neutral surfaces in component styles', () => {
+	it('finds no opaque hardcoded near-white/near-black backgrounds outside theme tokens', () => {
+		const violations = [];
+		const backgroundDeclRe = /background(?:-color)?\s*:\s*([^;]+);/gi;
+		const literalColourRe = /(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))/g;
+
+		for (const filePath of files) {
+			if (filePath.endsWith('src/lib/styles/global.css')) continue;
+
+			const content = fs.readFileSync(filePath, 'utf8');
+			const slices = extractStyleSlices(filePath, content);
+
+			for (const slice of slices) {
+				let declMatch;
+				while ((declMatch = backgroundDeclRe.exec(slice.text)) !== null) {
+					const declaration = declMatch[1];
+					if (/var\(/.test(declaration)) continue;
+
+					const literals = [...declaration.matchAll(literalColourRe)].map(m => m[1]);
+					if (literals.length === 0) continue;
+
+					for (const literal of literals) {
+						const parsed = literal.startsWith('#') ? parseHexColour(literal) : parseRgbColour(literal);
+						if (!isExtremeNeutralSurface(parsed)) continue;
+
+						const localOffset = slice.text.slice(0, declMatch.index).split('\n').length - 1;
+						const globalLine = content.slice(0, slice.offset).split('\n').length + localOffset;
+						const rel = path.relative(SRC_DIR, filePath);
+						violations.push(`  ${rel}:${globalLine} -> ${declaration.trim()}`);
+						break;
+					}
+				}
+			}
+		}
+
+		expect(
+			violations,
+			`\nFound hardcoded extreme neutral surfaces in component/page CSS.\nUse shared tokens (e.g. --color-surface* or --color-overlay-scrim*) instead of literal near-white/near-black backgrounds.\n\n${violations.join('\n')}\n`
+		).toHaveLength(0);
 	});
 });
 

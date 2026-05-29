@@ -447,7 +447,7 @@
 		padding: 0.65rem 0.9rem;
 		border-radius: 10px;
 		border: 1px solid rgba(255, 255, 255, 0.12);
-		background: rgba(8, 12, 24, 0.55);
+		background: var(--color-overlay-scrim-soft);
 		color: rgba(255, 255, 255, 0.9);
 		font-size: 0.9rem;
 	}

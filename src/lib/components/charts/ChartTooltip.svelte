@@ -79,7 +79,7 @@
 	.chart-tooltip {
 		position: fixed;
 		pointer-events: none;
-		background: rgba(20, 20, 28, 0.95);
+		background: var(--color-fixed-surface-tooltip);
 		border: 1px solid rgba(255, 255, 255, 0.12);
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;

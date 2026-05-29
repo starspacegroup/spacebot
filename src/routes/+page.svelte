@@ -797,7 +797,7 @@
 		width: 100%;
 		max-width: 180px;
 		aspect-ratio: 1;
-		background: #1e1f22;
+		background: var(--color-fixed-surface-discord-strong);
 		border-radius: 12px;
 		display: flex;
 		align-items: center;
@@ -859,7 +859,7 @@
 	}
 
 	.mock-server-icon.placeholder {
-		background: #2b2d31;
+		background: var(--color-fixed-surface-discord);
 	}
 
 	.mock-server-icon.bot-icon {
@@ -875,7 +875,7 @@
 	.mock-server-divider {
 		width: 24px;
 		height: 2px;
-		background: #2b2d31;
+		background: var(--color-fixed-surface-discord);
 		border-radius: 1px;
 	}
 
@@ -993,7 +993,7 @@
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		background: #3f4147;
+		background: var(--color-fixed-surface-discord-muted);
 	}
 
 	.mock-terminal-line {
@@ -1049,7 +1049,7 @@
 	.mock-browser-url {
 		font-size: 0.62rem;
 		padding: 0.3rem 0.45rem;
-		background: #2b2d31;
+		background: var(--color-fixed-surface-discord);
 		border-radius: 6px;
 		color: #b5bac1;
 		white-space: nowrap;

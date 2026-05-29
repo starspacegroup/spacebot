@@ -1539,7 +1539,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		background: rgba(0, 0, 0, 0.8);
+		background: var(--color-overlay-scrim-stronger);
 		display: flex;
 		align-items: flex-end;
 		justify-content: center;
@@ -1551,7 +1551,7 @@
 		.modal-overlay {
 			align-items: center;
 			padding: 1rem;
-			background: rgba(0, 0, 0, 0.7);
+			background: var(--color-overlay-scrim-strong);
 		}
 	}
 	
@@ -2119,7 +2119,7 @@
 		height: 32px;
 		border: none;
 		border-radius: 50%;
-		background: rgba(0, 0, 0, 0.7);
+		background: var(--color-overlay-scrim-strong);
 		color: white;
 		font-size: 1.25rem;
 		line-height: 1;
