@@ -6,7 +6,7 @@
 
 	let templates = $state(data?.templates ?? []);
 	let runs = $state(data?.runs ?? []);
-	const legacyStarters = $derived(data?.legacyStarters ?? []);
+	const operationTemplates = $derived(data?.operationTemplates ?? []);
 
 	let selectedTemplateId = $state(templates[0]?.id ?? null);
 	let saving = $state(false);
@@ -1271,7 +1271,7 @@
 			if (!response.ok) throw new Error(result.error || 'Failed to queue workflow run');
 			runs = [result.run, ...runs].slice(0, 100);
 			showToast(template.legacy_job_name
-				? `Workflow run #${result.run.id} finished via legacy cron bridge`
+				? `Workflow run #${result.run.id} finished via gateway compatibility bridge`
 				: `Workflow run #${result.run.id} queued`);
 		} catch (error) {
 			showToast(error.message, 'error');
@@ -1299,7 +1299,7 @@
 	}));
 
 	const totalEnabled = $derived(templates.filter((template) => template.enabled).length);
-	const migrationCandidates = $derived(templates.filter((template) => template.legacy_job_name).length);
+	const gatewayCompatibleTemplates = $derived(templates.filter((template) => template.legacy_job_name).length);
 
 	$effect(() => {
 		ensureDraftShape();
@@ -1321,10 +1321,10 @@
 	<section class="hero panel">
 		<div>
 			<p class="eyebrow">Operations designer</p>
-			<h1>Cloudflare Workflow migration board</h1>
+			<h1>Cloudflare Workflow operations board</h1>
 			<p class="hero-copy">
-				Model legacy cron work as CRUD-able workflow templates, shape steps on a touch-friendly canvas,
-				and queue runs from one superadmin surface.
+				Model recurring gateway operations as reusable workflow templates, shape queue-aware step graphs,
+				and run them from one superadmin surface.
 			</p>
 		</div>
 		<div class="hero-stats">
@@ -1337,8 +1337,8 @@
 				<span>enabled</span>
 			</div>
 			<div class="stat-card">
-				<strong>{migrationCandidates}</strong>
-				<span>cron-linked</span>
+				<strong>{gatewayCompatibleTemplates}</strong>
+				<span>gateway-compatible</span>
 			</div>
 		</div>
 	</section>
@@ -1352,17 +1352,17 @@
 	<section class="starter-strip panel">
 		<div class="section-head compact">
 			<div>
-				<h2>Legacy starters</h2>
-				<p>Bootstrap common cron migrations before you fine-tune the graph.</p>
+				<h2>Operational templates</h2>
+				<p>Bootstrap the same recurring jobs we run today, now modeled as queue-ready workflow graphs.</p>
 			</div>
 			<button class="btn btn-outline" onclick={startNewWorkflow}>Blank workflow</button>
 		</div>
 		<div class="starter-grid">
-			{#each legacyStarters as starter}
+			{#each operationTemplates as starter}
 				<button class="starter-card" onclick={() => applyStarter(starter)}>
 					<strong>{starter.name}</strong>
 					<span>{starter.description}</span>
-					<small>{starter.legacy_job_name || 'new'} {starter.cron_expression ? `- ${starter.cron_expression}` : '- manual'}</small>
+					<small>{starter.legacy_job_name || 'custom'} {starter.cron_expression ? `- ${starter.cron_expression}` : '- manual'}</small>
 				</button>
 			{/each}
 		</div>
@@ -1380,7 +1380,7 @@
 
 			<div class="inventory-list">
 				{#if templates.length === 0}
-					<p class="empty-state">No templates yet. Start from a legacy preset or create a blank workflow.</p>
+					<p class="empty-state">No templates yet. Start from an operations preset or create a blank workflow.</p>
 				{:else}
 					{#each templates as template (template.id)}
 						<article class:selected={selectedTemplateId === template.id} class="inventory-card">
@@ -1418,7 +1418,7 @@
 			<div class="section-head">
 				<div>
 					<h2>{draft.id ? 'Edit workflow' : 'New workflow'}</h2>
-					<p>Mobile-first editor for template details, schedule, and step layout.</p>
+					<p>Mobile-first editor for template metadata, trigger cadence, and sequenced job layout.</p>
 				</div>
 				<button class="btn btn-primary" onclick={saveDraft} disabled={saving}>{saving ? 'Saving...' : draft.id ? 'Save changes' : 'Create workflow'}</button>
 			</div>
@@ -1438,7 +1438,7 @@
 				</label>
 				<label>
 					<span>Category</span>
-					<input class="input" type="text" bind:value={draft.category} placeholder="cron-migration" />
+					<input class="input" type="text" bind:value={draft.category} placeholder="operations" />
 				</label>
 				<label>
 					<span>Execution backend</span>
@@ -1460,11 +1460,12 @@
 					<input class="input" type="text" bind:value={draft.cron_expression} placeholder="0 0 * * *" disabled={draft.schedule_type !== 'cron'} />
 				</label>
 				<label>
-					<span>Legacy job</span>
+					<span>Gateway compatibility job</span>
 					<select class="input" bind:value={draft.legacy_job_name}>
 						<option value="">None</option>
 						<option value="hourly_aggregation">hourly_aggregation</option>
 						<option value="daily_refresh">daily_refresh</option>
+						<option value="refresh_cache">refresh_cache</option>
 						<option value="rebuild_stats">rebuild_stats</option>
 						<option value="send_scheduled_messages">send_scheduled_messages</option>
 					</select>
