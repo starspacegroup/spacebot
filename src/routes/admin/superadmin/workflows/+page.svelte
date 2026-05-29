@@ -42,6 +42,14 @@
 	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 56;
 	const CROWDED_VERTICAL_THRESHOLD = NODE_HEIGHT - 24;
 	const CROWDED_HORIZONTAL_THRESHOLD = 160;
+	const TRIGGER_CRON_PRESETS = [
+		{ id: '* * * * *', label: 'Every minute' },
+		{ id: '0 * * * *', label: 'Hourly' },
+		{ id: '0 */6 * * *', label: 'Every 6 hours' },
+		{ id: '0 0 * * *', label: 'Daily' },
+		{ id: '0 0 * * 1', label: 'Weekly (Monday)' },
+	];
+	const TRIGGER_CUSTOM_CRON_VALUE = '__custom__';
 	const NODE_TYPE_META = {
 		trigger: {
 			label: 'Trigger',
@@ -280,6 +288,17 @@
 	function nodeSubtitle(node) {
 		const meta = typeMeta(node?.type);
 		const parts = [meta.description];
+		if (node?.type === 'trigger') {
+			const schedule = String(node?.data?.schedule || '').trim();
+			if (schedule) {
+				parts.push(`Runs: ${cronPresetLabel(schedule)} (${schedule})`);
+			} else {
+				parts.push('Runs: manual');
+			}
+			if (node?.data?.source) {
+				parts.push(`Source: ${node.data.source}`);
+			}
+		}
 		if (node?.data?.queue_key) {
 			parts.push(`Queue: ${node.data.queue_key}`);
 		}
@@ -290,6 +309,110 @@
 			parts.push(`When: ${node.data.condition}`);
 		}
 		return parts.join(' ');
+	}
+
+	function cronPresetLabel(expression = '') {
+		const normalized = String(expression || '').trim();
+		return TRIGGER_CRON_PRESETS.find((preset) => preset.id === normalized)?.label || 'Custom cadence';
+	}
+
+	function triggerScheduleMode(node) {
+		if (!node || node.type !== 'trigger') return 'manual';
+		if (String(node?.data?.schedule_type || '').trim() === 'cron') return 'cron';
+		return String(node?.data?.schedule || '').trim() ? 'cron' : 'manual';
+	}
+
+	function triggerCadencePresetValue(node) {
+		if (!node || node.type !== 'trigger') return 'manual';
+		const schedule = String(node?.data?.schedule || '').trim();
+		if (!schedule) return 'manual';
+		return TRIGGER_CRON_PRESETS.some((preset) => preset.id === schedule)
+			? schedule
+			: TRIGGER_CUSTOM_CRON_VALUE;
+	}
+
+	function primaryTriggerNode() {
+		const nodes = draft.canvas_json?.nodes || [];
+		return nodes.find((node) => node.id === 'start' && node.type === 'trigger')
+			|| nodes.find((node) => node.type === 'trigger')
+			|| null;
+	}
+
+	function isPrimaryTriggerNode(nodeId) {
+		return primaryTriggerNode()?.id === nodeId;
+	}
+
+	function syncDraftScheduleFromTrigger(nodeId) {
+		if (!isPrimaryTriggerNode(nodeId)) return;
+		const node = getNodeById(nodeId);
+		if (!node || node.type !== 'trigger') return;
+		const schedule = String(node?.data?.schedule || '').trim();
+		if (schedule) {
+			draft.schedule_type = 'cron';
+			draft.cron_expression = schedule;
+		} else {
+			draft.schedule_type = 'manual';
+			draft.cron_expression = '';
+		}
+	}
+
+	function syncPrimaryTriggerFromDraft() {
+		const triggerNode = primaryTriggerNode();
+		if (!triggerNode) return;
+		const scheduleType = draft.schedule_type === 'cron' ? 'cron' : 'manual';
+		const cronExpression = String(draft.cron_expression || '').trim();
+		updateNodeDataPatch(triggerNode.id, {
+			schedule_type: scheduleType,
+			schedule: scheduleType === 'cron' && cronExpression ? cronExpression : '',
+		});
+	}
+
+	function updateDraftScheduleType(nextType) {
+		draft.schedule_type = nextType === 'cron' ? 'cron' : 'manual';
+		if (draft.schedule_type === 'cron' && !String(draft.cron_expression || '').trim()) {
+			draft.cron_expression = '0 * * * *';
+		}
+		if (draft.schedule_type !== 'cron') {
+			draft.cron_expression = '';
+		}
+		syncPrimaryTriggerFromDraft();
+	}
+
+	function updateDraftCronExpression(value) {
+		draft.cron_expression = String(value || '').trim();
+		if (draft.schedule_type !== 'cron') {
+			draft.schedule_type = 'cron';
+		}
+		syncPrimaryTriggerFromDraft();
+	}
+
+	function applyTriggerCadencePreset(nodeId, presetValue) {
+		if (!nodeId) return;
+		if (presetValue === 'manual') {
+			updateNodeDataPatch(nodeId, {
+				schedule_type: 'manual',
+				schedule: '',
+			});
+			syncDraftScheduleFromTrigger(nodeId);
+			return;
+		}
+		const normalized = String(presetValue || '').trim();
+		if (!normalized) return;
+		updateNodeDataPatch(nodeId, {
+			schedule_type: 'cron',
+			schedule: normalized,
+		});
+		syncDraftScheduleFromTrigger(nodeId);
+	}
+
+	function updateTriggerCronExpression(nodeId, value) {
+		if (!nodeId) return;
+		const normalized = String(value || '').trim();
+		updateNodeDataPatch(nodeId, {
+			schedule_type: normalized ? 'cron' : 'manual',
+			schedule: normalized,
+		});
+		syncDraftScheduleFromTrigger(nodeId);
 	}
 
 	function suggestEdgeLabel(sourceId, sourceHandleId = '') {
@@ -430,19 +553,25 @@
 		return draft.canvas_json?.edges?.find((edge) => edge.id === selectedEdgeId) || null;
 	}
 
-	function updateNodeData(nodeId, key, value) {
+	function updateNodeDataPatch(nodeId, patch = {}) {
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => {
 			if (node.id !== nodeId) return node;
 			const nextData = { ...(node.data || {}) };
-			if (value === '' || value == null) {
-				delete nextData[key];
-			} else {
-				nextData[key] = value;
+			for (const [key, value] of Object.entries(patch)) {
+				if (value === '' || value == null) {
+					delete nextData[key];
+				} else {
+					nextData[key] = value;
+				}
 			}
 			return { ...node, data: nextData };
 		});
 		commitCanvasSnapshot('node-data');
+	}
+
+	function updateNodeData(nodeId, key, value) {
+		updateNodeDataPatch(nodeId, { [key]: value });
 	}
 
 	function duplicateNode(nodeId) {
@@ -1166,6 +1295,10 @@
 			showToast('Workflow name is required', 'error');
 			return;
 		}
+		if (draft.schedule_type === 'cron' && !String(draft.cron_expression || '').trim()) {
+			showToast('Cron expression is required for cron schedules', 'error');
+			return;
+		}
 
 		saving = true;
 		try {
@@ -1450,14 +1583,14 @@
 				</label>
 				<label>
 					<span>Schedule type</span>
-					<select class="input" bind:value={draft.schedule_type}>
+					<select class="input" bind:value={draft.schedule_type} onchange={(event) => updateDraftScheduleType(event.currentTarget.value)}>
 						<option value="manual">manual</option>
 						<option value="cron">cron</option>
 					</select>
 				</label>
 				<label>
 					<span>Cron expression</span>
-					<input class="input" type="text" bind:value={draft.cron_expression} placeholder="0 0 * * *" disabled={draft.schedule_type !== 'cron'} />
+					<input class="input" type="text" bind:value={draft.cron_expression} onchange={(event) => updateDraftCronExpression(event.currentTarget.value)} placeholder="0 0 * * *" disabled={draft.schedule_type !== 'cron'} />
 				</label>
 				<label>
 					<span>Gateway compatibility job</span>
@@ -1725,18 +1858,60 @@
 								<option value="branch">branch</option>
 							</select>
 						</label>
-						<label>
-							<span>Queue key</span>
-							<input class="input" type="text" value={selectedNodeRef.data?.queue_key || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
-						</label>
-						<label>
-							<span>Retry policy</span>
-							<input class="input" type="text" value={selectedNodeRef.data?.retry_policy || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'retry_policy', event.currentTarget.value)} placeholder="exponential:3" />
-						</label>
-						<label>
-							<span>Timeout (seconds)</span>
-							<input class="input" type="number" min="0" value={selectedNodeRef.data?.timeout_seconds || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'timeout_seconds', event.currentTarget.value ? Number(event.currentTarget.value) : '')} placeholder="120" />
-						</label>
+						{#if selectedNodeRef.type === 'trigger'}
+							<label>
+								<span>Trigger source</span>
+								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-cron" />
+							</label>
+							<label>
+								<span>Run mode</span>
+								<select class="input" value={triggerScheduleMode(selectedNodeRef)} onchange={(event) => {
+									const mode = event.currentTarget.value;
+									if (mode === 'manual') {
+										applyTriggerCadencePreset(selectedNodeRef.id, 'manual');
+										return;
+									}
+									const currentSchedule = String(selectedNodeRef.data?.schedule || '').trim() || '0 * * * *';
+									applyTriggerCadencePreset(selectedNodeRef.id, currentSchedule);
+								}}>
+									<option value="manual">manual</option>
+									<option value="cron">cron</option>
+								</select>
+							</label>
+							{#if triggerScheduleMode(selectedNodeRef) === 'cron'}
+								<label>
+									<span>Cadence preset</span>
+									<select class="input" value={triggerCadencePresetValue(selectedNodeRef)} onchange={(event) => {
+										const preset = event.currentTarget.value;
+										if (preset === TRIGGER_CUSTOM_CRON_VALUE) return;
+										applyTriggerCadencePreset(selectedNodeRef.id, preset);
+									}}>
+										<option value={TRIGGER_CUSTOM_CRON_VALUE}>custom cron</option>
+										{#each TRIGGER_CRON_PRESETS as preset (preset.id)}
+											<option value={preset.id}>{preset.label}</option>
+										{/each}
+									</select>
+								</label>
+								<label>
+									<span>Cron expression</span>
+									<input class="input" type="text" value={selectedNodeRef.data?.schedule || ''} onchange={(event) => updateTriggerCronExpression(selectedNodeRef.id, event.currentTarget.value)} placeholder="0 * * * *" />
+								</label>
+							{/if}
+							<p class="inspector-note">Trigger cadence is configurable here. For the primary trigger, this syncs the template schedule fields above.</p>
+						{:else}
+							<label>
+								<span>Queue key</span>
+								<input class="input" type="text" value={selectedNodeRef.data?.queue_key || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
+							</label>
+							<label>
+								<span>Retry policy</span>
+								<input class="input" type="text" value={selectedNodeRef.data?.retry_policy || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'retry_policy', event.currentTarget.value)} placeholder="exponential:3" />
+							</label>
+							<label>
+								<span>Timeout (seconds)</span>
+								<input class="input" type="number" min="0" value={selectedNodeRef.data?.timeout_seconds || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'timeout_seconds', event.currentTarget.value ? Number(event.currentTarget.value) : '')} placeholder="120" />
+							</label>
+						{/if}
 						<label>
 							<span>Condition expression</span>
 							<textarea class="input textarea" rows="2" oninput={(event) => updateNodeData(selectedNodeRef.id, 'condition', event.currentTarget.value)}>{selectedNodeRef.data?.condition || ''}</textarea>
@@ -2424,6 +2599,12 @@
 		gap: 0.3rem;
 		font-size: 0.82rem;
 		font-weight: 600;
+	}
+
+	.inspector-note {
+		margin: 0;
+		font-size: 0.76rem;
+		color: var(--color-text-muted);
 	}
 
 	.run-controls {
