@@ -28,6 +28,12 @@
 	let runInputJson = $state('');
 	let triggerSource = $state('manual');
 
+	const NODE_WIDTH = 220;
+	const NODE_HEIGHT = 128;
+	const STAGE_WIDTH = 1200;
+	const STAGE_HEIGHT = 760;
+	const NODE_PADDING = 16;
+
 	function emptyDraft() {
 		return {
 			id: null,
@@ -44,7 +50,7 @@
 			config_json: null,
 			canvas_json: {
 				nodes: [
-					{ id: 'start', type: 'trigger', title: 'Start', position: { x: 24, y: 32 }, data: {} },
+					{ id: 'start', type: 'trigger', title: 'Start', position: { x: 56, y: 72 }, data: {} },
 				],
 				edges: [],
 			},
@@ -107,11 +113,24 @@
 			type: String(node?.type || 'task'),
 			title: String(node?.title || safeNodeTitle(String(node?.type || 'task'), index)),
 			position: {
-				x: Number(node?.position?.x ?? 24),
-				y: Number(node?.position?.y ?? 32 + (index - 1) * 110),
+				x: Number(node?.position?.x ?? 56),
+				y: Number(node?.position?.y ?? 72 + (index - 1) * 170),
 			},
 			data: typeof node?.data === 'object' && node?.data !== null ? node.data : {},
 		};
+	}
+
+	function getNextNodePosition(index) {
+		const maxColumns = 3;
+		const baseX = 56;
+		const baseY = 72;
+		const columnGap = 330;
+		const rowGap = 190;
+		const col = index % maxColumns;
+		const row = Math.floor(index / maxColumns);
+		const x = Math.min(baseX + col * columnGap, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING);
+		const y = Math.min(baseY + row * rowGap, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING);
+		return { x, y };
 	}
 
 	function normalizeEdge(edge, index = 1) {
@@ -242,8 +261,8 @@
 				id: duplicateId,
 				title: `${node.title} copy`,
 				position: {
-					x: Math.min((node.position?.x || 0) + 36, 640),
-					y: Math.min((node.position?.y || 0) + 36, 420),
+					x: Math.min((node.position?.x || 0) + 44, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING),
+					y: Math.min((node.position?.y || 0) + 44, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING),
 				},
 			},
 		];
@@ -258,13 +277,16 @@
 		if (nodes.length === 0) return;
 		const ordered = [...nodes].sort((a, b) => (a.position?.y || 0) - (b.position?.y || 0));
 		draft.canvas_json.nodes = ordered.map((node, index) => {
-			const x = direction === 'horizontal' ? 24 + index * 250 : 24;
-			const y = direction === 'horizontal' ? 40 : 28 + index * 118;
+			const maxColumns = direction === 'horizontal' ? 4 : 1;
+			const col = index % maxColumns;
+			const row = Math.floor(index / maxColumns);
+			const x = 56 + col * 300;
+			const y = 72 + row * 185;
 			return {
 				...node,
 				position: {
-					x: Math.min(x, 640),
-					y: Math.min(y, 460),
+					x: Math.min(x, STAGE_WIDTH - NODE_WIDTH - NODE_PADDING),
+					y: Math.min(y, STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING),
 				},
 			};
 		});
@@ -321,6 +343,7 @@
 	function addNode(type = 'task') {
 		ensureDraftShape();
 		const nextIndex = draft.canvas_json.nodes.length + 1;
+		const nextPosition = getNextNodePosition(nextIndex - 1);
 		const nodeId = `step-${Date.now()}`;
 		draft.canvas_json.nodes = [
 			...draft.canvas_json.nodes,
@@ -328,7 +351,7 @@
 				id: nodeId,
 				type,
 				title: safeNodeTitle(type, nextIndex),
-				position: { x: 32, y: 48 + (nextIndex - 1) * 110 },
+				position: nextPosition,
 				data: {},
 			},
 		];
@@ -370,6 +393,21 @@
 		commitCanvasSnapshot('add-edge');
 	}
 
+	function chooseEdgeEndpoint(nodeId, mode) {
+		if (mode === 'source') {
+			pendingEdgeSource = nodeId;
+			if (pendingEdgeTarget && pendingEdgeTarget !== pendingEdgeSource) {
+				addEdge();
+			}
+			return;
+		}
+
+		pendingEdgeTarget = nodeId;
+		if (pendingEdgeSource && pendingEdgeSource !== pendingEdgeTarget) {
+			addEdge();
+		}
+	}
+
 	function upsertQuickEdge(fromNodeId, toNodeId) {
 		if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
 		ensureDraftShape();
@@ -408,17 +446,37 @@
 		return draft.canvas_json?.nodes?.find((node) => node.id === nodeId) || null;
 	}
 
-	function edgePath(edge) {
+	function getNodeAnchor(node, mode, otherNode = null) {
+		const baseX = node.position?.x || 0;
+		const baseY = node.position?.y || 0;
+		const otherX = otherNode?.position?.x ?? (baseX + NODE_WIDTH);
+		const useRight = mode === 'source' ? otherX >= baseX : otherX < baseX;
+		return {
+			x: baseX + (useRight ? NODE_WIDTH + 6 : -6),
+			y: baseY + NODE_HEIGHT / 2,
+			side: useRight ? 'right' : 'left',
+		};
+	}
+
+	function edgeGeometry(edge) {
 		const source = getNodeById(edge.source);
 		const target = getNodeById(edge.target);
-		if (!source || !target) return '';
+		if (!source || !target) return null;
 
-		const sourceX = (source.position?.x || 0) + 110;
-		const sourceY = (source.position?.y || 0) + 36;
-		const targetX = (target.position?.x || 0) + 110;
-		const targetY = (target.position?.y || 0) + 36;
-		const midX = (sourceX + targetX) / 2;
-		return `M ${sourceX} ${sourceY} C ${midX} ${sourceY}, ${midX} ${targetY}, ${targetX} ${targetY}`;
+		const from = getNodeAnchor(source, 'source', target);
+		const to = getNodeAnchor(target, 'target', source);
+		const horizontalDistance = Math.abs(to.x - from.x);
+		const curve = Math.max(80, Math.min(280, horizontalDistance * 0.5));
+		const fromDirection = from.side === 'right' ? 1 : -1;
+		const toDirection = to.side === 'right' ? 1 : -1;
+		const c1x = from.x + fromDirection * curve;
+		const c2x = to.x + toDirection * curve;
+		const path = `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
+		return { from, to, path };
+	}
+
+	function edgePath(edge) {
+		return edgeGeometry(edge)?.path || '';
 	}
 
 	function beginDrag(event, nodeId) {
@@ -428,22 +486,24 @@
 		selectNode(nodeId);
 
 		const rect = canvasElement.getBoundingClientRect();
+		const scrollX = canvasElement.scrollLeft;
+		const scrollY = canvasElement.scrollTop;
 		dragState = {
 			nodeId,
-			offsetX: (event.clientX - rect.left) / canvasZoom - (node.position?.x || 0),
-			offsetY: (event.clientY - rect.top) / canvasZoom - (node.position?.y || 0),
+			offsetX: (event.clientX - rect.left + scrollX) / canvasZoom - (node.position?.x || 0),
+			offsetY: (event.clientY - rect.top + scrollY) / canvasZoom - (node.position?.y || 0),
 		};
 	}
 
 	function handlePointerMove(event) {
 		if (!dragState || !canvasElement) return;
 		const rect = canvasElement.getBoundingClientRect();
-		const stageWidth = 900;
-		const stageHeight = 520;
-		const pointerX = (event.clientX - rect.left) / canvasZoom;
-		const pointerY = (event.clientY - rect.top) / canvasZoom;
-		const nextX = Math.max(12, Math.min(stageWidth - 220, pointerX - dragState.offsetX));
-		const nextY = Math.max(12, Math.min(stageHeight - 84, pointerY - dragState.offsetY));
+		const scrollX = canvasElement.scrollLeft;
+		const scrollY = canvasElement.scrollTop;
+		const pointerX = (event.clientX - rect.left + scrollX) / canvasZoom;
+		const pointerY = (event.clientY - rect.top + scrollY) / canvasZoom;
+		const nextX = Math.max(12, Math.min(STAGE_WIDTH - NODE_WIDTH - NODE_PADDING, pointerX - dragState.offsetX));
+		const nextY = Math.max(12, Math.min(STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING, pointerY - dragState.offsetY));
 
 		ensureDraftShape();
 		draft.canvas_json.nodes = draft.canvas_json.nodes.map((node) => node.id === dragState.nodeId
@@ -466,8 +526,8 @@
 	function nudgeSelectedNode(deltaX, deltaY) {
 		const node = selectedNode();
 		if (!node) return;
-		const nextX = Math.max(12, Math.min(680, (node.position?.x || 0) + deltaX));
-		const nextY = Math.max(12, Math.min(460, (node.position?.y || 0) + deltaY));
+		const nextX = Math.max(12, Math.min(STAGE_WIDTH - NODE_WIDTH - NODE_PADDING, (node.position?.x || 0) + deltaX));
+		const nextY = Math.max(12, Math.min(STAGE_HEIGHT - NODE_HEIGHT - NODE_PADDING, (node.position?.y || 0) + deltaY));
 		updateNode(node.id, 'position', { x: nextX, y: nextY });
 	}
 
@@ -978,6 +1038,14 @@
 						<span>Shortcuts: arrows move node, Ctrl/Cmd+D duplicate, Delete remove, Ctrl/Cmd+Z/Y undo/redo.</span>
 					</div>
 				</div>
+				<div class="pending-link-hint">
+					<span>
+						Link builder:
+						<strong>{pendingEdgeSource || 'choose source port'}</strong>
+						->
+						<strong>{pendingEdgeTarget || 'choose target port'}</strong>
+					</span>
+				</div>
 			</div>
 
 			{#if graphIssues.length > 0}
@@ -997,9 +1065,10 @@
 			{/if}
 
 			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
-				<div class="canvas-stage" style={`transform: scale(${canvasZoom});`}>
-					<svg class="edge-layer" viewBox="0 0 900 520" preserveAspectRatio="none">
+				<div class="canvas-stage" style={`transform: scale(${canvasZoom}); width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
+					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
 						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
+							{@const geometry = edgeGeometry(edge)}
 							<path
 								d={edgePath(edge)}
 								class:selected={selectedEdgeId === edge.id}
@@ -1008,6 +1077,10 @@
 									selectEdge(edge.id);
 								}}
 							></path>
+							{#if geometry}
+								<circle class="edge-anchor" cx={geometry.from.x} cy={geometry.from.y} r="4"></circle>
+								<circle class="edge-anchor" cx={geometry.to.x} cy={geometry.to.y} r="4"></circle>
+							{/if}
 						{/each}
 					</svg>
 					{#each draft.canvas_json?.nodes || [] as node (node.id)}
@@ -1022,6 +1095,26 @@
 								selectNode(node.id);
 							}}
 						>
+							<button
+								type="button"
+								class="node-port node-port-in"
+								title="Target port"
+								onpointerdown={(event) => {
+									event.stopPropagation();
+									chooseEdgeEndpoint(node.id, 'target');
+									selectNode(node.id);
+								}}
+							></button>
+							<button
+								type="button"
+								class="node-port node-port-out"
+								title="Source port"
+								onpointerdown={(event) => {
+									event.stopPropagation();
+									chooseEdgeEndpoint(node.id, 'source');
+									selectNode(node.id);
+								}}
+							></button>
 							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
 								<span class="node-type">{node.type}</span>
 								<button class="node-remove" onclick={() => removeNode(node.id)} disabled={node.id === 'start'}>x</button>
@@ -1414,6 +1507,17 @@
 		color: var(--color-text-muted);
 	}
 
+	.pending-link-hint {
+		font-size: 0.82rem;
+		color: var(--color-text-muted);
+		padding: 0.4rem 0.1rem 0;
+	}
+
+	.pending-link-hint strong {
+		color: var(--color-text);
+		font-weight: 700;
+	}
+
 	.validation-panel {
 		margin-top: 0.8rem;
 		padding: 0.85rem 0.95rem;
@@ -1445,7 +1549,7 @@
 
 	.canvas-surface {
 		position: relative;
-		min-height: 520px;
+		min-height: 600px;
 		margin-top: 0.85rem;
 		border-radius: 1rem;
 		border: 1px dashed hsla(var(--hue), 82%, 62%, 0.36);
@@ -1454,13 +1558,11 @@
 			linear-gradient(90deg, transparent 31px, hsla(var(--hue), 82%, 62%, 0.14) 32px),
 			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
 		background-size: 32px 32px, 32px 32px, 100% 100%;
-		overflow: hidden;
+		overflow: auto;
 	}
 
 	.canvas-stage {
 		position: relative;
-		width: 900px;
-		height: 520px;
 		transform-origin: top left;
 	}
 
@@ -1486,6 +1588,13 @@
 		stroke-width: 4;
 	}
 
+	.edge-anchor {
+		fill: var(--color-primary-button);
+		stroke: var(--color-surface);
+		stroke-width: 1.5;
+		opacity: 0.95;
+	}
+
 	.canvas-node {
 		position: absolute;
 		width: 220px;
@@ -1494,6 +1603,7 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		box-shadow: var(--shadow-md);
+		overflow: visible;
 	}
 
 	.canvas-node.dragging {
@@ -1522,6 +1632,33 @@
 		gap: 0.45rem;
 		flex-wrap: wrap;
 		margin-top: 0.55rem;
+	}
+
+	.node-port {
+		position: absolute;
+		top: calc(50% - 10px);
+		width: 20px;
+		height: 20px;
+		border-radius: 999px;
+		border: 2px solid var(--color-surface);
+		background: var(--color-primary-button);
+		box-shadow: 0 0 0 2px hsla(var(--hue), 82%, 62%, 0.45), var(--shadow-sm);
+		cursor: crosshair;
+		transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+		z-index: 3;
+	}
+
+	.node-port:hover {
+		transform: scale(1.12);
+		box-shadow: 0 0 0 3px hsla(var(--hue), 82%, 62%, 0.6), var(--shadow-md);
+	}
+
+	.node-port-in {
+		left: -13px;
+	}
+
+	.node-port-out {
+		right: -13px;
 	}
 
 	.node-remove {
@@ -1697,7 +1834,7 @@
 		}
 
 		.canvas-stage {
-			width: 900px;
+			width: 1200px;
 		}
 	}
 
@@ -1712,7 +1849,7 @@
 		}
 
 		.canvas-surface {
-			min-height: 440px;
+			min-height: 500px;
 		}
 	}
 </style>
