@@ -233,6 +233,48 @@ describe('CSS theme safety: no hardcoded extreme neutral surfaces in component s
 	});
 });
 
+describe('CSS theme safety: no hardcoded extreme neutral text or border literals', () => {
+	it('finds no near-white/near-black color, border, stroke, or fill literals outside theme tokens', () => {
+		const violations = [];
+		const declRe = /(color|border(?:-color)?|stroke|fill)\s*:\s*([^;]+);/gi;
+		const literalColourRe = /(#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))/g;
+
+		for (const filePath of files) {
+			if (filePath.endsWith('src/lib/styles/global.css')) continue;
+
+			const content = fs.readFileSync(filePath, 'utf8');
+			const slices = extractStyleSlices(filePath, content);
+
+			for (const slice of slices) {
+				let declMatch;
+				while ((declMatch = declRe.exec(slice.text)) !== null) {
+					const declaration = declMatch[2];
+					if (/var\(|currentColor/i.test(declaration)) continue;
+
+					const literals = [...declaration.matchAll(literalColourRe)].map(m => m[1]);
+					if (literals.length === 0) continue;
+
+					for (const literal of literals) {
+						const parsed = literal.startsWith('#') ? parseHexColour(literal) : parseRgbColour(literal);
+						if (!isExtremeNeutralSurface(parsed)) continue;
+
+						const localOffset = slice.text.slice(0, declMatch.index).split('\n').length - 1;
+						const globalLine = content.slice(0, slice.offset).split('\n').length + localOffset;
+						const rel = path.relative(SRC_DIR, filePath);
+						violations.push(`  ${rel}:${globalLine} -> ${declMatch[1]}: ${declaration.trim()}`);
+						break;
+					}
+				}
+			}
+		}
+
+		expect(
+			violations,
+			`\nFound hardcoded extreme neutral text/border literals in component/page CSS.\nUse shared tokens (e.g. --color-fixed-text-* or --color-fixed-border*) instead of literal near-white/near-black values.\n\n${violations.join('\n')}\n`
+		).toHaveLength(0);
+	});
+});
+
 describe('CSS contrast: superadmin workflows page must stay theme-safe', () => {
 	it('does not hardcode light-only surface colours', () => {
 		const workflowsPagePath = files.find(f => f.endsWith('routes/admin/superadmin/workflows/+page.svelte'));

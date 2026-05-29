@@ -446,9 +446,9 @@
 		margin: 0.75rem 0 1rem;
 		padding: 0.65rem 0.9rem;
 		border-radius: 10px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-fixed-border-strong);
 		background: var(--color-overlay-scrim-soft);
-		color: rgba(255, 255, 255, 0.9);
+		color: var(--color-fixed-text-secondary);
 		font-size: 0.9rem;
 	}
 

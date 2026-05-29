@@ -448,7 +448,7 @@
 	.tag-remove {
 		background: none;
 		border: none;
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--color-fixed-text-muted);
 		cursor: pointer;
 		font-size: 1rem;
 		padding: 0;

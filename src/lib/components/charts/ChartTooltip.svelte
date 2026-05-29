@@ -80,7 +80,7 @@
 		position: fixed;
 		pointer-events: none;
 		background: var(--color-fixed-surface-tooltip);
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-fixed-border-strong);
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
 		font-size: 0.875rem;
@@ -104,20 +104,20 @@
 	}
 
 	.tooltip-date {
-		color: rgba(255, 255, 255, 0.6);
+		color: var(--color-fixed-text-subtle);
 		font-size: 0.75rem;
 		margin-bottom: 0.2rem;
 	}
 
 	.tooltip-value {
-		color: #fff;
+		color: var(--color-fixed-text-bright);
 		font-weight: 600;
 		font-size: 1rem;
 		font-variant-numeric: tabular-nums;
 	}
 
 	.tooltip-note {
-		color: rgba(255, 255, 255, 0.5);
+		color: var(--color-fixed-text-faint);
 		font-size: 0.7rem;
 		margin-top: 0.2rem;
 		font-style: italic;
@@ -138,7 +138,7 @@
 	}
 
 	.tooltip-item-label {
-		color: rgba(255, 255, 255, 0.7);
+		color: var(--color-fixed-text-muted);
 		font-size: 0.8rem;
 	}
 

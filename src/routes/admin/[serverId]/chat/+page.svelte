@@ -763,7 +763,7 @@
 	}
 
 	.session-item.active .session-sub {
-		color: rgba(255,255,255,0.7);
+		color: var(--color-fixed-text-muted);
 	}
 
 	.session-icon {

@@ -1607,9 +1607,9 @@
 		margin: 0 0 1rem;
 		padding: 0.65rem 0.9rem;
 		border-radius: 10px;
-		border: 1px solid rgba(255, 255, 255, 0.12);
+		border: 1px solid var(--color-fixed-border-strong);
 		background: var(--color-overlay-scrim-soft);
-		color: rgba(255, 255, 255, 0.9);
+		color: var(--color-fixed-text-secondary);
 		font-size: 0.9rem;
 	}
 
@@ -2804,8 +2804,9 @@
 	
 	/* Members Card */
 	.stat-card.members {
-		border-color: var(--discord-blurple);
+			border: 1px solid var(--color-fixed-border-strong);
 		background: linear-gradient(135deg, var(--color-surface) 0%, rgba(88, 101, 242, 0.1) 100%);
+			color: var(--color-fixed-text-secondary);
 	}
 	
 	.breakdown-item.positive .breakdown-value {

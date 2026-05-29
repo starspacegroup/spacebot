@@ -753,7 +753,7 @@
   }
 
   .badge-neutral {
-    color: #41464b;
+    color: var(--color-fixed-text-dark-muted);
     background: #e2e3e5;
     border-color: #d3d6d8;
   }

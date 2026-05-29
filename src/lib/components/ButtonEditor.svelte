@@ -409,7 +409,7 @@
 	/* Preview — always use Discord's dark chat background so button colors render correctly */
 	.button-preview {
 		background: var(--color-fixed-surface-discord-alt);
-		border: 1px solid rgba(255, 255, 255, 0.06);
+		border: 1px solid var(--color-fixed-border-subtle);
 		border-radius: 0.5rem;
 		padding: 0.75rem;
 	}

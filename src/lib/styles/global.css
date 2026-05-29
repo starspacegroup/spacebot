@@ -86,6 +86,17 @@
 	--color-fixed-surface-discord-alt: #313338;
 	--color-fixed-surface-discord-muted: #3f4147;
 	--color-fixed-surface-tooltip: rgba(20, 20, 28, 0.95);
+	--color-fixed-text-bright: #fff;
+	--color-fixed-text-dark-muted: #41464b;
+	--color-fixed-text-secondary: rgba(255, 255, 255, 0.9);
+	--color-fixed-text-muted: rgba(255, 255, 255, 0.7);
+	--color-fixed-text-subtle: rgba(255, 255, 255, 0.6);
+	--color-fixed-text-faint: rgba(255, 255, 255, 0.5);
+	--color-fixed-border-subtle: rgba(255, 255, 255, 0.06);
+	--color-fixed-border: rgba(255, 255, 255, 0.08);
+	--color-fixed-border-strong: rgba(255, 255, 255, 0.12);
+	--color-fixed-border-spinner: rgba(255, 255, 255, 0.3);
+	--color-fixed-border-dark-soft: rgba(0, 0, 0, 0.2);
 	--color-overlay-scrim-soft: rgba(8, 12, 24, 0.55);
 	--color-overlay-scrim: rgba(0, 0, 0, 0.6);
 	--color-overlay-scrim-mid: rgba(0, 0, 0, 0.75);

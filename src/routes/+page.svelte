@@ -804,7 +804,7 @@
 		justify-content: center;
 		overflow: hidden;
 		transition: transform 0.2s ease, box-shadow 0.2s ease;
-		border: 1px solid rgba(255,255,255,0.06);
+		border: 1px solid var(--color-fixed-border-subtle);
 	}
 
 	.step:hover .step-card {
@@ -831,7 +831,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		background: #5865F2;
-		color: #fff;
+		color: var(--color-fixed-text-bright);
 		padding: 0.6rem 1.2rem;
 		border-radius: 8px;
 		font-size: 0.8rem;
@@ -919,7 +919,7 @@
 
 	.mock-msg-text {
 		font-size: 0.7rem;
-		color: #dbdee1;
+		color: var(--color-fixed-text-secondary);
 	}
 
 	.mock-slash {
@@ -943,7 +943,7 @@
 		gap: 6px;
 		font-size: 0.65rem;
 		font-weight: 600;
-		color: #b5bac1;
+		color: var(--color-fixed-text-muted);
 	}
 
 	.mock-dash-logo {
@@ -998,7 +998,7 @@
 
 	.mock-terminal-line {
 		font-size: 0.67rem;
-		color: #b5bac1;
+		color: var(--color-fixed-text-muted);
 		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
 		white-space: nowrap;
 		overflow: hidden;
@@ -1021,7 +1021,7 @@
 		align-items: center;
 		gap: 0.35rem;
 		font-size: 0.78rem;
-		color: #dbdee1;
+		color: var(--color-fixed-text-secondary);
 	}
 
 	.mock-status-dot {
@@ -1034,7 +1034,7 @@
 
 	.mock-bridge-status small {
 		font-size: 0.65rem;
-		color: #b5bac1;
+		color: var(--color-fixed-text-muted);
 	}
 
 	.mock-browser-card {
@@ -1051,7 +1051,7 @@
 		padding: 0.3rem 0.45rem;
 		background: var(--color-fixed-surface-discord);
 		border-radius: 6px;
-		color: #b5bac1;
+		color: var(--color-fixed-text-muted);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -1061,7 +1061,7 @@
 		flex: 1;
 		border-radius: 8px;
 		background: linear-gradient(135deg, rgba(88, 101, 242, 0.28), rgba(87, 242, 135, 0.18));
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: 1px solid var(--color-fixed-border);
 	}
 
 	@media (max-width: 700px) {

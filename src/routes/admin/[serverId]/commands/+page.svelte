@@ -518,7 +518,7 @@
 		font-size: 0.7rem;
 		padding: 0.2rem 0.5rem;
 		background: var(--accent-color, #5865F2);
-		color: #fff;
+		color: var(--color-fixed-text-bright);
 		border-radius: 4px;
 		font-weight: 600;
 		text-transform: uppercase;

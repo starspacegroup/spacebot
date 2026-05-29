@@ -454,8 +454,8 @@
 		to { opacity: 1; transform: translateY(0); }
 	}
 
-	.toast-success { background: #16a34a; color: #fff; }
-	.toast-error { background: #dc2626; color: #fff; }
+	.toast-success { background: #16a34a; color: var(--color-fixed-text-bright); }
+	.toast-error { background: #dc2626; color: var(--color-fixed-text-bright); }
 	.toast-info {
 		background: var(--color-surface-elevated, #f3f4f6);
 		color: var(--color-text, #111827);
@@ -576,7 +576,7 @@
 		font-size: 0.6rem;
 		font-weight: 700;
 		background: var(--color-primary-button, #4f46e5);
-		color: #fff;
+		color: var(--color-fixed-text-bright);
 		border-radius: 99px;
 		padding: 0.1rem 0.35rem;
 		font-family: sans-serif;
