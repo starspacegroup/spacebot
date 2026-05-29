@@ -23,7 +23,7 @@
 	let listEl = $state(null);
 	
 	/**
-	 * @typedef {{ id: string, label: string, description?: string, icon: string, iconHtml?: string, group: string, action: () => void, keywords?: string[] }} Command
+	 * @typedef {{ id: string, label: string, description?: string, icon: string, iconHtml?: string, badge?: string, disabled?: boolean, group: string, action: () => void, keywords?: string[] }} Command
 	 */
 	
 	/** Active server ID from current URL or selected guild */
@@ -63,7 +63,7 @@
 			});
 		}
 		
-		/** @type {{ label: string, icon: string, path: string, desc: string, keywords: string[] }[]} */
+		/** @type {{ label: string, icon: string, iconHtml?: string, path: string, desc: string, keywords: string[], badge?: string, requiresSuperAdmin?: boolean }[]} */
 		const serverPages = [
 			{ label: 'Overview',           icon: '📊', path: '',                        desc: 'Server dashboard',                      keywords: ['dashboard', 'home', 'overview', 'stats'] },
 			{ label: 'Automations',        icon: '⚡', path: '/automations',             desc: 'Manage event-driven automations',       keywords: ['triggers', 'actions', 'events', 'workflow'] },
@@ -75,7 +75,7 @@
 			{ label: 'API Keys',           icon: '🔑', path: '/api-keys',                desc: 'Manage REST API access keys',           keywords: ['api', 'tokens', 'keys', 'rest', 'access'] },
 			{ label: 'Server Settings',    icon: '⚙️', path: '/settings',                desc: 'Bot and server configuration',          keywords: ['config', 'configure', 'preferences'] },
 			{ label: 'Import & Export',    icon: '📦', path: '/import-export',            desc: 'Share or back up automations & commands', keywords: ['backup', 'share', 'transfer', 'migrate'] },
-			{ label: 'AI Assistant',       icon: '🤖', iconHtml: '<img src="/logo.webp" alt="" style="height:1.2em;width:auto;vertical-align:middle;border-radius:4px;" />', path: '/chat',                   desc: 'Chat with SpaceBot about this server',  keywords: ['chat', 'ai', 'assistant', 'dm', 'message', 'ask', 'help'] },
+			{ label: 'AI Assistant',       icon: '🤖', iconHtml: '<img src="/logo.webp" alt="" style="height:1.2em;width:auto;vertical-align:middle;border-radius:4px;" />', path: '/chat',                   desc: 'Chat with SpaceBot about this server',  keywords: ['chat', 'ai', 'assistant', 'dm', 'message', 'ask', 'help'], badge: 'COMING SOON', requiresSuperAdmin: true },
 			{ label: 'Account & Billing',  icon: '💳', path: '/account',                 desc: 'Plan, usage, and subscription',         keywords: ['billing', 'plan', 'subscription', 'payment', 'upgrade'] },
 		];
 		
@@ -97,13 +97,20 @@
 				: 'Server';
 			
 			for (const pg of serverPages) {
+				const isDisabled = Boolean(pg.requiresSuperAdmin && !isSuperAdmin);
 				commands.push({
 					id: `server-${guild.id}-${pg.path || 'home'}`,
 					label: hasMultipleServers ? `${pg.label}` : pg.label,
 					description: hasMultipleServers ? `${guild.name} · ${pg.desc}` : pg.desc,
 					icon: pg.icon,
+					iconHtml: pg.iconHtml,
+					badge: pg.badge,
+					disabled: isDisabled,
 					group: groupName,
-					action: () => goto(`/admin/${guild.id}${pg.path}`),
+					action: () => {
+						if (isDisabled) return;
+						goto(`/admin/${guild.id}${pg.path}`);
+					},
 					keywords: [...pg.keywords, guild.name.toLowerCase(), 'server']
 				});
 			}
@@ -415,16 +422,23 @@
 						<div
 							class="palette-item"
 							class:active={idx === selectedIndex}
+							class:disabled={cmd.disabled}
 							data-active={idx === selectedIndex}
 							role="option"
 							aria-selected={idx === selectedIndex}
+							aria-disabled={cmd.disabled}
 							tabindex="-1"
 							onmouseenter={() => selectedIndex = idx}
 							onclick={() => { close(); cmd.action(); }}
 						>
 							<span class="item-icon">{#if cmd.iconHtml}{@html cmd.iconHtml}{:else}{cmd.icon}{/if}</span>
 							<div class="item-text">
-								<span class="item-label">{cmd.label}</span>
+								<span class="item-label-row">
+									<span class="item-label">{cmd.label}</span>
+									{#if cmd.badge}
+										<span class="item-badge">{cmd.badge}</span>
+									{/if}
+								</span>
 								{#if cmd.description}
 									<span class="item-desc">{cmd.description}</span>
 								{/if}
@@ -597,9 +611,35 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+
+	.item-label-row {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		min-width: 0;
+	}
+
+	.item-badge {
+		flex-shrink: 0;
+		padding: 0.125rem 0.375rem;
+		border-radius: 999px;
+		font-size: 0.62rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1.2;
+		color: var(--color-primary);
+		background: color-mix(in oklab, var(--color-primary) 18%, transparent);
+		border: 1px solid color-mix(in oklab, var(--color-primary) 50%, transparent);
+	}
 	
 	.active .item-label {
 		color: var(--color-primary);
+	}
+
+	.palette-item.disabled .item-label,
+	.palette-item.disabled .item-desc {
+		opacity: 0.75;
 	}
 	
 	.item-desc {
