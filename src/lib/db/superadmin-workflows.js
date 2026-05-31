@@ -102,6 +102,10 @@ async function getRunRow(db, runId) {
   return db.prepare("SELECT * FROM superadmin_workflow_runs WHERE id = ?").bind(runId).first();
 }
 
+async function getRunStepRow(db, runId, stepKey) {
+  return db.prepare("SELECT * FROM superadmin_workflow_run_steps WHERE run_id = ? AND step_key = ? LIMIT 1").bind(runId, stepKey).first();
+}
+
 export async function listSuperadminWorkflowTemplates(db, options = {}) {
   if (!db) return [];
 
@@ -414,5 +418,58 @@ export async function updateSuperadminWorkflowRun(db, runId, patch = {}) {
   } catch (error) {
     log.error("[SuperadminWorkflows] update run failed:", error);
     return { success: false, error: "Failed to update workflow run" };
+  }
+}
+
+export async function updateSuperadminWorkflowRunStep(db, runId, stepKey, patch = {}) {
+  if (!db || !runId || !stepKey) return { success: false, error: "Invalid parameters" };
+
+  const current = await getRunStepRow(db, runId, String(stepKey));
+  if (!current) return { success: false, error: "Workflow run step not found" };
+
+  const merged = {
+    ...current,
+    ...patch,
+  };
+
+  const timestamp = nowSql();
+
+  try {
+    await db.prepare(
+      `UPDATE superadmin_workflow_run_steps
+       SET status = ?,
+           input_json = ?,
+           output_json = ?,
+           error_message = ?,
+           started_at = ?,
+           completed_at = ?,
+           duration_ms = ?,
+           updated_at = ?
+       WHERE run_id = ? AND step_key = ?`
+    ).bind(
+      merged.status ? String(merged.status).trim() : "pending",
+      merged.input_json == null
+        ? null
+        : JSON.stringify(typeof merged.input_json === "string" ? safeJsonParse(merged.input_json, null) : merged.input_json),
+      merged.output_json == null
+        ? null
+        : JSON.stringify(typeof merged.output_json === "string" ? safeJsonParse(merged.output_json, null) : merged.output_json),
+      merged.error_message || null,
+      merged.started_at || null,
+      merged.completed_at || null,
+      merged.duration_ms == null ? null : Number(merged.duration_ms),
+      timestamp,
+      Number(runId),
+      String(stepKey),
+    ).run();
+
+    const row = await getRunStepRow(db, Number(runId), String(stepKey));
+    return {
+      success: true,
+      step: normalizeStepRows(row ? [row] : [])[0] || null,
+    };
+  } catch (error) {
+    log.error("[SuperadminWorkflows] update run step failed:", error);
+    return { success: false, error: "Failed to update workflow run step" };
   }
 }
