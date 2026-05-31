@@ -3,7 +3,6 @@ import { log } from "$lib/db/logger.js";
 import {
   filterAdminGuilds,
   getBotGuildIds,
-  getBotGuildsWithDetails,
   getUserGuilds,
 } from "$lib/discord/guilds.js";
 
@@ -15,26 +14,22 @@ const GUILD_FETCH_TIMEOUT = 10000;
  * Returns a sorted array of guilds with botIsInServer flags.
  */
 async function buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies) {
-  const [allUserGuilds, botGuildIds, allBotGuilds] = await withTimeout(
+  const [allUserGuilds, botGuildIds] = await withTimeout(
     Promise.all([
       getUserGuilds(accessToken, cookies),
       getBotGuildIds(botToken, cookies),
-      isSuperAdmin ? getBotGuildsWithDetails(botToken, cookies) : Promise.resolve([]),
     ]),
     GUILD_FETCH_TIMEOUT,
-    [[], new Set(), []]
+    [[], new Set()]
   );
 
   let adminGuilds = [];
 
   if (isSuperAdmin) {
-    adminGuilds = [...allBotGuilds];
-    const addedGuildIds = new Set(allBotGuilds.map((g) => g.id));
-    filterAdminGuilds(allUserGuilds).forEach((guild) => {
-      if (!addedGuildIds.has(guild.id)) {
-        adminGuilds.push({ ...guild, botIsInServer: botGuildIds.has(guild.id) });
-      }
-    });
+    adminGuilds = allUserGuilds.map((guild) => ({
+      ...guild,
+      botIsInServer: botGuildIds.has(guild.id),
+    }));
   } else {
     adminGuilds = filterAdminGuilds(allUserGuilds)
       .filter((guild) => botGuildIds.has(guild.id))
