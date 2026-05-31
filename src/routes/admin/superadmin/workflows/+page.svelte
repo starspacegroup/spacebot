@@ -70,6 +70,25 @@
 		{ id: 'lt', label: 'less than' },
 		{ id: 'lte', label: 'less or equal' },
 	];
+	const TASK_MODULE_TIMING_MODES = [
+		{ id: 'immediate', label: 'Immediate' },
+		{ id: 'delay_minutes', label: 'Delay by minutes' },
+		{ id: 'daily_time_utc', label: 'Daily at UTC time' },
+		{ id: 'cron', label: 'Cron expression' },
+	];
+	const TASK_CUSTOM_ACTION_TYPES = [
+		{ id: 'set_variable', label: 'Set variable' },
+		{ id: 'call_webhook', label: 'Call webhook' },
+		{ id: 'emit_event', label: 'Emit event' },
+		{ id: 'queue_job', label: 'Queue job' },
+		{ id: 'send_message', label: 'Send message' },
+	];
+	const TASK_CUSTOM_ACTION_STAGES = [
+		{ id: 'before', label: 'Before module' },
+		{ id: 'after', label: 'After module' },
+		{ id: 'on_success', label: 'On success' },
+		{ id: 'on_error', label: 'On error' },
+	];
 	const NODE_TYPE_META = {
 		trigger: {
 			label: 'Trigger',
@@ -315,8 +334,24 @@
 			}
 		}
 		if (node?.type === 'task') {
+			const moduleConfig = taskModuleConfig(node);
 			if (node?.data?.operation) {
 				parts.push(`Operation: ${node.data.operation}`);
+			}
+			if (moduleConfig.module_name || moduleConfig.module_key) {
+				parts.push(`Module: ${moduleConfig.module_name || moduleConfig.module_key}`);
+			}
+			if (moduleConfig.timing.mode !== 'immediate') {
+				if (moduleConfig.timing.mode === 'delay_minutes') {
+					parts.push(`Delay: ${moduleConfig.timing.delay_minutes}m`);
+				} else if (moduleConfig.timing.mode === 'daily_time_utc') {
+					parts.push(`Daily at ${moduleConfig.timing.daily_time_utc} UTC`);
+				} else if (moduleConfig.timing.mode === 'cron' && moduleConfig.timing.cron_expression) {
+					parts.push(`Cron: ${moduleConfig.timing.cron_expression}`);
+				}
+			}
+			if (moduleConfig.custom_actions.length > 0) {
+				parts.push(`Custom actions: ${moduleConfig.custom_actions.length}`);
 			}
 			if (node?.data?.batch_size) {
 				parts.push(`Batch: ${node.data.batch_size}`);
@@ -383,6 +418,155 @@
 	function normalizeWeekday(value, fallback = 1) {
 		const parsed = clampNumber(value, 0, 7, fallback);
 		return parsed === 7 ? 0 : parsed;
+	}
+
+	function taskModuleDefaults() {
+		return {
+			module_key: '',
+			module_name: '',
+			timing: {
+				mode: 'immediate',
+				delay_minutes: 5,
+				daily_time_utc: '09:00',
+				cron_expression: '',
+			},
+			custom_actions: [],
+		};
+	}
+
+	function normalizeUtcTime(value, fallback = '09:00') {
+		const trimmed = String(value || '').trim();
+		if (!trimmed) return fallback;
+		if (!/^\d{2}:\d{2}$/.test(trimmed)) return fallback;
+		const [hourRaw, minuteRaw] = trimmed.split(':');
+		const hour = clampNumber(hourRaw, 0, 23, 9);
+		const minute = clampNumber(minuteRaw, 0, 59, 0);
+		return `${pad2(hour)}:${pad2(minute)}`;
+	}
+
+	function taskCustomActionDefaults(index = 0) {
+		return {
+			id: `custom-${Date.now()}-${index}`,
+			type: 'set_variable',
+			name: '',
+			key: '',
+			value: '',
+			when: 'after',
+			enabled: true,
+		};
+	}
+
+	function normalizeTaskCustomAction(action, index = 0) {
+		const defaults = taskCustomActionDefaults(index);
+		const next = typeof action === 'object' && action !== null ? action : {};
+		return {
+			id: String(next.id || defaults.id),
+			type: TASK_CUSTOM_ACTION_TYPES.some((item) => item.id === next.type) ? next.type : defaults.type,
+			name: String(next.name || defaults.name),
+			key: String(next.key || defaults.key),
+			value: next.value == null ? defaults.value : String(next.value),
+			when: TASK_CUSTOM_ACTION_STAGES.some((item) => item.id === next.when) ? next.when : defaults.when,
+			enabled: typeof next.enabled === 'boolean' ? next.enabled : defaults.enabled,
+		};
+	}
+
+	function taskModuleConfig(node) {
+		const defaults = taskModuleDefaults();
+		const rawModule = node?.data?.module_config;
+		const source = typeof rawModule === 'object' && rawModule !== null ? rawModule : {};
+		const rawTiming = typeof source.timing === 'object' && source.timing !== null ? source.timing : {};
+		const mode = TASK_MODULE_TIMING_MODES.some((item) => item.id === rawTiming.mode) ? rawTiming.mode : defaults.timing.mode;
+		const customActions = Array.isArray(source.custom_actions) ? source.custom_actions : [];
+
+		return {
+			module_key: String(source.module_key || ''),
+			module_name: String(source.module_name || ''),
+			timing: {
+				mode,
+				delay_minutes: clampNumber(rawTiming.delay_minutes, 1, 10080, defaults.timing.delay_minutes),
+				daily_time_utc: normalizeUtcTime(rawTiming.daily_time_utc, defaults.timing.daily_time_utc),
+				cron_expression: String(rawTiming.cron_expression || ''),
+			},
+			custom_actions: customActions.map((action, index) => normalizeTaskCustomAction(action, index)),
+		};
+	}
+
+	function updateTaskModuleConfig(nodeId, transform) {
+		const node = getNodeById(nodeId);
+		if (!node) return;
+		const current = taskModuleConfig(node);
+		const transformed = typeof transform === 'function' ? transform(JSON.parse(JSON.stringify(current))) : current;
+		const next = transformed || current;
+		updateNodeDataPatch(nodeId, {
+			module_config: {
+				module_key: String(next.module_key || '').trim(),
+				module_name: String(next.module_name || '').trim(),
+				timing: {
+					mode: TASK_MODULE_TIMING_MODES.some((item) => item.id === next?.timing?.mode) ? next.timing.mode : 'immediate',
+					delay_minutes: clampNumber(next?.timing?.delay_minutes, 1, 10080, 5),
+					daily_time_utc: normalizeUtcTime(next?.timing?.daily_time_utc, '09:00'),
+					cron_expression: String(next?.timing?.cron_expression || '').trim(),
+				},
+				custom_actions: Array.isArray(next.custom_actions)
+					? next.custom_actions.map((action, index) => normalizeTaskCustomAction(action, index))
+					: [],
+			},
+		});
+	}
+
+	function updateTaskModuleField(nodeId, key, value) {
+		updateTaskModuleConfig(nodeId, (current) => ({
+			...current,
+			[key]: value,
+		}));
+	}
+
+	function updateTaskModuleTimingField(nodeId, key, value) {
+		updateTaskModuleConfig(nodeId, (current) => {
+			const next = {
+				...current,
+				timing: {
+					...current.timing,
+				},
+			};
+			if (key === 'delay_minutes') {
+				next.timing.delay_minutes = clampNumber(value, 1, 10080, 5);
+			} else if (key === 'daily_time_utc') {
+				next.timing.daily_time_utc = normalizeUtcTime(value, '09:00');
+			} else {
+				next.timing[key] = value;
+			}
+			return next;
+		});
+	}
+
+	function addTaskCustomAction(nodeId) {
+		updateTaskModuleConfig(nodeId, (current) => ({
+			...current,
+			custom_actions: [
+				...current.custom_actions,
+				taskCustomActionDefaults(current.custom_actions.length),
+			],
+		}));
+	}
+
+	function updateTaskCustomAction(nodeId, actionId, key, value) {
+		updateTaskModuleConfig(nodeId, (current) => ({
+			...current,
+			custom_actions: current.custom_actions.map((action) => action.id === actionId
+				? {
+					...action,
+					[key]: key === 'enabled' ? Boolean(value) : value,
+				}
+				: action),
+		}));
+	}
+
+	function removeTaskCustomAction(nodeId, actionId) {
+		updateTaskModuleConfig(nodeId, (current) => ({
+			...current,
+			custom_actions: current.custom_actions.filter((action) => action.id !== actionId),
+		}));
 	}
 
 	function createDefaultScheduleBuilder(mode = 'manual') {
@@ -1154,18 +1338,6 @@
 		}
 		edgeDragHoverTarget = null;
 		edgeDragState = null;
-	}
-
-	function upsertQuickEdge(fromNodeId, toNodeId) {
-		if (!fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
-		upsertEdge(
-			fromNodeId,
-			defaultSourceHandle(fromNodeId),
-			toNodeId,
-			defaultTargetHandle(toNodeId),
-			suggestEdgeLabel(fromNodeId, defaultSourceHandle(fromNodeId)),
-			'quick-connect',
-		);
 	}
 
 	function removeEdge(edgeId) {
@@ -2063,19 +2235,6 @@
 							<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
 							<div class="node-purpose">{nodeSubtitle(node)}</div>
 							<div class="node-meta">{node.id}</div>
-							<details class="node-actions">
-								<summary>Actions</summary>
-								<div class="node-quick-actions">
-									<button class="btn btn-outline btn-sm" onclick={() => duplicateNode(node.id)}>Duplicate</button>
-									{#if selectedNodeId && selectedNodeId !== node.id}
-										<button class="btn btn-outline btn-sm" onclick={() => upsertQuickEdge(selectedNodeId, node.id)}>
-											Link from selected
-										</button>
-									{/if}
-									<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'source', defaultSourceHandle(node.id))}>Set as source</button>
-									<button class="btn btn-outline btn-sm" onclick={() => chooseEdgeEndpoint(node.id, 'target', defaultTargetHandle(node.id))}>Set as target</button>
-								</div>
-							</details>
 						</div>
 					{/each}
 				</div>
@@ -2207,10 +2366,107 @@
 							</div>
 							<p class="inspector-note">Primary trigger updates stay synced with the template time trigger settings above.</p>
 						{:else if selectedNodeRef.type === 'task'}
+							{@const moduleConfig = taskModuleConfig(selectedNodeRef)}
 							<label>
 								<span>Operation key</span>
 								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'operation', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'operation', event.currentTarget.value)} placeholder="runStatsAggregation" />
 							</label>
+							<div class="module-editor-card">
+								<div class="module-editor-head">
+									<strong>Module settings</strong>
+									<small>Configure module identity, timing, and action hooks.</small>
+								</div>
+								<div class="module-grid">
+									<label>
+										<span>Module key</span>
+										<input class="input" type="text" value={moduleConfig.module_key} oninput={(event) => updateTaskModuleField(selectedNodeRef.id, 'module_key', event.currentTarget.value)} placeholder="stats.aggregate.hourly" />
+									</label>
+									<label>
+										<span>Module name</span>
+										<input class="input" type="text" value={moduleConfig.module_name} oninput={(event) => updateTaskModuleField(selectedNodeRef.id, 'module_name', event.currentTarget.value)} placeholder="Hourly aggregation" />
+									</label>
+									<label>
+										<span>Timing mode</span>
+										<select class="input" value={moduleConfig.timing.mode} onchange={(event) => updateTaskModuleTimingField(selectedNodeRef.id, 'mode', event.currentTarget.value)}>
+											{#each TASK_MODULE_TIMING_MODES as option (option.id)}
+												<option value={option.id}>{option.label}</option>
+											{/each}
+										</select>
+									</label>
+									{#if moduleConfig.timing.mode === 'delay_minutes'}
+										<label>
+											<span>Delay minutes</span>
+											<input class="input" type="number" min="1" max="10080" value={moduleConfig.timing.delay_minutes} oninput={(event) => updateTaskModuleTimingField(selectedNodeRef.id, 'delay_minutes', event.currentTarget.value)} />
+										</label>
+									{:else if moduleConfig.timing.mode === 'daily_time_utc'}
+										<label>
+											<span>Daily time (UTC)</span>
+											<input class="input" type="time" value={moduleConfig.timing.daily_time_utc} oninput={(event) => updateTaskModuleTimingField(selectedNodeRef.id, 'daily_time_utc', event.currentTarget.value)} />
+										</label>
+									{:else if moduleConfig.timing.mode === 'cron'}
+										<label class="full-width">
+											<span>Cron expression</span>
+											<input class="input" type="text" value={moduleConfig.timing.cron_expression} oninput={(event) => updateTaskModuleTimingField(selectedNodeRef.id, 'cron_expression', event.currentTarget.value)} placeholder="*/15 * * * *" />
+										</label>
+									{/if}
+								</div>
+							</div>
+							<div class="module-editor-card">
+								<div class="module-editor-head module-editor-head-inline">
+									<div>
+										<strong>Custom actions</strong>
+										<small>Attach behavior before/after module execution and on outcomes.</small>
+									</div>
+									<button class="btn btn-outline btn-sm" onclick={() => addTaskCustomAction(selectedNodeRef.id)}>Add action</button>
+								</div>
+								{#if moduleConfig.custom_actions.length === 0}
+									<p class="empty-state compact">No custom actions yet.</p>
+								{:else}
+									<div class="module-action-list">
+										{#each moduleConfig.custom_actions as action (action.id)}
+											<div class="module-action-row">
+												<div class="module-action-grid">
+													<label>
+														<span>Type</span>
+														<select class="input" value={action.type} onchange={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'type', event.currentTarget.value)}>
+															{#each TASK_CUSTOM_ACTION_TYPES as option (option.id)}
+																<option value={option.id}>{option.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span>When</span>
+														<select class="input" value={action.when} onchange={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'when', event.currentTarget.value)}>
+															{#each TASK_CUSTOM_ACTION_STAGES as stage (stage.id)}
+																<option value={stage.id}>{stage.label}</option>
+															{/each}
+														</select>
+													</label>
+													<label>
+														<span>Name</span>
+														<input class="input" type="text" value={action.name} oninput={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'name', event.currentTarget.value)} placeholder="notify-ops" />
+													</label>
+													<label>
+														<span>Key</span>
+														<input class="input" type="text" value={action.key} oninput={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'key', event.currentTarget.value)} placeholder="target / variable / route" />
+													</label>
+													<label class="full-width">
+														<span>Value</span>
+														<input class="input" type="text" value={action.value} oninput={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'value', event.currentTarget.value)} placeholder="payload fragment or literal value" />
+													</label>
+												</div>
+												<div class="module-action-controls">
+													<label class="toggle-row checkbox-row">
+														<input type="checkbox" checked={action.enabled} onchange={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'enabled', event.currentTarget.checked)} />
+														<span>Enabled</span>
+													</label>
+													<button class="btn btn-danger btn-sm" onclick={() => removeTaskCustomAction(selectedNodeRef.id, action.id)}>Remove</button>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
 							<label>
 								<span>Queue key</span>
 								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'queue_key', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'queue_key', event.currentTarget.value)} placeholder="ingest.high-priority" />
@@ -2973,55 +3229,6 @@
 		min-height: 2.3em;
 	}
 
-	.node-quick-actions {
-		display: flex;
-		gap: 0.45rem;
-		flex-wrap: wrap;
-		margin-top: 0.55rem;
-	}
-
-	.node-actions {
-		margin-top: 0.55rem;
-		padding: 0.3rem 0.45rem 0.45rem;
-		border-radius: 0.85rem;
-		border: 1px solid var(--color-border);
-		background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
-	}
-
-	.node-actions > summary {
-		cursor: pointer;
-		list-style: none;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-		padding: 0.18rem 0.45rem;
-		border-radius: 999px;
-		font-size: 0.72rem;
-		font-weight: 800;
-		color: var(--color-text-muted);
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-	}
-
-	.node-actions > summary::-webkit-details-marker {
-		display: none;
-	}
-
-	.node-actions[open] > summary {
-		color: var(--color-text);
-		background: var(--color-primary-soft);
-		border-color: var(--color-primary);
-	}
-
-	.node-actions .node-quick-actions {
-		margin-top: 0.45rem;
-		gap: 0.35rem;
-	}
-
-	.node-actions .node-quick-actions .btn {
-		flex: 1 1 100%;
-	}
-
 	.node-port {
 		position: absolute;
 		top: calc(50% - 10px);
@@ -3154,6 +3361,71 @@
 		font-weight: 600;
 	}
 
+	.module-editor-card {
+		display: grid;
+		gap: 0.6rem;
+		padding: 0.7rem;
+		border: 1px solid var(--color-border);
+		border-radius: 0.85rem;
+		background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
+	}
+
+	.module-editor-head {
+		display: grid;
+		gap: 0.15rem;
+	}
+
+	.module-editor-head strong {
+		font-size: 0.84rem;
+	}
+
+	.module-editor-head small {
+		font-size: 0.74rem;
+		color: var(--color-text-muted);
+	}
+
+	.module-editor-head-inline {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+	}
+
+	.module-grid {
+		display: grid;
+		gap: 0.55rem;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+	}
+
+	.module-action-list {
+		display: grid;
+		gap: 0.55rem;
+	}
+
+	.module-action-row {
+		display: grid;
+		gap: 0.55rem;
+		padding: 0.65rem;
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		background: var(--color-surface);
+	}
+
+	.module-action-grid {
+		display: grid;
+		gap: 0.45rem;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+	}
+
+	.module-action-controls {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
 	.inspector-note {
 		margin: 0;
 		font-size: 0.76rem;
@@ -3242,6 +3514,11 @@
 		}
 
 		.inspector-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.module-grid,
+		.module-action-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
