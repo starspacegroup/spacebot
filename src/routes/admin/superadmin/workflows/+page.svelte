@@ -3576,6 +3576,15 @@
 		opacity: 1;
 	}
 
+	.canvas-stage:has(.node-port:hover) .node-port-label,
+	.canvas-stage:has(.node-port:focus-visible) .node-port-label,
+	.canvas-stage:has(.edge-hit:hover) .node-port-label,
+	.canvas-stage:has(.edge-visual:hover) .node-port-label,
+	.canvas-stage:has(.edge-chip:hover) .node-port-label,
+	.canvas-stage:has(.edge-chip:focus-visible) .node-port-label {
+		opacity: 1;
+	}
+
 	.node-port-label-in {
 		left: 11px;
 	}
