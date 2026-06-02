@@ -1277,8 +1277,15 @@
 		const baseX = node.position?.x || 0;
 		const baseY = node.position?.y || 0;
 		return {
-			x: direction === 'out' ? baseX + NODE_WIDTH + 5 : baseX - 5,
-			y: baseY + localY,
+			x: direction === 'out' ? baseX + NODE_WIDTH - 2 : baseX - 2,
+			y: baseY + localY + 8,
+		};
+	}
+
+	function edgeEndpoints(from, to, gap = 11) {
+		return {
+			start: { x: from.x + gap, y: from.y },
+			end: { x: to.x - gap, y: to.y },
 		};
 	}
 
@@ -1326,7 +1333,8 @@
 		const sourceNode = getNodeById(edgeDragState.sourceId);
 		if (!sourceNode) return '';
 
-		const from = nodeHandleAnchor(sourceNode, 'out', edgeDragState.sourceHandleId);
+		const fromAnchor = nodeHandleAnchor(sourceNode, 'out', edgeDragState.sourceHandleId);
+		const from = { x: fromAnchor.x + 11, y: fromAnchor.y };
 		const toX = edgeDragState.pointerX;
 		const toY = edgeDragState.pointerY;
 		const distanceX = Math.abs(toX - from.x);
@@ -1417,12 +1425,13 @@
 
 		const from = nodeHandleAnchor(source, 'out', edge.source_handle || defaultSourceHandle(source.id));
 		const to = nodeHandleAnchor(target, 'in', edge.target_handle || defaultTargetHandle(target.id));
-		const horizontalDistance = Math.abs(to.x - from.x);
+		const endpoints = edgeEndpoints(from, to, 11);
+		const horizontalDistance = Math.abs(endpoints.end.x - endpoints.start.x);
 		const curve = Math.max(80, Math.min(280, horizontalDistance * 0.5));
-		const towardRight = to.x >= from.x ? 1 : -1;
-		const c1x = from.x + curve;
-		const c2x = to.x - towardRight * curve;
-		const path = `M ${from.x} ${from.y} C ${c1x} ${from.y}, ${c2x} ${to.y}, ${to.x} ${to.y}`;
+		const towardRight = endpoints.end.x >= endpoints.start.x ? 1 : -1;
+		const c1x = endpoints.start.x + curve;
+		const c2x = endpoints.end.x - towardRight * curve;
+		const path = `M ${endpoints.start.x} ${endpoints.start.y} C ${c1x} ${endpoints.start.y}, ${c2x} ${endpoints.end.y}, ${endpoints.end.x} ${endpoints.end.y}`;
 		return { from, to, path };
 	}
 
@@ -2185,12 +2194,15 @@
 				<div class="canvas-stage" style={`--node-width: ${NODE_WIDTH}px; --node-height: ${NODE_HEIGHT}px; width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
 					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
 						<defs>
-							<marker id="workflow-edge-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
-								<polygon points="0 0, 9 3.5, 0 7" fill="currentColor"></polygon>
+							<marker id="workflow-edge-arrow-start" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="12" refX="12" refY="6" orient="auto">
+								<polygon points="0 0, 14 6, 0 12" fill="none" stroke="context-stroke" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1.1 1.6"></polygon>
+							</marker>
+							<marker id="workflow-edge-arrow-end" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="12" refX="12" refY="6" orient="auto">
+								<polygon points="0 0, 14 6, 0 12" fill="none" stroke="context-stroke" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1.1 1.6"></polygon>
 							</marker>
 						</defs>
 						{#if edgeDragState}
-							<path class="edge-ghost" d={edgeDragPath()} marker-end="url(#workflow-edge-arrow)"></path>
+							<path class="edge-ghost" d={edgeDragPath()} marker-start="url(#workflow-edge-arrow-start)" marker-end="url(#workflow-edge-arrow-end)"></path>
 						{/if}
 						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
 							{@const geometry = edgeGeometry(edge)}
@@ -2202,7 +2214,8 @@
 								d={edgePath(edge)}
 								class:selected={selectedEdgeId === edge.id}
 								class="edge-visual"
-								marker-end="url(#workflow-edge-arrow)"
+								marker-start="url(#workflow-edge-arrow-start)"
+								marker-end="url(#workflow-edge-arrow-end)"
 							></path>
 							{#if geometry}
 								<circle class="edge-anchor" cx={geometry.from.x} cy={geometry.from.y} r="4"></circle>
