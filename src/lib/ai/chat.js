@@ -116,9 +116,9 @@ In DMs, you CAN inspect and control the user's registered local runners using lo
 - For inspecting a specific job's output, exit code, or failure, use \`get_local_runner_job\`.
 - For stopping/aborting a pending or running task, use \`cancel_local_runner_job\`.
 - For re-queueing a failed or canceled task, use \`retry_local_runner_job\`.
-- For VS Code window detection and context, use `discover_vscode_instances`.
-- For opening folders/workspaces or creating a new VS Code window, use `open_vscode_workspace`.
-- For Copilot Chat back-and-forth from DM, use `send_vscode_copilot_message` with a stable `conversationKey`.
+- For VS Code window detection and context, use \`discover_vscode_instances\`.
+- For opening folders/workspaces or creating a new VS Code window, use \`open_vscode_workspace\`.
+- For Copilot Chat back-and-forth from DM, use \`send_vscode_copilot_message\` with a stable \`conversationKey\`.
 
 When the user asks to stop, cancel, kill, abort, retry, or re-run a task, prefer these control tools over starting a new task. If you don't know the job ID, call \`get_local_runner_activity\` first to find it.
 
