@@ -3074,7 +3074,8 @@
 
 	.canvas-surface {
 		position: relative;
-		min-height: 600px;
+		height: 540px;
+		min-height: 380px;
 		max-width: 100%;
 		margin-top: 0.85rem;
 		border-radius: 1rem;
@@ -3085,6 +3086,7 @@
 			linear-gradient(180deg, var(--color-surface), var(--color-surface-elevated));
 		background-size: 32px 32px, 32px 32px, 100% 100%;
 		overflow: auto;
+		resize: vertical;
 		touch-action: pan-x pan-y;
 	}
 
@@ -3556,7 +3558,8 @@
 		}
 
 		.canvas-surface {
-			min-height: 500px;
+			height: 460px;
+			min-height: 340px;
 		}
 
 		.keyboard-hints {
