@@ -98,7 +98,16 @@ export function deploy(changedFiles, options = {}) {
 			if (needsInstall) {
 				console.log('  📦 Dependency manifest changed — installing dependencies...');
 				run('bun install --frozen-lockfile');
-			}run('bun run db:migrate');
+			}
+
+			const needsMigrations = changedFiles.some(file =>
+				file.startsWith('migrations/') && file.endsWith('.sql')
+			);
+			if (needsMigrations) {
+				console.log('  🗄️  Migration files changed — running database migrations...');
+				run('bun run db:migrate');
+			} else {
+				console.log('  ⏭️  No migration file changes — skipping db:migrate');
 			}
 
 			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart
