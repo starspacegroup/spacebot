@@ -5,8 +5,9 @@
 	"packageManager": "bun@1.3.13",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"dev:hmr": "set VITE_HMR=true && vite dev",
+		"dev": "VITE_HMR=true vite dev",
+		"dev:hmr": "VITE_HMR=true vite dev",
+		"dev:no-hmr": "VITE_HMR=false vite dev",
 		"dev:wrangler": "wrangler pages dev .svelte-kit/cloudflare --port 4269 --compatibility-date=2024-01-26 --persist-to .wrangler/state",
 		"dev:tunnel": "cloudflared tunnel run spacebot",
 		"prod:tunnel": "cloudflared tunnel run spacebot",
