@@ -1936,9 +1936,13 @@
 								</div>
 							</button>
 							<div class="inventory-actions">
-								<label class="toggle-row">
-									<input type="checkbox" checked={template.enabled} onchange={(event) => toggleEnabled(template, event.currentTarget.checked)} />
-									<span>{template.enabled ? 'On' : 'Off'}</span>
+								<label class="switch-field switch-field-compact" aria-label="Toggle template enabled">
+									<input class="switch-input" type="checkbox" checked={template.enabled} onchange={(event) => toggleEnabled(template, event.currentTarget.checked)} />
+									<span class="switch-track" aria-hidden="true"></span>
+									<span class="switch-copy">
+										<strong>Enabled</strong>
+										<small>{template.enabled ? 'Running' : 'Paused'}</small>
+									</span>
 								</label>
 								<button class="btn btn-outline btn-sm" onclick={() => runTemplate(template)} disabled={runningTemplateId === template.id}>
 									{runningTemplateId === template.id ? 'Queueing...' : 'Run'}
@@ -2063,9 +2067,13 @@
 						<option value="send_scheduled_messages">send_scheduled_messages</option>
 					</select>
 				</label>
-				<label class="toggle-row checkbox-row">
-					<input type="checkbox" bind:checked={draft.enabled} />
-					<span>Enabled</span>
+				<label class="switch-field switch-field-wide" aria-label="Toggle workflow enabled">
+					<input class="switch-input" type="checkbox" bind:checked={draft.enabled} />
+					<span class="switch-track" aria-hidden="true"></span>
+					<span class="switch-copy">
+						<strong>Enabled</strong>
+						<small>{draft.enabled ? 'Workflow can run' : 'Workflow is paused'}</small>
+					</span>
 				</label>
 			</div>
 
@@ -2489,9 +2497,13 @@
 													</label>
 												</div>
 												<div class="module-action-controls">
-													<label class="toggle-row checkbox-row">
-														<input type="checkbox" checked={action.enabled} onchange={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'enabled', event.currentTarget.checked)} />
-														<span>Enabled</span>
+													<label class="switch-field switch-field-wide" aria-label="Toggle action enabled">
+														<input class="switch-input" type="checkbox" checked={action.enabled} onchange={(event) => updateTaskCustomAction(selectedNodeRef.id, action.id, 'enabled', event.currentTarget.checked)} />
+														<span class="switch-track" aria-hidden="true"></span>
+														<span class="switch-copy">
+															<strong>Enabled</strong>
+															<small>{action.enabled ? 'Action will run' : 'Action skipped'}</small>
+														</span>
 													</label>
 													<button class="btn btn-danger btn-sm" onclick={() => removeTaskCustomAction(selectedNodeRef.id, action.id)}>Remove</button>
 												</div>
@@ -2520,9 +2532,13 @@
 								<span>Legacy job bridge</span>
 								<input class="input" type="text" value={nodeDataValue(selectedNodeRef, 'legacyJob', '')} oninput={(event) => updateNodeData(selectedNodeRef.id, 'legacyJob', event.currentTarget.value)} placeholder="hourly_aggregation" />
 							</label>
-							<label class="toggle-row checkbox-row">
-								<input type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'destructive', false)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'destructive', event.currentTarget.checked ? true : '')} />
-								<span>Mark as destructive action</span>
+							<label class="switch-field switch-field-wide" aria-label="Mark task as destructive">
+								<input class="switch-input" type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'destructive', false)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'destructive', event.currentTarget.checked ? true : '')} />
+								<span class="switch-track" aria-hidden="true"></span>
+								<span class="switch-copy">
+									<strong>Destructive action</strong>
+									<small>{nodeDataBoolean(selectedNodeRef, 'destructive', false) ? 'Requires extra care' : 'Non-destructive'}</small>
+								</span>
 							</label>
 							<label>
 								<span>Condition expression</span>
@@ -2530,9 +2546,13 @@
 							</label>
 							<p class="inspector-note">Task modules now expose operation, batching, and safeguards directly in the editor.</p>
 						{:else if selectedNodeRef.type === 'approval'}
-							<label class="toggle-row checkbox-row">
-								<input type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'requiresConfirmation', true)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'requiresConfirmation', event.currentTarget.checked)} />
-								<span>Require explicit operator confirmation</span>
+							<label class="switch-field switch-field-wide" aria-label="Require operator confirmation">
+								<input class="switch-input" type="checkbox" checked={nodeDataBoolean(selectedNodeRef, 'requiresConfirmation', true)} onchange={(event) => updateNodeData(selectedNodeRef.id, 'requiresConfirmation', event.currentTarget.checked)} />
+								<span class="switch-track" aria-hidden="true"></span>
+								<span class="switch-copy">
+									<strong>Require operator confirmation</strong>
+									<small>{nodeDataBoolean(selectedNodeRef, 'requiresConfirmation', true) ? 'Manual approval required' : 'Auto-route allowed'}</small>
+								</span>
 							</label>
 							<label>
 								<span>Approver role gate</span>
@@ -2807,7 +2827,6 @@
 	.run-topline,
 	.edge-row,
 	.inventory-actions,
-	.toggle-row,
 	.canvas-node-head,
 	.meta-row {
 		display: flex;
@@ -2826,6 +2845,94 @@
 	.inventory-actions {
 		padding: 0 0.95rem 0.95rem;
 		flex-wrap: wrap;
+	}
+
+	.switch-field {
+		position: relative;
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		gap: 0.72rem;
+		min-height: 3.3rem;
+		padding: 0.5rem 0.62rem;
+		border-radius: 0.95rem;
+		border: 1px solid var(--color-border);
+		background: color-mix(in srgb, var(--color-surface-elevated) 82%, transparent);
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.switch-field-wide {
+		grid-column: 1 / -1;
+	}
+
+	.switch-field-compact {
+		flex: 1 1 10.5rem;
+		max-width: 14.5rem;
+	}
+
+	.switch-input {
+		position: absolute;
+		opacity: 0;
+		width: 1px;
+		height: 1px;
+		pointer-events: none;
+	}
+
+	.switch-track {
+		position: relative;
+		width: 3.25rem;
+		height: 2rem;
+		border-radius: 999px;
+		border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+		background: color-mix(in srgb, var(--color-surface-hover) 92%, var(--color-surface));
+		transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+
+	.switch-track::after {
+		content: '';
+		position: absolute;
+		top: 0.18rem;
+		left: 0.18rem;
+		width: 1.52rem;
+		height: 1.52rem;
+		border-radius: 999px;
+		background: var(--color-surface);
+		box-shadow: var(--shadow-sm);
+		transition: transform var(--transition-fast), background var(--transition-fast);
+	}
+
+	.switch-copy {
+		display: grid;
+		gap: 0.1rem;
+		min-width: 0;
+	}
+
+	.switch-copy strong {
+		font-size: 0.85rem;
+		line-height: 1.2;
+	}
+
+	.switch-copy small {
+		font-size: 0.74rem;
+		line-height: 1.25;
+		color: var(--color-text-muted);
+	}
+
+	.switch-input:checked + .switch-track {
+		background: color-mix(in srgb, var(--color-success) 74%, var(--color-surface));
+		border-color: color-mix(in srgb, var(--color-success) 72%, var(--color-border));
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-success-soft) 58%, transparent);
+	}
+
+	.switch-input:checked + .switch-track::after {
+		transform: translateX(1.25rem);
+		background: var(--color-surface);
+	}
+
+	.switch-input:focus-visible + .switch-track {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
 	}
 
 	.tag,
@@ -2968,12 +3075,6 @@
 		grid-column: 1 / -1;
 	}
 
-	.checkbox-row {
-		justify-content: flex-start;
-		align-self: end;
-		padding: 0.85rem 0;
-	}
-
 	.schedule-summary-card {
 		display: grid;
 		gap: 0.28rem;
@@ -3059,7 +3160,7 @@
 
 	.workflow-step.complete .workflow-step-index {
 		background: var(--color-success);
-		color: #ffffff;
+		color: var(--color-fixed-text-bright);
 	}
 
 	.pending-link-hint {
@@ -3652,6 +3753,11 @@
 		.panel {
 			padding: 0.85rem;
 			border-radius: 1rem;
+		}
+
+		.switch-field-compact {
+			max-width: none;
+			width: 100%;
 		}
 
 		.canvas-surface {
