@@ -49,6 +49,13 @@ function getCronJobDefinitions() {
 			schedule: "Manual only",
 			dangerous: true,
 		},
+		{
+			name: "sync_workers_ai_models",
+			displayName: "Sync Workers AI Models",
+			description: "Refreshes the Workers AI model catalog from Cloudflare and stores it in the database cache.",
+			cronPattern: "0 */6 * * *",
+			schedule: "Every 6 hours",
+		},
 	];
 }
 

@@ -3,7 +3,6 @@ import {
   getCachedWorkersAICatalog,
   getModelSelection,
   isCatalogStale,
-  syncWorkersAICatalog,
 } from "$lib/server/workers-ai-models.js";
 import { DEFAULT_MODEL } from "$lib/ai/chat.js";
 
@@ -38,21 +37,13 @@ export async function load({ cookies, platform }) {
     ),
   ]);
 
-  let { models, syncedAt } = cached;
+  const { models, syncedAt } = cached;
   const stale = isCatalogStale(syncedAt);
-  let source = "cache";
-  let warning = null;
-
-  if (stale || models.length === 0) {
-    try {
-      const synced = await syncWorkersAICatalog(db, platform);
-      models = synced.models;
-      syncedAt = synced.syncedAt;
-      source = "cloudflare";
-    } catch (err) {
-      warning = `Could not sync from Cloudflare: ${err.message}`;
-    }
-  }
+  const source = "database";
+  const warning =
+    models.length === 0
+      ? "No cached model catalog found. Run a Workers AI catalog sync job or use Sync From Cloudflare."
+      : null;
 
   const selection = await getModelSelection(db, envModel);
 

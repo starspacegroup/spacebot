@@ -14,6 +14,7 @@ import { refreshGuildCache } from "$lib/db/guild-cache.js";
 import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { processScheduledMessages } from "$lib/db/scheduled-messages.js";
 import { sweepAllTimedOutRunnerJobs } from "$lib/db/local-runners.js";
+import { syncWorkersAICatalog } from "$lib/server/workers-ai-models.js";
 import { log } from "$lib/log.js";
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 30;
@@ -89,6 +90,13 @@ function getCronJobDefinitions() {
       description: "Processes and sends messages that were scheduled for later delivery.",
       cronPattern: "* * * * *",
       schedule: "Every minute",
+    },
+    {
+      name: "sync_workers_ai_models",
+      displayName: "Sync Workers AI Models",
+      description: "Refreshes the Workers AI model catalog from Cloudflare and stores it in the database cache.",
+      cronPattern: "0 */6 * * *",
+      schedule: "Every 6 hours",
     },
   ];
 }
@@ -742,6 +750,12 @@ export async function POST({ request, cookies, platform }) {
         throw new Error("Bot token not configured");
       }
       result = await processScheduledMessages(db, botToken);
+    } else if (jobName === 'sync_workers_ai_models') {
+      const synced = await syncWorkersAICatalog(db, platform);
+      result = {
+        syncedAt: synced.syncedAt,
+        modelCount: Array.isArray(synced.models) ? synced.models.length : 0,
+      };
     }
   } catch (error) {
     jobError = error;

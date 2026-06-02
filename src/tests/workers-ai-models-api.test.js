@@ -66,7 +66,32 @@ describe('superadmin workers ai models API', () => {
     await expect(response.json()).resolves.toEqual({ error: 'Forbidden' });
   });
 
-  it('reports stale=false after successful sync refresh', async () => {
+  it('returns cached catalog without auto-sync when stale', async () => {
+    getCachedWorkersAICatalog.mockResolvedValue({
+      models: [{ id: '@cf/foo/old-model' }],
+      syncedAt: 'old',
+    });
+    isCatalogStale.mockImplementation((syncedAt) => syncedAt === 'old');
+    getModelSelection.mockResolvedValue({
+      selectedModelIds: ['@cf/foo/old-model'],
+      primaryModelId: '@cf/foo/old-model',
+      routingStrategy: 'fallback',
+    });
+
+    const { GET } = await import('../routes/api/superadmin/workers-ai/models/+server.js');
+
+    const response = await GET(createEvent({ userId: 'super-1' }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.source).toBe('database');
+    expect(body.stale).toBe(true);
+    expect(body.models).toEqual([{ id: '@cf/foo/old-model' }]);
+    expect(syncWorkersAICatalog).not.toHaveBeenCalled();
+  });
+
+  it('syncs from cloudflare when force=1 is set', async () => {
     getCachedWorkersAICatalog.mockResolvedValue({
       models: [{ id: '@cf/foo/old-model' }],
       syncedAt: 'old',
@@ -84,7 +109,10 @@ describe('superadmin workers ai models API', () => {
 
     const { GET } = await import('../routes/api/superadmin/workers-ai/models/+server.js');
 
-    const response = await GET(createEvent({ userId: 'super-1' }));
+    const response = await GET(createEvent({
+      userId: 'super-1',
+      url: 'http://localhost/api/superadmin/workers-ai/models?force=1',
+    }));
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -92,6 +120,7 @@ describe('superadmin workers ai models API', () => {
     expect(body.source).toBe('cloudflare');
     expect(body.stale).toBe(false);
     expect(body.models).toEqual([{ id: '@cf/foo/new-model' }]);
+    expect(syncWorkersAICatalog).toHaveBeenCalledTimes(1);
   });
 
   it('allows PATCH auth via cookies object even without cookie header parsing', async () => {

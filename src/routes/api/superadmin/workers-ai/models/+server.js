@@ -35,16 +35,20 @@ export async function GET({ cookies, platform, url }) {
   try {
     let { models, syncedAt } = await getCachedWorkersAICatalog(db);
     let stale = isCatalogStale(syncedAt);
-    let source = "cache";
-    let warning = null;
+    let source = "database";
+    let warning =
+      models.length === 0
+        ? "No cached model catalog found. Run a Workers AI catalog sync job or use force sync."
+        : null;
 
-    if (force || stale || models.length === 0) {
+    if (force) {
       try {
         const synced = await syncWorkersAICatalog(db, platform);
         models = synced.models;
         syncedAt = synced.syncedAt;
         stale = isCatalogStale(syncedAt);
         source = "cloudflare";
+        warning = null;
       } catch (err) {
         warning = `Could not sync from Cloudflare: ${err.message}`;
         if (models.length === 0) {

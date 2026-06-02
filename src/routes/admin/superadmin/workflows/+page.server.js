@@ -75,6 +75,25 @@ const OPERATION_TEMPLATES = [
     },
   },
   {
+    name: "Workers AI Catalog Sync",
+    slug: "workers-ai-catalog-sync",
+    description: "Keeps the cached Workers AI model catalog fresh in the database for superadmin model selection.",
+    category: "operations",
+    execution_backend: "cloudflare_workflows",
+    legacy_job_name: "sync_workers_ai_models",
+    schedule_type: "cron",
+    cron_expression: "0 */6 * * *",
+    canvas_json: {
+      nodes: [
+        { id: "start", type: "trigger", title: "6-Hour Trigger", position: { x: 0, y: 0 }, data: { schedule: "0 */6 * * *", source: "gateway-cron" } },
+        { id: "sync", type: "task", title: "Sync Workers AI Catalog", position: { x: 0, y: 140 }, data: { operation: "syncWorkersAICatalog", queue_key: "ops.ai.catalog" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "sync", label: "start" },
+      ],
+    },
+  },
+  {
     name: "Rebuild Stats Recovery Run",
     slug: "rebuild-stats-recovery-run",
     description: "Manual recovery path for rebuilding all aggregates from source event logs.",

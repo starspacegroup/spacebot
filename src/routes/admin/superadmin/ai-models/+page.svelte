@@ -208,7 +208,7 @@
 
 	<div class="meta-row">
 		<span class="meta-item">
-			<span class="meta-key">Last Sync:</span>
+			<span class="meta-key">Last Updated:</span>
 			<span class="meta-val">{syncedAt ? new Date(syncedAt).toLocaleString() : "Never"}</span>
 		</span>
 		<span class="meta-item">
