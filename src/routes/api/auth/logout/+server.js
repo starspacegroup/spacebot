@@ -11,6 +11,7 @@ export async function GET({ cookies }) {
   cookies.delete("discord_discriminator", { path: "/" });
   cookies.delete("discord_access_token", { path: "/" });
   cookies.delete("discord_refresh_token", { path: "/" });
+  cookies.delete("dev_auth_role", { path: "/" });
 
   // Redirect to home page
   throw redirect(302, "/");

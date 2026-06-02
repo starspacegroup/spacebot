@@ -1,4 +1,5 @@
 import { json, redirect } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import { log } from "$lib/log.js";
 import { upsertUser } from "$lib/db/users.js";
 import { trackUserActivity } from "$lib/db/user-activity.js";
@@ -12,8 +13,8 @@ import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
  * 2. Visiting /dev-login to instantly log in as a dev user
  * 3. Or adding ?dev_auth=true to any URL
  *
- * The dev user will have the user ID from DEV_USER_ID env var
- * (defaults to the first ADMIN_USER_IDS if set, or a placeholder)
+ * Supports role-based fake identities via /dev-login?role=user|admin|superadmin.
+ * Superadmin defaults to first ADMIN_USER_IDS entry so existing checks still work.
  */
 
 /**
@@ -24,6 +25,46 @@ import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
  */
 function getEnv(name, platform) {
   return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+}
+
+function parseAdminUserIds(platform) {
+  return (getEnv("ADMIN_USER_IDS", platform) || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+function normalizeDevRole(value) {
+  if (value === "user" || value === "admin" || value === "superadmin") {
+    return value;
+  }
+  return "superadmin";
+}
+
+function getDefaultDevUserIdForRole(role, platform) {
+  const adminUserIds = parseAdminUserIds(platform);
+  const firstAdminId = adminUserIds[0] || null;
+
+  if (role === "superadmin") {
+    return (
+      getEnv("DEV_SUPERADMIN_USER_ID", platform) ||
+      firstAdminId ||
+      getEnv("DEV_USER_ID", platform) ||
+      "000000000000000001"
+    );
+  }
+
+  const roleSpecific = role === "admin"
+    ? getEnv("DEV_ADMIN_USER_ID", platform)
+    : getEnv("DEV_REGULAR_USER_ID", platform);
+
+  const explicitOrFallback = roleSpecific || getEnv("DEV_USER_ID", platform);
+  if (explicitOrFallback && !adminUserIds.includes(explicitOrFallback)) {
+    return explicitOrFallback;
+  }
+
+  // Keep non-superadmin roles outside ADMIN_USER_IDS by default.
+  return role === "admin" ? "000000000000000010" : "000000000000000020";
 }
 
 function shouldTrackPath(pathname) {
@@ -118,20 +159,29 @@ async function trackAuthenticatedRequestActivity(event, statusCode, details = nu
  * Get dev user configuration from environment
  * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
  */
-function getDevUser(platform) {
-  // Use DEV_USER_ID if set, otherwise fall back to first admin user
-  const devUserId = getEnv('DEV_USER_ID', platform) ||
-    (getEnv('ADMIN_USER_IDS', platform)?.split(",")[0]?.trim()) ||
-    "000000000000000000";
+function getDevUser(platform, role = "superadmin") {
+  const normalizedRole = normalizeDevRole(role);
+  const devUserId = getDefaultDevUserIdForRole(normalizedRole, platform);
+  const defaultName = normalizedRole === "superadmin"
+    ? "DevSuperadmin"
+    : normalizedRole === "admin"
+      ? "DevAdmin"
+      : "DevUser";
+  const defaultGlobalName = normalizedRole === "superadmin"
+    ? "Development Superadmin"
+    : normalizedRole === "admin"
+      ? "Development Admin"
+      : "Development User";
 
-  log.debug("[DevAuth] Using dev user ID:", devUserId);
+  log.debug("[DevAuth] Using dev user ID:", devUserId, "role:", normalizedRole);
 
   return {
     id: devUserId,
-    username: getEnv('DEV_USERNAME', platform) || "DevUser",
-    globalName: getEnv('DEV_GLOBAL_NAME', platform) || "Development User",
+    username: getEnv('DEV_USERNAME', platform) || defaultName,
+    globalName: getEnv('DEV_GLOBAL_NAME', platform) || defaultGlobalName,
     avatar: getEnv('DEV_AVATAR', platform) || null,
     discriminator: "0",
+    role: normalizedRole,
   };
 }
 
@@ -140,8 +190,8 @@ function getDevUser(platform) {
  * @param {import('@sveltejs/kit').Cookies} cookies
  * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
  */
-function setDevAuthCookies(cookies, platform) {
-  const devUser = getDevUser(platform);
+function setDevAuthCookies(cookies, platform, role = "superadmin") {
+  const devUser = getDevUser(platform, role);
   const cookieOptions = {
     path: "/",
     httpOnly: false,
@@ -160,12 +210,15 @@ function setDevAuthCookies(cookies, platform) {
 
   // Set a mock access token for API calls
   cookies.set("discord_access_token", "dev_mock_token", cookieOptions);
+  cookies.set("dev_auth_role", devUser.role, cookieOptions);
 
   log.debug(
     "[DevAuth] Set dev auth cookies for user:",
     devUser.username,
-    `(${devUser.id})`,
+    `(${devUser.id}) role=${devUser.role}`,
   );
+
+  return devUser;
 }
 
 /** @type {import('@sveltejs/kit').Handle} */
@@ -173,22 +226,33 @@ export async function handle({ event, resolve }) {
   const { url, cookies, platform } = event;
 
   try {
-    // Check if dev auth bypass is enabled
-    const isDev = getEnv('NODE_ENV', platform) !== 'production';
-    const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+    const isDevAuthPath = url.pathname === "/dev-login" || url.pathname === "/dev-logout";
+    const hasDevAuthParams = url.searchParams.has("dev_auth") || url.searchParams.has("dev_role");
+
+    // Never allow dev auth controls outside SvelteKit dev builds.
+    if (!dev && (isDevAuthPath || hasDevAuthParams)) {
+      return new Response("Not found", {
+        status: 404,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
     // Handle dev auth bypass
     if (devAuthEnabled) {
       // Special /dev-login route for easy dev authentication
       if (url.pathname === "/dev-login") {
-        const devUser = getDevUser(platform);
-        setDevAuthCookies(cookies, platform);
+        const role = normalizeDevRole(url.searchParams.get("role") || "superadmin");
+        const devUser = setDevAuthCookies(cookies, platform, role);
 
         // Track dev user in the database so they appear in User Management
         const db = platform?.env?.DB;
         if (db) {
-          const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
-          const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
+          const isSuperAdmin = parseAdminUserIds(platform).includes(devUser.id);
           try {
             await upsertUser(db, {
               id: devUser.id,
@@ -217,6 +281,7 @@ export async function handle({ event, resolve }) {
         cookies.delete("discord_avatar", cookieOptions);
         cookies.delete("discord_discriminator", cookieOptions);
         cookies.delete("discord_access_token", cookieOptions);
+        cookies.delete("dev_auth_role", cookieOptions);
 
         log.debug("[DevAuth] Cleared dev auth cookies");
         throw redirect(302, "/");
@@ -226,14 +291,13 @@ export async function handle({ event, resolve }) {
       if (url.searchParams.get("dev_auth") === "true") {
         const userId = cookies.get("discord_user_id");
         if (!userId) {
-          const devUser = getDevUser(platform);
-          setDevAuthCookies(cookies, platform);
+          const role = normalizeDevRole(url.searchParams.get("dev_role") || "superadmin");
+          const devUser = setDevAuthCookies(cookies, platform, role);
 
           // Track dev user in the database
           const db = platform?.env?.DB;
           if (db) {
-            const adminUserIds = getEnv('ADMIN_USER_IDS', platform) || "";
-            const isSuperAdmin = adminUserIds.split(",").map(id => id.trim()).filter(Boolean).includes(devUser.id);
+            const isSuperAdmin = parseAdminUserIds(platform).includes(devUser.id);
             try {
               await upsertUser(db, {
                 id: devUser.id,
@@ -251,6 +315,7 @@ export async function handle({ event, resolve }) {
           // Remove the dev_auth param and redirect
           const cleanUrl = new URL(url);
           cleanUrl.searchParams.delete("dev_auth");
+          cleanUrl.searchParams.delete("dev_role");
           throw redirect(302, cleanUrl.pathname + cleanUrl.search);
         }
       }

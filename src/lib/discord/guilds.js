@@ -343,6 +343,11 @@ export async function verifyGuildAdmin(guildId, accessToken, cookies) {
   const devAuthEnabled = isDev && process.env?.DEV_AUTH_BYPASS === "true";
 
   if (devAuthEnabled) {
+    const devRole = cookies?.get("dev_auth_role") || "superadmin";
+    if (devRole !== "admin" && devRole !== "superadmin") {
+      return { authorized: false, error: "Insufficient permissions" };
+    }
+
     log.debug(
       "[verifyGuildAdmin] DEV MODE - bypassing auth check for guild:",
       guildId,

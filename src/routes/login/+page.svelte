@@ -71,12 +71,26 @@
 				<div class="dev-separator">
 					<span>or</span>
 				</div>
-				<a href="/dev-login" class="dev-btn">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-						<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-					</svg>
-					Dev Login (Bypass OAuth)
-				</a>
+				<div class="dev-btn-group">
+					<a href="/dev-login?role=user" class="dev-btn">
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+							<path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z"/>
+						</svg>
+						Dev Login: User
+					</a>
+					<a href="/dev-login?role=admin" class="dev-btn">
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+							<path d="M12 1 3 5v6c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V5l-9-4zm0 10h7c-.5 3.9-3.1 7.4-7 8.6V11H5V6.3l7-3.1V11z"/>
+						</svg>
+						Dev Login: Admin
+					</a>
+					<a href="/dev-login?role=superadmin" class="dev-btn">
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+							<path d="m5 16 3-9 4 3 4-3 3 9H5zm7-14 4 4-4 4-4-4 4-4zm-7 16h14v2H5v-2z"/>
+						</svg>
+						Dev Login: Superadmin
+					</a>
+				</div>
 				<p class="dev-note">⚠️ Development mode only</p>
 			{/if}
 			
@@ -293,6 +307,11 @@
 		font-size: 1.1rem;
 		transition: background var(--transition-fast), transform var(--transition-fast);
 		border: 2px dashed var(--color-warning-hover);
+	}
+
+	.dev-btn-group {
+		display: grid;
+		gap: 0.75rem;
 	}
 	
 	.dev-btn:hover {

@@ -1,4 +1,5 @@
 import { redirect } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import { log } from "$lib/db/logger.js";
 import {
   filterAdminGuilds,
@@ -82,9 +83,7 @@ function getEnv(name, platform) {
 export async function load({ cookies, platform, url }) {
   console.log('[Layout] load() called, pathname:', url.pathname);
   
-  // Check if dev auth bypass is enabled
-  const isDev = getEnv('NODE_ENV', platform) !== 'production';
-  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+  const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
   
   // Check if user is logged in via cookie
   const userId = cookies.get("discord_user_id");
@@ -150,26 +149,42 @@ export async function load({ cookies, platform, url }) {
     const devGuildId = getEnv('DISCORD_GUILD_ID', platform);
     const isDevMockToken =
       cookies.get("discord_access_token") === "dev_mock_token";
+    const devAuthRole = cookies.get("dev_auth_role") || "superadmin";
+    const isDevSuperAdmin = devAuthRole === "superadmin";
+    const isDevAdmin = devAuthRole === "admin" || isDevSuperAdmin;
 
-    if (devAuthEnabled && isDevMockToken && devGuildId) {
-      // In dev mode with bypass, use the DISCORD_GUILD_ID as a mock server
-      log.debug("[Layout] DEV MODE - Using mock guild:", devGuildId);
-      const mockGuilds = [{
-        id: devGuildId,
-        name: "Dev Test Server",
-        icon: null,
-        owner: true,
-        permissions: "2147483647", // All permissions
-        botIsInServer: true,
-      }];
-      return {
-        isLoggedIn: true,
-        isAdmin: true,
-        isSuperAdmin: true,
-        user,
-        adminGuilds: mockGuilds,
-        selectedGuildId: devGuildId,
-      };
+    if (devAuthEnabled && isDevMockToken) {
+      // In dev mode with bypass, role controls the simulated access level.
+      if (isDevAdmin && devGuildId) {
+        log.debug("[Layout] DEV MODE - Using mock guild:", devGuildId, "role:", devAuthRole);
+        const mockGuilds = [{
+          id: devGuildId,
+          name: "Dev Test Server",
+          icon: null,
+          owner: isDevSuperAdmin,
+          permissions: "2147483647", // All permissions
+          botIsInServer: true,
+        }];
+        return {
+          isLoggedIn: true,
+          isAdmin: true,
+          isSuperAdmin: isDevSuperAdmin,
+          user,
+          adminGuilds: mockGuilds,
+          selectedGuildId: devGuildId,
+        };
+      }
+
+      if (!isDevAdmin) {
+        return {
+          isLoggedIn: true,
+          isAdmin: false,
+          isSuperAdmin: false,
+          user,
+          adminGuilds: [],
+          selectedGuildId: null,
+        };
+      }
     }
 
     const accessToken = cookies.get("discord_access_token");

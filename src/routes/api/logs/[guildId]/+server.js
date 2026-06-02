@@ -1,4 +1,5 @@
 import { json } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import {
   EVENT_CATEGORIES,
   EVENT_TYPES,
@@ -24,9 +25,7 @@ function getEnv(name, platform) {
 export async function GET({ params, url, cookies, platform }) {
   const { guildId } = params;
 
-  // Check if dev auth bypass is enabled
-  const isDev = getEnv('NODE_ENV', platform) !== 'production';
-  const devAuthEnabled = isDev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+  const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
   if (!guildId) {
     return json({ error: "Guild ID required" }, { status: 400 });
