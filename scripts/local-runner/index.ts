@@ -34,7 +34,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { gatherSystemProfile } from "./capabilities";
-import { bridgeDiscover, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
+import { bridgeDiscover, bridgeDiscoverAt, bridgeOpenWorkspace, bridgeSendCopilotMessage } from "./vscode-bridge-client";
 import { collectWorkspaceContext } from "./workspace-context";
 import { resolveEffectiveAllowedPaths } from "./permission-config";
 import {
@@ -85,6 +85,79 @@ const WATCH_PATH_SPLIT = process.env.RUNNER_WATCH_PATHS
   ? process.env.RUNNER_WATCH_PATHS.split(delimiter)
   : [LOCAL_RUNNER_DIR, join(REPO_ROOT_DIR, "package.json"), join(REPO_ROOT_DIR, "bun.lock")];
 const RUNNER_WATCH_PATHS = WATCH_PATH_SPLIT.map((entry) => resolve(entry.trim())).filter(Boolean);
+
+function parseBridgePortRange(raw: string | undefined): [number, number] {
+  const fallback: [number, number] = [49372, 49420];
+  const input = String(raw || "").trim();
+  if (!input) return fallback;
+  const [aRaw, bRaw] = input.split("-").map((x) => Number(x));
+  const a = Number.isFinite(aRaw) ? Math.max(1024, Math.min(65535, Math.trunc(aRaw))) : fallback[0];
+  const b = Number.isFinite(bRaw) ? Math.max(1024, Math.min(65535, Math.trunc(bRaw))) : a;
+  return a <= b ? [a, b] : [b, a];
+}
+
+function getBridgeScanUrls(): string[] {
+  const explicit = String(process.env.RUNNER_VSCODE_BRIDGE_URLS || "").trim();
+  if (explicit) {
+    return explicit
+      .split(/[\s,;]+/)
+      .map((x) => x.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+  }
+
+  const single = String(process.env.RUNNER_VSCODE_BRIDGE_URL || "").trim().replace(/\/$/, "");
+  const preferred = single || "http://127.0.0.1:49372";
+  const [start, end] = parseBridgePortRange(process.env.RUNNER_VSCODE_BRIDGE_PORT_RANGE);
+
+  const urls = new Set<string>([preferred]);
+  for (let port = start; port <= end; port += 1) {
+    urls.add(`http://127.0.0.1:${port}`);
+  }
+  return Array.from(urls);
+}
+
+async function discoverBridgeInstances() {
+  const token = process.env.RUNNER_VSCODE_BRIDGE_TOKEN || "";
+  const urls = getBridgeScanUrls();
+  const instances: Array<Record<string, unknown>> = [];
+  const errors: Array<{ url: string; error: string }> = [];
+
+  for (const url of urls) {
+    const result = await bridgeDiscoverAt(url, token || undefined);
+    if (!result.ok) {
+      if (String(result.error || "").includes("Unauthorized")) {
+        errors.push({ url, error: "unauthorized" });
+      }
+      continue;
+    }
+
+    const discovery = result.body?.discovery;
+    if (!discovery || typeof discovery !== "object") continue;
+
+    instances.push({
+      ...(discovery as Record<string, unknown>),
+      bridgeUrl: url,
+    });
+  }
+
+  return { instances, errors, urlsTried: urls.length };
+}
+
+function pickBridgeInstance(instances: Array<Record<string, unknown>>, payload: Record<string, unknown>) {
+  const requestedUrl = typeof payload.bridgeUrl === "string" ? payload.bridgeUrl.trim().replace(/\/$/, "") : "";
+  if (requestedUrl) {
+    const match = instances.find((item) => item.bridgeUrl === requestedUrl);
+    if (match) return match;
+  }
+
+  const requestedId = typeof payload.instanceId === "string" ? payload.instanceId.trim() : "";
+  if (requestedId) {
+    const match = instances.find((item) => String(item.instanceId || "") === requestedId);
+    if (match) return match;
+  }
+
+  return instances[0] || null;
+}
 
 // Build the WebSocket URL (http→ws, https→wss)
 const WS_URL = API_URL.replace(/^http/, "ws") + `/api/runner/ws?token=${encodeURIComponent(TOKEN)}`;
@@ -945,19 +1018,23 @@ function captureScreenshotArtifacts(mode: string, displayItems: Array<Record<str
 }
 
 async function executeVscodeDiscover(): Promise<JobResult> {
-  const bridge = await bridgeDiscover();
-  if (bridge.ok) {
+  const bridgeScan = await discoverBridgeInstances();
+  if (bridgeScan.instances.length > 0) {
     return {
       status: "completed",
-      output: "VS Code discovery completed via bridge.",
+      output: `VS Code discovery completed via bridge (${bridgeScan.instances.length} instance(s)).`,
       exitCode: 0,
       truncated: false,
       result: {
         bridge: true,
-        ...(bridge.body ?? {}),
+        bridgeInstances: bridgeScan.instances,
+        bridgeUrlsTried: bridgeScan.urlsTried,
+        bridgeErrors: bridgeScan.errors,
       },
     };
   }
+
+  const bridge = await bridgeDiscover();
 
   const hasCode = commandExists("code");
   const instances: string[] = [];
@@ -990,7 +1067,9 @@ async function executeVscodeDiscover(): Promise<JobResult> {
       hasCodeCli: hasCode,
       runningInstances: instances,
       copilotBridgeConnected: false,
-      bridgeError: bridge.error ?? null,
+        bridgeError: bridge.error ?? null,
+        bridgeScanErrors: bridgeScan.errors,
+        bridgeUrlsTried: bridgeScan.urlsTried,
     },
   };
 }
@@ -1182,13 +1261,24 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
       };
     }
 
-    const bridge = await bridgeOpenWorkspace(target, payload.newWindow === true);
+    const bridgeScan = await discoverBridgeInstances();
+    const selected = pickBridgeInstance(bridgeScan.instances, payload);
+    const bridge = selected
+      ? await bridgeOpenWorkspace(target, payload.newWindow === true, {
+        url: String(selected.bridgeUrl || ""),
+      })
+      : await bridgeOpenWorkspace(target, payload.newWindow === true);
+
     if (bridge.ok) {
       return {
         status: "completed",
         output: `Opened workspace path in VS Code via bridge: ${target}`,
         exitCode: 0,
         truncated: false,
+        result: {
+          bridgeUrl: selected?.bridgeUrl || null,
+          instanceId: selected?.instanceId || null,
+        },
       };
     }
 
@@ -1236,7 +1326,26 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
       };
     }
 
-    const sent = await bridgeSendCopilotMessage(message);
+    const bridgeScan = await discoverBridgeInstances();
+    const selected = pickBridgeInstance(bridgeScan.instances, payload);
+    const sent = selected
+      ? await bridgeSendCopilotMessage(
+        message,
+        {
+          conversationKey: typeof payload.conversationKey === "string" ? payload.conversationKey : undefined,
+          includeResponse: payload.includeResponse === true,
+          timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+          mirrorToChat: payload.mirrorToChat !== false,
+        },
+        { url: String(selected.bridgeUrl || "") },
+      )
+      : await bridgeSendCopilotMessage(message, {
+        conversationKey: typeof payload.conversationKey === "string" ? payload.conversationKey : undefined,
+        includeResponse: payload.includeResponse === true,
+        timeoutMs: typeof payload.timeoutMs === "number" ? payload.timeoutMs : undefined,
+        mirrorToChat: payload.mirrorToChat !== false,
+      });
+
     if (!sent.ok) {
       return {
         status: "failed",
@@ -1247,18 +1356,26 @@ async function executeTypedJob(job: Job): Promise<JobResult | null> {
           supported: false,
           reason: "bridge_unavailable_or_command_missing",
           bridgeStatus: sent.status ?? null,
+          bridgeUrl: selected?.bridgeUrl || null,
+          instanceId: selected?.instanceId || null,
         },
       };
     }
 
+    const responseText = typeof sent.body?.response === "string" ? sent.body.response.trim() : "";
+    const output = responseText || "Copilot message sent via VS Code bridge.";
+
     return {
       status: "completed",
-      output: "Copilot message sent via VS Code bridge.",
+      output,
       exitCode: 0,
       truncated: false,
       result: {
         supported: true,
         bridgeResponse: sent.body ?? null,
+        response: responseText || null,
+        bridgeUrl: selected?.bridgeUrl || null,
+        instanceId: selected?.instanceId || null,
       },
     };
   }

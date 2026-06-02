@@ -584,6 +584,149 @@ export class MCPClient {
     return { success: true, job };
   }
 
+  async resolveLocalRunnerTarget(userId, options = {}) {
+    const { tokenId = null, instanceId = null, instanceName = null, requireOnline = true } = options;
+    const runners = await this.getLocalRunners(userId, {
+      includeOffline: true,
+      tokenId,
+      limit: 200,
+    });
+
+    if (!runners.length) {
+      throw new Error("No local runner systems are registered for this user");
+    }
+
+    let selected = null;
+
+    if (instanceId) {
+      selected = runners.find((runner) => String(runner.id) === String(instanceId)) || null;
+    }
+
+    if (!selected && instanceName && typeof instanceName === "string") {
+      const query = instanceName.trim().toLowerCase();
+      if (query) {
+        selected = runners.find((runner) =>
+          String(runner.display_name || "").toLowerCase().includes(query)
+          || String(runner.hostname || "").toLowerCase().includes(query)
+          || String(runner.token_name || "").toLowerCase().includes(query)
+        ) || null;
+      }
+    }
+
+    if (!selected) {
+      selected = runners.find((runner) => runner.is_online) || runners[0] || null;
+    }
+
+    if (!selected) {
+      throw new Error("Unable to select a local runner target");
+    }
+
+    if (requireOnline && !selected.is_online) {
+      throw new Error(`Selected runner ${selected.display_name || selected.hostname || selected.id} is offline`);
+    }
+
+    return selected;
+  }
+
+  async waitForLocalRunnerJob(userId, jobId, maxWaitSeconds = 25) {
+    const maxWaitMs = Math.max(1, Math.min(90, Math.trunc(Number(maxWaitSeconds) || 25))) * 1000;
+    const started = Date.now();
+
+    while (Date.now() - started < maxWaitMs) {
+      const job = await this.getLocalRunnerJob(userId, jobId);
+      if (!job) {
+        return { status: "missing", job: null };
+      }
+
+      if (job.status === "completed" || job.status === "failed" || job.status === "canceled") {
+        return { status: "done", job };
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+
+    const latest = await this.getLocalRunnerJob(userId, jobId);
+    return {
+      status: "timeout",
+      job: latest,
+    };
+  }
+
+  async runTypedLocalRunnerJob(userId, options = {}) {
+    if (!userId) throw new Error("userId is required");
+
+    const {
+      jobType,
+      payload = {},
+      label = null,
+      tokenId = null,
+      instanceId = null,
+      instanceName = null,
+      priority = 20,
+      timeoutSeconds = 120,
+      maxAttempts = 1,
+      waitForResult = true,
+      waitSeconds = 25,
+      requireOnline = true,
+      capabilityRequirements = null,
+    } = options;
+
+    if (!jobType || typeof jobType !== "string") {
+      throw new Error("jobType is required");
+    }
+
+    const target = await this.resolveLocalRunnerTarget(userId, {
+      tokenId,
+      instanceId,
+      instanceName,
+      requireOnline,
+    });
+
+    const insert = await this.executeD1Query(
+      `INSERT INTO local_runner_jobs (
+         runner_token_id, user_id, command, working_dir, label, status, target_instance_id,
+         job_type, payload_json, capability_requirements_json, priority, max_attempts, timeout_seconds
+       )
+       VALUES (?, ?, ?, NULL, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id`,
+      [
+        target.runner_token_id,
+        userId,
+        `[${jobType}]`,
+        label,
+        target.id,
+        jobType,
+        JSON.stringify(payload || {}),
+        capabilityRequirements ? JSON.stringify(capabilityRequirements) : null,
+        Math.max(-100, Math.min(100, Math.trunc(Number(priority) || 20))),
+        Math.max(1, Math.min(20, Math.trunc(Number(maxAttempts) || 1))),
+        Math.max(30, Math.min(3600, Math.trunc(Number(timeoutSeconds) || 120))),
+      ],
+    );
+
+    const jobId = insert.results?.[0]?.id;
+    if (!jobId) {
+      throw new Error("Failed to queue local runner job");
+    }
+
+    if (!waitForResult) {
+      return {
+        queued: true,
+        jobId,
+        target,
+      };
+    }
+
+    const waitResult = await this.waitForLocalRunnerJob(userId, jobId, waitSeconds);
+    return {
+      queued: true,
+      jobId,
+      target,
+      waitStatus: waitResult.status,
+      job: waitResult.job,
+    };
+  }
+
   /**
    * Get event logs for a guild
    */
@@ -2614,6 +2757,78 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             : { success: false, error: retryResult.error };
         }
 
+        case "discover_vscode_instances": {
+          return {
+            success: true,
+            data: await this.runTypedLocalRunnerJob(args.userId, {
+              jobType: "vscode_discover_instances",
+              payload: {
+                bridgeUrl: args.bridgeUrl,
+              },
+              label: "Discover VS Code Instances",
+              tokenId: args.tokenId,
+              instanceId: args.instanceId,
+              instanceName: args.instanceName,
+              waitForResult: args.waitForResult !== false,
+              waitSeconds: args.waitSeconds || 20,
+              timeoutSeconds: args.timeoutSeconds || 90,
+              capabilityRequirements: { vscodeControlAvailable: true },
+            }),
+          };
+        }
+
+        case "open_vscode_workspace": {
+          return {
+            success: true,
+            data: await this.runTypedLocalRunnerJob(args.userId, {
+              jobType: "vscode_open_workspace",
+              payload: {
+                path: args.path,
+                newWindow: args.newWindow === true,
+                bridgeUrl: args.bridgeUrl,
+                instanceId: args.bridgeInstanceId,
+              },
+              label: "Open VS Code Workspace",
+              tokenId: args.tokenId,
+              instanceId: args.instanceId,
+              instanceName: args.instanceName,
+              waitForResult: args.waitForResult !== false,
+              waitSeconds: args.waitSeconds || 30,
+              timeoutSeconds: args.timeoutSeconds || 120,
+              capabilityRequirements: { vscodeControlAvailable: true },
+            }),
+          };
+        }
+
+        case "send_vscode_copilot_message": {
+          return {
+            success: true,
+            data: await this.runTypedLocalRunnerJob(args.userId, {
+              jobType: "vscode_send_copilot_message",
+              payload: {
+                message: args.message,
+                bridgeUrl: args.bridgeUrl,
+                instanceId: args.bridgeInstanceId,
+                conversationKey: args.conversationKey,
+                includeResponse: args.includeResponse !== false,
+                timeoutMs: args.requestTimeoutMs,
+                mirrorToChat: args.mirrorToChat !== false,
+              },
+              label: "Send VS Code Copilot Message",
+              tokenId: args.tokenId,
+              instanceId: args.instanceId,
+              instanceName: args.instanceName,
+              waitForResult: args.waitForResult !== false,
+              waitSeconds: args.waitSeconds || 60,
+              timeoutSeconds: args.timeoutSeconds || 180,
+              capabilityRequirements: {
+                vscodeControlAvailable: true,
+                copilotMessageAvailable: true,
+              },
+            }),
+          };
+        }
+
         case "get_user_roles":
           return {
             success: true,
@@ -3024,6 +3239,56 @@ export const MCP_TOOLS = [
     parameters: {
       userId: "string (required) - Discord user ID owning the job. Injected automatically in DMs.",
       jobId: "number (required) - The local runner job ID to retry.",
+    },
+  },
+  {
+    name: "discover_vscode_instances",
+    description: "Ask a local runner workstation to detect open VS Code windows/instances and return rich discovery details including bridge endpoints and workspace folders.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. Injected automatically in DMs.",
+      tokenId: "number (optional) - Restrict target selection to a specific runner token",
+      instanceId: "number (optional) - Target a specific runner system ID",
+      instanceName: "string (optional) - Target by runner display name or hostname",
+      waitForResult: "boolean (optional) - Wait for job completion (default: true)",
+      waitSeconds: "number (optional) - How long to wait for completion when waitForResult is true (default: 20)",
+      timeoutSeconds: "number (optional) - Runner execution timeout for this typed job (default: 90)",
+    },
+  },
+  {
+    name: "open_vscode_workspace",
+    description: "Open a folder/workspace path in VS Code on a target local runner system. Can open in a new VS Code window for creating a fresh instance.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. Injected automatically in DMs.",
+      path: "string (required) - Absolute workspace or folder path on the runner machine",
+      newWindow: "boolean (optional) - Open in a new VS Code window/instance (default: false)",
+      tokenId: "number (optional) - Restrict target selection to a specific runner token",
+      instanceId: "number (optional) - Target a specific runner system ID",
+      instanceName: "string (optional) - Target by runner display name or hostname",
+      bridgeUrl: "string (optional) - Specific VS Code bridge URL to target when multiple windows are open",
+      bridgeInstanceId: "string (optional) - Specific VS Code bridge-reported instanceId to target",
+      waitForResult: "boolean (optional) - Wait for completion (default: true)",
+      waitSeconds: "number (optional) - Wait timeout in seconds (default: 30)",
+      timeoutSeconds: "number (optional) - Runner execution timeout in seconds (default: 120)",
+    },
+  },
+  {
+    name: "send_vscode_copilot_message",
+    description: "Send a prompt into Copilot Chat in VS Code from DM, optionally wait for a response, and keep prompts mirrored in normal VS Code chat UI.",
+    parameters: {
+      userId: "string (required) - Discord user ID owning the runner systems. Injected automatically in DMs.",
+      message: "string (required) - Prompt text to send",
+      includeResponse: "boolean (optional) - Return model response text in the tool result (default: true)",
+      conversationKey: "string (optional) - Conversation key to keep context across messages",
+      mirrorToChat: "boolean (optional) - Mirror prompt into Copilot Chat UI (default: true)",
+      requestTimeoutMs: "number (optional) - Timeout for the local model request in milliseconds",
+      tokenId: "number (optional) - Restrict target selection to a specific runner token",
+      instanceId: "number (optional) - Target a specific runner system ID",
+      instanceName: "string (optional) - Target by runner display name or hostname",
+      bridgeUrl: "string (optional) - Specific VS Code bridge URL to target",
+      bridgeInstanceId: "string (optional) - Specific VS Code bridge-reported instanceId to target",
+      waitForResult: "boolean (optional) - Wait for completion (default: true)",
+      waitSeconds: "number (optional) - Wait timeout in seconds (default: 60)",
+      timeoutSeconds: "number (optional) - Runner execution timeout in seconds (default: 180)",
     },
   },
   {

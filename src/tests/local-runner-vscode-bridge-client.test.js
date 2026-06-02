@@ -83,4 +83,50 @@ describe('vscode bridge client', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('connection refused');
   });
+
+  it('supports discover on explicit bridge URL override', async () => {
+    vi.stubEnv('RUNNER_VSCODE_BRIDGE_TOKEN', 'bridge-token');
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, discovery: { instanceId: 'abc' } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { bridgeDiscoverAt } = await import('../../scripts/local-runner/vscode-bridge-client.ts');
+    const result = await bridgeDiscoverAt('http://127.0.0.1:49379');
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:49379/v1/discover',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('sends copilot message with response options', async () => {
+    vi.stubEnv('RUNNER_VSCODE_BRIDGE_TOKEN', 'bridge-token');
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, response: 'done' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { bridgeSendCopilotMessage } = await import('../../scripts/local-runner/vscode-bridge-client.ts');
+    const result = await bridgeSendCopilotMessage('hello', {
+      includeResponse: true,
+      conversationKey: 'thread-1',
+      timeoutMs: 20000,
+      mirrorToChat: true,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.includeResponse).toBe(true);
+    expect(body.conversationKey).toBe('thread-1');
+    expect(body.timeoutMs).toBe(20000);
+  });
 });

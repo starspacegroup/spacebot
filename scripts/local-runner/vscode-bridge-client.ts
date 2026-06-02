@@ -1,6 +1,18 @@
 const BRIDGE_URL = (process.env.RUNNER_VSCODE_BRIDGE_URL ?? "http://127.0.0.1:49372").replace(/\/$/, "");
 const BRIDGE_TOKEN = process.env.RUNNER_VSCODE_BRIDGE_TOKEN ?? "";
 
+interface BridgeCallOptions {
+  url?: string;
+  token?: string;
+}
+
+export interface BridgeCopilotMessageOptions {
+  conversationKey?: string;
+  includeResponse?: boolean;
+  timeoutMs?: number;
+  mirrorToChat?: boolean;
+}
+
 interface BridgeCallResult {
   ok: boolean;
   status?: number;
@@ -8,17 +20,24 @@ interface BridgeCallResult {
   error?: string;
 }
 
-async function callBridge(path: string, payload: Record<string, unknown> = {}): Promise<BridgeCallResult> {
-  if (!BRIDGE_TOKEN) {
+async function callBridge(
+  path: string,
+  payload: Record<string, unknown> = {},
+  options: BridgeCallOptions = {},
+): Promise<BridgeCallResult> {
+  const bridgeUrl = (options.url ?? BRIDGE_URL).replace(/\/$/, "");
+  const bridgeToken = options.token ?? BRIDGE_TOKEN;
+
+  if (!bridgeToken) {
     return { ok: false, error: "RUNNER_VSCODE_BRIDGE_TOKEN is not set" };
   }
 
   try {
-    const res = await fetch(`${BRIDGE_URL}${path}`, {
+    const res = await fetch(`${bridgeUrl}${path}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${BRIDGE_TOKEN}`,
+        Authorization: `Bearer ${bridgeToken}`,
       },
       body: JSON.stringify(payload),
     });
@@ -48,10 +67,18 @@ export async function bridgeDiscover() {
   return callBridge("/v1/discover");
 }
 
-export async function bridgeOpenWorkspace(path: string, newWindow = false) {
-  return callBridge("/v1/open-workspace", { path, newWindow });
+export async function bridgeDiscoverAt(url: string, token?: string) {
+  return callBridge("/v1/discover", {}, { url, token });
 }
 
-export async function bridgeSendCopilotMessage(message: string) {
-  return callBridge("/v1/copilot-message", { message });
+export async function bridgeOpenWorkspace(path: string, newWindow = false, options: BridgeCallOptions = {}) {
+  return callBridge("/v1/open-workspace", { path, newWindow }, options);
+}
+
+export async function bridgeSendCopilotMessage(
+  message: string,
+  messageOptions: BridgeCopilotMessageOptions = {},
+  options: BridgeCallOptions = {},
+) {
+  return callBridge("/v1/copilot-message", { message, ...messageOptions }, options);
 }

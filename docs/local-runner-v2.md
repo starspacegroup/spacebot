@@ -48,13 +48,22 @@ A companion extension scaffold is provided in:
 
 Bridge defaults:
 
-- URL: `http://127.0.0.1:49372`
+- URL: `http://127.0.0.1:49372` (falls back to next free port in `49372-49420`)
 - Auth: bearer token from `SPACEBOT_VSCODE_BRIDGE_TOKEN`
 
 Runner bridge settings:
 
 - `RUNNER_VSCODE_BRIDGE_URL=http://127.0.0.1:49372`
+- `RUNNER_VSCODE_BRIDGE_URLS=http://127.0.0.1:49372,http://127.0.0.1:49373,...` (optional explicit multi-window list)
 - `RUNNER_VSCODE_BRIDGE_TOKEN=<token from extension output>`
+- `RUNNER_VSCODE_BRIDGE_PORT_RANGE=49372-49420` (bridge scan range used by discover/open/chat jobs)
+
+`vscode_send_copilot_message` payload supports:
+
+- `conversationKey` (string) to keep local Copilot context between messages
+- `includeResponse` (boolean) to return response text back to the DM flow
+- `mirrorToChat` (boolean, default true) to keep prompts visible in normal VS Code chat UI
+- `timeoutMs` (number) for the model request timeout when `includeResponse=true`
 
 ## Screenshot Notes
 
