@@ -2791,6 +2791,7 @@
 		gap: 0.35rem;
 		padding: 0.95rem;
 		text-align: left;
+		cursor: pointer;
 	}
 
 	.starter-card span,
@@ -2816,6 +2817,7 @@
 		width: 100%;
 		padding: 0.95rem;
 		text-align: left;
+		cursor: pointer;
 	}
 
 	.inventory-card.selected {
