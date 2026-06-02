@@ -2074,14 +2074,37 @@
 					<h3>Canvas</h3>
 					<p>Phone-first graph composer with explicit flow direction, node intent, and queue routing visibility.</p>
 				</div>
+				<div class="workflow-steps" role="list" aria-label="Workflow builder progress">
+					<div class:complete={(draft.canvas_json?.nodes || []).length > 1} class="workflow-step" role="listitem">
+						<span class="workflow-step-index">1</span>
+						<div>
+							<strong>Add nodes</strong>
+							<small>Add at least one step after Start.</small>
+						</div>
+					</div>
+					<div class:complete={(draft.canvas_json?.edges || []).length > 0} class="workflow-step" role="listitem">
+						<span class="workflow-step-index">2</span>
+						<div>
+							<strong>Connect routes</strong>
+							<small>Link source handles to destination ports.</small>
+						</div>
+					</div>
+					<div class:complete={(draft.canvas_json?.nodes || []).length > 1 && graphIssues.length === 0} class="workflow-step" role="listitem">
+						<span class="workflow-step-index">3</span>
+						<div>
+							<strong>Validate and save</strong>
+							<small>Resolve checks, then save the template.</small>
+						</div>
+					</div>
+				</div>
 				<div class="toolbar-actions-scroller">
 					<div class="toolbar-actions">
-						<button class="btn btn-outline btn-sm" onclick={() => addNode('trigger')}>Add trigger</button>
-						<button class="btn btn-outline btn-sm" onclick={() => addNode('task')}>Add task</button>
-						<button class="btn btn-outline btn-sm" onclick={() => addNode('approval')}>Add approval</button>
-						<button class="btn btn-outline btn-sm" onclick={() => addNode('branch')}>Add branch</button>
-						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('vertical')}>Auto stack</button>
-						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('horizontal')}>Auto row</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('trigger')}>Add trigger node</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('task')}>Add task node</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('approval')}>Add approval node</button>
+						<button class="btn btn-outline btn-sm" onclick={() => addNode('branch')}>Add branch node</button>
+						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('vertical')}>Auto layout stack</button>
+						<button class="btn btn-outline btn-sm" onclick={() => autoLayout('horizontal')}>Auto layout row</button>
 						<button class="btn btn-outline btn-sm" onclick={undoCanvas} disabled={!canUndo()}>Undo</button>
 						<button class="btn btn-outline btn-sm" onclick={redoCanvas} disabled={!canRedo()}>Redo</button>
 					</div>
@@ -2241,6 +2264,12 @@
 			</div>
 
 			<div class="connection-editor">
+				<div class="section-head compact">
+					<div>
+						<h4>Connect nodes</h4>
+						<p>Create and label routes between node handles. Use drag ports on canvas or the form below.</p>
+					</div>
+				</div>
 				<div class="connection-form">
 					<select class="input" bind:value={pendingEdgeSource} onchange={(event) => setPendingSource(event.currentTarget.value)}>
 						<option value="">Connect from</option>
@@ -2296,6 +2325,10 @@
 			</div>
 
 			<div class="inspector-grid">
+				<section class="inspector-card inspector-intro">
+					<h4>Inspector guide</h4>
+					<p class="inspector-note">Select a node to configure behavior and schedule details. Select an edge to edit route labels and path intent.</p>
+				</section>
 				<section class="inspector-card">
 					<h4>Node inspector</h4>
 					{#if selectedNodeRef}
@@ -2975,6 +3008,60 @@
 		color: var(--color-text-muted);
 	}
 
+	.workflow-steps {
+		display: grid;
+		gap: 0.55rem;
+		grid-template-columns: repeat(1, minmax(0, 1fr));
+	}
+
+	.workflow-step {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		align-items: center;
+		gap: 0.65rem;
+		padding: 0.62rem 0.72rem;
+		border-radius: 0.8rem;
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+	}
+
+	.workflow-step-index {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.35rem;
+		height: 1.35rem;
+		border-radius: 999px;
+		font-size: 0.76rem;
+		font-weight: 800;
+		background: var(--color-surface-hover);
+		color: var(--color-text-muted);
+	}
+
+	.workflow-step strong {
+		display: block;
+		font-size: 0.84rem;
+		line-height: 1.2;
+	}
+
+	.workflow-step small {
+		display: block;
+		margin-top: 0.12rem;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		color: var(--color-text-muted);
+	}
+
+	.workflow-step.complete {
+		border-color: color-mix(in srgb, var(--color-success) 60%, var(--color-border));
+		background: color-mix(in srgb, var(--color-success-soft) 74%, var(--color-surface));
+	}
+
+	.workflow-step.complete .workflow-step-index {
+		background: var(--color-success);
+		color: #ffffff;
+	}
+
 	.pending-link-hint {
 		font-size: 0.82rem;
 		color: var(--color-text-muted);
@@ -3356,6 +3443,12 @@
 		font-size: 0.92rem;
 	}
 
+	.inspector-intro {
+		grid-column: 1 / -1;
+		background: color-mix(in srgb, var(--color-info-soft) 52%, var(--color-surface));
+		border-color: color-mix(in srgb, var(--color-info) 45%, var(--color-border));
+	}
+
 	.inspector-card label {
 		display: grid;
 		gap: 0.3rem;
@@ -3526,6 +3619,10 @@
 
 		.node-legend {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+
+		.workflow-steps {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 		}
 
 		.run-controls {
