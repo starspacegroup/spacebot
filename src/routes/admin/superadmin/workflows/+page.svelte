@@ -1860,7 +1860,7 @@
 	<section class="hero panel">
 		<div>
 			<p class="eyebrow">Operations designer</p>
-			<h1>Cloudflare Workflow operations board</h1>
+			<h1>Workflow operations board</h1>
 			<p class="hero-copy">
 				Model recurring gateway operations as reusable workflow templates, shape queue-aware step graphs,
 				and run them from one superadmin surface.
