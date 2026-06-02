@@ -2330,67 +2330,6 @@
 				</div>
 			</div>
 
-			<div class="connection-editor">
-				<div class="section-head compact">
-					<div>
-						<h4>Connect nodes</h4>
-						<p>Create and label routes between node handles. Use drag ports on canvas or the form below.</p>
-					</div>
-				</div>
-				<div class="connection-form">
-					<select class="input" bind:value={pendingEdgeSource} onchange={(event) => setPendingSource(event.currentTarget.value)}>
-						<option value="">Connect from</option>
-						{#each draft.canvas_json?.nodes || [] as node (node.id)}
-							{#if outputHandles(node).length > 0}
-								<option value={node.id}>{node.title}</option>
-							{/if}
-						{/each}
-					</select>
-					<select class="input" bind:value={pendingEdgeSourceHandle} disabled={!pendingEdgeSource}>
-						<option value="">From route</option>
-						{#each outputHandles(getNodeById(pendingEdgeSource)) as handle (handle.id)}
-							<option value={handle.id}>{handle.label}</option>
-						{/each}
-					</select>
-					<select class="input" bind:value={pendingEdgeTarget} onchange={(event) => setPendingTarget(event.currentTarget.value)}>
-						<option value="">Connect to</option>
-						{#each draft.canvas_json?.nodes || [] as node (node.id)}
-							{#if inputHandles(node).length > 0}
-								<option value={node.id}>{node.title}</option>
-							{/if}
-						{/each}
-					</select>
-					<select class="input" bind:value={pendingEdgeTargetHandle} disabled={!pendingEdgeTarget}>
-						<option value="">To port</option>
-						{#each inputHandles(getNodeById(pendingEdgeTarget)) as handle (handle.id)}
-							<option value={handle.id}>{handle.label}</option>
-						{/each}
-					</select>
-					<input class="input" type="text" bind:value={pendingEdgeLabel} placeholder="Connection label (optional)" />
-					<button class="btn btn-outline btn-sm" onclick={addEdge}>Add connection</button>
-				</div>
-				<div class="edge-list">
-					{#if (draft.canvas_json?.edges || []).length === 0}
-						<p class="empty-state compact">No connections yet.</p>
-					{:else}
-						{#each draft.canvas_json.edges as edge (edge.id)}
-							<div class:selected={selectedEdgeId === edge.id} class="edge-row" onpointerdown={() => selectEdge(edge.id)}>
-								<span>{edgeRouteDisplay(edge)}</span>
-								<input
-									class="node-input edge-input"
-									type="text"
-									value={edge.label}
-									placeholder="label"
-									onclick={(event) => event.stopPropagation()}
-									oninput={(event) => updateEdge(edge.id, { label: event.currentTarget.value })}
-								/>
-								<button class="btn btn-danger btn-sm" onclick={() => removeEdge(edge.id)}>Remove</button>
-							</div>
-						{/each}
-					{/if}
-				</div>
-			</div>
-
 			<div class="inspector-grid">
 				<section class="inspector-card inspector-intro">
 					<h4>Inspector guide</h4>
