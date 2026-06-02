@@ -4,11 +4,12 @@
 
 	let { data } = $props();
 
-	let templates = $state(data?.templates ?? []);
-	let runs = $state(data?.runs ?? []);
+	let templates = $state([]);
+	let runs = $state([]);
 	const operationTemplates = $derived(data?.operationTemplates ?? []);
+	let initializedFromPageData = $state(false);
 
-	let selectedTemplateId = $state(templates[0]?.id ?? null);
+	let selectedTemplateId = $state(null);
 	let saving = $state(false);
 	let loading = $state(false);
 	let archivingTemplateId = $state(null);
@@ -168,9 +169,15 @@
 		return JSON.parse(JSON.stringify(template));
 	}
 
-	let draft = $state(selectedTemplateId
-		? cloneTemplate(templates.find((template) => template.id === selectedTemplateId) || emptyDraft())
-		: emptyDraft());
+	let draft = $state(emptyDraft());
+
+	$effect(() => {
+		if (initializedFromPageData) return;
+		templates = data?.templates ?? [];
+		runs = data?.runs ?? [];
+		selectedTemplateId = templates[0]?.id ?? null;
+		initializedFromPageData = true;
+	});
 
 	$effect(() => {
 		const selected = templates.find((template) => template.id === selectedTemplateId);
@@ -2243,6 +2250,7 @@
 									type="button"
 									class:active={edgeDragHoverTarget?.nodeId === node.id && edgeDragHoverTarget?.handleId === handle.id}
 									class="node-port node-port-in"
+									aria-label={`Use ${handle.label} input on ${node.title}`}
 									style:top={`${handleOffsetY(index, Math.max(1, inputPorts.length))}px`}
 									onpointerdown={(event) => {
 										event.stopPropagation();
@@ -2264,6 +2272,7 @@
 									type="button"
 									class:active={edgeDragState?.sourceId === node.id && edgeDragState?.sourceHandleId === handle.id}
 									class="node-port node-port-out"
+									aria-label={`Start route from ${handle.label} output on ${node.title}`}
 									style:top={`${handleOffsetY(index, Math.max(1, outputPorts.length))}px`}
 									onpointerdown={(event) => {
 										startEdgeDrag(event, node.id, handle.id);
