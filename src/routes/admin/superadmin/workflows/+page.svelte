@@ -31,17 +31,17 @@
 	let edgeDragState = $state(null);
 	let edgeDragHoverTarget = $state(null);
 
-	const NODE_WIDTH = 220;
-	const NODE_HEIGHT = 324;
+	const NODE_WIDTH = 188;
+	const NODE_HEIGHT = 216;
 	const STAGE_WIDTH = 1200;
 	const STAGE_HEIGHT = 4200;
 	const NODE_PADDING = 16;
 	const AUTO_LAYOUT_BASE_X = 56;
 	const AUTO_LAYOUT_BASE_Y = 72;
-	const AUTO_LAYOUT_COLUMN_GAP = 300;
+	const AUTO_LAYOUT_COLUMN_GAP = 248;
 	const AUTO_LAYOUT_ROW_GAP = NODE_HEIGHT + 56;
-	const CROWDED_VERTICAL_THRESHOLD = NODE_HEIGHT - 24;
-	const CROWDED_HORIZONTAL_THRESHOLD = 160;
+	const CROWDED_VERTICAL_THRESHOLD = NODE_HEIGHT - 20;
+	const CROWDED_HORIZONTAL_THRESHOLD = NODE_WIDTH - 28;
 	const SCHEDULE_MODE_OPTIONS = [
 		{ id: 'manual', label: 'Manual only' },
 		{ id: 'hourly', label: 'Hourly' },
@@ -232,7 +232,7 @@
 		const maxColumns = 3;
 		const baseX = AUTO_LAYOUT_BASE_X;
 		const baseY = AUTO_LAYOUT_BASE_Y;
-		const columnGap = 330;
+		const columnGap = NODE_WIDTH + 68;
 		const rowGap = AUTO_LAYOUT_ROW_GAP;
 		const col = index % maxColumns;
 		const row = Math.floor(index / maxColumns);
@@ -324,71 +324,78 @@
 		return node?.title || nodeId;
 	}
 
-	function nodeSubtitle(node) {
-		const meta = typeMeta(node?.type);
-		const parts = [meta.description];
-		if (node?.type === 'trigger') {
-			parts.push(`Runs: ${scheduleLabelFromCron(node?.data?.schedule_type, node?.data?.schedule)}`);
-			if (node?.data?.source) {
-				parts.push(`Source: ${node.data.source}`);
-			}
+	function compactScheduleLabel(scheduleType, cronExpression) {
+		try {
+			const label = scheduleLabelFromCron(scheduleType, cronExpression);
+			if (label === 'Manual only') return 'Manual';
+			if (label.startsWith('Every hour')) return 'Hourly';
+			if (label.startsWith('Every ')) return label.replace('Every ', 'Every ').replace(' at minute', ' @');
+			if (label.startsWith('Daily at ')) return label.replace('Daily at ', 'Daily ');
+			if (label.startsWith('Weekly on ')) return label.replace('Weekly on ', 'Weekly ');
+			if (label.startsWith('Monthly on day ')) return label.replace('Monthly on day ', 'Monthly d');
+			if (label === 'Legacy custom schedule') return 'Legacy schedule';
+			return label;
+		} catch {
+			return 'Manual';
 		}
-		if (node?.type === 'task') {
-			const moduleConfig = taskModuleConfig(node);
-			if (node?.data?.operation) {
-				parts.push(`Operation: ${node.data.operation}`);
+	}
+
+	function nodeFacts(node) {
+		try {
+			if (!node || typeof node !== 'object') return [];
+			const facts = [];
+			if (node.type === 'trigger') {
+				facts.push(compactScheduleLabel(node?.data?.schedule_type, node?.data?.schedule));
+				if (node?.data?.source) facts.push(String(node.data.source));
 			}
-			if (moduleConfig.module_name || moduleConfig.module_key) {
-				parts.push(`Module: ${moduleConfig.module_name || moduleConfig.module_key}`);
-			}
-			if (moduleConfig.timing.mode !== 'immediate') {
-				if (moduleConfig.timing.mode === 'delay_minutes') {
-					parts.push(`Delay: ${moduleConfig.timing.delay_minutes}m`);
-				} else if (moduleConfig.timing.mode === 'daily_time_utc') {
-					parts.push(`Daily at ${moduleConfig.timing.daily_time_utc} UTC`);
-				} else if (moduleConfig.timing.mode === 'cron' && moduleConfig.timing.cron_expression) {
-					parts.push(`Cron: ${moduleConfig.timing.cron_expression}`);
+			if (node.type === 'task') {
+				const moduleConfig = taskModuleConfig(node);
+				if (node?.data?.operation) facts.push(`Op ${node.data.operation}`);
+				if (moduleConfig.module_name || moduleConfig.module_key) {
+					facts.push(moduleConfig.module_name || moduleConfig.module_key);
 				}
+				if (node?.data?.queue_key) facts.push(`Q ${node.data.queue_key}`);
 			}
-			if (moduleConfig.custom_actions.length > 0) {
-				parts.push(`Custom actions: ${moduleConfig.custom_actions.length}`);
+			if (node.type === 'approval' && node?.data?.decision_timeout_minutes) {
+				facts.push(`${node.data.decision_timeout_minutes}m timeout`);
 			}
-			if (node?.data?.batch_size) {
-				parts.push(`Batch: ${node.data.batch_size}`);
+			if (node.type === 'branch' && node?.data?.condition_mode) {
+				facts.push(`Mode ${node.data.condition_mode}`);
 			}
-			if (node?.data?.destructive) {
-				parts.push('Destructive step');
-			}
+
+			return facts
+				.filter(Boolean)
+				.slice(0, 2)
+				.map((value) => {
+					const str = String(value).trim();
+					return str.length > 22 ? `${str.slice(0, 22)}...` : str;
+				});
+		} catch {
+			return [];
 		}
-		if (node?.type === 'approval') {
-			if (node?.data?.requiresConfirmation) {
-				parts.push('Requires explicit confirmation');
+	}
+
+	function nodeSubtitle(node) {
+		try {
+			if (!node || typeof node !== 'object') return 'Connect routes to continue.';
+			if (node.type === 'trigger') {
+				if (node?.data?.source) return `Entry trigger from ${node.data.source}`;
+				return 'Entry trigger for this workflow';
 			}
-			if (node?.data?.approver_role_id) {
-				parts.push(`Role gate: ${node.data.approver_role_id}`);
+			if (node.type === 'task') {
+				if (node?.data?.destructive) return 'Executes queued work with destructive side effects';
+				return 'Executes queued work on runner infrastructure';
 			}
-			if (node?.data?.decision_timeout_minutes) {
-				parts.push(`Decision timeout: ${node.data.decision_timeout_minutes}m`);
+			if (node.type === 'approval') {
+				return 'Waits for explicit approve or reject decision';
 			}
-		}
-		if (node?.type === 'branch') {
-			if (node?.data?.condition_mode) {
-				parts.push(`Mode: ${node.data.condition_mode}`);
+			if (node.type === 'branch') {
+				return 'Evaluates condition and routes execution';
 			}
-			if (node?.data?.left_operand && node?.data?.operator) {
-				parts.push(`Rule: ${node.data.left_operand} ${node.data.operator} ${node.data.right_operand || ''}`.trim());
-			}
+			return typeMeta(node.type).description || 'Connect routes to continue.';
+		} catch {
+			return 'Connect routes to continue.';
 		}
-		if (node?.data?.queue_key) {
-			parts.push(`Queue: ${node.data.queue_key}`);
-		}
-		if (node?.data?.retry_policy) {
-			parts.push(`Retry: ${node.data.retry_policy}`);
-		}
-		if (node?.data?.condition && node?.type !== 'branch') {
-			parts.push(`When: ${node.data.condition}`);
-		}
-		return parts.join(' ');
 	}
 
 	function nodeDataValue(node, key, fallback = '') {
@@ -1108,6 +1115,16 @@
 		commitCanvasSnapshot('remove-node');
 	}
 
+	function confirmRemoveNode(node) {
+		if (!node || node.id === 'start') return;
+		if (typeof window !== 'undefined') {
+			const label = String(node.title || 'this node').trim() || 'this node';
+			const confirmed = window.confirm(`Remove "${label}" from the workflow?`);
+			if (!confirmed) return;
+		}
+		removeNode(node.id);
+	}
+
 	let pendingEdgeSource = $state('');
 	let pendingEdgeTarget = $state('');
 
@@ -1239,9 +1256,9 @@
 	}
 
 	function handleOffsetY(index, total) {
-		if (total <= 1) return NODE_HEIGHT / 2;
-		const topPadding = 34;
-		const bottomPadding = 34;
+		if (total <= 1) return NODE_HEIGHT - 44;
+		const topPadding = 26;
+		const bottomPadding = 26;
 		const usableHeight = NODE_HEIGHT - topPadding - bottomPadding;
 		return topPadding + (usableHeight / (total - 1)) * index;
 	}
@@ -1253,7 +1270,7 @@
 		const baseX = node.position?.x || 0;
 		const baseY = node.position?.y || 0;
 		return {
-			x: direction === 'out' ? baseX + NODE_WIDTH + 6 : baseX - 6,
+			x: direction === 'out' ? baseX + NODE_WIDTH + 5 : baseX - 5,
 			y: baseY + localY,
 		};
 	}
@@ -2158,7 +2175,7 @@
 			{/if}
 
 			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
-				<div class="canvas-stage" style={`width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
+				<div class="canvas-stage" style={`--node-width: ${NODE_WIDTH}px; --node-height: ${NODE_HEIGHT}px; width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
 					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
 						<defs>
 							<marker id="workflow-edge-arrow" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
@@ -2212,6 +2229,7 @@
 							class:selected={selectedNodeId === node.id}
 							class:link-drag-source={edgeDragState?.sourceId === node.id}
 							class:link-drag-target={edgeDragHoverTarget?.nodeId === node.id}
+							class:start-node={node.id === 'start'}
 							class="canvas-node"
 							style:left={`${node.position?.x || 0}px`}
 							style:top={`${node.position?.y || 0}px`}
@@ -2226,7 +2244,6 @@
 									class:active={edgeDragHoverTarget?.nodeId === node.id && edgeDragHoverTarget?.handleId === handle.id}
 									class="node-port node-port-in"
 									style:top={`${handleOffsetY(index, Math.max(1, inputPorts.length))}px`}
-									title={`Target port: ${handle.label}`}
 									onpointerdown={(event) => {
 										event.stopPropagation();
 										if (edgeDragState) {
@@ -2248,7 +2265,6 @@
 									class:active={edgeDragState?.sourceId === node.id && edgeDragState?.sourceHandleId === handle.id}
 									class="node-port node-port-out"
 									style:top={`${handleOffsetY(index, Math.max(1, outputPorts.length))}px`}
-									title={`Source route: ${handle.label}`}
 									onpointerdown={(event) => {
 										startEdgeDrag(event, node.id, handle.id);
 										selectNode(node.id);
@@ -2261,11 +2277,32 @@
 							{/each}
 							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
 								<span class="node-type" style={`--node-accent: ${typeMeta(node.type).accent};`}>{typeMeta(node.type).label}</span>
-								<button class="node-remove" onclick={() => removeNode(node.id)} disabled={node.id === 'start'}>x</button>
+								{#if node.id !== 'start'}
+									<button
+										class="node-remove"
+										onclick={() => confirmRemoveNode(node)}
+										onpointerdown={(event) => event.stopPropagation()}
+										aria-label={`Remove node ${node.title}`}
+									>
+										<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+											<path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM7 9h2v9H7V9z"></path>
+										</svg>
+									</button>
+								{/if}
 							</div>
-							<input class="node-input" type="text" value={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
+							<input class="node-input" type="text" value={node.title} title={node.title} oninput={(event) => updateNode(node.id, 'title', event.currentTarget.value)} />
+							{#if nodeFacts(node).length > 0}
+								<div class="node-facts">
+									{#each nodeFacts(node) as fact, index (fact + index)}
+										<span class="node-fact">{fact}</span>
+									{/each}
+								</div>
+							{/if}
 							<div class="node-purpose">{nodeSubtitle(node)}</div>
-							<div class="node-meta">{node.id}</div>
+							<div class="node-io">in {inputPorts.length} | out {outputPorts.length}</div>
+							{#if node.id !== 'start'}
+								<div class="node-meta">{node.id}</div>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -3363,19 +3400,38 @@
 
 	.canvas-node {
 		position: absolute;
-		width: 220px;
-		min-height: 324px;
-		padding: 0.7rem;
-		border-radius: 1rem;
-		background: var(--color-surface);
+		display: grid;
+		align-content: start;
+		gap: 0.35rem;
+		width: var(--node-width, 188px);
+		min-height: var(--node-height, 216px);
+		padding: 0.55rem;
+		border-radius: 0.85rem;
+		background:
+			radial-gradient(circle at 14% -10%, color-mix(in srgb, var(--color-primary-soft) 42%, transparent), transparent 48%),
+			linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 94%, transparent), var(--color-surface));
 		border: 1px solid var(--color-border);
 		box-shadow: var(--shadow-md);
 		overflow: visible;
+		transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+	}
+
+	.canvas-node:hover {
+		transform: translateY(-1px);
+		box-shadow: var(--shadow-lg);
+		border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+	}
+
+	.canvas-node.start-node {
+		border-color: color-mix(in srgb, var(--color-info) 38%, var(--color-border));
+		box-shadow:
+			0 0 0 1px color-mix(in srgb, var(--color-info-soft) 50%, transparent),
+			var(--shadow-md);
 	}
 
 	.canvas-node.dragging {
 		box-shadow: 0 0 0 2px hsla(var(--hue), 82%, 62%, 0.5), var(--shadow-lg);
-		transform: scale(1.01);
+		transform: scale(1.01) translateY(0);
 	}
 
 	.canvas-node.selected {
@@ -3396,36 +3452,82 @@
 
 	.canvas-node-head {
 		cursor: grab;
-		margin-bottom: 0.55rem;
+		margin-bottom: 0.15rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
 	}
 
 	.node-type,
 	.node-meta {
-		font-size: 0.78rem;
+		font-size: 0.7rem;
 		color: var(--color-text-muted);
 	}
 
 	.node-type {
 		background: color-mix(in srgb, var(--node-accent) 22%, transparent);
 		color: var(--node-accent);
-		padding: 0.2rem 0.5rem;
+		padding: 0.18rem 0.44rem;
 		border-radius: 999px;
 		font-weight: 700;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
 	}
 
 	.node-purpose {
-		margin-top: 0.45rem;
-		font-size: 0.76rem;
-		line-height: 1.32;
+		margin-top: 0.2rem;
+		font-size: 0.7rem;
+		line-height: 1.28;
 		color: var(--color-text-muted);
-		min-height: 2.3em;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.node-facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin-top: 0.1rem;
+	}
+
+	.node-fact {
+		display: inline-flex;
+		align-items: center;
+		height: 1.1rem;
+		padding: 0 0.34rem;
+		border-radius: 999px;
+		font-size: 0.59rem;
+		font-weight: 600;
+		letter-spacing: 0.01em;
+		color: var(--color-text-muted);
+		background: color-mix(in srgb, var(--color-surface-hover) 72%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+	}
+
+	.node-io {
+		margin-top: auto;
+		font-size: 0.62rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		text-transform: uppercase;
+		color: color-mix(in srgb, var(--color-text-muted) 88%, var(--color-primary));
+	}
+
+	.node-meta {
+		margin-top: auto;
+		font-size: 0.66rem;
+		letter-spacing: 0.02em;
 	}
 
 	.node-port {
 		position: absolute;
-		top: calc(50% - 10px);
-		width: 20px;
-		height: 20px;
+		top: calc(50% - 8px);
+		width: 16px;
+		height: 16px;
 		border-radius: 999px;
 		border: 2px solid var(--color-surface);
 		background: var(--color-primary-button);
@@ -3446,41 +3548,90 @@
 	}
 
 	.node-port-in {
-		left: -13px;
+		left: -10px;
 	}
 
 	.node-port-out {
-		right: -13px;
+		right: -10px;
 	}
 
 	.node-port-label {
 		position: absolute;
 		transform: translateY(-50%);
-		font-size: 0.66rem;
+		font-size: 0.62rem;
 		line-height: 1;
-		padding: 0.14rem 0.38rem;
+		padding: 0.12rem 0.32rem;
 		border-radius: 999px;
 		background: color-mix(in srgb, var(--color-surface-elevated) 78%, transparent);
 		border: 1px solid var(--color-border);
 		color: var(--color-text-muted);
 		pointer-events: none;
 		z-index: 2;
+		opacity: 0;
+		transition: opacity var(--transition-fast);
+	}
+
+	.canvas-node.link-drag-source .node-port-label,
+	.canvas-node.link-drag-target .node-port-label {
+		opacity: 1;
 	}
 
 	.node-port-label-in {
-		left: 14px;
+		left: 11px;
 	}
 
 	.node-port-label-out {
-		right: 14px;
+		right: 11px;
 	}
 
 	.node-remove {
-		width: 1.8rem;
-		height: 1.8rem;
+		width: 1.45rem;
+		height: 1.45rem;
+		padding: 0;
 		border-radius: 999px;
-		background: var(--color-danger-soft);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: color-mix(in srgb, var(--color-danger-soft) 88%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-danger) 34%, transparent);
 		color: var(--color-danger-hover);
+		line-height: 1;
+		opacity: 0;
+		pointer-events: none;
+		transform: scale(0.92);
+		transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
+	}
+
+	.canvas-node:hover .node-remove,
+	.canvas-node.selected .node-remove,
+	.node-remove:focus-visible {
+		opacity: 1;
+		pointer-events: auto;
+		transform: scale(1);
+	}
+
+	.node-remove svg {
+		width: 0.78rem;
+		height: 0.78rem;
+		fill: currentColor;
+	}
+
+	.node-remove:hover {
+		transform: translateY(-1px);
+		background: color-mix(in srgb, var(--color-danger-soft) 82%, var(--color-danger));
+		box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-danger) 40%, transparent);
+	}
+
+	.node-remove:focus-visible {
+		outline: 2px solid color-mix(in srgb, var(--color-danger) 46%, transparent);
+		outline-offset: 1px;
+	}
+
+	.canvas-node .node-input {
+		padding: 0.45rem 0.58rem;
+		font-size: 0.84rem;
+		font-weight: 600;
+		border-radius: 0.72rem;
 	}
 
 	.node-input,
@@ -3740,10 +3891,6 @@
 	@media (min-width: 640px) {
 		.hero-stats {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-
-		.canvas-node {
-			width: min(235px, calc(100vw - 4.5rem));
 		}
 
 		.canvas-stage {
