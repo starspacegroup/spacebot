@@ -25,3 +25,6 @@ logs/
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Compiled local-runner binary
+dist/

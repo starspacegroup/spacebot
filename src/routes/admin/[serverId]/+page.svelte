@@ -4,35 +4,38 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate } from '$lib/timezone.js';
-	import { onMount } from 'svelte';
 
 	let { data, form } = $props();
 	let hotloading = $state(false);
 	const isDashboardLoading = $derived(Boolean(hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.needsHotload));
 
-	onMount(async () => {
+	// $effect (not onMount) so the hotload also fires on param-only navigations
+	// (e.g. switching servers on the same route), where the component is reused
+	// and only `data` changes.
+	$effect(() => {
+		const meta = data.loadMeta;
 		const params = new URLSearchParams(window.location.search);
 		const isHotloadRequest = params.get('hotload') === '1';
 
-		if (!isHotloadRequest && data.loadMeta?.needsHotload) {
+		if (!isHotloadRequest && meta?.needsHotload && !hotloading) {
 			hotloading = true;
 			params.set('hotload', '1');
-			await goto(`${window.location.pathname}?${params.toString()}`, {
+			goto(`${window.location.pathname}?${params.toString()}`, {
 				replaceState: true,
 				noScroll: true,
 				keepFocus: true,
 				invalidateAll: true,
+			}).finally(() => {
+				hotloading = false;
 			});
 			return;
 		}
 
-		if (isHotloadRequest && (data.loadMeta?.source === 'hotload' || data.loadMeta?.source === 'cache')) {
+		if (isHotloadRequest && (meta?.source === 'hotload' || meta?.source === 'cache' || meta?.source === 'error')) {
 			params.delete('hotload');
 			const nextQuery = params.toString();
 			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
 		}
-
-		hotloading = false;
 	});
 
 	let showToast = $state(true);

@@ -28,7 +28,7 @@
 
 import { spawn } from "bun";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { homedir, hostname, release, tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -46,6 +46,9 @@ import {
 import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig } from "./ollama-utils";
 import { readPersistedProviderConfig } from "./provider-config";
 import { callRunnerAssistant } from "./spacebot-assistant";
+import { getDefaultRunnerHome, promptForRunnerHome, resolveRunnerHome, scaffoldRunnerHome, writeRunnerHomeConfig } from "./runner-home";
+import { appendJournal, buildMemoryContext, refreshSystemMemory } from "./memory";
+import { startInboxWatcher } from "./md-interface";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -68,13 +71,16 @@ const CLIENT_HEARTBEAT_INTERVAL_MS = Number(process.env.RUNNER_HEARTBEAT_MS ?? "
 const CODE_WATCH_INTERVAL_MS = Number(process.env.RUNNER_CODE_WATCH_INTERVAL_MS ?? "3000");
 const MAX_ARTIFACT_BYTES = Number(process.env.RUNNER_MAX_ARTIFACT_BYTES ?? "8000000");
 const HOSTNAME = hostname();
-const RUNNER_VERSION = "2026.05.07";
+const RUNNER_VERSION = "2026.06.10";
+// True when running as a standalone binary produced by `bun build --compile`
+// (sources live in Bun's embedded virtual filesystem, not on disk).
+const IS_COMPILED = import.meta.url.includes("$bunfs");
 const FORCE_HEADLESS = process.argv.includes("--headless")
   || process.env.RUNNER_TUI_DISABLE === "1"
   || process.env.RUNNER_TUI_CHILD === "1"
   || !process.stdin.isTTY;
 const SPACEBOT_STATE_DIR = join(homedir(), ".spacebot");
-const SYSTEM_MD_PATH = join(SPACEBOT_STATE_DIR, "SYSTEM.md");
+const LEGACY_SYSTEM_MD_PATH = join(SPACEBOT_STATE_DIR, "SYSTEM.md");
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const LOCAL_RUNNER_DIR = resolve(dirname(SCRIPT_PATH));
 const REPO_ROOT_DIR = resolve(LOCAL_RUNNER_DIR, "..", "..");
@@ -83,7 +89,11 @@ const INSTANCE_KEY = process.env.RUNNER_INSTANCE_KEY
 const DISPLAY_NAME = process.env.RUNNER_DISPLAY_NAME ?? `${HOSTNAME} (${process.platform}/${process.arch})`;
 const WATCH_PATH_SPLIT = process.env.RUNNER_WATCH_PATHS
   ? process.env.RUNNER_WATCH_PATHS.split(delimiter)
-  : [LOCAL_RUNNER_DIR, join(REPO_ROOT_DIR, "package.json"), join(REPO_ROOT_DIR, "bun.lock")];
+  // A compiled binary has no source checkout to watch — restart-on-change only
+  // applies when running from the repo.
+  : IS_COMPILED
+    ? []
+    : [LOCAL_RUNNER_DIR, join(REPO_ROOT_DIR, "package.json"), join(REPO_ROOT_DIR, "bun.lock")];
 const RUNNER_WATCH_PATHS = WATCH_PATH_SPLIT.map((entry) => resolve(entry.trim())).filter(Boolean);
 
 function parseBridgePortRange(raw: string | undefined): [number, number] {
@@ -162,6 +172,10 @@ function pickBridgeInstance(instances: Array<Record<string, unknown>>, payload: 
 // Build the WebSocket URL (http→ws, https→wss)
 const WS_URL = API_URL.replace(/^http/, "ws") + `/api/runner/ws?token=${encodeURIComponent(TOKEN)}`;
 
+// Runner home (workspace for memory, journals, markdown inbox). Resolved in
+// main() — empty string until the first-run setup has produced a directory.
+let RUNNER_HOME = "";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -197,6 +211,7 @@ interface RunnerHelloPayload {
   metadata: {
     shell: string;
     pid: number;
+    runnerHome: string | null;
     allowedPaths: string[];
     maxOutputBytes: number;
     maxArtifactBytes: number;
@@ -398,6 +413,10 @@ function sendRunnerEvent(eventType: string, message: string, details?: Record<st
   });
 }
 
+function journal(message: string) {
+  if (RUNNER_HOME) appendJournal(RUNNER_HOME, message);
+}
+
 function getPreferredProvider(): LlmProvider | null {
   const persisted = readPersistedProviderConfig();
   if (process.env.SPACEBOT_LLM_PROVIDER === "copilot" || process.env.SPACEBOT_LLM_PROVIDER === "ollama") {
@@ -454,6 +473,7 @@ function buildHelloPayload(): RunnerHelloPayload {
     metadata: {
       shell: SHELL,
       pid: process.pid,
+      runnerHome: RUNNER_HOME || null,
       allowedPaths: ALLOWED_PATHS,
       maxOutputBytes: MAX_OUTPUT_BYTES,
       maxArtifactBytes: MAX_ARTIFACT_BYTES,
@@ -536,6 +556,10 @@ function buildDmPrompt(payload: Record<string, unknown>): string {
   const contextBlock = historyText
     ? `Conversation history:\n${historyText}\n\n`
     : "";
+  const memoryContext = RUNNER_HOME ? buildMemoryContext(RUNNER_HOME, 3000) : "";
+  const memoryBlock = memoryContext
+    ? `What this runner knows about its machine and stored memories:\n${memoryContext}\n\n`
+    : "";
 
   return [
     "You are SpaceBot replying in a Discord DM.",
@@ -543,6 +567,7 @@ function buildDmPrompt(payload: Record<string, unknown>): string {
     "If the request is unclear, ask one concise follow-up question.",
     "Do not include role labels or metadata in your answer.",
     "",
+    memoryBlock,
     contextBlock,
     `${userName} says: ${userMessage}`,
     "",
@@ -1533,6 +1558,8 @@ async function drainQueue(ws: WebSocket) {
       result = { status: "failed", output: `Unexpected runner error: ${e}`, exitCode: 1, truncated: false };
     }
 
+    journal(`job #${job.id}${job.label ? ` (${job.label})` : ""} ${result.status} (type ${job.job_type || "shell_command"}, exit ${result.exitCode})`);
+
     // Upload large artifacts (e.g. screenshots) via HTTP before sending the WS
     // result message.  Cloudflare has a ~1 MB WebSocket message limit; a 2 MB
     // PNG base64-encodes to ~2.7 MB which would silently drop the connection.
@@ -1611,6 +1638,7 @@ async function gracefulShutdown(reason: string) {
   stopCodeWatcher();
   emitStatusFrame("disconnected", { reason });
   log(`Shutting down (${reason})…`);
+  journal(`runner shutting down (${reason})`);
 
   const ws = activeSocket;
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -1678,6 +1706,7 @@ function connect() {
       case "connected":
         log(`Authenticated — runner ready as ${msg.instanceName ?? DISPLAY_NAME}.`);
         emitStatusFrame("connected", { phase: "authenticated", instanceName: msg.instanceName ?? DISPLAY_NAME });
+        journal(`connected to ${API_URL} as ${msg.instanceName ?? DISPLAY_NAME}`);
         sendRunnerEvent(
           "runner.ready",
           `Runner ready on ${DISPLAY_NAME}`,
@@ -1759,44 +1788,74 @@ process.on("SIGTTOU", () => {
   warn("Ignoring SIGTTOU to keep local runner connected while terminal is backgrounded.");
 });
 
-function buildInitialSystemMarkdown(): string {
-  const nowIso = new Date().toISOString();
-  const today = nowIso.slice(0, 10);
-  return [
-    "# SpaceBot Local Runner System Notes",
-    "",
-    "This file is created automatically on first local-runner startup.",
-    "Use it to track what is available on this system, what has been done, and preferences.",
-    "",
-    "## System Snapshot",
-    "",
-    `- Initialized: ${nowIso}`,
-    `- Hostname: ${HOSTNAME}`,
-    `- Platform: ${process.platform}`,
-    `- Arch: ${process.arch}`,
-    `- OS Release: ${release()}`,
-    `- Runner Version: ${RUNNER_VERSION}`,
-    `- Default Workdir: ${DEFAULT_WORKDIR}`,
-    "",
-    "## Available On This System",
-    "",
-    "- Add installed tools and key capabilities here.",
-    "",
-    "## Activity Log",
-    "",
-    `- ${today}: Initialized by SpaceBot local runner.`,
-    "",
-    "## Preferences",
-    "",
-    "- Add local runner preferences and conventions here.",
-    "",
-  ].join("\n");
+/**
+ * Resolve (or set up on first run) the runner home directory, scaffold its
+ * structure, and refresh the system memory. Interactive sessions are asked
+ * where the home should live; headless sessions fall back to the default.
+ */
+async function ensureRunnerHome(): Promise<void> {
+  const resolved = resolveRunnerHome();
+  let root = resolved.root;
+
+  if (!root) {
+    if (FORCE_HEADLESS) {
+      root = getDefaultRunnerHome();
+      log(`No runner home configured — defaulting to ${root} (set SPACEBOT_RUNNER_HOME or run interactively to change).`);
+    } else {
+      root = await promptForRunnerHome();
+    }
+    const saved = writeRunnerHomeConfig(root);
+    if (!saved.ok) warn(`Could not persist runner home choice: ${saved.error}`);
+  }
+
+  const scaffold = scaffoldRunnerHome(root, { legacySystemMdPath: LEGACY_SYSTEM_MD_PATH });
+  if (!scaffold.ok) {
+    warn(`Failed to prepare runner home at ${root}: ${scaffold.error}`);
+    return;
+  }
+
+  RUNNER_HOME = root;
+  if (scaffold.created.includes(root)) {
+    log(`SpaceBot home created at ${root} — see ${join(root, "README.md")} for how to interact via markdown.`);
+  }
+
+  const { changes } = refreshSystemMemory(root);
+  if (changes.length > 0) {
+    log(`System memory refreshed (${changes.length} change(s) recorded in the journal).`);
+  }
+  journal(`runner v${RUNNER_VERSION} started (pid ${process.pid}, ${FORCE_HEADLESS ? "headless" : "tui"})`);
 }
 
-function ensureSystemNotesFile() {
-  mkdirSync(SPACEBOT_STATE_DIR, { recursive: true });
-  if (existsSync(SYSTEM_MD_PATH)) return;
-  writeFileSync(SYSTEM_MD_PATH, buildInitialSystemMarkdown(), "utf8");
+/**
+ * Answer a markdown inbox message: try the SpaceBot assistant first (full tool
+ * access via the server), then fall back to the local provider chain with the
+ * runner's memory as context.
+ */
+async function respondToInboxMessage(conversation: string): Promise<string | null> {
+  const assistant = await callRunnerAssistant(API_URL, TOKEN, {
+    message: conversation,
+    history: [],
+    userName: "local markdown inbox",
+  });
+  if (assistant.success && assistant.response?.trim()) {
+    return assistant.response.trim();
+  }
+
+  const memoryContext = RUNNER_HOME ? buildMemoryContext(RUNNER_HOME, 3000) : "";
+  const prompt = [
+    "You are SpaceBot answering a markdown note the user left in your inbox on their machine.",
+    "The note may already contain earlier '## SpaceBot Response' sections — treat the file as a running conversation and answer the newest user text.",
+    "Answer in plain markdown without role labels.",
+    "",
+    memoryContext ? `What you know about this machine and stored memories:\n${memoryContext}\n` : "",
+    "The note:",
+    conversation,
+    "",
+    "Reply:",
+  ].join("\n");
+
+  const run = await runPromptThroughProviderChain(prompt, {});
+  return run.ok && run.text ? run.text : null;
 }
 
 function startHeadlessRunner() {
@@ -1832,16 +1891,26 @@ function startHeadlessRunner() {
     void gracefulShutdown("SIGTERM").finally(() => process.exit(0));
   });
 
+  if (RUNNER_HOME) {
+    log(`  Home:   ${RUNNER_HOME} (markdown inbox: ${join(RUNNER_HOME, "inbox")})`);
+    startInboxWatcher({
+      root: RUNNER_HOME,
+      respond: respondToInboxMessage,
+      log: (message) => log(message),
+    });
+  }
+
   startCodeWatcher();
   connect();
 }
 
 async function main() {
-  try {
-    ensureSystemNotesFile();
-  } catch (error) {
-    warn(`Failed to initialize ${SYSTEM_MD_PATH}:`, error);
+  if (process.argv.includes("--version")) {
+    console.log(`spacebot-runner ${RUNNER_VERSION} (${process.platform}/${process.arch}${IS_COMPILED ? ", compiled" : ""})`);
+    return;
   }
+
+  await ensureRunnerHome();
 
   if (FORCE_HEADLESS) {
     validateRunnerToken();

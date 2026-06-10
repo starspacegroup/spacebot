@@ -25,6 +25,8 @@
 		"runner": "bun run scripts/local-runner/index.ts",
 		"runner:headless": "bun run scripts/local-runner/index.ts --headless",
 		"runner:local": "SPACEBOT_API_URL=http://localhost:4269 bun run scripts/local-runner/index.ts",
+		"runner:build": "bun build --compile --target=bun-linux-x64 scripts/local-runner/index.ts --outfile dist/spacebot-runner",
+		"runner:install": "bun run runner:build && install -Dm755 dist/spacebot-runner \"$HOME/.local/bin/spacebot-runner\" && echo \"Installed: $HOME/.local/bin/spacebot-runner\"",
 		"runner:bridge:readme": "cat local-runner-vscode-bridge/README.md",
 		"db:create": "wrangler d1 create spacebot-logs",
 		"db:migrate": "bun scripts/migrate.js",

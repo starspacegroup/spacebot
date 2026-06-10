@@ -1130,7 +1130,12 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
     setRunnerState("Starting headless runner process...");
     setSocketState("connecting");
     lastSocketHeartbeatAtRef.current = Date.now();
-    const child = spawn(process.execPath, ["run", scriptPath, "--headless"], {
+    // In a compiled binary the script lives in Bun's embedded filesystem and
+    // process.execPath is the binary itself — re-exec it directly.
+    const childArgs = scriptPath.includes("$bunfs")
+      ? ["--headless"]
+      : ["run", scriptPath, "--headless"];
+    const child = spawn(process.execPath, childArgs, {
       cwd: process.cwd(),
       env: {
         ...process.env,

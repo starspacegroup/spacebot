@@ -99,11 +99,15 @@
 		}
 	}
 
-	onMount(() => {
+	// $effect (not onMount) so the hotload also fires on param-only navigations
+	// (e.g. switching servers or stat periods on the same route), where the
+	// component is reused and only `data` changes.
+	$effect(() => {
+		const meta = data.loadMeta;
 		const params = new URLSearchParams(window.location.search);
 		const isHotloadRequest = params.get('hotload') === '1';
 
-		if (!isHotloadRequest && data.loadMeta?.needsHotload) {
+		if (!isHotloadRequest && meta?.needsHotload && !hotloading) {
 			hotloading = true;
 			params.set('hotload', '1');
 			goto(`${window.location.pathname}?${params.toString()}`, {
@@ -111,18 +115,22 @@
 				noScroll: true,
 				keepFocus: true,
 				invalidateAll: true,
+			}).finally(() => {
+				hotloading = false;
 			});
-			return () => {};
+			return;
 		}
 
-		if (isHotloadRequest && (data.loadMeta?.source === 'hotload' || data.loadMeta?.source === 'cache')) {
+		if (isHotloadRequest && (meta?.source === 'hotload' || meta?.source === 'cache' || meta?.source === 'error')) {
 			params.delete('hotload');
 			const nextQuery = params.toString();
 			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
 		}
+	});
 
-		hotloading = false;
-
+	// Live voice stream + polling runs regardless of hotload state, so a
+	// cold (shell) load still connects immediately.
+	onMount(() => {
 		let stream;
 
 		if (liveUpdatesAuth?.signature && liveUpdatesAuth?.userId && liveUpdatesAuth?.expiresAt) {

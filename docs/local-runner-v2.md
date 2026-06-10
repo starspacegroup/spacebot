@@ -2,6 +2,55 @@
 
 This document covers the typed local-runner capabilities added for cross-platform host automation.
 
+## Standalone Binary (Linux)
+
+The runner can be compiled into a single self-contained binary (Bun runtime, TUI, and the
+opentui native library are all embedded — no checkout or `bun install` needed on the target
+machine):
+
+- `bun run runner:build` — produces `dist/spacebot-runner` (`bun build --compile`, target `bun-linux-x64`).
+- `bun run runner:install` — builds and installs to `~/.local/bin/spacebot-runner`.
+- `spacebot-runner --version` — prints the version and whether it is a compiled build.
+- `spacebot-runner --headless` — headless mode, same as `bun run runner:headless`.
+
+Compiled builds disable the source code-watcher (there is no checkout to watch), and the
+TUI/autostart service re-exec the binary itself instead of `bun run`.
+
+## Runner Home (first-run setup)
+
+On first launch the runner asks where its **home directory** should live (default
+`~/SpaceBot`; headless launches fall back to the default silently). The choice is persisted
+in `~/.config/spacebot/runner-home.json` and can be overridden with `SPACEBOT_RUNNER_HOME`.
+
+The home is the runner's persistent workspace, all plain markdown:
+
+| Path | Purpose |
+| --- | --- |
+| `README.md` | Explains the layout and how to interact. |
+| `SYSTEM.md` | What the runner knows about the machine. The block between the auto markers is rewritten on every start; notes outside it are preserved. A legacy `~/.spacebot/SYSTEM.md` is migrated automatically. |
+| `MEMORY.md` | One-line index of stored memories. |
+| `memory/` | One markdown file per remembered fact. |
+| `journal/YYYY-MM-DD.md` | Daily activity log: connections, jobs, detected system changes (new tools, displays, OS upgrades, …). |
+| `inbox/` | Markdown interaction (see below). |
+| `outbox/` | Runner-initiated notes. |
+| `.state/` | Internal bookkeeping (profile cache, inbox hashes). Safe to delete. |
+
+The system profile is re-gathered on every start and diffed against the cached one, so the
+runner's knowledge of the machine keeps accumulating; changes land in the journal. Stored
+memories and the system summary are injected as context into `dm` jobs and inbox answers.
+
+## Markdown Inbox
+
+Drop any `.md` file into `<home>/inbox/` while the runner is running (headless, or the
+TUI's runner child):
+
+- The runner appends a `## SpaceBot Response (timestamp)` section to the same file within
+  a few seconds — edit the file again below the response to continue the thread.
+- A file whose first line is `remember: <title>` is stored under `memory/` and indexed in
+  `MEMORY.md` instead of being answered.
+- Answers go through the SpaceBot server assistant when a runner token is configured, and
+  fall back to the local provider chain (Copilot/Ollama) with memory context otherwise.
+
 ## Startup Experience
 
 - `bun run runner` now opens an interactive OpenTUI dashboard when launched from a real terminal.
@@ -34,6 +83,7 @@ This document covers the typed local-runner capabilities added for cross-platfor
 
 ## Optional Security/Feature Flags
 
+- `SPACEBOT_RUNNER_HOME=/path/to/home` (overrides the persisted runner-home choice)
 - `RUNNER_ALLOWED_PATHS=/path/one:/path/two`
 - `RUNNER_ENABLE_SCREENSHOTS=1`
 - `RUNNER_ENABLE_VSCODE_CONTROL=1`

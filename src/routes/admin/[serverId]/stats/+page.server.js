@@ -200,7 +200,12 @@ export async function load({ params, cookies, platform, parent, url }) {
     };
   }
 
-  const shouldFetchLive = db && (forceHotload || !hasStaleCache);
+  // Heavy data is only fetched inline on explicit hotload requests. Cold-cache
+  // navigations return a shell immediately (loadMeta.needsHotload) and the
+  // client re-fetches with ?hotload=1 while showing loading skeletons —
+  // otherwise every cache miss blocks navigation on Discord API calls, stats
+  // aggregation, and ~18 D1 queries.
+  const shouldFetchLive = db && forceHotload;
   if (shouldFetchLive) {
     try {
       const existingStats = await getLatestServerStats(db, serverId);
@@ -233,6 +238,9 @@ export async function load({ params, cookies, platform, parent, url }) {
         topVideoUsers,
         topScreenshareUsers,
         topBoosters,
+        guildMetadata,
+        cachedRoles,
+        liveVoiceSnapshot,
       ] = await Promise.all([
         getGuildStatistics(db, serverId, timezone, selectedPeriod),
         getActivityHeatmap(db, serverId, timezone, selectedPeriod),
@@ -259,24 +267,29 @@ export async function load({ params, cookies, platform, parent, url }) {
         getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
         // Current active boosters from members cache
         getBoostingMembersFromCache(db, serverId, 50),
+        // Guild metadata for boost features display (non-fatal)
+        getGuildMetadata(db, serverId).catch((metaError) => {
+          log.warn(`[Stats] Failed to fetch guild metadata for ${serverId}:`, metaError);
+          return null;
+        }),
+        // Cached roles for roles panel (non-fatal)
+        getRolesFromCache(db, serverId).catch((rolesError) => {
+          log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
+          return [];
+        }),
+        // Live voice snapshot (non-fatal)
+        getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
+          log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
+          return {
+            channels: [],
+            totalUsers: 0,
+            totalChannels: 0,
+            activeCameras: 0,
+            activeStreams: 0,
+            updatedAt: null,
+          };
+        }),
       ]);
-      // Fetch guild metadata for boost features display
-      try {
-        guildMetadata = await getGuildMetadata(db, serverId);
-      } catch (metaError) {
-        log.warn(`[Stats] Failed to fetch guild metadata for ${serverId}:`, metaError);
-      }
-      // Fetch cached roles for roles panel
-      try {
-        cachedRoles = await getRolesFromCache(db, serverId);
-      } catch (rolesError) {
-        log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
-      }
-      try {
-        liveVoiceSnapshot = await getLiveVoiceChannels(db, serverId);
-      } catch (liveVoiceError) {
-        log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
-      }
 
       STATS_CACHE.set(cacheKey, {
         cachedAt: Date.now(),
@@ -319,7 +332,10 @@ export async function load({ params, cookies, platform, parent, url }) {
         };
       }
     }
-  } else if (!hasStaleCache) {
+  } else if (db && !hasStaleCache) {
+    // Shell response: render immediately, client hotloads the real data.
+    // Only signal a hotload when one can actually succeed (db present),
+    // otherwise the page would show loading skeletons forever.
     loadMeta = {
       source: "shell",
       needsHotload: true,

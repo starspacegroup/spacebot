@@ -170,9 +170,12 @@ export function buildRuntimeCommand(options: {
   env?: NodeJS.ProcessEnv;
 }): RunnerRuntimeCommand {
   const env = collectPersistentEnv(options.env ?? process.env);
+  // Compiled binaries embed their sources in Bun's virtual filesystem; the
+  // autostart entry must re-exec the binary itself rather than `bun run`.
+  const compiled = options.scriptPath.includes("$bunfs");
   return {
     executable: options.bunPath || process.execPath,
-    args: ["run", resolve(options.scriptPath), "--headless"],
+    args: compiled ? ["--headless"] : ["run", resolve(options.scriptPath), "--headless"],
     cwd: options.cwd ? resolve(options.cwd) : process.cwd(),
     env,
   };

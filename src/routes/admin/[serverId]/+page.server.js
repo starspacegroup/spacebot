@@ -164,6 +164,7 @@ export async function load({ cookies, platform, parent, params, url }) {
 
   let logStats = null;
   let dbSettings = DEFAULT_SETTINGS;
+  let loggingChannelName = null;
   let basicStats = null;
   let memberGrowthChartData = [];
   let voiceActivityChartData = [];
@@ -186,6 +187,7 @@ export async function load({ cookies, platform, parent, params, url }) {
   if (!forceHotload && hasStaleCache && cachedEntry?.data) {
     logStats = cachedEntry.data.logStats;
     dbSettings = cachedEntry.data.dbSettings;
+    loggingChannelName = cachedEntry.data.loggingChannelName ?? null;
     basicStats = cachedEntry.data.basicStats;
     memberGrowthChartData = cachedEntry.data.memberGrowthChartData;
     voiceActivityChartData = cachedEntry.data.voiceActivityChartData;
@@ -205,7 +207,12 @@ export async function load({ cookies, platform, parent, params, url }) {
   }
 
   const db = platform?.env?.DB;
-  const shouldFetchLive = db && botInGuild && (forceHotload || !hasStaleCache);
+  // Heavy data is only fetched inline on explicit hotload requests. Cold-cache
+  // navigations return a shell immediately (loadMeta.needsHotload) and the
+  // client re-fetches with ?hotload=1 while showing loading skeletons —
+  // otherwise every cache miss blocks navigation on Discord API calls, stats
+  // aggregation, and a dozen D1 queries.
+  const shouldFetchLive = db && botInGuild && forceHotload;
   if (shouldFetchLive) {
     try {
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken);
@@ -284,11 +291,20 @@ export async function load({ cookies, platform, parent, params, url }) {
         eventsToday: guildStats?.events?.today || 0,
       };
 
+      // Resolve the logging channel name once per live fetch and cache it —
+      // doing this on every request added a Discord API round-trip even to
+      // fully cached page loads.
+      if (settings?.log_channel_id && botToken) {
+        const channelInfo = await getChannelInfo(botToken, settings.log_channel_id);
+        loggingChannelName = channelInfo?.name ?? null;
+      }
+
       DASHBOARD_CACHE.set(cacheKey, {
         cachedAt: Date.now(),
         data: {
           logStats,
           dbSettings,
+          loggingChannelName,
           basicStats,
           memberGrowthChartData,
           voiceActivityChartData,
@@ -319,22 +335,16 @@ export async function load({ cookies, platform, parent, params, url }) {
         };
       }
     }
-  } else if (!hasStaleCache) {
+  } else if (db && botInGuild && !hasStaleCache) {
+    // Shell response: render immediately, client hotloads the real data.
+    // Only signal a hotload when one can actually succeed (db + bot present),
+    // otherwise the page would show loading skeletons forever.
     loadMeta = {
       source: "shell",
       needsHotload: true,
       isStale: false,
       updatedAt: null,
     };
-  }
-
-  // Fetch channel name if logging channel is configured
-  let loggingChannelName = null;
-  if (dbSettings.log_channel_id && botToken) {
-    const channelInfo = await getChannelInfo(botToken, dbSettings.log_channel_id);
-    if (channelInfo) {
-      loggingChannelName = channelInfo.name;
-    }
   }
 
   // Update the last viewed guild cookie
