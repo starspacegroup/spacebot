@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';

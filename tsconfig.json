@@ -1,0 +1,26 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		// allowJs/checkJs stay on during the JS→TS migration so any
+		// not-yet-renamed .js files still resolve. checkJs is off so the
+		// migration doesn't require fully-typed JS before renaming.
+		"allowJs": true,
+		"checkJs": false,
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		// Gradual-typing baseline for the JS→TS migration. SvelteKit's
+		// generated config is `strict`, which flags ~7k implicit-any/null
+		// errors on freshly-renamed files. We relax strictness so `typecheck`
+		// is a usable gate today and can be tightened module-by-module as
+		// real types are added. Flip these back on as the codebase hardens.
+		"strict": false,
+		"noImplicitAny": false,
+		"strictNullChecks": false,
+		"skipLibCheck": true
+	}
+	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
+	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
+	//
+	// If you want to overwrite includes/excludes, make sure to copy over the relevant includes/excludes
+	// from the referenced tsconfig.json - TypeScript does not merge them in
+}

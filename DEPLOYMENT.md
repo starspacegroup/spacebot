@@ -107,7 +107,7 @@ cd spacebot
 bun install
 
 # Register commands
-DISCORD_CLIENT_ID=your_client_id DISCORD_BOT_TOKEN=your_bot_token node scripts/register-commands.js
+DISCORD_CLIENT_ID=your_client_id DISCORD_BOT_TOKEN=your_bot_token bun scripts/register-commands.ts
 ```
 
 ### Option B: Register via Cloudflare Worker
@@ -304,7 +304,7 @@ Then create or update `~/.cloudflared/config.yml` to include the `spacebot` tunn
 bun run gateway
 ```
 
-This runs `scripts/prod-start.js` which:
+This runs `scripts/prod-start.ts` which:
 1. Checks for `cloudflared` and installs it if missing
 2. Checks for `pm2` and installs it if missing
 3. Starts `spacebot-gateway`, `spacebot-tunnel`, `spacebot-deploy`, and `spacebot-cron` via PM2

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatDate as tzFormatDate } from '$lib/timezone.js';
 	import ChartTooltip from '$lib/components/charts/ChartTooltip.svelte';
@@ -168,7 +168,7 @@
 	}
 
 	// Tooltip state for latency chart
-	let latencyTooltip = $state({ visible: false, clientX: 0, clientY: 0, date: '', value: '', hasData: true });
+	let latencyTooltip = $state<Record<string, any>>({ visible: false, clientX: 0, clientY: 0, date: '', value: '', hasData: true });
 
 	function showLatencyTooltip(event, point) {
 		latencyTooltip = {

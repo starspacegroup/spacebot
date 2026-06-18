@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { parseUTCDate, formatChartDate } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
@@ -11,7 +11,7 @@
 	const voiceActivityLog = $derived(Array.isArray(data.voiceActivityLog) ? data.voiceActivityLog : []);
 	const voiceEventTypeOptions = $derived(Array.isArray(data.voiceEventTypeOptions) ? data.voiceEventTypeOptions : []);
 
-	function normalizeVoiceLogPagination(pagination) {
+	function normalizeVoiceLogPagination(pagination?: any) {
 		const pageSize = Number(pagination?.pageSize || 30);
 		const total = Number(pagination?.total || 0);
 		const totalPages = Math.max(1, Number(pagination?.totalPages || Math.ceil(total / pageSize) || 1));
@@ -89,7 +89,7 @@
 		}
 	}
 
-	function normalizeLiveVoiceSnapshot(snapshot) {
+	function normalizeLiveVoiceSnapshot(snapshot?: any) {
 		return {
 			channels: Array.isArray(snapshot?.channels) ? snapshot.channels : [],
 			totalUsers: Number(snapshot?.totalUsers || 0),
@@ -210,7 +210,7 @@
 		const date = parseUTCDate(dateStr);
 		if (!date) return dateStr;
 		const now = new Date();
-		const diffMs = now - date;
+		const diffMs = (now as any) - (date as any);
 		const diffMins = Math.floor(diffMs / 60000);
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
@@ -561,7 +561,7 @@
 											src={getAvatarUrl(entry.actorId, entry.actorAvatar, entry.actorDiscriminator, 20)}
 											alt="{entry.actorName}'s avatar"
 											class="voice-log-actor-avatar"
-											onerror={(e) => { e.target.style.display = 'none'; }}
+											onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 										/>
 									{/if}
 									{entry.actorName}

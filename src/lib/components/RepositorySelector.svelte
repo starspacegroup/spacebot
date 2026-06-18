@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * Repository Selector Component
 	 * Searchable multi-select for GitHub repositories with an optional Any state.

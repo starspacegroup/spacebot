@@ -8,7 +8,7 @@
  * This thin wrapper uses dynamic import() to load the real gateway module,
  * sidestepping the require() limitation.
  */
-import("./gateway.js").catch((err) => {
+import("./gateway.ts").catch((err) => {
   console.error("Failed to start gateway:", err);
   process.exit(1);
 });

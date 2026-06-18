@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * Unified chart tooltip – fixed-positioned so it never clips.
 	 * Supports single-value (area chart) and multi-item (bar chart) content.

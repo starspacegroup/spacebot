@@ -1,5 +1,5 @@
-<script>
-  let { data } = $props();
+<script lang="ts">
+  let { data }: { data: any } = $props();
 
   const filters = $derived(data.filters || {
     limit: 50,
@@ -20,7 +20,7 @@
     }
   );
 
-  function queryHref(next = {}) {
+  function queryHref(next: Record<string, any> = {}) {
     const params = new URLSearchParams();
     const limit = Number(next.limit ?? filters.limit ?? 50) || 50;
     const offset = Math.max(0, Number(next.offset ?? filters.offset ?? 0) || 0);

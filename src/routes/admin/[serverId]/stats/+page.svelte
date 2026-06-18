@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { goto } from '$app/navigation';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
@@ -42,7 +42,7 @@
 	const LIVE_VOICE_POLL_MS = 15000;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
 
-	function normalizeLiveVoiceSnapshot(snapshot) {
+	function normalizeLiveVoiceSnapshot(snapshot?: any) {
 		return {
 			channels: Array.isArray(snapshot?.channels) ? snapshot.channels : [],
 			totalUsers: Number(snapshot?.totalUsers || 0),
@@ -306,7 +306,7 @@
 	);
 	
 	// Calculate percentages for category breakdown - use $derived for reactivity
-	const categoryTotal = $derived(Object.values(statistics.events?.byCategory || {}).reduce((a, b) => a + b, 0));
+	const categoryTotal = $derived((Object.values(statistics.events?.byCategory || {}) as number[]).reduce((a, b) => a + b, 0));
 	
 	function getCategoryPercentage(count, total) {
 		if (!total) return 0;
@@ -424,7 +424,7 @@
 		const date = parseUTCDate(dateStr);
 		if (!date) return dateStr;
 		const now = new Date();
-		const diffMs = now - date;
+		const diffMs = (now as any) - (date as any);
 		const diffMins = Math.floor(diffMs / 60000);
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
@@ -715,7 +715,7 @@
 					<a href="/admin/{data.serverId}/stats/vc-activity" class="btn btn-secondary btn-sm">🔴 VC Activity</a>
 					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm">📜 Event Logs</a>
 					<label class="master-bot-toggle">
-						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
+						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots((e.target as HTMLInputElement).checked)} />
 						<span class="toggle-switch"></span>
 						<span class="toggle-label">🤖 Include Bots</span>
 					</label>
@@ -1283,7 +1283,7 @@
 												src={getAvatarUrl(booster.user_id, booster.guild_avatar || booster.avatar, booster.discriminator, 20)}
 												alt="{booster.display_name || 'User'} avatar"
 												class="inline-user-avatar"
-												onerror={(e) => { e.target.style.display = 'none'; }}
+												onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 											/>
 										{/if}
 										{booster.display_name}
@@ -1359,7 +1359,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}
@@ -1405,7 +1405,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}
@@ -1451,7 +1451,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}
@@ -1606,31 +1606,6 @@
 		width: 100%;
 		margin: 0 auto;
 		padding: 1rem;
-	}
-
-	.data-status {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin: 0 0 1rem;
-		padding: 0.65rem 0.9rem;
-		border-radius: 10px;
-		border: 1px solid var(--color-fixed-border-strong);
-		background: var(--color-overlay-scrim-soft);
-		color: var(--color-fixed-text-secondary);
-		font-size: 0.9rem;
-	}
-
-	.status-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #60a5fa;
-	}
-
-	.data-status.is-loading .status-dot {
-		background: #f59e0b;
-		animation: pulse 1.2s ease-in-out infinite;
 	}
 
 	@keyframes pulse {
@@ -2515,14 +2490,12 @@
 		}
 	}
 
-	.list-category,
 	.list-meta {
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
 	}
 
 	@media (min-width: 480px) {
-		.list-category,
 		.list-meta {
 			font-size: 0.75rem;
 		}
@@ -3037,16 +3010,6 @@
 	.bot-toggle input:checked ~ .toggle-label {
 		opacity: 1;
 		filter: grayscale(0);
-	}
-	
-	.bot-badge {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.35rem;
-		background: var(--color-surface-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		margin-left: 0.35rem;
-		color: var(--color-text-muted);
 	}
 	
 	/* Smaller toggle for card headers */

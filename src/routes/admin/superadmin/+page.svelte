@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatDate as tzFormatDate, formatChartDate } from '$lib/timezone.js';
 	
@@ -25,7 +25,7 @@
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
 	const integrations = $derived(data?.integrations ?? []);
 	const actionTypes = $derived(data?.actionTypes ?? {});
-	const responseTypes = $derived(data?.responseTypes ?? {});
+	const responseTypes: Record<string, any> = $derived(data?.responseTypes ?? {});
 	let firstLoginDmEnabled = $state(false);
 	let firstLoginDmSaving = $state(false);
 	let firstLoginDmError = $state(null);
@@ -793,7 +793,7 @@
 										value={editingCommand.response_embed?.title ?? ''} 
 										oninput={(e) => {
 											if (!editingCommand.response_embed) editingCommand.response_embed = {};
-											editingCommand.response_embed.title = e.target.value;
+											editingCommand.response_embed.title = (e.target as HTMLInputElement).value;
 										}}
 										class="form-input" placeholder="Embed title" />
 								</div>
@@ -803,7 +803,7 @@
 										value={editingCommand.response_embed?.description ?? ''} 
 										oninput={(e) => {
 											if (!editingCommand.response_embed) editingCommand.response_embed = {};
-											editingCommand.response_embed.description = e.target.value;
+											editingCommand.response_embed.description = (e.target as HTMLTextAreaElement).value;
 										}}
 										class="form-textarea" rows="3" placeholder="Embed description..."></textarea>
 								</div>
@@ -908,7 +908,7 @@
 								value={newCommand.response_embed?.title ?? ''} 
 								oninput={(e) => {
 									if (!newCommand.response_embed) newCommand.response_embed = {};
-									newCommand.response_embed.title = e.target.value;
+									newCommand.response_embed.title = (e.target as HTMLInputElement).value;
 								}}
 								class="form-input" placeholder="Embed title" />
 						</div>
@@ -918,7 +918,7 @@
 								value={newCommand.response_embed?.description ?? ''} 
 								oninput={(e) => {
 									if (!newCommand.response_embed) newCommand.response_embed = {};
-									newCommand.response_embed.description = e.target.value;
+									newCommand.response_embed.description = (e.target as HTMLTextAreaElement).value;
 								}}
 								class="form-textarea" rows="3" placeholder="Embed description..."></textarea>
 						</div>

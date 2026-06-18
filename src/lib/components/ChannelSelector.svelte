@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { log } from '$lib/log.js';
 	
 	/**
@@ -22,6 +22,7 @@
 		placeholder = 'Search channels...',
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
 		showAllOption = false, // Show "Any" option at top (multi-select only)
+		allOptionLabel = 'Any', // Label for the "all" option (used when showAllOption)
 		onchange = null // Callback when value changes
 	} = $props();
 	
@@ -134,7 +135,7 @@
 	const selectedChannelNames = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
 		return selectedIds.map(id => {
-			if (id === ALL_CHANNELS) return '✱ Any';
+			if (id === ALL_CHANNELS) return `✱ ${allOptionLabel}`;
 			const ch = flatChannels.find(c => c.id === id);
 			return ch ? `#${ch.name}` : id;
 		});
@@ -339,7 +340,7 @@
 					>
 						<span class="checkbox">{isAllSelected ? '☑' : '☐'}</span>
 						<span class="channel-icon">✱</span>
-						<span class="channel-name">Any</span>
+						<span class="channel-name">{allOptionLabel}</span>
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}

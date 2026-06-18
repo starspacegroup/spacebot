@@ -1,10 +1,10 @@
-<script>
+<script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	
 	let { data } = $props();
 	
 	const servers = $derived(data?.servers ?? []);
-	const planTiers = $derived(data?.planTiers ?? {});
+	const planTiers: Record<string, any> = $derived(data?.planTiers ?? {});
 	
 	// State
 	let search = $state('');

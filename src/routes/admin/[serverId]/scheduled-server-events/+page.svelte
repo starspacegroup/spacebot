@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
@@ -256,7 +256,7 @@
 		const date = parseUTCDate(isoString);
 		if (!date) return isoString;
 		const now = new Date();
-		const diffMs = date - now;
+		const diffMs = date.getTime() - now.getTime();
 		const diffMins = Math.floor(diffMs / (1000 * 60));
 		const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
 		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));

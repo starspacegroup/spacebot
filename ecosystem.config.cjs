@@ -100,7 +100,7 @@ module.exports = {
     },
     {
       name: "spacebot-deploy",
-      script: "scripts/deploy-webhook.js",
+      script: "scripts/deploy-webhook.ts",
       interpreter: "node",
       env: {
         NODE_ENV: "production",
@@ -121,7 +121,7 @@ module.exports = {
     },
     {
       name: "spacebot-cron",
-      script: "scripts/cron.js",
+      script: "scripts/cron.ts",
       interpreter: "node",
       args: "--experimental-specifier-resolution=node",
       env: {

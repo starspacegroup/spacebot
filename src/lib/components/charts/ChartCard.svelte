@@ -1,16 +1,16 @@
-<script>
+<script lang="ts">
 	/**
 	 * Chart card wrapper with summary stats
-	 * @type {{ title?: string, subtitle?: string, icon?: string, stats?: Array<{value: string|number, label: string, color?: string, icon?: string}>, children?: import('svelte').Snippet }}
+	 * @type {{ title?: string, subtitle?: string, icon?: string, stats?: Array<{value: string|number, label: string, color?: string, icon?: string}>, loading?: boolean, children?: import('svelte').Snippet, headerAction?: import('svelte').Snippet }}
 	 */
-	let { 
+	let {
 		title = '',
 		subtitle = '',
 		icon = '📊',
 		stats = [],
 		loading = false,
 		children,
-		headerAction
+		headerAction = undefined
 	} = $props();
 </script>
 
