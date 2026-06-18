@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	

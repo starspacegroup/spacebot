@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { getAvatarUrl as getDiscordAvatarUrl } from '$lib/utils/avatar.js';
 	

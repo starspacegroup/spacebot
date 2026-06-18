@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	let { data } = $props();
 	
 	// Build admin URL - use guild-specific if available

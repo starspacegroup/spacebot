@@ -363,14 +363,14 @@ spacebot/
 │   │   ├── automation/       # Automation engine
 │   │   ├── components/       # Svelte components
 │   │   ├── db/               # Database functions
-│   │   │   ├── automations.js
-│   │   │   ├── commands.js
-│   │   │   └── logger.js
+│   │   │   ├── automations.ts
+│   │   │   ├── commands.ts
+│   │   │   └── logger.ts
 │   │   └── discord/          # Discord integration
-│   │       ├── cache.js
-│   │       ├── commands.js
-│   │       ├── gateway.js    # Gateway bot service
-│   │       └── guilds.js
+│   │       ├── cache.ts
+│   │       ├── commands.ts
+│   │       ├── gateway.ts    # Gateway bot service
+│   │       └── guilds.ts
 │   ├── routes/
 │   │   ├── admin/            # Admin dashboard pages
 │   │   │   ├── [serverId]/   # Per-server management

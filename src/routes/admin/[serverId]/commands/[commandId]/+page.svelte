@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
@@ -12,10 +12,25 @@
 	// Form submission state
 	let isSubmitting = $state(false);
 	
+	interface ActionConfigField {
+		label?: string;
+		type?: string;
+		required?: boolean;
+		supportsVariables?: boolean;
+		max?: number;
+		placeholder?: string;
+		description?: string;
+		default?: any;
+		showAllOption?: boolean;
+		[key: string]: any;
+	}
+
+	type ActionConfigSchema = Record<string, ActionConfigField>;
+
 	// Get action config schema (used by parseExistingActions and initializeActionConfig)
-	function getActionConfigSchema(actionType) {
+	function getActionConfigSchema(actionType): ActionConfigSchema {
 		if (!actionType || actionType === 'NONE') return {};
-		return data.actionTypes[actionType]?.configSchema || {};
+		return (data.actionTypes[actionType]?.configSchema || {}) as ActionConfigSchema;
 	}
 	
 	// Initialize config values for an action based on schema
@@ -257,7 +272,7 @@
 	
 	// Check if option type has choices
 	function isChoiceType(type) {
-		const typeInfo = data.commonOptionTypes.find(t => t.value === type);
+		const typeInfo = data.commonOptionTypes.find(t => t.value === type) as { isChoice?: boolean } | undefined;
 		return typeInfo?.isChoice || false;
 	}
 	
@@ -504,7 +519,7 @@
 			if (result.type === 'redirect') {
 				await goto(result.location, { invalidateAll: true });
 			} else if (result.type === 'failure') {
-				form = result.data;
+				form = result.data as typeof form;
 			}
 		};
 	}} class="command-form">
@@ -539,7 +554,7 @@
 						name="name" 
 						required 
 						placeholder="mycommand"
-						pattern="[\w-]{1,32}"
+						pattern={'[\\w-]{1,32}'}
 						value={command.name}
 					/>
 				</div>
@@ -846,7 +861,7 @@
 											name="action_condition_mode.{index}"
 											bind:value={action.condition.mode}
 											onchange={(e) => {
-												action.condition.mode = e.target.value;
+												action.condition.mode = (e.target as HTMLSelectElement).value;
 												if (action.condition.mode === 'always') {
 													action.condition.option = '';
 													action.condition.value = '';
@@ -869,7 +884,7 @@
 												name="action_condition_option.{index}"
 												bind:value={action.condition.option}
 												onchange={(e) => {
-													action.condition.option = e.target.value;
+													action.condition.option = (e.target as HTMLSelectElement).value;
 													const choices = getConditionChoices(action.condition.option);
 													action.condition.value = choices.length > 0 ? choices[0].value : '';
 												}}
@@ -917,7 +932,7 @@
 									id="action_type_{index}" 
 									value={action.type} 
 									onchange={(e) => {
-										const newType = e.target.value;
+										const newType = (e.target as HTMLSelectElement).value;
 										const schema = getActionConfigSchema(newType);
 										const newConfig = { ...action.config };
 										for (const configKey of Object.keys(schema)) {
@@ -1028,7 +1043,7 @@
 															id="config_{index}_{configKey}" 
 															name="action_config.{index}.{configKey}"
 															value={getStaticValue(action.config[configKey])}
-															oninput={(e) => action.config[configKey] = e.target.value}
+															oninput={(e) => action.config[configKey] = (e.target as HTMLInputElement).value}
 															min="0"
 															max={config.max || 999999}
 															placeholder={config.placeholder || ''}
@@ -1255,7 +1270,7 @@
 							if (result.type === 'redirect') {
 								await goto(result.location, { invalidateAll: true });
 							} else if (result.type === 'failure') {
-								form = result.data;
+								form = result.data as typeof form;
 								showDeleteConfirm = false;
 							}
 						};

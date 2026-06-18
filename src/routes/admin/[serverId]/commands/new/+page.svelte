@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
@@ -6,9 +6,13 @@
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { log } from '$lib/log.js';
-	
-	let { data, form } = $props();
-	
+	import type { PageData } from './$types';
+
+	// `form` (ActionData) carries dynamic failure payloads (e.g. { values, error })
+	// that are wider than the generated type; widen `form` to `any` so the in-template
+	// reads and the reassignment in use:enhance type-check without altering behavior.
+	let { data, form }: { data: PageData; form: any } = $props();
+
 	// Form submission state
 	let isSubmitting = $state(false);
 	
@@ -85,8 +89,24 @@
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
 	
+	// Shape of a single action config-schema entry (from data.actionTypes[type].configSchema)
+	interface ActionConfigField {
+		label?: string;
+		required?: boolean;
+		type?: string;
+		supportsVariables?: boolean;
+		max?: number;
+		placeholder?: string;
+		description?: string;
+		default?: any;
+		showAllOption?: boolean;
+		allOptionLabel?: string;
+		options?: Array<{ value: any; label?: string } | string>;
+		[key: string]: unknown;
+	}
+
 	// Get action config schema
-	function getActionConfigSchema(actionType) {
+	function getActionConfigSchema(actionType): Record<string, ActionConfigField> {
 		if (!actionType || actionType === 'NONE') return {};
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
@@ -189,7 +209,9 @@
 	
 	// Check if option type has choices
 	function isChoiceType(type) {
-		const typeInfo = data.commonOptionTypes.find(t => t.value === type);
+		const typeInfo = data.commonOptionTypes.find((t) => t.value === type) as
+			| { value: number; label: string; description: string; isChoice?: boolean }
+			| undefined;
 		return typeInfo?.isChoice || false;
 	}
 	
@@ -467,7 +489,7 @@
 						name="name" 
 						required 
 						placeholder="mycommand"
-						pattern="[\w-]{1,32}"
+						pattern={'[\\w-]{1,32}'}
 						value={form?.values?.name || ''}
 					/>
 				</div>
@@ -735,7 +757,7 @@
 							id="embed_description" 
 							name="embed_description"
 							rows="3"
-							placeholder="Hello {user.mention}!"
+							placeholder={'Hello {user.mention}!'}
 						></textarea>
 					</div>
 					<div class="form-group">
@@ -795,7 +817,7 @@
 											name="action_condition_mode.{index}"
 											bind:value={action.condition.mode}
 											onchange={(e) => {
-												action.condition.mode = e.target.value;
+												action.condition.mode = (e.target as HTMLSelectElement).value;
 												if (action.condition.mode === 'always') {
 													action.condition.option = '';
 													action.condition.value = '';
@@ -818,7 +840,7 @@
 												name="action_condition_option.{index}"
 												bind:value={action.condition.option}
 												onchange={(e) => {
-													action.condition.option = e.target.value;
+													action.condition.option = (e.target as HTMLSelectElement).value;
 													const choices = getConditionChoices(action.condition.option);
 													action.condition.value = choices.length > 0 ? choices[0].value : '';
 												}}
@@ -866,7 +888,7 @@
 									id="action_type_{index}" 
 									value={action.type} 
 									onchange={(e) => {
-										const newType = e.target.value;
+										const newType = (e.target as HTMLSelectElement).value;
 										const schema = getActionConfigSchema(newType);
 										const newConfig = { ...action.config };
 										for (const configKey of Object.keys(schema)) {
@@ -978,7 +1000,7 @@
 															id="config_{index}_{configKey}" 
 															name="action_config.{index}.{configKey}"
 															value={getStaticValue(action.config[configKey])}
-															oninput={(e) => action.config[configKey] = e.target.value}
+															oninput={(e) => action.config[configKey] = (e.target as HTMLInputElement).value}
 															min="0"
 															max={config.max || 999999}
 															placeholder={config.placeholder || ''}

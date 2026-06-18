@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * ButtonEditor - Visual builder for Discord button components
 	 * Allows creating rows of buttons with labels, styles, emojis, and per-button action sequences
@@ -279,7 +279,7 @@
 										<input 
 											type="text" 
 											value={btn.label}
-											oninput={(e) => updateButton(rowIndex, btnIndex, 'label', e.target.value)}
+											oninput={(e) => updateButton(rowIndex, btnIndex, 'label', (e.target as HTMLInputElement).value)}
 											placeholder="Button text"
 											maxlength="80"
 										/>
@@ -308,7 +308,7 @@
 										<input 
 											type="text" 
 											value={btn.emoji}
-											oninput={(e) => updateButton(rowIndex, btnIndex, 'emoji', e.target.value)}
+											oninput={(e) => updateButton(rowIndex, btnIndex, 'emoji', (e.target as HTMLInputElement).value)}
 											placeholder="👋 or leave empty"
 											maxlength="32"
 										/>
@@ -319,7 +319,7 @@
 										<input 
 											type="text"
 											value={btn.id}
-											oninput={(e) => updateButton(rowIndex, btnIndex, 'id', e.target.value)}
+											oninput={(e) => updateButton(rowIndex, btnIndex, 'id', (e.target as HTMLInputElement).value)}
 											placeholder="unique_id"
 											maxlength="32"
 										/>
@@ -332,7 +332,7 @@
 											<input 
 												type="url" 
 												value={btn.url || ''}
-												oninput={(e) => updateButton(rowIndex, btnIndex, 'url', e.target.value)}
+												oninput={(e) => updateButton(rowIndex, btnIndex, 'url', (e.target as HTMLInputElement).value)}
 												placeholder="https://example.com"
 											/>
 											<span class="field-hint">Link buttons open a URL instead of triggering actions</span>
@@ -343,7 +343,7 @@
 											<input 
 												type="checkbox"
 												checked={btn.disabled || false}
-												onchange={(e) => updateButton(rowIndex, btnIndex, 'disabled', e.target.checked)}
+												onchange={(e) => updateButton(rowIndex, btnIndex, 'disabled', (e.target as HTMLInputElement).checked)}
 											/>
 											<span>Disabled</span>
 										</label>

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	let { data: incomingData } = $props();
 
 	let catalog = $state([]);

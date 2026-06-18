@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/**
 	 * ActionFlowBuilder - Mobile-first drag-and-drop action sequence builder
 	 * Used for building action sequences in automations, commands, and button actions
@@ -7,7 +7,52 @@
 	import ChannelSelector from './ChannelSelector.svelte';
 	import RoleSelector from './RoleSelector.svelte';
 	import DiscordMessageEditor from './DiscordMessageEditor.svelte';
-	
+
+	interface ConfigSchemaField {
+		type?: string;
+		label?: string;
+		description?: string;
+		placeholder?: string;
+		required?: boolean;
+		supportsVariables?: boolean;
+		multiple?: boolean;
+		showAllOption?: boolean;
+		allOptionLabel?: string;
+		showWhen?: string;
+		hideWhen?: string;
+		max?: number;
+		default?: any;
+		options?: any[];
+		[key: string]: any;
+	}
+
+	type ConfigSchema = Record<string, ConfigSchemaField>;
+
+	interface ActionTypeInfo {
+		name?: string;
+		icon?: string;
+		description?: string;
+		configSchema?: ConfigSchema;
+		[key: string]: any;
+	}
+
+	interface FlowAction {
+		type: string;
+		config: Record<string, any>;
+	}
+
+	interface Props {
+		actions?: FlowAction[];
+		actionTypes?: Record<string, ActionTypeInfo>;
+		templateVariables?: Record<string, any>;
+		channels?: any;
+		roles?: any;
+		guildId?: string;
+		userSources?: Array<{ value: string; label: string }>;
+		numberOptions?: Array<{ value: string; label: string }>;
+		compact?: boolean;
+	}
+
 	let {
 		actions = $bindable([]),
 		actionTypes = {},
@@ -18,7 +63,7 @@
 		userSources = [],
 		numberOptions = [],
 		compact = false,
-	} = $props();
+	}: Props = $props();
 	
 	// Drag state
 	let dragIndex = $state(null);
@@ -31,12 +76,12 @@
 	// Collapsed state per action
 	let collapsedActions = $state(new Set());
 	
-	function getActionConfigSchema(actionType) {
+	function getActionConfigSchema(actionType: string): ConfigSchema {
 		if (!actionType || actionType === 'NONE') return {};
 		return actionTypes[actionType]?.configSchema || {};
 	}
-	
-	function getActionInfo(actionType) {
+
+	function getActionInfo(actionType: string): ActionTypeInfo {
 		return actionTypes[actionType] || { name: actionType, icon: '⚡', description: '' };
 	}
 	
@@ -294,7 +339,7 @@
 								<label>Action Type</label>
 								<select
 									value={action.type}
-									onchange={(e) => updateActionType(index, e.target.value)}
+									onchange={(e) => updateActionType(index, (e.target as HTMLSelectElement).value)}
 									class="flow-select"
 								>
 									<option value="">Select an action...</option>
@@ -354,8 +399,8 @@
 																	class="flow-select flow-select-sm"
 																	value={isOptionReference(currentVal) ? currentVal : ''}
 																	onchange={(e) => {
-																		if (e.target.value) {
-																			action.config[configKey] = e.target.value;
+																		if ((e.target as HTMLSelectElement).value) {
+																			action.config[configKey] = (e.target as HTMLSelectElement).value;
 																		} else {
 																			action.config[configKey] = '';
 																		}
@@ -428,7 +473,7 @@
 															<input
 																type="color"
 																value={action.config[configKey] || config.default || '#5865F2'}
-																oninput={(e) => { action.config[configKey] = e.target.value; }}
+																oninput={(e) => { action.config[configKey] = (e.target as HTMLInputElement).value; }}
 																class="flow-color-input"
 															/>
 															<span class="flow-color-value">{action.config[configKey] || config.default || '#5865F2'}</span>
@@ -441,13 +486,13 @@
 																		type="color"
 																		class="color-rule-picker"
 																		value={rule.color || '#5865F2'}
-																		oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', e.target.value)}
+																		oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', (e.target as HTMLInputElement).value)}
 																	/>
 																	<span class="color-rule-word">If</span>
 																	<select
 																		class="color-rule-field"
 																		value={rule.variable || ''}
-																		onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', e.target.value)}
+																		onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', (e.target as HTMLSelectElement).value)}
 																	>
 																		<option value="" disabled>pick field...</option>
 																		<optgroup label="Trigger">
@@ -466,7 +511,7 @@
 																	<select
 																		class="color-rule-op"
 																		value={rule.operator || 'equals'}
-																		onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', e.target.value)}
+																		onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', (e.target as HTMLSelectElement).value)}
 																	>
 																		<option value="equals">is</option>
 																		<option value="not_equals">isn't</option>
@@ -479,7 +524,7 @@
 																		class="color-rule-value"
 																		placeholder="value..."
 																		value={rule.value || ''}
-																		oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+																		oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', (e.target as HTMLInputElement).value)}
 																	/>
 																	<button type="button" class="btn-remove-rule" onclick={() => removeColorRule(action, configKey, ruleIndex)}>✕</button>
 																</div>
@@ -552,7 +597,7 @@
 																	class="flow-input delay-custom-input"
 																	value={action.config[configKey]?.endsWith?.('c') ? action.config[configKey].slice(0, -1) : ''}
 																	oninput={(e) => {
-																		const v = e.target.value;
+																		const v = (e.target as HTMLInputElement).value;
 																		if (v) {
 																			const unit = action.config[configKey + '_unit'] || 'm';
 																			action.config[configKey] = v + unit + 'c';
@@ -565,10 +610,10 @@
 																	class="flow-select delay-unit-select"
 																	value={action.config[configKey + '_unit'] || 'm'}
 																	onchange={(e) => {
-																		action.config[configKey + '_unit'] = e.target.value;
+																		action.config[configKey + '_unit'] = (e.target as HTMLSelectElement).value;
 																		const numPart = action.config[configKey]?.replace?.(/[^0-9]/g, '');
 																		if (numPart) {
-																			action.config[configKey] = numPart + e.target.value + 'c';
+																			action.config[configKey] = numPart + (e.target as HTMLSelectElement).value + 'c';
 																		}
 																	}}
 																>

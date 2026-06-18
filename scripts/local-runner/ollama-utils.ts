@@ -2,6 +2,15 @@ import { execSync } from "node:child_process";
 import http from "node:http";
 
 /**
+ * Default local Ollama connection + model. Ollama is the default local LLM
+ * provider for the runner; gemma3:4b is the default model (overridable via the
+ * OLLAMA_MODEL env var or a persisted provider config).
+ */
+export const DEFAULT_OLLAMA_HOST = "localhost";
+export const DEFAULT_OLLAMA_PORT = 11434;
+export const DEFAULT_OLLAMA_MODEL = "gemma3:4b";
+
+/**
  * Check if Ollama is installed
  */
 export async function detectOllamaInstalled(): Promise<boolean> {
@@ -126,9 +135,12 @@ export function storeOllamaConfig(config: { host: string; port: number; model: s
 }
 
 /**
- * Get stored Ollama config
+ * Get the EXPLICIT Ollama config from environment variables only.
+ * Returns null unless all of OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL are set.
+ * Used for precedence: explicit env overrides a persisted config, which in
+ * turn overrides the built-in default.
  */
-export function getOllamaConfig(): { host: string; port: number; model: string } | null {
+export function getExplicitOllamaEnvConfig(): { host: string; port: number; model: string } | null {
   const host = process.env.OLLAMA_HOST;
   const port = process.env.OLLAMA_PORT;
   const model = process.env.OLLAMA_MODEL;
@@ -139,6 +151,21 @@ export function getOllamaConfig(): { host: string; port: number; model: string }
     host,
     port: parseInt(port, 10),
     model,
+  };
+}
+
+/**
+ * Get the effective Ollama config, falling back to the local defaults
+ * (localhost:11434, gemma3:4b) so Ollama is usable with zero configuration.
+ * Individual OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL env vars still override their
+ * respective field when present.
+ */
+export function getOllamaConfig(): { host: string; port: number; model: string } {
+  const port = process.env.OLLAMA_PORT;
+  return {
+    host: process.env.OLLAMA_HOST || DEFAULT_OLLAMA_HOST,
+    port: port ? parseInt(port, 10) : DEFAULT_OLLAMA_PORT,
+    model: process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL,
   };
 }
 

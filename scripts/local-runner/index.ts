@@ -43,7 +43,7 @@ import {
   getCopilotConfig,
   runCopilotPrompt,
 } from "./copilot-utils";
-import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig } from "./ollama-utils";
+import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig, getExplicitOllamaEnvConfig, DEFAULT_OLLAMA_MODEL } from "./ollama-utils";
 import { readPersistedProviderConfig } from "./provider-config";
 import { callRunnerAssistant } from "./spacebot-assistant";
 import { getDefaultRunnerHome, promptForRunnerHome, resolveRunnerHome, scaffoldRunnerHome, writeRunnerHomeConfig } from "./runner-home";
@@ -433,9 +433,9 @@ function buildProviderMetadata() {
   const copilotCfg = getCopilotConfig() ?? (persisted.copilot
     ? { model: persisted.copilot.model, via: persisted.copilot.via }
     : null);
-  const ollamaCfg = getOllamaConfig() ?? (persisted.ollama
+  const ollamaCfg = getExplicitOllamaEnvConfig() ?? (persisted.ollama
     ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
-    : null);
+    : getOllamaConfig());
   const chain = resolveProviderChain({}).map((entry) => ({
     provider: entry.provider,
     model: entry.model ?? null,
@@ -632,9 +632,9 @@ function resolveProviderChain(payload: Record<string, unknown>): ProviderChainEn
   const copilotCfg = getCopilotConfig() ?? (persisted.copilot
     ? { model: persisted.copilot.model, via: persisted.copilot.via }
     : null);
-  const ollamaCfg = getOllamaConfig() ?? (persisted.ollama
+  const ollamaCfg = getExplicitOllamaEnvConfig() ?? (persisted.ollama
     ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
-    : null);
+    : getOllamaConfig());
 
   const preferred = process.env.SPACEBOT_LLM_PROVIDER === "copilot" || process.env.SPACEBOT_LLM_PROVIDER === "ollama"
     ? process.env.SPACEBOT_LLM_PROVIDER
@@ -657,8 +657,9 @@ function resolveProviderChain(payload: Record<string, unknown>): ProviderChainEn
     addOllama();
     addCopilot();
   } else {
-    addCopilot();
+    // No explicit preference: Ollama is the default local provider.
     addOllama();
+    addCopilot();
   }
 
   return dedupeProviderChain(defaults);
@@ -716,10 +717,10 @@ async function runPromptThroughProviderChain(prompt: string, payload: Record<str
     }
 
     const persisted = readPersistedProviderConfig();
-    const configured = getOllamaConfig() ?? persisted.ollama ?? null;
+    const configured = getExplicitOllamaEnvConfig() ?? persisted.ollama ?? getOllamaConfig();
     const host = entry.host || configured?.host || "localhost";
     const port = entry.port || configured?.port || 11434;
-    const model = entry.model || configured?.model || "";
+    const model = entry.model || configured?.model || DEFAULT_OLLAMA_MODEL;
 
     if (!model) {
       attempts.push({

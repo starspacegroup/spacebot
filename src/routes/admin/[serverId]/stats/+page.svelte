@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { goto } from '$app/navigation';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
@@ -42,7 +42,7 @@
 	const LIVE_VOICE_POLL_MS = 15000;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
 
-	function normalizeLiveVoiceSnapshot(snapshot) {
+	function normalizeLiveVoiceSnapshot(snapshot?: any) {
 		return {
 			channels: Array.isArray(snapshot?.channels) ? snapshot.channels : [],
 			totalUsers: Number(snapshot?.totalUsers || 0),
@@ -306,7 +306,7 @@
 	);
 	
 	// Calculate percentages for category breakdown - use $derived for reactivity
-	const categoryTotal = $derived(Object.values(statistics.events?.byCategory || {}).reduce((a, b) => a + b, 0));
+	const categoryTotal = $derived((Object.values(statistics.events?.byCategory || {}) as number[]).reduce((a, b) => a + b, 0));
 	
 	function getCategoryPercentage(count, total) {
 		if (!total) return 0;
@@ -424,7 +424,7 @@
 		const date = parseUTCDate(dateStr);
 		if (!date) return dateStr;
 		const now = new Date();
-		const diffMs = now - date;
+		const diffMs = (now as any) - (date as any);
 		const diffMins = Math.floor(diffMs / 60000);
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
@@ -715,7 +715,7 @@
 					<a href="/admin/{data.serverId}/stats/vc-activity" class="btn btn-secondary btn-sm">🔴 VC Activity</a>
 					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm">📜 Event Logs</a>
 					<label class="master-bot-toggle">
-						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots(e.target.checked)} />
+						<input type="checkbox" bind:checked={showBotsGlobal} onchange={(e) => toggleAllBots((e.target as HTMLInputElement).checked)} />
 						<span class="toggle-switch"></span>
 						<span class="toggle-label">🤖 Include Bots</span>
 					</label>
@@ -1283,7 +1283,7 @@
 												src={getAvatarUrl(booster.user_id, booster.guild_avatar || booster.avatar, booster.discriminator, 20)}
 												alt="{booster.display_name || 'User'} avatar"
 												class="inline-user-avatar"
-												onerror={(e) => { e.target.style.display = 'none'; }}
+												onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 											/>
 										{/if}
 										{booster.display_name}
@@ -1359,7 +1359,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}
@@ -1405,7 +1405,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}
@@ -1451,7 +1451,7 @@
 													src={getAvatarUrl(user.actor_id, user.actor_avatar, user.actor_discriminator, 20)}
 													alt="{user.actor_name || 'User'} avatar"
 													class="inline-user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											{user.actor_name || 'Unknown User'}

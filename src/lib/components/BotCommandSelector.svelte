@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { log } from '$lib/log.js';
 	import { BOT_REGISTRY, getAllBots, getBotCommands } from '$lib/discord/bots.js';
 	
@@ -39,7 +39,7 @@
 	const selectedBot = $derived(botValue ? BOT_REGISTRY[botValue] : null);
 	
 	// Get commands for selected bot
-	const availableCommands = $derived(selectedBot ? Object.values(selectedBot.commands) : []);
+	const availableCommands: any[] = $derived(selectedBot ? Object.values(selectedBot.commands) : []);
 	
 	// Get selected command info
 	const selectedCommand = $derived(

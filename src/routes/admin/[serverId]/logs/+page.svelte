@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { log } from '$lib/log.js';
 	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
@@ -242,7 +242,7 @@
 	let filteredEventTypes = $derived(() => {
 		if (!selectedCategory) return Object.keys(eventTypes);
 		return Object.entries(eventTypes)
-			.filter(([_, info]) => info.category === selectedCategory)
+			.filter(([_, info]) => (info as any).category === selectedCategory)
 			.map(([type, _]) => type);
 	});
 </script>
@@ -339,7 +339,7 @@
 						<select id="category" bind:value={selectedCategory} onchange={applyFilters}>
 							<option value="">All Categories</option>
 							{#each Object.entries(categories) as [key, info]}
-								<option value={key}>{info.icon} {info.name}</option>
+								<option value={key}>{(info as any).icon} {(info as any).name}</option>
 							{/each}
 						</select>
 					</div>
@@ -411,7 +411,7 @@
 			<div class="results-right">
 				<div class="page-size-selector">
 					<label for="pageSize">Show:</label>
-					<select id="pageSize" value={limit} onchange={(e) => changePageSize(parseInt(e.target.value))}>
+					<select id="pageSize" value={limit} onchange={(e) => changePageSize(parseInt((e.target as HTMLSelectElement).value))}>
 						{#each pageSizeOptions as size}
 							<option value={size} selected={size === limit}>{size}</option>
 						{/each}
@@ -530,7 +530,7 @@
 													src={getAvatarUrl(log.actor_id, log.actor_avatar, log.actor_discriminator, 32)} 
 													alt="{log.actor_name}'s avatar"
 													class="user-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											<div class="user-text">

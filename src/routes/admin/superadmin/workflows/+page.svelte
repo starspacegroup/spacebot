@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatDate as tzFormatDate } from '$lib/timezone.js';
 
@@ -194,8 +194,8 @@
 
 	function showToast(message, type = 'success') {
 		toast = { message, type };
-		window.clearTimeout(showToast.timeoutId);
-		showToast.timeoutId = window.setTimeout(() => {
+		window.clearTimeout((showToast as any).timeoutId);
+		(showToast as any).timeoutId = window.setTimeout(() => {
 			toast = null;
 		}, 3200);
 	}
@@ -739,7 +739,7 @@
 		if (!isPrimaryTriggerNode(nodeId)) return;
 		const node = getNodeById(nodeId);
 		if (!node || node.type !== 'trigger') return;
-		const schedule = String(node?.data?.schedule || '').trim();
+		const schedule = String((node?.data as any)?.schedule || '').trim();
 		if (schedule) {
 			draft.schedule_type = 'cron';
 			draft.cron_expression = schedule;
@@ -2351,7 +2351,7 @@
 							{@const nodeSchedule = selectedTriggerSchedule}
 							<label>
 								<span>Trigger source</span>
-								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
+								<input class="input" type="text" value={(selectedNodeRef.data as any)?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
 							</label>
 							<label>
 								<span>Time trigger</span>
@@ -2397,7 +2397,7 @@
 							{/if}
 							<div class="schedule-summary-card schedule-summary-card-tight">
 								<span>Current trigger schedule</span>
-								<strong>{scheduleLabelFromCron(selectedNodeRef.data?.schedule_type, selectedNodeRef.data?.schedule)}</strong>
+								<strong>{scheduleLabelFromCron((selectedNodeRef.data as any)?.schedule_type, (selectedNodeRef.data as any)?.schedule)}</strong>
 								<small>{nodeSchedule.mode === 'manual' ? 'This trigger runs only when started by the workflow.' : 'Changes sync back to the template schedule.'}</small>
 								{#if nodeSchedule.unsupported}
 									<small>Legacy custom schedule is loaded. Adjust this trigger to replace it with a structured time rule.</small>
