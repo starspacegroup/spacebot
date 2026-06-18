@@ -246,7 +246,7 @@
 						class="quick-link-card quick-link-card-coming-soon"
 						class:quick-link-card-disabled={!data.isSuperAdmin}
 						aria-disabled={!data.isSuperAdmin}
-						on:click={(event) => {
+						onclick={(event) => {
 							if (!data.isSuperAdmin) event.preventDefault();
 						}}
 					>
@@ -460,11 +460,6 @@
 		height: 8px;
 		border-radius: 50%;
 		background: #60a5fa;
-	}
-
-	.data-status.is-loading .status-dot {
-		background: #f59e0b;
-		animation: pulse 1.2s ease-in-out infinite;
 	}
 
 	@keyframes pulse {

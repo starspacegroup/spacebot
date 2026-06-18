@@ -252,6 +252,7 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -- touch handlers only forward drag-reorder gestures; keyboard interaction is not meaningful on this container -->
 <div class="flow-builder" class:compact ontouchmove={handleTouchMove} ontouchend={handleTouchEnd}>
 	{#if actions.length === 0}
 		<div class="flow-empty">

@@ -654,8 +654,10 @@
 														ondragover={(e) => choiceDragOver(index, choiceIndex, e)}
 														ondragend={choiceDragEnd}
 													>
-														<span 
-															class="drag-handle" 
+														<!-- svelte-ignore a11y_no_static_element_interactions -->
+														<!-- touch-drag-only reorder handle; keyboard interaction is not meaningful here -->
+														<span
+															class="drag-handle"
 															ontouchstart={(e) => choiceTouchStart(index, choiceIndex, e)}
 															title="Drag to reorder"
 														>⠿</span>

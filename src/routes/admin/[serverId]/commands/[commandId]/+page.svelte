@@ -715,8 +715,11 @@
 														ondragover={(e) => choiceDragOver(index, choiceIndex, e)}
 														ondragend={choiceDragEnd}
 													>
-														<span 
-															class="drag-handle" 
+														<span
+															class="drag-handle"
+															role="button"
+															tabindex={0}
+															aria-label="Drag to reorder choice"
 															ontouchstart={(e) => choiceTouchStart(index, choiceIndex, e)}
 															title="Drag to reorder"
 														>⠿</span>

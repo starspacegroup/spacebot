@@ -1608,31 +1608,6 @@
 		padding: 1rem;
 	}
 
-	.data-status {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin: 0 0 1rem;
-		padding: 0.65rem 0.9rem;
-		border-radius: 10px;
-		border: 1px solid var(--color-fixed-border-strong);
-		background: var(--color-overlay-scrim-soft);
-		color: var(--color-fixed-text-secondary);
-		font-size: 0.9rem;
-	}
-
-	.status-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #60a5fa;
-	}
-
-	.data-status.is-loading .status-dot {
-		background: #f59e0b;
-		animation: pulse 1.2s ease-in-out infinite;
-	}
-
 	@keyframes pulse {
 		0%, 100% {
 			opacity: 0.45;
@@ -2515,14 +2490,12 @@
 		}
 	}
 
-	.list-category,
 	.list-meta {
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
 	}
 
 	@media (min-width: 480px) {
-		.list-category,
 		.list-meta {
 			font-size: 0.75rem;
 		}
@@ -3037,16 +3010,6 @@
 	.bot-toggle input:checked ~ .toggle-label {
 		opacity: 1;
 		filter: grayscale(0);
-	}
-	
-	.bot-badge {
-		font-size: 0.7rem;
-		padding: 0.1rem 0.35rem;
-		background: var(--color-surface-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-sm);
-		margin-left: 0.35rem;
-		color: var(--color-text-muted);
 	}
 	
 	/* Smaller toggle for card headers */

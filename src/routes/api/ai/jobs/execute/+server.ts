@@ -65,15 +65,20 @@ async function sendDiscordDm(env, userId, content) {
   }
 }
 
-async function dispatchToLocalRunnerFallback(db, job, { requireGuildAccess = true } = {}) {
+async function dispatchToLocalRunnerFallback(db, job) {
   const access = await evaluateLocalRunnerAssistAccess(db, {
     guildId: job?.guild_id,
     userId: job?.user_id,
   });
-  // When the retry decision explicitly requests a runner switch, the dispatch is
-  // provider-driven rather than guild-assist-driven, so it bypasses the guild
-  // policy gate. The implicit provider-chain fallback still requires guild access.
-  if (requireGuildAccess && !access.allowed) {
+
+  // Authorization is gated on SERVER-TRUSTED signals only — never on the AI
+  // retry assessor's providerSwitchHint (which can be LLM/user-influenced):
+  //   - Guild-scoped jobs must pass the guild's runner-assist policy.
+  //   - Personal (guild-less) autopilot jobs are authorized by OWNERSHIP: the
+  //     dispatch below only ever targets the job owner's own registered runners
+  //     (getRunnerInstances / createRunnerJob are scoped to job.user_id).
+  const hasGuildContext = access.reason !== "no_guild_context";
+  if (hasGuildContext && !access.allowed) {
     return { dispatched: false, reason: access.reason };
   }
 
@@ -240,9 +245,10 @@ export async function POST({ request, platform }) {
     );
 
     if (shouldTryRunnerFallback) {
-      const fallback = await dispatchToLocalRunnerFallback(db, latest || job, {
-        requireGuildAccess: !decisionRequestsRunner,
-      });
+      // decisionRequestsRunner only decides whether to ATTEMPT the fallback;
+      // authorization is enforced inside dispatchToLocalRunnerFallback on
+      // server-trusted signals (guild policy + runner ownership), not this field.
+      const fallback = await dispatchToLocalRunnerFallback(db, latest || job);
       if (fallback.dispatched) {
         await appendAIJobEvent(db, job.id, {
           eventType: "job.runner_fallback_dispatched",

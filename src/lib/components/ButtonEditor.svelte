@@ -182,6 +182,7 @@
 	}
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -- touch-drag reorder surface; keyboard interaction is not meaningful for the container -->
 <div class="button-editor" ontouchmove={handleTouchMove} ontouchend={handleTouchEnd}>
 	<div class="button-editor-header">
 		<span class="section-label">Button Rows</span>
