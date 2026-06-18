@@ -43,7 +43,7 @@ import {
   getCopilotConfig,
   runCopilotPrompt,
 } from "./copilot-utils";
-import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig, getExplicitOllamaEnvConfig, DEFAULT_OLLAMA_MODEL } from "./ollama-utils";
+import { detectOllamaRunning, generateOllamaResponse, getOllamaConfig, resolveOllamaConfig } from "./ollama-utils";
 import { readPersistedProviderConfig } from "./provider-config";
 import { callRunnerAssistant } from "./spacebot-assistant";
 import { getDefaultRunnerHome, promptForRunnerHome, resolveRunnerHome, scaffoldRunnerHome, writeRunnerHomeConfig } from "./runner-home";
@@ -433,9 +433,11 @@ function buildProviderMetadata() {
   const copilotCfg = getCopilotConfig() ?? (persisted.copilot
     ? { model: persisted.copilot.model, via: persisted.copilot.via }
     : null);
-  const ollamaCfg = getExplicitOllamaEnvConfig() ?? (persisted.ollama
+  // Honest "configured" reporting: true only when Ollama is EXPLICITLY set up
+  // (env or persisted), not when falling back to the built-in default.
+  const ollamaCfg = getOllamaConfig() ?? (persisted.ollama
     ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
-    : getOllamaConfig());
+    : null);
   const chain = resolveProviderChain({}).map((entry) => ({
     provider: entry.provider,
     model: entry.model ?? null,
@@ -632,10 +634,6 @@ function resolveProviderChain(payload: Record<string, unknown>): ProviderChainEn
   const copilotCfg = getCopilotConfig() ?? (persisted.copilot
     ? { model: persisted.copilot.model, via: persisted.copilot.via }
     : null);
-  const ollamaCfg = getExplicitOllamaEnvConfig() ?? (persisted.ollama
-    ? { host: persisted.ollama.host, port: persisted.ollama.port, model: persisted.ollama.model }
-    : getOllamaConfig());
-
   const preferred = process.env.SPACEBOT_LLM_PROVIDER === "copilot" || process.env.SPACEBOT_LLM_PROVIDER === "ollama"
     ? process.env.SPACEBOT_LLM_PROVIDER
     : (persisted.provider === "copilot" || persisted.provider === "ollama" ? persisted.provider : null);
@@ -646,8 +644,11 @@ function resolveProviderChain(payload: Record<string, unknown>): ProviderChainEn
     defaults.push({ provider: "copilot", model: copilotCfg.model || DEFAULT_COPILOT_MODEL, via: copilotCfg.via });
   };
   const addOllama = () => {
-    if (!ollamaCfg) return;
-    defaults.push({ provider: "ollama", model: ollamaCfg.model, host: ollamaCfg.host, port: ollamaCfg.port });
+    // Ollama is the zero-config default; resolveOllamaConfig always yields a
+    // usable config (env > persisted > localhost:11434/gemma3:4b). Reachability
+    // is checked at execution time via detectOllamaRunning (fails fast).
+    const cfg = resolveOllamaConfig(persisted.ollama);
+    defaults.push({ provider: "ollama", model: cfg.model, host: cfg.host, port: cfg.port });
   };
 
   if (preferred === "copilot") {
@@ -717,10 +718,10 @@ async function runPromptThroughProviderChain(prompt: string, payload: Record<str
     }
 
     const persisted = readPersistedProviderConfig();
-    const configured = getExplicitOllamaEnvConfig() ?? persisted.ollama ?? getOllamaConfig();
-    const host = entry.host || configured?.host || "localhost";
-    const port = entry.port || configured?.port || 11434;
-    const model = entry.model || configured?.model || DEFAULT_OLLAMA_MODEL;
+    const configured = resolveOllamaConfig(persisted.ollama);
+    const host = entry.host || configured.host;
+    const port = entry.port || configured.port;
+    const model = entry.model || configured.model;
 
     if (!model) {
       attempts.push({

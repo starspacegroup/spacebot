@@ -45,11 +45,25 @@ async function callOllamaChat({ system, messages, model, baseUrl }) {
   };
 
   log.debug(`[AI] Sending request to Ollama model=${model} at ${url}`);
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  // Bound the request so a hung/slow local Ollama can't block the DM handler
+  // indefinitely. Default 120s to tolerate cold model loads (the first call after
+  // a model is pulled can be slow); override with OLLAMA_TIMEOUT_MS. Dev-only path.
+  const envTimeout = Number(typeof process !== "undefined" ? process.env?.OLLAMA_TIMEOUT_MS : undefined);
+  const OLLAMA_TIMEOUT_MS = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120000;
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+      throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms at ${url}`);
+    }
+    throw new Error(`Could not reach Ollama at ${url}: ${err?.message || err}`);
+  }
 
   if (!response.ok) {
     const errText = await response.text().catch(() => "");

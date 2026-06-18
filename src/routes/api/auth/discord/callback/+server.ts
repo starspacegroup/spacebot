@@ -2,7 +2,6 @@ import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { invalidateGuildCache } from "$lib/discord/guilds.js";
 import { upsertUser } from "$lib/db/users.js";
-import { upsertGuildMetadata } from "$lib/db/guild-metadata.js";
 import { notifySuperAdminsOfFirstLogin } from "$lib/server/superadmin-notifications.js";
 
 /**
@@ -252,18 +251,17 @@ export async function GET({ request, url, cookies, platform }) {
 
 			log.debug("Bot installed to guild:", guildInfo);
 
-			// Invalidate guild cache since bot membership changed
+			// Invalidate guild cache since bot membership changed.
 			invalidateGuildCache(cookies);
 
-			// Persist the installed guild's metadata so it's available to the
-			// dashboard immediately (before the gateway's next metadata sync).
-			if (db) {
-				try {
-					await upsertGuildMetadata(db, tokenData.guild);
-				} catch (err) {
-					log.error("Failed to persist installed guild metadata:", err);
-				}
-			}
+			// NOTE: We intentionally do NOT persist tokenData.guild into
+			// guild_metadata here. The OAuth token's guild object is partial
+			// (id/name/icon/features only), and upsertGuildMetadata does an
+			// ON CONFLICT DO UPDATE that would overwrite richer fields (owner_id,
+			// banner, premium_tier, member counts, channel ids) with nulls on
+			// re-install. The gateway + daily metadata sync populate the full
+			// record from GET /guilds/{id}; the dashboard's guild list comes from
+			// the Discord API, not this table, so nothing is lost by waiting.
 
 			// Redirect to returnTo if set (e.g. upgrade flow), otherwise the installed server dashboard
 			const installRedirect = flowData.returnTo && flowData.returnTo !== '/admin'

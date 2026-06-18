@@ -7,6 +7,22 @@ function normalizeGuildId(guildId) {
 
 export async function evaluateLocalRunnerAssistAccess(db, { guildId, userId }) {
   const normalizedGuildId = normalizeGuildId(guildId);
+  const guildRequested = String(guildId || "").trim().length > 0;
+
+  // A guild WAS supplied but is malformed (not a 17-20 digit snowflake). Do NOT
+  // collapse this into "no_guild_context" — callers (e.g. the AI-job runner
+  // fallback) treat no_guild_context as a personal, ownership-authorized job and
+  // skip the guild policy. A malformed guild must be denied, not treated as
+  // personal, so it gets its own reason that callers gate on.
+  if (guildRequested && !normalizedGuildId) {
+    return {
+      allowed: false,
+      reason: "invalid_guild",
+      guildId: null,
+      policy: normalizeLocalRunnerAssistPolicy(null),
+    };
+  }
+
   if (!db || !normalizedGuildId || !userId) {
     return {
       allowed: false,

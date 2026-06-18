@@ -135,12 +135,13 @@ export function storeOllamaConfig(config: { host: string; port: number; model: s
 }
 
 /**
- * Get the EXPLICIT Ollama config from environment variables only.
- * Returns null unless all of OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL are set.
- * Used for precedence: explicit env overrides a persisted config, which in
- * turn overrides the built-in default.
+ * Get the EXPLICIT Ollama config from environment variables. Returns null
+ * unless all of OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL are set. Use this to learn
+ * whether the user has actually configured Ollama (e.g. reporting "configured"
+ * status, or TUI guidance) — it deliberately applies NO defaults, so callers
+ * can distinguish "explicitly configured" from "using the built-in default".
  */
-export function getExplicitOllamaEnvConfig(): { host: string; port: number; model: string } | null {
+export function getOllamaConfig(): { host: string; port: number; model: string } | null {
   const host = process.env.OLLAMA_HOST;
   const port = process.env.OLLAMA_PORT;
   const model = process.env.OLLAMA_MODEL;
@@ -155,17 +156,21 @@ export function getExplicitOllamaEnvConfig(): { host: string; port: number; mode
 }
 
 /**
- * Get the effective Ollama config, falling back to the local defaults
- * (localhost:11434, gemma3:4b) so Ollama is usable with zero configuration.
- * Individual OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL env vars still override their
- * respective field when present.
+ * Resolve the EFFECTIVE Ollama config for actually talking to Ollama, applying
+ * per-field precedence: explicit OLLAMA_* env var > persisted config field >
+ * built-in default (localhost:11434, gemma3:4b). Always returns a usable config
+ * so the runner/app defaults to Ollama with zero configuration. Each field is
+ * resolved independently, so e.g. OLLAMA_MODEL alone overrides only the model
+ * even when a persisted config is present.
  */
-export function getOllamaConfig(): { host: string; port: number; model: string } {
-  const port = process.env.OLLAMA_PORT;
+export function resolveOllamaConfig(
+  persisted?: { host?: string; port?: number; model?: string } | null,
+): { host: string; port: number; model: string } {
+  const envPort = process.env.OLLAMA_PORT;
   return {
-    host: process.env.OLLAMA_HOST || DEFAULT_OLLAMA_HOST,
-    port: port ? parseInt(port, 10) : DEFAULT_OLLAMA_PORT,
-    model: process.env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL,
+    host: process.env.OLLAMA_HOST || persisted?.host || DEFAULT_OLLAMA_HOST,
+    port: envPort ? parseInt(envPort, 10) : (persisted?.port ?? DEFAULT_OLLAMA_PORT),
+    model: process.env.OLLAMA_MODEL || persisted?.model || DEFAULT_OLLAMA_MODEL,
   };
 }
 
