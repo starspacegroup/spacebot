@@ -1,3 +1,7 @@
+<p align="center">
+  <img alt="SpaceBot logo" src="static/logo.jpg" width="120">
+</p>
+
 # SpaceBot 🚀
 
 A powerful, self-hosted Discord bot platform built with **SvelteKit 2**
