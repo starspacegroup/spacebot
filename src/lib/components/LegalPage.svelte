@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	/** @type {string} */
 	export let title;
 	/** @type {{ id: string, label: string }[]} */

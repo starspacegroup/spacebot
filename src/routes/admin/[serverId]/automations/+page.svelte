@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -103,7 +103,7 @@
 	// Collapse triggers: if all events in a category are selected, show "CATEGORY: *" instead
 	function collapseTriggers(triggers) {
 		// Group triggers by category
-		const byCategory = {};
+		const byCategory: Record<string, any[]> = {};
 		for (const trigger of triggers) {
 			const cat = getEventCategory(trigger);
 			if (!byCategory[cat]) byCategory[cat] = [];
@@ -147,7 +147,7 @@
 		const date = parseUTCDate(dateString);
 		if (!date) return dateString;
 		const now = new Date();
-		const diffMs = now - date;
+		const diffMs = now.getTime() - date.getTime();
 		const diffSecs = Math.floor(diffMs / 1000);
 		const diffMins = Math.floor(diffSecs / 60);
 		const diffHours = Math.floor(diffMins / 60);
@@ -246,7 +246,7 @@
 																		src={getAvatarUrl(item.id, log.trigger_data?.actor_avatar, log.trigger_data?.actor_discriminator, 18)}
 																		alt="{item.value}'s avatar"
 																		class="trigger-actor-avatar"
-																		onerror={(e) => { e.target.style.display = 'none'; }}
+																		onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
 																	/>
 																{/if}
 																{item.value}
@@ -359,7 +359,7 @@
 									if (result.type === 'success') {
 										await invalidateAll();
 									} else if (result.type === 'failure') {
-										form = result.data;
+										form = result.data as any;
 									}
 								};
 							}}>
@@ -420,7 +420,7 @@
 										if (result.type === 'success') {
 											await invalidateAll();
 										} else if (result.type === 'failure') {
-											form = result.data;
+											form = result.data as any;
 										}
 									};
 								}} onsubmit={(e) => { if (!confirm('Delete this automation?')) e.preventDefault(); }}>

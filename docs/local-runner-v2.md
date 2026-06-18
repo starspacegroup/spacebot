@@ -49,7 +49,13 @@ TUI's runner child):
 - A file whose first line is `remember: <title>` is stored under `memory/` and indexed in
   `MEMORY.md` instead of being answered.
 - Answers go through the SpaceBot server assistant when a runner token is configured, and
-  fall back to the local provider chain (Copilot/Ollama) with memory context otherwise.
+  fall back to the local provider chain (Ollama/Copilot) with memory context otherwise.
+
+> **Default local LLM:** the runner defaults to **Ollama** with the **`gemma3:4b`** model
+> (`localhost:11434`) when nothing is configured — just run `ollama pull gemma3:4b` and start the
+> runner. Override with `OLLAMA_MODEL` / `OLLAMA_HOST` / `OLLAMA_PORT`, force a provider with
+> `SPACEBOT_LLM_PROVIDER=ollama|copilot`, or pick a model in the TUI. (The dashboard/gateway DM AI
+> separately uses Workers AI in production; set `AI_PROVIDER=ollama` in local `.env` to use Ollama there too.)
 
 ## Startup Experience
 

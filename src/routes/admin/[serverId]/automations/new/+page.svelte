@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
@@ -12,13 +12,106 @@
 	import { fetchChannelsWithCache, fetchRolesWithCache, fetchEmojisWithCache } from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
 	
-	let { data, form } = $props();
-	
+	interface EventTypeInfo {
+		category?: string;
+		description?: string;
+		[key: string]: any;
+	}
+
+	interface EventTypeEntry extends EventTypeInfo {
+		type: string;
+	}
+
+	interface CategoryInfo {
+		name: string;
+		icon: string;
+		color: string;
+		[key: string]: any;
+	}
+
+	interface ActionTypeInfo {
+		icon?: string;
+		name?: string;
+		description?: string;
+		configSchema?: Record<string, ConfigFieldSchema>;
+		[key: string]: any;
+	}
+
+	interface ConfigOption {
+		value: any;
+		label?: string;
+		[key: string]: any;
+	}
+
+	interface ConfigFieldSchema {
+		type?: string;
+		label?: string;
+		description?: string;
+		required?: boolean;
+		supportsVariables?: boolean;
+		showWhen?: string;
+		showAllOption?: boolean;
+		allOptionLabel?: string;
+		placeholder?: string;
+		max?: number;
+		default?: any;
+		options?: any[];
+		[key: string]: any;
+	}
+
+	interface FilterTypeInfo {
+		label?: string;
+		type?: string;
+		description?: string;
+		voiceOnly?: boolean;
+		default?: any;
+		applicableEvents?: string[];
+		options?: any[];
+		[key: string]: any;
+	}
+
+	interface ColorRule {
+		variable?: string;
+		operator?: string;
+		value?: string;
+		color?: string;
+		[key: string]: any;
+	}
+
+	interface AutomationAction {
+		type: string;
+		config: Record<string, any>;
+	}
+
+	interface PageDataShape {
+		selectedGuildId: string;
+		eventTypes: Record<string, EventTypeInfo>;
+		eventCategories: Record<string, CategoryInfo>;
+		actionTypes: Record<string, ActionTypeInfo>;
+		filterTypes: Record<string, FilterTypeInfo>;
+		templateVariables?: any;
+		githubRepositories?: string[];
+		webhooks?: Array<{ id: string; name: string; method: string; [key: string]: any }>;
+		[key: string]: any;
+	}
+
+	interface FormShape {
+		error?: any;
+		values?: {
+			name?: string;
+			description?: string;
+			[key: string]: any;
+		};
+		[key: string]: any;
+	}
+
+	let { data, form }: { data: PageDataShape; form?: FormShape } = $props();
+
 	// Form submission state
 	let isSubmitting = $state(false);
-	
-	let selectedEventTypes = $state([]);
-	let actions = $state([]);
+
+	let selectedEventTypes = $state<string[]>([]);
+	let actions = $state<AutomationAction[]>([]);
 	let showFilters = $state(false);
 	let showTriggerPicker = $state(false);
 	
@@ -114,13 +207,13 @@
 	const selectedGuildId = $derived(data.selectedGuildId);
 	
 	// Get category info
-	function getCategoryInfo(category) {
+	function getCategoryInfo(category: string): CategoryInfo {
 		return data.eventCategories[category] || { name: category, icon: '📌', color: '#888' };
 	}
-	
+
 	// Group events by category for dropdown (with optional search filter)
-	function getEventsByCategory(searchQuery = '') {
-		const grouped = {};
+	function getEventsByCategory(searchQuery = ''): Record<string, EventTypeEntry[]> {
+		const grouped: Record<string, EventTypeEntry[]> = {};
 		const query = searchQuery.toLowerCase().trim();
 		
 		for (const [eventType, info] of Object.entries(data.eventTypes)) {
@@ -146,12 +239,12 @@
 	const hasFilteredResults = $derived(Object.keys(filteredEventsByCategory).length > 0);
 	
 	// Get action config schema
-	function getActionConfigSchema(actionType) {
+	function getActionConfigSchema(actionType: string): Record<string, ConfigFieldSchema> {
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
 
 	// Color rules helpers for embed conditional colors
-	function getColorRules(action, configKey) {
+	function getColorRules(action: AutomationAction, configKey: string): ColorRule[] {
 		try {
 			const v = action.config[configKey];
 			if (Array.isArray(v)) return v;
@@ -160,24 +253,24 @@
 		return [];
 	}
 
-	function updateColorRule(action, configKey, ruleIndex, field, value) {
+	function updateColorRule(action: AutomationAction, configKey: string, ruleIndex: number, field: string, value: any) {
 		const rules = getColorRules(action, configKey);
 		rules[ruleIndex] = { ...rules[ruleIndex], [field]: value };
 		action.config[configKey] = [...rules];
 	}
 
-	function removeColorRule(action, configKey, ruleIndex) {
+	function removeColorRule(action: AutomationAction, configKey: string, ruleIndex: number) {
 		const rules = getColorRules(action, configKey);
 		rules.splice(ruleIndex, 1);
 		action.config[configKey] = [...rules];
 	}
 
-	function addColorRule(action, configKey) {
+	function addColorRule(action: AutomationAction, configKey: string) {
 		const rules = getColorRules(action, configKey);
 		action.config[configKey] = [...rules, { variable: '', operator: 'equals', value: '', color: '#57F287' }];
 	}
 
-	function getFilterOptionValues(filterKey) {
+	function getFilterOptionValues(filterKey: string): ConfigOption[] {
 		const options = data.filterTypes?.[filterKey]?.options || [];
 		return options
 			.map((opt) => {
@@ -189,7 +282,7 @@
 			.filter((opt) => opt.value !== 'any' && opt.value !== 'ALL');
 	}
 
-	function getColorRuleValueOptions(variable) {
+	function getColorRuleValueOptions(variable: string | undefined): ConfigOption[] {
 		switch (variable) {
 			case 'trigger.event':
 				return Object.keys(data.eventTypes || {})
@@ -224,7 +317,7 @@
 		}
 	}
 
-	function getColorRuleValueOptionsWithCurrent(variable, currentValue) {
+	function getColorRuleValueOptionsWithCurrent(variable: string | undefined, currentValue: any): ConfigOption[] {
 		const options = getColorRuleValueOptions(variable);
 		if (!currentValue || options.some((opt) => opt.value === currentValue)) {
 			return options;
@@ -232,14 +325,14 @@
 		return [{ value: currentValue, label: `${currentValue} (custom)` }, ...options];
 	}
 
-	function shouldUseColorRuleValueSelect(rule) {
+	function shouldUseColorRuleValueSelect(rule: ColorRule) {
 		const operator = rule?.operator || 'equals';
 		if (operator !== 'equals' && operator !== 'not_equals') return false;
 		return getColorRuleValueOptions(rule?.variable).length > 0;
 	}
 	
 	// Initialize config values when action type changes to avoid undefined bind errors
-	function initializeActionConfig(actionIndex, actionType) {
+	function initializeActionConfig(actionIndex: number, actionType: string) {
 		const schema = getActionConfigSchema(actionType);
 		const action = actions[actionIndex];
 		const newConfig = { ...action.config };
@@ -259,18 +352,18 @@
 		actions = [...actions, { type: '', config: {} }];
 	}
 
-	function removeAction(index) {
+	function removeAction(index: number) {
 		actions = actions.filter((_, i) => i !== index);
 	}
-	
-	function moveActionUp(index) {
+
+	function moveActionUp(index: number) {
 		if (index <= 0) return;
 		const newActions = [...actions];
 		[newActions[index - 1], newActions[index]] = [newActions[index], newActions[index - 1]];
 		actions = newActions;
 	}
 	
-	function moveActionDown(index) {
+	function moveActionDown(index: number) {
 		if (index >= actions.length - 1) return;
 		const newActions = [...actions];
 		[newActions[index], newActions[index + 1]] = [newActions[index + 1], newActions[index]];
@@ -278,7 +371,7 @@
 	}
 	
 	// Check if a filter applies to the selected event type
-	function filterAppliesToEvent(filterInfo, eventType) {
+	function filterAppliesToEvent(filterInfo: FilterTypeInfo, eventType: string) {
 		if (!filterInfo.applicableEvents || !eventType) {
 			return true;
 		}
@@ -301,13 +394,13 @@
 	}
 	
 	// Check if a filter applies to any of the selected event types
-	function filterAppliesToAnyEvent(filterInfo) {
+	function filterAppliesToAnyEvent(filterInfo: FilterTypeInfo) {
 		if (selectedEventTypes.length === 0) return false;
 		return selectedEventTypes.some(eventType => filterAppliesToEvent(filterInfo, eventType));
 	}
 	
 	// Toggle event type selection
-	function toggleEventType(eventType) {
+	function toggleEventType(eventType: string) {
 		if (selectedEventTypes.includes(eventType)) {
 			selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
 		} else {
@@ -316,7 +409,7 @@
 	}
 	
 	// Remove a trigger from the list
-	function removeTrigger(eventType) {
+	function removeTrigger(eventType: string) {
 		selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
 	}
 	
@@ -334,9 +427,9 @@
 	);
 	
 	// Get filters applicable to the current event type (excluding bot-specific ones handled separately)
-	const applicableFilters = $derived.by(() => {
+	const applicableFilters = $derived.by((): Record<string, FilterTypeInfo> => {
 		if (selectedEventTypes.length === 0) return {};
-		const result = {};
+		const result: Record<string, FilterTypeInfo> = {};
 		for (const [filterKey, filterInfo] of Object.entries(data.filterTypes)) {
 			// Skip bot command filters - they're handled by BotCommandSelector
 			if (['target_bot_id', 'command_name', 'command_result'].includes(filterKey)) continue;
@@ -663,7 +756,7 @@
 									required 
 									value={action.type} 
 									onchange={(e) => {
-										const newType = e.target.value;
+										const newType = (e.target as HTMLSelectElement).value;
 										const schema = getActionConfigSchema(newType);
 										const newConfig = { ...action.config };
 										for (const configKey of Object.keys(schema)) {
@@ -745,7 +838,7 @@
 														id="config_{index}_{configKey}"
 														name="action_config.{index}.{configKey}"
 														value={action.config[configKey] || config.default || '#5865F2'}
-														oninput={(e) => { action.config[configKey] = e.target.value; }}
+														oninput={(e) => { action.config[configKey] = (e.target as HTMLInputElement).value; }}
 														class="color-input"
 													/>
 													<span class="color-value">{action.config[configKey] || config.default || '#5865F2'}</span>
@@ -759,13 +852,13 @@
 																type="color"
 																class="color-rule-picker"
 																value={rule.color || '#5865F2'}
-																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', e.target.value)}
+																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', (e.target as HTMLInputElement).value)}
 															/>
 															<span class="color-rule-word">If</span>
 															<select
 																class="color-rule-field"
 																value={rule.variable || ''}
-																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', e.target.value)}
+																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', (e.target as HTMLSelectElement).value)}
 															>
 																<option value="" disabled>pick a field...</option>
 																<optgroup label="Trigger">
@@ -790,7 +883,7 @@
 															<select
 																class="color-rule-op"
 																value={rule.operator || 'equals'}
-																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', e.target.value)}
+																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', (e.target as HTMLSelectElement).value)}
 															>
 																<option value="equals">is</option>
 																<option value="not_equals">is not</option>
@@ -802,7 +895,7 @@
 																<select
 																	class="color-rule-value"
 																	value={rule.value || ''}
-																	onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+																	onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'value', (e.target as HTMLSelectElement).value)}
 																>
 																	<option value="">pick a value...</option>
 																	{#each getColorRuleValueOptionsWithCurrent(rule.variable, rule.value) as option}
@@ -815,7 +908,7 @@
 																	class="color-rule-value"
 																	placeholder="value..."
 																	value={rule.value || ''}
-																	oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', e.target.value)}
+																	oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', (e.target as HTMLInputElement).value)}
 																/>
 															{/if}
 															<button type="button" class="btn-remove-rule" title="Remove rule" onclick={() => removeColorRule(action, configKey, ruleIndex)}>✕</button>
@@ -836,7 +929,7 @@
 													placeholder="Select channel(s)..."
 													multiple={true}
 													showAllOption={config.showAllOption}
-													allOptionLabel={config.allOptionLabel || 'All Text Channels'}
+													{...{ allOptionLabel: config.allOptionLabel || 'All Text Channels' }}
 													bind:value={action.config[configKey]}
 												/>
 												{#if config.description}

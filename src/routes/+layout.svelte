@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import '$lib/styles/global.css';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import UserMenu from '$lib/components/UserMenu.svelte';
@@ -55,7 +55,7 @@
 	// Resolve it reactively so the server selector appears once the list is ready.
 	let adminGuilds = $state([]);
 	$effect(() => {
-		const raw = data?.adminGuilds;
+		const raw: any = data?.adminGuilds;
 		if (!raw) {
 			adminGuilds = [];
 			return;

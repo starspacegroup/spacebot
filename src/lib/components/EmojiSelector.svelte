@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { log } from '$lib/log.js';
 	
 	/**

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import Toast from '$lib/components/Toast.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	
@@ -134,7 +134,7 @@
 		error = null;
 		
 		try {
-			const payload = {
+			const payload: Record<string, any> = {
 				action,
 				guildId: data.serverId,
 				guildName: data.guild?.name || data.serverId,
@@ -438,7 +438,7 @@
 											src={getAvatarUrl(event.actor_id, event.actor_avatar, event.actor_discriminator, 24)}
 											alt="{event.actor_name}'s avatar"
 											class="event-actor-avatar"
-											onerror={(e) => { e.target.style.display = 'none'; }}
+											onerror={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
 										/>
 									{/if}
 									<span>by {event.actor_name}</span>

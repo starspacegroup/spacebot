@@ -54,7 +54,7 @@ The consumer is configured in `orchestrator-worker/wrangler.toml`.
 
 ## Bounded Intelligent Retry
 
-The policy hook is in `src/lib/ai/retry-policy.js`.
+The policy hook is in `src/lib/ai/retry-policy.ts`.
 
 - Classifies error into bounded classes.
 - Applies strict max-attempt and max wall-clock constraints.

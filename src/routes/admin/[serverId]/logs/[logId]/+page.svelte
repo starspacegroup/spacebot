@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { formatDateFull, formatRelativeTime as tzFormatRelative } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
@@ -82,7 +82,7 @@
 									src={getAvatarUrl(data.log.actor_id, data.log.actor_avatar, data.log.actor_discriminator, 64)}
 									alt="{data.log.actor_name}'s avatar"
 									class="detail-avatar"
-									onerror={(e) => { e.target.style.display = 'none'; }}
+									onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 								/>
 								<div class="actor-text">
 									<span class="actor-name">{data.log.actor_name}</span>

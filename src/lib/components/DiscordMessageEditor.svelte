@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { log } from '$lib/log.js';
 	
 	/**
@@ -77,7 +77,7 @@
 	// Variable categories for organized display (filtered by realtime search)
 	const variableCategories = $derived.by(() => {
 		const query = variableSearch.trim().toLowerCase();
-		const categories = {};
+		const categories: Record<string, Array<{ key: string; desc: any }>> = {};
 		for (const [key, desc] of Object.entries(templateVariables)) {
 			if (query) {
 				const hay = `${key} ${desc}`.toLowerCase();

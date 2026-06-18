@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import Toast from '$lib/components/Toast.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
@@ -638,7 +638,7 @@
 		return `$${(cents / 100).toFixed(2)}`;
 	}
 	
-	function getStatusBadgeClass(plan, stripeStatus, stripeSubscriptionId) {
+	function getStatusBadgeClass(plan, stripeStatus, stripeSubscriptionId?) {
 		if (plan === 'pro' && !stripeSubscriptionId && !['active', 'trialing'].includes(stripeStatus)) return 'badge-admin';
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'badge-success';
 		if (stripeStatus === 'canceling') return 'badge-warning';
@@ -646,7 +646,7 @@
 		return 'badge-neutral';
 	}
 	
-	function getStatusLabel(plan, stripeStatus, stripeSubscriptionId) {
+	function getStatusLabel(plan, stripeStatus, stripeSubscriptionId?) {
 		if (plan === 'pro' && !stripeSubscriptionId && !['active', 'trialing'].includes(stripeStatus)) return 'Admin Granted';
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'Active';
 		if (stripeStatus === 'canceling') return 'Canceling';
@@ -664,7 +664,7 @@
 				guildIcon: s.guildIcon,
 				guildId: s.guildId,
 			})))
-			.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 	);
 	
 	function getEventIcon(eventType) {
@@ -1086,7 +1086,7 @@
 													src={getAvatarUrl(event.actor_id, event.actor_avatar, event.actor_discriminator, 20)}
 													alt="{event.actor_name}'s avatar"
 													class="timeline-actor-avatar"
-													onerror={(e) => { e.target.style.display = 'none'; }}
+													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
 												/>
 											{/if}
 											by {event.actor_name}

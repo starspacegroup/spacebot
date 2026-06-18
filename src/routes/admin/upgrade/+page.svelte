@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	let { data } = $props();
 
 	let loading = $state(null); // guild ID currently loading, or null

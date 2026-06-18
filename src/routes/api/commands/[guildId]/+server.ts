@@ -1,0 +1,157 @@
+/**
+ * Commands API endpoint
+ * GET - List commands for a guild
+ * POST - Create a new command
+ */
+
+import { json } from "@sveltejs/kit";
+import {
+  ACTION_TYPES,
+  COMMAND_TEMPLATE_VARIABLES,
+  COMMON_OPTION_TYPES,
+  createCommand,
+  getGuildCommands,
+  OPTION_TYPES,
+  RESPONSE_TYPES,
+} from "$lib/db/commands.js";
+import { syncGuildCommands } from "$lib/discord/commands.js";
+import { log } from "$lib/db/logger.js";
+import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { checkPlanLimit } from "$lib/db/server-plans.js";
+
+/** @type {import('./$types').RequestHandler} */
+export async function GET({ params, url, cookies, platform }) {
+  const { guildId } = params;
+  const accessToken = cookies.get("discord_access_token");
+
+  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+  if (!auth.authorized) {
+    return json({ error: auth.error }, { status: 403 });
+  }
+
+  const db = (platform as any)?.env?.DB;
+  if (!db) {
+    return json({ error: "Database not available" }, { status: 500 });
+  }
+
+  const enabledOnly = url.searchParams.get("enabled") === "true";
+
+  const commands = await getGuildCommands(db, guildId, { enabledOnly });
+
+  return json({
+    commands,
+    total: commands.length,
+    meta: {
+      actionTypes: ACTION_TYPES,
+      optionTypes: OPTION_TYPES,
+      commonOptionTypes: COMMON_OPTION_TYPES,
+      responseTypes: RESPONSE_TYPES,
+      templateVariables: COMMAND_TEMPLATE_VARIABLES,
+    },
+  });
+}
+
+/** @type {import('./$types').RequestHandler} */
+export async function POST({ params, request, cookies, platform }) {
+  const { guildId } = params;
+  const accessToken = cookies.get("discord_access_token");
+
+  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+  if (!auth.authorized) {
+    return json({ error: auth.error }, { status: 403 });
+  }
+
+  const db = (platform as any)?.env?.DB;
+  if (!db) {
+    return json({ error: "Database not available" }, { status: 500 });
+  }
+
+  try {
+    const body = await request.json();
+
+    // Validate required fields
+    if (!body.name || !body.description) {
+      return json({
+        error: "Missing required fields: name, description",
+      }, { status: 400 });
+    }
+
+    // Validate command name format
+    const nameRegex = /^[\w-]{1,32}$/;
+    if (!nameRegex.test(body.name)) {
+      return json({
+        error:
+          "Command name must be 1-32 characters, lowercase, alphanumeric or hyphens",
+      }, { status: 400 });
+    }
+
+    // Validate action_type if provided
+    if (
+      body.action_type && body.action_type !== "NONE" &&
+      !ACTION_TYPES[body.action_type]
+    ) {
+      return json({ error: `Invalid action_type: ${body.action_type}` }, {
+        status: 400,
+      });
+    }
+
+    // Get user ID from Discord
+    let userId = null;
+    try {
+      const userResponse = await fetch(
+        "https://discord.com/api/v10/users/@me",
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (userResponse.ok) {
+        const user = await userResponse.json();
+        userId = user.id;
+      }
+    } catch {
+      // Continue without user ID
+    }
+
+    // Check plan limits — if over quota, create as disabled
+    let enabledByDefault = body.enabled !== false;
+    if (enabledByDefault) {
+      try {
+        const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+        const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCommands.length);
+        if (!planCheck.allowed) {
+          enabledByDefault = false;
+        }
+      } catch (quotaErr) {
+        log.warn("[API] Plan limit check failed for command:", quotaErr);
+      }
+    }
+
+    const result = await createCommand(db, {
+      guild_id: guildId,
+      name: body.name.toLowerCase(),
+      description: body.description,
+      enabled: enabledByDefault,
+      options: body.options || [],
+      ephemeral: body.ephemeral || false,
+      defer: body.defer || false,
+      action_type: body.action_type || "NONE",
+      action_config: body.action_config || {},
+      response_type: body.response_type || "message",
+      response_content: body.response_content || null,
+      response_embed: body.response_embed || null,
+      created_by: userId,
+    });
+
+    if (!result.success) {
+      return json({ error: result.error }, { status: 400 });
+    }
+
+    // Auto-sync to Discord
+    await syncGuildCommands(db, guildId, (platform as any)?.env);
+
+    return json({ success: true, id: result.id, disabled_by_quota: !enabledByDefault && body.enabled !== false }, { status: 201 });
+  } catch (error) {
+    log.error("Create command error:", error);
+    return json({ error: "Failed to create command" }, { status: 500 });
+  }
+}

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { untrack } from "svelte";
 
   let { data } = $props();
@@ -82,7 +82,7 @@
   }
 
   function capabilityRequirementsFromForm() {
-    const out = {};
+    const out: Record<string, boolean> = {};
     if (formRequireScreenshots) out.screenshotAvailable = true;
     if (formRequireVscode) out.vscodeControlAvailable = true;
     if (formRequireCopilot) out.copilotMessageAvailable = true;
@@ -271,7 +271,7 @@
     return "info";
   }
 
-  const queueJobTypes = $derived(() => {
+  const queueJobTypes = $derived.by(() => {
     const types = new Set();
     for (const job of runnerJobs || []) {
       if (job?.job_type) {
@@ -281,7 +281,7 @@
     return [...types].sort();
   });
 
-  const filteredRunnerJobs = $derived(() => {
+  const filteredRunnerJobs = $derived.by(() => {
     const search = queueSearch.trim().toLowerCase();
     return (runnerJobs || []).filter((job) => {
       if (queueStatusFilter !== "all" && job.status !== queueStatusFilter) {

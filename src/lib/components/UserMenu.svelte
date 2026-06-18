@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
 	let { user, selectedGuildId = null, isSuperAdmin = false } = $props();

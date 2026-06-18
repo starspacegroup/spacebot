@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { log } from '$lib/log.js';
 	
 	/**
@@ -316,7 +316,7 @@
 				{#each selectedMemberInfo as member, i}
 					<span class="user-tag" class:bot={member.isBot}>
 						{#if member.avatar}
-							<img src={member.avatar} alt="" class="selected-avatar" onerror={(e) => e.target.style.display = 'none'} />
+							<img src={member.avatar} alt="" class="selected-avatar" onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
 						{/if}
 						{#if member.isBot}🤖{/if}
 						{member.displayName}
@@ -342,7 +342,7 @@
 			<div class="selected-user">
 				<span class="user-display">
 					{#if selectedMemberInfo[0]?.avatar}
-						<img src={selectedMemberInfo[0].avatar} alt="" class="selected-avatar" onerror={(e) => e.target.style.display = 'none'} />
+						<img src={selectedMemberInfo[0].avatar} alt="" class="selected-avatar" onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
 					{:else}
 						{selectedMemberInfo[0]?.isBot ? '🤖 ' : '👤 '}
 					{/if}
@@ -430,7 +430,7 @@
 								src={member.avatar} 
 								alt="" 
 								class="user-avatar"
-								onerror={(e) => e.target.style.display = 'none'}
+								onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'}
 							/>
 							<span class="user-info">
 								<span class="user-name">

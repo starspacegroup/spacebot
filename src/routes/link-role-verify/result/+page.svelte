@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const success = urlParams?.get('success') === 'true';
 	const error = urlParams?.get('error');

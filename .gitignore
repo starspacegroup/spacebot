@@ -28,3 +28,12 @@ vite.config.ts.timestamp-*
 
 # Compiled local-runner binary
 dist/
+
+# Test coverage (vitest --coverage)
+coverage/
+
+# Wrangler local secrets
+.dev.vars
+
+# TypeScript incremental build info (JS→TS migration)
+*.tsbuildinfo

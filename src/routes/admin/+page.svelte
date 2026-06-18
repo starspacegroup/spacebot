@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import Toast from '$lib/components/Toast.svelte';
 	
 	let { data, form } = $props();

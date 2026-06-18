@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatDate as tzFormatDate } from '$lib/timezone.js';
 
@@ -194,8 +194,8 @@
 
 	function showToast(message, type = 'success') {
 		toast = { message, type };
-		window.clearTimeout(showToast.timeoutId);
-		showToast.timeoutId = window.setTimeout(() => {
+		window.clearTimeout((showToast as any).timeoutId);
+		(showToast as any).timeoutId = window.setTimeout(() => {
 			toast = null;
 		}, 3200);
 	}
@@ -739,7 +739,7 @@
 		if (!isPrimaryTriggerNode(nodeId)) return;
 		const node = getNodeById(nodeId);
 		if (!node || node.type !== 'trigger') return;
-		const schedule = String(node?.data?.schedule || '').trim();
+		const schedule = String((node?.data as any)?.schedule || '').trim();
 		if (schedule) {
 			draft.schedule_type = 'cron';
 			draft.cron_expression = schedule;
@@ -2190,6 +2190,7 @@
 				</div>
 			{/if}
 
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="canvas-surface" bind:this={canvasElement} onpointerdown={clearSelection}>
 				<div class="canvas-stage" style={`--node-width: ${NODE_WIDTH}px; --node-height: ${NODE_HEIGHT}px; width: ${STAGE_WIDTH}px; height: ${STAGE_HEIGHT}px;`}>
 					<svg class="edge-layer" viewBox={`0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}`} preserveAspectRatio="none">
@@ -2206,6 +2207,7 @@
 						{/if}
 						{#each draft.canvas_json?.edges || [] as edge (edge.id)}
 							{@const geometry = edgeGeometry(edge)}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<path class="edge-hit" d={edgePath(edge)} onpointerdown={(event) => {
 								event.stopPropagation();
 								selectEdge(edge.id);
@@ -2244,6 +2246,7 @@
 					{#each draft.canvas_json?.nodes || [] as node (node.id)}
 						{@const inputPorts = inputHandles(node)}
 						{@const outputPorts = outputHandles(node)}
+						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<div
 							class:dragging={dragState?.nodeId === node.id}
 							class:selected={selectedNodeId === node.id}
@@ -2297,6 +2300,7 @@
 									style:top={`${handleOffsetY(index, Math.max(1, outputPorts.length))}px`}
 								>{handle.label}</span>
 							{/each}
+							<!-- svelte-ignore a11y_no_static_element_interactions -->
 							<div class="canvas-node-head" onpointerdown={(event) => beginDrag(event, node.id)}>
 								<span class="node-type" style={`--node-accent: ${typeMeta(node.type).accent};`}>{typeMeta(node.type).label}</span>
 								{#if node.id !== 'start'}
@@ -2351,7 +2355,7 @@
 							{@const nodeSchedule = selectedTriggerSchedule}
 							<label>
 								<span>Trigger source</span>
-								<input class="input" type="text" value={selectedNodeRef.data?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
+								<input class="input" type="text" value={(selectedNodeRef.data as any)?.source || ''} oninput={(event) => updateNodeData(selectedNodeRef.id, 'source', event.currentTarget.value)} placeholder="gateway-schedule" />
 							</label>
 							<label>
 								<span>Time trigger</span>
@@ -2397,7 +2401,7 @@
 							{/if}
 							<div class="schedule-summary-card schedule-summary-card-tight">
 								<span>Current trigger schedule</span>
-								<strong>{scheduleLabelFromCron(selectedNodeRef.data?.schedule_type, selectedNodeRef.data?.schedule)}</strong>
+								<strong>{scheduleLabelFromCron((selectedNodeRef.data as any)?.schedule_type, (selectedNodeRef.data as any)?.schedule)}</strong>
 								<small>{nodeSchedule.mode === 'manual' ? 'This trigger runs only when started by the workflow.' : 'Changes sync back to the template schedule.'}</small>
 								{#if nodeSchedule.unsupported}
 									<small>Legacy custom schedule is loaded. Adjust this trigger to replace it with a structured time rule.</small>
@@ -2825,7 +2829,6 @@
 
 	.inventory-title-row,
 	.run-topline,
-	.edge-row,
 	.inventory-actions,
 	.canvas-node-head,
 	.meta-row {
@@ -2837,8 +2840,7 @@
 
 	.inventory-title-row,
 	.meta-row,
-	.run-topline,
-	.edge-row {
+	.run-topline {
 		flex-wrap: wrap;
 	}
 
@@ -3097,8 +3099,7 @@
 		padding: 0.8rem 0.9rem;
 	}
 
-	.canvas-toolbar,
-	.connection-editor {
+	.canvas-toolbar {
 		display: grid;
 		gap: 0.8rem;
 		margin-top: 1rem;
@@ -3196,8 +3197,7 @@
 		background: var(--color-success-soft);
 	}
 
-	.toolbar-actions,
-	.connection-form {
+	.toolbar-actions {
 		display: grid;
 		gap: 0.65rem;
 		grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -3443,6 +3443,7 @@
 		color: var(--color-text-muted);
 		display: -webkit-box;
 		-webkit-line-clamp: 3;
+		line-clamp: 3;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -3620,31 +3621,8 @@
 		resize: vertical;
 	}
 
-	.edge-list {
-		display: grid;
-		gap: 0.55rem;
-	}
-
-	.edge-input {
-		max-width: 100%;
-		padding: 0.45rem 0.6rem;
-		font-size: 0.82rem;
-	}
-
-	.edge-row,
 	.run-card {
 		padding: 0.85rem 0.95rem;
-	}
-
-	.edge-row {
-		border: 1px solid var(--color-border);
-		border-radius: 0.85rem;
-		background: var(--color-surface);
-	}
-
-	.edge-row.selected {
-		border-color: var(--color-primary);
-		box-shadow: 0 0 0 1px var(--color-primary-soft);
 	}
 
 	.inspector-grid {
@@ -3813,10 +3791,6 @@
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
 
-		.connection-form {
-			grid-template-columns: repeat(6, minmax(0, 1fr));
-		}
-
 		.toolbar-actions {
 			grid-auto-flow: row;
 			grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3826,10 +3800,6 @@
 
 		.toolbar-actions-scroller {
 			overflow: visible;
-		}
-
-		.connection-form {
-			grid-template-columns: 1fr 0.9fr 1fr 0.9fr 1fr auto;
 		}
 
 		.inspector-grid {
@@ -3890,10 +3860,6 @@
 
 		.pending-link-hint {
 			font-size: 0.76rem;
-		}
-
-		.edge-row {
-			align-items: stretch;
 		}
 	}
 

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import Toast from '$lib/components/Toast.svelte';
 	
 	let { data } = $props();
@@ -164,7 +164,7 @@
 		error = null;
 		
 		try {
-			const payload = {
+			const payload: Record<string, any> = {
 				action,
 				guildId: data.serverId,
 				guildName: data.guild?.name || data.serverId,

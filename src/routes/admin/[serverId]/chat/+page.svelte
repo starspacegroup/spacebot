@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 
@@ -198,7 +198,7 @@
 	}
 
 	// ─── Send message ───
-	async function sendMessage(overrideText) {
+	async function sendMessage(overrideText?: any) {
 		const text = (overrideText || input).trim();
 		if (!text || sending) return;
 

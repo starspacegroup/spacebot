@@ -71,7 +71,7 @@ export default defineConfig({
 				'scripts/local-runner/capabilities.ts',
 				'scripts/local-runner/workspace-context.ts',
 				'scripts/local-runner/vscode-bridge-client.ts',
-				'src/routes/api/account/runners/artifacts/[id]/+server.js',
+				'src/routes/api/account/runners/artifacts/[id]/+server.ts',
 			],
 			thresholds: {
 				lines: 80,

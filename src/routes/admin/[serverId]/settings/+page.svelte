@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
@@ -443,7 +443,7 @@
 									<input
 										type="color"
 										value={logEmbedColors[key] || defaultEmbedColors[key] || '#95a5a6'}
-										oninput={(e) => { logEmbedColors[key] = e.target.value; }}
+										oninput={(e) => { logEmbedColors[key] = (e.target as HTMLInputElement).value; }}
 										onchange={autoSave}
 										class="color-picker"
 									/>

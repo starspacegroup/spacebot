@@ -44,18 +44,18 @@ Successfully created a **production-ready SvelteKit Discord bot** with web front
 
 ### Source Code
 - `src/routes/+page.svelte` - Homepage
-- `src/routes/+page.server.js` - Homepage data loader
+- `src/routes/+page.server.ts` - Homepage data loader
 - `src/routes/+layout.svelte` - App layout
 - `src/routes/login/+page.svelte` - Login page
 - `src/routes/admin/+page.svelte` - Admin dashboard
-- `src/routes/admin/+page.server.js` - Admin data loader
-- `src/routes/api/discord/interactions/+server.js` - Discord webhook
-- `src/routes/api/auth/discord/+server.js` - OAuth start
-- `src/routes/api/auth/discord/callback/+server.js` - OAuth callback
-- `src/lib/discord/commands.js` - Command definitions
+- `src/routes/admin/+page.server.ts` - Admin data loader
+- `src/routes/api/discord/interactions/+server.ts` - Discord webhook
+- `src/routes/api/auth/discord/+server.ts` - OAuth start
+- `src/routes/api/auth/discord/callback/+server.ts` - OAuth callback
+- `src/lib/discord/commands.ts` - Command definitions
 
 ### Scripts & Utilities
-- `scripts/register-commands.js` - Register commands with Discord
+- `scripts/register-commands.ts` - Register commands with Discord
 
 ### Documentation
 - `README.md` - Complete project documentation

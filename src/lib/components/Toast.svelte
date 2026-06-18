@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	let { message, success = true, onDismiss = () => {} } = $props();
 	
 	let visible = $state(true);

@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -58,7 +58,7 @@
 		const date = parseUTCDate(dateString);
 		if (!date) return dateString;
 		const now = new Date();
-		const diffMs = now - date;
+		const diffMs = now.getTime() - date.getTime();
 		const diffSecs = Math.floor(diffMs / 1000);
 		const diffMins = Math.floor(diffSecs / 60);
 		const diffHours = Math.floor(diffMins / 60);
@@ -208,7 +208,7 @@
 									if (result.type === 'success') {
 										await invalidateAll();
 									} else if (result.type === 'failure') {
-										form = result.data;
+										form = result.data as any;
 									}
 								};
 							}}>
@@ -275,7 +275,7 @@
 										if (result.type === 'success') {
 											await invalidateAll();
 										} else if (result.type === 'failure') {
-											form = result.data;
+											form = result.data as any;
 										}
 									};
 								}} onsubmit={(e) => { if (!confirm('Delete this command?')) e.preventDefault(); }}>
@@ -317,7 +317,7 @@
 										if (result.type === 'success') {
 											await invalidateAll();
 										} else if (result.type === 'failure') {
-											form = result.data;
+											form = result.data as any;
 										}
 									};
 								}}>

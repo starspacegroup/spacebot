@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import { formatDateShort } from '$lib/timezone.js';
@@ -129,8 +129,8 @@
 										<button class="btn-copy" onclick={(e) => {
 											const url = `${window.location.origin}/api/v1/integrations/github/webhook/${data.serverId}`;
 											navigator.clipboard.writeText(url);
-											e.target.textContent = '✓ Copied';
-											setTimeout(() => e.target.textContent = 'Copy', 2000);
+											(e.target as HTMLElement).textContent = '✓ Copied';
+											setTimeout(() => (e.target as HTMLElement).textContent = 'Copy', 2000);
 										}}>Copy</button>
 									</div>
 
@@ -140,8 +140,8 @@
 											<code class="copyable-value secret">{'•'.repeat(integration.guild_config.webhook_secret.length)}</code>
 											<button class="btn-copy" onclick={(e) => {
 												navigator.clipboard.writeText(integration.guild_config.webhook_secret);
-												e.target.textContent = '✓ Copied';
-												setTimeout(() => e.target.textContent = 'Copy', 2000);
+												(e.target as HTMLElement).textContent = '✓ Copied';
+												setTimeout(() => (e.target as HTMLElement).textContent = 'Copy', 2000);
 											}}>Copy</button>
 										</div>
 									{/if}

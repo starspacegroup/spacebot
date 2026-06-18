@@ -8,7 +8,7 @@ executed step-by-step with full run/step history.
 ## Architecture
 
 ```
-scripts/cron.js (PM2, dumb 30s tick)
+scripts/cron.ts (PM2, dumb 30s tick)
    └─ POST /api/superadmin/workflows/dispatch   (Bearer CRON_SECRET)
         ├─ seeds presets when the DB has no templates (first-run continuity)
         ├─ matches enabled templates' cron_expression against the current UTC minute
@@ -19,17 +19,17 @@ Manual runs: POST /api/superadmin/workflows/:id/runs  (superadmin session)
 Both paths share $lib/server/superadmin-workflow-runtime.js.
 ```
 
-- **`src/lib/server/cron-jobs.js`** — the actual job implementations
+- **`src/lib/server/cron-jobs.ts`** — the actual job implementations
   (aggregation, daily refresh, cache refresh, rebuild). Shared by the legacy
   `/api/cron` endpoint and workflow operations, so behavior is identical.
-- **`src/lib/server/superadmin-workflow-operations.js`** — the operation
+- **`src/lib/server/superadmin-workflow-operations.ts`** — the operation
   registry. A task node's `data.operation` selects one of these.
-- **`src/lib/server/superadmin-workflow-runtime.js`** — walks the canvas graph
+- **`src/lib/server/superadmin-workflow-runtime.ts`** — walks the canvas graph
   (trigger / task / branch / approval), executes operations, runs custom
   actions, records step status/output, and routes edges by branch results.
-- **`src/lib/server/superadmin-workflow-presets.js`** — built-in templates
+- **`src/lib/server/superadmin-workflow-presets.ts`** — built-in templates
   mirroring the legacy cron jobs 1:1, plus a local-runner example.
-- **`src/lib/server/cron-match.js`** — 5-field cron matcher (UTC, minute
+- **`src/lib/server/cron-match.ts`** — 5-field cron matcher (UTC, minute
   granularity; `*`, `*/n`, lists, ranges, dom/dow OR semantics).
 
 ## Registered operations
@@ -83,7 +83,7 @@ String values in node data, branch operands, and custom actions support
 
 ## Migrating off the legacy cron system
 
-1. Deploy. `scripts/cron.js` (PM2 `spacebot-cron`) now only ticks the
+1. Deploy. `scripts/cron.ts` (PM2 `spacebot-cron`) now only ticks the
    dispatcher — schedules live on workflow templates.
 2. On the first dispatch with an empty `superadmin_workflow_templates` table,
    the presets are seeded automatically (hourly rollup, daily refresh, minute

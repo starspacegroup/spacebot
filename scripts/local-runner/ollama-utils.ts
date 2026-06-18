@@ -2,6 +2,15 @@ import { execSync } from "node:child_process";
 import http from "node:http";
 
 /**
+ * Default local Ollama connection + model. Ollama is the default local LLM
+ * provider for the runner; gemma3:4b is the default model (overridable via the
+ * OLLAMA_MODEL env var or a persisted provider config).
+ */
+export const DEFAULT_OLLAMA_HOST = "localhost";
+export const DEFAULT_OLLAMA_PORT = 11434;
+export const DEFAULT_OLLAMA_MODEL = "gemma3:4b";
+
+/**
  * Check if Ollama is installed
  */
 export async function detectOllamaInstalled(): Promise<boolean> {
@@ -126,7 +135,11 @@ export function storeOllamaConfig(config: { host: string; port: number; model: s
 }
 
 /**
- * Get stored Ollama config
+ * Get the EXPLICIT Ollama config from environment variables. Returns null
+ * unless all of OLLAMA_HOST/OLLAMA_PORT/OLLAMA_MODEL are set. Use this to learn
+ * whether the user has actually configured Ollama (e.g. reporting "configured"
+ * status, or TUI guidance) — it deliberately applies NO defaults, so callers
+ * can distinguish "explicitly configured" from "using the built-in default".
  */
 export function getOllamaConfig(): { host: string; port: number; model: string } | null {
   const host = process.env.OLLAMA_HOST;
@@ -139,6 +152,25 @@ export function getOllamaConfig(): { host: string; port: number; model: string }
     host,
     port: parseInt(port, 10),
     model,
+  };
+}
+
+/**
+ * Resolve the EFFECTIVE Ollama config for actually talking to Ollama, applying
+ * per-field precedence: explicit OLLAMA_* env var > persisted config field >
+ * built-in default (localhost:11434, gemma3:4b). Always returns a usable config
+ * so the runner/app defaults to Ollama with zero configuration. Each field is
+ * resolved independently, so e.g. OLLAMA_MODEL alone overrides only the model
+ * even when a persisted config is present.
+ */
+export function resolveOllamaConfig(
+  persisted?: { host?: string; port?: number; model?: string } | null,
+): { host: string; port: number; model: string } {
+  const envPort = process.env.OLLAMA_PORT;
+  return {
+    host: process.env.OLLAMA_HOST || persisted?.host || DEFAULT_OLLAMA_HOST,
+    port: envPort ? parseInt(envPort, 10) : (persisted?.port ?? DEFAULT_OLLAMA_PORT),
+    model: process.env.OLLAMA_MODEL || persisted?.model || DEFAULT_OLLAMA_MODEL,
   };
 }
 
