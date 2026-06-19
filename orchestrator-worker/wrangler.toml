@@ -8,9 +8,34 @@ queue = "spacebot-ai-autopilot"
 max_batch_size = 10
 max_batch_timeout = 5
 
+# Producer binding so this worker can also enqueue watchdog-sweep messages
+# onto the same queue it consumes from.
+[[queues.producers]]
+binding = "AI_AUTOPILOT_QUEUE"
+queue = "spacebot-ai-autopilot"
+
+# Cron-driven dispatch workflow: durably calls the superadmin workflows
+# dispatch endpoint on a fixed minute tick, replacing the old GCP/PM2 tick
+# (scripts/cron.ts).
+[[workflows]]
+name = "spacebot-cron-dispatch"
+binding = "CRON_DISPATCH_WORKFLOW"
+class_name = "CronDispatchWorkflow"
+
+# Native Cloudflare Cron Triggers — provisioned automatically on `wrangler
+# deploy`, no Cloudflare dashboard interaction required. "* * * * *" drives
+# the superadmin workflows dispatch; "*/5 * * * *" drives the AI autopilot
+# watchdog sweep.
+[triggers]
+crons = ["* * * * *", "*/5 * * * *"]
+
 [vars]
 # Base URL for the Pages app API (local or production)
 # SPACEBOT_API_BASE = "https://spacebot.pages.dev"
 
 # Internal shared key used by /api/ai/jobs/execute and /api/ai/jobs/sweep
 # AI_AUTOPILOT_INTERNAL_KEY = ""
+
+# Shared secret for the superadmin workflows dispatch endpoint (same value
+# as the Pages app's CRON_SECRET / GCP Secret Manager entry).
+# CRON_SECRET = ""

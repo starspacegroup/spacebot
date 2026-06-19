@@ -96,10 +96,15 @@ streams results back. It has a TUI (`tui.tsx`, OpenTUI/React), a VS Code bridge
 
 ## Scheduling
 
-Cloudflare Pages does **not** support cron triggers. Scheduled work is driven by `scripts/cron.ts` — a
-PM2-managed tick (every 30s) that POSTs `/api/superadmin/workflows/dispatch`. Schedules live as
-`cron_expression` on superadmin workflow templates in D1, managed under Admin → Superadmin → Workflows
-(`docs/superadmin-workflows.md`), not in config files.
+Cloudflare Pages does **not** support cron triggers, but `orchestrator-worker` (a plain Cloudflare
+Worker) does. It has a native Cron Trigger (`* * * * *`) that runs a Cloudflare Workflow
+(`CronDispatchWorkflow`, in `orchestrator-worker/src/cron-dispatch-workflow.js`) which durably POSTs
+`/api/superadmin/workflows/dispatch` — this is the scheduler tick, provisioned entirely via
+`wrangler deploy` (no Cloudflare dashboard steps). A second Cron Trigger (`*/5 * * * *`) enqueues the
+AI autopilot watchdog sweep. `scripts/cron.ts` (the old GCP/PM2-hosted tick) is being retired now that
+this is live; its git-polling auto-deploy responsibility is separate and untouched. Schedules for
+superadmin workflow templates still live as `cron_expression` in D1, managed under Admin → Superadmin →
+Workflows (`docs/superadmin-workflows.md`), not in config files — only the trigger mechanism changed.
 
 ## Auth model
 

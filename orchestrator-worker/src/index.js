@@ -1,3 +1,7 @@
+import { CronDispatchWorkflow } from "./cron-dispatch-workflow.js";
+
+export { CronDispatchWorkflow };
+
 async function postJson(url, body, env) {
   const response = await fetch(url, {
     method: "POST",
@@ -60,6 +64,28 @@ export default {
         console.error("[AI Orchestrator] Message failed:", error?.message || error, payload);
         message.retry();
       }
+    }
+  },
+
+  async scheduled(event, env, _ctx) {
+    if (event.cron === "* * * * *") {
+      try {
+        await env.CRON_DISPATCH_WORKFLOW.create({
+          params: { firedAt: event.scheduledTime },
+        });
+      } catch (error) {
+        console.error("[AI Orchestrator] Failed to start dispatch workflow:", error?.message || error);
+      }
+      return;
+    }
+
+    if (event.cron === "*/5 * * * *") {
+      try {
+        await env.AI_AUTOPILOT_QUEUE.send({ type: "ai_watchdog_sweep" });
+      } catch (error) {
+        console.error("[AI Orchestrator] Failed to enqueue watchdog sweep:", error?.message || error);
+      }
+      return;
     }
   },
 };
