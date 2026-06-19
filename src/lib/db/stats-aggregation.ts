@@ -346,9 +346,15 @@ export async function processVoiceSessions(db, guildId) {
  * Build hourly aggregated statistics for a guild
  * @param {D1Database} db
  * @param {string} guildId
+ * @param {{ repair?: boolean }} [options] - repair (default true) re-walks the trailing
+ *   HOURLY_REPAIR_DAYS window on every call to catch late-arriving events. That's up to
+ *   ~168 hour-buckets x 6 D1 queries each — fine for a background cron run, but far too
+ *   slow inline on a page load. Pass repair: false to only process hours newer than the
+ *   last checkpoint.
  * @returns {Promise<AggregationResult>}
  */
-export async function buildHourlyStats(db, guildId) {
+export async function buildHourlyStats(db, guildId, options: Record<string, any> = {}) {
+  const { repair = true } = options;
   if (!db) {
     return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: "Database not available" };
   }
@@ -394,9 +400,11 @@ export async function buildHourlyStats(db, guildId) {
       .toISOString()
       .slice(0, 19)
       .replace("T", " ");
-    const effectiveStart = !startTime || Date.parse(startTime) > Date.parse(repairWindowStart)
-      ? repairWindowStart
-      : startTime;
+    const effectiveStart = !repair
+      ? (startTime || repairWindowStart)
+      : (!startTime || Date.parse(startTime) > Date.parse(repairWindowStart))
+        ? repairWindowStart
+        : startTime;
 
     // Get hours that need processing (completed hours only, not the current hour)
     const hoursToProcess = await db.prepare(`
@@ -584,9 +592,12 @@ export async function buildHourlyStats(db, guildId) {
  * Build daily aggregated statistics by rolling up hourly data
  * @param {D1Database} db
  * @param {string} guildId
+ * @param {{ repair?: boolean }} [options] - see buildHourlyStats; repair: false skips the
+ *   forced DAILY_REPAIR_DAYS window and only rolls up days newer than the last checkpoint.
  * @returns {Promise<AggregationResult>}
  */
-export async function buildDailyStats(db, guildId) {
+export async function buildDailyStats(db, guildId, options: Record<string, any> = {}) {
+  const { repair = true } = options;
   if (!db) {
     return { success: false, periodsProcessed: 0, eventsProcessed: 0, error: "Database not available" };
   }
@@ -604,9 +615,11 @@ export async function buildDailyStats(db, guildId) {
       WHERE guild_id = ? AND period_type = 'daily'
     `).bind(guildId).first();
 
-    const effectiveDailyStart = !lastAggregated?.last_period || Date.parse(lastAggregated.last_period) > Date.parse(dailyRepairStart)
-      ? dailyRepairStart
-      : lastAggregated.last_period;
+    const effectiveDailyStart = !repair
+      ? (lastAggregated?.last_period || dailyRepairStart)
+      : (!lastAggregated?.last_period || Date.parse(lastAggregated.last_period) > Date.parse(dailyRepairStart))
+        ? dailyRepairStart
+        : lastAggregated.last_period;
 
     // Get days that have hourly data and aren't today
     const daysToProcess = await db.prepare(`
@@ -703,11 +716,12 @@ export async function buildDailyStats(db, guildId) {
  * Run full stats aggregation for a guild
  * @param {D1Database} db
  * @param {string} guildId
+ * @param {{ repair?: boolean }} [options] - see buildHourlyStats/buildDailyStats
  * @returns {Promise<{hourly: AggregationResult, daily: AggregationResult}>}
  */
-export async function runStatsAggregation(db, guildId) {
-  const hourly = await buildHourlyStats(db, guildId);
-  const daily = await buildDailyStats(db, guildId);
+export async function runStatsAggregation(db, guildId, options: Record<string, any> = {}) {
+  const hourly = await buildHourlyStats(db, guildId, options);
+  const daily = await buildDailyStats(db, guildId, options);
   
   return { hourly, daily };
 }

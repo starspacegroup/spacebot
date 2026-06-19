@@ -217,9 +217,11 @@ export async function load({ cookies, platform, parent, params, url }) {
     try {
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken);
 
-      // Block on aggregation so overview charts do not read stale periods.
+      // Block on aggregation so overview charts do not read stale periods, but skip the
+      // forced multi-day repair window here — that's ~1000 sequential D1 queries and
+      // belongs in the background cron refresh, not an interactive page load.
       try {
-        await runStatsAggregation(db, serverId);
+        await runStatsAggregation(db, serverId, { repair: false });
       } catch (aggError) {
         log.warn(`[Dashboard] On-demand aggregation failed for ${serverId}:`, aggError);
       }

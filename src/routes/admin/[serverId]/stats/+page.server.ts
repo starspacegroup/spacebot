@@ -212,9 +212,11 @@ export async function load({ params, cookies, platform, parent, url }) {
       log.debug(`[Stats] Existing stats for ${serverId}:`, existingStats);
       const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
 
-      // Block on aggregation so chart queries always read the latest processed data.
+      // Block on aggregation so chart queries always read the latest processed data, but
+      // skip the forced multi-day repair window — that's ~1000 sequential D1 queries and
+      // belongs in the background cron refresh, not an interactive page load.
       try {
-        const aggregationResult = await runStatsAggregation(db, serverId);
+        const aggregationResult = await runStatsAggregation(db, serverId, { repair: false });
         if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
           log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
         }
