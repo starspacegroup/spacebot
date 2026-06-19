@@ -239,12 +239,22 @@ export async function syncServerStatsIfStale(db, guildId, botToken, options: Rec
 
   try {
     log.info(`[Stats] Refreshing stale stats for guild ${guildId}`);
-    const fetchResult = await fetchGuildStatsFromDiscord(botToken, guildId);
+    // Skip the bot/human member-list pagination here — it's a per-page-load
+    // path and that full member fetch can take tens of seconds on large
+    // guilds. The daily cron refresh (refreshServerStatsAndMetadata /
+    // runDailyRefresh) computes it with includeBotCount: true; carry that
+    // last known split forward instead of blocking this request on it.
+    const fetchResult = await fetchGuildStatsFromDiscord(botToken, guildId, { includeBotCount: false });
     const discordStats = fetchResult?.stats;
 
     if (!discordStats || discordStats.member_count <= 0) {
       log.warn(`[Stats] Discord API returned no valid member count for ${guildId}`);
       return { latest, refreshed: false, error: "Discord API returned no valid member count" };
+    }
+
+    if (discordStats.bot_count === null && latest?.bot_count != null) {
+      discordStats.bot_count = latest.bot_count;
+      discordStats.human_count = Math.max(0, discordStats.member_count - latest.bot_count);
     }
 
     const saveResult = await recordServerStats(db, guildId, discordStats);
@@ -554,9 +564,13 @@ export async function pruneOldStats(db, guildId = null) {
  * Fetch current guild stats from Discord API
  * @param {string} botToken - Bot token
  * @param {string} guildId - Guild ID
+ * @param {{ includeBotCount?: boolean }} [options] - Set includeBotCount: false to skip the
+ *   full member-list pagination (countGuildBots), which can take tens of seconds on large
+ *   guilds. Used by interactive page loads; the daily cron refresh keeps it accurate.
  * @returns {Promise<{stats: Object, rawGuild: Object}|null>} - Guild stats + raw API response
  */
-export async function fetchGuildStatsFromDiscord(botToken, guildId) {
+export async function fetchGuildStatsFromDiscord(botToken, guildId, options: Record<string, any> = {}) {
+  const { includeBotCount = true } = options;
   if (!botToken || !guildId) return null;
 
   try {
@@ -585,10 +599,12 @@ export async function fetchGuildStatsFromDiscord(botToken, guildId) {
     // This uses the List Guild Members endpoint with a limit
     // For accuracy, we'll count bots we can see
     let botCount = null;
-    try {
-      botCount = await countGuildBots(botToken, guildId);
-    } catch (botError) {
-      log.debug(`[Stats] Could not count bots for guild ${guildId}:`, botError.message);
+    if (includeBotCount) {
+      try {
+        botCount = await countGuildBots(botToken, guildId);
+      } catch (botError) {
+        log.debug(`[Stats] Could not count bots for guild ${guildId}:`, botError.message);
+      }
     }
     
     const humanCount = botCount !== null ? Math.max(0, memberCount - botCount) : null;
