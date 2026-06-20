@@ -1,48 +1,70 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate } from '$lib/timezone.js';
 
 	let { data, form } = $props();
-	let hotloading = $state(false);
-	const isDashboardLoading = $derived(Boolean(hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.needsHotload));
 
-	// $effect (not onMount) so the hotload also fires on param-only navigations
-	// (e.g. switching servers on the same route), where the component is reused
-	// and only `data` changes.
+	// The page load returns a fast "shell" (loadMeta.needsHotload) when the
+	// in-memory dashboard cache is cold, instead of blocking navigation on
+	// Discord API calls, stats aggregation, and a dozen D1 queries. We used to
+	// backfill that with goto(url, { invalidateAll: true }), but that forces
+	// every loader in the route tree (including the root layout's Discord
+	// guild-list fetch) through SvelteKit's client-side data-merge machinery
+	// just to refresh one page's stats — fetch the dedicated endpoint instead.
+	let liveStats = $state(null);
+	let statsServerId = $state(null);
+	let statsLoading = $state(false);
+
 	$effect(() => {
-		const meta = data.loadMeta;
-		const params = new URLSearchParams(window.location.search);
-		const isHotloadRequest = params.get('hotload') === '1';
+		const serverId = data.serverId;
+		if (!data.loadMeta?.needsHotload || statsServerId === serverId) return;
 
-		if (!isHotloadRequest && meta?.needsHotload && !hotloading) {
-			hotloading = true;
-			params.set('hotload', '1');
-			goto(`${window.location.pathname}?${params.toString()}`, {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true,
-				invalidateAll: true,
-			}).finally(() => {
-				hotloading = false;
+		statsLoading = true;
+		fetch(`/api/admin/${serverId}/dashboard-stats`)
+			.then((res) => {
+				if (!res.ok) throw new Error(`dashboard-stats request failed: ${res.status}`);
+				return res.json();
+			})
+			.then((json) => {
+				liveStats = json;
+				statsServerId = serverId;
+			})
+			.catch((err) => {
+				console.error('[Dashboard] Failed to load live stats:', err);
+				// Stop retrying automatically; fall back to the shell defaults below.
+				statsServerId = serverId;
+			})
+			.finally(() => {
+				statsLoading = false;
 			});
-			return;
-		}
-
-		if (isHotloadRequest && (meta?.source === 'hotload' || meta?.source === 'cache' || meta?.source === 'error')) {
-			params.delete('hotload');
-			const nextQuery = params.toString();
-			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
-		}
 	});
+
+	// Merges the client-fetched stats (once loaded for the current server) over
+	// the shell/cached defaults from the page load.
+	const dashboard = $derived(
+		liveStats && statsServerId === data.serverId
+			? liveStats
+			: {
+				basicStats: data.basicStats,
+				memberGrowthChartData: data.memberGrowthChartData,
+				voiceActivityChartData: data.voiceActivityChartData,
+				featureCounts: data.featureCounts,
+				planLimits: data.planLimits,
+				localRunnerAssist: data.localRunnerAssist,
+				aiAutopilotSummary: data.aiAutopilotSummary,
+				settings: data.settings,
+			}
+	);
+
+	const isDashboardLoading = $derived(statsLoading);
 
 	let showToast = $state(true);
 
 	// Transform member growth data for the bar chart (joins vs leaves)
 	const memberGrowthData = $derived(
-		(data.memberGrowthChartData || []).map(d => ({
+		(dashboard.memberGrowthChartData || []).map(d => ({
 			date: d.date,
 			label: formatChartDate(d.date, data.timezone),
 			values: [
@@ -54,7 +76,7 @@
 
 	// Transform voice activity data for the area chart (unique users per day)
 	const voiceData = $derived(
-		(data.voiceActivityChartData || []).map(d => ({
+		(dashboard.voiceActivityChartData || []).map(d => ({
 			date: d.date,
 			value: d.uniqueUsers || 0,
 			label: formatChartDate(d.date, data.timezone)
@@ -65,7 +87,7 @@
 	const memberJoins = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[0]?.value || 0), 0));
 	const memberLeaves = $derived(memberGrowthData.reduce((sum, d) => sum + (d.values[1]?.value || 0), 0));
 	const peakVoiceUsers = $derived(Math.max(...voiceData.map(d => d.value), 0));
-	const aiAutopilotSummary = $derived(data.aiAutopilotSummary || {
+	const aiAutopilotSummary = $derived(dashboard.aiAutopilotSummary || {
 		total: 0,
 		pending: 0,
 		running: 0,
@@ -170,9 +192,9 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Automations</span>
 							<span class="quick-link-desc">Set up automatic actions on events</span>
-							{#if data.featureCounts?.automations}
-								{@const fc = data.featureCounts.automations}
-								{@const limit = data.planLimits?.max_automations}
+							{#if dashboard.featureCounts?.automations}
+								{@const fc = dashboard.featureCounts.automations}
+								{@const limit = dashboard.planLimits?.max_automations}
 								<span class="quick-link-usage" class:at-limit={limit !== null && fc.active >= limit}>
 									<span class="usage-count">{fc.active}{limit !== null ? `/${limit}` : ''}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} disabled</span>{/if}
 								</span>
@@ -185,9 +207,9 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Slash Commands</span>
 							<span class="quick-link-desc">Create custom slash commands</span>
-							{#if data.featureCounts?.commands}
-								{@const fc = data.featureCounts.commands}
-								{@const limit = data.planLimits?.max_commands}
+							{#if dashboard.featureCounts?.commands}
+								{@const fc = dashboard.featureCounts.commands}
+								{@const limit = dashboard.planLimits?.max_commands}
 								<span class="quick-link-usage" class:at-limit={limit !== null && fc.active >= limit}>
 									<span class="usage-count">{fc.active}{limit !== null ? `/${limit}` : ''}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} disabled</span>{/if}
 								</span>
@@ -208,8 +230,8 @@
 						<div class="quick-link-info">
 							<span class="quick-link-title">Integrations</span>
 							<span class="quick-link-desc">Connect external apps and services</span>
-							{#if data.featureCounts?.integrations}
-								{@const fc = data.featureCounts.integrations}
+							{#if dashboard.featureCounts?.integrations}
+								{@const fc = dashboard.featureCounts.integrations}
 								<span class="quick-link-usage">
 									<span class="usage-count">{fc.active}</span> active{#if fc.inactive > 0}<span class="usage-inactive"> · {fc.inactive} available</span>{/if}
 								</span>
@@ -267,9 +289,9 @@
 							<div class="quick-link-info">
 								<span class="quick-link-title">Account & Billing</span>
 								<span class="quick-link-desc">Manage plan, usage, and subscription</span>
-								{#if data.planLimits?.plan}
+								{#if dashboard.planLimits?.plan}
 									<span class="quick-link-usage">
-										<span class="usage-plan-badge plan-{data.planLimits.plan}">{data.planLimits.plan}</span> plan
+										<span class="usage-plan-badge plan-{dashboard.planLimits.plan}">{dashboard.planLimits.plan}</span> plan
 									</span>
 								{/if}
 							</div>
@@ -287,7 +309,7 @@
 				</div>
 			</section>
 
-		{#if data.botInGuild && data.localRunnerAssist?.enabled}
+		{#if data.botInGuild && dashboard.localRunnerAssist?.enabled}
 			<section class="ai-autopilot-section">
 				<div class="ai-autopilot-header">
 					<h2>
@@ -359,7 +381,7 @@
 						icon="👥"
 						loading={isDashboardLoading}
 						stats={[
-							{ value: data.basicStats?.members?.toLocaleString() ?? '—', label: 'Members' },
+							{ value: dashboard.basicStats?.members?.toLocaleString() ?? '—', label: 'Members' },
 							{ value: `+${memberJoins}`, label: 'Joined', color: '#22c55e' },
 							{ value: `-${memberLeaves}`, label: 'Left', color: '#ef4444' },
 							{ value: (memberJoins - memberLeaves >= 0 ? '+' : '') + (memberJoins - memberLeaves), label: 'Net', color: memberJoins - memberLeaves >= 0 ? '#22c55e' : '#ef4444' },
@@ -410,9 +432,9 @@
 									<span class="setting-label">Logging Channel</span>
 									<span class="setting-desc">Where bot logs are sent</span>
 								</div>
-								{#if data.settings?.loggingChannelId}
-									<a href="discord://discord.com/channels/{data.serverId}/{data.settings.loggingChannelId}" target="_blank" rel="noopener noreferrer" class="setting-value setting-link">
-										#{data.settings.loggingChannelName || data.settings.loggingChannelId}
+								{#if dashboard.settings?.loggingChannelId}
+									<a href="discord://discord.com/channels/{data.serverId}/{dashboard.settings.loggingChannelId}" target="_blank" rel="noopener noreferrer" class="setting-value setting-link">
+										#{dashboard.settings.loggingChannelName || dashboard.settings.loggingChannelId}
 									</a>
 								{:else}
 									<span class="setting-value">Not configured</span>
