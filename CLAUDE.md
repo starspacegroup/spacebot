@@ -10,8 +10,6 @@ process — it is several cooperating runtimes that share one D1 database (see A
 
 ## Hard rules (from `.github/copilot-instructions.md`)
 
-- **Never start, stop, or restart dev servers.** Assume the dev server is already running. If a change
-  needs a restart (env vars, `hooks.server.ts`, gateway), tell the user — don't run it.
 - **The dev server is always at `http://localhost:4269`** (also tunneled at `https://spacebot-dev.starspace.group`).
   Use port **4269** when driving a browser, not the SvelteKit default 5173. (`vite.config.js` pins `server.port = 4269`.)
 - **Migrations in `migrations/` are immutable.** They are already applied to production. Never edit an
