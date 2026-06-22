@@ -105,6 +105,15 @@ export default defineConfig({
 				'./src/routes/**/*.svelte',
 				'./src/lib/components/**/*.svelte',
 			],
+			// clientFiles only pre-transforms the browser bundle — every full page
+			// navigation also does an SSR render, which is a separate compile pass.
+			// Without this, the first hit on a large page (e.g. the superadmin
+			// workflows graph editor, ~3800 lines) pays that cold-compile cost on
+			// the actual request instead of at startup.
+			ssrFiles: [
+				'./src/routes/**/*.svelte',
+				'./src/lib/components/**/*.svelte',
+			],
 		},
 		port: 4269,
 		host: true, // Listen on all interfaces for tunnel access
