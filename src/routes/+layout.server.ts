@@ -155,23 +155,55 @@ export async function load({ cookies, platform, url }) {
 
     if (devAuthEnabled && isDevMockToken) {
       // In dev mode with bypass, role controls the simulated access level.
-      if (isDevAdmin && devGuildId) {
-        log.debug("[Layout] DEV MODE - Using mock guild:", devGuildId, "role:", devAuthRole);
-        const mockGuilds = [{
-          id: devGuildId,
-          name: "Dev Test Server",
-          icon: null,
-          owner: isDevSuperAdmin,
-          permissions: "2147483647", // All permissions
-          botIsInServer: true,
-        }];
+      if (isDevAdmin) {
+        // Prefer whatever guilds scripts/seed-dev-data.ts has seeded into local
+        // D1 (multiple fake servers, so the switcher/dashboard aren't limited
+        // to one guild) — fall back to the single DISCORD_GUILD_ID mock guild
+        // for anyone who hasn't run the seed script yet.
+        const db = (platform as any)?.env?.DB;
+        let mockGuilds = [];
+        if (db) {
+          try {
+            const result = await db
+              .prepare("SELECT guild_id, name, icon, owner_id FROM guild_metadata ORDER BY name")
+              .all();
+            mockGuilds = (result.results || []).map((g) => ({
+              id: g.guild_id,
+              name: g.name,
+              icon: g.icon || null,
+              owner: isDevSuperAdmin,
+              permissions: "2147483647", // All permissions
+              botIsInServer: true,
+            }));
+          } catch (err) {
+            log.error("[Layout] Failed to load seeded dev guilds:", err);
+          }
+        }
+        if (mockGuilds.length === 0 && devGuildId) {
+          mockGuilds = [{
+            id: devGuildId,
+            name: "Dev Test Server",
+            icon: null,
+            owner: isDevSuperAdmin,
+            permissions: "2147483647",
+            botIsInServer: true,
+          }];
+        }
+
+        log.debug("[Layout] DEV MODE - mock guilds:", mockGuilds.map((g) => g.id), "role:", devAuthRole);
+
+        const pathMatch = url.pathname.match(/^\/admin\/(\d+)/);
+        const selectedFromUrl = url.searchParams.get("guild") || pathMatch?.[1] || null;
+        const lastViewedGuildId = cookies.get("last_viewed_guild");
+        const selectedGuildId = selectedFromUrl || lastViewedGuildId || mockGuilds[0]?.id || null;
+
         return {
           isLoggedIn: true,
           isAdmin: true,
           isSuperAdmin: isDevSuperAdmin,
           user,
           adminGuilds: mockGuilds,
-          selectedGuildId: devGuildId,
+          selectedGuildId,
         };
       }
 

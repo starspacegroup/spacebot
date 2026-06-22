@@ -36,6 +36,7 @@
 		"db:migrate": "bun scripts/migrate.ts",
 		"db:migrate:smart": "bun scripts/migrate-if-needed.ts",
 		"db:migrate:local": "bun scripts/migrate.ts --local",
+		"db:seed:dev": "bun scripts/seed-dev-data.ts",
 		"gateway:latency": "bun scripts/gateway-latency.ts",
 		"gateway:latency:history": "bun scripts/gateway-latency.ts --history",
 		"db:push": "bun scripts/push-data.ts --confirm",
