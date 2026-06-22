@@ -20,10 +20,6 @@
 	let gatewayLogsError = $state(null);
 	let gatewayLogsLastUpdated = $state(null);
 	let gatewayLogStatus = $state(null);
-	let gatewayLogsStreamConnected = $state(false);
-	let gatewayLogsStreamError = $state(null);
-	let gatewayLogsStream = null;
-	let gatewayLogsReconnectTimer = null;
 	let gatewayLogsAppOrigin = $state('');
 
 	// Mutable state for client-side fetched data (overrides server data)
@@ -359,106 +355,6 @@
 		gatewayLoggingEnabled = status.enabled === true;
 	}
 
-	function mergeGatewayLogEntries(entries) {
-		if (!entries?.length) {
-			return;
-		}
-
-		const merged = new Map(gatewayLogs.map((entry) => [entry.id, entry]));
-		for (const entry of entries) {
-			merged.set(entry.id, entry);
-		}
-
-		gatewayLogs = Array.from(merged.values())
-			.sort((left, right) => right.id - left.id)
-			.slice(0, 150);
-		gatewayLogsLastUpdated = new Date().toISOString();
-	}
-
-	function parseGatewayStreamPayload(event) {
-		try {
-			return JSON.parse(event.data);
-		} catch {
-			return null;
-		}
-	}
-
-	function clearGatewayLogsReconnectTimer() {
-		if (gatewayLogsReconnectTimer) {
-			window.clearTimeout(gatewayLogsReconnectTimer);
-			gatewayLogsReconnectTimer = null;
-		}
-	}
-
-	function disconnectGatewayLogsStream() {
-		clearGatewayLogsReconnectTimer();
-		gatewayLogsStreamConnected = false;
-
-		if (gatewayLogsStream) {
-			gatewayLogsStream.close();
-			gatewayLogsStream = null;
-		}
-	}
-
-	function scheduleGatewayLogsReconnect() {
-		clearGatewayLogsReconnectTimer();
-		gatewayLogsReconnectTimer = window.setTimeout(() => {
-			gatewayLogsReconnectTimer = null;
-			connectGatewayLogsStream();
-		}, 3000);
-	}
-
-	function connectGatewayLogsStream() {
-		if (typeof EventSource === 'undefined' || gatewayLogsStream) {
-			return;
-		}
-
-		const stream = new EventSource('/api/gateway/logs/stream');
-		gatewayLogsStream = stream;
-
-		stream.addEventListener('open', () => {
-			gatewayLogsStreamConnected = true;
-			gatewayLogsStreamError = null;
-		});
-
-		stream.addEventListener('snapshot', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			gatewayLogs = payload.logs || [];
-			gatewayLogsLastUpdated = new Date().toISOString();
-		});
-
-		stream.addEventListener('append', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			mergeGatewayLogEntries(payload.entries || []);
-		});
-
-		stream.addEventListener('status', (event) => {
-			const payload = parseGatewayStreamPayload(event);
-			if (!payload) return;
-
-			applyGatewayLogStatus(payload.status);
-			gatewayLogsLastUpdated = new Date().toISOString();
-		});
-
-		stream.onerror = () => {
-			gatewayLogsStreamConnected = false;
-			gatewayLogsStreamError = 'Live stream disconnected. Retrying...';
-
-			if (gatewayLogsStream === stream) {
-				stream.close();
-				gatewayLogsStream = null;
-			}
-
-			scheduleGatewayLogsReconnect();
-		};
-	}
-
 	function getGatewayLogsGuidance() {
 		if (gatewayLogStatus?.lastGatewayConnected || !gatewayLoggingEnabled) {
 			return null;
@@ -474,18 +370,19 @@
 	onMount(() => {
 		gatewayLogsAppOrigin = window.location.origin;
 
+		// There's no server-side push/SSE endpoint for gateway logs (the old
+		// EventSource code here pointed at /api/gateway/logs/stream, which was
+		// never implemented — it 404'd and reconnected every 3s forever).
+		// Plain polling against the existing /api/gateway/logs JSON endpoint
+		// is all that's needed for a low-frequency admin log viewer.
 		const gatewayLogsIntervalId = window.setInterval(() => {
-			if (!gatewayLogsStreamConnected) {
-				void refreshGatewayLogs({ silent: true });
-			}
+			void refreshGatewayLogs({ silent: true });
 		}, 5000);
 
-		connectGatewayLogsStream();
 		void refreshGatewayLogs();
 
 		return () => {
 			window.clearInterval(gatewayLogsIntervalId);
-			disconnectGatewayLogsStream();
 		};
 	});
 </script>
@@ -767,9 +664,6 @@
 			</span>
 			<span>
 				{gatewayLogStatus?.lastGatewayPostedAt ? `Last stored batch ${formatRelativeTime(gatewayLogStatus.lastGatewayPostedAt)} (${gatewayLogStatus.lastStoredCount || 0} entries)` : 'No stored gateway batches yet'}
-			</span>
-			<span>
-				{gatewayLogsStreamConnected ? 'Live stream connected' : gatewayLogsStreamError || 'Live stream connecting...'}
 			</span>
 		</div>
 

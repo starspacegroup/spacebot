@@ -105,8 +105,13 @@ export async function load({ cookies, platform }) {
 	const db = env?.DB;
 	const botToken = env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
+	// Dev-bypass sessions use a fake access token and have no real bot — skip
+	// the Discord round-trip entirely instead of letting it fail with 401.
+	// Stored guild_metadata (merged in below) covers seeded dev guilds fine.
+	const isDevMockToken = cookies.get("discord_access_token") === "dev_mock_token";
+
 	const [botGuildsResult, allMetadata, allPlans, usageMap] = await Promise.all([
-		getBotGuilds(botToken),
+		isDevMockToken ? Promise.resolve({ guilds: [], available: false }) : getBotGuilds(botToken),
 		db ? getAllGuildMetadata(db) : [],
 		db ? getAllServerPlans(db) : [],
 		db ? getGuildUsageCounts(db) : new Map(),

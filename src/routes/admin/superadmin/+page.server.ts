@@ -292,12 +292,16 @@ export async function load({ cookies, platform }) {
 	const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 	const db = (platform as any)?.env?.DB;
 
+	// Dev-bypass sessions use a fake access token and have no real bot — skip
+	// the Discord round-trips entirely instead of letting them fail with 401.
+	const isDevMockToken = cookies.get("discord_access_token") === "dev_mock_token";
+
 	// Fetch all data in parallel
 	const [
-		botGuilds, 
-		botAppInfo, 
-		globalStats, 
-		serverStatsSummary, 
+		botGuilds,
+		botAppInfo,
+		globalStats,
+		serverStatsSummary,
 		cronJobData,
 		memberGrowthChart,
 		voiceActivityChart,
@@ -306,8 +310,8 @@ export async function load({ cookies, platform }) {
 		integrations,
 		firstLoginDmEnabled,
 	] = await Promise.all([
-		getBotGuildsWithDetails(botToken),
-		getBotApplicationInfo(botToken),
+		isDevMockToken ? Promise.resolve([]) : getBotGuildsWithDetails(botToken),
+		isDevMockToken ? Promise.resolve(null) : getBotApplicationInfo(botToken),
 		getGlobalStats(db),
 		getServerStatsSummary(db),
 		getCronJobData(db),
