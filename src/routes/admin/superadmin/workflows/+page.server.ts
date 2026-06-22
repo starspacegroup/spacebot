@@ -4,6 +4,7 @@ import {
   listSuperadminWorkflowTemplates,
 } from "$lib/db/superadmin-workflows.js";
 import { OPERATION_TEMPLATES } from "$lib/server/superadmin-workflow-presets.js";
+import { listWorkflowOperations } from "$lib/server/superadmin-workflow-operations.js";
 
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;
@@ -29,5 +30,6 @@ export async function load({ cookies, platform }) {
     templates,
     runs,
     operationTemplates: OPERATION_TEMPLATES,
+    operationCatalog: listWorkflowOperations(),
   };
 }

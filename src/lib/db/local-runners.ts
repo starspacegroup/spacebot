@@ -165,6 +165,43 @@ export async function getRunnerTokens(db, userId) {
 }
 
 /**
+ * List all non-revoked runner tokens across every user, for the superadmin
+ * workflow editor's runner-token picker (a workflow task can target any
+ * user's runner). Unlike getRunnerTokens this is not user-scoped.
+ * @param {D1Database} db
+ */
+export async function getAllRunnerTokens(db) {
+  if (!db) return [];
+  try {
+    const result = await db
+      .prepare(
+        `SELECT t.id, t.user_id, t.name, t.token_prefix, t.last_seen_at,
+                t.revoked, t.created_at,
+                COALESCE(u.global_name, u.username) AS owner_display_name,
+                CASE
+                  WHEN t.last_seen_at IS NOT NULL
+                   AND t.last_seen_at >= datetime('now', ?)
+                  THEN 1 ELSE 0
+                END AS is_online
+         FROM local_runner_tokens t
+         LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.revoked = 0
+         ORDER BY is_online DESC, t.last_seen_at DESC, t.created_at DESC`
+      )
+      .bind(`-${RUNNER_ONLINE_WINDOW_SECONDS} seconds`)
+      .all();
+    return (result.results || []).map((r) => ({
+      ...r,
+      revoked: false,
+      is_online: Boolean(r.is_online),
+    }));
+  } catch (err) {
+    log.error("[LocalRunners] getAllRunnerTokens error:", err);
+    return [];
+  }
+}
+
+/**
  * Create a new runner token for a user.
  * Returns the token record plus the raw token (shown once only).
  * @param {D1Database} db
