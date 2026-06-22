@@ -1,43 +1,12 @@
 import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
-import { 
-  getGuildStatistics, 
-  getActivityHeatmap, 
-  getCategoryTrends,
-  getRecentAutomationExecutions,
-  getAutomationExecutionHistory,
-  getTopVoiceUsers,
-  getTopVideoUsers,
-  getTopScreenshareUsers,
-} from "$lib/db/statistics.js";
-import {
-  getServerStatsHistory,
-  getMemberCountChanges,
-  getPeakMemberCount,
-  getLatestServerStats,
-  syncServerStatsIfStale,
-} from "$lib/db/server-stats.js";
-import {
-  getVoiceActivitySummary,
-  getMemberGrowthSummary,
-  getAggregatedStats,
-  getMemberGrowthChart,
-  getVoiceActivityChart,
-  runStatsAggregation,
-} from "$lib/db/stats-aggregation.js";
 import { EVENT_CATEGORIES } from "$lib/db/logger.js";
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
-import { getBoostingMembersFromCache, getRolesFromCache } from "$lib/db/guild-cache.js";
-import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
+import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import {
   LIVE_UPDATE_TOKEN_TTL_SECONDS,
   signLiveUpdateAccess,
 } from "$lib/live-updates.js";
-import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
-
-const STATS_CACHE_FRESH_MS = 30 * 1000;
-const STATS_CACHE_STALE_MS = 15 * 60 * 1000;
-const STATS_CACHE = globalThis.__spacebotStatsPageCache ||= new Map();
+import { getStatsCacheEntry, statsCacheKey } from "$lib/server/stats-page-data.js";
 
 const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
 
@@ -120,9 +89,7 @@ export async function load({ params, cookies, platform, parent, url }) {
   // Get guild info
   const guild = adminGuilds.find((g) => g.id === serverId);
 
-  // Get database and bot token
   const db = (platform as any)?.env?.DB;
-  const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
   const plan = db
     ? await getServerPlan(db, serverId)
@@ -132,14 +99,11 @@ export async function load({ params, cookies, platform, parent, url }) {
   const selectedPeriod = normalizeSelectedPeriod(url.searchParams.get("period"), periodOptions);
   const selectedPeriodOption = periodOptions.find((option) => option.value === selectedPeriod) || periodOptions[0];
   const timezone = parentData.timezone || null;
-  const forceHotload = url.searchParams.get("hotload") === "1";
-  const cacheKey = `${serverId}:${selectedPeriod}:${timezone || "utc"}`;
-  const cachedEntry = STATS_CACHE.get(cacheKey);
-  const cacheAgeMs = cachedEntry ? Date.now() - cachedEntry.cachedAt : Number.POSITIVE_INFINITY;
-  const hasFreshCache = cacheAgeMs <= STATS_CACHE_FRESH_MS;
-  const hasStaleCache = cacheAgeMs <= STATS_CACHE_STALE_MS;
 
-  // Fetch comprehensive statistics
+  // Cheap, always-fresh — used for the per-server accent theme in the root
+  // layout, so it shouldn't wait on the cache/hotload cycle below.
+  const guildMetadata = db ? await getGuildMetadata(db, serverId) : null;
+
   let loadMeta = {
     source: "live",
     needsHotload: false,
@@ -161,7 +125,6 @@ export async function load({ params, cookies, platform, parent, url }) {
   let topVideoUsers = [];
   let topScreenshareUsers = [];
   let topBoosters = [];
-  let guildMetadata = null;
   let cachedRoles = [];
   let liveUpdatesAuth = null;
   let liveVoiceSnapshot = {
@@ -173,7 +136,13 @@ export async function load({ params, cookies, platform, parent, url }) {
     updatedAt: null,
   };
 
-  if (!forceHotload && hasStaleCache && cachedEntry?.data) {
+  // Heavy stats (Discord API calls, stats aggregation, ~18 D1 queries) are
+  // never fetched inline here. A warm cache (written by the
+  // /api/admin/[serverId]/stats-data endpoint) is served directly; a cold
+  // cache renders a shell immediately and the client fetches that endpoint
+  // itself, showing loading skeletons in the meantime — see +page.svelte.
+  const { cachedEntry, hasFreshCache, hasStaleCache } = getStatsCacheEntry(statsCacheKey(serverId, selectedPeriod, timezone));
+  if (hasStaleCache && cachedEntry?.data) {
     statistics = cachedEntry.data.statistics;
     heatmapData = cachedEntry.data.heatmapData;
     categoryTrends = cachedEntry.data.categoryTrends;
@@ -189,7 +158,6 @@ export async function load({ params, cookies, platform, parent, url }) {
     topVideoUsers = cachedEntry.data.topVideoUsers;
     topScreenshareUsers = cachedEntry.data.topScreenshareUsers;
     topBoosters = cachedEntry.data.topBoosters;
-    guildMetadata = cachedEntry.data.guildMetadata;
     cachedRoles = cachedEntry.data.cachedRoles;
     liveVoiceSnapshot = cachedEntry.data.liveVoiceSnapshot;
     loadMeta = {
@@ -198,144 +166,7 @@ export async function load({ params, cookies, platform, parent, url }) {
       isStale: !hasFreshCache,
       updatedAt: new Date(cachedEntry.cachedAt).toISOString(),
     };
-  }
-
-  // Heavy data is only fetched inline on explicit hotload requests. Cold-cache
-  // navigations return a shell immediately (loadMeta.needsHotload) and the
-  // client re-fetches with ?hotload=1 while showing loading skeletons —
-  // otherwise every cache miss blocks navigation on Discord API calls, stats
-  // aggregation, and ~18 D1 queries.
-  const shouldFetchLive = db && forceHotload;
-  if (shouldFetchLive) {
-    try {
-      const existingStats = await getLatestServerStats(db, serverId);
-      log.debug(`[Stats] Existing stats for ${serverId}:`, existingStats);
-      const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
-
-      // Block on aggregation so chart queries always read the latest processed data, but
-      // skip the forced multi-day repair window — that's ~1000 sequential D1 queries and
-      // belongs in the background cron refresh, not an interactive page load.
-      try {
-        const aggregationResult = await runStatsAggregation(db, serverId, { repair: false });
-        if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
-          log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
-        }
-      } catch (aggError) {
-        log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
-      }
-
-      [
-        statistics, 
-        heatmapData, 
-        categoryTrends, 
-        recentExecutions,
-        automationHistory,
-        memberStats, 
-        memberHistory,
-        voiceActivity,
-        memberGrowth,
-        memberGrowthChartData,
-        voiceActivityChartData,
-        topVoiceUsers,
-        topVideoUsers,
-        topScreenshareUsers,
-        topBoosters,
-        guildMetadata,
-        cachedRoles,
-        liveVoiceSnapshot,
-      ] = await Promise.all([
-        getGuildStatistics(db, serverId, timezone, selectedPeriod),
-        getActivityHeatmap(db, serverId, timezone, selectedPeriod),
-        getCategoryTrends(db, serverId, timezone, selectedPeriod),
-        getRecentAutomationExecutions(db, serverId, 15),
-        getAutomationExecutionHistory(db, serverId, timezone),
-        // Member stats from server_stats
-        Promise.all([
-          Promise.resolve(syncedStats.latest ?? existingStats),
-          getMemberCountChanges(db, serverId, timezone),
-          getPeakMemberCount(db, serverId, selectedPeriod),
-        ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
-        getServerStatsHistory(db, serverId, { period: selectedPeriod, granularity: "daily", timezone }),
-        // Aggregated voice activity
-        getVoiceActivitySummary(db, serverId, selectedPeriod),
-        // Aggregated member growth
-        getMemberGrowthSummary(db, serverId, selectedPeriod),
-        // Chart data for beautiful graphs
-        getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
-        getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
-        // Top users for voice, video, and screenshare
-        getTopVoiceUsers(db, serverId, 10, selectedPeriod),
-        getTopVideoUsers(db, serverId, 10, selectedPeriod),
-        getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
-        // Current active boosters from members cache
-        getBoostingMembersFromCache(db, serverId, 50),
-        // Guild metadata for boost features display (non-fatal)
-        getGuildMetadata(db, serverId).catch((metaError) => {
-          log.warn(`[Stats] Failed to fetch guild metadata for ${serverId}:`, metaError);
-          return null;
-        }),
-        // Cached roles for roles panel (non-fatal)
-        getRolesFromCache(db, serverId).catch((rolesError) => {
-          log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
-          return [];
-        }),
-        // Live voice snapshot (non-fatal)
-        getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
-          log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
-          return {
-            channels: [],
-            totalUsers: 0,
-            totalChannels: 0,
-            activeCameras: 0,
-            activeStreams: 0,
-            updatedAt: null,
-          };
-        }),
-      ]);
-
-      STATS_CACHE.set(cacheKey, {
-        cachedAt: Date.now(),
-        data: {
-          statistics,
-          heatmapData,
-          categoryTrends,
-          recentExecutions,
-          automationHistory,
-          memberStats,
-          memberHistory,
-          voiceActivity,
-          memberGrowth,
-          memberGrowthChartData,
-          voiceActivityChartData,
-          topVoiceUsers,
-          topVideoUsers,
-          topScreenshareUsers,
-          topBoosters,
-          guildMetadata,
-          cachedRoles,
-          liveVoiceSnapshot,
-        },
-      });
-
-      loadMeta = {
-        source: forceHotload ? "hotload" : "live",
-        needsHotload: false,
-        isStale: false,
-        updatedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      log.error("Failed to fetch statistics:", error);
-      if (forceHotload) {
-        loadMeta = {
-          source: "error",
-          needsHotload: false,
-          isStale: false,
-          updatedAt: null,
-        };
-      }
-    }
-  } else if (db && !hasStaleCache) {
-    // Shell response: render immediately, client hotloads the real data.
+  } else if (db) {
     // Only signal a hotload when one can actually succeed (db present),
     // otherwise the page would show loading skeletons forever.
     loadMeta = {

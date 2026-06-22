@@ -1,15 +1,66 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
-	
+
 	let { data } = $props();
-	let hotloading = $state(false);
-	const isStatisticsLoading = $derived(Boolean(hotloading || data.loadMeta?.source === 'shell' || data.loadMeta?.needsHotload));
-	const hasStatisticsData = $derived(Boolean(data.statistics));
+
+	// The page load returns a fast "shell" (loadMeta.needsHotload) when the
+	// in-memory stats cache is cold, instead of blocking navigation on Discord
+	// API calls, stats aggregation, and ~18 D1 queries. We used to backfill
+	// that with goto(url, { invalidateAll: true }), but that forces every
+	// loader in the route tree through SvelteKit's client-side data-merge
+	// machinery just to refresh one page's stats — fetch the dedicated
+	// endpoint directly instead (see src/routes/admin/[serverId]/+page.svelte
+	// for the same fix applied to the dashboard first).
+	let liveStats = $state(null);
+	let statsKey = $state(null);
+	let statsLoading = $state(false);
+
+	const LIVE_FIELDS = [
+		'statistics', 'heatmapData', 'categoryTrends', 'recentExecutions', 'automationHistory',
+		'memberStats', 'memberHistory', 'voiceActivity', 'memberGrowth', 'memberGrowthChartData',
+		'voiceActivityChartData', 'topVoiceUsers', 'topVideoUsers', 'topScreenshareUsers',
+		'topBoosters', 'cachedRoles', 'liveVoiceSnapshot',
+	];
+
+	$effect(() => {
+		const serverId = data.serverId;
+		const period = data.selectedPeriod;
+		const key = `${serverId}:${period}`;
+		if (!data.loadMeta?.needsHotload || statsKey === key) return;
+
+		statsLoading = true;
+		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`)
+			.then((res) => {
+				if (!res.ok) throw new Error(`stats-data request failed: ${res.status}`);
+				return res.json();
+			})
+			.then((json) => {
+				liveStats = json;
+				statsKey = key;
+			})
+			.catch((err) => {
+				console.error('[Stats] Failed to load live stats:', err);
+				statsKey = key; // stop retrying automatically; fall back to the shell defaults below
+			})
+			.finally(() => {
+				statsLoading = false;
+			});
+	});
+
+	// Merges the client-fetched stats (once loaded for the current
+	// server+period) over the shell/cached defaults from the page load.
+	const liveData = $derived(
+		liveStats && statsKey === `${data.serverId}:${data.selectedPeriod}`
+			? liveStats
+			: Object.fromEntries(LIVE_FIELDS.map((key) => [key, data[key]]))
+	);
+
+	const isStatisticsLoading = $derived(statsLoading);
+	const hasStatisticsData = $derived(Boolean(liveData.statistics));
 
 	function createEmptyStatistics() {
 		return {
@@ -34,7 +85,7 @@
 		};
 	}
 
-	const statistics = $derived(data.statistics || createEmptyStatistics());
+	const statistics = $derived(liveData.statistics || createEmptyStatistics());
 
 	const periodOptions = $derived(data.periodOptions || []);
 	const selectedPeriod = $derived(data.selectedPeriod || '30d');
@@ -53,7 +104,7 @@
 		};
 	}
 
-	const initialLiveVoiceSnapshot = $derived(normalizeLiveVoiceSnapshot(data.liveVoiceSnapshot));
+	const initialLiveVoiceSnapshot = $derived(normalizeLiveVoiceSnapshot(liveData.liveVoiceSnapshot));
 	let liveVoiceSnapshot = $state(normalizeLiveVoiceSnapshot());
 	let liveVoiceRefreshing = $state(false);
 	let liveVoiceRefreshError = $state('');
@@ -98,35 +149,6 @@
 			liveVoiceRefreshing = false;
 		}
 	}
-
-	// $effect (not onMount) so the hotload also fires on param-only navigations
-	// (e.g. switching servers or stat periods on the same route), where the
-	// component is reused and only `data` changes.
-	$effect(() => {
-		const meta = data.loadMeta;
-		const params = new URLSearchParams(window.location.search);
-		const isHotloadRequest = params.get('hotload') === '1';
-
-		if (!isHotloadRequest && meta?.needsHotload && !hotloading) {
-			hotloading = true;
-			params.set('hotload', '1');
-			goto(`${window.location.pathname}?${params.toString()}`, {
-				replaceState: true,
-				noScroll: true,
-				keepFocus: true,
-				invalidateAll: true,
-			}).finally(() => {
-				hotloading = false;
-			});
-			return;
-		}
-
-		if (isHotloadRequest && (meta?.source === 'hotload' || meta?.source === 'cache' || meta?.source === 'error')) {
-			params.delete('hotload');
-			const nextQuery = params.toString();
-			history.replaceState({}, '', nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname);
-		}
-	});
 
 	// Live voice stream + polling runs regardless of hotload state, so a
 	// cold (shell) load still connects immediately.
@@ -236,7 +258,7 @@
 	}
 
 	const allTopBoosters = $derived(
-		(data.topBoosters || [])
+		(liveData.topBoosters || [])
 			.filter((member) => !member.is_bot)
 			.map((member) => ({
 				...member,
@@ -253,19 +275,19 @@
 	const boostersTotalPages = $derived(Math.ceil(allTopBoosters.length / ITEMS_PER_PAGE));
 	
 	const filteredVoiceUsers = $derived(
-		(data.topVoiceUsers || [])
+		(liveData.topVoiceUsers || [])
 			.filter(user => showBotsInVoiceUsers || !isBot(user))
 			.slice(0, 5)
 	);
 	
 	const filteredVideoUsers = $derived(
-		(data.topVideoUsers || [])
+		(liveData.topVideoUsers || [])
 			.filter(user => showBotsInVideoUsers || !isBot(user))
 			.slice(0, 5)
 	);
 	
 	const filteredScreenshareUsers = $derived(
-		(data.topScreenshareUsers || [])
+		(liveData.topScreenshareUsers || [])
 			.filter(user => showBotsInScreenshareUsers || !isBot(user))
 			.slice(0, 5)
 	);
@@ -450,9 +472,9 @@
 	const heatmapGrid = $derived.by(() => {
 		const grid = Array(7).fill(null).map(() => Array(24).fill(0));
 		const countKey = showBotsInHeatmap ? 'count' : 'non_bot_count';
-		const maxCount = Math.max(...(data.heatmapData?.map(h => h[countKey] || 0) || [1]), 1);
+		const maxCount = Math.max(...(liveData.heatmapData?.map(h => h[countKey] || 0) || [1]), 1);
 		
-		for (const item of data.heatmapData || []) {
+		for (const item of liveData.heatmapData || []) {
 			const value = item[countKey] || 0;
 			grid[item.day_of_week][item.hour] = value / maxCount;
 		}
@@ -485,7 +507,7 @@
 	
 	// Member history chart data with computed values for SVG
 	const memberChartData = $derived.by(() => {
-		const history = data.memberHistory || [];
+		const history = liveData.memberHistory || [];
 		const processed = history.map(d => ({
 			...d,
 			member_count: d.member_count || 0,
@@ -510,7 +532,7 @@
 	
 	// Transform member growth chart data for bar chart component
 	const memberGrowthBarData = $derived.by(() => {
-		const points = data.memberGrowthChartData || [];
+		const points = liveData.memberGrowthChartData || [];
 		if (!points || points.length === 0) return [];
 		
 		return points.map(p => ({
@@ -526,7 +548,7 @@
 	
 	// Member growth summary stats
 	const memberGrowthStats = $derived.by(() => {
-		const points = data.memberGrowthChartData || [];
+		const points = liveData.memberGrowthChartData || [];
 		if (!points || points.length === 0) return null;
 		
 		const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
@@ -538,7 +560,7 @@
 	
 	// Transform voice activity data for area chart component
 	const voiceActivityData = $derived.by(() => {
-		const points = data.voiceActivityChartData || [];
+		const points = liveData.voiceActivityChartData || [];
 		if (!points || points.length === 0) return [];
 		
 		// Determine if we should use hours or minutes
@@ -555,7 +577,7 @@
 	
 	// Peak unique voice users chart data
 	const peakUsersData = $derived.by(() => {
-		const points = data.voiceActivityChartData || [];
+		const points = liveData.voiceActivityChartData || [];
 		if (!points || points.length === 0) return [];
 		
 		return points.map(p => ({
@@ -568,7 +590,7 @@
 	
 	// Peak concurrent voice users chart data
 	const peakConcurrentData = $derived.by(() => {
-		const points = data.voiceActivityChartData || [];
+		const points = liveData.voiceActivityChartData || [];
 		if (!points || points.length === 0) return [];
 		
 		return points.map(p => ({
@@ -585,8 +607,8 @@
 	let showBotsInMemberChart = $state(false);
 	
 	const memberCountHistory = $derived.by(() => {
-		const history = data.memberHistory || [];
-		const latest = data.memberStats?.latest;
+		const history = liveData.memberHistory || [];
+		const latest = liveData.memberStats?.latest;
 		const currentCount = showBotsInMemberChart
 			? (latest?.member_count || 0)
 			: (latest?.human_count ?? latest?.member_count ?? 0);
@@ -639,7 +661,7 @@
 	
 	// Voice activity summary stats
 	const voiceActivityStats = $derived.by(() => {
-		const points = data.voiceActivityChartData || [];
+		const points = liveData.voiceActivityChartData || [];
 		if (!points || points.length === 0) return null;
 		
 		const totalMinutes = points.reduce((sum, p) => sum + (p.totalMinutes || 0), 0);
@@ -661,7 +683,7 @@
 
 	// Role breakdown from cached roles data
 	const roleBreakdown = $derived.by(() => {
-		const roles = data.cachedRoles || [];
+		const roles = liveData.cachedRoles || [];
 		if (roles.length === 0) return null;
 
 		const managed = roles.filter(r => r.managed);
@@ -769,21 +791,21 @@
 					</div>
 					<div class="stat-content">
 						<span class="stat-value">{formatNumber(showBotsInMembers 
-							? (data.memberStats?.changes?.current || data.memberStats?.latest?.member_count || 0) 
-							: (data.memberStats?.changes?.currentHuman ?? data.memberStats?.latest?.human_count ?? data.memberStats?.changes?.current ?? data.memberStats?.latest?.member_count ?? 0))}</span>
+							? (liveData.memberStats?.changes?.current || liveData.memberStats?.latest?.member_count || 0) 
+							: (liveData.memberStats?.changes?.currentHuman ?? liveData.memberStats?.latest?.human_count ?? liveData.memberStats?.changes?.current ?? liveData.memberStats?.latest?.member_count ?? 0))}</span>
 						<span class="stat-label">{showBotsInMembers ? 'Server Members' : 'Human Members'}</span>
 					</div>
 					<div class="stat-breakdown">
-						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.day : data.memberStats?.changes?.dayHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.day : data.memberStats?.changes?.dayHuman) < 0}>
-							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.day || 0) : (data.memberStats?.changes?.dayHuman ?? data.memberStats?.changes?.day ?? 0))}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? liveData.memberStats?.changes?.day : liveData.memberStats?.changes?.dayHuman) > 0} class:negative={(showBotsInMembers ? liveData.memberStats?.changes?.day : liveData.memberStats?.changes?.dayHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (liveData.memberStats?.changes?.day || 0) : (liveData.memberStats?.changes?.dayHuman ?? liveData.memberStats?.changes?.day ?? 0))}</span>
 							<span class="breakdown-label">Today</span>
 						</div>
-						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.week : data.memberStats?.changes?.weekHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.week : data.memberStats?.changes?.weekHuman) < 0}>
-							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.week || 0) : (data.memberStats?.changes?.weekHuman ?? data.memberStats?.changes?.week ?? 0))}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? liveData.memberStats?.changes?.week : liveData.memberStats?.changes?.weekHuman) > 0} class:negative={(showBotsInMembers ? liveData.memberStats?.changes?.week : liveData.memberStats?.changes?.weekHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (liveData.memberStats?.changes?.week || 0) : (liveData.memberStats?.changes?.weekHuman ?? liveData.memberStats?.changes?.week ?? 0))}</span>
 							<span class="breakdown-label">This Week</span>
 						</div>
-						<div class="breakdown-item" class:positive={(showBotsInMembers ? data.memberStats?.changes?.month : data.memberStats?.changes?.monthHuman) > 0} class:negative={(showBotsInMembers ? data.memberStats?.changes?.month : data.memberStats?.changes?.monthHuman) < 0}>
-							<span class="breakdown-value">{formatChange(showBotsInMembers ? (data.memberStats?.changes?.month || 0) : (data.memberStats?.changes?.monthHuman ?? data.memberStats?.changes?.month ?? 0))}</span>
+						<div class="breakdown-item" class:positive={(showBotsInMembers ? liveData.memberStats?.changes?.month : liveData.memberStats?.changes?.monthHuman) > 0} class:negative={(showBotsInMembers ? liveData.memberStats?.changes?.month : liveData.memberStats?.changes?.monthHuman) < 0}>
+							<span class="breakdown-value">{formatChange(showBotsInMembers ? (liveData.memberStats?.changes?.month || 0) : (liveData.memberStats?.changes?.monthHuman ?? liveData.memberStats?.changes?.month ?? 0))}</span>
 							<span class="breakdown-label">This Month</span>
 						</div>
 					</div>
@@ -864,15 +886,15 @@
 		</section>
 		
 		<!-- Server Members Overview -->
-		{#if data.memberStats?.latest}
+		{#if liveData.memberStats?.latest}
 			<section class="chart-section">
 				<ChartCard 
 					title={showBotsInMemberChart ? 'Server Members' : 'Human Members'}
-					subtitle={data.memberStats?.latest?.recorded_at ? `Updated ${formatRelativeTime(data.memberStats.latest.recorded_at)}` : 'Current'}
+					subtitle={liveData.memberStats?.latest?.recorded_at ? `Updated ${formatRelativeTime(liveData.memberStats.latest.recorded_at)}` : 'Current'}
 					icon="👥"
 					loading={isStatisticsLoading}
 					stats={[
-						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (data.memberStats?.latest?.member_count || 0) : (data.memberStats?.latest?.human_count ?? data.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
+						{ icon: '👤', value: formatNumber(showBotsInMemberChart ? (liveData.memberStats?.latest?.member_count || 0) : (liveData.memberStats?.latest?.human_count ?? liveData.memberStats?.latest?.member_count ?? 0)), label: showBotsInMemberChart ? 'Total Members' : 'Human Members', color: '#5865F2' },
 					]}
 				>
 					{#snippet headerAction()}
@@ -974,10 +996,10 @@
 					{ icon: '➕', value: `+${formatNumber(memberGrowthStats.totalJoins)}`, label: 'Joined', color: '#22c55e' },
 					{ icon: '➖', value: `-${formatNumber(memberGrowthStats.totalLeaves)}`, label: 'Left', color: '#ef4444' },
 					{ icon: '📊', value: formatChange(memberGrowthStats.netChange), label: 'Net Change', color: memberGrowthStats.netChange > 0 ? '#22c55e' : memberGrowthStats.netChange < 0 ? '#ef4444' : undefined },
-				] : (data.memberGrowth ? [
-					{ icon: '➕', value: `+${formatNumber(data.memberGrowth.joins)}`, label: 'Joined', color: '#22c55e' },
-					{ icon: '➖', value: `-${formatNumber(data.memberGrowth.leaves)}`, label: 'Left', color: '#ef4444' },
-					{ icon: '📊', value: formatChange(data.memberGrowth.netChange), label: 'Net Change', color: data.memberGrowth.netChange > 0 ? '#22c55e' : data.memberGrowth.netChange < 0 ? '#ef4444' : undefined },
+				] : (liveData.memberGrowth ? [
+					{ icon: '➕', value: `+${formatNumber(liveData.memberGrowth.joins)}`, label: 'Joined', color: '#22c55e' },
+					{ icon: '➖', value: `-${formatNumber(liveData.memberGrowth.leaves)}`, label: 'Left', color: '#ef4444' },
+					{ icon: '📊', value: formatChange(liveData.memberGrowth.netChange), label: 'Net Change', color: liveData.memberGrowth.netChange > 0 ? '#22c55e' : liveData.memberGrowth.netChange < 0 ? '#ef4444' : undefined },
 				] : [])}
 			>
 				<BarChart 
@@ -996,7 +1018,7 @@
 				icon="🏷️"
 				loading={isStatisticsLoading}
 				stats={[
-					{ icon: '🏷️', value: formatNumber(roleBreakdown?.total || data.memberStats?.latest?.role_count || 0), label: 'Total Roles', color: '#EB459E' },
+					{ icon: '🏷️', value: formatNumber(roleBreakdown?.total || liveData.memberStats?.latest?.role_count || 0), label: 'Total Roles', color: '#EB459E' },
 					{ icon: '🎨', value: formatNumber(roleBreakdown?.custom || 0), label: 'Custom', color: '#5865F2' },
 					{ icon: '🤖', value: formatNumber(roleBreakdown?.managed || 0), label: 'Managed', color: '#9B84EE' },
 				]}
@@ -1038,17 +1060,17 @@
 					</div>
 				{/if}
 			</ChartCard>
-			{#if data.memberStats?.latest?.boost_count > 0}
+			{#if liveData.memberStats?.latest?.boost_count > 0}
 				<ChartCard
 					title="Server Boosts"
 					icon="💎"
 					loading={isStatisticsLoading}
 					stats={[
-						{ icon: '💎', value: `${data.memberStats.latest.boost_count}`, label: 'Boosts', color: '#F47FFF' },
-						{ icon: '🏆', value: `Level ${data.memberStats.latest.boost_level}`, label: 'Boost Tier', color: '#F47FFF' },
+						{ icon: '💎', value: `${liveData.memberStats.latest.boost_count}`, label: 'Boosts', color: '#F47FFF' },
+						{ icon: '🏆', value: `Level ${liveData.memberStats.latest.boost_level}`, label: 'Boost Tier', color: '#F47FFF' },
 					]}
 				>
-					{@const boostLevel = data.memberStats.latest.boost_level || 0}
+					{@const boostLevel = liveData.memberStats.latest.boost_level || 0}
 					{@const meta = data.guildMetadata}
 					{@const boostFeatures = [
 						{ name: 'Server Tag', unlockLevel: 0, icon: '🏷️', active: !!(meta?.features?.includes('GUILD_TAGS')), detail: meta?.tag || null },
@@ -1520,7 +1542,7 @@
 			{#if statistics.automationPerformance?.length > 0}
 				<div class="performance-grid">
 					{#each statistics.automationPerformance as automation}
-						{@const history = data.automationHistory?.[automation.id] || []}
+						{@const history = liveData.automationHistory?.[automation.id] || []}
 						{@const sparklineData = buildSparkline(history)}
 						<div class="performance-card">
 							<div class="performance-header">
@@ -1567,7 +1589,7 @@
 				<span class="section-icon">📜</span>
 				Recent Automation Executions
 			</h2>
-			{#if data.recentExecutions?.length > 0}
+			{#if liveData.recentExecutions?.length > 0}
 				<div class="executions-table">
 					<div class="table-header">
 						<span class="col-status">Status</span>
@@ -1576,7 +1598,7 @@
 						<span class="col-time">Execution Time</span>
 						<span class="col-when">When</span>
 					</div>
-					{#each data.recentExecutions as execution}
+					{#each liveData.recentExecutions as execution}
 						<div class="table-row" class:error={!execution.success}>
 							<span class="col-status">
 								{#if execution.success}
