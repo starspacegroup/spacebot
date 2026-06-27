@@ -1,0 +1,22 @@
+# Build output / generated
+.svelte-kit/
+build/
+dist/
+coverage/
+.wrangler/
+node_modules/
+playwright-report/
+test-results/
+
+# Generated / vendored
+bun.lock
+bun.lockb
+package-lock.json
+*.timestamp-*
+
+# Migrations are immutable SQL — don't reformat
+migrations/
+
+# Lock + data files
+*.min.js
+*.min.css
