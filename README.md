@@ -30,7 +30,12 @@ beautiful admin dashboard.
 - **Interactions Endpoint** — HTTP-based slash command handling via Cloudflare
   Workers
 - **AI Chat for Managers** — Server managers can DM the bot for AI-powered
-  assistance using Cloudflare Workers AI
+  assistance. In production this runs on Cloudflare Workers AI (optionally
+  through an AI Gateway for analytics/caching); in local development you can
+  point it at an Ollama model instead (`AI_PROVIDER=ollama`, default `gemma3:4b`).
+- **AI DM Autopilot** — When enabled, gateway DMs are enqueued onto a Cloudflare
+  Queue and handled by a standalone orchestrator worker (see
+  [docs/ai-autopilot.md](docs/ai-autopilot.md)).
 
 ### 🌐 Web Dashboard
 
@@ -41,6 +46,18 @@ beautiful admin dashboard.
 - **Command Builder** — Design custom slash commands with the automation action
   system
 - **Dark/Light Theme** — Beautiful UI with theme toggle support
+
+### 🧩 Automation & Extensibility
+
+- **Local Runner** — A standalone Bun CLI users install on their own machine. It
+  connects to the server over WebSocket, runs jobs as shell commands inside a
+  path allowlist, and streams results back (see
+  [docs/local-runner-v2.md](docs/local-runner-v2.md)).
+- **Superadmin Workflows** — Scheduled, server-spanning workflow templates driven
+  by `cron_expression` values stored in D1 (see
+  [docs/superadmin-workflows.md](docs/superadmin-workflows.md)).
+- **MCP Server** — A standalone Model Context Protocol server (`mcp-server/`) that
+  exposes SpaceBot data/operations to MCP-aware clients.
 
 ### 🔐 Authentication & Security
 
@@ -136,20 +153,23 @@ Comprehensive logging of all Discord events with filtering and search.
 
 ## 🛠️ Tech Stack
 
-| Layer       | Technology                    |
-| ----------- | ----------------------------- |
-| Framework   | SvelteKit 2 (Svelte 5)        |
-| Runtime     | Cloudflare Pages/Workers      |
-| Database    | Cloudflare D1 (SQLite)        |
-| Bot Library | Discord.js 14                 |
-| Styling     | Custom CSS with CSS Variables |
-| Auth        | Discord OAuth2                |
+| Layer           | Technology                                                    |
+| --------------- | ------------------------------------------------------------- |
+| Framework       | SvelteKit 2 (Svelte 5)                                        |
+| Edge runtime    | Cloudflare Pages/Workers                                      |
+| Package manager | Bun                                                           |
+| Database        | Cloudflare D1 (SQLite)                                        |
+| Bot Library     | Discord.js 14                                                 |
+| AI              | Cloudflare Workers AI / AI Gateway (prod); Ollama (dev only)  |
+| Styling         | Custom CSS with CSS Variables                                 |
+| Auth            | Discord OAuth2                                                |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
+- [Bun](https://bun.sh) 1.3+ (the project's package manager and runtime — used for
+  every script; Node.js is not required)
 - A Discord Application
   ([create one here](https://discord.com/developers/applications))
 - A Cloudflare account ([sign up here](https://dash.cloudflare.com/sign-up))
@@ -204,7 +224,8 @@ Comprehensive logging of all Discord events with filtering and search.
    ```bash
    bun run dev
    ```
-   The app will be available at `http://localhost:5173`
+   The app will be available at `http://localhost:4269` (the port is pinned in
+   `vite.config.js`).
 
 6. **Start the Gateway bot** (in a separate terminal)
    ```bash
@@ -249,6 +270,9 @@ URL:
 | `bun run db:migrate`        | Run database migrations (production)             |
 | `bun run db:migrate:local`  | Run database migrations (local)                  |
 | `bun run register-commands` | Register slash commands with Discord             |
+| `bun run test`              | Run the Vitest test suite                        |
+| `bun run typecheck`         | Type-check with `svelte-check`                    |
+| `bun run runner`            | Start the local runner CLI                        |
 
 ## 🔄 Automations
 
@@ -364,36 +388,31 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 spacebot/
 ├── src/
 │   ├── lib/
-│   │   ├── automation/       # Automation engine
+│   │   ├── ai/               # AI chat, MCP client, retry policy
+│   │   ├── automation/       # Event → action automation engine
 │   │   ├── components/       # Svelte components
-│   │   ├── db/               # Database functions
-│   │   │   ├── automations.ts
-│   │   │   ├── commands.ts
-│   │   │   └── logger.ts
-│   │   └── discord/          # Discord integration
-│   │       ├── cache.ts
-│   │       ├── commands.ts
-│   │       ├── gateway.ts    # Gateway bot service
-│   │       └── guilds.ts
+│   │   ├── db/               # D1/SQLite access, one module per domain
+│   │   ├── discord/          # Gateway client, REST, bot registry, commands
+│   │   ├── integrations/     # External integrations (e.g. GitHub) + auth
+│   │   ├── server/           # Server-only helpers (cron, workflow runtime)
+│   │   └── utils/            # Shared utilities
 │   ├── routes/
-│   │   ├── admin/            # Admin dashboard pages
-│   │   │   ├── [serverId]/   # Per-server management
-│   │   │   │   ├── automations/
-│   │   │   │   ├── commands/
-│   │   │   │   └── logs/
-│   │   ├── api/              # API endpoints
-│   │   │   ├── automations/
-│   │   │   ├── commands/
-│   │   │   ├── discord/
-│   │   │   └── logs/
-│   │   └── login/
-│   └── app.html
-├── migrations/               # D1 database migrations
-├── scripts/                  # Utility scripts
+│   │   ├── admin/            # Per-server dashboard (under [serverId]/)
+│   │   ├── account/          # User-level AI jobs / workflows / operations
+│   │   └── api/              # REST endpoints (+ api/v1, api/runner/ws)
+│   ├── tests/                # Vitest test suites
+│   └── hooks.server.ts       # Edge auth + request handling
+├── orchestrator-worker/      # Cloudflare Queue consumer (AI autopilot, cron)
+├── mcp-server/               # Standalone MCP server
+├── scripts/                  # CLIs and tooling (incl. scripts/local-runner/)
+├── migrations/               # D1 database migrations (immutable once applied)
+├── _functions/               # Cloudflare Pages Functions
 ├── static/                   # Static assets
-└── docs/
-    └── screenshots/          # Documentation images
+└── docs/                     # Documentation (incl. architecture.md, screenshots/)
 ```
+
+See [docs/architecture.md](docs/architecture.md) for a diagram of how the runtimes
+fit together, and [CLAUDE.md](CLAUDE.md) for the authoritative architecture notes.
 
 ## 🔒 Security
 
@@ -406,6 +425,12 @@ spacebot/
 ## 🗺️ Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for planned features and enhancements.
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the project's hard rules
+(immutable migrations, Bun-only, the multi-runtime model), and how to run tests
+before opening a PR.
 
 ## 📄 License
 
