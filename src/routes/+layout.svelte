@@ -5,6 +5,8 @@
 	import ServerSelector from '$lib/components/ServerSelector.svelte';
 	import Footer from '$lib/components/Footer.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import ToastContainer from '$lib/components/ToastContainer.svelte';
+	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
@@ -53,21 +55,39 @@
 
 	// adminGuilds may arrive as a streamed Promise (to avoid blocking page render on Discord API).
 	// Resolve it reactively so the server selector appears once the list is ready.
+	// `guildsPending` distinguishes "still streaming" from "resolved but empty" so the
+	// loading skeleton never sticks for users who genuinely have no admin guilds.
 	let adminGuilds = $state([]);
+	let guildsPending = $state(false);
 	$effect(() => {
 		const raw: any = data?.adminGuilds;
 		if (!raw) {
 			adminGuilds = [];
+			guildsPending = false;
 			return;
 		}
 		if (typeof raw?.then === 'function') {
 			// Streamed Promise — page already rendered, now fill in the guild list
-			raw.then((guilds) => { adminGuilds = guilds ?? []; }).catch(() => { adminGuilds = []; });
+			guildsPending = true;
+			raw
+				.then((guilds) => { adminGuilds = guilds ?? []; })
+				.catch(() => { adminGuilds = []; })
+				.finally(() => { guildsPending = false; });
 		} else {
 			// Already resolved array (dev bypass, first-ever visit, or non-admin page)
 			adminGuilds = raw;
+			guildsPending = false;
 		}
 	});
+
+	// Show the server-selector skeleton only while the streamed guild list is in flight
+	// on an admin (non-superadmin) route — a real loading state, not a permanent fallback.
+	const showSelectorSkeleton = $derived(
+		guildsPending &&
+		adminGuilds.length === 0 &&
+		$page.url.pathname.startsWith('/admin') &&
+		!$page.url.pathname.startsWith('/admin/superadmin')
+	);
 	
 	// Only show login button after initialization to prevent flash
 	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
@@ -140,10 +160,12 @@
 		</button>
 		<nav class="nav">
 			{#if $page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
-				<ServerSelector 
-					guilds={adminGuilds} 
+				<ServerSelector
+					guilds={adminGuilds}
 					selectedGuildId={selectedGuildId}
 				/>
+			{:else if showSelectorSkeleton}
+				<Skeleton width="11rem" height="2.25rem" radius="var(--radius-full)" />
 			{/if}
 			{#if isLoggedIn && user}
 				<UserMenu user={user} selectedGuildId={selectedGuildId} isSuperAdmin={isSuperAdmin} />
@@ -170,6 +192,8 @@
 		{selectedGuildId}
 		{isSuperAdmin}
 	/>
+
+	<ToastContainer />
 </div>
 
 <style>

@@ -454,3 +454,19 @@ pre code {
 .btn-icon {
 	font-size: 1.1em;
 }
+
+/* ===== Reduced motion =====
+   Honor the OS "reduce motion" setting globally. Svelte's fade/fly emit CSS
+   animations by default, so neutralizing CSS animation/transition durations
+   here covers component transitions, toasts, skeleton shimmer, and the
+   command-palette fade in one place. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
