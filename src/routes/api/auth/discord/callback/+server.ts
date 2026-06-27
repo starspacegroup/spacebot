@@ -3,6 +3,7 @@ import { log } from "$lib/db/logger.js";
 import { invalidateGuildCache } from "$lib/discord/guilds.js";
 import { upsertUser } from "$lib/db/users.js";
 import { notifySuperAdminsOfFirstLogin } from "$lib/server/superadmin-notifications.js";
+import { getSessionTtlSeconds } from "$lib/server/session.js";
 
 /**
  * Safely get environment variable from platform.env (Cloudflare Workers/Pages)
@@ -152,6 +153,11 @@ export async function GET({ request, url, cookies, platform }) {
 		const isSecure = request.headers.get('x-forwarded-proto') === 'https' || url.protocol === 'https:';
 		console.log('[OAuth Callback] isSecure:', isSecure);
 
+		// Configurable session lifetime (SESSION_TTL_SECONDS, default 7 days),
+		// applied to the session + profile cookies. The access/refresh tokens
+		// keep their Discord-controlled lifetimes below.
+		const sessionTtl = getSessionTtlSeconds((name) => getEnv(name, platform));
+
 		// Store full user object for pages that need it
 		cookies.set(
 			"discord_user",
@@ -167,7 +173,7 @@ export async function GET({ request, url, cookies, platform }) {
 				httpOnly: true,
 				secure: isSecure,
 				sameSite: "lax",
-				maxAge: 60 * 60 * 24 * 7, // 7 days
+				maxAge: sessionTtl, // SESSION_TTL_SECONDS (default 7 days)
 			},
 		);
 
@@ -177,7 +183,7 @@ export async function GET({ request, url, cookies, platform }) {
 			httpOnly: true,
 			secure: isSecure,
 			sameSite: "lax",
-			maxAge: 60 * 60 * 24 * 7, // 7 days
+			maxAge: sessionTtl, // SESSION_TTL_SECONDS (default 7 days)
 		});
 
 		cookies.set("discord_username", userData.username, {
@@ -185,7 +191,7 @@ export async function GET({ request, url, cookies, platform }) {
 			httpOnly: true,
 			secure: isSecure,
 			sameSite: "lax",
-			maxAge: 60 * 60 * 24 * 7, // 7 days
+			maxAge: sessionTtl, // SESSION_TTL_SECONDS (default 7 days)
 		});
 
 		// Store avatar hash for profile image
@@ -195,7 +201,7 @@ export async function GET({ request, url, cookies, platform }) {
 				httpOnly: true,
 				secure: isSecure,
 				sameSite: "lax",
-				maxAge: 60 * 60 * 24 * 7,
+				maxAge: sessionTtl,
 			});
 		}
 
@@ -206,7 +212,7 @@ export async function GET({ request, url, cookies, platform }) {
 				httpOnly: true,
 				secure: isSecure,
 				sameSite: "lax",
-				maxAge: 60 * 60 * 24 * 7,
+				maxAge: sessionTtl,
 			});
 		}
 
@@ -216,7 +222,7 @@ export async function GET({ request, url, cookies, platform }) {
 			httpOnly: true,
 			secure: isSecure,
 			sameSite: "lax",
-			maxAge: 60 * 60 * 24 * 7,
+			maxAge: sessionTtl,
 		});
 
 		// Store access token for API calls (needed for fetching guilds)

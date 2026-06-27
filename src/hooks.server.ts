@@ -4,6 +4,8 @@ import { log } from "$lib/log.js";
 import { upsertUser } from "$lib/db/users.js";
 import { trackUserActivity } from "$lib/db/user-activity.js";
 import { handleGatewayLogsApi } from "$lib/server/gateway-logs-api.js";
+import { applySecurityHeaders } from "$lib/server/security-headers.js";
+import { getSessionTtlSeconds } from "$lib/server/session.js";
 
 /**
  * Dev Auth Bypass
@@ -221,6 +223,74 @@ function setDevAuthCookies(cookies, platform, role = "superadmin") {
   return devUser;
 }
 
+/**
+ * Cookies that make up a Discord session/profile and should slide forward while
+ * a user is active. Access/refresh tokens are intentionally excluded — their
+ * lifetime is governed by Discord, not our session window.
+ */
+const SLIDING_SESSION_COOKIES = [
+  "discord_user",
+  "discord_user_id",
+  "discord_username",
+  "discord_avatar",
+  "discord_global_name",
+  "discord_discriminator",
+];
+
+/**
+ * Whether the current request is over a secure connection (directly or behind a
+ * proxy/tunnel). Mirrors the logic used in the OAuth callback so refreshed
+ * cookies keep the same `secure` attribute they were set with.
+ */
+function isSecureRequest(event) {
+  return (
+    event.request.headers.get("x-forwarded-proto") === "https" ||
+    event.url.protocol === "https:"
+  );
+}
+
+/**
+ * Sliding session expiration: on authenticated HTML page navigations, re-stamp
+ * the session/profile cookies with a fresh, configurable TTL so active users
+ * are not logged out mid-session.
+ *
+ * Must run BEFORE `resolve(event)` — SvelteKit serializes its cookie jar into
+ * the response's Set-Cookie headers as part of `resolve`, so cookies set after
+ * `await resolve(event)` are silently dropped. We therefore gate on the request
+ * (GET navigation that accepts HTML) rather than the response content-type.
+ *
+ * Gated to non-dev so it never flips the httpOnly/secure attributes of the
+ * dev-auth-bypass cookies.
+ */
+function applySlidingSession(event) {
+  if (dev) return;
+  if (!event.cookies.get("discord_user_id")) return;
+
+  if (String(event.request.method || "GET").toUpperCase() !== "GET") return;
+
+  const pathname = event.url.pathname;
+  if (pathname.startsWith("/_app/") || pathname.startsWith("/api/")) return;
+
+  const accept = event.request.headers.get("accept") || "";
+  if (!accept.includes("text/html")) return;
+
+  const maxAge = getSessionTtlSeconds((name) => getEnv(name, event.platform));
+  const cookieOptions = {
+    path: "/",
+    httpOnly: true,
+    secure: isSecureRequest(event),
+    sameSite: "lax",
+    maxAge,
+  };
+
+  for (const name of SLIDING_SESSION_COOKIES) {
+    const value = event.cookies.get(name);
+    if (value !== undefined) {
+      event.cookies.set(name, value, cookieOptions);
+    }
+  }
+}
+
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
   const { url, cookies, platform } = event;
@@ -327,8 +397,12 @@ export async function handle({ event, resolve }) {
     if (url.pathname === "/api/gateway/logs") {
       const response = await handleGatewayLogsApi(event);
       await trackAuthenticatedRequestActivity(event, response?.status || 200);
-      return response;
+      return applySecurityHeaders(response);
     }
+
+    // Sliding session expiration on authenticated page navigations. Must run
+    // before resolve() so the refreshed cookies are serialized into the response.
+    applySlidingSession(event);
 
     const response = await resolve(event);
 
@@ -341,6 +415,11 @@ export async function handle({ event, resolve }) {
       response.headers.set('Pragma', 'no-cache');
       response.headers.set('Expires', '0');
     }
+
+    // Security headers (HTML responses only; no-op for API/assets/WebSocket).
+    // Safe to set after resolve() because this mutates the returned Response's
+    // own headers, unlike cookies (which SvelteKit serializes during resolve).
+    applySecurityHeaders(response);
 
     await trackAuthenticatedRequestActivity(event, response?.status || 200);
 
