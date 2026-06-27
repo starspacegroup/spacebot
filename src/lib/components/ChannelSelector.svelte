@@ -1,18 +1,19 @@
 <script lang="ts">
 	import { log } from '$lib/log.js';
-	
+
 	/**
 	 * Channel Selector Component
 	 * A searchable dropdown for selecting Discord channels
 	 * Supports both single and multi-select modes
-	 * 
+	 *
 	 * Can either fetch channels itself (if guildId provided) or use pre-loaded channels
 	 */
-	
+
 	// Special value for "All Channels"
 	const ALL_CHANNELS = 'ALL';
-	
-	let { 
+
+	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
+	let {
 		guildId = null,
 		channels: preloadedChannels = undefined, // Pre-loaded channels: undefined = not used, null = loading, array = loaded
 		value = $bindable(),
@@ -23,48 +24,51 @@
 		typeFilter = 'sendable', // 'sendable', 'text', 'voice', 'text,voice', etc.
 		showAllOption = false, // Show "Any" option at top (multi-select only)
 		allOptionLabel = 'Any', // Label for the "all" option (used when showAllOption)
-		onchange = null // Callback when value changes
+		onchange = null, // Callback when value changes
 	} = $props();
-	
+	/* eslint-enable prefer-const */
+
 	// Ensure value is never undefined internally
 	$effect(() => {
 		if (value === undefined) {
 			value = '';
 		}
 	});
-	
+
 	let channels = $state([]);
 	let loading = $state(false);
 	let error = $state(null);
 	let searchQuery = $state('');
 	let isOpen = $state(false);
 	let highlightedIndex = $state(-1);
-	
+
 	let inputRef = $state(null);
 	let dropdownRef = $state(null);
-	
+
 	// Check if we're waiting for preloaded channels
 	// - undefined means preloadedChannels prop not used (fetch ourselves or use guildId)
 	// - null means preloadedChannels prop used but still loading
 	// - array means preloadedChannels loaded
 	const isWaitingForPreload = $derived(preloadedChannels === null);
 	const isLoading = $derived(loading || isWaitingForPreload);
-	
+
 	// Parse value to array for multi-select
 	const selectedIds = $derived.by(() => {
 		if (!value) return [];
 		if (multiple) {
-			return value.split(',').filter(id => id.trim());
+			return value.split(',').filter((id) => id.trim());
 		}
 		return [value];
 	});
-	
+
 	// Check if "All Channels" is selected
 	const isAllSelected = $derived(selectedIds.includes(ALL_CHANNELS));
-	
+
 	// Reactive channels: use preloaded if provided as array, otherwise local state
-	const effectiveChannels = $derived(Array.isArray(preloadedChannels) ? preloadedChannels : channels);
-	
+	const effectiveChannels = $derived(
+		Array.isArray(preloadedChannels) ? preloadedChannels : channels
+	);
+
 	// Fetch channels ourselves if no preloaded channels provided
 	$effect(() => {
 		if (preloadedChannels === undefined && guildId) {
@@ -72,21 +76,21 @@
 			fetchChannels();
 		}
 	});
-	
+
 	async function fetchChannels() {
 		loading = true;
 		error = null;
-		
+
 		try {
 			const params = new URLSearchParams();
 			if (typeFilter) params.set('type', typeFilter);
-			
+
 			const response = await fetch(`/api/discord/guilds/${guildId}/channels?${params}`);
-			
+
 			if (!response.ok) {
 				throw new Error('Failed to fetch channels');
 			}
-			
+
 			const data = await response.json();
 			channels = data.channels || [];
 		} catch (err) {
@@ -97,7 +101,7 @@
 			loading = false;
 		}
 	}
-	
+
 	// Flatten channels for searching
 	const flatChannels = $derived.by(() => {
 		const flat = [];
@@ -106,68 +110,75 @@
 				for (const ch of group.channels) {
 					flat.push({
 						...ch,
-						categoryName: group.categoryName
+						categoryName: group.categoryName,
 					});
 				}
 			}
 		}
 		return flat;
 	});
-	
+
 	// Filter channels by search query
 	const filteredChannels = $derived.by(() => {
 		if (!searchQuery.trim()) return effectiveChannels;
-		
+
 		const query = searchQuery.toLowerCase();
-		
+
 		return effectiveChannels
-			.map(group => ({
+			.map((group) => ({
 				...group,
-				channels: (group.channels || []).filter(ch => 
-					ch.name.toLowerCase().includes(query) ||
-					group.categoryName.toLowerCase().includes(query)
-				)
+				channels: (group.channels || []).filter(
+					(ch) =>
+						ch.name.toLowerCase().includes(query) ||
+						group.categoryName.toLowerCase().includes(query)
+				),
 			}))
-			.filter(group => group.channels.length > 0);
+			.filter((group) => group.channels.length > 0);
 	});
-	
+
 	// Get selected channel names for display
 	const selectedChannelNames = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
-		return selectedIds.map(id => {
+		return selectedIds.map((id) => {
 			if (id === ALL_CHANNELS) return `✱ ${allOptionLabel}`;
-			const ch = flatChannels.find(c => c.id === id);
+			const ch = flatChannels.find((c) => c.id === id);
 			return ch ? `#${ch.name}` : id;
 		});
 	});
-	
+
 	// Channel type icons
 	function getChannelIcon(type) {
 		switch (type) {
-			case 'text': return '#';
-			case 'voice': return '🔊';
-			case 'announcement': return '📢';
-			case 'forum': return '💬';
-			case 'stage': return '🎭';
-			default: return '#';
+			case 'text':
+				return '#';
+			case 'voice':
+				return '🔊';
+			case 'announcement':
+				return '📢';
+			case 'forum':
+				return '💬';
+			case 'stage':
+				return '🎭';
+			default:
+				return '#';
 		}
 	}
-	
+
 	function isSelected(channelId) {
 		return selectedIds.includes(channelId);
 	}
-	
+
 	function selectAll() {
 		value = ALL_CHANNELS;
 		searchQuery = '';
 		onchange?.();
 	}
-	
+
 	function toggleChannel(channel) {
 		if (multiple) {
 			if (isSelected(channel.id)) {
 				// Remove from selection
-				const newIds = selectedIds.filter(id => id !== channel.id);
+				const newIds = selectedIds.filter((id) => id !== channel.id);
 				// If nothing left and showAllOption is enabled, default to ALL
 				if (newIds.length === 0 && showAllOption) {
 					value = ALL_CHANNELS;
@@ -176,7 +187,7 @@
 				}
 			} else {
 				// Add to selection - remove ALL if present since we're picking specific channels
-				const newIds = selectedIds.filter(id => id !== ALL_CHANNELS);
+				const newIds = selectedIds.filter((id) => id !== ALL_CHANNELS);
 				value = [...newIds, channel.id].join(',');
 			}
 		} else {
@@ -188,9 +199,9 @@
 		}
 		onchange?.();
 	}
-	
+
 	function removeChannel(channelId) {
-		const newIds = selectedIds.filter(id => id !== channelId);
+		const newIds = selectedIds.filter((id) => id !== channelId);
 		// If nothing left and showAllOption is enabled, default to ALL
 		if (newIds.length === 0 && showAllOption) {
 			value = ALL_CHANNELS;
@@ -199,19 +210,19 @@
 		}
 		onchange?.();
 	}
-	
+
 	function clearSelection() {
 		value = '';
 		searchQuery = '';
 		inputRef?.focus();
 		onchange?.();
 	}
-	
+
 	function handleInputFocus() {
 		isOpen = true;
 	}
-	
-	function handleInputBlur(e) {
+
+	function handleInputBlur(_e) {
 		// Delay closing to allow click events on dropdown items
 		setTimeout(() => {
 			if (!dropdownRef?.contains(document.activeElement)) {
@@ -220,10 +231,10 @@
 			}
 		}, 150);
 	}
-	
+
 	function handleKeydown(e) {
-		const allChannels = filteredChannels.flatMap(g => g.channels || []);
-		
+		const allChannels = filteredChannels.flatMap((g) => g.channels || []);
+
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault();
@@ -245,7 +256,7 @@
 				break;
 		}
 	}
-	
+
 	// Close dropdown when clicking outside
 	function handleClickOutside(e) {
 		if (dropdownRef && !dropdownRef.contains(e.target) && !inputRef?.contains(e.target)) {
@@ -259,7 +270,7 @@
 <div class="channel-selector" class:multi={multiple}>
 	<!-- Hidden input for form submission -->
 	<input type="hidden" {name} bind:value {required} />
-	
+
 	<div class="selector-input-wrapper">
 		{#if multiple && selectedIds.length > 0}
 			<!-- Multi-select: show tags -->
@@ -268,7 +279,11 @@
 					<span class="channel-tag">
 						{channelName}
 						{#if selectedIds[i] !== ALL_CHANNELS}
-							<button type="button" class="tag-remove" onclick={() => removeChannel(selectedIds[i])}>×</button>
+							<button
+								type="button"
+								class="tag-remove"
+								onclick={() => removeChannel(selectedIds[i])}>×</button
+							>
 						{/if}
 					</span>
 				{/each}
@@ -288,7 +303,12 @@
 			<!-- Single select: show selected channel -->
 			<div class="selected-channel">
 				<span class="channel-display">{selectedChannelNames[0] || value}</span>
-				<button type="button" class="clear-btn" onclick={clearSelection} title="Clear selection">
+				<button
+					type="button"
+					class="clear-btn"
+					onclick={clearSelection}
+					title="Clear selection"
+				>
 					×
 				</button>
 			</div>
@@ -306,12 +326,12 @@
 				autocomplete="off"
 			/>
 		{/if}
-		
+
 		{#if isLoading}
 			<span class="loading-indicator">⏳</span>
 		{/if}
 	</div>
-	
+
 	{#if isOpen && !isLoading}
 		<div class="dropdown" bind:this={dropdownRef}>
 			{#if error}
@@ -328,9 +348,9 @@
 					{/if}
 				</div>
 			{:else}
-				{@const allChannels = filteredChannels.flatMap(g => g.channels || [])}
-				
-			{#if showAllOption && multiple && !searchQuery}
+				{@const allChannels = filteredChannels.flatMap((g) => g.channels || [])}
+
+				{#if showAllOption && multiple && !searchQuery}
 					<!-- Any option -->
 					<button
 						type="button"
@@ -344,7 +364,7 @@
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}
-				
+
 				{#each filteredChannels as group}
 					<div class="channel-group">
 						<div class="group-header">{group.categoryName}</div>
@@ -356,10 +376,12 @@
 								class:selected={isSelected(channel.id)}
 								class:highlighted={highlightedIndex === globalIndex}
 								onclick={() => toggleChannel(channel)}
-								onmouseenter={() => highlightedIndex = globalIndex}
+								onmouseenter={() => (highlightedIndex = globalIndex)}
 							>
 								{#if multiple}
-									<span class="checkbox">{isSelected(channel.id) ? '☑' : '☐'}</span>
+									<span class="checkbox"
+										>{isSelected(channel.id) ? '☑' : '☐'}</span
+									>
 								{/if}
 								<span class="channel-icon">{getChannelIcon(channel.type)}</span>
 								<span class="channel-name">{channel.name}</span>
@@ -377,13 +399,13 @@
 		position: relative;
 		width: 100%;
 	}
-	
+
 	.selector-input-wrapper {
 		position: relative;
 		display: flex;
 		align-items: center;
 	}
-	
+
 	.search-input {
 		width: 100%;
 		padding: 0.625rem 0.875rem;
@@ -394,7 +416,7 @@
 		font-size: 0.875rem;
 		transition: border-color 0.2s;
 	}
-	
+
 	.search-input.inline {
 		flex: 1;
 		min-width: 60px;
@@ -402,20 +424,20 @@
 		background: transparent;
 		padding: 0.25rem;
 	}
-	
+
 	.search-input:focus {
 		outline: none;
-		border-color: var(--accent-color, #5865F2);
+		border-color: var(--accent-color, #5865f2);
 	}
-	
+
 	.search-input.inline:focus {
 		border: none;
 	}
-	
+
 	.search-input::placeholder {
 		color: var(--text-muted, #72767d);
 	}
-	
+
 	/* Multi-select tags */
 	.selected-tags {
 		display: flex;
@@ -429,23 +451,23 @@
 		min-height: 42px;
 		align-items: center;
 	}
-	
+
 	.selected-tags:focus-within {
-		border-color: var(--accent-color, #5865F2);
+		border-color: var(--accent-color, #5865f2);
 	}
-	
+
 	.channel-tag {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.25rem;
 		padding: 0.25rem 0.5rem;
-		background: var(--accent-color, #5865F2);
+		background: var(--accent-color, #5865f2);
 		color: white;
 		border-radius: 4px;
 		font-size: 0.8rem;
 		font-weight: 500;
 	}
-	
+
 	.tag-remove {
 		background: none;
 		border: none;
@@ -456,11 +478,11 @@
 		line-height: 1;
 		margin-left: 0.125rem;
 	}
-	
+
 	.tag-remove:hover {
 		color: white;
 	}
-	
+
 	.selected-channel {
 		display: flex;
 		align-items: center;
@@ -474,16 +496,16 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	
+
 	.selected-channel:hover {
-		border-color: var(--accent-color, #5865F2);
+		border-color: var(--accent-color, #5865f2);
 	}
-	
+
 	.channel-display {
-		color: var(--accent-color, #5865F2);
+		color: var(--accent-color, #5865f2);
 		font-weight: 500;
 	}
-	
+
 	.clear-btn {
 		background: none;
 		border: none;
@@ -493,22 +515,26 @@
 		padding: 0 0.25rem;
 		line-height: 1;
 	}
-	
+
 	.clear-btn:hover {
 		color: var(--text-primary, #fff);
 	}
-	
+
 	.loading-indicator {
 		position: absolute;
 		right: 0.75rem;
 		animation: spin 1s linear infinite;
 	}
-	
+
 	@keyframes spin {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
-	
+
 	.dropdown {
 		position: absolute;
 		top: 100%;
@@ -523,14 +549,14 @@
 		z-index: 100;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 	}
-	
+
 	.dropdown-error,
 	.dropdown-empty {
 		padding: 1rem;
 		text-align: center;
 		color: var(--text-muted, #72767d);
 	}
-	
+
 	.dropdown-error {
 		color: var(--color-danger);
 		display: flex;
@@ -538,7 +564,7 @@
 		gap: 0.5rem;
 		align-items: center;
 	}
-	
+
 	.retry-btn {
 		background: var(--bg-tertiary, #36393f);
 		border: 1px solid var(--border-color, #40444b);
@@ -548,19 +574,19 @@
 		cursor: pointer;
 		font-size: 0.75rem;
 	}
-	
+
 	.retry-btn:hover {
 		background: var(--bg-tertiary, #40444b);
 	}
-	
+
 	.channel-group {
 		padding: 0.25rem 0;
 	}
-	
+
 	.channel-group:not(:last-child) {
 		border-bottom: 1px solid var(--border-color, #40444b);
 	}
-	
+
 	.group-header {
 		padding: 0.5rem 0.75rem 0.25rem;
 		font-size: 0.7rem;
@@ -569,7 +595,7 @@
 		color: var(--text-muted, #72767d);
 		letter-spacing: 0.02em;
 	}
-	
+
 	.channel-option {
 		display: flex;
 		align-items: center;
@@ -584,59 +610,59 @@
 		font-size: 0.875rem;
 		transition: background 0.1s;
 	}
-	
+
 	.channel-option:hover,
 	.channel-option.highlighted {
 		background: var(--bg-tertiary, #36393f);
 	}
-	
+
 	.channel-option.selected {
-		background: var(--accent-color, #5865F2);
+		background: var(--accent-color, #5865f2);
 		color: white;
 	}
-	
+
 	.channel-option.selected:hover,
 	.channel-option.selected.highlighted {
-		background: var(--accent-hover, #4752C4);
+		background: var(--accent-hover, #4752c4);
 	}
-	
+
 	.checkbox {
 		font-size: 1rem;
 		min-width: 1.25rem;
 	}
-	
+
 	.channel-icon {
 		font-size: 1rem;
 		color: var(--text-muted, #72767d);
 		min-width: 1.25rem;
 		text-align: center;
 	}
-	
+
 	.channel-option.selected .channel-icon {
 		color: inherit;
 	}
-	
+
 	.channel-name {
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	
+
 	.dropdown-divider {
 		height: 1px;
 		background: var(--border-color, #40444b);
 		margin: 0.25rem 0;
 	}
-	
+
 	.all-channels-option {
 		font-weight: 500;
 	}
-	
+
 	.all-channels-option .channel-icon {
-		color: var(--accent-color, #5865F2);
+		color: var(--accent-color, #5865f2);
 	}
-	
+
 	.all-channels-option.selected .channel-icon {
 		color: inherit;
 	}

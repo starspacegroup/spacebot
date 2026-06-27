@@ -5,6 +5,7 @@
 	 */
 	const ANY_REPOSITORY = 'ALL';
 
+	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		repositories = [],
 		value = $bindable(),
@@ -14,6 +15,7 @@
 		placeholder = 'Search repositories...',
 		showAnyOption = true,
 	} = $props();
+	/* eslint-enable prefer-const */
 
 	$effect(() => {
 		if (value === undefined) {
@@ -31,7 +33,10 @@
 	const selectedRepositories = $derived.by(() => {
 		if (!value) return [];
 		if (multiple) {
-			return value.split(',').map((repo) => repo.trim()).filter(Boolean);
+			return value
+				.split(',')
+				.map((repo) => repo.trim())
+				.filter(Boolean);
 		}
 		return [value];
 	});
@@ -66,7 +71,9 @@
 			const newRepos = selectedRepositories.filter((selectedRepo) => selectedRepo !== repo);
 			value = newRepos.length === 0 && showAnyOption ? ANY_REPOSITORY : newRepos.join(',');
 		} else {
-			const newRepos = selectedRepositories.filter((selectedRepo) => selectedRepo !== ANY_REPOSITORY);
+			const newRepos = selectedRepositories.filter(
+				(selectedRepo) => selectedRepo !== ANY_REPOSITORY
+			);
 			value = [...newRepos, repo].join(',');
 		}
 	}
@@ -127,11 +134,15 @@
 	<div class="selector-input-wrapper">
 		{#if multiple && selectedRepositories.length > 0}
 			<div class="selected-tags">
-				{#each selectedRepositories as repo, i}
+				{#each selectedRepositories as repo}
 					<span class="repo-tag">
 						{repo === ANY_REPOSITORY ? '* Any' : repo}
 						{#if repo !== ANY_REPOSITORY}
-							<button type="button" class="tag-remove" onclick={() => removeRepository(repo)}>x</button>
+							<button
+								type="button"
+								class="tag-remove"
+								onclick={() => removeRepository(repo)}>x</button
+							>
 						{/if}
 					</span>
 				{/each}
@@ -187,7 +198,7 @@
 						class:selected={isSelected(repo)}
 						class:highlighted={highlightedIndex === index}
 						onclick={() => toggleRepository(repo)}
-						onmouseenter={() => highlightedIndex = index}
+						onmouseenter={() => (highlightedIndex = index)}
 					>
 						{#if multiple}
 							<span class="checkbox">{isSelected(repo) ? '[x]' : '[ ]'}</span>

@@ -1,18 +1,19 @@
 <script lang="ts">
 	import { log } from '$lib/log.js';
-	
+
 	/**
 	 * User Selector Component
 	 * A searchable dropdown for selecting Discord users/members
 	 * Supports both single and multi-select modes
-	 * 
+	 *
 	 * Fetches users from the guild members API with search support
 	 */
-	
+
 	// Special value for "Any User"
 	const ANY_USER = 'ALL';
-	
-	let { 
+
+	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
+	let {
 		guildId = null,
 		members: preloadedMembers = null, // Pre-loaded members to avoid multiple fetches
 		value = $bindable(),
@@ -20,63 +21,64 @@
 		required = false,
 		multiple = true, // Enable multi-select by default
 		placeholder = 'Search users...',
-		showAnyOption = true // Show "Any" option at top
+		showAnyOption = true, // Show "Any" option at top
 	} = $props();
-	
+	/* eslint-enable prefer-const */
+
 	// Ensure value is never undefined internally
 	$effect(() => {
 		if (value === undefined) {
 			value = '';
 		}
 	});
-	
+
 	let members = $state([]);
 	let loading = $state(false);
 	let error = $state(null);
 	let searchQuery = $state('');
 	let isOpen = $state(false);
 	let highlightedIndex = $state(-1);
-	
+
 	// Cache for selected members to preserve display info across searches
 	let selectedMembersCache = $state({});
-	
+
 	let inputRef = $state(null);
 	let dropdownRef = $state(null);
 	let wrapperRef = $state(null);
-	
+
 	// Parse value to array for multi-select
 	const selectedIds = $derived.by(() => {
 		if (!value) return [];
 		if (multiple) {
-			return value.split(',').filter(id => id.trim());
+			return value.split(',').filter((id) => id.trim());
 		}
 		return [value];
 	});
-	
+
 	// Check if "Any" is selected
 	const isAnySelected = $derived(selectedIds.includes(ANY_USER));
-	
+
 	// Track if we've fetched initial members
 	let hasFetchedInitial = $state(false);
-	
+
 	// Use preloaded members if provided, otherwise fetch on open
 	$effect(() => {
 		if (preloadedMembers) {
 			members = preloadedMembers;
 		}
 	});
-	
+
 	// Pre-fetch display info for any pre-selected user IDs not in cache
 	let hasFetchedSelected = $state(false);
 	$effect(() => {
 		if (hasFetchedSelected || !guildId || !value) return;
-		const ids = selectedIds.filter(id => id && id !== ANY_USER && !selectedMembersCache[id]);
+		const ids = selectedIds.filter((id) => id && id !== ANY_USER && !selectedMembersCache[id]);
 		if (ids.length === 0) return;
 		hasFetchedSelected = true;
-		
+
 		fetch(`/api/discord/guilds/${guildId}/members?ids=${ids.join(',')}`)
-			.then(res => res.ok ? res.json() : null)
-			.then(data => {
+			.then((res) => (res.ok ? res.json() : null))
+			.then((data) => {
 				if (!data?.members) return;
 				const newCache = { ...selectedMembersCache };
 				for (const m of data.members) {
@@ -92,39 +94,39 @@
 			})
 			.catch(() => {});
 	});
-	
+
 	// Live search members when search query changes (with debounce)
 	$effect(() => {
 		if (!guildId || !isOpen) return;
-		
+
 		const query = searchQuery; // Capture current value
-		
+
 		if (query.length >= 1) {
 			// Debounce search to avoid too many API calls
 			const timeout = setTimeout(() => {
 				searchMembers(query);
 			}, 200);
-			
+
 			return () => clearTimeout(timeout);
 		} else if (query.length === 0 && !hasFetchedInitial) {
 			// When search is cleared or first opened, fetch initial members list
 			fetchMembers();
 		}
 	});
-	
+
 	async function fetchMembers() {
 		if (!guildId) return;
-		
+
 		loading = true;
 		error = null;
-		
+
 		try {
 			const response = await fetch(`/api/discord/guilds/${guildId}/members?limit=50`);
-			
+
 			if (!response.ok) {
 				throw new Error('Failed to fetch members');
 			}
-			
+
 			const data = await response.json();
 			members = data.members || [];
 			hasFetchedInitial = true;
@@ -136,20 +138,22 @@
 			loading = false;
 		}
 	}
-	
+
 	async function searchMembers(query) {
 		if (!guildId || !query) return;
-		
+
 		loading = true;
 		error = null;
-		
+
 		try {
-			const response = await fetch(`/api/discord/guilds/${guildId}/members?query=${encodeURIComponent(query)}&limit=25`);
-			
+			const response = await fetch(
+				`/api/discord/guilds/${guildId}/members?query=${encodeURIComponent(query)}&limit=25`
+			);
+
 			if (!response.ok) {
 				throw new Error('Failed to search members');
 			}
-			
+
 			const data = await response.json();
 			members = data.members || [];
 		} catch (err) {
@@ -159,55 +163,55 @@
 			loading = false;
 		}
 	}
-	
+
 	// Get selected member info for display (uses cache to preserve info across searches)
 	const selectedMemberInfo = $derived.by(() => {
 		if (selectedIds.length === 0) return [];
-		return selectedIds.map(id => {
+		return selectedIds.map((id) => {
 			if (id === ANY_USER) return { id: ANY_USER, displayName: '✱ Any' };
 			// Check cache first, then current members list
 			const cached = selectedMembersCache[id];
 			if (cached) {
 				return cached;
 			}
-			const member = members.find(m => m.id === id);
+			const member = members.find((m) => m.id === id);
 			if (member) {
-				return { 
-					id: member.id, 
+				return {
+					id: member.id,
 					displayName: member.displayName,
 					username: member.username,
 					avatar: member.avatar,
-					isBot: member.isBot 
+					isBot: member.isBot,
 				};
 			}
 			// Show ID if member not loaded
 			return { id, displayName: `User ${id.slice(-4)}` };
 		});
 	});
-	
+
 	function isSelected(userId) {
 		return selectedIds.includes(userId);
 	}
-	
+
 	function selectAny() {
 		value = ANY_USER;
 		searchQuery = '';
 		// Clear cache when selecting Any
 		selectedMembersCache = {};
 	}
-	
+
 	function toggleMember(member) {
 		if (multiple) {
 			if (isSelected(member.id)) {
 				// Remove from selection and cache
-				const newIds = selectedIds.filter(id => id !== member.id);
+				const newIds = selectedIds.filter((id) => id !== member.id);
 				value = newIds.join(',');
 				const newCache = { ...selectedMembersCache };
 				delete newCache[member.id];
 				selectedMembersCache = newCache;
 			} else {
 				// Add to selection and cache
-				const newIds = selectedIds.filter(id => id !== ANY_USER);
+				const newIds = selectedIds.filter((id) => id !== ANY_USER);
 				value = [...newIds, member.id].join(',');
 				// Cache the member info
 				selectedMembersCache = {
@@ -217,8 +221,8 @@
 						displayName: member.displayName,
 						username: member.username,
 						avatar: member.avatar,
-						isBot: member.isBot
-					}
+						isBot: member.isBot,
+					},
 				};
 			}
 			// Clear search after selection
@@ -232,36 +236,39 @@
 					displayName: member.displayName,
 					username: member.username,
 					avatar: member.avatar,
-					isBot: member.isBot
-				}
+					isBot: member.isBot,
+				},
 			};
 			searchQuery = '';
 			isOpen = false;
 			highlightedIndex = -1;
 		}
 	}
-	
+
 	function removeMember(userId) {
-		const newIds = selectedIds.filter(id => id !== userId);
+		const newIds = selectedIds.filter((id) => id !== userId);
 		value = newIds.join(',');
 	}
-	
+
 	function clearSelection() {
 		value = '';
 		searchQuery = '';
 		inputRef?.focus();
 	}
-	
+
 	function handleInputFocus() {
 		isOpen = true;
 		// The $effect will handle fetching members when isOpen becomes true
 	}
-	
+
 	function handleInputBlur(e) {
 		// Don't close if clicking inside the component
 		// The relatedTarget is where focus is going
 		const relatedTarget = e.relatedTarget;
-		if (relatedTarget && (dropdownRef?.contains(relatedTarget) || wrapperRef?.contains(relatedTarget))) {
+		if (
+			relatedTarget &&
+			(dropdownRef?.contains(relatedTarget) || wrapperRef?.contains(relatedTarget))
+		) {
 			return;
 		}
 		// Delay closing to allow click events on dropdown items
@@ -270,9 +277,9 @@
 			highlightedIndex = -1;
 		}, 150);
 	}
-	
+
 	function handleKeydown(e) {
-		const visibleMembers = members.filter(m => !isAnySelected || m.id !== ANY_USER);
+		const visibleMembers = members.filter((m) => !isAnySelected || m.id !== ANY_USER);
 		switch (e.key) {
 			case 'ArrowDown':
 				e.preventDefault();
@@ -294,7 +301,7 @@
 				break;
 		}
 	}
-	
+
 	// Close dropdown when clicking outside
 	function handleClickOutside(e) {
 		if (dropdownRef && !dropdownRef.contains(e.target) && !wrapperRef?.contains(e.target)) {
@@ -308,20 +315,30 @@
 <div class="user-selector" class:multi={multiple} bind:this={wrapperRef}>
 	<!-- Hidden input for form submission -->
 	<input type="hidden" {name} bind:value {required} />
-	
+
 	<div class="selector-input-wrapper">
 		{#if multiple && selectedIds.length > 0}
 			<!-- Multi-select: show tags -->
 			<div class="selected-tags">
-				{#each selectedMemberInfo as member, i}
+				{#each selectedMemberInfo as member}
 					<span class="user-tag" class:bot={member.isBot}>
 						{#if member.avatar}
-							<img src={member.avatar} alt="" class="selected-avatar" onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+							<img
+								src={member.avatar}
+								alt=""
+								class="selected-avatar"
+								onerror={(e) =>
+									((e.target as HTMLImageElement).style.display = 'none')}
+							/>
 						{/if}
 						{#if member.isBot}🤖{/if}
 						{member.displayName}
 						{#if member.id !== ANY_USER}
-							<button type="button" class="tag-remove" onclick={() => removeMember(member.id)}>×</button>
+							<button
+								type="button"
+								class="tag-remove"
+								onclick={() => removeMember(member.id)}>×</button
+							>
 						{/if}
 					</span>
 				{/each}
@@ -342,13 +359,23 @@
 			<div class="selected-user">
 				<span class="user-display">
 					{#if selectedMemberInfo[0]?.avatar}
-						<img src={selectedMemberInfo[0].avatar} alt="" class="selected-avatar" onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+						<img
+							src={selectedMemberInfo[0].avatar}
+							alt=""
+							class="selected-avatar"
+							onerror={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
+						/>
 					{:else}
 						{selectedMemberInfo[0]?.isBot ? '🤖 ' : '👤 '}
 					{/if}
 					{selectedMemberInfo[0]?.displayName || value}
 				</span>
-				<button type="button" class="clear-btn" onclick={clearSelection} title="Clear selection">
+				<button
+					type="button"
+					class="clear-btn"
+					onclick={clearSelection}
+					title="Clear selection"
+				>
 					×
 				</button>
 			</div>
@@ -366,12 +393,12 @@
 				autocomplete="off"
 			/>
 		{/if}
-		
+
 		{#if loading}
 			<span class="loading-indicator">⏳</span>
 		{/if}
 	</div>
-	
+
 	{#if isOpen}
 		<div class="dropdown" bind:this={dropdownRef}>
 			{#if error}
@@ -398,7 +425,10 @@
 						type="button"
 						class="user-option any-option"
 						class:selected={isAnySelected}
-						onclick={(e) => { e.stopPropagation(); selectAny(); }}
+						onclick={(e) => {
+							e.stopPropagation();
+							selectAny();
+						}}
 						onmousedown={(e) => e.preventDefault()}
 					>
 						<span class="checkbox">{isAnySelected ? '☑' : '☐'}</span>
@@ -407,11 +437,9 @@
 					</button>
 					<div class="dropdown-divider"></div>
 				{/if}
-				
+
 				{#if members.length === 0 && showAnyOption}
-					<div class="dropdown-hint">
-						Type to search for specific users...
-					</div>
+					<div class="dropdown-hint">Type to search for specific users...</div>
 				{:else}
 					{#each members as member, index}
 						<button
@@ -419,18 +447,22 @@
 							class="user-option"
 							class:selected={isSelected(member.id)}
 							class:highlighted={highlightedIndex === index}
-							onclick={(e) => { e.stopPropagation(); toggleMember(member); }}
+							onclick={(e) => {
+								e.stopPropagation();
+								toggleMember(member);
+							}}
 							onmousedown={(e) => e.preventDefault()}
-							onmouseenter={() => highlightedIndex = index}
+							onmouseenter={() => (highlightedIndex = index)}
 						>
 							{#if multiple}
 								<span class="checkbox">{isSelected(member.id) ? '☑' : '☐'}</span>
 							{/if}
-							<img 
-								src={member.avatar} 
-								alt="" 
+							<img
+								src={member.avatar}
+								alt=""
 								class="user-avatar"
-								onerror={(e) => (e.target as HTMLImageElement).style.display = 'none'}
+								onerror={(e) =>
+									((e.target as HTMLImageElement).style.display = 'none')}
 							/>
 							<span class="user-info">
 								<span class="user-name">
@@ -454,13 +486,13 @@
 		position: relative;
 		width: 100%;
 	}
-	
+
 	.selector-input-wrapper {
 		position: relative;
 		display: flex;
 		align-items: center;
 	}
-	
+
 	.search-input {
 		width: 100%;
 		padding: 0.625rem 0.875rem;
@@ -471,7 +503,7 @@
 		font-size: 0.875rem;
 		transition: border-color 0.2s;
 	}
-	
+
 	.search-input.inline {
 		flex: 1;
 		min-width: 60px;
@@ -479,20 +511,20 @@
 		background: transparent;
 		padding: 0.25rem;
 	}
-	
+
 	.search-input:focus {
 		outline: none;
-		border-color: var(--accent-color, #5865F2);
+		border-color: var(--accent-color, #5865f2);
 	}
-	
+
 	.search-input.inline:focus {
 		border: none;
 	}
-	
+
 	.search-input::placeholder {
 		color: var(--text-muted, #72767d);
 	}
-	
+
 	/* Multi-select tags */
 	.selected-tags {
 		display: flex;
@@ -506,7 +538,7 @@
 		align-items: center;
 		width: 100%;
 	}
-	
+
 	.user-tag {
 		display: inline-flex;
 		align-items: center;
@@ -517,11 +549,11 @@
 		font-size: 0.8125rem;
 		color: var(--text-primary, #fff);
 	}
-	
+
 	.user-tag.bot {
 		background: var(--success-color-faded, rgba(67, 181, 129, 0.2));
 	}
-	
+
 	.tag-remove {
 		background: none;
 		border: none;
@@ -531,7 +563,7 @@
 		font-size: 1rem;
 		line-height: 1;
 	}
-	
+
 	.selected-avatar {
 		width: 18px;
 		height: 18px;
@@ -539,11 +571,11 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	.tag-remove:hover {
 		color: var(--error-color, #ed4245);
 	}
-	
+
 	/* Single select display */
 	.selected-user {
 		display: flex;
@@ -555,11 +587,11 @@
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
 	}
-	
+
 	.user-display {
 		color: var(--text-primary, #fff);
 	}
-	
+
 	.clear-btn {
 		background: none;
 		border: none;
@@ -569,18 +601,18 @@
 		font-size: 1.125rem;
 		line-height: 1;
 	}
-	
+
 	.clear-btn:hover {
 		color: var(--error-color, #ed4245);
 	}
-	
+
 	/* Loading indicator */
 	.loading-indicator {
 		position: absolute;
 		right: 0.75rem;
 		font-size: 0.875rem;
 	}
-	
+
 	/* Dropdown */
 	.dropdown {
 		position: absolute;
@@ -596,7 +628,7 @@
 		max-height: 300px;
 		overflow-y: auto;
 	}
-	
+
 	.dropdown-error {
 		display: flex;
 		align-items: center;
@@ -604,7 +636,7 @@
 		padding: 0.75rem;
 		color: var(--error-color, #ed4245);
 	}
-	
+
 	.retry-btn {
 		padding: 0.25rem 0.5rem;
 		background: var(--bg-tertiary, #36393f);
@@ -614,7 +646,7 @@
 		cursor: pointer;
 		font-size: 0.75rem;
 	}
-	
+
 	.dropdown-empty,
 	.dropdown-hint,
 	.dropdown-loading {
@@ -623,17 +655,17 @@
 		text-align: center;
 		font-size: 0.875rem;
 	}
-	
+
 	.dropdown-loading {
-		color: var(--accent-color, #5865F2);
+		color: var(--accent-color, #5865f2);
 	}
-	
+
 	.dropdown-divider {
 		height: 1px;
 		background: var(--border-color, #40444b);
 		margin: 0.25rem 0;
 	}
-	
+
 	.user-option {
 		display: flex;
 		align-items: center;
@@ -647,48 +679,48 @@
 		text-align: left;
 		font-size: 0.875rem;
 	}
-	
+
 	.user-option:hover,
 	.user-option.highlighted {
 		background: var(--bg-tertiary, #36393f);
 	}
-	
+
 	.user-option.selected {
 		background: var(--accent-color-faded, rgba(88, 101, 242, 0.15));
 	}
-	
+
 	.user-option.any-option {
-		color: var(--accent-color, #5865F2);
+		color: var(--accent-color, #5865f2);
 	}
-	
+
 	.checkbox {
 		font-size: 0.875rem;
 		opacity: 0.7;
 	}
-	
+
 	.user-icon {
 		font-size: 1rem;
 	}
-	
+
 	.user-avatar {
 		width: 24px;
 		height: 24px;
 		border-radius: 50%;
 		flex-shrink: 0;
 	}
-	
+
 	.user-info {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 	}
-	
+
 	.user-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	
+
 	.user-username {
 		font-size: 0.75rem;
 		color: var(--text-muted, #72767d);

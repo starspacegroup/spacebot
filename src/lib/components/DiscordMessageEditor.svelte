@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { log } from '$lib/log.js';
-
 	/**
 	 * Discord Message Editor Component
 	 * A rich text editor for Discord messages with:
@@ -11,6 +9,7 @@
 	 * - Real-time preview
 	 */
 
+	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		value = $bindable(''),
 		name = 'content',
@@ -21,8 +20,9 @@
 		roles = null, // Pre-loaded roles array
 		templateVariables = {}, // Available template variables
 		showPreview = true, // Show live preview
-		guildId = null, // Guild ID for fetching data if not pre-loaded
+		guildId: _guildId = null, // Guild ID for fetching data if not pre-loaded
 	} = $props();
+	/* eslint-enable prefer-const */
 
 	let textareaRef = $state(null);
 	let showMentionMenu = $state(false);
@@ -32,7 +32,7 @@
 	let channelSearch = $state('');
 	let roleSearch = $state('');
 	let variableSearch = $state('');
-	const menuPosition = $state({ top: 0, left: 0 });
+	const _menuPosition = $state({ top: 0, left: 0 });
 	let highlightedIndex = $state(0);
 
 	// Flatten channels for easy access
@@ -169,7 +169,7 @@
 	];
 
 	const linkFormat = { icon: '🔗', label: 'Link', prefix: '[', suffix: '](url)', shortcut: '' };
-	const maskedLinkFormat = {
+	const _maskedLinkFormat = {
 		icon: '🔗+',
 		label: 'Masked Link',
 		prefix: '[text](',
@@ -306,7 +306,7 @@
 	}
 
 	// Handle input to detect mention triggers
-	function handleInput(e) {
+	function handleInput(_e) {
 		const cursorPos = textareaRef.selectionStart;
 		const textBefore = value.substring(0, cursorPos);
 
@@ -389,7 +389,7 @@
 		});
 	}
 
-	function insertVariable(varKey) {
+	function _insertVariable(varKey) {
 		insertAtCursor(`{${varKey}}`);
 		closeVariableMenu();
 	}
@@ -486,7 +486,7 @@
 
 		// Process line-by-line for block elements
 		const lines = html.split('\n');
-		const processedLines = lines.map((line, index) => {
+		const processedLines = lines.map((line) => {
 			// Headers (must have space after #)
 			if (/^# /.test(line)) {
 				return `<h1 class="preview-h1">${line.substring(2)}</h1>`;
@@ -794,6 +794,7 @@
 		<div class="editor-preview">
 			<div class="preview-label">Preview</div>
 			<div class="preview-content">
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderPreview() HTML-escapes & < > before building markup (see escaping near top of the function), so the output is sanitized -->
 				{@html renderPreview(value)}
 			</div>
 		</div>

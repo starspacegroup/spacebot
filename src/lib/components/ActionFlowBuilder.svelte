@@ -53,17 +53,19 @@
 		compact?: boolean;
 	}
 
+	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		actions = $bindable([]),
 		actionTypes = {},
 		templateVariables = {},
 		channels = null,
 		roles = null,
-		guildId = '',
+		guildId: _guildId = '',
 		userSources = [],
 		numberOptions = [],
 		compact = false,
 	}: Props = $props();
+	/* eslint-enable prefer-const */
 
 	// Drag state
 	let dragIndex = $state(null);
@@ -71,7 +73,7 @@
 
 	// Touch drag state
 	let touchDrag = $state(null);
-	const touchClone = $state(null);
+	const _touchClone = $state(null);
 
 	// Collapsed state per action
 	let collapsedActions = $state(new Set());
@@ -255,7 +257,8 @@
 	}
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -- touch handlers only forward drag-reorder gestures; keyboard interaction is not meaningful on this container -->
+<!-- touch handlers only forward drag-reorder gestures; keyboard interaction is not meaningful on this container -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="flow-builder" class:compact ontouchmove={handleTouchMove} ontouchend={handleTouchEnd}>
 	{#if actions.length === 0}
 		<div class="flow-empty">

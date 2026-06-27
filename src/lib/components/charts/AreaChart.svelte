@@ -253,7 +253,7 @@
 
 			<!-- Data points -->
 			{#if showPoints}
-				{#each chartData.points as point, i}
+				{#each chartData.points as point}
 					<!-- Outer glow -->
 					<circle
 						cx={point.x}
@@ -280,7 +280,7 @@
 			{/if}
 
 			<!-- Secondary lines -->
-			{#each secondaryData as secondary, idx}
+			{#each secondaryData as secondary}
 				<path
 					d={secondary.linePath}
 					class="secondary-line"

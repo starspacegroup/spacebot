@@ -8,7 +8,7 @@
 	/** @type {{ isLoggedIn?: boolean, user?: any, adminGuilds?: any[], selectedGuildId?: string|null, isSuperAdmin?: boolean }} */
 	const {
 		isLoggedIn = false,
-		user = null,
+		user: _user = null,
 		adminGuilds = [],
 		selectedGuildId = null,
 		isSuperAdmin = false,
@@ -452,9 +452,9 @@
 	}
 
 	/** Detect OS for showing correct shortcut key */
-	let isMac = $state(false);
+	let _isMac = $state(false);
 	onMount(() => {
-		isMac =
+		_isMac =
 			navigator.platform?.toLowerCase().includes('mac') ??
 			navigator.userAgent?.toLowerCase().includes('mac') ??
 			false;
@@ -506,8 +506,6 @@
 						{#if idx === 0 || cmd.group !== filteredCommands[idx - 1].group}
 							<div class="palette-group-label">{cmd.group}</div>
 						{/if}
-						<!-- svelte-ignore a11y_click_events_have_key_events -->
-						<!-- svelte-ignore a11y_interactive_supports_focus -->
 						<div
 							class="palette-item"
 							class:active={idx === selectedIndex}
@@ -523,9 +521,11 @@
 								cmd.action();
 							}}
 						>
+							<!-- eslint-disable svelte/no-at-html-tags -- cmd.iconHtml is a component-defined, trusted icon string (not user input) -->
 							<span class="item-icon"
 								>{#if cmd.iconHtml}{@html cmd.iconHtml}{:else}{cmd.icon}{/if}</span
 							>
+							<!-- eslint-enable svelte/no-at-html-tags -->
 							<div class="item-text">
 								<span class="item-label-row">
 									<span class="item-label">{cmd.label}</span>
