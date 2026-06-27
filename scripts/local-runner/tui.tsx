@@ -19,7 +19,6 @@ import {
   getOllamaConfig,
   storeOllamaConfig,
   generateOllamaResponse,
-  formatBytes,
   type OllamaModel,
 } from "./ollama-utils";
 import {
@@ -1007,8 +1006,6 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
   // Detect Ollama and Copilot on startup, then guide selection if needed.
   useEffect(() => {
     (async () => {
-      let ollamaReady = false;
-      let ollamaModelCount = 0;
       try {
         const installed = await detectOllamaInstalled();
         setOllamaInstalled(installed);
@@ -1021,8 +1018,6 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
             const models = await getOllamaModels();
             setOllamaModels(models);
             setActiveOllamaConfig(getOllamaConfig());
-            ollamaModelCount = models.length;
-            ollamaReady = models.length > 0;
           }
         }
       } catch {
@@ -2394,16 +2389,33 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         : "⚠  Press Ctrl+C again to exit · runner will stop";
       return { tone: "warning", text: fitLine(confirmMsg, renderWidth) };
     }
+    // Grouped keybinding hint: action │ navigation │ lifecycle. fitLine
+    // truncates on narrow terminals so it never wraps onto a second row.
     const hints = chatMode
-      ? "↵ send · esc focus · pgup/pgdn scroll · tab panels · ctrl+c×2 exit · /help"
-      : "/ chat · pgup/pgdn scroll · r restart · k token · i autostart · tab panels · ctrl+c×2 exit";
+      ? "↵ send · esc focus │ tab panels · pgup/pgdn scroll │ /help · ctrl+c×2 exit"
+      : "/ chat │ tab panels · pgup/pgdn scroll │ r restart · k token · i autostart │ ctrl+c×2 exit";
     return { tone: "muted", text: fitLine(hints, renderWidth) };
   };
 
-  // Compact one-line agent status badges (always shown in bottom strip)
+  // Compact one-line agent status badges (always shown in bottom strip).
+  // Each badge carries its own tone so connection/service/provider health is
+  // legible at a glance instead of all rendering in a single flat color.
   const buildAgentStrip = (): StyledLine => {
-    const parts: string[] = [];
+    const badges: Array<{ tone: keyof typeof THEME; text: string }> = [];
 
+    // Loud connection-lost badge takes the leftmost slot when active.
+    if (childRunning && disconnectAlert) {
+      badges.push({ tone: "error", text: "🚨 CONNECTION LOST" });
+    }
+
+    // WebSocket heartbeat badge, colored by socket state + heartbeat freshness.
+    const hbTone: keyof typeof THEME = socketState === "connected"
+      ? heartbeatAgeTone
+      : socketState === "connecting"
+        ? "info"
+        : socketState === "reconnecting"
+          ? "warning"
+          : "error";
     const hbBadge = socketState === "connected"
       ? `💓 WS ${heartbeatAgeText}`
       : socketState === "connecting"
@@ -2411,7 +2423,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         : socketState === "reconnecting"
           ? "💓 WS stale"
           : "💓 WS down";
-    parts.push(hbBadge);
+    badges.push({ tone: hbTone, text: hbBadge });
 
     const serviceKindCompact = autostartStatus.installKind === "systemd-user"
       ? "systemd"
@@ -2419,39 +2431,49 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
         ? "launchd"
         : "startup";
     const serviceBadge = !autostartStatus.installed
-      ? `⚠ ${serviceKindCompact} off`
+      ? { tone: "warning" as const, text: `⚠ ${serviceKindCompact} off` }
       : autostartStatus.running === true
-        ? `🟢 ${serviceKindCompact} on`
+        ? { tone: "success" as const, text: `🟢 ${serviceKindCompact} on` }
         : autostartStatus.running === false
-          ? `🟡 ${serviceKindCompact} idle`
-          : `🟢 ${serviceKindCompact} installed`;
-    parts.push(serviceBadge);
+          ? { tone: "warning" as const, text: `🟡 ${serviceKindCompact} idle` }
+          : { tone: "success" as const, text: `🟢 ${serviceKindCompact} installed` };
+    badges.push(serviceBadge);
 
-    if (childRunning && disconnectAlert) {
-      parts.unshift("🚨 CONNECTION LOST");
-    }
-
-    // Active provider badge
+    // Active provider badge.
     if (activeProvider === "ollama") {
-      parts.push(activeOllamaConfig?.model ? `🤖 ${activeOllamaConfig.model}` : "🤖 Ollama (no model)");
+      const ready = ollamaRunning && Boolean(activeOllamaConfig?.model);
+      badges.push({
+        tone: ready ? "success" : "warning",
+        text: activeOllamaConfig?.model ? `🤖 ${activeOllamaConfig.model}` : "🤖 Ollama (no model)",
+      });
     } else if (activeProvider === "copilot") {
       const c = copilotAvailability;
-      const ready = c && (c.copilotCli || (c.ghCopilot && c.ghAuthed));
+      const ready = Boolean(c && (c.copilotCli || (c.ghCopilot && c.ghAuthed)));
       const m = (activeCopilotConfig ?? getCopilotConfig())?.model ?? DEFAULT_COPILOT_MODEL;
       const autoCompact = autostartStatus.installed
         ? autostartStatus.running === false
           ? "idle"
           : "on"
         : "off";
-      parts.push(ready ? `🦑 auto ${autoCompact} · ${m}` : `🦑 auto ${autoCompact} · Copilot setup`);
+      badges.push({
+        tone: ready ? "success" : "warning",
+        text: ready ? `🦑 auto ${autoCompact} · ${m}` : `🦑 auto ${autoCompact} · Copilot setup`,
+      });
     } else {
-      parts.push("⚙ No Provider");
+      badges.push({ tone: "warning", text: "⚙ No Provider" });
     }
 
-    // Availability badges (small)
-    if (ollamaRunning) parts.push("✨ Ollama");
+    // Availability badge (small).
+    if (ollamaRunning) badges.push({ tone: "muted", text: "✨ Ollama" });
 
-    return { tone: "info", text: fitLine(parts.join("  ·  "), renderWidth) };
+    // Interleave muted separators between badges, then pad/clip to width.
+    const segments: Array<{ tone: keyof typeof THEME; text: string }> = [];
+    badges.forEach((badge, i) => {
+      if (i > 0) segments.push({ tone: "muted", text: "  ·  " });
+      segments.push(badge);
+    });
+
+    return { tone: "info", text: "", segments: fitSegmentsToWidth(segments, renderWidth) };
   };
 
   /** One-line status used inside the INPUT panel describing the active provider. */
