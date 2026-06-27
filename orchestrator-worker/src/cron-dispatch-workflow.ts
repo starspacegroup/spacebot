@@ -1,4 +1,13 @@
-import { WorkflowEntrypoint } from "cloudflare:workers";
+import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
+
+interface CronDispatchEnv {
+  SPACEBOT_API_BASE?: string;
+  CRON_SECRET?: string;
+}
+
+interface CronDispatchParams {
+  firedAt?: string | number;
+}
 
 /**
  * Durably calls the superadmin workflows dispatch endpoint on each cron
@@ -7,8 +16,8 @@ import { WorkflowEntrypoint } from "cloudflare:workers";
  * trigger here is a lossless replacement, just with automatic step retries
  * and a Cloudflare-visible run history on top.
  */
-export class CronDispatchWorkflow extends WorkflowEntrypoint {
-  async run(event, step) {
+export class CronDispatchWorkflow extends WorkflowEntrypoint<CronDispatchEnv, CronDispatchParams> {
+  async run(event: WorkflowEvent<CronDispatchParams>, step: WorkflowStep): Promise<void> {
     await step.do(
       "dispatch-superadmin-workflows",
       {
@@ -43,7 +52,7 @@ export class CronDispatchWorkflow extends WorkflowEntrypoint {
           throw new Error(`Dispatch failed (${response.status}): ${text.slice(0, 300)}`);
         }
 
-        return response.json().catch(() => ({}));
+        return (await response.json().catch(() => ({}))) as Record<string, string | number | boolean | null>;
       },
     );
   }
