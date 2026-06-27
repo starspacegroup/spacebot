@@ -42,3 +42,6 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Claude Code local worktrees/state
+.claude/
