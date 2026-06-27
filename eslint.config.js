@@ -26,6 +26,7 @@ export default ts.config(
 			'dist/',
 			'coverage/',
 			'.wrangler/',
+			'.claude/',
 			'node_modules/',
 			'playwright-report/',
 			'test-results/',
@@ -65,6 +66,17 @@ export default ts.config(
 			'@typescript-eslint/no-unused-expressions': 'off',
 			'@typescript-eslint/ban-ts-comment': 'warn',
 			'@typescript-eslint/no-empty-object-type': 'off',
+			// `this` aliasing and require() appear in vendored/CJS surfaces.
+			'@typescript-eslint/no-this-alias': 'off',
+			'@typescript-eslint/no-require-imports': 'off',
+			// Real-but-low-value findings against the existing baseline: keep
+			// them visible as warnings rather than blocking CI on day one.
+			'prefer-const': 'warn',
+			'no-sparse-arrays': 'warn',
+			'no-useless-escape': 'warn',
+			'no-control-regex': 'off',
+			'no-case-declarations': 'warn',
+			'no-constant-binary-expression': 'warn',
 		},
 	},
 
@@ -81,21 +93,25 @@ export default ts.config(
 		},
 		rules: {
 			'svelte/no-at-html-tags': 'warn',
+			// Opinionated stylistic Svelte rules that fire en-masse on the
+			// established component set — off so the baseline is green; the
+			// correctness-oriented Svelte rules stay as errors.
+			'svelte/require-each-key': 'off',
+			'svelte/no-navigation-without-resolve': 'off',
+			'svelte/prefer-svelte-reactivity': 'off',
+			'svelte/prefer-writable-derived': 'off',
+			'svelte/no-unused-svelte-ignore': 'warn',
+			'svelte/no-useless-mustaches': 'warn',
 		},
 	},
 
 	{
 		// Node/CLI/script surfaces are Node-only.
-		files: [
-			'scripts/**',
-			'*.config.{js,ts}',
-			'mcp-server/**',
-			'orchestrator-worker/**',
-		],
+		files: ['scripts/**', '*.config.{js,ts}', 'mcp-server/**', 'orchestrator-worker/**'],
 		languageOptions: {
 			globals: {
 				...globals.node,
 			},
 		},
-	},
+	}
 );

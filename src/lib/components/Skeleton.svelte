@@ -9,13 +9,13 @@
 	 *
 	 * Respects prefers-reduced-motion via the global rule in global.css.
 	 */
-	let {
+	const {
 		width = '100%',
 		height = '1rem',
 		radius = 'var(--radius-sm, 4px)',
 		circle = false,
 		count = 1,
-		class: className = ''
+		class: className = '',
 	}: {
 		width?: string;
 		height?: string;

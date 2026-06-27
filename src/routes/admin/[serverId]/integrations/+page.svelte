@@ -3,7 +3,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { formatDateShort } from '$lib/timezone.js';
 
-	let { data, form } = $props();
+	const { data, form } = $props();
 
 	let showToast = $state(true);
 	let confirmDisableId = $state(null);
@@ -46,13 +46,20 @@
 
 <div class="integrations-page">
 	{#if form?.message && showToast}
-		<Toast message={form.message} success={form.success} onDismiss={() => showToast = false} />
+		<Toast
+			message={form.message}
+			success={form.success}
+			onDismiss={() => (showToast = false)}
+		/>
 	{/if}
 
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 		<h1>🔌 Integrations</h1>
-		<p class="page-desc">Enable third-party integrations to extend your server with new commands, features, and connections to external services.</p>
+		<p class="page-desc">
+			Enable third-party integrations to extend your server with new commands, features, and
+			connections to external services.
+		</p>
 	</header>
 
 	<!-- Integrations List -->
@@ -60,7 +67,9 @@
 		<div class="empty-state">
 			<span class="empty-icon">🔌</span>
 			<p>No integrations available</p>
-			<span class="empty-hint">Check back later — new integrations are being added regularly.</span>
+			<span class="empty-hint"
+				>Check back later — new integrations are being added regularly.</span
+			>
 		</div>
 	{:else}
 		<div class="integrations-grid">
@@ -83,7 +92,13 @@
 							<div class="card-meta">
 								<span class="category-badge">{category.icon} {category.label}</span>
 								{#if integration.author}
-									<span class="meta-item">by {#if integration.manifest?.author_url}<a href={integration.manifest.author_url} target="_blank" rel="noopener noreferrer">{integration.author}</a>{:else}{integration.author}{/if}</span>
+									<span class="meta-item"
+										>by {#if integration.manifest?.author_url}<a
+												href={integration.manifest.author_url}
+												target="_blank"
+												rel="noopener noreferrer">{integration.author}</a
+											>{:else}{integration.author}{/if}</span
+									>
 								{/if}
 								<span class="meta-item">v{integration.version}</span>
 							</div>
@@ -95,11 +110,20 @@
 								<span class="status-badge status-disabled">Disabled</span>
 							{/if}
 							{#if integration.status === 'online'}
-								<span class="connection-badge connection-online" title="Integration is connected and responding">🟢 Online</span>
+								<span
+									class="connection-badge connection-online"
+									title="Integration is connected and responding">🟢 Online</span
+								>
 							{:else if integration.status === 'offline'}
-								<span class="connection-badge connection-offline" title="Integration is not responding">🔴 Offline</span>
+								<span
+									class="connection-badge connection-offline"
+									title="Integration is not responding">🔴 Offline</span
+								>
 							{:else}
-								<span class="connection-badge connection-unknown" title="Status unknown">⚪ Unknown</span>
+								<span
+									class="connection-badge connection-unknown"
+									title="Status unknown">⚪ Unknown</span
+								>
 							{/if}
 						</div>
 					</div>
@@ -109,7 +133,9 @@
 					<!-- What this integration adds -->
 					{#if commandCount > 0}
 						<div class="card-features">
-							<span class="feature-tag">💬 {commandCount} command{commandCount !== 1 ? 's' : ''}</span>
+							<span class="feature-tag"
+								>💬 {commandCount} command{commandCount !== 1 ? 's' : ''}</span
+							>
 						</div>
 					{/if}
 
@@ -123,33 +149,70 @@
 							{#if integration.slug === 'github' && isEnabled}
 								<div class="detail-section">
 									<h4>Setup Instructions</h4>
-									<p class="setup-instructions">Add this webhook URL to your GitHub repository settings under <strong>Settings → Webhooks → Add webhook</strong>:</p>
+									<p class="setup-instructions">
+										Add this webhook URL to your GitHub repository settings
+										under <strong>Settings → Webhooks → Add webhook</strong>:
+									</p>
 									<div class="copyable-field">
-										<code class="copyable-value">{window?.location?.origin || 'https://spacebot.starspace.group'}/api/v1/integrations/github/webhook/{data.serverId}</code>
-										<button class="btn-copy" onclick={(e) => {
-											const url = `${window.location.origin}/api/v1/integrations/github/webhook/${data.serverId}`;
-											navigator.clipboard.writeText(url);
-											(e.target as HTMLElement).textContent = '✓ Copied';
-											setTimeout(() => (e.target as HTMLElement).textContent = 'Copy', 2000);
-										}}>Copy</button>
+										<code class="copyable-value"
+											>{window?.location?.origin ||
+												'https://spacebot.starspace.group'}/api/v1/integrations/github/webhook/{data.serverId}</code
+										>
+										<button
+											class="btn-copy"
+											onclick={(e) => {
+												const url = `${window.location.origin}/api/v1/integrations/github/webhook/${data.serverId}`;
+												navigator.clipboard.writeText(url);
+												(e.target as HTMLElement).textContent = '✓ Copied';
+												setTimeout(
+													() =>
+														((e.target as HTMLElement).textContent =
+															'Copy'),
+													2000
+												);
+											}}>Copy</button
+										>
 									</div>
 
 									{#if integration.guild_config?.webhook_secret}
-										<p class="setup-instructions" style="margin-top: 0.75rem;">Set the <strong>Secret</strong> in GitHub to:</p>
+										<p class="setup-instructions" style="margin-top: 0.75rem;">
+											Set the <strong>Secret</strong> in GitHub to:
+										</p>
 										<div class="copyable-field">
-											<code class="copyable-value secret">{'•'.repeat(integration.guild_config.webhook_secret.length)}</code>
-											<button class="btn-copy" onclick={(e) => {
-												navigator.clipboard.writeText(integration.guild_config.webhook_secret);
-												(e.target as HTMLElement).textContent = '✓ Copied';
-												setTimeout(() => (e.target as HTMLElement).textContent = 'Copy', 2000);
-											}}>Copy</button>
+											<code class="copyable-value secret"
+												>{'•'.repeat(
+													integration.guild_config.webhook_secret.length
+												)}</code
+											>
+											<button
+												class="btn-copy"
+												onclick={(e) => {
+													navigator.clipboard.writeText(
+														integration.guild_config.webhook_secret
+													);
+													(e.target as HTMLElement).textContent =
+														'✓ Copied';
+													setTimeout(
+														() =>
+															((e.target as HTMLElement).textContent =
+																'Copy'),
+														2000
+													);
+												}}>Copy</button
+											>
 										</div>
 									{/if}
 
-									<p class="setup-instructions" style="margin-top: 0.75rem;">Set <strong>Content type</strong> to <code>application/json</code>. Choose which events to send, or select "Send me everything".</p>
+									<p class="setup-instructions" style="margin-top: 0.75rem;">
+										Set <strong>Content type</strong> to
+										<code>application/json</code>. Choose which events to send,
+										or select "Send me everything".
+									</p>
 
 									<div class="github-events-info">
-										<h4 style="margin-top: 1rem;">Available Events for Automations</h4>
+										<h4 style="margin-top: 1rem;">
+											Available Events for Automations
+										</h4>
 										<div class="github-events-list">
 											<span class="github-event-tag">🔀 Push</span>
 											<span class="github-event-tag">🔃 Pull Request</span>
@@ -165,7 +228,12 @@
 								</div>
 							{:else if integration.slug === 'github' && !isEnabled}
 								<div class="detail-section">
-									<p class="setup-instructions">Enable this integration to get a webhook URL and secret for your GitHub repository. Once connected, you can create automations that trigger on GitHub events like pushes, pull requests, issues, and more.</p>
+									<p class="setup-instructions">
+										Enable this integration to get a webhook URL and secret for
+										your GitHub repository. Once connected, you can create
+										automations that trigger on GitHub events like pushes, pull
+										requests, issues, and more.
+									</p>
 								</div>
 							{/if}
 
@@ -179,7 +247,7 @@
 												<span class="command-desc">{cmd.description}</span>
 												{#if cmd.options?.length}
 													<div class="subcommands">
-														{#each cmd.options.filter(o => o.type === 1) as sub}
+														{#each cmd.options.filter((o) => o.type === 1) as sub}
 															<div class="subcommand">
 																<code>/{cmd.name} {sub.name}</code>
 																<span>{sub.description}</span>
@@ -212,7 +280,12 @@
 
 							{#if integration.manifest?.homepage}
 								<div class="detail-section">
-									<a href={integration.manifest.homepage} target="_blank" rel="noopener noreferrer" class="homepage-link">
+									<a
+										href={integration.manifest.homepage}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="homepage-link"
+									>
 										🔗 View Project Homepage →
 									</a>
 								</div>
@@ -223,7 +296,8 @@
 					<!-- Offline warning for enabled integrations -->
 					{#if isEnabled && integration.status === 'offline'}
 						<div class="offline-warning">
-							⚠️ This integration is currently offline. Its commands are temporarily unavailable and will return automatically when the service reconnects.
+							⚠️ This integration is currently offline. Its commands are temporarily
+							unavailable and will return automatically when the service reconnects.
 						</div>
 					{/if}
 
@@ -231,30 +305,53 @@
 					<div class="card-actions">
 						{#if isEnabled}
 							{#if confirmDisableId === integration.id}
-								<form method="POST" action="?/disableIntegration" use:enhance={() => {
-									return async ({ update }) => {
-										confirmDisableId = null;
-										await update({ invalidateAll: true });
-									};
-								}}>
-									<input type="hidden" name="integrationId" value={integration.id} />
-									<span class="confirm-text">Disable this integration? Its commands will be removed.</span>
+								<form
+									method="POST"
+									action="?/disableIntegration"
+									use:enhance={() => {
+										return async ({ update }) => {
+											confirmDisableId = null;
+											await update({ invalidateAll: true });
+										};
+									}}
+								>
+									<input
+										type="hidden"
+										name="integrationId"
+										value={integration.id}
+									/>
+									<span class="confirm-text"
+										>Disable this integration? Its commands will be removed.</span
+									>
 									<div class="confirm-buttons">
-										<button type="submit" class="btn btn-danger btn-small">Yes, Disable</button>
-										<button type="button" class="btn btn-secondary btn-small" onclick={() => confirmDisableId = null}>Cancel</button>
+										<button type="submit" class="btn btn-danger btn-small"
+											>Yes, Disable</button
+										>
+										<button
+											type="button"
+											class="btn btn-secondary btn-small"
+											onclick={() => (confirmDisableId = null)}>Cancel</button
+										>
 									</div>
 								</form>
 							{:else}
-								<button class="btn btn-warning-outline btn-small" onclick={() => confirmDisableId = integration.id}>
+								<button
+									class="btn btn-warning-outline btn-small"
+									onclick={() => (confirmDisableId = integration.id)}
+								>
 									Disable
 								</button>
 							{/if}
 						{:else if integration.status === 'online'}
-							<form method="POST" action="?/enableIntegration" use:enhance={() => {
-								return async ({ update }) => {
-									await update({ invalidateAll: true });
-								};
-							}}>
+							<form
+								method="POST"
+								action="?/enableIntegration"
+								use:enhance={() => {
+									return async ({ update }) => {
+										await update({ invalidateAll: true });
+									};
+								}}
+							>
 								<input type="hidden" name="integrationId" value={integration.id} />
 								<button type="submit" class="btn btn-primary">
 									Enable Integration
@@ -264,7 +361,8 @@
 							<div class="unavailable-notice">
 								<span class="unavailable-text">
 									{#if integration.status === 'offline'}
-										🔴 This integration is currently offline and cannot be enabled.
+										🔴 This integration is currently offline and cannot be
+										enabled.
 									{:else}
 										⏳ Waiting for this integration to connect...
 									{/if}
@@ -417,7 +515,7 @@
 		letter-spacing: 0.05em;
 		padding: 0.15rem 0.5rem;
 		background: rgba(88, 101, 242, 0.15);
-		color: #5865F2;
+		color: #5865f2;
 		border-radius: 9999px;
 	}
 
@@ -524,7 +622,9 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 		margin-bottom: 0.75rem;
 	}
 

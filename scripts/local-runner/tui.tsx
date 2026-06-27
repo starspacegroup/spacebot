@@ -1043,8 +1043,7 @@ function App({ apiUrl, defaultWorkdir, displayName, hostname, allowedPaths, scri
       // No inline chat picker on first run — the dedicated wizard handles guided selection.
       providerPromptShownRef.current = true;
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+	  }, []);
 
   const autostartOptions: PromptOption[] = [
     {

@@ -7,21 +7,24 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 ## Priority: High
 
 ### Authentication & Authorization
+
 - [x] Implement full Discord OAuth session management — `src/hooks.server.ts`, `src/routes/api/auth/discord/`
 - [x] Add Cloudflare KV or D1 storage for user sessions — cookie sessions + D1 user store
 - [x] Complete admin authorization logic (check ADMIN_USER_IDS)
 - [x] Add logout functionality — `/api/auth/logout`
-- [ ] Implement session expiration and refresh — no explicit TTL/refresh yet
+- [x] Implement session expiration and refresh — configurable sliding session TTL
 
 ### Discord Bot Features
+
 - [x] Add more slash commands — custom command system (`src/lib/db/commands.ts`)
-- [ ] Implement message context menu commands
+- [x] Implement message context menu commands — message context menu registration + routing
 - [ ] Add user context menu commands
 - [x] Create button and select menu interactions — `src/lib/db/button-actions.ts`
 - [x] Add modal (form) interactions — automation action system
-- [ ] Implement command permission controls — _(partial: permission fields exist, enforcement incomplete)_
+- [x] Implement command permission controls — server-side command permission enforcement
 
 ### Database & Persistence
+
 - [x] Set up Cloudflare D1 database — `wrangler.toml`
 - [x] Create schema for server settings, user data, bot statistics, command usage logs — 52 migrations
 - [x] Implement data migration scripts — `scripts/migrate.ts`
@@ -29,6 +32,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 ## Priority: Medium
 
 ### Admin Dashboard Enhancements
+
 - [x] Real-time bot status monitoring — live updates / gateway logs
 - [x] Command usage analytics and charts — stats dashboard + `ChartCard`
 - [x] Server management interface — `/admin/[serverId]/`
@@ -37,6 +41,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Audit log viewer — event logs + user activity
 
 ### Bot Statistics
+
 - [x] Track command usage per server
 - [x] Track active users and servers
 - [x] Calculate uptime and latency metrics — gateway benchmarks
@@ -44,6 +49,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [ ] Export statistics as reports
 
 ### API Endpoints
+
 - [x] Create REST API for bot stats — `/api/stats/`, `/api/v1/`
 - [x] Add webhook endpoints for external services — `/api/webhooks/`, GitHub integration
 - [ ] Implement rate limiting on API endpoints
@@ -52,37 +58,42 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 ## Priority: Low
 
 ### Frontend Improvements
+
 - [x] Add dark mode toggle — `src/lib/theme.svelte.ts`
 - [ ] Improve responsive design for mobile
-- [ ] Add loading states and skeletons
-- [ ] Implement error boundaries
-- [ ] Add toast notifications
-- [ ] Create animated transitions
+- [x] Add loading states and skeletons — shared `Skeleton` component
+- [x] Implement error boundaries — SvelteKit `+error.svelte`
+- [x] Add toast notifications — global toast store + container
+- [x] Create animated transitions — reduced-motion-aware route/UI transitions
 
 ### Developer Experience
+
 - [x] Add TypeScript support — full JS→TS migration (all `src/` + `scripts/` are `.ts`, components `<script lang="ts">`, `bun run typecheck` via svelte-check)
-- [ ] Set up ESLint and Prettier
-- [ ] Add pre-commit hooks with Husky
+- [x] Set up ESLint and Prettier — flat ESLint config, Prettier config, package scripts
+- [x] Add pre-commit hooks with Husky — lint-staged formatting hook
 - [ ] Create component library/design system
 - [ ] Add Storybook for component documentation
 
 ### Testing
+
 - [x] Set up Vitest for unit tests — 94 tests across 28 files
-- [ ] Add Playwright for e2e tests
+- [x] Add Playwright for e2e tests — smoke scaffold + `bun run test:e2e`
 - [x] Create test coverage reports — `bun run test:coverage` (v8)
-- [ ] Add CI/CD testing pipeline
+- [x] Add CI/CD testing pipeline — GitHub Actions test workflow
 - [x] Mock Discord API for testing — vi.mock in test suite
 
 ### Documentation
+
 - [ ] Add inline code documentation (JSDoc)
 - [ ] Create API documentation
-- [ ] Add architecture diagrams
-- [ ] Write contributing guidelines
+- [x] Add architecture diagrams — `docs/architecture.md`
+- [x] Write contributing guidelines — `CONTRIBUTING.md`
 - [ ] Create video tutorials
 
 ## Optional Enhancements
 
 ### Advanced Features
+
 - [ ] Multi-language support (i18n)
 - [ ] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
@@ -90,6 +101,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Webhook integrations — webhooks + GitHub integration
 
 ### Monitoring & Observability
+
 - [ ] Set up Sentry for error tracking
 - [ ] Add application performance monitoring (APM)
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
@@ -97,13 +109,15 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [ ] Set up alerting for critical issues
 
 ### Security Enhancements
-- [ ] Add CSRF protection
-- [ ] Implement content security policy (CSP)
+
+- [x] Add CSRF protection — same-origin helper for cookie-authenticated JSON mutations
+- [x] Implement content security policy (CSP) — report-only HTML CSP from hooks
 - [x] Add request signing for webhooks — Discord interaction signature verification
-- [ ] Set up security headers
+- [x] Set up security headers — HTML response hardening in hooks
 - [ ] Regular dependency audits and updates
 
 ### Performance
+
 - [x] Implement caching strategies — guild cache, AI gateway caching
 - [ ] Add service worker for offline support
 - [ ] Optimize images and assets

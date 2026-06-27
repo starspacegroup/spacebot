@@ -4,6 +4,7 @@ build/
 dist/
 coverage/
 .wrangler/
+.claude/
 node_modules/
 playwright-report/
 test-results/

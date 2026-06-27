@@ -3,14 +3,14 @@
 	 * Chart card wrapper with summary stats
 	 * @type {{ title?: string, subtitle?: string, icon?: string, stats?: Array<{value: string|number, label: string, color?: string, icon?: string}>, loading?: boolean, children?: import('svelte').Snippet, headerAction?: import('svelte').Snippet }}
 	 */
-	let {
+	const {
 		title = '',
 		subtitle = '',
 		icon = '📊',
 		stats = [],
 		loading = false,
 		children,
-		headerAction = undefined
+		headerAction = undefined,
 	} = $props();
 </script>
 
@@ -36,7 +36,7 @@
 			{/if}
 		</header>
 	{/if}
-	
+
 	<!-- Summary Stats -->
 	{#if stats.length > 0}
 		<div class="chart-stats">
@@ -58,7 +58,7 @@
 			{/each}
 		</div>
 	{/if}
-	
+
 	<!-- Chart Slot -->
 	<div class="chart-body">
 		{@render children?.()}
@@ -78,19 +78,19 @@
 		position: relative;
 		overflow: hidden;
 	}
-	
+
 	@container (min-width: 400px) {
 		.chart-card {
 			padding: 1.25rem;
 		}
 	}
-	
+
 	@container (min-width: 600px) {
 		.chart-card {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	.chart-header {
 		margin-bottom: 1rem;
 		display: flex;
@@ -98,11 +98,11 @@
 		justify-content: space-between;
 		gap: 0.5rem;
 	}
-	
+
 	.chart-header-action {
 		flex-shrink: 0;
 	}
-	
+
 	.chart-title {
 		display: flex;
 		flex-wrap: wrap;
@@ -113,17 +113,17 @@
 		font-weight: 600;
 		color: var(--color-text, #fff);
 	}
-	
+
 	@container (min-width: 400px) {
 		.chart-title {
 			font-size: 1.1rem;
 		}
 	}
-	
+
 	.chart-icon {
 		font-size: 1.1rem;
 	}
-	
+
 	.chart-subtitle {
 		font-size: 0.8rem;
 		font-weight: 400;
@@ -133,7 +133,12 @@
 	.skeleton {
 		display: inline-block;
 		border-radius: 999px;
-		background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.05) 63%);
+		background: linear-gradient(
+			90deg,
+			rgba(255, 255, 255, 0.05) 25%,
+			rgba(255, 255, 255, 0.12) 37%,
+			rgba(255, 255, 255, 0.05) 63%
+		);
 		background-size: 400% 100%;
 		animation: shimmer 1.6s ease-in-out infinite;
 	}
@@ -161,10 +166,14 @@
 	}
 
 	@keyframes shimmer {
-		0% { background-position: 100% 0; }
-		100% { background-position: 0 0; }
+		0% {
+			background-position: 100% 0;
+		}
+		100% {
+			background-position: 0 0;
+		}
 	}
-	
+
 	.chart-stats {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -173,31 +182,31 @@
 		padding-bottom: 1rem;
 		border-bottom: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
 	}
-	
+
 	@container (min-width: 400px) {
 		.chart-stats {
 			grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 			gap: 1rem;
 		}
 	}
-	
+
 	.stat-item {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
+
 	.stat-icon {
 		font-size: 1.25rem;
 		flex-shrink: 0;
 	}
-	
+
 	.stat-content {
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
 	}
-	
+
 	.stat-value {
 		font-size: 1.1rem;
 		font-weight: 700;
@@ -205,26 +214,26 @@
 		line-height: 1.2;
 		white-space: nowrap;
 	}
-	
+
 	@container (min-width: 400px) {
 		.stat-value {
 			font-size: 1.25rem;
 		}
 	}
-	
+
 	.stat-label {
 		font-size: 0.7rem;
 		color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
-	
+
 	@container (min-width: 400px) {
 		.stat-label {
 			font-size: 0.75rem;
 		}
 	}
-	
+
 	.chart-body {
 		position: relative;
 	}

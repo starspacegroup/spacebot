@@ -1,34 +1,34 @@
 <script lang="ts">
-	let { data: incomingData } = $props();
+	const { data: incomingData } = $props();
 
 	let catalog = $state([]);
 	let syncedAt = $state(null);
 	let stale = $state(false);
-	let source = $state("cache");
+	let source = $state('cache');
 	let warning = $state(null);
 	let selection = $state(null);
 	const envModel = $derived(incomingData?.defaults?.envModel ?? null);
 
 	let selectedModelIds = $state([]);
 	let primaryModelId = $state(null);
-	let routingStrategy = $state("fallback");
+	let routingStrategy = $state('fallback');
 
 	$effect(() => {
 		const incomingSelection = incomingData?.selection ?? null;
 		catalog = incomingData?.catalog ?? [];
 		syncedAt = incomingData?.syncedAt ?? null;
 		stale = incomingData?.stale ?? false;
-		source = incomingData?.source ?? "cache";
+		source = incomingData?.source ?? 'cache';
 		warning = incomingData?.warning ?? null;
 		selection = incomingSelection;
 		selectedModelIds = [...(incomingSelection?.selectedModelIds ?? [])];
 		primaryModelId = incomingSelection?.primaryModelId ?? null;
-		routingStrategy = incomingSelection?.routingStrategy ?? "fallback";
+		routingStrategy = incomingSelection?.routingStrategy ?? 'fallback';
 	});
 
-	let search = $state("");
-	let taskFilter = $state("all");
-	let sortBy = $state("stability");
+	let search = $state('');
+	let taskFilter = $state('all');
+	let sortBy = $state('stability');
 	let showBetaOnly = $state(false);
 	let showStableOnly = $state(false);
 
@@ -39,16 +39,16 @@
 	function applyBetaOnly(checked) {
 		showBetaOnly = checked;
 		if (checked) showStableOnly = false;
-		search = "";
+		search = '';
 	}
 
 	function applyStableOnly(checked) {
 		showStableOnly = checked;
 		if (checked) showBetaOnly = false;
-		search = "";
+		search = '';
 	}
 
-	function showToast(message, type = "info") {
+	function showToast(message, type = 'info') {
 		toast = { message, type };
 		setTimeout(() => {
 			toast = null;
@@ -67,19 +67,23 @@
 		let models = catalog.filter((m) => {
 			if (showBetaOnly && !m.isBeta) return false;
 			if (showStableOnly && (m.isBeta || m.isDeprecated || m.isExperimental)) return false;
-			if (taskFilter !== "all" && !(m.tasks ?? []).includes(taskFilter)) return false;
+			if (taskFilter !== 'all' && !(m.tasks ?? []).includes(taskFilter)) return false;
 			if (search.trim()) {
 				const q = search.trim().toLowerCase();
-				const searchable = [m.name, m.id, m.description, m.author, ...(m.tags ?? [])].join(" ").toLowerCase();
+				const searchable = [m.name, m.id, m.description, m.author, ...(m.tags ?? [])]
+					.join(' ')
+					.toLowerCase();
 				if (!searchable.includes(q)) return false;
 			}
 			return true;
 		});
 
-		if (sortBy === "name") {
+		if (sortBy === 'name') {
 			models = models.sort((a, b) => a.name.localeCompare(b.name));
-		} else if (sortBy === "author") {
-			models = models.sort((a, b) => a.author.localeCompare(b.author) || a.name.localeCompare(b.name));
+		} else if (sortBy === 'author') {
+			models = models.sort(
+				(a, b) => a.author.localeCompare(b.author) || a.name.localeCompare(b.name)
+			);
 		} else {
 			// stability: stable first, then beta, then deprecated
 			models = models.sort((a, b) => {
@@ -117,18 +121,18 @@
 	async function refreshCatalog(force = false) {
 		syncing = true;
 		try {
-			const url = `/api/superadmin/workers-ai/models${force ? "?force=1" : ""}`;
+			const url = `/api/superadmin/workers-ai/models${force ? '?force=1' : ''}`;
 			const res = await fetch(url);
 			const json = await res.json();
-			if (!json.success) throw new Error(json.error || "Unknown error");
+			if (!json.success) throw new Error(json.error || 'Unknown error');
 			catalog = json.models ?? [];
 			syncedAt = json.syncedAt ?? null;
 			stale = json.stale ?? false;
-			source = json.source ?? "cloudflare";
+			source = json.source ?? 'cloudflare';
 			warning = json.warning ?? null;
-			showToast(`Catalog refreshed — ${catalog.length} model(s) loaded`, "success");
+			showToast(`Catalog refreshed — ${catalog.length} model(s) loaded`, 'success');
 		} catch (err) {
-			showToast(`Sync failed: ${err.message}`, "error");
+			showToast(`Sync failed: ${err.message}`, 'error');
 		} finally {
 			syncing = false;
 		}
@@ -137,17 +141,17 @@
 	async function saveSelection() {
 		saving = true;
 		try {
-			const res = await fetch("/api/superadmin/workers-ai/models", {
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
+			const res = await fetch('/api/superadmin/workers-ai/models', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ selectedModelIds, primaryModelId, routingStrategy }),
 			});
 			const json = await res.json();
-			if (!json.success) throw new Error(json.error || "Unknown error");
+			if (!json.success) throw new Error(json.error || 'Unknown error');
 			selection = json.selection;
-			showToast("Selection saved successfully", "success");
+			showToast('Selection saved successfully', 'success');
 		} catch (err) {
-			showToast(`Save failed: ${err.message}`, "error");
+			showToast(`Save failed: ${err.message}`, 'error');
 		} finally {
 			saving = false;
 		}
@@ -157,8 +161,10 @@
 		const pricing = model?.pricing;
 		if (!pricing) return null;
 		const has = (k) => pricing[k] !== undefined;
-		if (has("per_request") && pricing.per_request === 0) return { label: "Free", class: "badge-free" };
-		if (has("per_request") || has("per_1k_tokens") || has("per_token")) return { label: "Paid", class: "badge-paid" };
+		if (has('per_request') && pricing.per_request === 0)
+			return { label: 'Free', class: 'badge-free' };
+		if (has('per_request') || has('per_1k_tokens') || has('per_token'))
+			return { label: 'Paid', class: 'badge-paid' };
 		return null;
 	}
 </script>
@@ -167,14 +173,25 @@
 	<div class="hero">
 		<div class="hero-text">
 			<h1>Workers AI Models</h1>
-			<p>Browse and select which models SpaceBot uses for AI inference. Changes take effect immediately.</p>
+			<p>
+				Browse and select which models SpaceBot uses for AI inference. Changes take effect
+				immediately.
+			</p>
 		</div>
 		<div class="hero-actions">
-			<button class="btn btn-secondary" onclick={() => refreshCatalog(true)} disabled={syncing}>
-				{syncing ? "Syncing…" : "Sync From Cloudflare"}
+			<button
+				class="btn btn-secondary"
+				onclick={() => refreshCatalog(true)}
+				disabled={syncing}
+			>
+				{syncing ? 'Syncing…' : 'Sync From Cloudflare'}
 			</button>
-			<button class="btn btn-primary" onclick={saveSelection} disabled={saving || selectedCount === 0}>
-				{saving ? "Saving…" : `Save Selection (${selectedCount})`}
+			<button
+				class="btn btn-primary"
+				onclick={saveSelection}
+				disabled={saving || selectedCount === 0}
+			>
+				{saving ? 'Saving…' : `Save Selection (${selectedCount})`}
 			</button>
 		</div>
 	</div>
@@ -209,7 +226,7 @@
 	<div class="meta-row">
 		<span class="meta-item">
 			<span class="meta-key">Last Updated:</span>
-			<span class="meta-val">{syncedAt ? new Date(syncedAt).toLocaleString() : "Never"}</span>
+			<span class="meta-val">{syncedAt ? new Date(syncedAt).toLocaleString() : 'Never'}</span>
 		</span>
 		<span class="meta-item">
 			<span class="meta-key">Source:</span>
@@ -255,7 +272,11 @@
 					<span class="chip" class:chip-primary={id === primaryModelId}>
 						{id}
 						{#if id === primaryModelId}<span class="chip-tag">PRIMARY</span>{/if}
-						<button class="chip-remove" onclick={() => toggleModel(id)} aria-label="Remove {id}">×</button>
+						<button
+							class="chip-remove"
+							onclick={() => toggleModel(id)}
+							aria-label="Remove {id}">×</button
+						>
 					</span>
 				{/each}
 			</div>
@@ -263,7 +284,12 @@
 	</div>
 
 	<div class="filter-bar">
-		<input class="search-input" type="search" placeholder="Search models…" bind:value={search} />
+		<input
+			class="search-input"
+			type="search"
+			placeholder="Search models…"
+			bind:value={search}
+		/>
 		<select class="select" bind:value={taskFilter}>
 			<option value="all">All Tasks</option>
 			{#each allTasks as task}
@@ -333,7 +359,11 @@
 
 				<div class="card-actions">
 					<label class="checkbox-label">
-						<input type="checkbox" checked={isSelected} onchange={() => toggleModel(model.id)} />
+						<input
+							type="checkbox"
+							checked={isSelected}
+							onchange={() => toggleModel(model.id)}
+						/>
 						Select
 					</label>
 					<label class="checkbox-label" class:disabled={!isSelected}>
@@ -348,7 +378,9 @@
 						Primary
 					</label>
 					{#if model.contextWindow}
-						<span class="context-window">{(model.contextWindow / 1000).toFixed(0)}K ctx</span>
+						<span class="context-window"
+							>{(model.contextWindow / 1000).toFixed(0)}K ctx</span
+						>
 					{/if}
 				</div>
 			</div>
@@ -363,7 +395,7 @@
 		<div class="empty-catalog">
 			<p>No model catalog loaded.</p>
 			<button class="btn btn-primary" onclick={() => refreshCatalog(true)} disabled={syncing}>
-				{syncing ? "Syncing…" : "Sync From Cloudflare"}
+				{syncing ? 'Syncing…' : 'Sync From Cloudflare'}
 			</button>
 		</div>
 	{/if}
@@ -450,12 +482,24 @@
 	}
 
 	@keyframes fadeIn {
-		from { opacity: 0; transform: translateY(4px); }
-		to { opacity: 1; transform: translateY(0); }
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
-	.toast-success { background: #16a34a; color: var(--color-fixed-text-bright); }
-	.toast-error { background: #dc2626; color: var(--color-fixed-text-bright); }
+	.toast-success {
+		background: #16a34a;
+		color: var(--color-fixed-text-bright);
+	}
+	.toast-error {
+		background: #dc2626;
+		color: var(--color-fixed-text-bright);
+	}
 	.toast-info {
 		background: var(--color-surface-elevated, #f3f4f6);
 		color: var(--color-text, #111827);
@@ -478,8 +522,16 @@
 		gap: 0.25rem;
 	}
 
-	.stat-label { font-size: 0.75rem; color: var(--text-muted, #888); text-transform: uppercase; letter-spacing: 0.05em; }
-	.stat-value { font-size: 1.5rem; font-weight: 700; }
+	.stat-label {
+		font-size: 0.75rem;
+		color: var(--text-muted, #888);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+	.stat-value {
+		font-size: 1.5rem;
+		font-weight: 700;
+	}
 
 	.meta-row {
 		display: flex;
@@ -490,10 +542,20 @@
 		color: var(--text-muted, #888);
 	}
 
-	.meta-item { display: flex; gap: 0.35rem; }
-	.meta-key { font-weight: 600; }
-	.meta-val { color: var(--color-text, #111827); }
-	.mono { font-family: monospace; font-size: 0.8em; }
+	.meta-item {
+		display: flex;
+		gap: 0.35rem;
+	}
+	.meta-key {
+		font-weight: 600;
+	}
+	.meta-val {
+		color: var(--color-text, #111827);
+	}
+	.mono {
+		font-family: monospace;
+		font-size: 0.8em;
+	}
 
 	.badge {
 		display: inline-block;
@@ -505,11 +567,31 @@
 		letter-spacing: 0.05em;
 	}
 
-	.badge-beta { background: rgba(234, 179, 8, 0.15); color: #d4a600; border: 1px solid rgba(234, 179, 8, 0.35); }
-	.badge-deprecated { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-	.badge-warn { background: rgba(234, 179, 8, 0.12); color: #d4a600; border: 1px solid rgba(234, 179, 8, 0.3); }
-	.badge-free { background: rgba(34, 197, 94, 0.12); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
-	.badge-paid { background: rgba(99, 102, 241, 0.12); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
+	.badge-beta {
+		background: rgba(234, 179, 8, 0.15);
+		color: #d4a600;
+		border: 1px solid rgba(234, 179, 8, 0.35);
+	}
+	.badge-deprecated {
+		background: rgba(239, 68, 68, 0.12);
+		color: #f87171;
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+	.badge-warn {
+		background: rgba(234, 179, 8, 0.12);
+		color: #d4a600;
+		border: 1px solid rgba(234, 179, 8, 0.3);
+	}
+	.badge-free {
+		background: rgba(34, 197, 94, 0.12);
+		color: #4ade80;
+		border: 1px solid rgba(34, 197, 94, 0.3);
+	}
+	.badge-paid {
+		background: rgba(99, 102, 241, 0.12);
+		color: #a5b4fc;
+		border: 1px solid rgba(99, 102, 241, 0.3);
+	}
 
 	.selection-panel {
 		background: var(--color-surface, #ffffff);
@@ -592,7 +674,9 @@
 		line-height: 1;
 	}
 
-	.chip-remove:hover { color: #f87171; }
+	.chip-remove:hover {
+		color: #f87171;
+	}
 
 	.filter-bar {
 		display: flex;

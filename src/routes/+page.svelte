@@ -1,6 +1,6 @@
 <script lang="ts">
-	let { data } = $props();
-	
+	const { data } = $props();
+
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 
@@ -9,13 +9,22 @@
 
 <svelte:head>
 	<title>SpaceBot – Discord Bot Platform</title>
-	<meta name="description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
+	<meta
+		name="description"
+		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
+	/>
 	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
-	<meta property="og:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
+	<meta
+		property="og:description"
+		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
+	/>
 	<meta property="og:url" content="https://spacebot.starspace.group" />
 	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
 	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
-	<meta name="twitter:description" content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members." />
+	<meta
+		name="twitter:description"
+		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
+	/>
 	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
@@ -23,10 +32,15 @@
 	<!-- Hero Section -->
 	<section class="hero">
 		<div class="hero-content">
-			<h1 class="hero-identity"><img src="/logo.webp" alt="SpaceBot logo" class="hero-logo" /> SpaceBot</h1>
+			<h1 class="hero-identity">
+				<img src="/logo.webp" alt="SpaceBot logo" class="hero-logo" /> SpaceBot
+			</h1>
 			<p class="tagline">The powerful Discord bot platform you control</p>
 			<p class="description">
-				Custom commands, event-driven automations, an AI assistant, server analytics, webhooks, integrations, and a full REST API — all from a beautiful dashboard. <strong>100% open source.</strong>
+				Custom commands, event-driven automations, an AI assistant, server analytics,
+				webhooks, integrations, and a full REST API — all from a beautiful dashboard. <strong
+					>100% open source.</strong
+				>
 			</p>
 			<div class="cta-buttons">
 				{#if data.isLoggedIn}
@@ -34,72 +48,130 @@
 				{:else}
 					<a href="/login" class="btn btn-primary">Get Started Free</a>
 				{/if}
-				<a href="https://github.com/starspacegroup/spacebot" target="_blank" rel="noopener noreferrer" class="btn btn-secondary"><svg class="github-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> View on GitHub</a>
+				<a
+					href="https://github.com/starspacegroup/spacebot"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="btn btn-secondary"
+					><svg class="github-icon" viewBox="0 0 24 24" fill="currentColor"
+						><path
+							d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"
+						/></svg
+					> View on GitHub</a
+				>
 			</div>
 		</div>
 		<div class="hero-screenshot">
-			<img src="/server-admin-light.webp" alt="SpaceBot Admin Dashboard" class="screenshot-light" />
-			<img src="/server-admin-dark.webp" alt="SpaceBot Admin Dashboard" class="screenshot-dark" />
+			<img
+				src="/server-admin-light.webp"
+				alt="SpaceBot Admin Dashboard"
+				class="screenshot-light"
+			/>
+			<img
+				src="/server-admin-dark.webp"
+				alt="SpaceBot Admin Dashboard"
+				class="screenshot-dark"
+			/>
 		</div>
 	</section>
 
 	<!-- Features Section -->
 	<section id="features" class="features">
 		<h2>Everything you need to supercharge your Discord server</h2>
-		
+
 		<div class="feature-grid">
 			<div class="feature-card">
-				<span class="feature-icon"><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span>
+				<span class="feature-icon"
+					><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span
+				>
 				<h3>Custom Slash Commands</h3>
-				<p>Create unlimited commands with parameters, permissions, and rich responses — including embeds, context menus, and voice-only commands. No coding required.</p>
+				<p>
+					Create unlimited commands with parameters, permissions, and rich responses —
+					including embeds, context menus, and voice-only commands. No coding required.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">⚡</span>
 				<h3>Event-Driven Automations</h3>
-				<p>26 trigger events, 17 filters, and 15 action types. Auto-assign roles, send welcome messages, moderate content, call webhooks, and more — all from a visual builder.</p>
+				<p>
+					26 trigger events, 17 filters, and 15 action types. Auto-assign roles, send
+					welcome messages, moderate content, call webhooks, and more — all from a visual
+					builder.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">🧠</span>
 				<h3>AI Assistant</h3>
-				<p>DM the bot for an AI-powered assistant that can query your server data, create scheduled events, send messages, and manage your server with natural language.</p>
+				<p>
+					DM the bot for an AI-powered assistant that can query your server data, create
+					scheduled events, send messages, and manage your server with natural language.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">📊</span>
 				<h3>Server Analytics & Logs</h3>
-				<p>Track member growth, message activity, voice usage, and more with time-series charts. Searchable event logs capture every Discord event in real time.</p>
+				<p>
+					Track member growth, message activity, voice usage, and more with time-series
+					charts. Searchable event logs capture every Discord event in real time.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">🔗</span>
 				<h3>Webhooks & Integrations</h3>
-				<p>Connect to external services with outbound webhooks and a plugin system. Install integrations or build your own with the manifest-based SDK.</p>
+				<p>
+					Connect to external services with outbound webhooks and a plugin system. Install
+					integrations or build your own with the manifest-based SDK.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">🔑</span>
 				<h3>REST API & API Keys</h3>
-				<p>Full versioned REST API with scoped API keys. Read logs, manage automations and commands, query stats, and integrate with any external tool.</p>
+				<p>
+					Full versioned REST API with scoped API keys. Read logs, manage automations and
+					commands, query stats, and integrate with any external tool.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">📅</span>
 				<h3>Scheduled Events</h3>
-				<p>Create and manage Discord scheduled events right from the dashboard — or let the AI assistant parse events from natural language and generate banner images.</p>
+				<p>
+					Create and manage Discord scheduled events right from the dashboard — or let the
+					AI assistant parse events from natural language and generate banner images.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">🔐</span>
 				<h3>Granular Permissions</h3>
-				<p>Role-based dashboard access, per-command permission presets, and per-section permission controls. Keep your team in sync with fine-grained security.</p>
+				<p>
+					Role-based dashboard access, per-command permission presets, and per-section
+					permission controls. Keep your team in sync with fine-grained security.
+				</p>
 			</div>
-			
+
 			<div class="feature-card">
 				<span class="feature-icon">📖</span>
 				<h3>Open Source & Edge-Deployed</h3>
-				<p>Fully open source on <a href="https://github.com/starspacegroup/spacebot" target="_blank" rel="noopener noreferrer" class="github-link"><svg class="github-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg> GitHub</a>. Deployed on Cloudflare's edge network for lightning-fast response times with zero cold starts.</p>
+				<p>
+					Fully open source on <a
+						href="https://github.com/starspacegroup/spacebot"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="github-link"
+						><svg class="github-icon" viewBox="0 0 24 24" fill="currentColor"
+							><path
+								d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"
+							/></svg
+						> GitHub</a
+					>. Deployed on Cloudflare's edge network for lightning-fast response times with
+					zero cold starts.
+				</p>
 			</div>
 		</div>
 	</section>
@@ -107,11 +179,23 @@
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
 		<h2>Full-featured, for everyone</h2>
-		<p class="pricing-subtitle">We believe powerful tools shouldn't be expensive. Get everything you need to start — go unlimited for the price of a coffee.</p>
+		<p class="pricing-subtitle">
+			We believe powerful tools shouldn't be expensive. Get everything you need to start — go
+			unlimited for the price of a coffee.
+		</p>
 
 		<div class="billing-toggle">
-			<button class="billing-option" class:active={billingInterval === 'monthly'} onclick={() => billingInterval = 'monthly'}>Monthly</button>
-			<button class="billing-option" class:active={billingInterval === 'yearly'} onclick={() => billingInterval = 'yearly'}>Yearly <span class="billing-save">Save 17%</span></button>
+			<button
+				class="billing-option"
+				class:active={billingInterval === 'monthly'}
+				onclick={() => (billingInterval = 'monthly')}>Monthly</button
+			>
+			<button
+				class="billing-option"
+				class:active={billingInterval === 'yearly'}
+				onclick={() => (billingInterval = 'yearly')}
+				>Yearly <span class="billing-save">Save 17%</span></button
+			>
 		</div>
 
 		<div class="pricing-grid">
@@ -139,7 +223,7 @@
 					<a href="/login" class="btn btn-secondary btn-block">Get Started</a>
 				{/if}
 			</div>
-			
+
 			<div class="pricing-card pricing-card-featured">
 				<div class="pricing-badge pricing-badge-featured">Pro</div>
 				<div class="pricing-price">
@@ -152,7 +236,9 @@
 						<span class="price-period">/server/mo</span>
 					{/if}
 				</div>
-				<p class="pricing-description">Unlimited commands, automations, and 1 year of stats history.</p>
+				<p class="pricing-description">
+					Unlimited commands, automations, and 1 year of stats history.
+				</p>
 				<ul class="pricing-features">
 					<li><span class="check">✓</span> Everything in Starter</li>
 					<li><span class="check-pro">✓</span> Unlimited custom commands</li>
@@ -160,9 +246,15 @@
 					<li><span class="check-pro">✓</span> 1 year server stats history</li>
 				</ul>
 				{#if data.isLoggedIn}
-					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Sign Up</a>
+					<a
+						href="/admin/upgrade?interval={billingInterval}"
+						class="btn btn-primary btn-block">Sign Up</a
+					>
 				{:else}
-					<a href="/admin/upgrade?interval={billingInterval}" class="btn btn-primary btn-block">Sign Up</a>
+					<a
+						href="/admin/upgrade?interval={billingInterval}"
+						class="btn btn-primary btn-block">Sign Up</a
+					>
 				{/if}
 			</div>
 
@@ -178,7 +270,9 @@
 						<span class="price-period">/server/mo</span>
 					{/if}
 				</div>
-				<p class="pricing-description">Deep insights with advanced and comparative server stats.</p>
+				<p class="pricing-description">
+					Deep insights with advanced and comparative server stats.
+				</p>
 				<ul class="pricing-features">
 					<li><span class="check">✓</span> Everything in Pro</li>
 					<li><span class="check-ultimate">✓</span> Advanced stats</li>
@@ -193,20 +287,35 @@
 	<!-- How It Works Section -->
 	<section class="how-it-works">
 		<h2>How It Works</h2>
-		
+
 		<div class="steps">
 			<!-- Step 1: Login -->
 			<div class="step">
 				<div class="step-card">
 					<div class="mock-discord-btn">
-						<svg width="20" height="15" viewBox="0 0 71 55" fill="currentColor"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg>
+						<svg width="20" height="15" viewBox="0 0 71 55" fill="currentColor"
+							><path
+								d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"
+							/></svg
+						>
 						Login
 					</div>
 				</div>
 				<span class="step-label">Login with Discord</span>
 			</div>
 
-			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+			<div class="step-connector">
+				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+					><path
+						d="M0 12h36m0 0l-6-6m6 6l-6 6"
+						stroke="var(--color-primary-button)"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						opacity="0.5"
+					/></svg
+				>
+			</div>
 
 			<!-- Step 2: Add Bot -->
 			<div class="step">
@@ -223,7 +332,18 @@
 				<span class="step-label">Add to Server</span>
 			</div>
 
-			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+			<div class="step-connector">
+				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+					><path
+						d="M0 12h36m0 0l-6-6m6 6l-6 6"
+						stroke="var(--color-primary-button)"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						opacity="0.5"
+					/></svg
+				>
+			</div>
 
 			<!-- Step 3: Create Commands -->
 			<div class="step">
@@ -245,14 +365,31 @@
 				<span class="step-label">Create Commands</span>
 			</div>
 
-			<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+			<div class="step-connector">
+				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+					><path
+						d="M0 12h36m0 0l-6-6m6 6l-6 6"
+						stroke="var(--color-primary-button)"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						opacity="0.5"
+					/></svg
+				>
+			</div>
 
 			<!-- Step 4: Monitor -->
 			<div class="step">
 				<div class="step-card">
 					<div class="mock-dashboard">
 						<div class="mock-dash-header">
-							<img src="/logo.webp" alt="" width="16" height="16" class="mock-dash-logo" />
+							<img
+								src="/logo.webp"
+								alt=""
+								width="16"
+								height="16"
+								class="mock-dash-logo"
+							/>
 							<span>Dashboard</span>
 						</div>
 						<div class="mock-bars">
@@ -271,7 +408,10 @@
 
 		<div class="how-it-works-subflow">
 			<h3>Run Local Runner Access</h3>
-			<p class="how-it-works-subtitle">Use SpaceBot in Discord to securely reach tools and services running on your own workstation.</p>
+			<p class="how-it-works-subtitle">
+				Use SpaceBot in Discord to securely reach tools and services running on your own
+				workstation.
+			</p>
 
 			<div class="steps steps-local-runner">
 				<div class="step">
@@ -287,7 +427,18 @@
 					<span class="step-label">Start Local Runner</span>
 				</div>
 
-				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+				<div class="step-connector">
+					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+						><path
+							d="M0 12h36m0 0l-6-6m6 6l-6 6"
+							stroke="var(--color-primary-button)"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							opacity="0.5"
+						/></svg
+					>
+				</div>
 
 				<div class="step">
 					<div class="step-card">
@@ -298,7 +449,9 @@
 								</div>
 								<div class="mock-msg-body">
 									<span class="mock-msg-name">SpaceBot</span>
-									<span class="mock-msg-text"><span class="mock-slash">/</span>runner connect</span>
+									<span class="mock-msg-text"
+										><span class="mock-slash">/</span>runner connect</span
+									>
 								</div>
 							</div>
 						</div>
@@ -306,7 +459,18 @@
 					<span class="step-label">Connect in Discord</span>
 				</div>
 
-				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+				<div class="step-connector">
+					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+						><path
+							d="M0 12h36m0 0l-6-6m6 6l-6 6"
+							stroke="var(--color-primary-button)"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							opacity="0.5"
+						/></svg
+					>
+				</div>
 
 				<div class="step">
 					<div class="step-card">
@@ -319,7 +483,18 @@
 					<span class="step-label">Bridge Your Local Service</span>
 				</div>
 
-				<div class="step-connector"><svg width="40" height="24" viewBox="0 0 40 24" fill="none"><path d="M0 12h36m0 0l-6-6m6 6l-6 6" stroke="var(--color-primary-button)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/></svg></div>
+				<div class="step-connector">
+					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
+						><path
+							d="M0 12h36m0 0l-6-6m6 6l-6 6"
+							stroke="var(--color-primary-button)"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							opacity="0.5"
+						/></svg
+					>
+				</div>
 
 				<div class="step">
 					<div class="step-card">
@@ -341,7 +516,19 @@
 		{#if data.isLoggedIn}
 			<a href={adminUrl} class="btn btn-primary btn-large">Go to Dashboard</a>
 		{:else}
-			<a href="/login" class="btn btn-primary btn-large"><svg class="discord-icon" width="20" height="16" viewBox="0 0 71 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg> Login with Discord</a>
+			<a href="/login" class="btn btn-primary btn-large"
+				><svg
+					class="discord-icon"
+					width="20"
+					height="16"
+					viewBox="0 0 71 55"
+					fill="currentColor"
+					xmlns="http://www.w3.org/2000/svg"
+					><path
+						d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"
+					/></svg
+				> Login with Discord</a
+			>
 		{/if}
 	</section>
 </div>
@@ -451,10 +638,10 @@
 	.screenshot-light {
 		display: block;
 	}
-	:global([data-theme="dark"]) .screenshot-dark {
+	:global([data-theme='dark']) .screenshot-dark {
 		display: block;
 	}
-	:global([data-theme="dark"]) .screenshot-light {
+	:global([data-theme='dark']) .screenshot-light {
 		display: none;
 	}
 
@@ -474,8 +661,6 @@
 		align-items: center;
 		gap: 0.25em;
 	}
-
-
 
 	/* Features Section */
 	.features {
@@ -500,7 +685,9 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		padding: 2rem;
-		transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			box-shadow var(--transition-fast);
 	}
 
 	.feature-card:hover {
@@ -611,7 +798,9 @@
 		padding: 2.5rem 2rem;
 		text-align: left;
 		position: relative;
-		transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			box-shadow var(--transition-fast);
 	}
 
 	.pricing-card:hover {
@@ -803,13 +992,15 @@
 		align-items: center;
 		justify-content: center;
 		overflow: hidden;
-		transition: transform 0.2s ease, box-shadow 0.2s ease;
+		transition:
+			transform 0.2s ease,
+			box-shadow 0.2s ease;
 		border: 1px solid var(--color-fixed-border-subtle);
 	}
 
 	.step:hover .step-card {
 		transform: translateY(-4px);
-		box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 	}
 
 	.step-label {
@@ -830,7 +1021,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		background: #5865F2;
+		background: #5865f2;
 		color: var(--color-fixed-text-bright);
 		padding: 0.6rem 1.2rem;
 		border-radius: 8px;
@@ -923,7 +1114,7 @@
 	}
 
 	.mock-slash {
-		color: #5865F2;
+		color: #5865f2;
 		font-weight: 700;
 	}
 
@@ -999,7 +1190,17 @@
 	.mock-terminal-line {
 		font-size: 0.67rem;
 		color: var(--color-fixed-text-muted);
-		font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+		font-family: var(
+			--font-mono,
+			ui-monospace,
+			SFMono-Regular,
+			Menlo,
+			Monaco,
+			Consolas,
+			'Liberation Mono',
+			'Courier New',
+			monospace
+		);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;

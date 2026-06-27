@@ -1,34 +1,31 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	
-	let { data } = $props();
-	
+
+	const { data } = $props();
+
 	const servers = $derived(data?.servers ?? []);
 	const planTiers: Record<string, any> = $derived(data?.planTiers ?? {});
-	
+
 	// State
 	let search = $state('');
 	let filterPlan = $state('all');
 	let editingServer = $state(null);
 	let saving = $state(false);
 	let toast = $state(null);
-	
+
 	// Filtered servers
 	const filteredServers = $derived(() => {
 		let list = servers;
 		if (search) {
 			const q = search.toLowerCase();
-			list = list.filter(s => 
-				s.name?.toLowerCase().includes(q) || 
-				s.guild_id?.includes(q)
-			);
+			list = list.filter((s) => s.name?.toLowerCase().includes(q) || s.guild_id?.includes(q));
 		}
 		if (filterPlan !== 'all') {
-			list = list.filter(s => (s.plan?.plan || 'free') === filterPlan);
+			list = list.filter((s) => (s.plan?.plan || 'free') === filterPlan);
 		}
 		return list;
 	});
-	
+
 	// Plan counts
 	const planCounts = $derived(() => {
 		const counts = { free: 0, pro: 0, ultimate: 0 };
@@ -38,26 +35,31 @@
 		}
 		return counts;
 	});
-	
+
 	function formatNumber(num) {
 		return new Intl.NumberFormat().format(num || 0);
 	}
-	
+
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
-		return new Date(dateStr).toLocaleDateString('en-US', { 
-			month: 'short', day: 'numeric', year: 'numeric' 
+		return new Date(dateStr).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
 		});
 	}
-	
+
 	function getPlanBadgeClass(plan) {
 		switch (plan) {
-			case 'pro': return 'badge-pro';
-			case 'ultimate': return 'badge-ultimate';
-			default: return 'badge-free';
+			case 'pro':
+				return 'badge-pro';
+			case 'ultimate':
+				return 'badge-ultimate';
+			default:
+				return 'badge-free';
 		}
 	}
-	
+
 	function startEditPlan(server) {
 		const plan = server.plan || {};
 		const tier = plan.plan || 'free';
@@ -78,7 +80,7 @@
 			expires_at: plan.expires_at || '',
 		};
 	}
-	
+
 	function onTierChange() {
 		if (!editingServer) return;
 		const defaults = planTiers[editingServer.plan] || planTiers.free;
@@ -90,12 +92,12 @@
 		editingServer.stats_retention_days = defaults.stats_retention_days;
 		editingServer.price_cents = defaults.price_cents;
 	}
-	
+
 	async function savePlan() {
 		if (!editingServer) return;
 		saving = true;
 		toast = null;
-		
+
 		try {
 			const response = await fetch(`/api/superadmin/servers/${editingServer.guild_id}`, {
 				method: 'PATCH',
@@ -114,9 +116,9 @@
 					expires_at: editingServer.expires_at || null,
 				}),
 			});
-			
+
 			const result = await response.json();
-			
+
 			if (response.ok) {
 				toast = { type: 'success', message: `Plan updated for ${editingServer.name}` };
 				editingServer = null;
@@ -130,15 +132,20 @@
 			saving = false;
 		}
 	}
-	
+
 	async function resetPlan(server) {
-		if (!confirm(`Reset ${server.name} to the Starter plan? This will remove any custom limits.`)) return;
-		
+		if (
+			!confirm(
+				`Reset ${server.name} to the Starter plan? This will remove any custom limits.`
+			)
+		)
+			return;
+
 		try {
 			const response = await fetch(`/api/superadmin/servers/${server.guild_id}`, {
 				method: 'DELETE',
 			});
-			
+
 			if (response.ok) {
 				toast = { type: 'success', message: `${server.name} reset to Starter plan` };
 				await invalidateAll();
@@ -150,7 +157,7 @@
 			toast = { type: 'error', message: error.message };
 		}
 	}
-	
+
 	function formatLimit(val) {
 		if (val === null || val === undefined) return '∞';
 		return val.toString();
@@ -193,121 +200,193 @@
 			<p class="header-subtitle">{servers.length} servers tracked</p>
 		</div>
 	</header>
-	
+
 	{#if toast}
 		<div class="toast toast-{toast.type}">
-			<span>{toast.type === 'success' ? '✓' : '✗'}</span> {toast.message}
-			<button class="toast-close" onclick={() => toast = null}>✕</button>
+			<span>{toast.type === 'success' ? '✓' : '✗'}</span>
+			{toast.message}
+			<button class="toast-close" onclick={() => (toast = null)}>✕</button>
 		</div>
 	{/if}
-	
+
 	<!-- Plan Summary -->
 	<div class="plan-summary">
-		<button class="plan-pill {filterPlan === 'all' ? 'active' : ''}" onclick={() => filterPlan = 'all'}>
+		<button
+			class="plan-pill {filterPlan === 'all' ? 'active' : ''}"
+			onclick={() => (filterPlan = 'all')}
+		>
 			All ({servers.length})
 		</button>
-		<button class="plan-pill plan-free {filterPlan === 'free' ? 'active' : ''}" onclick={() => filterPlan = 'free'}>
+		<button
+			class="plan-pill plan-free {filterPlan === 'free' ? 'active' : ''}"
+			onclick={() => (filterPlan = 'free')}
+		>
 			Starter ({planCounts().free})
 		</button>
-		<button class="plan-pill plan-pro {filterPlan === 'pro' ? 'active' : ''}" onclick={() => filterPlan = 'pro'}>
+		<button
+			class="plan-pill plan-pro {filterPlan === 'pro' ? 'active' : ''}"
+			onclick={() => (filterPlan = 'pro')}
+		>
 			Pro ({planCounts().pro})
 		</button>
-		<button class="plan-pill plan-ultimate {filterPlan === 'ultimate' ? 'active' : ''}" onclick={() => filterPlan = 'ultimate'}>
+		<button
+			class="plan-pill plan-ultimate {filterPlan === 'ultimate' ? 'active' : ''}"
+			onclick={() => (filterPlan = 'ultimate')}
+		>
 			Ultimate ({planCounts().ultimate})
 		</button>
 	</div>
-	
+
 	<!-- Search -->
 	<div class="search-bar">
-		<input 
-			type="text" 
-			placeholder="Search servers by name or ID..." 
+		<input
+			type="text"
+			placeholder="Search servers by name or ID..."
 			bind:value={search}
 			class="search-input"
 		/>
 	</div>
-	
+
 	<!-- Editing Modal -->
 	{#if editingServer}
-		<div class="modal-backdrop" onclick={() => editingServer = null} role="presentation">
+		<div class="modal-backdrop" onclick={() => (editingServer = null)} role="presentation">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_interactive_supports_focus -->
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
 				<div class="modal-header">
 					<h2>Edit Plan — {editingServer.name}</h2>
-					<button class="modal-close" onclick={() => editingServer = null}>✕</button>
+					<button class="modal-close" onclick={() => (editingServer = null)}>✕</button>
 				</div>
 				<div class="modal-body">
 					<div class="form-group">
 						<label for="plan-tier">Plan Tier</label>
-						<select id="plan-tier" bind:value={editingServer.plan} onchange={onTierChange} class="form-select">
+						<select
+							id="plan-tier"
+							bind:value={editingServer.plan}
+							onchange={onTierChange}
+							class="form-select"
+						>
 							{#each Object.entries(planTiers) as [key, tier]}
 								<option value={key}>{tier.label}</option>
 							{/each}
 						</select>
 					</div>
-					
+
 					<div class="form-grid">
 						<div class="form-group">
 							<label for="max-commands">Max Commands</label>
-							<input id="max-commands" type="number" bind:value={editingServer.max_commands} class="form-input" placeholder="null = unlimited" />
+							<input
+								id="max-commands"
+								type="number"
+								bind:value={editingServer.max_commands}
+								class="form-input"
+								placeholder="null = unlimited"
+							/>
 							<small>Leave empty for unlimited</small>
 						</div>
 						<div class="form-group">
 							<label for="max-automations">Max Automations</label>
-							<input id="max-automations" type="number" bind:value={editingServer.max_automations} class="form-input" placeholder="null = unlimited" />
+							<input
+								id="max-automations"
+								type="number"
+								bind:value={editingServer.max_automations}
+								class="form-input"
+								placeholder="null = unlimited"
+							/>
 						</div>
 						<div class="form-group">
 							<label for="max-api-keys">Max API Keys</label>
-							<input id="max-api-keys" type="number" bind:value={editingServer.max_api_keys} class="form-input" />
+							<input
+								id="max-api-keys"
+								type="number"
+								bind:value={editingServer.max_api_keys}
+								class="form-input"
+							/>
 						</div>
 						<div class="form-group">
 							<label for="max-webhooks">Max Webhooks</label>
-							<input id="max-webhooks" type="number" bind:value={editingServer.max_webhooks} class="form-input" />
+							<input
+								id="max-webhooks"
+								type="number"
+								bind:value={editingServer.max_webhooks}
+								class="form-input"
+							/>
 						</div>
 						<div class="form-group">
 							<label for="log-retention">Log Retention (days)</label>
-							<input id="log-retention" type="number" bind:value={editingServer.log_retention_days} class="form-input" />
+							<input
+								id="log-retention"
+								type="number"
+								bind:value={editingServer.log_retention_days}
+								class="form-input"
+							/>
 						</div>
 						<div class="form-group">
 							<label for="stats-retention">Stats Retention (days)</label>
-							<input id="stats-retention" type="number" bind:value={editingServer.stats_retention_days} class="form-input" />
+							<input
+								id="stats-retention"
+								type="number"
+								bind:value={editingServer.stats_retention_days}
+								class="form-input"
+							/>
 						</div>
 					</div>
-					
+
 					<div class="form-grid">
 						<div class="form-group">
 							<label for="price">Monthly Price (cents)</label>
-							<input id="price" type="number" bind:value={editingServer.price_cents} class="form-input" />
+							<input
+								id="price"
+								type="number"
+								bind:value={editingServer.price_cents}
+								class="form-input"
+							/>
 							<small>${((editingServer.price_cents || 0) / 100).toFixed(2)}/mo</small>
 						</div>
 						<div class="form-group">
 							<label for="expires">Expires At</label>
-							<input id="expires" type="date" bind:value={editingServer.expires_at} class="form-input" />
+							<input
+								id="expires"
+								type="date"
+								bind:value={editingServer.expires_at}
+								class="form-input"
+							/>
 						</div>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="billing-email">Billing Email</label>
-						<input id="billing-email" type="email" bind:value={editingServer.billing_email} class="form-input" placeholder="Optional" />
+						<input
+							id="billing-email"
+							type="email"
+							bind:value={editingServer.billing_email}
+							class="form-input"
+							placeholder="Optional"
+						/>
 					</div>
 					<div class="form-group">
 						<label for="billing-notes">Billing Notes</label>
-						<textarea id="billing-notes" bind:value={editingServer.billing_notes} class="form-textarea" rows="2" placeholder="Internal notes..."></textarea>
+						<textarea
+							id="billing-notes"
+							bind:value={editingServer.billing_notes}
+							class="form-textarea"
+							rows="2"
+							placeholder="Internal notes..."
+						></textarea>
 					</div>
 				</div>
 				<div class="modal-footer">
 					<button class="btn btn-primary" onclick={savePlan} disabled={saving}>
 						{saving ? 'Saving...' : 'Save Plan'}
 					</button>
-					<button class="btn btn-secondary" onclick={() => editingServer = null}>
+					<button class="btn btn-secondary" onclick={() => (editingServer = null)}>
 						Cancel
 					</button>
 				</div>
 			</div>
 		</div>
 	{/if}
-	
+
 	<!-- Server Table -->
 	{#if filteredServers().length > 0}
 		<div class="table-wrapper">
@@ -332,8 +411,8 @@
 							<td>
 								<a href="/admin/{server.guild_id}" class="server-cell">
 									{#if server.icon}
-										<img 
-											src="https://cdn.discordapp.com/icons/{server.guild_id}/{server.icon}.png?size=32" 
+										<img
+											src="https://cdn.discordapp.com/icons/{server.guild_id}/{server.icon}.png?size=32"
 											alt=""
 											class="server-icon"
 										/>
@@ -350,8 +429,12 @@
 							</td>
 							<td>
 								<span
-									class="bot-presence-badge {getBotPresenceClass(server.bot_presence)}"
-									title={server.bot_presence === 'unknown' ? 'Discord API unavailable, status could not be verified right now.' : ''}
+									class="bot-presence-badge {getBotPresenceClass(
+										server.bot_presence
+									)}"
+									title={server.bot_presence === 'unknown'
+										? 'Discord API unavailable, status could not be verified right now.'
+										: ''}
 								>
 									{getBotPresenceLabel(server.bot_presence)}
 								</span>
@@ -364,14 +447,40 @@
 							<td class="numeric">{formatNumber(server.approximate_member_count)}</td>
 							<td class="numeric">
 								<span class="usage-counts">
-									<span class="usage-active" title="{server.usage.commands_active} active / {server.usage.commands_total} total">{server.usage.commands_active}</span><span class="usage-sep">/</span><span class="usage-total">{server.usage.commands_total}</span>
-									<span class="usage-limit">of {formatLimit(server.plan ? planData.max_commands : planTiers.free?.max_commands)}</span>
+									<span
+										class="usage-active"
+										title="{server.usage.commands_active} active / {server.usage
+											.commands_total} total"
+										>{server.usage.commands_active}</span
+									><span class="usage-sep">/</span><span class="usage-total"
+										>{server.usage.commands_total}</span
+									>
+									<span class="usage-limit"
+										>of {formatLimit(
+											server.plan
+												? planData.max_commands
+												: planTiers.free?.max_commands
+										)}</span
+									>
 								</span>
 							</td>
 							<td class="numeric">
 								<span class="usage-counts">
-									<span class="usage-active" title="{server.usage.automations_active} active / {server.usage.automations_total} total">{server.usage.automations_active}</span><span class="usage-sep">/</span><span class="usage-total">{server.usage.automations_total}</span>
-									<span class="usage-limit">of {formatLimit(server.plan ? planData.max_automations : planTiers.free?.max_automations)}</span>
+									<span
+										class="usage-active"
+										title="{server.usage.automations_active} active / {server
+											.usage.automations_total} total"
+										>{server.usage.automations_active}</span
+									><span class="usage-sep">/</span><span class="usage-total"
+										>{server.usage.automations_total}</span
+									>
+									<span class="usage-limit"
+										>of {formatLimit(
+											server.plan
+												? planData.max_automations
+												: planTiers.free?.max_automations
+										)}</span
+									>
 								</span>
 							</td>
 							<td class="date-cell">
@@ -383,15 +492,24 @@
 							</td>
 							<td>
 								<div class="actions-cell">
-									<button class="btn btn-sm btn-secondary" onclick={() => startEditPlan(server)}>
+									<button
+										class="btn btn-sm btn-secondary"
+										onclick={() => startEditPlan(server)}
+									>
 										Edit Plan
 									</button>
 									{#if plan !== 'free'}
-										<button class="btn btn-sm btn-danger" onclick={() => resetPlan(server)}>
+										<button
+											class="btn btn-sm btn-danger"
+											onclick={() => resetPlan(server)}
+										>
 											Reset
 										</button>
 									{/if}
-									<a href="/admin/{server.guild_id}" class="btn btn-sm btn-secondary">
+									<a
+										href="/admin/{server.guild_id}"
+										class="btn btn-sm btn-secondary"
+									>
 										Manage
 									</a>
 								</div>
@@ -413,7 +531,7 @@
 	.servers-management {
 		max-width: 100%;
 	}
-	
+
 	.page-header {
 		margin-bottom: 1.25rem;
 	}
@@ -455,9 +573,23 @@
 		gap: 0.5rem;
 		font-size: 0.9rem;
 	}
-	.toast-success { background: var(--color-success-soft); color: var(--color-success); border: 1px solid rgba(34, 197, 94, 0.3); }
-	.toast-error { background: var(--color-danger-soft); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.3); }
-	.toast-close { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; }
+	.toast-success {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+	}
+	.toast-error {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+	.toast-close {
+		background: none;
+		border: none;
+		color: inherit;
+		cursor: pointer;
+		margin-left: auto;
+	}
 
 	/* Plan Summary Pills */
 	.plan-summary {
@@ -491,11 +623,20 @@
 		}
 	}
 
-	.plan-pill:hover { border-color: var(--color-text); color: var(--color-text); }
-	.plan-pill.active { background: var(--color-accent-soft); color: var(--color-primary); border-color: var(--color-primary); }
+	.plan-pill:hover {
+		border-color: var(--color-text);
+		color: var(--color-text);
+	}
+	.plan-pill.active {
+		background: var(--color-accent-soft);
+		color: var(--color-primary);
+		border-color: var(--color-primary);
+	}
 
 	/* Search */
-	.search-bar { margin-bottom: 1rem; }
+	.search-bar {
+		margin-bottom: 1rem;
+	}
 	.search-input {
 		width: 100%;
 		padding: 0.6rem 1rem;
@@ -512,7 +653,9 @@
 		}
 	}
 
-	.search-input::placeholder { color: var(--color-text-muted); }
+	.search-input::placeholder {
+		color: var(--color-text-muted);
+	}
 
 	/* Table */
 	.table-wrapper {
@@ -578,7 +721,9 @@
 		background: var(--color-surface-hover);
 	}
 
-	.numeric { text-align: right; }
+	.numeric {
+		text-align: right;
+	}
 
 	/* Server cell */
 	.server-cell {
@@ -676,9 +821,18 @@
 		}
 	}
 
-	.badge-free { background: rgba(100, 116, 139, 0.2); color: #94a3b8; }
-	.badge-pro { background: rgba(99, 102, 241, 0.2); color: #818cf8; }
-	.badge-ultimate { background: rgba(234, 179, 8, 0.2); color: #facc15; }
+	.badge-free {
+		background: rgba(100, 116, 139, 0.2);
+		color: #94a3b8;
+	}
+	.badge-pro {
+		background: rgba(99, 102, 241, 0.2);
+		color: #818cf8;
+	}
+	.badge-ultimate {
+		background: rgba(234, 179, 8, 0.2);
+		color: #facc15;
+	}
 
 	/* Bot presence */
 	.bot-presence-badge {
@@ -733,8 +887,13 @@
 		margin-left: 0.25rem;
 	}
 
-	.date-cell { font-size: 0.85rem; color: var(--color-text-muted); }
-	.text-muted { color: var(--color-text-muted); }
+	.date-cell {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+	.text-muted {
+		color: var(--color-text-muted);
+	}
 
 	.actions-cell {
 		display: inline-flex;
@@ -765,19 +924,45 @@
 		}
 	}
 
-	.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.75rem; }
-
-	@media (min-width: 640px) {
-		.btn-sm { font-size: 0.8rem; }
+	.btn-sm {
+		padding: 0.3rem 0.65rem;
+		font-size: 0.75rem;
 	}
 
-	.btn-primary { background: var(--color-primary-button); color: var(--color-primary-button-text); }
-	.btn-primary:hover { background: var(--color-primary-button-hover); }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-secondary { background: transparent; border-color: var(--color-border); color: var(--color-text-muted); }
-	.btn-secondary:hover { border-color: var(--color-text); color: var(--color-text); }
-	.btn-danger { background: var(--color-danger-soft); color: var(--color-danger); border-color: rgba(239, 68, 68, 0.3); }
-	.btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
+	@media (min-width: 640px) {
+		.btn-sm {
+			font-size: 0.8rem;
+		}
+	}
+
+	.btn-primary {
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
+	}
+	.btn-primary:hover {
+		background: var(--color-primary-button-hover);
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-secondary {
+		background: transparent;
+		border-color: var(--color-border);
+		color: var(--color-text-muted);
+	}
+	.btn-secondary:hover {
+		border-color: var(--color-text);
+		color: var(--color-text);
+	}
+	.btn-danger {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+	.btn-danger:hover {
+		background: rgba(239, 68, 68, 0.25);
+	}
 
 	/* Modal */
 	.modal-backdrop {
@@ -898,7 +1083,10 @@
 		font-size: 0.9rem;
 	}
 
-	.form-textarea { resize: vertical; font-family: inherit; }
+	.form-textarea {
+		resize: vertical;
+		font-family: inherit;
+	}
 
 	.form-grid {
 		display: grid;
@@ -932,5 +1120,8 @@
 		}
 	}
 
-	.empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+	.empty-icon {
+		font-size: 2.5rem;
+		margin-bottom: 0.5rem;
+	}
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
-	let { data } = $props();
-	
+	const { data } = $props();
+
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 </script>
@@ -9,29 +9,42 @@
 	<div class="add-server-card">
 		<div class="icon-container">
 			<svg width="64" height="64" viewBox="0 0 24 24" fill="none">
-				<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>
-				<path d="M12 8V16M8 12H16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5" />
+				<path
+					d="M12 8V16M8 12H16"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 		</div>
-		
+
 		<h1>Add SpaceBot to Your Server</h1>
-		
+
 		<p class="description">
-			Invite SpaceBot to your Discord server to enable logging, moderation, and other features.
+			Invite SpaceBot to your Discord server to enable logging, moderation, and other
+			features.
 		</p>
-		
+
 		{#if data.user}
 			{#if data.inviteUrl}
 				<a href={data.inviteUrl} class="btn btn-primary btn-large">
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-						<path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+						<path
+							d="M12 5V19M5 12H19"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
 					</svg>
 					Add to Server
 				</a>
-				
+
 				<p class="hint">
-					You'll be redirected to Discord to select which server to add the bot to.
-					You must have <strong>Manage Server</strong> permission in the server.
+					You'll be redirected to Discord to select which server to add the bot to. You
+					must have <strong>Manage Server</strong> permission in the server.
 				</p>
 			{:else}
 				<div class="alert alert-error">
@@ -44,10 +57,16 @@
 				Please <a href="/login">log in</a> first to add the bot to your server.
 			</p>
 		{/if}
-		
+
 		<a href={adminUrl} class="back-link">
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-				<path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M19 12H5M5 12L12 19M5 12L12 5"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 			Back to Admin
 		</a>
@@ -62,7 +81,7 @@
 		min-height: calc(100vh - 60px);
 		padding: 2rem 1rem;
 	}
-	
+
 	.add-server-card {
 		max-width: 480px;
 		width: 100%;
@@ -72,7 +91,7 @@
 		border-radius: var(--radius-lg);
 		text-align: center;
 	}
-	
+
 	.icon-container {
 		display: inline-flex;
 		align-items: center;
@@ -84,22 +103,20 @@
 		background: var(--color-primary-soft);
 		color: var(--color-primary);
 	}
-	
+
 	h1 {
 		margin: 0 0 0.75rem;
 		font-size: 1.5rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.description {
 		margin: 0 0 1.5rem;
 		color: var(--color-text-muted);
 		line-height: 1.5;
 	}
-	
 
-	
 	.hint {
 		margin: 1.5rem 0;
 		padding: 1rem;
@@ -109,37 +126,37 @@
 		font-size: 0.875rem;
 		line-height: 1.5;
 	}
-	
+
 	.hint strong {
 		color: var(--color-text);
 	}
-	
+
 	.alert {
 		padding: 1rem;
 		border-radius: var(--radius-sm);
 		margin: 1rem 0;
 	}
-	
+
 	.alert-error {
 		background: var(--color-danger-soft);
 		border: 1px solid rgba(237, 66, 69, 0.3);
 		color: var(--color-danger);
 	}
-	
+
 	.alert p {
 		margin: 0.25rem 0;
 	}
-	
+
 	.login-prompt {
 		margin: 1rem 0;
 		color: var(--color-text-muted);
 	}
-	
+
 	.login-prompt a {
 		color: var(--color-primary);
 		font-weight: 500;
 	}
-	
+
 	.back-link {
 		display: inline-flex;
 		align-items: center;
@@ -151,7 +168,7 @@
 		text-decoration: none;
 		transition: color var(--transition-fast);
 	}
-	
+
 	.back-link:hover {
 		color: var(--color-text);
 	}

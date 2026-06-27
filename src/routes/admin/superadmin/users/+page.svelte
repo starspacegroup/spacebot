@@ -1,18 +1,20 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { getAvatarUrl as getDiscordAvatarUrl } from '$lib/utils/avatar.js';
-	
-	let { data } = $props();
-	
+
+	const { data } = $props();
+
 	const users = $derived(data?.users ?? []);
 	const total = $derived(data?.total ?? 0);
 	const currentPage = $derived(data?.page ?? 1);
 	const limit = $derived(data?.limit ?? 50);
 	const totalPages = $derived(Math.ceil(total / limit));
-	
+
 	const initialSearch = $derived(data?.search || '');
 	let search = $state('');
-	$effect(() => { search = initialSearch; });
+	$effect(() => {
+		search = initialSearch;
+	});
 	let editingUser = $state(null);
 	let activityUser = $state(null);
 	let saving = $state(false);
@@ -26,14 +28,18 @@
 	let activityMethod = $state('all');
 	let activityPathPrefix = $state('');
 	let toast = $state(null);
-	
+
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
-		return new Date(dateStr).toLocaleDateString('en-US', { 
-			month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+		return new Date(dateStr).toLocaleDateString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
 		});
 	}
-	
+
 	function getAvatarUrl(user) {
 		return getDiscordAvatarUrl(user?.id, user?.avatar, user?.discriminator, 32);
 	}
@@ -43,20 +49,20 @@
 		if (type === 'api_action') return 'API Action';
 		return 'Action';
 	}
-	
+
 	async function doSearch() {
 		const params = new URLSearchParams();
 		if (search) params.set('search', search);
 		await goto(`/admin/superadmin/users?${params.toString()}`, { invalidateAll: true });
 	}
-	
+
 	async function goToPage(page) {
 		const params = new URLSearchParams();
 		if (search) params.set('search', search);
 		params.set('page', page.toString());
 		await goto(`/admin/superadmin/users?${params.toString()}`, { invalidateAll: true });
 	}
-	
+
 	function startEditUser(user) {
 		editingUser = { ...user };
 	}
@@ -74,7 +80,9 @@
 			if (activityMethod !== 'all') params.set('method', activityMethod);
 			if (activityPathPrefix.trim()) params.set('pathPrefix', activityPathPrefix.trim());
 
-			const response = await fetch(`/api/superadmin/users/${activityUser.id}/activity?${params.toString()}`);
+			const response = await fetch(
+				`/api/superadmin/users/${activityUser.id}/activity?${params.toString()}`
+			);
 			const payload = await response.json();
 
 			if (!response.ok) {
@@ -82,7 +90,12 @@
 			}
 
 			activityEntries = payload.entries || [];
-			activitySummary = payload.summary || { pageViews: 0, apiActions: 0, actions: 0, lastSeenAt: null };
+			activitySummary = payload.summary || {
+				pageViews: 0,
+				apiActions: 0,
+				actions: 0,
+				lastSeenAt: null,
+			};
 			activityPage = payload.page || page;
 			activityTotalPages = payload.totalPages || 0;
 		} catch (error) {
@@ -120,12 +133,12 @@
 		if (page < 1 || (activityTotalPages > 0 && page > activityTotalPages)) return;
 		await loadActivity(page);
 	}
-	
+
 	async function saveUser() {
 		if (!editingUser) return;
 		saving = true;
 		toast = null;
-		
+
 		try {
 			const response = await fetch(`/api/superadmin/users/${editingUser.id}`, {
 				method: 'PATCH',
@@ -136,9 +149,9 @@
 					is_superadmin: editingUser.is_superadmin,
 				}),
 			});
-			
+
 			const result = await response.json();
-			
+
 			if (response.ok) {
 				toast = { type: 'success', message: `User ${editingUser.username} updated` };
 				editingUser = null;
@@ -152,15 +165,20 @@
 			saving = false;
 		}
 	}
-	
+
 	async function deleteUser(user) {
-		if (!confirm(`Delete tracked user ${user.username} (${user.id})? This only removes them from the tracking table.`)) return;
-		
+		if (
+			!confirm(
+				`Delete tracked user ${user.username} (${user.id})? This only removes them from the tracking table.`
+			)
+		)
+			return;
+
 		try {
 			const response = await fetch(`/api/superadmin/users/${user.id}`, {
 				method: 'DELETE',
 			});
-			
+
 			if (response.ok) {
 				toast = { type: 'success', message: `User ${user.username} removed` };
 				await invalidateAll();
@@ -172,7 +190,7 @@
 			toast = { type: 'error', message: error.message };
 		}
 	}
-	
+
 	async function toggleBan(user) {
 		const newBanned = !user.banned;
 		try {
@@ -181,9 +199,12 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ banned: newBanned }),
 			});
-			
+
 			if (response.ok) {
-				toast = { type: 'success', message: `${user.username} ${newBanned ? 'banned' : 'unbanned'}` };
+				toast = {
+					type: 'success',
+					message: `${user.username} ${newBanned ? 'banned' : 'unbanned'}`,
+				};
 				await invalidateAll();
 			} else {
 				const result = await response.json();
@@ -209,28 +230,35 @@
 			<p class="header-subtitle">{total} tracked users</p>
 		</div>
 	</header>
-	
+
 	{#if toast}
 		<div class="toast toast-{toast.type}">
-			<span>{toast.type === 'success' ? '✓' : '✗'}</span> {toast.message}
-			<button class="toast-close" onclick={() => toast = null}>✕</button>
+			<span>{toast.type === 'success' ? '✓' : '✗'}</span>
+			{toast.message}
+			<button class="toast-close" onclick={() => (toast = null)}>✕</button>
 		</div>
 	{/if}
-	
+
 	<!-- Search -->
-	<form class="search-bar" onsubmit={(e) => { e.preventDefault(); doSearch(); }}>
-		<input 
-			type="text" 
-			placeholder="Search by username, display name, or ID..." 
+	<form
+		class="search-bar"
+		onsubmit={(e) => {
+			e.preventDefault();
+			doSearch();
+		}}
+	>
+		<input
+			type="text"
+			placeholder="Search by username, display name, or ID..."
 			bind:value={search}
 			class="search-input"
 		/>
 		<button type="submit" class="btn btn-primary btn-sm">Search</button>
 	</form>
-	
+
 	<!-- Edit Modal -->
 	{#if editingUser}
-		<div class="modal-backdrop" onclick={() => editingUser = null} role="presentation">
+		<div class="modal-backdrop" onclick={() => (editingUser = null)} role="presentation">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_interactive_supports_focus -->
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -242,7 +270,7 @@
 							<span class="user-tag">@{editingUser.username}</span>
 						</div>
 					</div>
-					<button class="modal-close" onclick={() => editingUser = null}>✕</button>
+					<button class="modal-close" onclick={() => (editingUser = null)}>✕</button>
 				</div>
 				<div class="modal-body">
 					<div class="user-details-grid">
@@ -252,7 +280,8 @@
 						</div>
 						<div class="detail-item">
 							<span class="detail-label">Last Login</span>
-							<span class="detail-value">{formatDate(editingUser.last_login_at)}</span>
+							<span class="detail-value">{formatDate(editingUser.last_login_at)}</span
+							>
 						</div>
 						<div class="detail-item">
 							<span class="detail-label">Login Count</span>
@@ -263,36 +292,46 @@
 							<span class="detail-value">{formatDate(editingUser.created_at)}</span>
 						</div>
 					</div>
-					
+
 					<div class="form-group">
 						<label>
 							<input type="checkbox" bind:checked={editingUser.banned} />
 							<span>Banned from dashboard</span>
 						</label>
 					</div>
-					
+
 					<div class="form-group">
 						<label>
 							<input type="checkbox" bind:checked={editingUser.is_superadmin} />
-							<span>Superadmin (DB flag only — must also be in ADMIN_USER_IDS env var)</span>
+							<span
+								>Superadmin (DB flag only — must also be in ADMIN_USER_IDS env var)</span
+							>
 						</label>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="user-notes">Notes</label>
-						<textarea id="user-notes" bind:value={editingUser.notes} class="form-textarea" rows="3" placeholder="Internal notes about this user..."></textarea>
+						<textarea
+							id="user-notes"
+							bind:value={editingUser.notes}
+							class="form-textarea"
+							rows="3"
+							placeholder="Internal notes about this user..."
+						></textarea>
 					</div>
 				</div>
 				<div class="modal-footer">
 					<button class="btn btn-primary" onclick={saveUser} disabled={saving}>
 						{saving ? 'Saving...' : 'Save'}
 					</button>
-					<button class="btn btn-secondary" onclick={() => editingUser = null}>Cancel</button>
+					<button class="btn btn-secondary" onclick={() => (editingUser = null)}
+						>Cancel</button
+					>
 				</div>
 			</div>
 		</div>
 	{/if}
-	
+
 	<!-- Users Table -->
 	{#if users.length > 0}
 		<div class="table-wrapper">
@@ -313,7 +352,9 @@
 							<td class="user-cell">
 								<img src={getAvatarUrl(user)} alt="" class="user-avatar" />
 								<div class="user-info">
-									<span class="user-name">{user.global_name || user.username}</span>
+									<span class="user-name"
+										>{user.global_name || user.username}</span
+									>
 									<span class="user-tag">@{user.username}</span>
 								</div>
 							</td>
@@ -333,20 +374,29 @@
 								</div>
 							</td>
 							<td class="actions-cell">
-								<button class="btn btn-sm btn-secondary" onclick={() => startEditUser(user)}>
+								<button
+									class="btn btn-sm btn-secondary"
+									onclick={() => startEditUser(user)}
+								>
 									Edit
 								</button>
-								<button class="btn btn-sm btn-secondary" onclick={() => openActivity(user)}>
+								<button
+									class="btn btn-sm btn-secondary"
+									onclick={() => openActivity(user)}
+								>
 									Activity
 								</button>
-								<button 
-									class="btn btn-sm {user.banned ? 'btn-success' : 'btn-warning'}" 
+								<button
+									class="btn btn-sm {user.banned ? 'btn-success' : 'btn-warning'}"
 									onclick={() => toggleBan(user)}
 									title={user.banned ? 'Unban' : 'Ban'}
 								>
 									{user.banned ? 'Unban' : 'Ban'}
 								</button>
-								<button class="btn btn-sm btn-danger" onclick={() => deleteUser(user)}>
+								<button
+									class="btn btn-sm btn-danger"
+									onclick={() => deleteUser(user)}
+								>
 									Delete
 								</button>
 							</td>
@@ -355,15 +405,23 @@
 				</tbody>
 			</table>
 		</div>
-		
+
 		<!-- Pagination -->
 		{#if totalPages > 1}
 			<div class="pagination">
-				<button class="btn btn-sm btn-secondary" onclick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+				<button
+					class="btn btn-sm btn-secondary"
+					onclick={() => goToPage(currentPage - 1)}
+					disabled={currentPage <= 1}
+				>
 					← Prev
 				</button>
 				<span class="page-info">Page {currentPage} of {totalPages}</span>
-				<button class="btn btn-sm btn-secondary" onclick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages}>
+				<button
+					class="btn btn-sm btn-secondary"
+					onclick={() => goToPage(currentPage + 1)}
+					disabled={currentPage >= totalPages}
+				>
 					Next →
 				</button>
 			</div>
@@ -371,7 +429,11 @@
 	{:else}
 		<div class="empty-state">
 			<div class="empty-icon">👥</div>
-			<p>{search ? 'No users match your search.' : 'No tracked users yet. Users appear here when they log in via Discord OAuth.'}</p>
+			<p>
+				{search
+					? 'No users match your search.'
+					: 'No tracked users yet. Users appear here when they log in via Discord OAuth.'}
+			</p>
 		</div>
 	{/if}
 
@@ -379,7 +441,12 @@
 		<div class="modal-backdrop" onclick={closeActivity} role="presentation">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_interactive_supports_focus -->
-			<div class="modal activity-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+			<div
+				class="modal activity-modal"
+				onclick={(e) => e.stopPropagation()}
+				role="dialog"
+				aria-modal="true"
+			>
 				<div class="modal-header">
 					<div class="modal-user-info">
 						<img src={getAvatarUrl(activityUser)} alt="" class="modal-avatar" />
@@ -432,12 +499,17 @@
 							bind:value={activityPathPrefix}
 							class="search-input"
 						/>
-						<button class="btn btn-primary btn-sm" type="submit" disabled={activityLoading}>Apply</button>
+						<button
+							class="btn btn-primary btn-sm"
+							type="submit"
+							disabled={activityLoading}>Apply</button
+						>
 					</form>
 
 					{#if activityError}
 						<div class="toast toast-error">
-							<span>✗</span> {activityError}
+							<span>✗</span>
+							{activityError}
 						</div>
 					{:else if activityLoading}
 						<div class="empty-state compact-empty">
@@ -462,13 +534,20 @@
 								<tbody>
 									{#each activityEntries as entry (entry.id)}
 										<tr>
-											<td class="date-cell">{formatDate(entry.created_at)}</td>
-											<td><span class="status-badge badge-active">{formatActivityType(entry.activity_type)}</span></td>
+											<td class="date-cell">{formatDate(entry.created_at)}</td
+											>
+											<td
+												><span class="status-badge badge-active"
+													>{formatActivityType(entry.activity_type)}</span
+												></td
+											>
 											<td class="mono">{entry.method}</td>
 											<td>
 												<div class="activity-path mono">{entry.path}</div>
 												{#if entry.query_string}
-													<div class="activity-query">?{entry.query_string}</div>
+													<div class="activity-query">
+														?{entry.query_string}
+													</div>
 												{/if}
 											</td>
 											<td>{entry.status_code || '-'}</td>
@@ -480,11 +559,21 @@
 
 						{#if activityTotalPages > 1}
 							<div class="pagination">
-								<button class="btn btn-sm btn-secondary" onclick={() => goToActivityPage(activityPage - 1)} disabled={activityPage <= 1}>
+								<button
+									class="btn btn-sm btn-secondary"
+									onclick={() => goToActivityPage(activityPage - 1)}
+									disabled={activityPage <= 1}
+								>
 									← Prev
 								</button>
-								<span class="page-info">Page {activityPage} of {activityTotalPages}</span>
-								<button class="btn btn-sm btn-secondary" onclick={() => goToActivityPage(activityPage + 1)} disabled={activityPage >= activityTotalPages}>
+								<span class="page-info"
+									>Page {activityPage} of {activityTotalPages}</span
+								>
+								<button
+									class="btn btn-sm btn-secondary"
+									onclick={() => goToActivityPage(activityPage + 1)}
+									disabled={activityPage >= activityTotalPages}
+								>
 									Next →
 								</button>
 							</div>
@@ -546,9 +635,23 @@
 		gap: 0.5rem;
 		font-size: 0.9rem;
 	}
-	.toast-success { background: var(--color-success-soft); color: var(--color-success); border: 1px solid rgba(34, 197, 94, 0.3); }
-	.toast-error { background: var(--color-danger-soft); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.3); }
-	.toast-close { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; }
+	.toast-success {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+	}
+	.toast-error {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+	.toast-close {
+		background: none;
+		border: none;
+		color: inherit;
+		cursor: pointer;
+		margin-left: auto;
+	}
 
 	/* Search */
 	.search-bar {
@@ -572,7 +675,9 @@
 		}
 	}
 
-	.search-input::placeholder { color: var(--color-text-muted); }
+	.search-input::placeholder {
+		color: var(--color-text-muted);
+	}
 
 	/* Table */
 	.table-wrapper {
@@ -634,14 +739,25 @@
 		}
 	}
 
-	.data-table tbody tr:hover { background: var(--color-surface-hover); }
-	.data-table tbody tr.banned { opacity: 0.6; }
+	.data-table tbody tr:hover {
+		background: var(--color-surface-hover);
+	}
+	.data-table tbody tr.banned {
+		opacity: 0.6;
+	}
 
-	.numeric { text-align: right; }
-	.mono { font-family: monospace; font-size: 0.75rem; }
+	.numeric {
+		text-align: right;
+	}
+	.mono {
+		font-family: monospace;
+		font-size: 0.75rem;
+	}
 
 	@media (min-width: 768px) {
-		.mono { font-size: 0.8rem; }
+		.mono {
+			font-size: 0.8rem;
+		}
 	}
 
 	/* User cell */
@@ -697,7 +813,10 @@
 		color: var(--color-text-muted);
 	}
 
-	.date-cell { font-size: 0.85rem; color: var(--color-text-muted); }
+	.date-cell {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
 
 	/* Status badges */
 	.status-badges {
@@ -721,9 +840,18 @@
 		}
 	}
 
-	.badge-active { background: var(--color-success-soft); color: var(--color-success); }
-	.badge-banned { background: var(--color-danger-soft); color: var(--color-danger); }
-	.badge-admin { background: var(--color-warning-soft); color: var(--color-warning); }
+	.badge-active {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+	}
+	.badge-banned {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+	}
+	.badge-admin {
+		background: var(--color-warning-soft);
+		color: var(--color-warning);
+	}
 
 	.actions-cell {
 		display: flex;
@@ -754,24 +882,66 @@
 		}
 	}
 
-	.btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
-
-	@media (min-width: 640px) {
-		.btn-sm { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+	.btn-sm {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.75rem;
 	}
 
-	.btn-primary { background: var(--color-primary-button); color: var(--color-primary-button-text); }
-	.btn-primary:hover { background: var(--color-primary-button-hover); }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-secondary { background: transparent; border-color: var(--color-border); color: var(--color-text-muted); }
-	.btn-secondary:hover { border-color: var(--color-text); color: var(--color-text); }
-	.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-	.btn-warning { background: var(--color-warning-soft); color: var(--color-warning); border-color: rgba(234, 179, 8, 0.3); }
-	.btn-warning:hover { background: rgba(234, 179, 8, 0.25); }
-	.btn-success { background: var(--color-success-soft); color: var(--color-success); border-color: rgba(34, 197, 94, 0.3); }
-	.btn-success:hover { background: rgba(34, 197, 94, 0.25); }
-	.btn-danger { background: var(--color-danger-soft); color: var(--color-danger); border-color: rgba(239, 68, 68, 0.3); }
-	.btn-danger:hover { background: rgba(239, 68, 68, 0.25); }
+	@media (min-width: 640px) {
+		.btn-sm {
+			padding: 0.3rem 0.65rem;
+			font-size: 0.8rem;
+		}
+	}
+
+	.btn-primary {
+		background: var(--color-primary-button);
+		color: var(--color-primary-button-text);
+	}
+	.btn-primary:hover {
+		background: var(--color-primary-button-hover);
+	}
+	.btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-secondary {
+		background: transparent;
+		border-color: var(--color-border);
+		color: var(--color-text-muted);
+	}
+	.btn-secondary:hover {
+		border-color: var(--color-text);
+		color: var(--color-text);
+	}
+	.btn-secondary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn-warning {
+		background: var(--color-warning-soft);
+		color: var(--color-warning);
+		border-color: rgba(234, 179, 8, 0.3);
+	}
+	.btn-warning:hover {
+		background: rgba(234, 179, 8, 0.25);
+	}
+	.btn-success {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+		border-color: rgba(34, 197, 94, 0.3);
+	}
+	.btn-success:hover {
+		background: rgba(34, 197, 94, 0.25);
+	}
+	.btn-danger {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border-color: rgba(239, 68, 68, 0.3);
+	}
+	.btn-danger:hover {
+		background: rgba(239, 68, 68, 0.25);
+	}
 
 	/* Pagination */
 	.pagination {
@@ -788,7 +958,10 @@
 		}
 	}
 
-	.page-info { font-size: 0.85rem; color: var(--color-text-muted); }
+	.page-info {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
 
 	/* Modal */
 	.modal-backdrop {
@@ -1071,5 +1244,8 @@
 		}
 	}
 
-	.empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+	.empty-icon {
+		font-size: 2.5rem;
+		margin-bottom: 0.5rem;
+	}
 </style>
