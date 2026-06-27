@@ -11,6 +11,8 @@ import {
 	recordCommandUse,
 } from "$lib/db/commands.js";
 import { executeAction, processTemplate } from "$lib/automation/engine.js";
+import { memberHasCommandPermission } from "$lib/discord/command-permissions.js";
+import { applyContextMenuTargetToEvent } from "$lib/discord/context-menu.js";
 import { log } from "$lib/db/logger.js";
 import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
 import { getIntegrationCommands } from "$lib/integrations/registry.js";
@@ -54,6 +56,7 @@ interface ActionEvent {
 	voice_channel_id?: any;
 	voice_channel_name?: any;
 	target_id?: any;
+	target_message_id?: any;
 }
 
 /** Result returned by action execution / accumulated across actions. */
@@ -299,6 +302,25 @@ export async function POST({ request, platform: rawPlatform }) {
 			const customCommand = await getCommandByName(db, data.name, guildId);
 
 			if (customCommand) {
+				// Enforce configured permission restrictions server-side. Discord
+				// also gates on default_member_permissions at its UI layer, but that
+				// is advisory — re-check the invoking member's permissions here so a
+				// crafted/stale interaction cannot bypass the restriction.
+				if (
+					!memberHasCommandPermission(
+						body.member?.permissions,
+						customCommand.default_member_permissions,
+					)
+				) {
+					return json({
+						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+						data: {
+							content: "🚫 You don't have permission to use this command.",
+							flags: 64, // EPHEMERAL
+						},
+					});
+				}
+
 				// Check if command has actions that need deferring
 				const hasActions = (customCommand.actions && customCommand.actions.length > 0) ||
 					(customCommand.action_type && customCommand.action_type !== "NONE" &&
@@ -648,12 +670,9 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 			event.voice_channel_name = voiceState.channel_name;
 		}
 
-		// For user context menu commands, the target user is in data.target_id
-		// data.type === 2 means USER context menu command
-		if (interaction.data?.type === 2 && interaction.data?.target_id) {
-			event.target_id = interaction.data.target_id;
-			event.options.user = interaction.data.target_id;
-		}
+		// Resolve user/message context-menu targets into the action event so
+		// context-menu commands reuse the slash-command action pipeline.
+		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
 		// Add option values to event for action processing
 		if (interaction.data?.options) {
@@ -874,10 +893,8 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 			event.voice_channel_name = voiceState.channel_name;
 		}
 
-		if (interaction.data?.type === 2 && interaction.data?.target_id) {
-			event.target_id = interaction.data.target_id;
-			event.options.user = interaction.data.target_id;
-		}
+		// Resolve user/message context-menu targets into the action event.
+		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
 		if (interaction.data?.options) {
 			for (const opt of interaction.data.options) {
