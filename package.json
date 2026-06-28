@@ -93,7 +93,7 @@
 		"better-sqlite3": "^12.11.1"
 	},
 	"dependencies": {
-		"@opentui/core": "^0.2.16",
+		"@opentui/core": "^0.4.2",
 		"@opentui/react": "^0.2.16",
 		"@discordjs/rest": "^2.6.1",
 		"@resvg/resvg-wasm": "^2.6.2",
