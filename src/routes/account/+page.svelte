@@ -1,13 +1,10 @@
 <script lang="ts">
-	import Toast from '$lib/components/Toast.svelte';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { toast } from '$lib/toast.svelte.js';
 
 	const { data } = $props();
 
-	let toastMessage = $state(null);
-	let toastSuccess = $state(true);
-	let showToast = $state(false);
 	let portalLoading = $state(null);
 
 	// Active section for navigation
@@ -230,10 +227,9 @@
 			const result = await res.json().catch(() => ({}));
 
 			if (!res.ok) {
-				toastMessage =
-					result.error || 'Could not open billing portal right now. Please try again.';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(
+					result.error || 'Could not open billing portal right now. Please try again.'
+				);
 				return;
 			}
 
@@ -242,14 +238,9 @@
 				return;
 			}
 
-			toastMessage =
-				'Billing portal is temporarily unavailable. Please try again in a moment.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Billing portal is temporarily unavailable. Please try again in a moment.');
 		} catch {
-			toastMessage = 'Failed to open billing portal. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Failed to open billing portal. Please try again.');
 		} finally {
 			portalLoading = null;
 		}
@@ -269,14 +260,6 @@
 </svelte:head>
 
 <div class="account-page">
-	{#if showToast && toastMessage}
-		<Toast
-			message={toastMessage}
-			success={toastSuccess}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a
 			href={data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin'}

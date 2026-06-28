@@ -1,7 +1,7 @@
 <script>
-	import Toast from '$lib/components/Toast.svelte';
 	import { onMount } from 'svelte';
 	import { untrack } from 'svelte';
+	import { toast } from '$lib/toast.svelte.js';
 
 	const RUNNER_UI_PREFS_STORAGE_KEY = 'spacebot.account.runnerUi.showRevoked';
 	const RUNNER_DEFAULT_MAX_ATTEMPTS = 5;
@@ -9,10 +9,6 @@
 	const RUNNER_MAX_MAX_ATTEMPTS = 20;
 
 	const { data } = $props();
-
-	let toastMessage = $state(null);
-	let toastSuccess = $state(true);
-	let showToast = $state(false);
 
 	function normalizeRunnerMaxAttempts(value) {
 		const raw = Number(value);
@@ -123,9 +119,7 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to create workflow';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to create workflow');
 				return;
 			}
 			workflows = [body.workflow, ...workflows];
@@ -133,13 +127,9 @@
 			newWorkflowDescription = '';
 			newWorkflowJobType = 'shell_command';
 			newWorkflowTargetTokenId = '';
-			toastMessage = 'Workflow created.';
-			toastSuccess = true;
-			showToast = true;
+			toast.success('Workflow created.');
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		} finally {
 			creatingWorkflow = false;
 		}
@@ -154,16 +144,12 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to update workflow';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to update workflow');
 				return;
 			}
 			workflows = workflows.map((item) => (item.id === workflow.id ? body.workflow : item));
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		}
 	}
 
@@ -173,20 +159,14 @@
 			const res = await fetch(`/api/account/workflows/${id}`, { method: 'DELETE' });
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to delete workflow';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to delete workflow');
 				return;
 			}
 			workflows = workflows.filter((item) => item.id !== id);
 			if (String(workflowDispatchId) === String(id)) workflowDispatchId = '';
-			toastMessage = 'Workflow deleted.';
-			toastSuccess = true;
-			showToast = true;
+			toast.success('Workflow deleted.');
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		}
 	}
 
@@ -199,9 +179,7 @@
 				try {
 					payloadJson = JSON.parse(workflowDispatchPayload);
 				} catch {
-					toastMessage = 'Payload JSON is invalid';
-					toastSuccess = false;
-					showToast = true;
+					toast.error('Payload JSON is invalid');
 					return;
 				}
 			}
@@ -217,22 +195,16 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to dispatch workflow';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to dispatch workflow');
 				return;
 			}
-			toastMessage = `Workflow queued job #${body.jobId}.`;
-			toastSuccess = true;
-			showToast = true;
+			toast.success(`Workflow queued job #${body.jobId}.`);
 			workflowDispatchCommand = '';
 			workflowDispatchLabel = '';
 			workflowDispatchPayload = '';
 			await refreshRunnerData();
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		} finally {
 			dispatchingWorkflow = false;
 		}
@@ -326,9 +298,7 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to create runner';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to create runner');
 				return;
 			}
 			runnerTokens = [body.token, ...runnerTokens];
@@ -336,9 +306,7 @@
 			newRawTokenCopied = false;
 			newRunnerName = '';
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		} finally {
 			creatingRunner = false;
 		}
@@ -350,19 +318,13 @@
 			const res = await fetch(`/api/account/runners/${id}`, { method: 'DELETE' });
 			if (!res.ok) {
 				const body = await res.json();
-				toastMessage = body.error || 'Failed to revoke runner';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to revoke runner');
 				return;
 			}
 			runnerTokens = runnerTokens.map((t) => (t.id === id ? { ...t, revoked: true } : t));
-			toastMessage = 'Runner revoked.';
-			toastSuccess = true;
-			showToast = true;
+			toast.success('Runner revoked.');
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		}
 	}
 
@@ -377,21 +339,15 @@
 			const res = await fetch(`/api/account/runners/${id}?permanent=1`, { method: 'DELETE' });
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to delete runner';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to delete runner');
 				return;
 			}
 			runnerTokens = runnerTokens.filter((t) => t.id !== id);
 			runnerInstances = runnerInstances.filter((i) => i.runner_token_id !== id);
 			if (dispatchTokenId === id) dispatchTokenId = null;
-			toastMessage = 'Runner deleted.';
-			toastSuccess = true;
-			showToast = true;
+			toast.success('Runner deleted.');
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		}
 	}
 
@@ -412,23 +368,17 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || 'Failed to queue job';
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || 'Failed to queue job');
 				return;
 			}
-			toastMessage = `Job #${body.jobId} queued — runner will pick it up shortly.`;
-			toastSuccess = true;
-			showToast = true;
+			toast.success(`Job #${body.jobId} queued — runner will pick it up shortly.`);
 			dispatchCommand = '';
 			dispatchWorkDir = '';
 			dispatchLabel = '';
 			dispatchTokenId = null;
 			await refreshRunnerData();
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		} finally {
 			dispatching = false;
 		}
@@ -460,19 +410,13 @@
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				toastMessage = body.error || `Failed to queue ${jobType}`;
-				toastSuccess = false;
-				showToast = true;
+				toast.error(body.error || `Failed to queue ${jobType}`);
 				return;
 			}
-			toastMessage = `Job #${body.jobId} queued (${jobType}).`;
-			toastSuccess = true;
-			showToast = true;
+			toast.success(`Job #${body.jobId} queued (${jobType}).`);
 			await refreshRunnerData();
 		} catch {
-			toastMessage = 'Network error. Please try again.';
-			toastSuccess = false;
-			showToast = true;
+			toast.error('Network error. Please try again.');
 		} finally {
 			dispatching = false;
 		}
@@ -591,14 +535,6 @@
 </svelte:head>
 
 <div class="runners-page">
-	{#if showToast && toastMessage}
-		<Toast
-			message={toastMessage}
-			success={toastSuccess}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a href="/account" class="back-link">&#8592; Back to Account</a>
 		<div class="header-content">
