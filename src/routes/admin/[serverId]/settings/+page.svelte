@@ -1,15 +1,23 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
 	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
 
 	const { data, form } = $props();
 
-	let showToast = $state(true);
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
+
+	// Fire a toast once per new form action result
+	let lastFormResult;
+	$effect(() => {
+		if (form && form !== lastFormResult && form.message) {
+			lastFormResult = form;
+			toast[form.success ? 'success' : 'error'](form.message);
+		}
+	});
 
 	/** Auto-save: debounce and submit the settings form */
 	function autoSave() {
@@ -218,14 +226,6 @@
 </svelte:head>
 
 <div class="settings-page">
-	{#if form?.message && showToast}
-		<Toast
-			message={form.message}
-			success={form.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 		<div class="header-content">
@@ -246,7 +246,6 @@
 		use:enhance={() => {
 			return async ({ update }) => {
 				await update({ reset: false, invalidateAll: true });
-				showToast = true;
 			};
 		}}
 	>
@@ -404,8 +403,7 @@
 							rows="4"
 							bind:value={localRunnerAllowedUsers}
 							onchange={autoSave}
-							placeholder="123456789012345678\n234567890123456789"
-						></textarea>
+							placeholder="123456789012345678\n234567890123456789"></textarea>
 					</div>
 				</div>
 			</div>
@@ -687,7 +685,6 @@
 											return async ({ update }) => {
 												await update({ invalidateAll: true });
 												deleteConfirmId = null;
-												showToast = true;
 											};
 										}}
 									>
@@ -761,7 +758,6 @@
 					return async ({ update, result }) => {
 						await update({ invalidateAll: true });
 						webhookSaving = false;
-						showToast = true;
 						if (result.type === 'success' || result.type === 'redirect') {
 							closeWebhookModal();
 						}

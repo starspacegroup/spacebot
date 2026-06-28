@@ -1,9 +1,15 @@
 <script lang="ts">
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 
 	const { data, form } = $props();
 
-	let showToast = $state(true);
+	let lastFormResult;
+	$effect(() => {
+		if (form && form !== lastFormResult && form.message) {
+			lastFormResult = form;
+			toast[form.success ? 'success' : 'error'](form.message);
+		}
+	});
 </script>
 
 <svelte:head>
@@ -11,14 +17,6 @@
 </svelte:head>
 
 <div class="admin-dashboard">
-	{#if form?.message && showToast}
-		<Toast
-			message={form.message}
-			success={form.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	{#if !data.isAdmin}
 		<!-- Access Denied State -->
 		<div class="access-denied-container">

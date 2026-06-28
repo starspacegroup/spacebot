@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { formatDateShort } from '$lib/timezone.js';
 
 	const { data, form } = $props();
 
-	let showToast = $state(true);
 	let confirmDisableId = $state(null);
 	let expandedId = $state(null);
 
@@ -32,10 +31,14 @@
 		expandedId = expandedId === id ? null : id;
 	}
 
+	let lastFormResult;
 	$effect(() => {
-		if (form) {
-			showToast = true;
+		if (form && form !== lastFormResult) {
+			lastFormResult = form;
 			confirmDisableId = null;
+			if (form.message) {
+				toast[form.success ? 'success' : 'error'](form.message);
+			}
 		}
 	});
 </script>
@@ -45,14 +48,6 @@
 </svelte:head>
 
 <div class="integrations-page">
-	{#if form?.message && showToast}
-		<Toast
-			message={form.message}
-			success={form.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 		<h1>🔌 Integrations</h1>

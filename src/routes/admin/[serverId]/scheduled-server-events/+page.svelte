@@ -1,11 +1,21 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { getTimezone, parseUTCDate } from '$lib/timezone.js';
 
 	const { data, form } = $props();
 
-	let showToast = $state(true);
+	let lastFormResult;
+	$effect(() => {
+		if (form && form !== lastFormResult) {
+			lastFormResult = form;
+			const message = form.message || form.error;
+			if (message) {
+				toast[form.success ? 'success' : 'error'](message);
+			}
+		}
+	});
+
 	let showCreateModal = $state(false);
 	let showEditModal = $state(false);
 	let showEditChoiceModal = $state(false);
@@ -334,14 +344,6 @@
 </svelte:head>
 
 <div class="events-page">
-	{#if (form?.message || form?.error) && showToast}
-		<Toast
-			message={form.message || form.error}
-			success={form?.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 
 	<header class="page-header">
@@ -485,7 +487,6 @@
 										return async ({ update }) => {
 											await update();
 											processing = false;
-											showToast = true;
 										};
 									}}
 								>
@@ -509,7 +510,6 @@
 										return async ({ update }) => {
 											await update();
 											processing = false;
-											showToast = true;
 										};
 									}}
 								>
@@ -533,7 +533,6 @@
 										return async ({ update }) => {
 											await update();
 											processing = false;
-											showToast = true;
 										};
 									}}
 								>
@@ -568,7 +567,6 @@
 												await update();
 												processing = false;
 												deleteConfirmId = null;
-												showToast = true;
 											};
 										}}
 									>
@@ -629,7 +627,6 @@
 						return async ({ update, result }) => {
 							await update();
 							processing = false;
-							showToast = true;
 							if (result.type === 'success') {
 								showCreateModal = false;
 								resetCreateForm();
@@ -694,8 +691,7 @@
 								name="description"
 								bind:value={createDescription}
 								placeholder="Join us for fun and games!"
-								rows="3"
-							></textarea>
+								rows="3"></textarea>
 						</div>
 
 						<div class="form-group">
@@ -1008,7 +1004,6 @@
 						return async ({ update, result }) => {
 							await update();
 							processing = false;
-							showToast = true;
 							if (result.type === 'success') {
 								closeEditModal();
 							}
@@ -1109,8 +1104,7 @@
 										name="description"
 										bind:value={editDescription}
 										rows="3"
-										placeholder="Describe your event..."
-									></textarea>
+										placeholder="Describe your event..."></textarea>
 								</div>
 							</div>
 

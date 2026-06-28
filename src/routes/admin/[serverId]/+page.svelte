@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate } from '$lib/timezone.js';
 
@@ -59,7 +59,15 @@
 
 	const isDashboardLoading = $derived(statsLoading);
 
-	let showToast = $state(true);
+	// Fire a toast once per new form-action result (reference comparison, so a
+	// plain non-$state holder is intentional — $state would loop the effect).
+	let lastFormResult;
+	$effect(() => {
+		if (form && form !== lastFormResult && form.message) {
+			lastFormResult = form;
+			toast[form.success ? 'success' : 'error'](form.message);
+		}
+	});
 
 	// Transform member growth data for the bar chart (joins vs leaves)
 	const memberGrowthData = $derived(
@@ -131,14 +139,6 @@
 </svelte:head>
 
 <div class="admin-dashboard">
-	{#if form?.message && showToast}
-		<Toast
-			message={form.message}
-			success={form.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	{#if !data.isAdmin}
 		<!-- Access Denied State -->
 		<div class="access-denied-container">

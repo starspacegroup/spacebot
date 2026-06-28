@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { goto, invalidateAll } from '$app/navigation';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
@@ -10,7 +10,6 @@
 	let { data, form } = $props();
 
 	let showLogs = $state(false);
-	let showToast = $state(true);
 	let processingId = $state(null);
 	let expandedLogId = $state(null);
 	const MAX_VISIBLE_TRIGGERS = 3;
@@ -88,14 +87,25 @@
 		return null;
 	});
 
-	// Clear URL params after showing toast to prevent re-triggering on refresh
+	// Show a toast for redirect success params, then clear them to prevent re-triggering
 	$effect(() => {
-		if (successMessage()) {
+		const msg = successMessage();
+		if (msg) {
+			toast.success(msg);
 			const url = new URL(page.url);
 			url.searchParams.delete('created');
 			url.searchParams.delete('updated');
 			url.searchParams.delete('deleted');
 			goto(url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
+		}
+	});
+
+	// Fire a toast once per new form action result
+	let lastFormResult;
+	$effect(() => {
+		if (form && form !== lastFormResult && (form.message || form.error)) {
+			lastFormResult = form;
+			toast[form.success ? 'success' : 'error'](form.message || form.error);
 		}
 	});
 
@@ -185,14 +195,6 @@
 </svelte:head>
 
 <div class="automations-page">
-	{#if (successMessage() || form?.message || form?.error) && showToast}
-		<Toast
-			message={successMessage() || form.message || form.error}
-			success={!!(successMessage() || form?.success)}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<a href="/admin/{selectedGuildId}" class="back-link">← Back to Dashboard</a>
 
 	<header class="page-header">

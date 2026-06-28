@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { toast } from '$lib/toast.svelte.js';
 
 	const { data } = $props();
 
@@ -7,8 +8,6 @@
 	let runnerTokens = $state(untrack(() => data.runnerTokens || []));
 	let runnerInstances = $state(untrack(() => data.runnerInstances || []));
 	let runnerJobs = $state(untrack(() => data.runnerJobs || []));
-
-	let toast = $state({ show: false, message: '', ok: true });
 
 	let formName = $state('');
 	let formDescription = $state('');
@@ -36,10 +35,7 @@
 	let queueSearch = $state('');
 
 	function showToast(message, ok = true) {
-		toast = { show: true, message, ok };
-		setTimeout(() => {
-			toast = { ...toast, show: false };
-		}, 2400);
+		toast[ok ? 'success' : 'error'](message);
 	}
 
 	function formatDate(value) {
@@ -352,10 +348,6 @@
 		</div>
 	</section>
 
-	{#if toast.show}
-		<div class={`toast ${toast.ok ? 'ok' : 'err'}`}>{toast.message}</div>
-	{/if}
-
 	<section class="ops-grid stats-grid">
 		<article>
 			<h3>Workflows</h3>
@@ -439,8 +431,7 @@
 				class="input"
 				rows="3"
 				bind:value={formModelChain}
-				placeholder="Model chain, one per line (provider:model[:via])"
-			></textarea>
+				placeholder="Model chain, one per line (provider:model[:via])"></textarea>
 
 			<select class="input" multiple bind:value={formAllowedTokenIds}>
 				{#each runnerTokens.filter((token) => !token.revoked) as token (token.id)}
@@ -691,20 +682,6 @@
 		text-decoration: none;
 		color: var(--color-primary, #0d6efd);
 		font-size: 0.85rem;
-	}
-
-	.toast {
-		padding: 0.6rem 0.75rem;
-		border-radius: 0.45rem;
-		border: 1px solid var(--color-border, #333);
-	}
-
-	.toast.ok {
-		background: color-mix(in oklab, #10b981 16%, transparent);
-	}
-
-	.toast.err {
-		background: color-mix(in oklab, #ef4444 16%, transparent);
 	}
 
 	.ops-grid {
