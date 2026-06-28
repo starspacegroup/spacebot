@@ -8,6 +8,7 @@ import { applySecurityHeaders } from '$lib/server/security-headers.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import { finishSpan, startSpan } from '$lib/server/telemetry.js';
+import { resolveLocale } from '$lib/i18n.js';
 
 /**
  * Dev Auth Bypass
@@ -423,7 +424,16 @@ export async function handle({ event, resolve }) {
 		// before resolve() so the refreshed cookies are serialized into the response.
 		applySlidingSession(event);
 
-		const response = await resolve(event);
+		// i18n: set <html lang> from the resolved locale (cookie → Accept-Language
+		// → default). Mirrors the resolution in +layout.server.ts.
+		const locale = resolveLocale({
+			cookie: cookies.get('spacebot_locale'),
+			acceptLanguage: event.request.headers.get('accept-language'),
+		});
+
+		const response = await resolve(event, {
+			transformPageChunk: ({ html }) => html.replace('%lang%', locale),
+		});
 
 		// Add cache headers for dynamic content to ensure fresh data
 		// Assets in /_app/ are already hashed and can be cached long-term

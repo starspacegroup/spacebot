@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.js';
+
 	const { data } = $props();
 </script>
 
@@ -7,7 +9,7 @@
 <section class="public-action">
 	<div>
 		<p class="eyebrow">Discord install</p>
-		<h1>Invite SpaceBot</h1>
+		<h1>{t(data.locale, 'public.invite.title')}</h1>
 		<p>
 			Install the bot with slash commands, context menus, automations, and analytics enabled.
 		</p>

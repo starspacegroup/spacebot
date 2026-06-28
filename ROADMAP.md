@@ -94,7 +94,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 
 ### Advanced Features
 
-- [~] Multi-language support (i18n) — _(scaffold: locale resolution + `LanguageSelector`; UI strings not yet translated)_
+- [~] Multi-language support (i18n) — _(wired: cookie/Accept-Language locale resolution, dynamic `<html lang>`, en/es catalog, `LanguageSelector`, public pages translated; full app-wide string translation still pending)_
 - [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
 - [x] Scheduled tasks and cron jobs — superadmin workflows + `scripts/cron.ts` dispatcher
@@ -102,7 +102,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 
 ### Monitoring & Observability
 
-- [~] Set up Sentry for error tracking — _(scaffold: `sentry.{client,server}.config.ts` present and DSN-gated, but not yet imported into hooks; needs a Sentry account + wiring)_
+- [~] Set up Sentry for error tracking — _(client-side wired in `src/hooks.client.ts` via `PUBLIC_SENTRY_DSN`; server-side needs `@sentry/cloudflare` — `@sentry/sveltekit` can't init at module load on Workers where env is per-request)_
 - [~] Add application performance monitoring (APM) — _(scaffold: `src/lib/server/telemetry.ts`; requires an external APM backend)_
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
 - [~] Create Grafana dashboards — _(docs/dashboard JSON under `docs/grafana/`; requires a running Grafana)_

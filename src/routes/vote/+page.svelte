@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.js';
+
 	const { data } = $props();
 </script>
 
 <svelte:head><title>Vote for SpaceBot</title></svelte:head>
 
 <section class="vote-page">
-	<h1>Vote and reviews</h1>
+	<h1>{t(data.locale, 'public.vote.title')}</h1>
 	<div class="actions">
 		<div class="action-card">
 			<h2>Vote</h2>
