@@ -49,7 +49,7 @@ export async function getUserProfile(db: any, guildId: string, userId: string) {
 		badges: deriveBadges(stats),
 		stats: {
 			command_count:
-				publicProfile || preference?.show_command_stats ? stats.command_count : null,
+				publicProfile && preference?.show_command_stats ? stats.command_count : null,
 			voice_seconds:
 				publicProfile && preference?.show_voice_stats ? stats.voice_seconds : null,
 		},
