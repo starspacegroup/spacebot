@@ -78,6 +78,12 @@ export default ts.config(
 			'no-control-regex': 'off',
 			'no-case-declarations': 'warn',
 			'no-constant-binary-expression': 'warn',
+			// New in ESLint 10's recommended set — opinionated nits, not bugs,
+			// that fire on the established codebase. Off for the baseline;
+			// enable in a dedicated cleanup pass (add `cause` to rethrows /
+			// drop dead assignments).
+			'preserve-caught-error': 'off',
+			'no-useless-assignment': 'off',
 		},
 	},
 
