@@ -7,7 +7,6 @@
 	 * Used for filtering SLASH_COMMAND_USE events
 	 */
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		botValue = $bindable(''),
 		commandValue = $bindable(''),
@@ -18,7 +17,6 @@
 		resultValue = $bindable('any'),
 		resultName = 'command_result',
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// UI state
 	let botSearchQuery = $state('');

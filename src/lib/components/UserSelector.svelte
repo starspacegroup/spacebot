@@ -12,7 +12,6 @@
 	// Special value for "Any User"
 	const ANY_USER = 'ALL';
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		guildId = null,
 		members: preloadedMembers = null, // Pre-loaded members to avoid multiple fetches
@@ -23,7 +22,6 @@
 		placeholder = 'Search users...',
 		showAnyOption = true, // Show "Any" option at top
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// Ensure value is never undefined internally
 	$effect(() => {

@@ -9,7 +9,6 @@
 	 * - Real-time preview
 	 */
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		value = $bindable(''),
 		name = 'content',
@@ -22,7 +21,6 @@
 		showPreview = true, // Show live preview
 		guildId: _guildId = null, // Guild ID for fetching data if not pre-loaded
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	let textareaRef = $state(null);
 	let showMentionMenu = $state(false);
@@ -756,8 +754,7 @@
 			{placeholder}
 			class="editor-textarea"
 			onkeydown={handleKeydown}
-			oninput={handleInput}
-		></textarea>
+			oninput={handleInput}></textarea>
 
 		<!-- Autocomplete menu for mentions -->
 		{#if showMentionMenu && activeItems.length > 0}

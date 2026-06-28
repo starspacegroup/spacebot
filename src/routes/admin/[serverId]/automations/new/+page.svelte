@@ -109,7 +109,6 @@
 		[key: string]: any;
 	}
 
-	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form }: { data: PageDataShape; form?: FormShape } = $props();
 
 	let selectedEventTypes = $state<string[]>([]);

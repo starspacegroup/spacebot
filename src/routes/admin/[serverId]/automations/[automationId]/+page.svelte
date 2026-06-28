@@ -9,9 +9,13 @@
 	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
-	import { fetchChannelsWithCache, fetchRolesWithCache, fetchEmojisWithCache } from '$lib/discord/cache.js';
+	import {
+		fetchChannelsWithCache,
+		fetchRolesWithCache,
+		fetchEmojisWithCache,
+	} from '$lib/discord/cache.js';
 	import { log } from '$lib/log.js';
-	
+
 	interface ConfigSchemaEntry {
 		type?: string;
 		label?: string;
@@ -78,16 +82,15 @@
 		eventTypes: Record<string, EventTypeInfo>;
 		eventCategories: Record<string, CategoryInfo>;
 		filterTypes: Record<string, FilterTypeInfo>;
-		userSources?: Record<string, { label: string;[key: string]: any }>;
+		userSources?: Record<string, { label: string; [key: string]: any }>;
 		automation: Record<string, any>;
 		selectedGuildId: string;
 		githubRepositories?: string[];
-		webhooks?: Array<{ id: string; name: string; method: string;[key: string]: any }>;
+		webhooks?: Array<{ id: string; name: string; method: string; [key: string]: any }>;
 		templateVariables?: any;
 		[key: string]: any;
 	}
 
-	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form }: { data: PageData; form: any } = $props();
 
 	// Form submission state
@@ -97,7 +100,7 @@
 	function getActionConfigSchema(actionType: string): Record<string, ConfigSchemaEntry> {
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
-	
+
 	// Initialize config values for an action based on schema
 	function initializeConfigForAction(action) {
 		const schema = getActionConfigSchema(action.type);
@@ -106,7 +109,11 @@
 				action.config[configKey] = '';
 			}
 			// Parse specific:<userId> back into separate fields for the UI
-			if (schema[configKey]?.type === 'user_source' && typeof action.config[configKey] === 'string' && action.config[configKey].startsWith('specific:')) {
+			if (
+				schema[configKey]?.type === 'user_source' &&
+				typeof action.config[configKey] === 'string' &&
+				action.config[configKey].startsWith('specific:')
+			) {
 				const userId = action.config[configKey].substring(9);
 				action.config[configKey] = 'specific_user';
 				action.config[configKey + '_specific_id'] = userId;
@@ -119,21 +126,25 @@
 	function parseExistingActions() {
 		// Handle legacy single action format or new array format
 		if (data.automation.actions && Array.isArray(data.automation.actions)) {
-			return data.automation.actions.map(a => initializeConfigForAction({
-				type: a.type || '',
-				config: a.config || {}
-			}));
+			return data.automation.actions.map((a) =>
+				initializeConfigForAction({
+					type: a.type || '',
+					config: a.config || {},
+				})
+			);
 		}
 		// Legacy format: single action_type and action_config
 		if (data.automation.action_type) {
-			return [initializeConfigForAction({
-				type: data.automation.action_type,
-				config: data.automation.action_config || {}
-			})];
+			return [
+				initializeConfigForAction({
+					type: data.automation.action_type,
+					config: data.automation.action_config || {},
+				}),
+			];
 		}
 		return [];
 	}
-	
+
 	// Initialize from existing automation data - support multiple triggers
 	function parseExistingTriggers() {
 		// Handle new array format
@@ -146,65 +157,65 @@
 		}
 		return [];
 	}
-	
+
 	// Parse existing bot command filters
 	function parseExistingBotFilters() {
 		const filters = data.automation.trigger_filters || {};
 		return {
 			botId: filters.target_bot_id || '',
 			commandName: filters.command_name || '',
-			commandResult: filters.command_result || 'any'
+			commandResult: filters.command_result || 'any',
 		};
 	}
-	
+
 	// Initialize with empty values, will be updated by $effect
 	let selectedEventTypes = $state(parseExistingTriggers());
 	let actions = $state(parseExistingActions());
 	let showDeleteConfirm = $state(false);
 	let showTriggerPicker = $state(false);
-	
+
 	// Event type search
 	let eventSearchQuery = $state('');
-	
+
 	// Bot command filter state (initialized from existing data)
 	const existingBotFilters = parseExistingBotFilters();
 	let botFilterValue = $state(existingBotFilters.botId);
 	let commandFilterValue = $state(existingBotFilters.commandName);
 	let resultFilterValue = $state(existingBotFilters.commandResult);
-	
+
 	// Shared channel data - fetched once for all ChannelSelectors (with caching)
 	let sharedChannels = $state(null);
 	let channelsLoading = $state(false);
-	
+
 	// Shared role data - fetched once for all RoleSelectors (with caching)
 	let sharedRoles = $state(null);
 	let rolesLoading = $state(false);
-	
+
 	// Shared emoji data - fetched once for all EmojiSelectors (with caching)
 	let sharedEmojis = $state(null);
 	let emojisLoading = $state(false);
-	
+
 	// Fetch channels once when guild changes
 	$effect(() => {
 		if (data.selectedGuildId && sharedChannels === null && !channelsLoading) {
 			loadChannels();
 		}
 	});
-	
+
 	// Fetch roles once when guild changes
 	$effect(() => {
 		if (data.selectedGuildId && sharedRoles === null && !rolesLoading) {
 			loadRoles();
 		}
 	});
-	
+
 	// Fetch emojis once when guild changes
 	$effect(() => {
 		if (data.selectedGuildId && sharedEmojis === null && !emojisLoading) {
 			loadEmojis();
 		}
 	});
-	
+
 	async function loadChannels() {
 		channelsLoading = true;
 		try {
@@ -216,7 +227,7 @@
 			channelsLoading = false;
 		}
 	}
-	
+
 	async function loadRoles() {
 		rolesLoading = true;
 		try {
@@ -228,7 +239,7 @@
 			rolesLoading = false;
 		}
 	}
-	
+
 	async function loadEmojis() {
 		emojisLoading = true;
 		try {
@@ -240,18 +251,18 @@
 			emojisLoading = false;
 		}
 	}
-	
+
 	// Update state when data changes (runs on mount and data updates)
 	$effect(() => {
 		if (data.automation) {
 			selectedEventTypes = parseExistingTriggers();
 		}
 	});
-	
+
 	// Get parent data for guild info
 	const selectedGuildId = $derived(data.selectedGuildId);
 	const automation = $derived(data.automation);
-	
+
 	// Available user sources for target_user config (for automations: actor and target)
 	const availableUserSources = $derived(() => {
 		const sources = [];
@@ -261,7 +272,7 @@
 		}
 		return sources;
 	});
-	
+
 	// Get category info
 	function getCategoryInfo(category: string): CategoryInfo {
 		return data.eventCategories[category] || { name: category, icon: '📌', color: '#888' };
@@ -291,7 +302,10 @@
 
 	function addColorRule(action, configKey) {
 		const rules = getColorRules(action, configKey);
-		action.config[configKey] = [...rules, { variable: '', operator: 'equals', value: '', color: '#57F287' }];
+		action.config[configKey] = [
+			...rules,
+			{ variable: '', operator: 'equals', value: '', color: '#57F287' },
+		];
 	}
 
 	function getFilterOptionValues(filterKey) {
@@ -313,14 +327,13 @@
 					.sort()
 					.map((eventType) => ({
 						value: eventType,
-						label: eventType.replace(/_/g, ' ')
+						label: eventType.replace(/_/g, ' '),
 					}));
 			case 'trigger.category':
-				return Object.entries(data.eventCategories || {})
-					.map(([key, info]) => ({
-						value: key,
-						label: info?.name || key
-					}));
+				return Object.entries(data.eventCategories || {}).map(([key, info]) => ({
+					value: key,
+					label: info?.name || key,
+				}));
 			case 'github.action':
 				return getFilterOptionValues('github_action');
 			case 'github.conclusion':
@@ -332,10 +345,13 @@
 					{ value: 'completed', label: 'completed' },
 					{ value: 'requested', label: 'requested' },
 					{ value: 'waiting', label: 'waiting' },
-					{ value: 'pending', label: 'pending' }
+					{ value: 'pending', label: 'pending' },
 				];
 			case 'github.repo':
-				return (data.githubRepositories || []).map((repo) => ({ value: repo, label: repo }));
+				return (data.githubRepositories || []).map((repo) => ({
+					value: repo,
+					label: repo,
+				}));
 			default:
 				return [];
 		}
@@ -354,12 +370,14 @@
 		if (operator !== 'equals' && operator !== 'not_equals') return false;
 		return getColorRuleValueOptions(rule?.variable).length > 0;
 	}
-	
+
 	// Group events by category for dropdown (with optional search filter)
-	function getEventsByCategory(searchQuery = ''): Record<string, Array<EventTypeInfo & { type: string }>> {
+	function getEventsByCategory(
+		searchQuery = ''
+	): Record<string, Array<EventTypeInfo & { type: string }>> {
 		const grouped: Record<string, Array<EventTypeInfo & { type: string }>> = {};
 		const query = searchQuery.toLowerCase().trim();
-		
+
 		for (const [eventType, info] of Object.entries(data.eventTypes)) {
 			// Apply search filter
 			if (query) {
@@ -368,7 +386,7 @@
 				const matchesCategory = info.category?.toLowerCase().includes(query);
 				if (!matchesType && !matchesDesc && !matchesCategory) continue;
 			}
-			
+
 			const category = info.category;
 			if (!grouped[category]) {
 				grouped[category] = [];
@@ -377,40 +395,40 @@
 		}
 		return grouped;
 	}
-	
+
 	// Filtered events based on search
 	const filteredEventsByCategory = $derived(getEventsByCategory(eventSearchQuery));
 	const hasFilteredResults = $derived(Object.keys(filteredEventsByCategory).length > 0);
-	
+
 	// Stacked actions management
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
 	}
-	
+
 	function removeAction(index) {
 		actions = actions.filter((_, i) => i !== index);
 	}
-	
+
 	function moveActionUp(index) {
 		if (index <= 0) return;
 		const newActions = [...actions];
 		[newActions[index - 1], newActions[index]] = [newActions[index], newActions[index - 1]];
 		actions = newActions;
 	}
-	
+
 	function moveActionDown(index) {
 		if (index >= actions.length - 1) return;
 		const newActions = [...actions];
 		[newActions[index], newActions[index + 1]] = [newActions[index + 1], newActions[index]];
 		actions = newActions;
 	}
-	
+
 	// Check if a filter applies to the selected event type
 	function filterAppliesToEvent(filterInfo, eventType) {
 		if (!filterInfo.applicableEvents || !eventType) {
 			return true;
 		}
-		
+
 		for (const pattern of filterInfo.applicableEvents) {
 			if (pattern === '*') {
 				return true;
@@ -424,43 +442,43 @@
 				return true;
 			}
 		}
-		
+
 		return false;
 	}
-	
+
 	// Check if a filter applies to any of the selected event types
 	function filterAppliesToAnyEvent(filterInfo) {
 		if (selectedEventTypes.length === 0) return false;
-		return selectedEventTypes.some(eventType => filterAppliesToEvent(filterInfo, eventType));
+		return selectedEventTypes.some((eventType) => filterAppliesToEvent(filterInfo, eventType));
 	}
-	
+
 	// Toggle event type selection
 	function toggleEventType(eventType) {
 		if (selectedEventTypes.includes(eventType)) {
-			selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
+			selectedEventTypes = selectedEventTypes.filter((e) => e !== eventType);
 		} else {
 			selectedEventTypes = [...selectedEventTypes, eventType];
 		}
 	}
-	
+
 	// Remove a trigger from the list
 	function removeTrigger(eventType) {
-		selectedEventTypes = selectedEventTypes.filter(e => e !== eventType);
+		selectedEventTypes = selectedEventTypes.filter((e) => e !== eventType);
 	}
-	
+
 	// Check if SLASH_COMMAND_USE is selected (for special bot command filter UI)
 	const hasSlashCommandTrigger = $derived(selectedEventTypes.includes('SLASH_COMMAND_USE'));
-	
+
 	// Check if only voice events are selected (to filter channel selectors to voice channels)
 	const onlyVoiceEvents = $derived(
-		selectedEventTypes.length > 0 && selectedEventTypes.every(e => e.startsWith('VOICE_'))
+		selectedEventTypes.length > 0 && selectedEventTypes.every((e) => e.startsWith('VOICE_'))
 	);
-	
+
 	// Check if only VOICE_MOVE is selected (from/to replace generic channel filters)
 	const onlyVoiceMoveEvent = $derived(
-		selectedEventTypes.length > 0 && selectedEventTypes.every(e => e === 'VOICE_MOVE')
+		selectedEventTypes.length > 0 && selectedEventTypes.every((e) => e === 'VOICE_MOVE')
 	);
-	
+
 	// Get filters applicable to the current event types (excluding bot-specific ones handled separately)
 	const applicableFilters = $derived.by(() => {
 		if (selectedEventTypes.length === 0) return {} as Record<string, FilterTypeInfo>;
@@ -469,16 +487,22 @@
 			// Skip bot command filters - they're handled by BotCommandSelector
 			if (['target_bot_id', 'command_name', 'command_result'].includes(filterKey)) continue;
 			// When only VOICE_MOVE is selected, hide generic channel filters (from/to replace them)
-			if (onlyVoiceMoveEvent && (filterKey === 'channel_id' || filterKey === 'not_channel_id')) continue;
+			if (
+				onlyVoiceMoveEvent &&
+				(filterKey === 'channel_id' || filterKey === 'not_channel_id')
+			)
+				continue;
 			if (filterAppliesToAnyEvent(filterInfo)) {
 				result[filterKey] = filterInfo;
 			}
 		}
 		return result;
 	});
-	
+
 	// Check if there are any applicable filters
-	const hasApplicableFilters = $derived(Object.keys(applicableFilters).length > 0 || hasSlashCommandTrigger);
+	const hasApplicableFilters = $derived(
+		Object.keys(applicableFilters).length > 0 || hasSlashCommandTrigger
+	);
 </script>
 
 <svelte:head>
@@ -487,82 +511,91 @@
 
 <div class="automation-form-page">
 	<header class="page-header">
-		<a href="/admin/{selectedGuildId}/automations" class="back-link">
-			← Back to Automations
-		</a>
+		<a href="/admin/{selectedGuildId}/automations" class="back-link"> ← Back to Automations </a>
 		<h1>
 			<span class="header-icon">✏️</span>
 			Edit Automation
 		</h1>
 		<p class="header-subtitle">Modify "{automation.name}"</p>
 	</header>
-	
+
 	{#if form?.error}
 		<div class="error-banner">
 			<span>⚠️</span>
 			<span>{form.error}</span>
 		</div>
 	{/if}
-	
-	<form method="POST" action="?/update" use:enhance={() => {
-		isSubmitting = true;
-		return async ({ result }) => {
-			isSubmitting = false;
-			if (result.type === 'redirect') {
-				// Handle redirect explicitly to prevent page freeze
-				await goto(result.location, { invalidateAll: true });
-			} else if (result.type === 'failure') {
-				// Let SvelteKit handle the error display
-				form = result.data;
-			}
-		};
-	}} class="automation-form">
-		<input type="hidden" name="guild_id" value={selectedGuildId}>
-		
+
+	<form
+		method="POST"
+		action="?/update"
+		use:enhance={() => {
+			isSubmitting = true;
+			return async ({ result }) => {
+				isSubmitting = false;
+				if (result.type === 'redirect') {
+					// Handle redirect explicitly to prevent page freeze
+					await goto(result.location, { invalidateAll: true });
+				} else if (result.type === 'failure') {
+					// Let SvelteKit handle the error display
+					form = result.data;
+				}
+			};
+		}}
+		class="automation-form"
+	>
+		<input type="hidden" name="guild_id" value={selectedGuildId} />
+
 		<!-- Basic Info Section -->
 		<section class="form-section">
 			<h2>📝 Basic Info</h2>
-			
+
 			<div class="form-group">
 				<label for="name">Automation Name <span class="required">*</span></label>
-				<input 
-					type="text" 
-					id="name" 
-					name="name" 
-					required 
+				<input
+					type="text"
+					id="name"
+					name="name"
+					required
 					placeholder="e.g., Welcome Message"
 					value={automation.name}
 				/>
 			</div>
-			
+
 			<div class="form-group">
 				<label for="description">Description</label>
-				<textarea 
-					id="description" 
-					name="description" 
+				<textarea
+					id="description"
+					name="description"
 					placeholder="What does this automation do?"
-					rows="2"
-				>{automation.description || ''}</textarea>
+					rows="2">{automation.description || ''}</textarea
+				>
 			</div>
 		</section>
-		
+
 		<!-- Trigger Section -->
 		<section class="form-section">
 			<div class="section-header-row">
 				<div>
 					<h2>📥 Triggers (When)</h2>
-					<p class="section-description">Choose what events will trigger this automation</p>
+					<p class="section-description">
+						Choose what events will trigger this automation
+					</p>
 				</div>
-				<button type="button" class="btn btn-secondary btn-sm" onclick={() => showTriggerPicker = !showTriggerPicker}>
+				<button
+					type="button"
+					class="btn btn-secondary btn-sm"
+					onclick={() => (showTriggerPicker = !showTriggerPicker)}
+				>
 					<span>+</span> Add Trigger
 				</button>
 			</div>
-			
+
 			<!-- Hidden inputs to pass selected triggers to form -->
 			{#each selectedEventTypes as eventType}
 				<input type="hidden" name="trigger_events[]" value={eventType} />
 			{/each}
-			
+
 			{#if selectedEventTypes.length === 0}
 				<div class="empty-triggers">
 					<p>No triggers configured. Click "Add Trigger" to get started.</p>
@@ -574,33 +607,52 @@
 						{@const catInfo = getCategoryInfo(eventInfo?.category)}
 						<div class="trigger-item">
 							<div class="trigger-info">
-								<span class="trigger-icon" style="color: {catInfo.color}">{catInfo.icon}</span>
+								<span class="trigger-icon" style="color: {catInfo.color}"
+									>{catInfo.icon}</span
+								>
 								<span class="trigger-name">{eventType.replace(/_/g, ' ')}</span>
-								<span class="trigger-description">{eventInfo?.description || ''}</span>
+								<span class="trigger-description"
+									>{eventInfo?.description || ''}</span
+								>
 							</div>
-							<button type="button" class="btn-icon btn-danger" onclick={() => removeTrigger(eventType)} title="Remove trigger">
+							<button
+								type="button"
+								class="btn-icon btn-danger"
+								onclick={() => removeTrigger(eventType)}
+								title="Remove trigger"
+							>
 								×
 							</button>
 						</div>
 					{/each}
 				</div>
 			{/if}
-			
+
 			{#if showTriggerPicker}
 				<div class="trigger-picker">
 					<div class="trigger-picker-header">
 						<h4>Select Event Types</h4>
-						<button type="button" class="btn-icon" onclick={() => showTriggerPicker = false} title="Close">×</button>
+						<button
+							type="button"
+							class="btn-icon"
+							onclick={() => (showTriggerPicker = false)}
+							title="Close">×</button
+						>
 					</div>
 					<div class="trigger-search">
-						<input 
-							type="text" 
+						<input
+							type="text"
 							placeholder="Search events... (e.g., bump, message, join)"
 							bind:value={eventSearchQuery}
 							class="search-input"
 						/>
 						{#if eventSearchQuery}
-							<button type="button" class="clear-search" onclick={() => eventSearchQuery = ''} title="Clear search">×</button>
+							<button
+								type="button"
+								class="clear-search"
+								onclick={() => (eventSearchQuery = '')}
+								title="Clear search">×</button
+							>
 						{/if}
 					</div>
 					<div class="trigger-categories">
@@ -614,14 +666,25 @@
 									</h5>
 									<div class="trigger-options">
 										{#each events as event}
-											<label class="trigger-option" class:selected={selectedEventTypes.includes(event.type)}>
-												<input 
-													type="checkbox" 
-													checked={selectedEventTypes.includes(event.type)}
+											<label
+												class="trigger-option"
+												class:selected={selectedEventTypes.includes(
+													event.type
+												)}
+											>
+												<input
+													type="checkbox"
+													checked={selectedEventTypes.includes(
+														event.type
+													)}
 													onchange={() => toggleEventType(event.type)}
 												/>
-												<span class="trigger-option-name">{event.type.replace(/_/g, ' ')}</span>
-												<span class="trigger-option-desc">{event.description}</span>
+												<span class="trigger-option-name"
+													>{event.type.replace(/_/g, ' ')}</span
+												>
+												<span class="trigger-option-desc"
+													>{event.description}</span
+												>
 											</label>
 										{/each}
 									</div>
@@ -630,30 +693,38 @@
 						{:else}
 							<div class="no-results">
 								<p>No events found matching "{eventSearchQuery}"</p>
-								<button type="button" class="btn btn-secondary btn-sm" onclick={() => eventSearchQuery = ''}>Clear search</button>
+								<button
+									type="button"
+									class="btn btn-secondary btn-sm"
+									onclick={() => (eventSearchQuery = '')}>Clear search</button
+								>
 							</div>
 						{/if}
 					</div>
 				</div>
 			{/if}
-			
+
 			{#if automation.trigger_filters && Object.keys(automation.trigger_filters).length > 0}
 				<div class="current-filters">
 					<span class="filters-label">Current Filters:</span>
 					{#each Object.entries(automation.trigger_filters) as [key, value]}
 						{#if !['target_bot_id', 'command_name', 'command_result'].includes(key)}
-							<span class="filter-tag">{data.filterTypes[key]?.label || key}: {value}</span>
+							<span class="filter-tag"
+								>{data.filterTypes[key]?.label || key}: {value}</span
+							>
 						{/if}
 					{/each}
 				</div>
 			{/if}
-			
+
 			{#if hasApplicableFilters}
 				<!-- Bot Command Filter (shown when SLASH_COMMAND_USE is selected) -->
 				{#if hasSlashCommandTrigger}
 					<div class="bot-command-filter-section">
 						<h4>🤖 Bot Command Filter</h4>
-						<p class="section-hint">Filter by which bot and command was used, with success/failure detection</p>
+						<p class="section-hint">
+							Filter by which bot and command was used, with success/failure detection
+						</p>
 						<BotCommandSelector
 							bind:botValue={botFilterValue}
 							bind:commandValue={commandFilterValue}
@@ -664,9 +735,11 @@
 						/>
 					</div>
 				{/if}
-				
+
 				<div class="filters-grid">
-					<p class="filters-hint">Update or add filters to narrow down when this automation triggers</p>
+					<p class="filters-hint">
+						Update or add filters to narrow down when this automation triggers
+					</p>
 					{#each Object.entries(applicableFilters) as [filterKey, filterInfo]}
 						<div class="form-group">
 							<label for="filter_{filterKey}">{filterInfo.label}</label>
@@ -677,18 +750,40 @@
 										typeFilter="voice,stage"
 										name="filter.{filterKey}"
 										placeholder={filterInfo.description}
-										value={automation.trigger_filters?.[filterKey] || (['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey) ? 'ALL' : '')}
+										value={automation.trigger_filters?.[filterKey] ||
+											([
+												'channel_id',
+												'voice_from_channel_id',
+												'voice_to_channel_id',
+											].includes(filterKey)
+												? 'ALL'
+												: '')}
 										multiple={true}
-										showAllOption={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey)}
+										showAllOption={[
+											'channel_id',
+											'voice_from_channel_id',
+											'voice_to_channel_id',
+										].includes(filterKey)}
 									/>
 								{:else}
 									<ChannelSelector
 										channels={sharedChannels}
 										name="filter.{filterKey}"
 										placeholder={filterInfo.description}
-										value={automation.trigger_filters?.[filterKey] || (['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey) ? 'ALL' : '')}
+										value={automation.trigger_filters?.[filterKey] ||
+											([
+												'channel_id',
+												'voice_from_channel_id',
+												'voice_to_channel_id',
+											].includes(filterKey)
+												? 'ALL'
+												: '')}
 										multiple={true}
-										showAllOption={['channel_id', 'voice_from_channel_id', 'voice_to_channel_id'].includes(filterKey)}
+										showAllOption={[
+											'channel_id',
+											'voice_from_channel_id',
+											'voice_to_channel_id',
+										].includes(filterKey)}
 									/>
 								{/if}
 							{:else if filterInfo.type === 'role'}
@@ -696,26 +791,34 @@
 									roles={sharedRoles}
 									name="filter.{filterKey}"
 									placeholder={filterInfo.description}
-									value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_has_role' || filterKey === 'target_has_role' ? 'ALL' : '')}
+									value={automation.trigger_filters?.[filterKey] ||
+										(filterKey === 'actor_has_role' ||
+										filterKey === 'target_has_role'
+											? 'ALL'
+											: '')}
 									multiple={true}
-									showAnyOption={filterKey === 'actor_has_role' || filterKey === 'target_has_role'}
+									showAnyOption={filterKey === 'actor_has_role' ||
+										filterKey === 'target_has_role'}
 								/>
 							{:else if filterInfo.type === 'user'}
 								<UserSelector
 									guildId={data.selectedGuildId}
 									name="filter.{filterKey}"
 									placeholder={filterInfo.description}
-									value={automation.trigger_filters?.[filterKey] || (filterKey === 'actor_id' ? 'ALL' : '')}
+									value={automation.trigger_filters?.[filterKey] ||
+										(filterKey === 'actor_id' ? 'ALL' : '')}
 									multiple={true}
 									showAnyOption={filterKey === 'actor_id'}
 								/>
 							{:else if filterInfo.type === 'select'}
-								<select
-									id="filter_{filterKey}"
-									name="filter.{filterKey}"
-								>
+								<select id="filter_{filterKey}" name="filter.{filterKey}">
 									{#each filterInfo.options as option}
-										<option value={option.value} selected={option.value === (automation.trigger_filters?.[filterKey] || filterInfo.default)}>{option.label}</option>
+										<option
+											value={option.value}
+											selected={option.value ===
+												(automation.trigger_filters?.[filterKey] ||
+													filterInfo.default)}>{option.label}</option
+										>
 									{/each}
 								</select>
 							{:else if filterKey === 'github_repo'}
@@ -725,18 +828,16 @@
 									placeholder={filterInfo.description}
 									multiple={true}
 									showAnyOption={true}
-									value={
-										!automation.trigger_filters?.[filterKey] ||
-										automation.trigger_filters?.[filterKey].toLowerCase() === 'any'
-											? 'ALL'
-											: automation.trigger_filters?.[filterKey]
-									}
+									value={!automation.trigger_filters?.[filterKey] ||
+									automation.trigger_filters?.[filterKey].toLowerCase() === 'any'
+										? 'ALL'
+										: automation.trigger_filters?.[filterKey]}
 								/>
 							{:else}
-								<input 
-									type={filterInfo.type === 'number' ? 'number' : 'text'} 
-									id="filter_{filterKey}" 
-									name="filter.{filterKey}" 
+								<input
+									type={filterInfo.type === 'number' ? 'number' : 'text'}
+									id="filter_{filterKey}"
+									name="filter.{filterKey}"
 									placeholder={filterInfo.description}
 									value={automation.trigger_filters?.[filterKey] || ''}
 								/>
@@ -746,19 +847,21 @@
 				</div>
 			{/if}
 		</section>
-		
+
 		<!-- Action Section -->
 		<section class="form-section">
 			<div class="section-header-row">
 				<div>
 					<h2>📤 Actions (Then)</h2>
-					<p class="section-description">Configure actions to execute when the trigger fires (in order)</p>
+					<p class="section-description">
+						Configure actions to execute when the trigger fires (in order)
+					</p>
 				</div>
 				<button type="button" class="btn btn-secondary btn-sm" onclick={addAction}>
 					<span>+</span> Add Action
 				</button>
 			</div>
-			
+
 			{#if actions.length === 0}
 				<div class="empty-actions">
 					<p>No actions configured. Click "Add Action" to get started.</p>
@@ -770,24 +873,43 @@
 							<div class="action-header">
 								<span class="action-number">Action {index + 1}</span>
 								<div class="action-controls">
-									<button type="button" class="btn-icon" onclick={() => moveActionUp(index)} disabled={index === 0} title="Move up">
+									<button
+										type="button"
+										class="btn-icon"
+										onclick={() => moveActionUp(index)}
+										disabled={index === 0}
+										title="Move up"
+									>
 										↑
 									</button>
-									<button type="button" class="btn-icon" onclick={() => moveActionDown(index)} disabled={index === actions.length - 1} title="Move down">
+									<button
+										type="button"
+										class="btn-icon"
+										onclick={() => moveActionDown(index)}
+										disabled={index === actions.length - 1}
+										title="Move down"
+									>
 										↓
 									</button>
-									<button type="button" class="btn-icon btn-danger" onclick={() => removeAction(index)} title="Remove action">
+									<button
+										type="button"
+										class="btn-icon btn-danger"
+										onclick={() => removeAction(index)}
+										title="Remove action"
+									>
 										×
 									</button>
 								</div>
 							</div>
-							
+
 							<div class="form-group">
-								<label for="action_type_{index}">Action Type <span class="required">*</span></label>
-								<input type="hidden" name="action_type[]" value={action.type}>
-								<select 
-									id="action_type_{index}" 
-									value={action.type} 
+								<label for="action_type_{index}"
+									>Action Type <span class="required">*</span></label
+								>
+								<input type="hidden" name="action_type[]" value={action.type} />
+								<select
+									id="action_type_{index}"
+									value={action.type}
 									onchange={(e) => {
 										const newType = (e.target as HTMLSelectElement).value;
 										const schema = getActionConfigSchema(newType);
@@ -798,10 +920,12 @@
 											}
 										}
 										// Update both type and config together to avoid undefined bindings
-										actions = actions.map((a, i) => 
-											i === index ? { ...a, type: newType, config: newConfig } : a
+										actions = actions.map((a, i) =>
+											i === index
+												? { ...a, type: newType, config: newConfig }
+												: a
 										);
-									}} 
+									}}
 									required
 								>
 									<option value="">Select an action...</option>
@@ -810,298 +934,477 @@
 									{/each}
 								</select>
 							</div>
-							
+
 							{#if action.type}
 								{@const schema = getActionConfigSchema(action.type)}
 								<div class="action-config">
 									<h3>Configure Action</h3>
 									{#each Object.entries(schema) as [configKey, config]}
 										{#if !config.showWhen || action.config[config.showWhen] === 'true' || action.config[config.showWhen] === true}
-										<div class="form-group">
-											<label for="config_{index}_{configKey}">
-												{config.label}
-												{#if config.required}<span class="required">*</span>{/if}
-											</label>
-											{#if config.type === 'text'}
-												{#if config.supportsVariables}
-													<DiscordMessageEditor
-														name="action_config.{index}.{configKey}"
-														required={config.required}
-														bind:value={action.config[configKey]}
-														channels={sharedChannels}
-														roles={sharedRoles}
-														templateVariables={data.templateVariables}
-														placeholder="Enter your message..."
-														rows={4}
-													/>
-												{:else}
-													<textarea 
-														id="config_{index}_{configKey}" 
-														name="action_config.{index}.{configKey}"
-														required={config.required}
-														placeholder=""
-														rows="3"
-														bind:value={action.config[configKey]}
-													></textarea>
-												{/if}
-											{:else if config.type === 'number'}
-												<input 
-													type="number" 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													bind:value={action.config[configKey]}
-													min="0"
-													max={config.max || 999999}
-													required={config.required}
-													placeholder={config.placeholder || ''}
-												/>
-											{:else if config.type === 'boolean'}
-												<label class="checkbox-label">
-													<input 
-														type="checkbox" 
-														name="action_config.{index}.{configKey}"
-														value="true"
-														checked={action.config[configKey] === 'true' || action.config[configKey] === true || config.default}
-													/>
-													<span>Enable</span>
+											<div class="form-group">
+												<label for="config_{index}_{configKey}">
+													{config.label}
+													{#if config.required}<span class="required"
+															>*</span
+														>{/if}
 												</label>
-											{:else if config.type === 'color'}
-												<div class="color-picker-row">
+												{#if config.type === 'text'}
+													{#if config.supportsVariables}
+														<DiscordMessageEditor
+															name="action_config.{index}.{configKey}"
+															required={config.required}
+															bind:value={action.config[configKey]}
+															channels={sharedChannels}
+															roles={sharedRoles}
+															templateVariables={data.templateVariables}
+															placeholder="Enter your message..."
+															rows={4}
+														/>
+													{:else}
+														<textarea
+															id="config_{index}_{configKey}"
+															name="action_config.{index}.{configKey}"
+															required={config.required}
+															placeholder=""
+															rows="3"
+															bind:value={action.config[configKey]}
+														></textarea>
+													{/if}
+												{:else if config.type === 'number'}
 													<input
-														type="color"
+														type="number"
 														id="config_{index}_{configKey}"
 														name="action_config.{index}.{configKey}"
-														value={action.config[configKey] || config.default || '#5865F2'}
-														oninput={(e) => { action.config[configKey] = (e.target as HTMLInputElement).value; }}
-														class="color-input"
+														bind:value={action.config[configKey]}
+														min="0"
+														max={config.max || 999999}
+														required={config.required}
+														placeholder={config.placeholder || ''}
 													/>
-													<span class="color-value">{action.config[configKey] || config.default || '#5865F2'}</span>
-												</div>
-											{:else if config.type === 'color_rules'}
-												<input type="hidden" name="action_config.{index}.{configKey}" value={JSON.stringify(getColorRules(action, configKey))} />
-												<div class="color-rules">
-													{#each getColorRules(action, configKey) as rule, ruleIndex}
-														<div class="color-rule-row">
-															<input
-																type="color"
-																class="color-rule-picker"
-																value={rule.color || '#5865F2'}
-																oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'color', (e.target as HTMLInputElement).value)}
-															/>
-															<span class="color-rule-word">If</span>
-															<select
-																class="color-rule-field"
-																value={rule.variable || ''}
-																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'variable', (e.target as HTMLSelectElement).value)}
-															>
-																<option value="" disabled>pick a field...</option>
-																<optgroup label="Trigger">
-																	<option value="trigger.event">event type</option>
-																	<option value="trigger.category">event category</option>
-																</optgroup>
-																<optgroup label="Actor">
-																	<option value="user.name">actor name</option>
-																	<option value="user.id">actor id</option>
-																</optgroup>
-																<optgroup label="Channel">
-																	<option value="channel.name">channel name</option>
-																</optgroup>
-																<optgroup label="GitHub">
-																	<option value="github.action">action</option>
-																	<option value="github.conclusion">conclusion</option>
-																	<option value="github.repo">repo</option>
-																	<option value="github.branch">branch</option>
-																	<option value="github.status">status</option>
-																</optgroup>
-															</select>
-															<select
-																class="color-rule-op"
-																value={rule.operator || 'equals'}
-																onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'operator', (e.target as HTMLSelectElement).value)}
-															>
-																<option value="equals">is</option>
-																<option value="not_equals">is not</option>
-																<option value="contains">contains</option>
-																<option value="starts_with">starts with</option>
-																<option value="ends_with">ends with</option>
-															</select>
-															{#if shouldUseColorRuleValueSelect(rule)}
-																<select
-																	class="color-rule-value"
-																	value={rule.value || ''}
-																	onchange={(e) => updateColorRule(action, configKey, ruleIndex, 'value', (e.target as HTMLSelectElement).value)}
-																>
-																	<option value="">pick a value...</option>
-																	{#each getColorRuleValueOptionsWithCurrent(rule.variable, rule.value) as option}
-																		<option value={option.value}>{option.label}</option>
-																	{/each}
-																</select>
-															{:else}
-																<input
-																	type="text"
-																	class="color-rule-value"
-																	placeholder="value..."
-																	value={rule.value || ''}
-																	oninput={(e) => updateColorRule(action, configKey, ruleIndex, 'value', (e.target as HTMLInputElement).value)}
-																/>
-															{/if}
-															<button type="button" class="btn-remove-rule" title="Remove rule" onclick={() => removeColorRule(action, configKey, ruleIndex)}>✕</button>
-														</div>
-													{/each}
-													{#if getColorRules(action, configKey).length === 0}
-														<p class="color-rules-hint">No rules yet. Add a rule to change the embed color based on event data.</p>
-													{/if}
-													<button type="button" class="btn btn-sm btn-add-rule" onclick={() => addColorRule(action, configKey)}>
-														+ Add color rule
-													</button>
-												</div>
-											{:else if config.type === 'channel_multi'}
-												<ChannelSelector
-													channels={sharedChannels}
-													name="action_config.{index}.{configKey}"
-													value={action.config[configKey] || ''}
-													required={config.required}
-													placeholder="Select channel(s)..."
-													multiple={true}
-													showAllOption={config.showAllOption}
-													allOptionLabel={config.allOptionLabel || 'All Text Channels'}
-												/>
-												{#if config.description}
-													<p class="field-hint">{config.description}</p>
-												{/if}
-											{:else if config.type === 'channel'}
-												<ChannelSelector
-													channels={sharedChannels}
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													placeholder="Select a channel..."
-													bind:value={action.config[configKey]}
-												/>
-											{:else if config.type === 'roles'}
-												<RoleSelector
-													roles={sharedRoles}
-													name="action_config.{index}.{configKey}"
-													bind:value={action.config[configKey]}
-													required={config.required}
-													multiple={true}
-													placeholder="Search and select role(s)..."
-												/>
-											{:else if config.type === 'role'}
-												<RoleSelector
-													roles={sharedRoles}
-													name="action_config.{index}.{configKey}"
-													bind:value={action.config[configKey]}
-													required={config.required}
-													placeholder="Select a role..."
-												/>
-											{:else if config.type === 'select'}
-												<select 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													bind:value={action.config[configKey]}
-												>
-													{#each config.options as opt}
-														{@const optVal = typeof opt === 'object' ? opt.value : opt}
-														{@const optLabel = typeof opt === 'object' ? opt.label : opt}
-														<option value={optVal} selected={optVal === config.default}>{optLabel}</option>
-													{/each}
-												</select>
-											{:else if config.type === 'user_source'}
-												<select
-													id="config_{index}_{configKey}"
-													required={config.required}
-													bind:value={action.config[configKey]}
-												>
-													<option value="">Select user source...</option>
-													{#each availableUserSources() as source}
-														<option value={source.value}>{source.label}</option>
-													{/each}
-												</select>
-												{#if action.config[configKey] === 'specific_user'}
-													<div class="specific-user-picker">
-														<UserSelector
-															guildId={selectedGuildId}
-															name="action_config.{index}.{configKey}_specific_id"
-															multiple={false}
-															showAnyOption={false}
-															placeholder="Search for a server member..."
-															bind:value={action.config[configKey + '_specific_id']}
+												{:else if config.type === 'boolean'}
+													<label class="checkbox-label">
+														<input
+															type="checkbox"
+															name="action_config.{index}.{configKey}"
+															value="true"
+															checked={action.config[configKey] ===
+																'true' ||
+																action.config[configKey] === true ||
+																config.default}
 														/>
+														<span>Enable</span>
+													</label>
+												{:else if config.type === 'color'}
+													<div class="color-picker-row">
+														<input
+															type="color"
+															id="config_{index}_{configKey}"
+															name="action_config.{index}.{configKey}"
+															value={action.config[configKey] ||
+																config.default ||
+																'#5865F2'}
+															oninput={(e) => {
+																action.config[configKey] = (
+																	e.target as HTMLInputElement
+																).value;
+															}}
+															class="color-input"
+														/>
+														<span class="color-value"
+															>{action.config[configKey] ||
+																config.default ||
+																'#5865F2'}</span
+														>
 													</div>
-												{/if}
-												<!-- Submit the resolved value: either the source type or specific:<userId> -->
-												<input type="hidden" name="action_config.{index}.{configKey}" value={action.config[configKey] === 'specific_user' ? 'specific:' + (action.config[configKey + '_specific_id'] || '') : (action.config[configKey] || '')} />
-												<p class="field-hint">Choose which user this action will target</p>
-											{:else if config.type === 'emoji'}
-												<EmojiSelector
-													emojis={sharedEmojis}
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													placeholder="Select an emoji..."
-													bind:value={action.config[configKey]}
-												/>
-												{#if config.description}
-													<p class="field-hint">{config.description}</p>
-												{/if}
-											{:else if config.type === 'webhook'}
-												<select 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													bind:value={action.config[configKey]}
-												>
-													<option value="">Select a webhook...</option>
-													{#each data.webhooks || [] as webhook}
-														<option value={webhook.id}>
-															{webhook.name} ({webhook.method})
-														</option>
-													{/each}
-												</select>
-												{#if config.description}
-													<p class="field-hint">{config.description}</p>
-												{/if}
-												{#if !data.webhooks?.length}
-													<p class="field-hint warning">
-														No webhooks configured. <a href="/admin/{selectedGuildId}/settings">Add webhooks in Settings</a>
+												{:else if config.type === 'color_rules'}
+													<input
+														type="hidden"
+														name="action_config.{index}.{configKey}"
+														value={JSON.stringify(
+															getColorRules(action, configKey)
+														)}
+													/>
+													<div class="color-rules">
+														{#each getColorRules(action, configKey) as rule, ruleIndex}
+															<div class="color-rule-row">
+																<input
+																	type="color"
+																	class="color-rule-picker"
+																	value={rule.color || '#5865F2'}
+																	oninput={(e) =>
+																		updateColorRule(
+																			action,
+																			configKey,
+																			ruleIndex,
+																			'color',
+																			(
+																				e.target as HTMLInputElement
+																			).value
+																		)}
+																/>
+																<span class="color-rule-word"
+																	>If</span
+																>
+																<select
+																	class="color-rule-field"
+																	value={rule.variable || ''}
+																	onchange={(e) =>
+																		updateColorRule(
+																			action,
+																			configKey,
+																			ruleIndex,
+																			'variable',
+																			(
+																				e.target as HTMLSelectElement
+																			).value
+																		)}
+																>
+																	<option value="" disabled
+																		>pick a field...</option
+																	>
+																	<optgroup label="Trigger">
+																		<option
+																			value="trigger.event"
+																			>event type</option
+																		>
+																		<option
+																			value="trigger.category"
+																			>event category</option
+																		>
+																	</optgroup>
+																	<optgroup label="Actor">
+																		<option value="user.name"
+																			>actor name</option
+																		>
+																		<option value="user.id"
+																			>actor id</option
+																		>
+																	</optgroup>
+																	<optgroup label="Channel">
+																		<option value="channel.name"
+																			>channel name</option
+																		>
+																	</optgroup>
+																	<optgroup label="GitHub">
+																		<option
+																			value="github.action"
+																			>action</option
+																		>
+																		<option
+																			value="github.conclusion"
+																			>conclusion</option
+																		>
+																		<option value="github.repo"
+																			>repo</option
+																		>
+																		<option
+																			value="github.branch"
+																			>branch</option
+																		>
+																		<option
+																			value="github.status"
+																			>status</option
+																		>
+																	</optgroup>
+																</select>
+																<select
+																	class="color-rule-op"
+																	value={rule.operator ||
+																		'equals'}
+																	onchange={(e) =>
+																		updateColorRule(
+																			action,
+																			configKey,
+																			ruleIndex,
+																			'operator',
+																			(
+																				e.target as HTMLSelectElement
+																			).value
+																		)}
+																>
+																	<option value="equals"
+																		>is</option
+																	>
+																	<option value="not_equals"
+																		>is not</option
+																	>
+																	<option value="contains"
+																		>contains</option
+																	>
+																	<option value="starts_with"
+																		>starts with</option
+																	>
+																	<option value="ends_with"
+																		>ends with</option
+																	>
+																</select>
+																{#if shouldUseColorRuleValueSelect(rule)}
+																	<select
+																		class="color-rule-value"
+																		value={rule.value || ''}
+																		onchange={(e) =>
+																			updateColorRule(
+																				action,
+																				configKey,
+																				ruleIndex,
+																				'value',
+																				(
+																					e.target as HTMLSelectElement
+																				).value
+																			)}
+																	>
+																		<option value=""
+																			>pick a value...</option
+																		>
+																		{#each getColorRuleValueOptionsWithCurrent(rule.variable, rule.value) as option}
+																			<option
+																				value={option.value}
+																				>{option.label}</option
+																			>
+																		{/each}
+																	</select>
+																{:else}
+																	<input
+																		type="text"
+																		class="color-rule-value"
+																		placeholder="value..."
+																		value={rule.value || ''}
+																		oninput={(e) =>
+																			updateColorRule(
+																				action,
+																				configKey,
+																				ruleIndex,
+																				'value',
+																				(
+																					e.target as HTMLInputElement
+																				).value
+																			)}
+																	/>
+																{/if}
+																<button
+																	type="button"
+																	class="btn-remove-rule"
+																	title="Remove rule"
+																	onclick={() =>
+																		removeColorRule(
+																			action,
+																			configKey,
+																			ruleIndex
+																		)}>✕</button
+																>
+															</div>
+														{/each}
+														{#if getColorRules(action, configKey).length === 0}
+															<p class="color-rules-hint">
+																No rules yet. Add a rule to change
+																the embed color based on event data.
+															</p>
+														{/if}
+														<button
+															type="button"
+															class="btn btn-sm btn-add-rule"
+															onclick={() =>
+																addColorRule(action, configKey)}
+														>
+															+ Add color rule
+														</button>
+													</div>
+												{:else if config.type === 'channel_multi'}
+													<ChannelSelector
+														channels={sharedChannels}
+														name="action_config.{index}.{configKey}"
+														value={action.config[configKey] || ''}
+														required={config.required}
+														placeholder="Select channel(s)..."
+														multiple={true}
+														showAllOption={config.showAllOption}
+														allOptionLabel={config.allOptionLabel ||
+															'All Text Channels'}
+													/>
+													{#if config.description}
+														<p class="field-hint">
+															{config.description}
+														</p>
+													{/if}
+												{:else if config.type === 'channel'}
+													<ChannelSelector
+														channels={sharedChannels}
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														placeholder="Select a channel..."
+														bind:value={action.config[configKey]}
+													/>
+												{:else if config.type === 'roles'}
+													<RoleSelector
+														roles={sharedRoles}
+														name="action_config.{index}.{configKey}"
+														bind:value={action.config[configKey]}
+														required={config.required}
+														multiple={true}
+														placeholder="Search and select role(s)..."
+													/>
+												{:else if config.type === 'role'}
+													<RoleSelector
+														roles={sharedRoles}
+														name="action_config.{index}.{configKey}"
+														bind:value={action.config[configKey]}
+														required={config.required}
+														placeholder="Select a role..."
+													/>
+												{:else if config.type === 'select'}
+													<select
+														id="config_{index}_{configKey}"
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+													>
+														{#each config.options as opt}
+															{@const optVal =
+																typeof opt === 'object'
+																	? opt.value
+																	: opt}
+															{@const optLabel =
+																typeof opt === 'object'
+																	? opt.label
+																	: opt}
+															<option
+																value={optVal}
+																selected={optVal === config.default}
+																>{optLabel}</option
+															>
+														{/each}
+													</select>
+												{:else if config.type === 'user_source'}
+													<select
+														id="config_{index}_{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+													>
+														<option value=""
+															>Select user source...</option
+														>
+														{#each availableUserSources() as source}
+															<option value={source.value}
+																>{source.label}</option
+															>
+														{/each}
+													</select>
+													{#if action.config[configKey] === 'specific_user'}
+														<div class="specific-user-picker">
+															<UserSelector
+																guildId={selectedGuildId}
+																name="action_config.{index}.{configKey}_specific_id"
+																multiple={false}
+																showAnyOption={false}
+																placeholder="Search for a server member..."
+																bind:value={
+																	action.config[
+																		configKey + '_specific_id'
+																	]
+																}
+															/>
+														</div>
+													{/if}
+													<!-- Submit the resolved value: either the source type or specific:<userId> -->
+													<input
+														type="hidden"
+														name="action_config.{index}.{configKey}"
+														value={action.config[configKey] ===
+														'specific_user'
+															? 'specific:' +
+																(action.config[
+																	configKey + '_specific_id'
+																] || '')
+															: action.config[configKey] || ''}
+													/>
+													<p class="field-hint">
+														Choose which user this action will target
 													</p>
+												{:else if config.type === 'emoji'}
+													<EmojiSelector
+														emojis={sharedEmojis}
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														placeholder="Select an emoji..."
+														bind:value={action.config[configKey]}
+													/>
+													{#if config.description}
+														<p class="field-hint">
+															{config.description}
+														</p>
+													{/if}
+												{:else if config.type === 'webhook'}
+													<select
+														id="config_{index}_{configKey}"
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+													>
+														<option value="">Select a webhook...</option
+														>
+														{#each data.webhooks || [] as webhook}
+															<option value={webhook.id}>
+																{webhook.name} ({webhook.method})
+															</option>
+														{/each}
+													</select>
+													{#if config.description}
+														<p class="field-hint">
+															{config.description}
+														</p>
+													{/if}
+													{#if !data.webhooks?.length}
+														<p class="field-hint warning">
+															No webhooks configured. <a
+																href="/admin/{selectedGuildId}/settings"
+																>Add webhooks in Settings</a
+															>
+														</p>
+													{/if}
+												{:else if config.type === 'json'}
+													<textarea
+														id="config_{index}_{configKey}"
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														placeholder={'{"key": "value"}'}
+														rows="4"
+														class="code-textarea"
+														bind:value={action.config[configKey]}
+													></textarea>
+													{#if config.description}
+														<p class="field-hint">
+															{config.description}
+														</p>
+													{/if}
+												{:else if config.type === 'button_rows'}
+													<input
+														type="hidden"
+														name="action_config.{index}.{configKey}"
+														value={JSON.stringify(
+															action.config[configKey] || []
+														)}
+													/>
+													<ButtonEditor
+														bind:value={action.config[configKey]}
+														actionTypes={data.actionTypes}
+														templateVariables={data.templateVariables}
+														channels={sharedChannels}
+														roles={sharedRoles}
+														emojis={sharedEmojis}
+														guildId={selectedGuildId}
+														userSources={availableUserSources()}
+													/>
+												{:else}
+													<input
+														type="text"
+														id="config_{index}_{configKey}"
+														name="action_config.{index}.{configKey}"
+														required={config.required}
+														bind:value={action.config[configKey]}
+													/>
 												{/if}
-											{:else if config.type === 'json'}
-												<textarea 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													placeholder={'{"key": "value"}'}
-													rows="4"
-													class="code-textarea"
-													bind:value={action.config[configKey]}
-												></textarea>
-												{#if config.description}
-													<p class="field-hint">{config.description}</p>
-												{/if}
-											{:else if config.type === 'button_rows'}
-												<input type="hidden" name="action_config.{index}.{configKey}" value={JSON.stringify(action.config[configKey] || [])} />
-												<ButtonEditor
-													bind:value={action.config[configKey]}
-													actionTypes={data.actionTypes}
-													templateVariables={data.templateVariables}
-													channels={sharedChannels}
-													roles={sharedRoles}
-													emojis={sharedEmojis}
-													guildId={selectedGuildId}
-													userSources={availableUserSources()}
-												/>
-											{:else}
-												<input 
-													type="text" 
-													id="config_{index}_{configKey}" 
-													name="action_config.{index}.{configKey}"
-													required={config.required}
-													bind:value={action.config[configKey]}
-												/>
-											{/if}
-										</div>
-									{/if}
+											</div>
+										{/if}
 									{/each}
 								</div>
 							{/if}
@@ -1112,11 +1415,7 @@
 		</section>
 		<!-- Form Actions -->
 		<div class="form-actions">
-			<button 
-				type="button" 
-				class="btn btn-danger" 
-				onclick={() => showDeleteConfirm = true}
-			>
+			<button type="button" class="btn btn-danger" onclick={() => (showDeleteConfirm = true)}>
 				<span>🗑️</span>
 				Delete
 			</button>
@@ -1131,43 +1430,50 @@
 			</div>
 		</div>
 	</form>
-	
+
 	<!-- Delete Confirmation -->
 	{#if showDeleteConfirm}
-		<div 
-			class="confirm-overlay" 
-			onclick={() => showDeleteConfirm = false}
+		<div
+			class="confirm-overlay"
+			onclick={() => (showDeleteConfirm = false)}
 			onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)}
 			role="presentation"
 		>
-			<div 
-				class="confirm-dialog" 
-				role="alertdialog" 
-				aria-modal="true" 
+			<div
+				class="confirm-dialog"
+				role="alertdialog"
+				aria-modal="true"
 				aria-labelledby="delete-dialog-title"
 				tabindex="-1"
 				onclick={(e) => e.stopPropagation()}
 				onkeydown={(e) => e.stopPropagation()}
 			>
 				<h3 id="delete-dialog-title">🗑️ Delete Automation</h3>
-				<p>Are you sure you want to delete <strong>"{automation.name}"</strong>? This action cannot be undone.</p>
+				<p>
+					Are you sure you want to delete <strong>"{automation.name}"</strong>? This
+					action cannot be undone.
+				</p>
 				<div class="confirm-actions">
-					<button class="btn btn-secondary" onclick={() => showDeleteConfirm = false}>
+					<button class="btn btn-secondary" onclick={() => (showDeleteConfirm = false)}>
 						Cancel
 					</button>
-					<form method="POST" action="?/delete" use:enhance={() => {
-						isSubmitting = true;
-						return async ({ result }) => {
-							isSubmitting = false;
-							if (result.type === 'redirect') {
-								await goto(result.location, { invalidateAll: true });
-							} else if (result.type === 'failure') {
-								form = result.data;
-								showDeleteConfirm = false;
-							}
-						};
-					}}>
-						<input type="hidden" name="guild_id" value={selectedGuildId}>
+					<form
+						method="POST"
+						action="?/delete"
+						use:enhance={() => {
+							isSubmitting = true;
+							return async ({ result }) => {
+								isSubmitting = false;
+								if (result.type === 'redirect') {
+									await goto(result.location, { invalidateAll: true });
+								} else if (result.type === 'failure') {
+									form = result.data;
+									showDeleteConfirm = false;
+								}
+							};
+						}}
+					>
+						<input type="hidden" name="guild_id" value={selectedGuildId} />
 						<button type="submit" class="btn btn-danger" disabled={isSubmitting}>
 							{isSubmitting ? 'Deleting...' : 'Delete Automation'}
 						</button>
@@ -1184,13 +1490,13 @@
 		max-width: 800px;
 		margin: 0 auto;
 	}
-	
+
 	@media (min-width: 640px) {
 		.automation-form-page {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	.back-link {
 		display: inline-flex;
 		align-items: center;
@@ -1201,21 +1507,21 @@
 		margin-bottom: 1rem;
 		transition: color 0.2s;
 	}
-	
+
 	.back-link:hover {
 		color: var(--text-primary);
 	}
-	
+
 	.page-header {
 		margin-bottom: 1.5rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.page-header {
 			margin-bottom: 2rem;
 		}
 	}
-	
+
 	.page-header h1 {
 		font-size: 1.375rem;
 		display: flex;
@@ -1223,22 +1529,22 @@
 		gap: 0.5rem;
 		margin: 0;
 	}
-	
+
 	@media (min-width: 640px) {
 		.page-header h1 {
 			font-size: 1.75rem;
 		}
 	}
-	
+
 	.header-icon {
 		font-size: 1.5rem;
 	}
-	
+
 	.header-subtitle {
 		color: var(--text-muted);
 		margin: 0.5rem 0 0;
 	}
-	
+
 	.error-banner {
 		display: flex;
 		align-items: center;
@@ -1250,51 +1556,51 @@
 		color: var(--color-danger);
 		margin-bottom: 1.5rem;
 	}
-	
+
 	.automation-form {
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
 	}
-	
+
 	.form-section {
 		background: var(--bg-secondary, #2f3136);
 		border-radius: 12px;
 		padding: 1rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.form-section {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	.form-section h2 {
 		margin: 0 0 0.5rem;
 		font-size: 1.125rem;
 	}
-	
+
 	.section-description {
 		color: var(--text-muted);
 		font-size: 0.875rem;
 		margin: 0 0 1.25rem;
 	}
-	
+
 	.form-group {
 		margin-bottom: 1rem;
 	}
-	
+
 	.form-group:last-child {
 		margin-bottom: 0;
 	}
-	
+
 	.form-group label {
 		display: block;
 		margin-bottom: 0.5rem;
 		font-weight: 500;
 		font-size: 0.875rem;
 	}
-	
+
 	.form-group input,
 	.form-group select,
 	.form-group textarea {
@@ -1306,23 +1612,23 @@
 		color: var(--text-primary, #fff);
 		font-size: 1rem;
 	}
-	
+
 	.form-group textarea {
 		resize: vertical;
 		min-height: 60px;
 	}
-	
+
 	.form-group input:focus,
 	.form-group select:focus,
 	.form-group textarea:focus {
 		outline: none;
-		border-color: var(--accent-color, #5865F2);
+		border-color: var(--accent-color, #5865f2);
 	}
-	
+
 	.required {
 		color: var(--color-danger);
 	}
-	
+
 	.current-filters {
 		display: flex;
 		align-items: center;
@@ -1334,11 +1640,11 @@
 		margin-bottom: 1rem;
 		font-size: 0.875rem;
 	}
-	
+
 	.filters-label {
 		color: var(--text-muted);
 	}
-	
+
 	.filter-tag {
 		padding: 0.25rem 0.5rem;
 		background: var(--bg-primary, #202225);
@@ -1346,19 +1652,19 @@
 		font-family: monospace;
 		font-size: 0.75rem;
 	}
-	
+
 	.filters-grid {
 		padding: 1rem;
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 8px;
 	}
-	
+
 	.filters-hint {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		margin: 0 0 1rem;
 	}
-	
+
 	/* Bot Command Filter Section */
 	.bot-command-filter-section {
 		margin-bottom: 1rem;
@@ -1367,19 +1673,19 @@
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
 	}
-	
+
 	.bot-command-filter-section h4 {
 		margin: 0 0 0.25rem;
 		font-size: 1rem;
 		color: var(--text-primary);
 	}
-	
+
 	.bot-command-filter-section .section-hint {
 		margin: 0 0 1rem;
 		font-size: 0.85rem;
 		color: var(--text-muted);
 	}
-	
+
 	/* Multi-trigger styles */
 	.empty-triggers {
 		padding: 2rem;
@@ -1388,17 +1694,17 @@
 		border-radius: 8px;
 		color: var(--text-muted);
 	}
-	
+
 	.empty-triggers p {
 		margin: 0;
 	}
-	
+
 	.triggers-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 	}
-	
+
 	.trigger-item {
 		display: flex;
 		align-items: flex-start;
@@ -1409,14 +1715,14 @@
 		border-radius: 8px;
 		gap: 0.5rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-item {
 			align-items: center;
 			padding: 0.75rem 1rem;
 		}
 	}
-	
+
 	.trigger-info {
 		display: flex;
 		align-items: flex-start;
@@ -1425,7 +1731,7 @@
 		min-width: 0;
 		flex-wrap: wrap;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-info {
 			align-items: center;
@@ -1433,30 +1739,30 @@
 			flex-wrap: nowrap;
 		}
 	}
-	
+
 	.trigger-icon {
 		font-size: 1.25rem;
 		flex-shrink: 0;
 	}
-	
+
 	.trigger-name {
 		font-weight: 500;
 		word-break: break-word;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-name {
 			white-space: nowrap;
 			word-break: normal;
 		}
 	}
-	
+
 	.trigger-description {
 		color: var(--text-muted);
 		font-size: 0.8rem;
 		display: none;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-description {
 			display: block;
@@ -1466,7 +1772,7 @@
 			white-space: nowrap;
 		}
 	}
-	
+
 	.trigger-picker {
 		margin-top: 1rem;
 		padding: 1rem;
@@ -1474,7 +1780,7 @@
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
 	}
-	
+
 	.trigger-picker-header {
 		display: flex;
 		justify-content: space-between;
@@ -1483,17 +1789,17 @@
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border-color, #40444b);
 	}
-	
+
 	.trigger-picker-header h4 {
 		margin: 0;
 		font-size: 1rem;
 	}
-	
+
 	.trigger-search {
 		position: relative;
 		margin-bottom: 1rem;
 	}
-	
+
 	.trigger-search .search-input {
 		width: 100%;
 		padding: 0.625rem 2.5rem 0.625rem 1rem;
@@ -1502,19 +1808,21 @@
 		border-radius: 6px;
 		color: var(--text-primary, #fff);
 		font-size: 0.9rem;
-		transition: border-color 0.2s, box-shadow 0.2s;
+		transition:
+			border-color 0.2s,
+			box-shadow 0.2s;
 	}
-	
+
 	.trigger-search .search-input:focus {
 		outline: none;
 		border-color: var(--accent-color, #5865f2);
 		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.2);
 	}
-	
+
 	.trigger-search .search-input::placeholder {
 		color: var(--text-tertiary, #72767d);
 	}
-	
+
 	.clear-search {
 		position: absolute;
 		right: 0.5rem;
@@ -1527,24 +1835,26 @@
 		cursor: pointer;
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
-		transition: color 0.2s, background 0.2s;
+		transition:
+			color 0.2s,
+			background 0.2s;
 	}
-	
+
 	.clear-search:hover {
 		color: var(--text-primary, #fff);
 		background: var(--bg-primary, #202225);
 	}
-	
+
 	.no-results {
 		padding: 2rem;
 		text-align: center;
 		color: var(--text-muted, #72767d);
 	}
-	
+
 	.no-results p {
 		margin: 0 0 1rem;
 	}
-	
+
 	.trigger-categories {
 		display: flex;
 		flex-direction: column;
@@ -1552,13 +1862,13 @@
 		max-height: 400px;
 		overflow-y: auto;
 	}
-	
+
 	.trigger-category {
 		padding: 0.75rem;
 		background: var(--bg-secondary, #2f3136);
 		border-radius: 8px;
 	}
-	
+
 	.category-header {
 		display: flex;
 		align-items: center;
@@ -1567,13 +1877,13 @@
 		font-size: 0.875rem;
 		font-weight: 600;
 	}
-	
+
 	.trigger-options {
 		display: flex;
 		flex-direction: column;
 		gap: 0.375rem;
 	}
-	
+
 	.trigger-option {
 		display: flex;
 		align-items: flex-start;
@@ -1585,7 +1895,7 @@
 		transition: all 0.2s;
 		flex-wrap: wrap;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-option {
 			align-items: center;
@@ -1594,28 +1904,28 @@
 			flex-wrap: nowrap;
 		}
 	}
-	
+
 	.trigger-option:hover {
 		background: var(--bg-primary, #202225);
 	}
-	
+
 	.trigger-option.selected {
 		background: rgba(88, 101, 242, 0.2);
-		border: 1px solid var(--accent-color, #5865F2);
+		border: 1px solid var(--accent-color, #5865f2);
 	}
-	
-	.trigger-option input[type="checkbox"] {
+
+	.trigger-option input[type='checkbox'] {
 		width: 16px;
 		height: 16px;
 		flex-shrink: 0;
 	}
-	
+
 	.trigger-option-name {
 		font-weight: 500;
 		font-size: 0.8rem;
 		word-break: break-word;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-option-name {
 			font-size: 0.875rem;
@@ -1623,13 +1933,13 @@
 			word-break: normal;
 		}
 	}
-	
+
 	.trigger-option-desc {
 		color: var(--text-muted);
 		font-size: 0.7rem;
 		word-break: break-word;
 	}
-	
+
 	@media (min-width: 640px) {
 		.trigger-option-desc {
 			font-size: 0.75rem;
@@ -1639,7 +1949,7 @@
 			word-break: normal;
 		}
 	}
-	
+
 	/* Stacked Actions Styles */
 	.section-header-row {
 		display: flex;
@@ -1647,7 +1957,7 @@
 		gap: 0.75rem;
 		margin-bottom: 1rem;
 	}
-	
+
 	@media (min-width: 480px) {
 		.section-header-row {
 			flex-direction: row;
@@ -1656,15 +1966,15 @@
 			gap: 1rem;
 		}
 	}
-	
+
 	.section-header-row h2 {
 		margin: 0;
 	}
-	
+
 	.section-header-row .section-description {
 		margin: 0.25rem 0 0;
 	}
-	
+
 	.empty-actions {
 		padding: 2rem;
 		text-align: center;
@@ -1672,25 +1982,25 @@
 		border-radius: 8px;
 		color: var(--text-muted);
 	}
-	
+
 	.empty-actions p {
 		margin: 0;
 	}
-	
+
 	.action-config {
 		margin-top: 1rem;
 		padding: 1rem;
 		background: var(--bg-tertiary, #36393f);
 		border-radius: 8px;
 	}
-	
+
 	@media (min-width: 640px) {
 		.action-config {
 			margin-top: 1.25rem;
 			padding: 1.25rem;
 		}
 	}
-	
+
 	.action-config h3 {
 		margin: 0 0 1rem;
 		font-size: 0.875rem;
@@ -1698,7 +2008,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
-	
+
 	/* Stacked actions */
 	.actions-list {
 		display: flex;
@@ -1706,14 +2016,14 @@
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
-	
+
 	.action-item {
 		background: var(--bg-tertiary, #36393f);
 		border: 1px solid var(--border-color, #40444b);
 		border-radius: 8px;
 		padding: 1rem;
 	}
-	
+
 	.action-header {
 		display: flex;
 		justify-content: space-between;
@@ -1722,17 +2032,17 @@
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--border-color, #40444b);
 	}
-	
+
 	.action-number {
 		font-weight: 600;
 		color: var(--text-primary);
 	}
-	
+
 	.action-controls {
 		display: flex;
 		gap: 0.375rem;
 	}
-	
+
 	.btn-icon {
 		display: inline-flex;
 		align-items: center;
@@ -1748,33 +2058,33 @@
 		cursor: pointer;
 		transition: all 0.2s;
 	}
-	
+
 	.btn-icon:hover:not(:disabled) {
 		background: var(--bg-primary, #202225);
 		color: var(--text-primary);
 	}
-	
+
 	.btn-icon:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-	
+
 	.btn-icon.btn-danger:hover:not(:disabled) {
 		background: var(--color-danger-soft);
 		border-color: var(--color-danger);
 		color: var(--color-danger);
 	}
-	
+
 	.field-hint {
 		font-size: 0.75rem;
 		color: var(--text-muted);
 		margin: 0.375rem 0 0;
 	}
-	
+
 	.field-hint.warning {
 		color: var(--color-warning, #ffc107);
 	}
-	
+
 	.field-hint a {
 		color: var(--color-primary);
 		text-decoration: underline;
@@ -1788,63 +2098,63 @@
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 		font-size: 0.85rem;
 	}
-	
+
 	.checkbox-label {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		cursor: pointer;
 	}
-	
+
 	.checkbox-label input {
 		width: auto;
 	}
-	
+
 	.form-actions {
 		display: flex;
 		flex-direction: column-reverse;
 		gap: 0.75rem;
 		padding-top: 1rem;
 	}
-	
+
 	.form-actions .btn-danger {
 		width: 100%;
 		justify-content: center;
 	}
-	
+
 	.form-actions-right {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 		width: 100%;
 	}
-	
+
 	.form-actions-right .btn {
 		width: 100%;
 		justify-content: center;
 	}
-	
+
 	@media (min-width: 480px) {
 		.form-actions {
 			flex-direction: row;
 			justify-content: space-between;
 			align-items: center;
 		}
-		
+
 		.form-actions .btn-danger {
 			width: auto;
 		}
-		
+
 		.form-actions-right {
 			flex-direction: row;
 			width: auto;
 		}
-		
+
 		.form-actions-right .btn {
 			width: auto;
 		}
 	}
-	
+
 	/* Confirm Dialog */
 	.confirm-overlay {
 		position: fixed;
@@ -1856,7 +2166,7 @@
 		z-index: 1000;
 		padding: 1rem;
 	}
-	
+
 	.confirm-dialog {
 		background: var(--bg-secondary, #2f3136);
 		border-radius: 12px;
@@ -1864,52 +2174,52 @@
 		max-width: 400px;
 		width: 100%;
 	}
-	
+
 	.confirm-dialog h3 {
 		margin: 0 0 0.75rem;
 	}
-	
+
 	.confirm-dialog p {
 		color: var(--text-muted);
 		margin: 0 0 1.5rem;
 	}
-	
+
 	.confirm-actions {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 	}
-	
+
 	.confirm-actions .btn {
 		width: 100%;
 		justify-content: center;
 	}
-	
+
 	@media (min-width: 480px) {
 		.confirm-actions {
 			flex-direction: row;
 			justify-content: flex-end;
 		}
-		
+
 		.confirm-actions .btn {
 			width: auto;
 		}
 	}
-	
+
 	.confirm-actions form {
 		margin: 0;
 	}
-	
+
 	.confirm-actions form .btn {
 		width: 100%;
 	}
-	
+
 	@media (min-width: 480px) {
 		.confirm-actions form .btn {
 			width: auto;
 		}
 	}
-	
+
 	/* Mobile Responsive - filters */
 	@media (max-width: 640px) {
 		.current-filters {
