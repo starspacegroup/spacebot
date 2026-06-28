@@ -2,7 +2,7 @@
 
 This document outlines future enhancements and features. Status reflects what is
 actually implemented in the codebase (reconciled 2026-06-18 against a full
-feature inventory). Items marked _(partial)_ exist but are not fully wired.
+feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are scaffold-only / not fully wired / require external setup.
 
 ## Priority: High
 
@@ -12,7 +12,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Add Cloudflare KV or D1 storage for user sessions — cookie sessions + D1 user store
 - [x] Complete admin authorization logic (check ADMIN_USER_IDS)
 - [x] Add logout functionality — `/api/auth/logout`
-- [x] Implement session expiration and refresh — configurable sliding session TTL
+- [x] Implement session expiration and refresh — configurable sliding session TTL _(note: OAuth access-token refresh not implemented)_
 
 ### Discord Bot Features
 
@@ -88,13 +88,13 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Create API documentation
 - [x] Add architecture diagrams — `docs/architecture.md`
 - [x] Write contributing guidelines — `CONTRIBUTING.md`
-- [x] Create video tutorials — Markdown tutorials with hosted-video placeholders
+- [~] Create video tutorials — _(Markdown outlines with hosted-video **placeholders** in `docs/tutorials.md`; no actual videos)_
 
 ## Optional Enhancements
 
 ### Advanced Features
 
-- [x] Multi-language support (i18n)
+- [~] Multi-language support (i18n) — _(scaffold: locale resolution + `LanguageSelector`; UI strings not yet translated)_
 - [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
 - [x] Scheduled tasks and cron jobs — superadmin workflows + `scripts/cron.ts` dispatcher
@@ -102,11 +102,11 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 
 ### Monitoring & Observability
 
-- [x] Set up Sentry for error tracking
-- [x] Add application performance monitoring (APM)
+- [~] Set up Sentry for error tracking — _(scaffold: `sentry.{client,server}.config.ts` present and DSN-gated, but not yet imported into hooks; needs a Sentry account + wiring)_
+- [~] Add application performance monitoring (APM) — _(scaffold: `src/lib/server/telemetry.ts`; requires an external APM backend)_
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
-- [x] Create Grafana dashboards
-- [x] Set up alerting for critical issues
+- [~] Create Grafana dashboards — _(docs/dashboard JSON under `docs/grafana/`; requires a running Grafana)_
+- [~] Set up alerting for critical issues — _(documented in `docs/alerts.md`; requires external alerting infra)_
 
 ### Security Enhancements
 
@@ -120,8 +120,8 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 
 - [x] Implement caching strategies — guild cache, AI gateway caching
 - [x] Add service worker for offline support
-- [x] Optimize images and assets
-- [x] Enable HTTP/3 on Cloudflare
+- [~] Optimize images and assets — _(audit script `scripts/check-images.ts`; no automated optimization step yet)_
+- [~] Enable HTTP/3 on Cloudflare — _(verify script `scripts/verify-http3.ts` + `docs/http3.md`; actual enablement is a Cloudflare dashboard setting)_
 - [x] Add CDN for static assets — Cloudflare edge
 
 ## Community Features
@@ -129,8 +129,8 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Public bot invite page
 - [x] Server leaderboards
 - [x] User profiles and badges
-- [x] Bot voting and reviews
-- [x] Discord server for support
+- [~] Bot voting and reviews — _(in-app `/vote` page; external listing-site voting/reviews not integrated)_
+- [~] Discord server for support — _(in-app `/support` page added; the support Discord server itself is external)_
 
 ## Done ✅
 
