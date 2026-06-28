@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
 	const { data } = $props();
@@ -9,15 +9,17 @@
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const checkoutStatus = urlParams?.get('status');
 
-	let toastMessage = $state(
-		checkoutStatus === 'success'
-			? 'Welcome to Pro! Your upgrade is being processed.'
-			: checkoutStatus === 'canceled'
-				? 'Checkout was canceled. No charges were made.'
-				: null
-	);
-	let toastSuccess = $state(checkoutStatus === 'success');
-	let showToast = $state(!!checkoutStatus);
+	// Surface the post-checkout status once on mount (plain guard so it can't refire).
+	let checkoutToastShown = false;
+	$effect(() => {
+		if (checkoutToastShown) return;
+		checkoutToastShown = true;
+		if (checkoutStatus === 'success') {
+			toast.success('Welcome to Pro! Your upgrade is being processed.');
+		} else if (checkoutStatus === 'canceled') {
+			toast.error('Checkout was canceled. No charges were made.');
+		}
+	});
 
 	let loading = $state(false);
 	let error = $state(null);
@@ -192,12 +194,11 @@
 
 			// Success for cancel/reactivate — reload page
 			if (result.success) {
-				toastMessage =
+				const message =
 					action === 'cancel'
 						? 'Subscription will cancel at the end of the billing period.'
 						: 'Subscription reactivated!';
-				toastSuccess = action === 'reactivate';
-				showToast = true;
+				toast[action === 'reactivate' ? 'success' : 'error'](message);
 				// Reload to get fresh data
 				setTimeout(() => window.location.reload(), 1500);
 			}
@@ -214,14 +215,6 @@
 </svelte:head>
 
 <div class="billing-page">
-	{#if showToast && toastMessage}
-		<Toast
-			message={toastMessage}
-			success={toastSuccess}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">&#8592; Back to Dashboard</a>
 		<div class="header-content">
