@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 
 	let { data, form } = $props();
 
-	let showToast = $state(true);
 	let showCreateModal = $state(false);
 	let deleteConfirmId = $state(null);
 	let revokeConfirmId = $state(null);
@@ -80,10 +79,14 @@
 		return { label: 'Active', class: 'status-active' };
 	}
 
-	// Reset toast when form result changes
+	// Push a toast and close the modal when a new form result arrives
+	let lastFormResult;
 	$effect(() => {
-		if (form) {
-			showToast = true;
+		if (form && form !== lastFormResult) {
+			lastFormResult = form;
+			if (form.message && !form.rawKey) {
+				toast[form.success ? 'success' : 'error'](form.message);
+			}
 			// Close modal on successful creation
 			if (form.success && !form.rawKey) {
 				showCreateModal = false;
@@ -97,14 +100,6 @@
 </svelte:head>
 
 <div class="api-keys-page">
-	{#if form?.message && showToast && !form?.rawKey}
-		<Toast
-			message={form.message}
-			success={form.success}
-			onDismiss={() => (showToast = false)}
-		/>
-	{/if}
-
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 		<h1>🔑 API Keys</h1>
