@@ -140,7 +140,6 @@
 		},
 	];
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		guildId = null,
 		emojis: preloadedEmojis = null, // Pre-loaded emojis to avoid multiple fetches
@@ -149,7 +148,6 @@
 		required = false,
 		placeholder = 'Search emojis...',
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// Ensure value is never undefined internally
 	$effect(() => {

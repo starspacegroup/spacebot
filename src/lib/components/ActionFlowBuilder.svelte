@@ -53,7 +53,6 @@
 		compact?: boolean;
 	}
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		actions = $bindable([]),
 		actionTypes = {},
@@ -65,7 +64,6 @@
 		numberOptions = [],
 		compact = false,
 	}: Props = $props();
-	/* eslint-enable prefer-const */
 
 	// Drag state
 	let dragIndex = $state(null);
@@ -408,8 +406,7 @@
 																bind:value={
 																	action.config[configKey]
 																}
-																class="flow-textarea"
-															></textarea>
+																class="flow-textarea"></textarea>
 														{/if}
 													{:else if config.type === 'number'}
 														<input

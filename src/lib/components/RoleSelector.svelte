@@ -12,7 +12,6 @@
 	// Special value for "Any Role"
 	const ANY_ROLE = 'ALL';
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		guildId = null,
 		roles: preloadedRoles = null, // Pre-loaded roles to avoid multiple fetches
@@ -23,7 +22,6 @@
 		placeholder = 'Search roles...',
 		showAnyOption = false, // Show "Any" option at top (multi-select only)
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// Ensure value is never undefined internally
 	$effect(() => {

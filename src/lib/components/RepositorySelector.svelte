@@ -5,7 +5,6 @@
 	 */
 	const ANY_REPOSITORY = 'ALL';
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		repositories = [],
 		value = $bindable(),
@@ -15,7 +14,6 @@
 		placeholder = 'Search repositories...',
 		showAnyOption = true,
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	$effect(() => {
 		if (value === undefined) {

@@ -12,7 +12,6 @@
 	// Special value for "All Channels"
 	const ALL_CHANNELS = 'ALL';
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		guildId = null,
 		channels: preloadedChannels = undefined, // Pre-loaded channels: undefined = not used, null = loading, array = loaded
@@ -26,7 +25,6 @@
 		allOptionLabel = 'Any', // Label for the "all" option (used when showAllOption)
 		onchange = null, // Callback when value changes
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// Ensure value is never undefined internally
 	$effect(() => {

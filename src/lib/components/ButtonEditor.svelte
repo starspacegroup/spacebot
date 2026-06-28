@@ -6,7 +6,6 @@
 	 */
 	import ActionFlowBuilder from './ActionFlowBuilder.svelte';
 
-	/* eslint-disable prefer-const -- Svelte 5: this $props() block reassigns a $bindable, so the destructuring must use `let`; the sibling props cannot be split into a separate const. */
 	let {
 		value = $bindable([]),
 		actionTypes = {},
@@ -17,7 +16,6 @@
 		guildId = '',
 		userSources = [],
 	} = $props();
-	/* eslint-enable prefer-const */
 
 	// Ensure we always have at least one row
 	let rows = $state(value?.length > 0 ? value : [[createDefaultButton()]]);

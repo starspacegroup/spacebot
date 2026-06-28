@@ -72,7 +72,10 @@ export default ts.config(
 			'@typescript-eslint/no-require-imports': 'off',
 			// Real-but-low-value findings against the existing baseline: keep
 			// them visible as warnings rather than blocking CI on day one.
-			'prefer-const': 'warn',
+			// destructuring:'all' so a $props()/destructure that reassigns one
+			// member (e.g. a $bindable or the `form` prop) doesn't force a
+			// disable comment on the siblings.
+			'prefer-const': ['warn', { destructuring: 'all' }],
 			'no-sparse-arrays': 'warn',
 			'no-useless-escape': 'warn',
 			'no-control-regex': 'off',
