@@ -1,4 +1,4 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { redirect } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
 import { getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import { getBillingHistory } from "$lib/db/billing-history.js";

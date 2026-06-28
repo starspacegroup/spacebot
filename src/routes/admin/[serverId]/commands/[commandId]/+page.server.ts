@@ -6,7 +6,6 @@ import {
 	COMMAND_USER_SOURCES,
 	COMMON_OPTION_TYPES,
 	deleteCommand,
-	getBuiltInCommand,
 	getBuiltInCommandForGuild,
 	getCommand,
 	OPTION_TYPES,
@@ -52,7 +51,7 @@ interface CommandUpdates {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, parent, params, url }) {
+export async function load({ platform, parent, params, url }) {
 	// Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
 	if (!/^\d{17,20}$/.test(params.serverId)) {
 		throw redirect(302, '/admin');

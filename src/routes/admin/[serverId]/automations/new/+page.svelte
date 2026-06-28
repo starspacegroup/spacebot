@@ -109,10 +109,8 @@
 		[key: string]: any;
 	}
 
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form }: { data: PageDataShape; form?: FormShape } = $props();
-
-	// Form submission state
-	let isSubmitting = $state(false);
 
 	let selectedEventTypes = $state<string[]>([]);
 	let actions = $state<AutomationAction[]>([]);
@@ -363,20 +361,6 @@
 		return getColorRuleValueOptions(rule?.variable).length > 0;
 	}
 
-	// Initialize config values when action type changes to avoid undefined bind errors
-	function initializeActionConfig(actionIndex: number, actionType: string) {
-		const schema = getActionConfigSchema(actionType);
-		const action = actions[actionIndex];
-		const newConfig = { ...action.config };
-		for (const configKey of Object.keys(schema)) {
-			if (newConfig[configKey] === undefined) {
-				newConfig[configKey] = '';
-			}
-		}
-		// Create a new array to trigger reactivity
-		actions = actions.map((a, i) => (i === actionIndex ? { ...a, config: newConfig } : a));
-	}
-
 	// Stacked actions management
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
@@ -527,9 +511,7 @@
 	<form
 		method="POST"
 		use:enhance={() => {
-			isSubmitting = true;
 			return async ({ result }) => {
-				isSubmitting = false;
 				if (result.type === 'redirect') {
 					await goto(result.location, { invalidateAll: true });
 				} else if (result.type === 'success' && result.data?.id) {
@@ -602,7 +584,7 @@
 				</div>
 			{:else}
 				<div class="triggers-list">
-					{#each selectedEventTypes as eventType, index}
+					{#each selectedEventTypes as eventType}
 						{@const eventInfo = data.eventTypes[eventType]}
 						{@const catInfo = getCategoryInfo(eventInfo?.category)}
 						<div class="trigger-item">

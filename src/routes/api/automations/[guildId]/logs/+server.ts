@@ -5,7 +5,6 @@
 
 import { json } from "@sveltejs/kit";
 import { getAutomationLogs } from "$lib/db/automations.js";
-import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
 
 /** @type {import('./$types').RequestHandler} */

@@ -54,8 +54,6 @@ export async function load({ params, cookies, platform, parent }) {
   const user = parentData.user;
   const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
     process.env.DISCORD_BOT_TOKEN;
-  const adminUserIds = (platform as any)?.env?.ADMIN_USER_IDS ||
-    process.env.ADMIN_USER_IDS || "";
 
   // Check if superadmin (from parent or recalculated)
   const isSuperAdmin = parentData.isSuperAdmin;

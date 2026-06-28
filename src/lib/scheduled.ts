@@ -246,7 +246,7 @@ async function runDailyRefresh(env) {
  * @param {Env} env - Environment bindings
  * @param {ExecutionContext} ctx - Execution context
  */
-export async function scheduled(event, env, ctx) {
+export async function scheduled(event, env, _ctx) {
   const cronPattern = event.cron;
   const jobName = getJobNameFromCronPattern(cronPattern);
   const db = env.DB;

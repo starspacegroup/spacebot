@@ -243,7 +243,7 @@
 				// Reload to get fresh data
 				setTimeout(() => window.location.reload(), 1500);
 			}
-		} catch (err) {
+		} catch {
 			error = 'Network error. Please try again.';
 		} finally {
 			loading = false;

@@ -49,7 +49,6 @@ export async function load({ params, cookies, platform, parent }) {
     throw redirect(302, "/login");
   }
 
-  const user = parentData.user;
   const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
     process.env.DISCORD_BOT_TOKEN;
 

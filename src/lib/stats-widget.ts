@@ -172,7 +172,7 @@ function svgAreaChart(data, color, gradientId, unit) {
   return svg;
 }
 
-function svgBarChart(data, title) {
+function svgBarChart(data, _title) {
   if (!data || data.length === 0) {
     return `<text x="${WIDGET_WIDTH / 2}" y="${(CHART.top + CHART.bottom) / 2}" fill="rgba(255,255,255,0.4)" font-size="14" font-family="${FONT}" text-anchor="middle">No data available</text>`;
   }

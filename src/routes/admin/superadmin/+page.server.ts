@@ -16,7 +16,7 @@ import {
 	ACTION_TYPES,
 	RESPONSE_TYPES,
 } from "$lib/db/commands.js";
-import { listIntegrations, createIntegrationToken, revokeIntegrationToken } from "$lib/db/integrations.js";
+import { listIntegrations } from "$lib/db/integrations.js";
 import { usesIntegrationTokenAuth } from "$lib/integrations/registry.js";
 import { getFirstLoginDmEnabled } from "$lib/server/superadmin-notifications.js";
 

@@ -9,7 +9,6 @@
 
 import { json } from "@sveltejs/kit";
 import { listUsers, upsertUser, getUser } from "$lib/db/users.js";
-import { log } from "$lib/log.js";
 
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;

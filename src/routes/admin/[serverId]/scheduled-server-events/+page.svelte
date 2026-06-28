@@ -1,8 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
-	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import { getTimezone, parseUTCDate } from '$lib/timezone.js';
 
 	const { data, form } = $props();
@@ -607,9 +605,9 @@
 
 	<!-- Create Event Modal -->
 	{#if showCreateModal}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="modal-overlay" role="presentation" onclick={() => (showCreateModal = false)}>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
 				class="modal"
 				role="dialog"
@@ -903,13 +901,13 @@
 
 	<!-- Edit Choice Modal (for recurring events) -->
 	{#if showEditChoiceModal && editingEvent}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div
 			class="modal-overlay"
 			role="presentation"
 			onclick={() => (showEditChoiceModal = false)}
 		>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
 				class="modal modal-choice"
 				role="dialog"
@@ -971,9 +969,9 @@
 
 	<!-- Edit Event Modal -->
 	{#if showEditModal && editingEvent}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="modal-overlay" role="presentation" onclick={closeEditModal}>
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<div
 				class="modal modal-lg"
 				role="dialog"

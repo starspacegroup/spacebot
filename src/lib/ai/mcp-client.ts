@@ -91,7 +91,7 @@ export class MCPClient {
       if (!Database) {
         if (isBun) {
           // Bun has built-in SQLite support
-          // @ts-ignore - bun:sqlite is only resolvable under the Bun runtime
+          // @ts-expect-error bun:sqlite is only resolvable under the Bun runtime
           const bunSqlite = await import(/* @vite-ignore */ "bun:sqlite");
           Database = bunSqlite.Database;
         } else {
@@ -2134,7 +2134,7 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
           });
         }
       }
-    } catch (e) {
+    } catch {
       errors.push("Invalid date format");
     }
     
@@ -2246,7 +2246,7 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             });
           }
         }
-      } catch (e) {
+      } catch {
         // Keep default "Invalid date"
       }
 
@@ -2659,12 +2659,13 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             })
           };
 
-        case "get_automation":
+        case "get_automation": {
           const automation = await this.getAutomation(args.automationId, args.guildId);
           if (!automation) {
             return { success: false, error: "Automation not found" };
           }
           return { success: true, data: automation };
+        }
 
         case "get_automation_logs":
           return { 
@@ -2685,12 +2686,13 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
             })
           };
 
-        case "get_command":
+        case "get_command": {
           const command = await this.getCommand(args.commandId, args.guildId);
           if (!command) {
             return { success: false, error: "Command not found" };
           }
           return { success: true, data: command };
+        }
 
         case "get_command_logs":
           return { 

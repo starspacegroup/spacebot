@@ -3,6 +3,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form } = $props();
 	
 	let showToast = $state(true);
@@ -50,7 +51,7 @@
 			await navigator.clipboard.writeText(text);
 			copiedKey = true;
 			setTimeout(() => copiedKey = false, 3000);
-		} catch (err) {
+		} catch {
 			// Fallback for non-secure contexts
 			const textarea = document.createElement('textarea');
 			textarea.value = text;
@@ -297,7 +298,6 @@
 	{#if showCreateModal}
 		<div class="modal-overlay" onclick={closeCreateModal} role="presentation">
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-key-title" tabindex="-1">
 				<div class="modal-header">
 					<h2 id="create-key-title">Create API Key</h2>

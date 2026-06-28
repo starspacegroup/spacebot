@@ -92,7 +92,7 @@ async function verifyWithWebCrypto(body, signature, timestamp, publicKey) {
 			hexToUint8Array(signature),
 			encoder.encode(timestamp + body)
 		);
-	} catch (error) {
+	} catch {
 		// Ed25519 not supported, fall back to discord-interactions library
 		return null;
 	}

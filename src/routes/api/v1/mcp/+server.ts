@@ -153,7 +153,7 @@ async function handleMcpRequest(rpcRequest, auth, db) {
       // Only return tools the API key has scopes for
       const availableTools = MCP_TOOLS
         .filter((tool) => hasScope(auth, tool.requiredScope))
-        .map(({ requiredScope, ...tool }) => tool);
+        .map(({ requiredScope: _requiredScope, ...tool }) => tool);
 
       return rpcResult({ tools: availableTools });
     }

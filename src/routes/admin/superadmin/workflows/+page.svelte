@@ -467,14 +467,6 @@
 		}
 	}
 
-	function operationLabel(key) {
-		return (
-			operationCatalog.find((o) => o.key === key)?.description ||
-			key ||
-			'Choose an operation…'
-		);
-	}
-
 	function statusBadgeClass(status) {
 		if (status === 'completed') return 'badge-success';
 		if (status === 'failed') return 'badge-danger';

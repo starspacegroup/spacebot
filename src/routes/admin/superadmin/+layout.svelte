@@ -1,5 +1,5 @@
 <script lang="ts">
-	const { children, data } = $props();
+	const { children } = $props();
 </script>
 
 <div class="superadmin-layout">

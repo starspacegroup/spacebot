@@ -11,7 +11,7 @@ function getEnv(name, platform) {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ locals, platform }) {
+export async function load({ platform }) {
   const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
   return {

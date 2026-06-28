@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
-	import { formatChartDate, getTimezone, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
+	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 
@@ -122,7 +122,7 @@
 	);
 	let liveVoiceSnapshot = $state(normalizeLiveVoiceSnapshot());
 	let liveVoiceRefreshing = $state(false);
-	let liveVoiceRefreshError = $state('');
+	let _liveVoiceRefreshError = $state('');
 	let liveVoiceStreamConnected = $state(false);
 
 	$effect(() => {
@@ -139,7 +139,7 @@
 
 		liveVoiceRefreshing = true;
 		if (!silent) {
-			liveVoiceRefreshError = '';
+			_liveVoiceRefreshError = '';
 		}
 
 		try {
@@ -154,11 +154,11 @@
 			}
 
 			liveVoiceSnapshot = normalizeLiveVoiceSnapshot(await response.json());
-			liveVoiceRefreshError = '';
+			_liveVoiceRefreshError = '';
 		} catch (error) {
 			console.warn('[Stats] Live voice refresh failed', error);
 			if (!silent) {
-				liveVoiceRefreshError = 'Unable to refresh live voice right now.';
+				_liveVoiceRefreshError = 'Unable to refresh live voice right now.';
 			}
 		} finally {
 			liveVoiceRefreshing = false;
@@ -182,7 +182,7 @@
 			stream = new EventSource(streamUrl);
 			stream.addEventListener('open', () => {
 				liveVoiceStreamConnected = true;
-				liveVoiceRefreshError = '';
+				_liveVoiceRefreshError = '';
 			});
 
 			stream.addEventListener('voice_snapshot', (event) => {
@@ -190,7 +190,7 @@
 					const payload = JSON.parse(event.data);
 					liveVoiceSnapshot = normalizeLiveVoiceSnapshot(payload?.data || payload);
 					liveVoiceStreamConnected = true;
-					liveVoiceRefreshError = '';
+					_liveVoiceRefreshError = '';
 				} catch (error) {
 					console.warn('[Stats] Invalid live voice event payload', error);
 				}
@@ -199,7 +199,7 @@
 			stream.addEventListener('error', () => {
 				liveVoiceStreamConnected = false;
 				if (!liveVoiceSnapshot.updatedAt) {
-					liveVoiceRefreshError = 'Live stream unavailable, using refresh fallback.';
+					_liveVoiceRefreshError = 'Live stream unavailable, using refresh fallback.';
 				}
 			});
 		}
@@ -353,11 +353,6 @@
 		filteredCategories().reduce((sum, c) => sum + c.display_count, 0)
 	);
 
-	// Calculate percentages for category breakdown - use $derived for reactivity
-	const categoryTotal = $derived(
-		(Object.values(statistics.events?.byCategory || {}) as number[]).reduce((a, b) => a + b, 0)
-	);
-
 	function getCategoryPercentage(count, total) {
 		if (!total) return 0;
 		return ((count / total) * 100).toFixed(1);
@@ -367,33 +362,6 @@
 	function formatNumber(num) {
 		if (!num) return '0';
 		return num.toLocaleString();
-	}
-
-	function getAvatarInitial(name) {
-		if (!name) return '?';
-		return name.trim().charAt(0).toUpperCase();
-	}
-
-	function getLiveVoiceBadges(member) {
-		return [
-			{ key: 'cam', label: 'Cam', active: !!member.selfVideo, tone: 'video' },
-			{ key: 'stream', label: 'Share', active: !!member.streaming, tone: 'stream' },
-			{ key: 'self-mute', label: 'Self Mute', active: !!member.selfMute, tone: 'self-mute' },
-			{ key: 'self-deaf', label: 'Self Deaf', active: !!member.selfDeaf, tone: 'self-deaf' },
-			{
-				key: 'server-mute',
-				label: 'Server Mute',
-				active: !!member.serverMute,
-				tone: 'server-mute',
-			},
-			{
-				key: 'server-deaf',
-				label: 'Server Deaf',
-				active: !!member.serverDeaf,
-				tone: 'server-deaf',
-			},
-			{ key: 'stage', label: 'Suppressed', active: !!member.suppress, tone: 'stage' },
-		];
 	}
 
 	// Calculate success rate
@@ -547,31 +515,6 @@
 		const sign = value > 0 ? '+' : '';
 		return `${sign}${value.toLocaleString()}`;
 	}
-
-	// Member history chart data with computed values for SVG
-	const memberChartData = $derived.by(() => {
-		const history = liveData.memberHistory || [];
-		const processed = history.map((d) => ({
-			...d,
-			member_count: d.member_count || 0,
-			label: formatChartDate(d.period || d.last_recorded, data.timezone),
-		}));
-
-		if (processed.length === 0) return { points: [], minValue: 0, maxValue: 0, range: 1 };
-
-		const counts = processed.map((d) => d.member_count);
-		const minValue = Math.min(...counts);
-		const maxValue = Math.max(...counts);
-		const range = maxValue - minValue || 1;
-
-		return {
-			points: processed,
-			minValue,
-			maxValue,
-			range,
-			width: processed.length * 30,
-		};
-	});
 
 	// Transform member growth chart data for bar chart component
 	const memberGrowthBarData = $derived.by(() => {

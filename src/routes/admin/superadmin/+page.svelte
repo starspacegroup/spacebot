@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { formatDate as tzFormatDate, formatChartDate } from '$lib/timezone.js';
+	import { formatDate as tzFormatDate } from '$lib/timezone.js';
 
 	const { data } = $props();
 
@@ -28,7 +28,6 @@
 	let cronJobHistory = $state([]);
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
 	const integrations = $derived(data?.integrations ?? []);
-	const actionTypes = $derived(data?.actionTypes ?? {});
 	const responseTypes: Record<string, any> = $derived(data?.responseTypes ?? {});
 	let firstLoginDmEnabled = $state(false);
 	let firstLoginDmSaving = $state(false);
@@ -70,12 +69,6 @@
 	function formatDate(dateStr) {
 		if (!dateStr) return 'Never';
 		return tzFormatDate(dateStr, null);
-	}
-
-	// Format short date for charts
-	function formatShortDate(dateStr) {
-		if (!dateStr) return '';
-		return formatChartDate(dateStr, null);
 	}
 
 	// Format duration in ms to human readable

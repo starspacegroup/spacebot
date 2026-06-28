@@ -20,15 +20,6 @@ import {
 } from "$lib/stripe.js";
 import { addBillingEvent, BILLING_EVENT_TYPES } from "$lib/db/billing-history.js";
 
-/**
- * Check if user is a superadmin
- */
-function checkIsSuperAdmin(userId, platform) {
-  if (!userId) return false;
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
-  return adminUserIds.split(",").map((id) => id.trim()).filter(Boolean).includes(userId);
-}
-
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, cookies, platform, url }) {
   const userId = cookies.get("discord_user_id");

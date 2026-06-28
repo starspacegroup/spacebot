@@ -109,17 +109,6 @@ function getEmptyStats() {
  * Get event statistics
  */
 async function getEventStatistics(db, guildId) {
-  const botFilterSQL = `
-    AND NOT (
-      actor_is_bot = 1 
-      OR LOWER(actor_name) LIKE '%bot%'
-      OR LOWER(actor_name) LIKE '%disboard%'
-      OR LOWER(actor_name) LIKE '%github%'
-      OR LOWER(actor_name) LIKE '%mee6%'
-      OR LOWER(actor_name) LIKE '%dyno%'
-    )
-  `;
-  
   const [totalResult, todayResult, weekResult, monthResult, totalNonBotResult, todayNonBotResult, weekNonBotResult, monthNonBotResult, categoryResult, typeResult] = await Promise.all([
     // Total events
     db.prepare(`SELECT COUNT(*) as count FROM event_logs WHERE guild_id = ?`).bind(guildId).first(),

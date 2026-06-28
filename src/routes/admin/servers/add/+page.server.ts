@@ -1,5 +1,5 @@
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform }) {
+export async function load({ cookies }) {
   // Check if user is logged in via cookie
   const userId = cookies.get("discord_user_id");
   const username = cookies.get("discord_username");

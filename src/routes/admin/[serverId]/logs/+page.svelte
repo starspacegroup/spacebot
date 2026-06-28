@@ -13,7 +13,6 @@
 	let error = $state(null);
 	let stats = $state(null);
 	let total = $state(0);
-	let hasMore = $state(false);
 	
 	// Filters
 	let selectedCategory = $state('');
@@ -96,7 +95,6 @@
 			}
 			
 			total = result.total || 0;
-			hasMore = result.hasMore || false;
 			error = null;
 		} catch (e) {
 			log.error('[Logs] Fetch error:', e);
@@ -113,11 +111,6 @@
 		} finally {
 			loading = false;
 		}
-	}
-	
-	function loadMore() {
-		offset += limit;
-		fetchLogs(true);
 	}
 	
 	// Pagination computed values
@@ -192,10 +185,6 @@
 		return getDiscordCategoryMeta(category)?.name || category;
 	}
 	
-	function getEventDescription(eventType) {
-		return getDiscordEventTypeMeta(eventType)?.description || eventType;
-	}
-
 	function getEventMeta(eventType, eventCategory) {
 		return getDiscordEventTypeMeta(eventType, { fallbackCategory: eventCategory });
 	}

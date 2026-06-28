@@ -11,10 +11,9 @@
 	// `form` (ActionData) carries dynamic failure payloads (e.g. { values, error })
 	// that are wider than the generated type; widen `form` to `any` so the in-template
 	// reads and the reassignment in use:enhance type-check without altering behavior.
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form }: { data: PageData; form: any } = $props();
 
-	// Form submission state
-	let isSubmitting = $state(false);
 	
 	let actions = $state([]);
 	let selectedResponseType = $state('message');
@@ -111,22 +110,6 @@
 		return data.actionTypes[actionType]?.configSchema || {};
 	}
 	
-	// Initialize config values when action type changes to avoid undefined bind errors
-	function initializeActionConfig(actionIndex, actionType) {
-		const schema = getActionConfigSchema(actionType);
-		const action = actions[actionIndex];
-		const newConfig = { ...action.config };
-		for (const configKey of Object.keys(schema)) {
-			if (newConfig[configKey] === undefined) {
-				newConfig[configKey] = '';
-			}
-		}
-		// Create a new array to trigger reactivity
-		actions = actions.map((a, i) => 
-			i === actionIndex ? { ...a, config: newConfig } : a
-		);
-	}
-
 	// Stacked actions management
 	function normalizeOptionName(name) {
 		return (name || '').toLowerCase().replace(/\s+/g, '_');
@@ -283,7 +266,7 @@
 	// Touch drag reorder for choices
 	let touchState = $state({ optionIndex: -1, choiceIndex: -1, dropTarget: -1 });
 	
-	function choiceTouchStart(optionIndex, choiceIndex, e) {
+	function choiceTouchStart(optionIndex, choiceIndex, _e) {
 		touchState = { optionIndex, choiceIndex, dropTarget: -1 };
 	}
 	
@@ -339,13 +322,6 @@
 		return ds.dropTarget === lastIdx + 1;
 	}
 	
-	// Get option type label
-	function getOptionTypeLabel(type) {
-		for (const [key, info] of Object.entries(data.optionTypes)) {
-			if (info.value === type) return info.label;
-		}
-		return 'Unknown';
-	}
 	
 	// Computed option variables for template help
 	const optionVariables = $derived(
@@ -429,11 +405,6 @@
 		return value;
 	}
 	
-	// Helper to get option reference from number_source field
-	function getOptionValue(value) {
-		if (isOptionReference(value)) return value;
-		return '';
-	}
 </script>
 
 <svelte:head>
@@ -460,9 +431,7 @@
 	{/if}
 	
 	<form method="POST" use:enhance={() => {
-		isSubmitting = true;
 		return async ({ result }) => {
-			isSubmitting = false;
 			if (result.type === 'redirect') {
 				await goto(result.location, { invalidateAll: true });
 			} else if (result.type === 'success' && result.data?.id) {
@@ -1186,7 +1155,7 @@
 					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label>Required Permissions (user must have at least one):</label>
 					<div class="permissions-grid">
-						{#each Object.entries(data.permissionFlags) as [key, perm]}
+						{#each Object.entries(data.permissionFlags) as [_key, perm]}
 							<label class="permission-checkbox">
 								<input 
 									type="checkbox" 

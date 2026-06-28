@@ -212,7 +212,7 @@ function broadcastLiveUpdate(guildId, eventName, payload) {
 	for (const client of [...clients]) {
 		try {
 			writeSseEvent(client, eventName, payload);
-		} catch (error) {
+		} catch {
 			unregisterLiveUpdateClient(guildId, client);
 			try {
 				client.end();
@@ -845,7 +845,7 @@ async function checkUserIsManager(client, userId) {
 					});
 				}
 			}
-		} catch (error) {
+		} catch {
 			// Member not in this guild, skip
 			log.debug(`[DM] Could not check membership for ${userId} in ${guild.name}`);
 		}
@@ -1664,7 +1664,7 @@ async function processEventAutomations(event) {
  * @param {Object} event - The triggering event
  */
 async function executeAutomationAction(automation, event) {
-	const { action_type, action_config, context } = automation;
+	const { action_type, action_config } = automation;
 	const client = discordClient;
 
 	if (!client) {
@@ -4200,7 +4200,7 @@ function setupEventHandlers(client, logFn) {
 
 	// ===== ADDITIONAL REACTION EVENTS =====
 
-	client.on(Events.MessageReactionRemoveAll, async (message, reactions) => {
+	client.on(Events.MessageReactionRemoveAll, async (message, _reactions) => {
 		if (!message.guild) return;
 
 		await logFn({

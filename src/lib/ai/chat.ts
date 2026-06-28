@@ -524,7 +524,7 @@ function parseToolCalls(response) {
 						log.debug(`[AI] Parsed tool call: ${parsed.tool}`);
 					}
 				}
-			} catch (e) {
+			} catch {
 				log.warn('[AI] Failed to parse tool call:', match[1]);
 			}
 		}

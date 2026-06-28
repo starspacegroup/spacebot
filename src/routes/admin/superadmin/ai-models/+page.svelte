@@ -6,7 +6,7 @@
 	let stale = $state(false);
 	let source = $state('cache');
 	let warning = $state(null);
-	let selection = $state(null);
+	let _selection = $state(null);
 	const envModel = $derived(incomingData?.defaults?.envModel ?? null);
 
 	let selectedModelIds = $state([]);
@@ -20,7 +20,7 @@
 		stale = incomingData?.stale ?? false;
 		source = incomingData?.source ?? 'cache';
 		warning = incomingData?.warning ?? null;
-		selection = incomingSelection;
+		_selection = incomingSelection;
 		selectedModelIds = [...(incomingSelection?.selectedModelIds ?? [])];
 		primaryModelId = incomingSelection?.primaryModelId ?? null;
 		routingStrategy = incomingSelection?.routingStrategy ?? 'fallback';
@@ -148,7 +148,7 @@
 			});
 			const json = await res.json();
 			if (!json.success) throw new Error(json.error || 'Unknown error');
-			selection = json.selection;
+			_selection = json.selection;
 			showToast('Selection saved successfully', 'success');
 		} catch (err) {
 			showToast(`Save failed: ${err.message}`, 'error');

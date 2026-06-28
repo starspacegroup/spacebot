@@ -60,11 +60,6 @@
 		[key: string]: any;
 	}
 
-	interface SelectOption {
-		value: any;
-		label: string;
-	}
-
 	interface ColorRule {
 		variable?: string;
 		operator?: string;
@@ -92,6 +87,7 @@
 		[key: string]: any;
 	}
 
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form }: { data: PageData; form: any } = $props();
 
 	// Form submission state
@@ -386,22 +382,6 @@
 	const filteredEventsByCategory = $derived(getEventsByCategory(eventSearchQuery));
 	const hasFilteredResults = $derived(Object.keys(filteredEventsByCategory).length > 0);
 	
-	// Initialize config values when action type changes to avoid undefined bind errors
-	function initializeActionConfig(actionIndex, actionType) {
-		const schema = getActionConfigSchema(actionType);
-		const action = actions[actionIndex];
-		const newConfig = { ...action.config };
-		for (const configKey of Object.keys(schema)) {
-			if (newConfig[configKey] === undefined) {
-				newConfig[configKey] = '';
-			}
-		}
-		// Create a new array to trigger reactivity
-		actions = actions.map((a, i) => 
-			i === actionIndex ? { ...a, config: newConfig } : a
-		);
-	}
-	
 	// Stacked actions management
 	function addAction() {
 		actions = [...actions, { type: '', config: {} }];
@@ -589,7 +569,7 @@
 				</div>
 			{:else}
 				<div class="triggers-list">
-					{#each selectedEventTypes as eventType, index}
+					{#each selectedEventTypes as eventType}
 						{@const eventInfo = data.eventTypes[eventType]}
 						{@const catInfo = getCategoryInfo(eventInfo?.category)}
 						<div class="trigger-item">

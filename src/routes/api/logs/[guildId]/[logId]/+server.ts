@@ -1,11 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { dev } from "$app/environment";
-import {
-  EVENT_CATEGORIES,
-  EVENT_TYPES,
-  getLogById,
-  log,
-} from "$lib/db/logger.js";
+import { getLogById } from "$lib/db/logger.js";
 import { verifyGuildAccess } from "$lib/discord/guilds.js";
 import {
   getDiscordCategoryMeta,

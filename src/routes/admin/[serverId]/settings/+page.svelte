@@ -2,14 +2,12 @@
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
-	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
-	import { TIMEZONE_OPTIONS, getTimezone, getTimezoneAbbreviation } from '$lib/timezone.js';
+	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
 
 	const { data, form } = $props();
 
 	let showToast = $state(true);
-	let saving = $state(false);
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
 
@@ -144,16 +142,6 @@
 		(data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n')
 	);
 
-	// Role overrides for permissions
-	// svelte-ignore state_referenced_locally
-	let viewDashboardRoles = $state(data.permissionSettings?.viewDashboard?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let viewLogsRoles = $state(data.permissionSettings?.viewLogs?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let manageAutomationsRoles = $state(data.permissionSettings?.manageAutomations?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let manageCommandsRoles = $state(data.permissionSettings?.manageCommands?.roles || []);
-
 	// Webhook state
 	let showWebhookModal = $state(false);
 	let editingWebhook = $state(null);
@@ -222,10 +210,6 @@
 		localRunnerAllowedUsers = (
 			data.permissionSettings?.localRunnerAssist?.allowedUserIds || []
 		).join('\n');
-		viewDashboardRoles = data.permissionSettings?.viewDashboard?.roles || [];
-		viewLogsRoles = data.permissionSettings?.viewLogs?.roles || [];
-		manageAutomationsRoles = data.permissionSettings?.manageAutomations?.roles || [];
-		manageCommandsRoles = data.permissionSettings?.manageCommands?.roles || [];
 	});
 </script>
 
@@ -260,10 +244,8 @@
 		method="POST"
 		action="?/updateSettings"
 		use:enhance={() => {
-			saving = true;
 			return async ({ update }) => {
 				await update({ reset: false, invalidateAll: true });
-				saving = false;
 				showToast = true;
 			};
 		}}
@@ -756,7 +738,7 @@
 
 <!-- Webhook Modal -->
 {#if showWebhookModal}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_interactive_supports_focus -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="modal-overlay"
 		onclick={closeWebhookModal}
@@ -765,7 +747,6 @@
 		aria-labelledby="webhook-modal-title"
 		tabindex="-1"
 	>
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h3 id="webhook-modal-title">{editingWebhook ? 'Edit Webhook' : 'Add Webhook'}</h3>

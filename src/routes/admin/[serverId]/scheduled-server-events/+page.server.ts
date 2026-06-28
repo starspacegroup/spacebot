@@ -274,7 +274,7 @@ export async function load({ cookies, platform, parent, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-  create: async ({ request, cookies, platform, params }) => {
+  create: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -388,7 +388,7 @@ export const actions = {
     }
   },
 
-  update: async ({ request, cookies, platform, params }) => {
+  update: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -501,7 +501,7 @@ export const actions = {
     }
   },
 
-  delete: async ({ request, cookies, platform, params }) => {
+  delete: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -542,7 +542,7 @@ export const actions = {
     }
   },
 
-  start: async ({ request, cookies, platform, params }) => {
+  start: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -585,7 +585,7 @@ export const actions = {
     }
   },
 
-  end: async ({ request, cookies, platform, params }) => {
+  end: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 
@@ -628,7 +628,7 @@ export const actions = {
     }
   },
 
-  cancel: async ({ request, cookies, platform, params }) => {
+  cancel: async ({ request, platform, params }) => {
     const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
       process.env.DISCORD_BOT_TOKEN;
 

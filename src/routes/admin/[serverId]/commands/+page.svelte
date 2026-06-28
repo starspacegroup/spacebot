@@ -5,6 +5,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form } = $props();
 	
 	let showLogs = $state(false);
@@ -45,11 +46,6 @@
 			return { name: 'Response Only', icon: '💬', description: 'Just send a response' };
 		}
 		return data.actionTypes[actionType] || { name: actionType, icon: '⚡', description: '' };
-	}
-	
-	// Get response type info
-	function getResponseInfo(responseType) {
-		return data.responseTypes[responseType] || { label: responseType };
 	}
 	
 	// Format relative time
@@ -194,7 +190,6 @@
 			<div class="command-grid">
 				{#each data.commands as command}
 					{@const actionInfo = getActionInfo(command.action_type)}
-					{@const responseInfo = getResponseInfo(command.response_type)}
 					<div class="command-card {command.enabled ? '' : 'disabled'}">
 						<div class="command-header">
 							<div class="command-name-row">
@@ -301,7 +296,6 @@
 			<div class="command-grid">
 				{#each data.builtInCommands as command}
 					{@const actionInfo = getActionInfo(command.action_type)}
-					{@const responseInfo = getResponseInfo(command.response_type)}
 					<div class="command-card builtin {command.enabled ? '' : 'disabled'}">
 						<div class="command-header">
 							<div class="command-name-row">

@@ -4,7 +4,6 @@ import {
   createAutomation,
   deleteAutomation,
   FILTER_TYPES,
-  getAutomation,
   getAutomationLogs,
   getAutomations,
   TEMPLATE_VARIABLES,
@@ -15,7 +14,7 @@ import { EVENT_CATEGORIES, EVENT_TYPES, log } from "$lib/db/logger.js";
 import { checkPlanLimit } from "$lib/db/server-plans.js";
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ cookies, platform, parent, url, params }) {
+export async function load({ platform, parent, url, params }) {
   // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
   if (!/^\d{17,20}$/.test(params.serverId)) {
     throw redirect(302, "/admin");
@@ -93,7 +92,7 @@ export async function load({ cookies, platform, parent, url, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-  create: async ({ request, cookies, platform, url }) => {
+  create: async ({ request, cookies, platform }) => {
     const db = (platform as any)?.env?.DB;
     if (!db) {
       return fail(500, { error: "Database not available" });
