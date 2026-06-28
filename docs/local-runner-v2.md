@@ -1,3 +1,8 @@
+---
+title: Local Runner V2 (Typed Jobs)
+layout: default
+---
+
 # Local Runner V2 (Typed Jobs)
 
 This document covers the typed local-runner capabilities added for cross-platform host automation.
@@ -24,16 +29,16 @@ in `~/.config/spacebot/runner-home.json` and can be overridden with `SPACEBOT_RU
 
 The home is the runner's persistent workspace, all plain markdown:
 
-| Path | Purpose |
-| --- | --- |
-| `README.md` | Explains the layout and how to interact. |
-| `SYSTEM.md` | What the runner knows about the machine. The block between the auto markers is rewritten on every start; notes outside it are preserved. A legacy `~/.spacebot/SYSTEM.md` is migrated automatically. |
-| `MEMORY.md` | One-line index of stored memories. |
-| `memory/` | One markdown file per remembered fact. |
-| `journal/YYYY-MM-DD.md` | Daily activity log: connections, jobs, detected system changes (new tools, displays, OS upgrades, …). |
-| `inbox/` | Markdown interaction (see below). |
-| `outbox/` | Runner-initiated notes. |
-| `.state/` | Internal bookkeeping (profile cache, inbox hashes). Safe to delete. |
+| Path                    | Purpose                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`             | Explains the layout and how to interact.                                                                                                                                                             |
+| `SYSTEM.md`             | What the runner knows about the machine. The block between the auto markers is rewritten on every start; notes outside it are preserved. A legacy `~/.spacebot/SYSTEM.md` is migrated automatically. |
+| `MEMORY.md`             | One-line index of stored memories.                                                                                                                                                                   |
+| `memory/`               | One markdown file per remembered fact.                                                                                                                                                               |
+| `journal/YYYY-MM-DD.md` | Daily activity log: connections, jobs, detected system changes (new tools, displays, OS upgrades, …).                                                                                                |
+| `inbox/`                | Markdown interaction (see below).                                                                                                                                                                    |
+| `outbox/`               | Runner-initiated notes.                                                                                                                                                                              |
+| `.state/`               | Internal bookkeeping (profile cache, inbox hashes). Safe to delete.                                                                                                                                  |
 
 The system profile is re-gathered on every start and diffed against the cached one, so the
 runner's knowledge of the machine keeps accumulating; changes land in the journal. Stored
@@ -63,13 +68,13 @@ TUI's runner child):
 - If `SPACEBOT_RUNNER_TOKEN` is missing, press `k` in the dashboard to negotiate a token from the production site.
 - The negotiation flow opens your browser to `/api/account/runners/negotiate`, reuses your logged-in website session, creates a runner token, and sends it back to a localhost callback.
 - On first interactive launch, the runner checks for an existing auto-start entry on the current machine:
-	- Linux: user-level `systemd` service
-	- macOS: `LaunchAgent`
-	- Windows: Startup folder entry
+    - Linux: user-level `systemd` service
+    - macOS: `LaunchAgent`
+    - Windows: Startup folder entry
 - If none is present, the TUI offers three paths:
-	- install auto-start now
-	- skip for this session
-	- don't ask again
+    - install auto-start now
+    - skip for this session
+    - don't ask again
 - Installed auto-start entries persist the current `SPACEBOT_*` and `RUNNER_*` environment variables so the runner can reconnect without a shell profile.
 - Headless contexts still work by launching `bun run runner:headless` or `bun run scripts/local-runner/index.ts --headless`.
 

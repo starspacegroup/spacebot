@@ -1,3 +1,8 @@
+---
+title: SpaceBot Integration Protocol
+layout: default
+---
+
 # SpaceBot Integration Protocol
 
 This guide explains how external projects can integrate with SpaceBot to provide Discord slash commands, receive lifecycle events, and maintain a live connection.
@@ -46,65 +51,65 @@ Your manifest is a JSON object that describes your integration and its commands.
 
 ```json
 {
-  "name": "My Awesome Game",
-  "slug": "my-awesome-game",
-  "version": "1.0.0",
-  "description": "Adds game commands to your Discord server",
-  "author": "Your Name",
-  "author_url": "https://your-site.com",
-  "icon": "🎮",
-  "category": "gaming",
-  "homepage": "https://your-game.com",
-  "health_endpoint": "https://your-game.com/api/spacebot/health",
+	"name": "My Awesome Game",
+	"slug": "my-awesome-game",
+	"version": "1.0.0",
+	"description": "Adds game commands to your Discord server",
+	"author": "Your Name",
+	"author_url": "https://your-site.com",
+	"icon": "🎮",
+	"category": "gaming",
+	"homepage": "https://your-game.com",
+	"health_endpoint": "https://your-game.com/api/spacebot/health",
 
-  "commands": [
-    {
-      "name": "game",
-      "description": "Game commands",
-      "type": 1,
-      "options": [
-        {
-          "name": "stats",
-          "description": "View your game stats",
-          "type": 1,
-          "options": [
-            {
-              "name": "player",
-              "description": "Player to look up (defaults to yourself)",
-              "type": 6,
-              "required": false
-            }
-          ]
-        },
-        {
-          "name": "leaderboard",
-          "description": "View the server leaderboard",
-          "type": 1
-        }
-      ]
-    }
-  ],
+	"commands": [
+		{
+			"name": "game",
+			"description": "Game commands",
+			"type": 1,
+			"options": [
+				{
+					"name": "stats",
+					"description": "View your game stats",
+					"type": 1,
+					"options": [
+						{
+							"name": "player",
+							"description": "Player to look up (defaults to yourself)",
+							"type": 6,
+							"required": false
+						}
+					]
+				},
+				{
+					"name": "leaderboard",
+					"description": "View the server leaderboard",
+					"type": 1
+				}
+			]
+		}
+	],
 
-  "webhooks": {
-    "on_enable": "https://your-game.com/api/spacebot/on-enable",
-    "on_disable": "https://your-game.com/api/spacebot/on-disable",
-    "command_handler": "https://your-game.com/api/spacebot/command"
-  },
+	"webhooks": {
+		"on_enable": "https://your-game.com/api/spacebot/on-enable",
+		"on_disable": "https://your-game.com/api/spacebot/on-disable",
+		"command_handler": "https://your-game.com/api/spacebot/command"
+	},
 
-  "config_schema": [
-    {
-      "key": "api_key",
-      "label": "Game API Key",
-      "type": "string",
-      "required": false
-    },
-    {
-      "key": "game_channel",
-      "label": "Game Channel",
-      "type": "channel",
-      "required": false
-    }
-  ]
+	"config_schema": [
+		{
+			"key": "api_key",
+			"label": "Game API Key",
+			"type": "string",
+			"required": false
+		},
+		{
+			"key": "game_channel",
+			"label": "Game Channel",
+			"type": "channel",
+			"required": false
+		}
+	]
 }
 ```
 
@@ -163,13 +168,13 @@ Content-Type: application/json
 
 ```json
 {
-  "success": true,
-  "integration": "my-awesome-game",
-  "guilds_synced": 3,
-  "sync_results": [
-    { "guild_id": "123456789", "success": true, "registered": 5 },
-    { "guild_id": "987654321", "success": true, "registered": 5 }
-  ]
+	"success": true,
+	"integration": "my-awesome-game",
+	"guilds_synced": 3,
+	"sync_results": [
+		{ "guild_id": "123456789", "success": true, "registered": 5 },
+		{ "guild_id": "987654321", "success": true, "registered": 5 }
+	]
 }
 ```
 
@@ -200,10 +205,10 @@ The JSON body is optional — a heartbeat with no body is valid.
 
 ```json
 {
-  "success": true,
-  "integration": "my-awesome-game",
-  "recorded_at": "2026-02-21T12:00:00.000Z",
-  "next_expected_before": "2026-02-21T12:05:00.000Z"
+	"success": true,
+	"integration": "my-awesome-game",
+	"recorded_at": "2026-02-21T12:00:00.000Z",
+	"next_expected_before": "2026-02-21T12:05:00.000Z"
 }
 ```
 
@@ -214,6 +219,7 @@ The JSON body is optional — a heartbeat with no body is valid.
 Check the status of integrations. **No authentication required.**
 
 **Query Parameters:**
+
 - `slug` (optional) — Filter to a specific integration
 
 **Request:**
@@ -226,14 +232,14 @@ GET /api/v1/integrations/status?slug=my-awesome-game
 
 ```json
 {
-  "slug": "my-awesome-game",
-  "name": "My Awesome Game",
-  "version": "1.1.0",
-  "status": "online",
-  "last_heartbeat_at": "2026-02-21T12:00:00.000Z",
-  "category": "gaming",
-  "is_official": false,
-  "commands": 1
+	"slug": "my-awesome-game",
+	"name": "My Awesome Game",
+	"version": "1.1.0",
+	"status": "online",
+	"last_heartbeat_at": "2026-02-21T12:00:00.000Z",
+	"category": "gaming",
+	"is_official": false,
+	"commands": 1
 }
 ```
 
@@ -241,18 +247,18 @@ GET /api/v1/integrations/status?slug=my-awesome-game
 
 ```json
 {
-  "integrations": [
-    {
-      "slug": "starspace-game",
-      "name": "*Space Game",
-      "version": "1.0.0",
-      "status": "online",
-      "last_heartbeat_at": "2026-02-21T12:00:00.000Z",
-      "category": "gaming",
-      "is_official": true,
-      "commands": 1
-    }
-  ]
+	"integrations": [
+		{
+			"slug": "starspace-game",
+			"name": "*Space Game",
+			"version": "1.0.0",
+			"status": "online",
+			"last_heartbeat_at": "2026-02-21T12:00:00.000Z",
+			"category": "gaming",
+			"is_official": true,
+			"commands": 1
+		}
+	]
 }
 ```
 
@@ -275,30 +281,30 @@ X-SpaceBot-Guild: 123456789012345678
 
 ```json
 {
-  "type": "command",
-  "command": "game",
-  "options": [
-    {
-      "name": "stats",
-      "type": 1,
-      "options": [
-        {
-          "name": "player",
-          "type": 6,
-          "value": "234567890123456789"
-        }
-      ]
-    }
-  ],
-  "guild_id": "123456789012345678",
-  "user": {
-    "id": "234567890123456789",
-    "username": "player1",
-    "discriminator": "0",
-    "avatar": "abc123..."
-  },
-  "channel_id": "345678901234567890",
-  "integration_slug": "my-awesome-game"
+	"type": "command",
+	"command": "game",
+	"options": [
+		{
+			"name": "stats",
+			"type": 1,
+			"options": [
+				{
+					"name": "player",
+					"type": 6,
+					"value": "234567890123456789"
+				}
+			]
+		}
+	],
+	"guild_id": "123456789012345678",
+	"user": {
+		"id": "234567890123456789",
+		"username": "player1",
+		"discriminator": "0",
+		"avatar": "abc123..."
+	},
+	"channel_id": "345678901234567890",
+	"integration_slug": "my-awesome-game"
 }
 ```
 
@@ -312,8 +318,8 @@ Return a plain object with `content` and/or `embeds`:
 
 ```json
 {
-  "content": "🏆 **player1's Stats**\nScore: 1,500 | Wins: 12 | Rank: #3",
-  "ephemeral": false
+	"content": "🏆 **player1's Stats**\nScore: 1,500 | Wins: 12 | Rank: #3",
+	"ephemeral": false
 }
 ```
 
@@ -321,18 +327,18 @@ Or with an embed:
 
 ```json
 {
-  "content": "",
-  "embeds": [
-    {
-      "title": "🏆 player1's Stats",
-      "color": 5793266,
-      "fields": [
-        { "name": "Score", "value": "1,500", "inline": true },
-        { "name": "Wins", "value": "12", "inline": true },
-        { "name": "Rank", "value": "#3", "inline": true }
-      ]
-    }
-  ]
+	"content": "",
+	"embeds": [
+		{
+			"title": "🏆 player1's Stats",
+			"color": 5793266,
+			"fields": [
+				{ "name": "Score", "value": "1,500", "inline": true },
+				{ "name": "Wins", "value": "12", "inline": true },
+				{ "name": "Rank", "value": "#3", "inline": true }
+			]
+		}
+	]
 }
 ```
 
@@ -406,40 +412,40 @@ Use this to clean up resources.
 
 Commands follow the [Discord Application Command](https://discord.com/developers/docs/interactions/application-commands) structure:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Command name (1-32 chars, lowercase, no spaces) |
-| `description` | string | Command description (1-100 chars) |
-| `type` | number | `1` for slash command (CHAT_INPUT) |
-| `options` | array | Command options/subcommands (see below) |
+| Field         | Type   | Description                                     |
+| ------------- | ------ | ----------------------------------------------- |
+| `name`        | string | Command name (1-32 chars, lowercase, no spaces) |
+| `description` | string | Command description (1-100 chars)               |
+| `type`        | number | `1` for slash command (CHAT_INPUT)              |
+| `options`     | array  | Command options/subcommands (see below)         |
 
 ### Option Types
 
-| Type | Value | Description |
-|------|-------|-------------|
-| SUB_COMMAND | 1 | A subcommand |
-| SUB_COMMAND_GROUP | 2 | A group of subcommands |
-| STRING | 3 | Text input |
-| INTEGER | 4 | Whole number |
-| BOOLEAN | 5 | True/false |
-| USER | 6 | Discord user selector |
-| CHANNEL | 7 | Channel selector |
-| ROLE | 8 | Role selector |
-| MENTIONABLE | 9 | User or role |
-| NUMBER | 10 | Decimal number |
-| ATTACHMENT | 11 | File upload |
+| Type              | Value | Description            |
+| ----------------- | ----- | ---------------------- |
+| SUB_COMMAND       | 1     | A subcommand           |
+| SUB_COMMAND_GROUP | 2     | A group of subcommands |
+| STRING            | 3     | Text input             |
+| INTEGER           | 4     | Whole number           |
+| BOOLEAN           | 5     | True/false             |
+| USER              | 6     | Discord user selector  |
+| CHANNEL           | 7     | Channel selector       |
+| ROLE              | 8     | Role selector          |
+| MENTIONABLE       | 9     | User or role           |
+| NUMBER            | 10    | Decimal number         |
+| ATTACHMENT        | 11    | File upload            |
 
 ### Config Schema Types
 
 The `config_schema` lets guild admins configure your integration from the SpaceBot dashboard:
 
-| Type | Description |
-|------|-------------|
-| `string` | Free text input |
-| `channel` | Discord channel selector |
-| `role` | Discord role selector |
-| `boolean` | Toggle switch |
-| `select` | Dropdown with predefined choices |
+| Type      | Description                      |
+| --------- | -------------------------------- |
+| `string`  | Free text input                  |
+| `channel` | Discord channel selector         |
+| `role`    | Discord role selector            |
+| `boolean` | Toggle switch                    |
+| `select`  | Dropdown with predefined choices |
 
 ---
 
@@ -451,83 +457,86 @@ Here's the simplest possible integration — a single command with no subcommand
 
 ```json
 {
-  "name": "Hello World",
-  "slug": "hello-world",
-  "version": "1.0.0",
-  "description": "A simple hello world integration",
-  "icon": "👋",
-  "category": "utility",
+	"name": "Hello World",
+	"slug": "hello-world",
+	"version": "1.0.0",
+	"description": "A simple hello world integration",
+	"icon": "👋",
+	"category": "utility",
 
-  "commands": [
-    {
-      "name": "hello",
-      "description": "Say hello!",
-      "type": 1
-    }
-  ],
+	"commands": [
+		{
+			"name": "hello",
+			"description": "Say hello!",
+			"type": 1
+		}
+	],
 
-  "webhooks": {
-    "command_handler": "https://my-app.example.com/api/spacebot/command"
-  }
+	"webhooks": {
+		"command_handler": "https://my-app.example.com/api/spacebot/command"
+	}
 }
 ```
 
 ### Command Handler (Node.js/Express example)
 
 ```js
-app.post("/api/spacebot/command", (req, res) => {
-  const { command, user } = req.body;
+app.post('/api/spacebot/command', (req, res) => {
+	const { command, user } = req.body;
 
-  if (command === "hello") {
-    return res.json({
-      content: `👋 Hello, ${user.username}!`,
-    });
-  }
+	if (command === 'hello') {
+		return res.json({
+			content: `👋 Hello, ${user.username}!`,
+		});
+	}
 
-  res.status(404).json({ error: "Unknown command" });
+	res.status(404).json({ error: 'Unknown command' });
 });
 ```
 
 ### Heartbeat (using setInterval)
 
 ```js
-const SPACEBOT_URL = "https://spacebot.starspace.group";
+const SPACEBOT_URL = 'https://spacebot.starspace.group';
 const TOKEN = process.env.SPACEBOT_INTEGRATION_TOKEN;
 
 // Send heartbeat every 2 minutes
-setInterval(async () => {
-  try {
-    await fetch(`${SPACEBOT_URL}/api/v1/integrations/heartbeat`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ version: "1.0.0" }),
-    });
-  } catch (err) {
-    console.error("Heartbeat failed:", err.message);
-  }
-}, 2 * 60 * 1000);
+setInterval(
+	async () => {
+		try {
+			await fetch(`${SPACEBOT_URL}/api/v1/integrations/heartbeat`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${TOKEN}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ version: '1.0.0' }),
+			});
+		} catch (err) {
+			console.error('Heartbeat failed:', err.message);
+		}
+	},
+	2 * 60 * 1000
+);
 ```
 
 ### Sync on Startup
 
 ```js
 async function syncManifest() {
-  const manifest = await fs.readFile("spacebot-integration.json", "utf-8");
+	const manifest = await fs.readFile('spacebot-integration.json', 'utf-8');
 
-  const res = await fetch(`${SPACEBOT_URL}/api/v1/integrations/sync`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: manifest,
-  });
+	const res = await fetch(`${SPACEBOT_URL}/api/v1/integrations/sync`, {
+		method: 'POST',
+		headers: {
+			Authorization: `Bearer ${TOKEN}`,
+			'Content-Type': 'application/json',
+		},
+		body: manifest,
+	});
 
-  const result = await res.json();
-  console.log("Manifest synced:", result);
+	const result = await res.json();
+	console.log('Manifest synced:', result);
 }
 
 // Sync when the server starts
@@ -540,15 +549,16 @@ syncManifest();
 
 The \*Space Game is the reference integration for SpaceBot. Here's how it works:
 
-| What | URL |
-|------|-----|
-| Manifest | `https://game.starspace.group/spacebot-integration.json` |
-| Command Handler | `https://game.starspace.group/api/spacebot/command` |
-| Health Check | `https://game.starspace.group/api/spacebot/health` |
-| On Enable | `https://game.starspace.group/api/spacebot/on-enable` |
-| On Disable | `https://game.starspace.group/api/spacebot/on-disable` |
+| What            | URL                                                      |
+| --------------- | -------------------------------------------------------- |
+| Manifest        | `https://game.starspace.group/spacebot-integration.json` |
+| Command Handler | `https://game.starspace.group/api/spacebot/command`      |
+| Health Check    | `https://game.starspace.group/api/spacebot/health`       |
+| On Enable       | `https://game.starspace.group/api/spacebot/on-enable`    |
+| On Disable      | `https://game.starspace.group/api/spacebot/on-disable`   |
 
 Commands provided:
+
 - `/game stats [player]` — View player statistics
 - `/game leaderboard [category]` — Server leaderboard
 - `/game play` — Get the game link
@@ -571,11 +581,11 @@ The Game project syncs its manifest when it starts up and sends heartbeats every
 
 SpaceBot tracks integration health:
 
-| Status | Meaning |
-|--------|---------|
-| `online` | Heartbeat received within the last 5 minutes |
-| `offline` | No heartbeat for 5+ minutes |
-| `unknown` | Integration has never sent a heartbeat |
+| Status    | Meaning                                      |
+| --------- | -------------------------------------------- |
+| `online`  | Heartbeat received within the last 5 minutes |
+| `offline` | No heartbeat for 5+ minutes                  |
+| `unknown` | Integration has never sent a heartbeat       |
 
 When an integration is offline, SpaceBot will show users a friendly error message instead of silently failing when they try to use integration commands.
 

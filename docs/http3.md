@@ -1,3 +1,8 @@
+---
+title: HTTP/3 on Cloudflare
+layout: default
+---
+
 # HTTP/3 on Cloudflare
 
 HTTP/3 is a Cloudflare zone-level setting, not SvelteKit application code.

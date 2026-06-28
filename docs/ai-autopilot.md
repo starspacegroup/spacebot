@@ -1,3 +1,8 @@
+---
+title: AI Autopilot (Workflows + Queues Foundation)
+layout: default
+---
+
 # AI Autopilot (Workflows + Queues Foundation)
 
 This document describes the initial implementation for durable DM AI execution with retries, recovery, and timeline visibility.
@@ -5,19 +10,19 @@ This document describes the initial implementation for durable DM AI execution w
 ## What Is Implemented
 
 - Durable AI job tables:
-  - `ai_jobs`
-  - `ai_job_events`
+    - `ai_jobs`
+    - `ai_job_events`
 - Gateway enqueue endpoint:
-  - `POST /api/gateway/dm-autopilot`
+    - `POST /api/gateway/dm-autopilot`
 - Executor endpoint:
-  - `POST /api/ai/jobs/execute`
+    - `POST /api/ai/jobs/execute`
 - Watchdog sweep endpoint:
-  - `POST /api/ai/jobs/sweep`
+    - `POST /api/ai/jobs/sweep`
 - Timeline lookup endpoint:
-  - `GET /api/ai/jobs/:jobId`
-  - `:jobId` can be numeric DB id or `correlation_id`
+    - `GET /api/ai/jobs/:jobId`
+    - `:jobId` can be numeric DB id or `correlation_id`
 - Dedicated queue consumer worker scaffold:
-  - `orchestrator-worker/`
+    - `orchestrator-worker/`
 
 ## Feature Flags and Secrets
 

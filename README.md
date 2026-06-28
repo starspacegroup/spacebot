@@ -453,6 +453,16 @@ spacebot/
 See [docs/architecture.md](docs/architecture.md) for a diagram of how the runtimes
 fit together, and [CLAUDE.md](CLAUDE.md) for the authoritative architecture notes.
 
+## 📚 Documentation
+
+Full documentation is published to **GitHub Pages**:
+**<https://starspacegroup.github.io/spacebot/>** (built from [`docs/`](docs/)).
+
+Highlights: [Architecture](docs/architecture.md) · [API](docs/api.md) ·
+[Integrations](docs/integrations.md) · [AI Autopilot](docs/ai-autopilot.md) ·
+[Local Runner v2](docs/local-runner-v2.md) · [Superadmin Workflows](docs/superadmin-workflows.md) ·
+[Observability](docs/observability.md) · [Tutorials](docs/tutorials.md).
+
 ## 🔒 Security
 
 - ✅ Discord request signature verification

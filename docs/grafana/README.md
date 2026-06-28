@@ -1,3 +1,8 @@
+---
+title: Grafana Dashboard Assets
+layout: default
+---
+
 # Grafana Dashboard Assets
 
 Import `spacebot-dashboard.json` into Grafana and connect it to metrics generated from SpaceBot logs/stats exports.

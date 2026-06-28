@@ -1,3 +1,8 @@
+---
+title: Asset Optimization
+layout: default
+---
+
 # Asset Optimization
 
 Source PNG/JPG assets are kept when they are canonical screenshots or icons. Optimized WebP variants should be used by app surfaces where available.
