@@ -9,6 +9,9 @@ import { getSessionTtlSeconds } from '$lib/server/session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import { finishSpan, startSpan } from '$lib/server/telemetry.js';
 import { resolveLocale } from '$lib/i18n.js';
+import { sequence } from '@sveltejs/kit/hooks';
+import { sentryHandle, handleErrorWithSentry } from '@sentry/sveltekit';
+import { wrapRequestHandler, setAsyncLocalStorageAsyncContextStrategy } from '@sentry/cloudflare';
 
 /**
  * Dev Auth Bypass
@@ -300,7 +303,7 @@ function applySlidingSession(event) {
 }
 
 /** @type {import('@sveltejs/kit').Handle} */
-export async function handle({ event, resolve }) {
+async function appHandle({ event, resolve }) {
 	const { url, cookies, platform } = event;
 	const requestSpan = startSpan('sveltekit.request', {
 		method: event.request.method,
@@ -493,3 +496,42 @@ export async function handle({ event, resolve }) {
 		});
 	}
 }
+
+// --- Server-side Sentry (Cloudflare Workers) ---------------------------------
+// On Workers, env (the DSN secret) is only available per-request via
+// platform.env — not at module load — so @sentry/sveltekit's static
+// initCloudflareSentryHandle can't read it. We replicate its internals
+// (wrapRequestHandler with platform.context) but read the DSN per request,
+// so server-side capture is env-gated: set SENTRY_DSN to enable, otherwise
+// this is a transparent pass-through. handleErrorWithSentry + sentryHandle
+// then record exceptions/spans within that per-request Sentry context.
+setAsyncLocalStorageAsyncContextStrategy();
+
+/** @type {import('@sveltejs/kit').Handle} */
+export function initSentryHandle({ event, resolve }) {
+	const dsn = event.platform?.env?.SENTRY_DSN;
+	if (!dsn || !event.platform) {
+		return resolve(event);
+	}
+	// wrapRequestHandler already isolates the request scope; tell sentryHandle
+	// not to isolate again (matches initCloudflareSentryHandle's behavior).
+	event.locals._sentrySkipRequestIsolation = true;
+	return wrapRequestHandler(
+		{
+			options: {
+				dsn,
+				environment: event.platform.env.SENTRY_ENVIRONMENT || 'production',
+				release: event.platform.env.SENTRY_RELEASE || undefined,
+				tracesSampleRate: Number(event.platform.env.SENTRY_TRACES_SAMPLE_RATE || '0.05'),
+			},
+			request: event.request,
+			context: event.platform.context,
+			// sentryHandle captures errors (and can distinguish redirects), so skip here.
+			captureErrors: false,
+		},
+		() => resolve(event)
+	);
+}
+
+export const handle = sequence(initSentryHandle, sentryHandle(), appHandle);
+export const handleError = handleErrorWithSentry();

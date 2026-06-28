@@ -102,7 +102,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 
 ### Monitoring & Observability
 
-- [~] Set up Sentry for error tracking — _(client-side wired in `src/hooks.client.ts` via `PUBLIC_SENTRY_DSN`; server-side needs `@sentry/cloudflare` — `@sentry/sveltekit` can't init at module load on Workers where env is per-request)_
+- [x] Set up Sentry for error tracking — client (`src/hooks.client.ts`, `PUBLIC_SENTRY_DSN`) + server (`src/hooks.server.ts`, per-request init via `@sentry/cloudflare` `wrapRequestHandler`, gated on `SENTRY_DSN`)
 - [~] Add application performance monitoring (APM) — _(scaffold: `src/lib/server/telemetry.ts`; requires an external APM backend)_
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
 - [~] Create Grafana dashboards — _(docs/dashboard JSON under `docs/grafana/`; requires a running Grafana)_
