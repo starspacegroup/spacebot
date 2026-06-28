@@ -7,7 +7,7 @@ const REMOTE_NAME = 'origin';
 const DEPLOY_LOCK_PATH = join(process.cwd(), '.deploy.lock');
 const STALE_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
-function runInDir(cmd, cwd) {
+function _runInDir(cmd, cwd) {
 	console.log(`  → (${cwd}) ${cmd}`);
 	return execSync(cmd, { stdio: 'inherit', cwd });
 }
@@ -16,7 +16,9 @@ function execRead(cmd) {
 	return execSync(cmd, {
 		cwd: process.cwd(),
 		stdio: ['ignore', 'pipe', 'pipe'],
-	}).toString().trim();
+	})
+		.toString()
+		.trim();
 }
 
 export function run(cmd) {
@@ -36,14 +38,17 @@ function withDeployLock(fn) {
 				const lockStat = statSync(DEPLOY_LOCK_PATH);
 				const ageMs = Date.now() - lockStat.mtimeMs;
 				if (ageMs > STALE_LOCK_TIMEOUT_MS) {
-					console.log(`⚠️  Stale deploy lock detected (${Math.round(ageMs / 1000)}s old) — removing`);
+					console.log(
+						`⚠️  Stale deploy lock detected (${Math.round(ageMs / 1000)}s old) — removing`
+					);
 					unlinkSync(DEPLOY_LOCK_PATH);
 					fd = openSync(DEPLOY_LOCK_PATH, 'wx');
 				} else {
 					throw new Error('Another deployment is already in progress');
 				}
 			} catch (staleErr) {
-				if (staleErr.message === 'Another deployment is already in progress') throw staleErr;
+				if (staleErr.message === 'Another deployment is already in progress')
+					throw staleErr;
 				// Lock file disappeared between check and remove — try again
 				try {
 					fd = openSync(DEPLOY_LOCK_PATH, 'wx');
@@ -82,7 +87,9 @@ export function deploy(changedFiles, options = {}) {
 
 		try {
 			if (remoteHead) {
-				console.log(`  🔎 Validating remote revision ${remoteHead.slice(0, 7)} before updating live checkout...`);
+				console.log(
+					`  🔎 Validating remote revision ${remoteHead.slice(0, 7)} before updating live checkout...`
+				);
 				validateRemoteRevision(remoteHead);
 			}
 
@@ -92,16 +99,16 @@ export function deploy(changedFiles, options = {}) {
 				run(`git pull --ff-only ${remote} ${branch}`);
 			}
 
-			const needsInstall = changedFiles.some(file =>
-				file === 'package.json' || file === 'bun.lock'
+			const needsInstall = changedFiles.some(
+				(file) => file === 'package.json' || file === 'bun.lock'
 			);
 			if (needsInstall) {
 				console.log('  📦 Dependency manifest changed — installing dependencies...');
 				run('bun install --frozen-lockfile');
 			}
 
-			const needsMigrations = changedFiles.some(file =>
-				file.startsWith('migrations/') && file.endsWith('.sql')
+			const needsMigrations = changedFiles.some(
+				(file) => file.startsWith('migrations/') && file.endsWith('.sql')
 			);
 			if (needsMigrations) {
 				console.log('  🗄️  Migration files changed — running database migrations...');
@@ -112,7 +119,11 @@ export function deploy(changedFiles, options = {}) {
 
 			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart
 			// kills this process (SIGTERM) before the finally block can run.
-			try { unlinkSync(DEPLOY_LOCK_PATH); } catch { /* already removed */ }
+			try {
+				unlinkSync(DEPLOY_LOCK_PATH);
+			} catch {
+				/* already removed */
+			}
 
 			run('pm2 restart ecosystem.config.cjs --update-env');
 
