@@ -102,7 +102,6 @@ export async function POST({ request, platform }) {
     // Process each guild (with rate limiting consideration)
     for (const guild of guilds) {
       const startTime = Date.now();
-      let statsSuccess = false;
       let cacheSuccess = false;
       let membersCount = 0;
       let rolesCount = 0;
@@ -115,7 +114,6 @@ export async function POST({ request, platform }) {
           const result = await recordServerStats(db, guild.id, fetchResult.stats);
           if (result.success) {
             results.processed++;
-            statsSuccess = true;
           } else {
             results.failed++;
             results.errors.push({ guildId: guild.id, error: result.error });

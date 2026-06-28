@@ -1,5 +1,5 @@
 <script lang="ts">
-	let { children, data } = $props();
+	const { children } = $props();
 </script>
 
 <div class="superadmin-layout">
@@ -117,7 +117,7 @@
 		color: var(--color-text);
 	}
 
-	:global(.superadmin-nav .nav-link[aria-current="page"]) {
+	:global(.superadmin-nav .nav-link[aria-current='page']) {
 		background: var(--color-accent-soft);
 		color: var(--color-primary);
 	}

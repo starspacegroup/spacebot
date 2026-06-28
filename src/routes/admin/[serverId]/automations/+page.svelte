@@ -7,6 +7,7 @@
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form } = $props();
 	
 	let showLogs = $state(false);
@@ -112,7 +113,7 @@
 
 		// Count total events per category from the full event type list
 		const totalPerCategory = {};
-		for (const [eventType, info] of Object.entries(data.eventTypes)) {
+		for (const [_eventType, info] of Object.entries(data.eventTypes)) {
 			const cat = info.category || 'other';
 			totalPerCategory[cat] = (totalPerCategory[cat] || 0) + 1;
 		}
@@ -123,7 +124,6 @@
 		for (const [cat, catTriggers] of Object.entries(byCategory)) {
 			if (totalPerCategory[cat] && catTriggers.length >= totalPerCategory[cat]) {
 				// All events in this category are selected — collapse
-				const catInfo = getCategoryInfo(cat);
 				result.push({ label: `${cat.toUpperCase()}: *`, category: cat, collapsed: true });
 				handledCategories.add(cat);
 			}
@@ -354,7 +354,7 @@
 							</div>
 							<form method="POST" action="?/toggle" use:enhance={() => {
 								processingId = automation.id;
-								return async ({ result, update }) => {
+								return async ({ result }) => {
 									processingId = null;
 									if (result.type === 'success') {
 										await invalidateAll();

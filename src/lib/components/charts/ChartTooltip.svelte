@@ -5,7 +5,7 @@
 	 *
 	 * @type {{ tooltip: { visible: boolean, clientX: number, clientY: number, date: string, value?: string, label?: string, chartColor?: string, items?: Array<{label: string, value: number, color: string}>, hasData: boolean } }}
 	 */
-	let { tooltip = {} } = $props();
+	const { tooltip = {} } = $props();
 
 	let el = $state(null);
 	let left = $state(0);
@@ -84,7 +84,9 @@
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
 		font-size: 0.875rem;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.1);
+		box-shadow:
+			0 4px 16px rgba(0, 0, 0, 0.4),
+			0 0 0 1px rgba(0, 0, 0, 0.1);
 		z-index: 9999;
 		white-space: nowrap;
 		opacity: 0;

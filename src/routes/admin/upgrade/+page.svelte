@@ -1,11 +1,11 @@
 <script lang="ts">
-	let { data } = $props();
+	const { data } = $props();
 
 	let loading = $state(null); // guild ID currently loading, or null
 	let error = $state(null);
 
-	const serversWithBot = $derived(data.adminGuilds.filter(g => g.botIsInServer !== false));
-	const serversWithoutBot = $derived(data.adminGuilds.filter(g => g.botIsInServer === false));
+	const serversWithBot = $derived(data.adminGuilds.filter((g) => g.botIsInServer !== false));
+	const serversWithoutBot = $derived(data.adminGuilds.filter((g) => g.botIsInServer === false));
 
 	async function startCheckout(guild) {
 		loading = guild.id;
@@ -53,14 +53,16 @@
 		<div class="upgrade-badge">PRO</div>
 		<h1>Upgrade to Pro</h1>
 		<p class="upgrade-subtitle">
-			Select a server to upgrade to Pro
-			({data.interval === 'yearly' ? '$2.50/mo billed yearly' : '$3/server/mo'})
+			Select a server to upgrade to Pro ({data.interval === 'yearly'
+				? '$2.50/mo billed yearly'
+				: '$3/server/mo'})
 		</p>
 	</header>
 
 	{#if error}
 		<div class="error-banner">
-			<span>⚠️</span> {error}
+			<span>⚠️</span>
+			{error}
 		</div>
 	{/if}
 
@@ -77,7 +79,7 @@
 						{#if guild.icon}
 							<img
 								src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=64"
-								alt="{guild.name}"
+								alt={guild.name}
 								class="server-icon"
 							/>
 						{:else}
@@ -88,7 +90,8 @@
 						<div class="server-info">
 							<span class="server-name">{guild.name}</span>
 							{#if loading === guild.id}
-								<span class="server-status loading">Redirecting to checkout...</span>
+								<span class="server-status loading">Redirecting to checkout...</span
+								>
 							{:else}
 								<span class="server-status">Click to upgrade</span>
 							{/if}
@@ -109,17 +112,21 @@
 	{#if serversWithoutBot.length > 0}
 		<section class="server-section">
 			<h2>Add Bot First</h2>
-			<p class="section-note">These servers don't have SpaceBot yet. Add the bot first, then you can upgrade.</p>
+			<p class="section-note">
+				These servers don't have SpaceBot yet. Add the bot first, then you can upgrade.
+			</p>
 			<div class="servers-grid">
 				{#each serversWithoutBot as guild}
 					<a
-						href="/api/auth/discord?flow=install&guild_id={guild.id}&return_to={encodeURIComponent('/admin/upgrade?interval=' + data.interval)}"
+						href="/api/auth/discord?flow=install&guild_id={guild.id}&return_to={encodeURIComponent(
+							'/admin/upgrade?interval=' + data.interval
+						)}"
 						class="server-card server-card-install"
 					>
 						{#if guild.icon}
 							<img
 								src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=64"
-								alt="{guild.name}"
+								alt={guild.name}
 								class="server-icon"
 							/>
 						{:else}
@@ -129,7 +136,9 @@
 						{/if}
 						<div class="server-info">
 							<span class="server-name">{guild.name}</span>
-							<span class="server-status no-bot">Bot not installed — click to add</span>
+							<span class="server-status no-bot"
+								>Bot not installed — click to add</span
+							>
 						</div>
 						<span class="server-arrow">+</span>
 					</a>
@@ -140,10 +149,17 @@
 
 	{#if data.adminGuilds.length === 0}
 		<div class="empty-state">
-			<div class="empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
+			<div class="empty-icon">
+				<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
+			</div>
 			<h2>No Servers Found</h2>
 			<p>Add SpaceBot to a server first, then come back to upgrade.</p>
-			<a href="/api/auth/discord?flow=install&return_to={encodeURIComponent('/admin/upgrade?interval=' + data.interval)}" class="btn btn-primary btn-lg">
+			<a
+				href="/api/auth/discord?flow=install&return_to={encodeURIComponent(
+					'/admin/upgrade?interval=' + data.interval
+				)}"
+				class="btn btn-primary btn-lg"
+			>
 				<span>➕</span>
 				Add Bot to a Server
 			</a>
@@ -152,7 +168,12 @@
 
 	<div class="add-new-section">
 		<p>Don't see your server?</p>
-		<a href="/api/auth/discord?flow=install&return_to={encodeURIComponent('/admin/upgrade?interval=' + data.interval)}" class="btn btn-secondary">
+		<a
+			href="/api/auth/discord?flow=install&return_to={encodeURIComponent(
+				'/admin/upgrade?interval=' + data.interval
+			)}"
+			class="btn btn-secondary"
+		>
 			<span><img src="/logo.webp" alt="" class="inline-logo" /></span>
 			Add Bot to Another Server
 		</a>
@@ -266,7 +287,10 @@
 		text-align: left;
 		font-family: inherit;
 		font-size: inherit;
-		transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			box-shadow var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
 	.server-card:hover:not(:disabled) {
@@ -342,7 +366,9 @@
 	.server-arrow {
 		font-size: 1.25rem;
 		color: var(--color-text-muted);
-		transition: transform var(--transition-fast), color var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			color var(--transition-fast);
 		flex-shrink: 0;
 	}
 
@@ -362,7 +388,9 @@
 	}
 
 	@keyframes spin {
-		to { transform: rotate(360deg); }
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.empty-state {
@@ -418,6 +446,15 @@
 		color: var(--color-primary);
 	}
 
-	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
-	.bot-logo-lg { height: 3rem; width: auto; border-radius: 8px; }
+	.inline-logo {
+		height: 1.2em;
+		width: auto;
+		vertical-align: middle;
+		border-radius: 4px;
+	}
+	.bot-logo-lg {
+		height: 3rem;
+		width: auto;
+		border-radius: 8px;
+	}
 </style>

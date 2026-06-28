@@ -4,6 +4,7 @@
  * Shares action system with automations
  */
 
+import { ApplicationCommandType } from "discord-api-types/v10";
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from "./automations.js";
 import { log } from "../log.js";
 
@@ -37,6 +38,7 @@ export { ACTION_TYPES, COMMAND_USER_SOURCES };
  * @property {string} response_content - Response message template
  * @property {Object} response_embed - Embed configuration
  * @property {boolean} context_menu_user - Show in Apps menu when right-clicking a user
+ * @property {boolean} context_menu_message - Show in Apps menu when right-clicking a message
  * @property {boolean} registered - Synced to Discord
  * @property {string} discord_command_id - Discord's command ID
  * @property {string} created_by
@@ -95,6 +97,10 @@ export const COMMAND_TEMPLATE_VARIABLES = {
   "target.id": "Right-clicked user's ID (context menu only)",
   "target.name": "Right-clicked user's username (context menu only)",
   "target.mention": "Mention the right-clicked user (context menu only)",
+  "target_message.id": "Right-clicked message's ID (message context menu only)",
+  "target_message.content": "Right-clicked message's text (message context menu only)",
+  "target_message.author_id": "Right-clicked message author's ID (message context menu only)",
+  "target_message.author_name": "Right-clicked message author's username (message context menu only)",
   "channel.id": "Channel ID where command was used",
   "channel.name": "Channel name",
   "channel.mention": "Mention the channel",
@@ -306,9 +312,9 @@ export async function createCommand(db, command) {
         action_type, action_config,
         response_type, response_content, response_embed,
         default_member_permissions, dm_permission,
-        context_menu_user, require_voice,
+        context_menu_user, context_menu_message, require_voice,
         created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       command.guild_id,
       command.name.toLowerCase(),
@@ -325,6 +331,7 @@ export async function createCommand(db, command) {
       command.default_member_permissions || null,
       command.dm_permission !== undefined ? (command.dm_permission ? 1 : 0) : 0,
       command.context_menu_user ? 1 : 0,
+      command.context_menu_message ? 1 : 0,
       command.require_voice ? 1 : 0,
       command.created_by || null,
     ).run();
@@ -483,6 +490,11 @@ export async function updateCommand(db, id, updates: Record<string, any> = {}) {
     if (updates.context_menu_user !== undefined) {
       fields.push("context_menu_user = ?");
       values.push(updates.context_menu_user ? 1 : 0);
+      fields.push("registered = 0"); // Needs re-registration when context menu changes
+    }
+    if (updates.context_menu_message !== undefined) {
+      fields.push("context_menu_message = ?");
+      values.push(updates.context_menu_message ? 1 : 0);
       fields.push("registered = 0"); // Needs re-registration when context menu changes
     }
     if (updates.require_voice !== undefined) {
@@ -802,6 +814,8 @@ function parseCommand(row) {
     registered: !!row.registered,
     dm_permission: !!row.dm_permission,
     require_voice: !!row.require_voice,
+    context_menu_user: !!row.context_menu_user,
+    context_menu_message: !!row.context_menu_message,
     is_built_in: !!row.is_built_in,
     options: row.options ? JSON.parse(row.options) : [],
     action_config: row.action_config ? JSON.parse(row.action_config) : {},
@@ -1263,21 +1277,31 @@ export async function ensureBuiltInCommands(db) {
 }
 
 /**
- * Discord command types
+ * Discord command types (sourced from discord-api-types so the numeric values
+ * stay in sync with the Discord API).
  */
 export const COMMAND_TYPES = {
-  CHAT_INPUT: 1, // Slash command
-  USER: 2, // User context menu command (right-click on user)
-  MESSAGE: 3, // Message context menu command (right-click on message)
+  CHAT_INPUT: ApplicationCommandType.ChatInput, // 1 — Slash command
+  USER: ApplicationCommandType.User, // 2 — User context menu (right-click a user)
+  MESSAGE: ApplicationCommandType.Message, // 3 — Message context menu (right-click a message)
 };
 
 /**
- * Convert command to Discord API format for registration
- * Returns an array of commands if context_menu_user is enabled (slash + user context menu)
+ * Convert command to Discord API format for registration.
+ * Returns an array of commands when context-menu variants are enabled
+ * (slash + optional USER context menu + optional MESSAGE context menu).
+ *
+ * Context-menu commands must NOT carry a `description` or `options` — Discord
+ * rejects the registration otherwise.
  * @param {Command} command
  * @returns {Object|Object[]}
  */
 export function toDiscordCommand(command) {
+  const dmPermission = command.dm_permission === 1 || command.dm_permission === true;
+  const hasPermissionRestriction =
+    command.default_member_permissions !== null &&
+    command.default_member_permissions !== undefined;
+
   const baseCommand: Record<string, any> = {
     name: command.name,
     description: command.description || "No description",
@@ -1295,32 +1319,41 @@ export function toDiscordCommand(command) {
   }
 
   // Add permission restrictions if set
-  if (command.default_member_permissions !== null && command.default_member_permissions !== undefined) {
+  if (hasPermissionRestriction) {
     baseCommand.default_member_permissions = command.default_member_permissions;
   }
 
   // DM permission (false by default for guild commands)
-  baseCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
+  baseCommand.dm_permission = dmPermission;
 
-  // If context_menu_user is enabled, also create a USER type context menu command
-  if (command.context_menu_user === 1 || command.context_menu_user === true) {
-    const userContextCommand: Record<string, any> = {
+  const commands: Record<string, any>[] = [baseCommand];
+
+  // Build a bare context-menu command (no description/options) for the given type.
+  const buildContextMenuCommand = (type: number) => {
+    const contextCommand: Record<string, any> = {
       name: command.name,
-      type: COMMAND_TYPES.USER, // USER context menu command
+      type,
     };
-    
-    // Add permission restrictions if set
-    if (command.default_member_permissions !== null && command.default_member_permissions !== undefined) {
-      userContextCommand.default_member_permissions = command.default_member_permissions;
+    if (hasPermissionRestriction) {
+      contextCommand.default_member_permissions = command.default_member_permissions;
     }
-    
-    userContextCommand.dm_permission = command.dm_permission === 1 || command.dm_permission === true;
-    
-    // Return both commands
-    return [baseCommand, userContextCommand];
+    contextCommand.dm_permission = dmPermission;
+    return contextCommand;
+  };
+
+  // USER context menu command (right-click a user)
+  if (command.context_menu_user === 1 || command.context_menu_user === true) {
+    commands.push(buildContextMenuCommand(COMMAND_TYPES.USER));
   }
 
-  return baseCommand;
+  // MESSAGE context menu command (right-click a message)
+  if (command.context_menu_message === 1 || command.context_menu_message === true) {
+    commands.push(buildContextMenuCommand(COMMAND_TYPES.MESSAGE));
+  }
+
+  // Return a single object when only the slash command is produced, to preserve
+  // the original (non-array) return shape for existing callers.
+  return commands.length === 1 ? baseCommand : commands;
 }
 
 /**
@@ -1363,21 +1396,52 @@ export function buildCommandContext(interaction, guildInfo: Record<string, any> 
   }
 
   // For user context menu commands, add target user info
-  // data.type === 2 means USER context menu command
-  if (interaction.data?.type === 2 && interaction.data?.target_id) {
+  // data.type === 2 (ApplicationCommandType.User) means USER context menu command
+  if (interaction.data?.type === ApplicationCommandType.User && interaction.data?.target_id) {
     const targetId = interaction.data.target_id;
     // Get resolved user data if available
     const resolvedUser = interaction.data.resolved?.users?.[targetId];
-    
+
     context.target = {
       id: targetId,
       name: resolvedUser?.username || "Unknown",
       mention: `<@${targetId}>`,
     };
-    
+
     // Also add as an option called "user" for consistency with actions
     context.option.user = targetId;
     context.option.user_mention = `<@${targetId}>`;
+  }
+
+  // For message context menu commands, add target message + author info
+  // data.type === 3 (ApplicationCommandType.Message) means MESSAGE context menu command
+  if (interaction.data?.type === ApplicationCommandType.Message && interaction.data?.target_id) {
+    const targetId = interaction.data.target_id;
+    const resolvedMessage = interaction.data.resolved?.messages?.[targetId];
+    const author = resolvedMessage?.author;
+
+    context.target_message = {
+      id: targetId,
+      content: resolvedMessage?.content || "",
+      author_id: author?.id || "",
+      author_name: author?.username || "",
+    };
+
+    // Treat the message author as the acting target user so user-targeting
+    // actions (DM, add role, etc.) work on message context menu commands.
+    if (author?.id) {
+      context.target = {
+        id: author.id,
+        name: author.username || "Unknown",
+        mention: `<@${author.id}>`,
+      };
+      context.option.user = author.id;
+      context.option.user_mention = `<@${author.id}>`;
+    }
+
+    // Expose the message itself as options for templates/actions.
+    context.option.message = targetId;
+    context.option.message_content = resolvedMessage?.content || "";
   }
 
   // Add option values to context

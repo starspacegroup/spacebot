@@ -3,7 +3,7 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
-	let { data } = $props();
+	const { data } = $props();
 
 	let toastMessage = $state(null);
 	let toastSuccess = $state(true);
@@ -17,35 +17,35 @@
 	const user = $derived(data.user);
 	const serverPlans = $derived(data.serverPlans || []);
 	const planTiers = $derived(data.planTiers);
-	const aiJobSummary = $derived(data.aiJobSummary || {
-		total: 0,
-		pending: 0,
-		running: 0,
-		completed: 0,
-		failed_terminal: 0,
-		canceled: 0,
-		latest: null,
-	});
-	
-	// Billing summary
-	const totalServers = $derived(serverPlans.length);
-	const proServers = $derived(serverPlans.filter(s => s.plan === 'pro').length);
-	const starterServers = $derived(serverPlans.filter(s => s.plan === 'free').length);
-	const totalMonthlySpend = $derived(
-		serverPlans
-			.filter(s => s.stripeSubscriptionId) // Only count paid subscriptions
-			.reduce((sum, s) => sum + (s.priceCents || 0), 0)
-	);
-	
-	// Servers with active Stripe billing (have a customer ID)
-	const serversWithBilling = $derived(
-		serverPlans.filter(s => s.stripeCustomerId)
+	const aiJobSummary = $derived(
+		data.aiJobSummary || {
+			total: 0,
+			pending: 0,
+			running: 0,
+			completed: 0,
+			failed_terminal: 0,
+			canceled: 0,
+			latest: null,
+		}
 	);
 
-	const activeBillingSubscriptions = $derived(
-		serversWithBilling.filter(s => s.stripeSubscriptionId)
+	// Billing summary
+	const totalServers = $derived(serverPlans.length);
+	const proServers = $derived(serverPlans.filter((s) => s.plan === 'pro').length);
+	const starterServers = $derived(serverPlans.filter((s) => s.plan === 'free').length);
+	const totalMonthlySpend = $derived(
+		serverPlans
+			.filter((s) => s.stripeSubscriptionId) // Only count paid subscriptions
+			.reduce((sum, s) => sum + (s.priceCents || 0), 0)
 	);
-	
+
+	// Servers with active Stripe billing (have a customer ID)
+	const serversWithBilling = $derived(serverPlans.filter((s) => s.stripeCustomerId));
+
+	const activeBillingSubscriptions = $derived(
+		serversWithBilling.filter((s) => s.stripeSubscriptionId)
+	);
+
 	function formatDate(dateStr) {
 		if (!dateStr) return 'N/A';
 		return new Date(dateStr).toLocaleDateString('en-US', {
@@ -54,73 +54,107 @@
 			day: 'numeric',
 		});
 	}
-	
+
 	function formatPrice(cents) {
 		if (!cents) return 'Starter';
 		return `$${(cents / 100).toFixed(2)}`;
 	}
-	
+
 	function getStatusBadgeClass(plan, stripeStatus, stripeSubscriptionId?) {
-		if (plan === 'pro' && !stripeSubscriptionId && !['active', 'trialing'].includes(stripeStatus)) return 'badge-admin';
+		if (
+			plan === 'pro' &&
+			!stripeSubscriptionId &&
+			!['active', 'trialing'].includes(stripeStatus)
+		)
+			return 'badge-admin';
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'badge-success';
 		if (stripeStatus === 'canceling') return 'badge-warning';
 		if (stripeStatus === 'past_due') return 'badge-danger';
 		return 'badge-neutral';
 	}
-	
+
 	function getStatusLabel(plan, stripeStatus, stripeSubscriptionId?) {
-		if (plan === 'pro' && !stripeSubscriptionId && !['active', 'trialing'].includes(stripeStatus)) return 'Admin Granted';
+		if (
+			plan === 'pro' &&
+			!stripeSubscriptionId &&
+			!['active', 'trialing'].includes(stripeStatus)
+		)
+			return 'Admin Granted';
 		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'Active';
 		if (stripeStatus === 'canceling') return 'Canceling';
 		if (stripeStatus === 'past_due') return 'Past Due';
 		if (plan === 'pro') return 'Pro';
 		return 'Starter';
 	}
-	
+
 	// Aggregate billing history from all servers, sorted by date (newest first)
 	const allBillingHistory = $derived(
 		serverPlans
-			.flatMap(s => (s.recentBilling || []).map(e => ({
-				...e,
-				guildName: s.guildName,
-				guildIcon: s.guildIcon,
-				guildId: s.guildId,
-			})))
+			.flatMap((s) =>
+				(s.recentBilling || []).map((e) => ({
+					...e,
+					guildName: s.guildName,
+					guildIcon: s.guildIcon,
+					guildId: s.guildId,
+				}))
+			)
 			.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 	);
-	
+
 	function getEventIcon(eventType) {
 		switch (eventType) {
-			case 'checkout_completed': return '🎉';
-			case 'plan_upgrade': return '⬆️';
-			case 'plan_downgrade': return '⬇️';
-			case 'admin_edit': return '🔧';
-			case 'payment_success': return '✅';
-			case 'payment_failed': return '❌';
-			case 'subscription_canceled': return '⏸️';
-			case 'subscription_reactivated': return '▶️';
-			case 'subscription_renewed': return '🔄';
-			case 'plan_reset': return '↩️';
-			default: return '📋';
+			case 'checkout_completed':
+				return '🎉';
+			case 'plan_upgrade':
+				return '⬆️';
+			case 'plan_downgrade':
+				return '⬇️';
+			case 'admin_edit':
+				return '🔧';
+			case 'payment_success':
+				return '✅';
+			case 'payment_failed':
+				return '❌';
+			case 'subscription_canceled':
+				return '⏸️';
+			case 'subscription_reactivated':
+				return '▶️';
+			case 'subscription_renewed':
+				return '🔄';
+			case 'plan_reset':
+				return '↩️';
+			default:
+				return '📋';
 		}
 	}
-	
+
 	function getEventLabel(eventType) {
 		switch (eventType) {
-			case 'checkout_completed': return 'Upgrade';
-			case 'plan_upgrade': return 'Plan Upgrade';
-			case 'plan_downgrade': return 'Downgrade';
-			case 'admin_edit': return 'Admin Edit';
-			case 'payment_success': return 'Payment';
-			case 'payment_failed': return 'Payment Failed';
-			case 'subscription_canceled': return 'Canceled';
-			case 'subscription_reactivated': return 'Reactivated';
-			case 'subscription_renewed': return 'Renewed';
-			case 'plan_reset': return 'Plan Reset';
-			default: return 'Event';
+			case 'checkout_completed':
+				return 'Upgrade';
+			case 'plan_upgrade':
+				return 'Plan Upgrade';
+			case 'plan_downgrade':
+				return 'Downgrade';
+			case 'admin_edit':
+				return 'Admin Edit';
+			case 'payment_success':
+				return 'Payment';
+			case 'payment_failed':
+				return 'Payment Failed';
+			case 'subscription_canceled':
+				return 'Canceled';
+			case 'subscription_reactivated':
+				return 'Reactivated';
+			case 'subscription_renewed':
+				return 'Renewed';
+			case 'plan_reset':
+				return 'Plan Reset';
+			default:
+				return 'Event';
 		}
 	}
-	
+
 	function getEventDotClass(eventType) {
 		switch (eventType) {
 			case 'checkout_completed':
@@ -142,7 +176,7 @@
 				return 'dot-neutral';
 		}
 	}
-	
+
 	function formatDateTime(dateStr) {
 		if (!dateStr) return 'N/A';
 		return new Date(dateStr).toLocaleDateString('en-US', {
@@ -156,15 +190,21 @@
 
 	function formatAIJobStatus(status) {
 		switch (status) {
-			case 'pending': return { label: 'Queued', cls: 'badge-neutral' };
-			case 'running': return { label: 'Running', cls: 'badge-info' };
-			case 'completed': return { label: 'Completed', cls: 'badge-success' };
-			case 'failed_terminal': return { label: 'Failed', cls: 'badge-danger' };
-			case 'canceled': return { label: 'Canceled', cls: 'badge-warning' };
-			default: return { label: status || 'Unknown', cls: 'badge-neutral' };
+			case 'pending':
+				return { label: 'Queued', cls: 'badge-neutral' };
+			case 'running':
+				return { label: 'Running', cls: 'badge-info' };
+			case 'completed':
+				return { label: 'Completed', cls: 'badge-success' };
+			case 'failed_terminal':
+				return { label: 'Failed', cls: 'badge-danger' };
+			case 'canceled':
+				return { label: 'Canceled', cls: 'badge-warning' };
+			default:
+				return { label: status || 'Unknown', cls: 'badge-neutral' };
 		}
 	}
-	
+
 	function getBillingReturnUrl() {
 		if (typeof window === 'undefined') return '/account';
 		const url = new URL(window.location.href);
@@ -190,7 +230,8 @@
 			const result = await res.json().catch(() => ({}));
 
 			if (!res.ok) {
-				toastMessage = result.error || 'Could not open billing portal right now. Please try again.';
+				toastMessage =
+					result.error || 'Could not open billing portal right now. Please try again.';
 				toastSuccess = false;
 				showToast = true;
 				return;
@@ -201,7 +242,8 @@
 				return;
 			}
 
-			toastMessage = 'Billing portal is temporarily unavailable. Please try again in a moment.';
+			toastMessage =
+				'Billing portal is temporarily unavailable. Please try again in a moment.';
 			toastSuccess = false;
 			showToast = true;
 		} catch {
@@ -212,7 +254,7 @@
 			portalLoading = null;
 		}
 	}
-	
+
 	function scrollToSection(section) {
 		activeSection = section;
 		const el = document.getElementById(`section-${section}`);
@@ -228,40 +270,49 @@
 
 <div class="account-page">
 	{#if showToast && toastMessage}
-		<Toast message={toastMessage} success={toastSuccess} onDismiss={() => showToast = false} />
+		<Toast
+			message={toastMessage}
+			success={toastSuccess}
+			onDismiss={() => (showToast = false)}
+		/>
 	{/if}
-	
+
 	<header class="page-header">
-		<a href={data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin'} class="back-link">&#8592; Back to Dashboard</a>
+		<a
+			href={data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin'}
+			class="back-link">&#8592; Back to Dashboard</a
+		>
 		<div class="header-content">
 			<h1>
 				<span class="header-icon">👤</span>
 				My Account
 			</h1>
-			<p class="header-desc">Manage your profile, billing, AI workflows, and local runner preferences.</p>
+			<p class="header-desc">
+				Manage your profile, billing, AI workflows, and local runner preferences.
+			</p>
 		</div>
 	</header>
-	
+
 	<!-- Section Navigation -->
 	<nav class="section-nav">
-		<button 
-			class="section-nav-item" 
+		<button
+			class="section-nav-item"
 			class:active={activeSection === 'profile'}
 			onclick={() => scrollToSection('profile')}
 		>
 			<span class="nav-icon">👤</span>
 			Profile
 		</button>
-		<button 
-			class="section-nav-item" 
+		<button
+			class="section-nav-item"
 			class:active={activeSection === 'billing'}
 			onclick={() => scrollToSection('billing')}
 		>
 			<span class="nav-icon">💳</span>
 			Billing
 		</button>
-		<button 
-			class="section-nav-item" 
+		<button
+			class="section-nav-item"
 			class:active={activeSection === 'payment'}
 			onclick={() => scrollToSection('payment')}
 		>
@@ -285,15 +336,15 @@
 			Settings
 		</button>
 	</nav>
-	
+
 	<!-- Profile Section -->
 	<section id="section-profile" class="content-section">
 		<h2><span class="section-icon">👤</span> Profile</h2>
-		
+
 		<div class="profile-card">
 			<div class="profile-header">
-				<img 
-					src={getAvatarUrl(user.id, user.avatar, user.discriminator)} 
+				<img
+					src={getAvatarUrl(user.id, user.avatar, user.discriminator)}
 					alt="{user.username}'s avatar"
 					class="profile-avatar"
 				/>
@@ -305,7 +356,7 @@
 					<span class="profile-id">ID: {user.id}</span>
 				</div>
 			</div>
-			
+
 			<div class="profile-details">
 				<div class="detail-grid">
 					{#if dbUser?.email}
@@ -328,7 +379,7 @@
 					</div>
 				</div>
 			</div>
-			
+
 			{#if data.isSuperAdmin}
 				<div class="profile-badge superadmin-badge">
 					<span class="badge-icon">👑</span>
@@ -336,7 +387,7 @@
 				</div>
 			{/if}
 		</div>
-		
+
 		<div class="servers-summary">
 			<h3>Your Servers</h3>
 			<div class="server-stats-row">
@@ -387,29 +438,46 @@
 							<strong>Latest Job</strong>
 							<span class="status-badge {latestState.cls}">{latestState.label}</span>
 						</div>
-						<div class="autopilot-latest-meta mono">{aiJobSummary.latest.correlationId}</div>
-						<div class="autopilot-latest-meta">{aiJobSummary.latest.requestText?.slice(0, 140)}</div>
-						<div class="autopilot-latest-meta">Attempts {aiJobSummary.latest.attemptCount}/{aiJobSummary.latest.maxAttempts} · Updated {formatDateTime(aiJobSummary.latest.updatedAt)}</div>
+						<div class="autopilot-latest-meta mono">
+							{aiJobSummary.latest.correlationId}
+						</div>
+						<div class="autopilot-latest-meta">
+							{aiJobSummary.latest.requestText?.slice(0, 140)}
+						</div>
+						<div class="autopilot-latest-meta">
+							Attempts {aiJobSummary.latest.attemptCount}/{aiJobSummary.latest
+								.maxAttempts} · Updated {formatDateTime(
+								aiJobSummary.latest.updatedAt
+							)}
+						</div>
 					</div>
-					<a class="btn btn-sm btn-outline" href={`/api/ai/jobs/${aiJobSummary.latest.id}`} target="_blank" rel="noreferrer">Timeline JSON</a>
+					<a
+						class="btn btn-sm btn-outline"
+						href={`/api/ai/jobs/${aiJobSummary.latest.id}`}
+						target="_blank"
+						rel="noreferrer">Timeline JSON</a
+					>
 				</div>
 			{/if}
 		</div>
 	</section>
-	
+
 	<!-- Billing Section -->
 	<section id="section-billing" class="content-section">
 		<h2><span class="section-icon">💳</span> Billing</h2>
-		
+
 		{#if totalMonthlySpend > 0}
 			<div class="billing-overview">
 				<div class="billing-total">
 					<span class="billing-total-label">Current Monthly Spend</span>
-					<span class="billing-total-value">{formatPrice(totalMonthlySpend)}<span class="billing-period">/mo</span></span>
+					<span class="billing-total-value"
+						>{formatPrice(totalMonthlySpend)}<span class="billing-period">/mo</span
+						></span
+					>
 				</div>
 			</div>
 		{/if}
-		
+
 		{#if serverPlans.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">📭</span>
@@ -422,9 +490,9 @@
 						<div class="server-plan-header">
 							<div class="server-plan-identity">
 								{#if server.guildIcon}
-									<img 
-										class="server-plan-icon" 
-										src="https://cdn.discordapp.com/icons/{server.guildId}/{server.guildIcon}.webp?size=48" 
+									<img
+										class="server-plan-icon"
+										src="https://cdn.discordapp.com/icons/{server.guildId}/{server.guildIcon}.webp?size=48"
 										alt={server.guildName}
 									/>
 								{:else}
@@ -442,37 +510,55 @@
 									{server.plan === 'pro' ? '⚡ Pro' : '🚀 Starter'}
 								</span>
 								{#if server.stripeStatus}
-									<span class="status-badge {getStatusBadgeClass(server.plan, server.stripeStatus)}">
+									<span
+										class="status-badge {getStatusBadgeClass(
+											server.plan,
+											server.stripeStatus
+										)}"
+									>
 										{getStatusLabel(server.plan, server.stripeStatus)}
 									</span>
 								{/if}
 							</div>
 						</div>
-						
+
 						{#if server.plan !== 'free'}
 							<div class="server-plan-details">
-							{#if server.plan === 'pro' && !server.stripeSubscriptionId}
-								<div class="plan-detail">
-									<span class="plan-detail-label">Price</span>
-									<span class="plan-detail-value admin-granted-price">Granted by admin</span>
-								</div>
-							{:else if server.priceCents}
-								<div class="plan-detail">
-									<span class="plan-detail-label">Price</span>
-									<span class="plan-detail-value">{formatPrice(server.priceCents)}/mo</span>
-								</div>
-							{/if}
+								{#if server.plan === 'pro' && !server.stripeSubscriptionId}
+									<div class="plan-detail">
+										<span class="plan-detail-label">Price</span>
+										<span class="plan-detail-value admin-granted-price"
+											>Granted by admin</span
+										>
+									</div>
+								{:else if server.priceCents}
+									<div class="plan-detail">
+										<span class="plan-detail-label">Price</span>
+										<span class="plan-detail-value"
+											>{formatPrice(server.priceCents)}/mo</span
+										>
+									</div>
+								{/if}
 								{#if server.stripeCurrentPeriodEnd}
 									<div class="plan-detail">
-										<span class="plan-detail-label">{server.stripeStatus === 'canceling' ? 'Access Until' : 'Next Billing'}</span>
-										<span class="plan-detail-value">{formatDate(server.stripeCurrentPeriodEnd)}</span>
+										<span class="plan-detail-label"
+											>{server.stripeStatus === 'canceling'
+												? 'Access Until'
+												: 'Next Billing'}</span
+										>
+										<span class="plan-detail-value"
+											>{formatDate(server.stripeCurrentPeriodEnd)}</span
+										>
 									</div>
 								{/if}
 							</div>
 						{/if}
-						
+
 						<div class="server-plan-actions">
-							<a href="/admin/{server.guildId}/account" class="btn btn-secondary btn-sm">
+							<a
+								href="/admin/{server.guildId}/account"
+								class="btn btn-secondary btn-sm"
+							>
 								Manage
 							</a>
 						</div>
@@ -480,7 +566,7 @@
 				{/each}
 			</div>
 		{/if}
-		
+
 		{#if allBillingHistory.length > 0}
 			<div class="billing-history">
 				<h3>Billing History</h3>
@@ -490,29 +576,47 @@
 							<div class="timeline-dot {getEventDotClass(event.event_type)}"></div>
 							<div class="timeline-content">
 								<div class="timeline-header">
-									<span class="timeline-icon">{getEventIcon(event.event_type)}</span>
-									<span class="timeline-label">{getEventLabel(event.event_type)}</span>
+									<span class="timeline-icon"
+										>{getEventIcon(event.event_type)}</span
+									>
+									<span class="timeline-label"
+										>{getEventLabel(event.event_type)}</span
+									>
 									<span class="timeline-server">{event.guildName}</span>
 								</div>
 								{#if event.description}
 									<p class="timeline-desc">{event.description}</p>
 								{/if}
 								<div class="timeline-meta">
-									<span class="timeline-date">{formatDateTime(event.created_at)}</span>
+									<span class="timeline-date"
+										>{formatDateTime(event.created_at)}</span
+									>
 									{#if event.amount_cents}
-										<span class="timeline-amount">{formatPrice(event.amount_cents)}</span>
+										<span class="timeline-amount"
+											>{formatPrice(event.amount_cents)}</span
+										>
 									{/if}
 									{#if event.plan_before && event.plan_after}
-										<span class="timeline-plan-change">{event.plan_before} → {event.plan_after}</span>
+										<span class="timeline-plan-change"
+											>{event.plan_before} → {event.plan_after}</span
+										>
 									{/if}
 									{#if event.actor_name}
 										<span class="timeline-actor">
 											{#if event.actor_id}
 												<img
-													src={getAvatarUrl(event.actor_id, event.actor_avatar, event.actor_discriminator, 20)}
+													src={getAvatarUrl(
+														event.actor_id,
+														event.actor_avatar,
+														event.actor_discriminator,
+														20
+													)}
 													alt="{event.actor_name}'s avatar"
 													class="timeline-actor-avatar"
-													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+													onerror={(e) => {
+														(e.target as HTMLElement).style.display =
+															'none';
+													}}
 												/>
 											{/if}
 											by {event.actor_name}
@@ -525,7 +629,7 @@
 				</div>
 			</div>
 		{/if}
-		
+
 		<div class="plan-comparison">
 			<h3>Plan Comparison</h3>
 			<div class="plan-table-wrapper">
@@ -578,21 +682,27 @@
 			</div>
 		</div>
 	</section>
-	
+
 	<!-- Payment Methods Section -->
 	<section id="section-payment" class="content-section">
 		<h2><span class="section-icon">💳</span> Payment Methods</h2>
-		
+
 		{#if serversWithBilling.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">💳</span>
-				<p>No payment methods on file. Payment methods are added when you upgrade a server to Pro.</p>
+				<p>
+					No payment methods on file. Payment methods are added when you upgrade a server
+					to Pro.
+				</p>
 			</div>
 		{:else}
 			<div class="payment-hero-card">
 				<div class="payment-hero-main">
 					<h3>Your Billing Portal</h3>
-					<p>Update payment methods, download invoices, and manage subscriptions for each server.</p>
+					<p>
+						Update payment methods, download invoices, and manage subscriptions for each
+						server.
+					</p>
 				</div>
 				<div class="payment-hero-metrics">
 					<div class="payment-metric">
@@ -609,16 +719,16 @@
 					</div>
 				</div>
 			</div>
-			
+
 			<div class="billing-servers-grid">
 				{#each serversWithBilling as server}
 					<div class="billing-server-card">
 						<div class="billing-server-header">
 							<div class="subscription-info">
 								{#if server.guildIcon}
-									<img 
-										class="subscription-icon" 
-										src="https://cdn.discordapp.com/icons/{server.guildId}/{server.guildIcon}.webp?size=32" 
+									<img
+										class="subscription-icon"
+										src="https://cdn.discordapp.com/icons/{server.guildId}/{server.guildIcon}.webp?size=32"
 										alt={server.guildName}
 									/>
 								{:else}
@@ -631,8 +741,18 @@
 									<span class="billing-server-id">{server.guildId}</span>
 								</div>
 							</div>
-							<span class="status-badge {getStatusBadgeClass(server.plan, server.stripeStatus, server.stripeSubscriptionId)}">
-								{getStatusLabel(server.plan, server.stripeStatus, server.stripeSubscriptionId)}
+							<span
+								class="status-badge {getStatusBadgeClass(
+									server.plan,
+									server.stripeStatus,
+									server.stripeSubscriptionId
+								)}"
+							>
+								{getStatusLabel(
+									server.plan,
+									server.stripeStatus,
+									server.stripeSubscriptionId
+								)}
 							</span>
 						</div>
 
@@ -650,12 +770,14 @@
 						</div>
 
 						<div class="billing-server-actions">
-							<button 
-								class="btn btn-primary btn-sm" 
+							<button
+								class="btn btn-primary btn-sm"
 								onclick={() => openBillingPortal(server.guildId, server.guildName)}
 								disabled={portalLoading !== null}
 							>
-								{portalLoading === server.guildId ? 'Opening...' : 'Open Billing Portal'}
+								{portalLoading === server.guildId
+									? 'Opening...'
+									: 'Open Billing Portal'}
 							</button>
 						</div>
 					</div>
@@ -663,7 +785,7 @@
 			</div>
 		{/if}
 	</section>
-	
+
 	<!-- Local Runner link card -->
 	<a href="/account/runners" class="runner-link-card">
 		<div class="runner-link-card-icon">🖥️</div>
@@ -677,12 +799,14 @@
 	<!-- Settings Section -->
 	<section id="section-settings" class="content-section">
 		<h2><span class="section-icon">⚙️</span> Settings</h2>
-		
+
 		<div class="settings-group">
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">Theme</span>
-					<span class="setting-desc">Switch between light and dark mode, or follow your system preference.</span>
+					<span class="setting-desc"
+						>Switch between light and dark mode, or follow your system preference.</span
+					>
 				</div>
 				<div class="setting-control">
 					<ThemeToggle />
@@ -695,20 +819,24 @@
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">Discord</span>
-					<span class="setting-desc">Logged in as <strong>@{user.username}</strong> via Discord OAuth.</span>
+					<span class="setting-desc"
+						>Logged in as <strong>@{user.username}</strong> via Discord OAuth.</span
+					>
 				</div>
 				<div class="setting-control">
 					<span class="connected-badge">Connected</span>
 				</div>
 			</div>
 		</div>
-		
+
 		<div class="settings-group danger-zone">
 			<h3>Session</h3>
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">Log Out</span>
-					<span class="setting-desc">Sign out of SpaceBot. You'll need to log in again via Discord.</span>
+					<span class="setting-desc"
+						>Sign out of SpaceBot. You'll need to log in again via Discord.</span
+					>
 				</div>
 				<div class="setting-control">
 					<a href="/api/auth/logout" class="btn btn-danger btn-sm">Log Out</a>
@@ -724,12 +852,12 @@
 		margin: 0 auto;
 		padding: 1.5rem 1rem 3rem;
 	}
-	
+
 	/* Page Header */
 	.page-header {
 		margin-bottom: 1.5rem;
 	}
-	
+
 	.back-link {
 		display: inline-flex;
 		align-items: center;
@@ -740,11 +868,11 @@
 		margin-bottom: 0.75rem;
 		transition: color var(--transition-fast);
 	}
-	
+
 	.back-link:hover {
 		color: var(--color-primary);
 	}
-	
+
 	.header-content h1 {
 		font-size: 1.5rem;
 		font-weight: 700;
@@ -754,17 +882,17 @@
 		gap: 0.5rem;
 		margin: 0;
 	}
-	
+
 	.header-icon {
 		font-size: 1.25rem;
 	}
-	
+
 	.header-desc {
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		margin: 0.25rem 0 0;
 	}
-	
+
 	/* Section Navigation */
 	.section-nav {
 		display: flex;
@@ -776,7 +904,7 @@
 		margin-bottom: 2rem;
 		overflow-x: auto;
 	}
-	
+
 	.section-nav-item {
 		flex: 1;
 		display: flex;
@@ -795,28 +923,28 @@
 		white-space: nowrap;
 		text-decoration: none;
 	}
-	
+
 	.section-nav-item:hover {
 		color: var(--color-text);
 		background: var(--color-surface-hover);
 	}
-	
+
 	.section-nav-item.active {
 		color: var(--color-primary);
 		background: var(--color-primary-soft);
 		font-weight: 600;
 	}
-	
+
 	.nav-icon {
 		font-size: 1rem;
 	}
-	
+
 	/* Content Sections */
 	.content-section {
 		margin-bottom: 2.5rem;
 		scroll-margin-top: 5rem;
 	}
-	
+
 	.content-section h2 {
 		font-size: 1.125rem;
 		font-weight: 600;
@@ -828,11 +956,11 @@
 		padding-bottom: 0.75rem;
 		border-bottom: 1px solid var(--color-border);
 	}
-	
+
 	.section-icon {
 		font-size: 1rem;
 	}
-	
+
 	/* Profile Section */
 	.profile-card {
 		background: var(--color-surface);
@@ -841,14 +969,14 @@
 		padding: 1.25rem;
 		position: relative;
 	}
-	
+
 	.profile-header {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 		margin-bottom: 1rem;
 	}
-	
+
 	.profile-avatar {
 		width: 72px;
 		height: 72px;
@@ -856,43 +984,43 @@
 		object-fit: cover;
 		border: 3px solid var(--color-primary-soft);
 	}
-	
+
 	.profile-identity {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
 	}
-	
+
 	.profile-display-name {
 		font-size: 1.25rem;
 		font-weight: 700;
 		color: var(--color-text);
 		margin: 0;
 	}
-	
+
 	.profile-username {
 		font-size: 0.875rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.profile-id {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		font-family: monospace;
 	}
-	
+
 	.detail-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 		gap: 0.75rem;
 	}
-	
+
 	.detail-item {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
 	}
-	
+
 	.detail-label {
 		font-size: 0.75rem;
 		font-weight: 500;
@@ -900,13 +1028,13 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
-	
+
 	.detail-value {
 		font-size: 0.875rem;
 		color: var(--color-text);
 		font-weight: 500;
 	}
-	
+
 	.profile-badge {
 		display: inline-flex;
 		align-items: center;
@@ -917,26 +1045,26 @@
 		font-size: 0.8125rem;
 		font-weight: 600;
 	}
-	
+
 	.superadmin-badge {
 		background: linear-gradient(135deg, hsla(35, 90%, 55%, 0.15), hsla(45, 95%, 60%, 0.15));
 		color: hsl(35, 80%, 45%);
 		border: 1px solid hsla(35, 80%, 55%, 0.3);
 	}
 
-	:global([data-theme="dark"]) .superadmin-badge {
+	:global([data-theme='dark']) .superadmin-badge {
 		color: hsl(40, 90%, 65%);
 	}
-	
+
 	.badge-icon {
 		font-size: 0.875rem;
 	}
-	
+
 	/* Server summary */
 	.servers-summary {
 		margin-top: 1.25rem;
 	}
-	
+
 	.servers-summary h3 {
 		font-size: 0.9375rem;
 		font-weight: 600;
@@ -989,12 +1117,12 @@
 		margin-top: 0.25rem;
 		line-height: 1.35;
 	}
-	
+
 	.server-stats-row {
 		display: flex;
 		gap: 0.75rem;
 	}
-	
+
 	.stat-chip {
 		display: flex;
 		flex-direction: column;
@@ -1005,29 +1133,29 @@
 		border-radius: var(--radius-md);
 		min-width: 80px;
 	}
-	
+
 	.stat-chip.pro {
 		border-color: var(--color-primary);
 		background: var(--color-primary-soft);
 	}
-	
+
 	.stat-chip.starter {
 		border-color: var(--color-border);
 	}
-	
+
 	.stat-value {
 		font-size: 1.25rem;
 		font-weight: 700;
 		color: var(--color-text);
 	}
-	
+
 	.stat-label {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
-	
+
 	/* Billing Section */
 	.billing-overview {
 		background: var(--color-primary-soft);
@@ -1036,43 +1164,43 @@
 		padding: 1rem 1.25rem;
 		margin-bottom: 1.25rem;
 	}
-	
+
 	.billing-total {
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
 	}
-	
+
 	.billing-total-label {
 		font-size: 0.875rem;
 		font-weight: 500;
 		color: var(--color-text);
 	}
-	
+
 	.billing-total-value {
 		font-size: 1.5rem;
 		font-weight: 700;
 		color: var(--color-primary);
 	}
-	
+
 	.billing-period {
 		font-size: 0.875rem;
 		font-weight: 400;
 		color: var(--color-text-muted);
 	}
-	
+
 	.empty-state {
 		text-align: center;
 		padding: 2rem 1rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.empty-icon {
 		font-size: 2rem;
 		display: block;
 		margin-bottom: 0.5rem;
 	}
-	
+
 	/* Server Plan Cards */
 	.server-plans-list {
 		display: flex;
@@ -1080,7 +1208,7 @@
 		gap: 0.75rem;
 		margin-bottom: 1.5rem;
 	}
-	
+
 	.server-plan-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -1088,11 +1216,11 @@
 		padding: 1rem 1.25rem;
 		transition: border-color var(--transition-fast);
 	}
-	
+
 	.server-plan-card:hover {
 		border-color: var(--color-primary);
 	}
-	
+
 	.server-plan-header {
 		display: flex;
 		align-items: center;
@@ -1100,20 +1228,20 @@
 		gap: 0.75rem;
 		flex-wrap: wrap;
 	}
-	
+
 	.server-plan-identity {
 		display: flex;
 		align-items: center;
 		gap: 0.625rem;
 	}
-	
+
 	.server-plan-icon {
 		width: 36px;
 		height: 36px;
 		border-radius: 50%;
 		object-fit: cover;
 	}
-	
+
 	.server-plan-icon-placeholder {
 		width: 36px;
 		height: 36px;
@@ -1126,30 +1254,30 @@
 		font-weight: 700;
 		font-size: 0.875rem;
 	}
-	
+
 	.server-plan-info {
 		display: flex;
 		flex-direction: column;
 	}
-	
+
 	.server-plan-name {
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.server-plan-id {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		font-family: monospace;
 	}
-	
+
 	.server-plan-status {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
+
 	.plan-badge {
 		display: inline-flex;
 		align-items: center;
@@ -1159,18 +1287,18 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 	}
-	
+
 	.plan-badge.pro {
 		background: var(--color-primary-soft);
 		color: var(--color-primary);
 	}
-	
+
 	.plan-badge.free,
 	.plan-badge.starter {
 		background: var(--color-surface-hover, hsla(var(--hue), 10%, 50%, 0.1));
 		color: var(--color-text-muted);
 	}
-	
+
 	.status-badge {
 		padding: 0.125rem 0.5rem;
 		border-radius: var(--radius-full);
@@ -1179,49 +1307,49 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
-	
+
 	.badge-success {
 		background: hsla(142, 71%, 45%, 0.12);
 		color: var(--color-success);
 	}
-	
+
 	.badge-warning {
 		background: hsla(38, 92%, 50%, 0.12);
 		color: var(--color-warning);
 	}
-	
+
 	.badge-danger {
 		background: hsla(0, 84%, 60%, 0.12);
 		color: var(--color-danger);
 	}
-	
+
 	.badge-info {
 		background: hsla(217, 91%, 60%, 0.12);
 		color: var(--color-info);
 	}
-	
+
 	.badge-neutral {
 		background: var(--color-surface-hover, hsla(var(--hue), 10%, 50%, 0.1));
 		color: var(--color-text-muted);
 	}
-	
+
 	.badge-admin {
 		background: linear-gradient(135deg, hsla(35, 90%, 55%, 0.15), hsla(45, 95%, 60%, 0.15));
 		color: hsl(35, 80%, 45%);
 	}
-	
-	:global([data-theme="dark"]) .badge-admin {
+
+	:global([data-theme='dark']) .badge-admin {
 		color: hsl(40, 90%, 65%);
 	}
-	
+
 	.admin-granted-price {
 		color: hsl(35, 80%, 45%);
 	}
-	
-	:global([data-theme="dark"]) .admin-granted-price {
+
+	:global([data-theme='dark']) .admin-granted-price {
 		color: hsl(40, 90%, 65%);
 	}
-	
+
 	/* Payment Methods Section */
 	.payment-hero-card {
 		display: flex;
@@ -1332,7 +1460,7 @@
 		display: flex;
 		justify-content: flex-end;
 	}
-	
+
 	.subscription-row {
 		display: flex;
 		align-items: center;
@@ -1342,24 +1470,24 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 	}
-	
+
 	.subscription-row + .subscription-row {
 		margin-top: 0.375rem;
 	}
-	
+
 	.subscription-info {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
+
 	.subscription-icon {
 		width: 24px;
 		height: 24px;
 		border-radius: 50%;
 		object-fit: cover;
 	}
-	
+
 	.subscription-icon-placeholder {
 		width: 24px;
 		height: 24px;
@@ -1372,19 +1500,19 @@
 		font-weight: 700;
 		font-size: 0.6875rem;
 	}
-	
+
 	.subscription-name {
 		font-size: 0.8125rem;
 		font-weight: 500;
 		color: var(--color-text);
 	}
-	
+
 	.subscription-price {
 		font-size: 0.8125rem;
 		font-weight: 600;
 		color: var(--color-primary);
 	}
-	
+
 	@media (max-width: 640px) {
 		.payment-hero-card {
 			flex-direction: column;
@@ -1403,7 +1531,7 @@
 			gap: 0.25rem;
 		}
 	}
-	
+
 	.server-plan-details {
 		display: flex;
 		gap: 1.5rem;
@@ -1411,13 +1539,13 @@
 		padding-top: 0.75rem;
 		border-top: 1px solid var(--color-border);
 	}
-	
+
 	.plan-detail {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
 	}
-	
+
 	.plan-detail-label {
 		font-size: 0.6875rem;
 		font-weight: 500;
@@ -1425,36 +1553,36 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
-	
+
 	.plan-detail-value {
 		font-size: 0.875rem;
 		color: var(--color-text);
 		font-weight: 500;
 	}
-	
+
 	.server-plan-actions {
 		margin-top: 0.75rem;
 		display: flex;
 		justify-content: flex-end;
 	}
-	
+
 	/* Billing History Timeline */
 	.billing-history {
 		margin-top: 1.5rem;
 	}
-	
+
 	.billing-history h3 {
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
 		margin: 0 0 0.75rem;
 	}
-	
+
 	.timeline {
 		position: relative;
 		padding-left: 1.5rem;
 	}
-	
+
 	.timeline::before {
 		content: '';
 		position: absolute;
@@ -1465,18 +1593,18 @@
 		background: var(--color-border);
 		border-radius: 1px;
 	}
-	
+
 	.timeline-item {
 		position: relative;
 		padding-bottom: 1rem;
 		display: flex;
 		gap: 0.75rem;
 	}
-	
+
 	.timeline-item:last-child {
 		padding-bottom: 0;
 	}
-	
+
 	.timeline-dot {
 		position: absolute;
 		left: -1.5rem;
@@ -1488,14 +1616,26 @@
 		z-index: 1;
 		flex-shrink: 0;
 	}
-	
-	.dot-success { background: var(--color-success); }
-	.dot-danger { background: var(--color-danger); }
-	.dot-warning { background: var(--color-warning); }
-	.dot-info { background: var(--color-info); }
-	.dot-admin { background: hsl(35, 80%, 50%); }
-	.dot-neutral { background: var(--color-text-muted); }
-	
+
+	.dot-success {
+		background: var(--color-success);
+	}
+	.dot-danger {
+		background: var(--color-danger);
+	}
+	.dot-warning {
+		background: var(--color-warning);
+	}
+	.dot-info {
+		background: var(--color-info);
+	}
+	.dot-admin {
+		background: hsl(35, 80%, 50%);
+	}
+	.dot-neutral {
+		background: var(--color-text-muted);
+	}
+
 	.timeline-content {
 		flex: 1;
 		min-width: 0;
@@ -1504,24 +1644,24 @@
 		border-radius: var(--radius-md);
 		padding: 0.625rem 0.875rem;
 	}
-	
+
 	.timeline-header {
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
 		flex-wrap: wrap;
 	}
-	
+
 	.timeline-icon {
 		font-size: 0.875rem;
 	}
-	
+
 	.timeline-label {
 		font-size: 0.8125rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.timeline-server {
 		font-size: 0.6875rem;
 		color: var(--color-text-muted);
@@ -1530,14 +1670,14 @@
 		border-radius: var(--radius-full);
 		margin-left: auto;
 	}
-	
+
 	.timeline-desc {
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 		margin: 0.25rem 0 0;
 		line-height: 1.4;
 	}
-	
+
 	.timeline-meta {
 		display: flex;
 		align-items: center;
@@ -1545,18 +1685,18 @@
 		margin-top: 0.375rem;
 		flex-wrap: wrap;
 	}
-	
+
 	.timeline-date {
 		font-size: 0.6875rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.timeline-amount {
 		font-size: 0.6875rem;
 		font-weight: 600;
 		color: var(--color-primary);
 	}
-	
+
 	.timeline-plan-change {
 		font-size: 0.6875rem;
 		font-weight: 500;
@@ -1565,7 +1705,7 @@
 		padding: 0.0625rem 0.375rem;
 		border-radius: var(--radius-sm);
 	}
-	
+
 	.timeline-actor {
 		display: inline-flex;
 		align-items: center;
@@ -1582,36 +1722,36 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	/* Plan Comparison Table */
 	.plan-comparison {
 		margin-top: 1.5rem;
 	}
-	
+
 	.plan-comparison h3 {
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
 		margin: 0 0 0.75rem;
 	}
-	
+
 	.plan-table-wrapper {
 		overflow-x: auto;
 	}
-	
+
 	.plan-table {
 		width: 100%;
 		border-collapse: collapse;
 		font-size: 0.875rem;
 	}
-	
+
 	.plan-table th,
 	.plan-table td {
 		padding: 0.625rem 0.875rem;
 		text-align: left;
 		border-bottom: 1px solid var(--color-border);
 	}
-	
+
 	.plan-table th {
 		font-weight: 600;
 		color: var(--color-text-muted);
@@ -1620,21 +1760,21 @@
 		letter-spacing: 0.03em;
 		background: var(--color-surface);
 	}
-	
+
 	.plan-table td {
 		color: var(--color-text);
 	}
-	
+
 	.plan-table .highlight {
 		background: var(--color-primary-soft);
 		color: var(--color-primary);
 		font-weight: 600;
 	}
-	
+
 	.plan-table th.highlight {
 		color: var(--color-primary);
 	}
-	
+
 	/* Buttons */
 	.btn {
 		display: inline-flex;
@@ -1649,41 +1789,41 @@
 		border: none;
 		transition: all var(--transition-fast);
 	}
-	
+
 	.btn-sm {
 		padding: 0.375rem 0.75rem;
 		font-size: 0.8125rem;
 	}
-	
+
 	.btn-primary {
 		background: var(--color-primary-button);
 		color: var(--color-primary-button-text);
 	}
-	
+
 	.btn-primary:hover {
 		background: var(--color-primary-button-hover);
 	}
-	
+
 	.btn-secondary {
 		background: var(--color-surface);
 		color: var(--color-text);
 		border: 1px solid var(--color-border);
 	}
-	
+
 	.btn-secondary:hover {
 		border-color: var(--color-primary);
 		color: var(--color-primary);
 	}
-	
+
 	.btn-danger {
 		background: var(--color-danger);
 		color: white;
 	}
-	
+
 	.btn-danger:hover {
 		opacity: 0.9;
 	}
-	
+
 	/* Settings Section */
 	.settings-group {
 		background: var(--color-surface);
@@ -1692,7 +1832,7 @@
 		padding: 0.25rem 0;
 		margin-bottom: 1rem;
 	}
-	
+
 	.settings-group h3 {
 		font-size: 0.8125rem;
 		font-weight: 600;
@@ -1702,11 +1842,11 @@
 		margin: 0;
 		padding: 0.75rem 1.25rem 0.25rem;
 	}
-	
+
 	.settings-group.danger-zone {
 		border-color: hsla(0, 84%, 60%, 0.3);
 	}
-	
+
 	.setting-item {
 		display: flex;
 		align-items: center;
@@ -1714,34 +1854,34 @@
 		gap: 1rem;
 		padding: 0.875rem 1.25rem;
 	}
-	
+
 	.setting-item + .setting-item {
 		border-top: 1px solid var(--color-border);
 	}
-	
+
 	.setting-info {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
 		min-width: 0;
 	}
-	
+
 	.setting-label {
 		font-size: 0.9375rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.setting-desc {
 		font-size: 0.8125rem;
 		color: var(--color-text-muted);
 		line-height: 1.4;
 	}
-	
+
 	.setting-control {
 		flex-shrink: 0;
 	}
-	
+
 	.connected-badge {
 		display: inline-flex;
 		align-items: center;
@@ -1752,56 +1892,56 @@
 		background: hsla(142, 71%, 45%, 0.12);
 		color: var(--color-success);
 	}
-	
+
 	/* Responsive */
 	@media (max-width: 640px) {
 		.account-page {
 			padding: 1rem 0.75rem 2rem;
 		}
-		
+
 		.header-content h1 {
 			font-size: 1.25rem;
 		}
-		
+
 		.profile-header {
 			flex-direction: column;
 			text-align: center;
 		}
-		
+
 		.profile-identity {
 			align-items: center;
 		}
-		
+
 		.server-stats-row {
 			flex-wrap: wrap;
 		}
-		
+
 		.stat-chip {
 			flex: 1;
 			min-width: 70px;
 		}
-		
+
 		.server-plan-header {
 			flex-direction: column;
 			align-items: flex-start;
 		}
-		
+
 		.billing-total {
 			flex-direction: column;
 			gap: 0.25rem;
 		}
-		
+
 		.server-plan-details {
 			flex-wrap: wrap;
 			gap: 0.75rem;
 		}
-		
+
 		.setting-item {
 			flex-direction: column;
 			align-items: flex-start;
 			gap: 0.75rem;
 		}
-		
+
 		.detail-grid {
 			grid-template-columns: 1fr 1fr;
 		}
@@ -1818,7 +1958,9 @@
 		border-radius: var(--radius-md);
 		text-decoration: none;
 		color: var(--color-text);
-		transition: border-color var(--transition-fast), background var(--transition-fast);
+		transition:
+			border-color var(--transition-fast),
+			background var(--transition-fast);
 		margin-bottom: 2rem;
 	}
 

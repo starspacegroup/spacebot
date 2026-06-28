@@ -1,5 +1,4 @@
 import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
 import { listUsers } from "$lib/db/users.js";
 
 function checkIsSuperAdmin(userId, platform) {

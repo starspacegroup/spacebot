@@ -1,0 +1,22 @@
+{
+	"title": "SpaceBot Operations",
+	"panels": [
+		{
+			"title": "API error rate",
+			"type": "timeseries",
+			"targets": [{ "expr": "spacebot_api_errors_total" }]
+		},
+		{
+			"title": "Command usage",
+			"type": "barchart",
+			"targets": [{ "expr": "spacebot_command_usage_total" }]
+		},
+		{
+			"title": "Gateway latency",
+			"type": "timeseries",
+			"targets": [{ "expr": "spacebot_gateway_latency_ms" }]
+		}
+	],
+	"schemaVersion": 39,
+	"version": 1
+}

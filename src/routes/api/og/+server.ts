@@ -117,7 +117,7 @@ export async function GET({ url }) {
         'Cache-Control': 'public, max-age=86400, s-maxage=604800',
       },
     });
-  } catch (err) {
+  } catch {
     // Fallback: return the SVG directly if PNG conversion fails
     return new Response(svg, {
       headers: {

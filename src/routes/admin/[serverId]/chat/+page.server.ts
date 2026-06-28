@@ -1,5 +1,4 @@
 import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
 import { isAIEnabled } from "$lib/ai/chat.js";
 
 /**

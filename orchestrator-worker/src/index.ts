@@ -1,8 +1,21 @@
-import { CronDispatchWorkflow } from "./cron-dispatch-workflow.js";
+import { CronDispatchWorkflow } from "./cron-dispatch-workflow";
 
 export { CronDispatchWorkflow };
 
-async function postJson(url, body, env) {
+export interface Env {
+  SPACEBOT_API_BASE?: string;
+  CRON_SECRET?: string;
+  AI_AUTOPILOT_INTERNAL_KEY?: string;
+  CRON_DISPATCH_WORKFLOW: Workflow;
+  AI_AUTOPILOT_QUEUE: Queue<AutopilotMessage>;
+}
+
+interface AutopilotMessage {
+  type?: "ai_job_created" | "ai_job_due" | "ai_watchdog_sweep" | string;
+  jobId?: string;
+}
+
+async function postJson(url: string, body: unknown, env: Env): Promise<unknown> {
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -20,7 +33,7 @@ async function postJson(url, body, env) {
   return response.json().catch(() => ({}));
 }
 
-async function executeJob(jobId, env) {
+async function executeJob(jobId: string | undefined, env: Env): Promise<unknown> {
   const base = String(env.SPACEBOT_API_BASE || "").replace(/\/$/, "");
   if (!base) {
     throw new Error("SPACEBOT_API_BASE is not configured");
@@ -29,7 +42,7 @@ async function executeJob(jobId, env) {
   return postJson(`${base}/api/ai/jobs/execute`, { jobId }, env);
 }
 
-async function runWatchdogSweep(env) {
+async function runWatchdogSweep(env: Env): Promise<unknown> {
   const base = String(env.SPACEBOT_API_BASE || "").replace(/\/$/, "");
   if (!base) {
     throw new Error("SPACEBOT_API_BASE is not configured");
@@ -38,10 +51,10 @@ async function runWatchdogSweep(env) {
   return postJson(`${base}/api/ai/jobs/sweep`, {}, env);
 }
 
-export default {
+const handler: ExportedHandler<Env, AutopilotMessage> = {
   async queue(batch, env, _ctx) {
     for (const message of batch.messages) {
-      const payload = message.body || {};
+      const payload: AutopilotMessage = message.body || {};
       const type = payload.type;
 
       try {
@@ -61,7 +74,11 @@ export default {
         message.ack();
       } catch (error) {
         // Let Queue retry according to its configured retry policy.
-        console.error("[AI Orchestrator] Message failed:", error?.message || error, payload);
+        console.error(
+          "[AI Orchestrator] Message failed:",
+          error instanceof Error ? error.message : error,
+          payload,
+        );
         message.retry();
       }
     }
@@ -74,7 +91,10 @@ export default {
           params: { firedAt: event.scheduledTime },
         });
       } catch (error) {
-        console.error("[AI Orchestrator] Failed to start dispatch workflow:", error?.message || error);
+        console.error(
+          "[AI Orchestrator] Failed to start dispatch workflow:",
+          error instanceof Error ? error.message : error,
+        );
       }
       return;
     }
@@ -83,9 +103,14 @@ export default {
       try {
         await env.AI_AUTOPILOT_QUEUE.send({ type: "ai_watchdog_sweep" });
       } catch (error) {
-        console.error("[AI Orchestrator] Failed to enqueue watchdog sweep:", error?.message || error);
+        console.error(
+          "[AI Orchestrator] Failed to enqueue watchdog sweep:",
+          error instanceof Error ? error.message : error,
+        );
       }
       return;
     }
   },
 };
+
+export default handler;

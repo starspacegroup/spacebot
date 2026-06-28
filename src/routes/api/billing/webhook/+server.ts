@@ -9,9 +9,8 @@
 
 import { json } from "@sveltejs/kit";
 import { log } from "$lib/db/logger.js";
-import { verifyWebhookSignature, getStripeWebhookSecret, StripeError } from "$lib/stripe.js";
+import { verifyWebhookSignature, getStripeWebhookSecret } from "$lib/stripe.js";
 import {
-  PLAN_TIERS,
   updateStripeBilling,
   getPlanBySubscriptionId,
   downgradeToFree,

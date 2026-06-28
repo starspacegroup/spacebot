@@ -43,8 +43,8 @@ Add to your MCP settings (`.vscode/mcp.json` or Cursor settings):
 {
   "mcpServers": {
     "spacebot": {
-      "command": "node",
-      "args": ["c:/Users/monag/_Projects/starspace/spacebot/mcp-server/index.js"],
+      "command": "bun",
+      "args": ["c:/Users/monag/_Projects/starspace/spacebot/mcp-server/index.ts"],
       "env": {
         "CLOUDFLARE_ACCOUNT_ID": "your-account-id",
         "CLOUDFLARE_API_TOKEN": "your-api-token"

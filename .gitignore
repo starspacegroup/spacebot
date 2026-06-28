@@ -32,8 +32,19 @@ dist/
 # Test coverage (vitest --coverage)
 coverage/
 
+# Storybook static build output
+storybook-static/
+
 # Wrangler local secrets
 .dev.vars
 
 # TypeScript incremental build info (JS→TS migration)
 *.tsbuildinfo
+
+# Playwright e2e artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Claude Code local worktrees/state
+.claude/

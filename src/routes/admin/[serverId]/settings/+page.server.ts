@@ -1,27 +1,34 @@
-import { fail, redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
+import { fail, redirect } from '@sveltejs/kit';
+import { log } from '$lib/db/logger.js';
 import {
-  getGuildSettings,
-  saveGuildSettings,
-  DEFAULT_SETTINGS,
-  normalizeLocalRunnerAssistPolicy,
-} from "$lib/db/settings.js";
-import { getGuildWebhooks, createWebhook, updateWebhook, deleteWebhook } from "$lib/db/webhooks.js";
-import { hasFullAdminPermission, verifyGuildAdmin } from "$lib/discord/guilds.js";
+	getGuildSettings,
+	saveGuildSettings,
+	DEFAULT_SETTINGS,
+	normalizeLocalRunnerAssistPolicy,
+} from '$lib/db/settings.js';
+import { getGuildWebhooks, createWebhook, updateWebhook, deleteWebhook } from '$lib/db/webhooks.js';
+import {
+	getGuildBranding,
+	mergeBranding,
+	saveGuildBranding,
+	validateBranding,
+} from '$lib/db/branding.js';
+import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 
 /**
  * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
  */
 function checkIsSuperAdmin(userId: string | undefined, platform: any) {
-  if (!userId) return false;
+	if (!userId) return false;
 
-  const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
-    process.env.ADMIN_USER_IDS || "";
+	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
 
-  const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
-    .filter(Boolean);
+	const superAdminIdList = adminUserIds
+		.split(',')
+		.map((id) => id.trim())
+		.filter(Boolean);
 
-  return superAdminIdList.includes(userId);
+	return superAdminIdList.includes(userId);
 }
 
 /**
@@ -31,408 +38,440 @@ function checkIsSuperAdmin(userId: string | undefined, platform: any) {
  * mode verifyGuildAdmin short-circuits to authorized. Returns a fail()
  * response to short-circuit on denial, or null when authorized.
  */
-async function verifyActionAdmin(
-  userId: string,
-  serverId: string,
-  platform: any,
-  cookies: any,
-) {
-  if (checkIsSuperAdmin(userId, platform)) return null;
+async function verifyActionAdmin(userId: string, serverId: string, platform: any, cookies: any) {
+	if (checkIsSuperAdmin(userId, platform)) return null;
 
-  const accessToken = cookies.get("discord_access_token");
-  const verification = await verifyGuildAdmin(serverId, accessToken, cookies);
-  if (!verification?.authorized || !hasFullAdminPermission(verification.guild)) {
-    return fail(403, {
-      success: false,
-      message: "You do not have permission to manage this server.",
-    });
-  }
-  return null;
+	const accessToken = cookies.get('discord_access_token');
+	const verification = await verifyGuildAdmin(serverId, accessToken, cookies);
+	if (!verification?.authorized || !hasFullAdminPermission(verification.guild)) {
+		return fail(403, {
+			success: false,
+			message: 'You do not have permission to manage this server.',
+		});
+	}
+	return null;
 }
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent, params }) {
-  // Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
-  if (!/^\d{17,20}$/.test(params.serverId)) {
-    throw redirect(302, "/admin");
-  }
+	// Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
+	if (!/^\d{17,20}$/.test(params.serverId)) {
+		throw redirect(302, '/admin');
+	}
 
-  // Get parent layout data (includes adminGuilds, selectedGuildId, user, etc.)
-  const parentData = await parent();
+	// Get parent layout data (includes adminGuilds, selectedGuildId, user, etc.)
+	const parentData = await parent();
 
-  // Check if user is logged in via cookie
-  const userId = cookies.get("discord_user_id");
+	// Check if user is logged in via cookie
+	const userId = cookies.get('discord_user_id');
 
-  if (!userId) {
-    throw redirect(302, "/login");
-  }
+	if (!userId) {
+		throw redirect(302, '/login');
+	}
 
-  // Get the server ID from the route params
-  const serverId = params.serverId;
+	// Get the server ID from the route params
+	const serverId = params.serverId;
 
-  // Check if current user is a superadmin (has access to everything)
-  const isSuperAdmin = checkIsSuperAdmin(userId, platform);
+	// Check if current user is a superadmin (has access to everything)
+	const isSuperAdmin = checkIsSuperAdmin(userId, platform);
 
-  // Use adminGuilds from parent layout
-  const adminGuilds = parentData.adminGuilds || [];
+	// Use adminGuilds from parent layout
+	const adminGuilds = parentData.adminGuilds || [];
 
-  // Check if user has access to this specific server
-  const hasAccessToServer = isSuperAdmin ||
-    adminGuilds.some((g) => g.id === serverId);
+	// Check if user has access to this specific server
+	const hasAccessToServer = isSuperAdmin || adminGuilds.some((g) => g.id === serverId);
 
-  if (!hasAccessToServer) {
-    throw redirect(302, "/admin");
-  }
+	if (!hasAccessToServer) {
+		throw redirect(302, '/admin');
+	}
 
-  // Get guild info
-  const guild = adminGuilds.find((g) => g.id === serverId);
+	// Get guild info
+	const guild = adminGuilds.find((g) => g.id === serverId);
 
-  // Check if user has full administrator permission (not just MANAGE_GUILD)
-  const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
+	// Check if user has full administrator permission (not just MANAGE_GUILD)
+	const hasFullAdminAccess = isSuperAdmin || hasFullAdminPermission(guild);
 
-  // Only administrators can access settings
-  if (!hasFullAdminAccess) {
-    throw redirect(302, `/admin/${serverId}`);
-  }
+	// Only administrators can access settings
+	if (!hasFullAdminAccess) {
+		throw redirect(302, `/admin/${serverId}`);
+	}
 
-  // Load server settings from database
-  const db = (platform as any)?.env?.DB;
-  const dbSettings = db ? await getGuildSettings(db, serverId) : DEFAULT_SETTINGS;
+	// Load server settings from database
+	const db = (platform as any)?.env?.DB;
+	const dbSettings = db ? await getGuildSettings(db, serverId) : DEFAULT_SETTINGS;
+	const branding = db ? mergeBranding(await getGuildBranding(db, serverId)) : mergeBranding(null);
 
-  // Map database settings to UI format
-  const settings = {
-    prefix: dbSettings.prefix || "!",
-    loggingChannelId: dbSettings.log_channel_id || null,
-    loggingChannelName: null, // Would need to fetch from Discord API
-    moderationRoleId: dbSettings.moderation_role_id || null,
-    timezone: dbSettings.timezone || null,
-    logEmbedColors: dbSettings.log_embed_colors || {},
-    excludedCategories: dbSettings.excluded_categories || [],
-  };
+	// Map database settings to UI format
+	const settings = {
+		prefix: dbSettings.prefix || '!',
+		loggingChannelId: dbSettings.log_channel_id || null,
+		loggingChannelName: null, // Would need to fetch from Discord API
+		moderationRoleId: dbSettings.moderation_role_id || null,
+		timezone: dbSettings.timezone || null,
+		logEmbedColors: dbSettings.log_embed_colors || {},
+		excludedCategories: dbSettings.excluded_categories || [],
+	};
 
-  // Permission settings - load from database or use defaults
-  const dbPermSettings = dbSettings.permission_settings || {};
-  const permissionSettings = {
-    viewDashboard: {
-      permission: dbPermSettings.viewDashboard?.permission || "MANAGE_GUILD",
-      roles: dbPermSettings.viewDashboard?.roles || [],
-    },
-    viewLogs: {
-      permission: dbPermSettings.viewLogs?.permission || "MANAGE_GUILD",
-      roles: dbPermSettings.viewLogs?.roles || [],
-    },
-    manageAutomations: {
-      permission: dbPermSettings.manageAutomations?.permission || "MANAGE_GUILD",
-      roles: dbPermSettings.manageAutomations?.roles || [],
-    },
-    manageCommands: {
-      permission: dbPermSettings.manageCommands?.permission || "MANAGE_GUILD",
-      roles: dbPermSettings.manageCommands?.roles || [],
-    },
-    // Access server settings (this page) - always requires ADMINISTRATOR
-    manageSettings: {
-      permission: "ADMINISTRATOR",
-      roles: [], // Cannot be overridden - always requires admin
-    },
-    localRunnerAssist: normalizeLocalRunnerAssistPolicy(dbPermSettings.localRunnerAssist),
-  };
+	// Permission settings - load from database or use defaults
+	const dbPermSettings = dbSettings.permission_settings || {};
+	const permissionSettings = {
+		viewDashboard: {
+			permission: dbPermSettings.viewDashboard?.permission || 'MANAGE_GUILD',
+			roles: dbPermSettings.viewDashboard?.roles || [],
+		},
+		viewLogs: {
+			permission: dbPermSettings.viewLogs?.permission || 'MANAGE_GUILD',
+			roles: dbPermSettings.viewLogs?.roles || [],
+		},
+		manageAutomations: {
+			permission: dbPermSettings.manageAutomations?.permission || 'MANAGE_GUILD',
+			roles: dbPermSettings.manageAutomations?.roles || [],
+		},
+		manageCommands: {
+			permission: dbPermSettings.manageCommands?.permission || 'MANAGE_GUILD',
+			roles: dbPermSettings.manageCommands?.roles || [],
+		},
+		// Access server settings (this page) - always requires ADMINISTRATOR
+		manageSettings: {
+			permission: 'ADMINISTRATOR',
+			roles: [], // Cannot be overridden - always requires admin
+		},
+		localRunnerAssist: normalizeLocalRunnerAssistPolicy(dbPermSettings.localRunnerAssist),
+	};
 
-  // Load webhooks for this guild
-  const webhooks = db ? await getGuildWebhooks(db, serverId) : [];
+	// Load webhooks for this guild
+	const webhooks = db ? await getGuildWebhooks(db, serverId) : [];
 
-  // Available Discord permissions for the dropdown
-  const discordPermissions = [
-    { value: "ADMINISTRATOR", label: "Administrator", description: "Full server control" },
-    { value: "MANAGE_GUILD", label: "Manage Server", description: "Can change server settings" },
-    { value: "MANAGE_CHANNELS", label: "Manage Channels", description: "Can create/edit channels" },
-    { value: "MANAGE_ROLES", label: "Manage Roles", description: "Can create/edit roles" },
-    { value: "MANAGE_MESSAGES", label: "Manage Messages", description: "Can delete messages" },
-    { value: "KICK_MEMBERS", label: "Kick Members", description: "Can kick members" },
-    { value: "BAN_MEMBERS", label: "Ban Members", description: "Can ban members" },
-    { value: "MODERATE_MEMBERS", label: "Moderate Members", description: "Can timeout members" },
-  ];
+	// Available Discord permissions for the dropdown
+	const discordPermissions = [
+		{ value: 'ADMINISTRATOR', label: 'Administrator', description: 'Full server control' },
+		{
+			value: 'MANAGE_GUILD',
+			label: 'Manage Server',
+			description: 'Can change server settings',
+		},
+		{
+			value: 'MANAGE_CHANNELS',
+			label: 'Manage Channels',
+			description: 'Can create/edit channels',
+		},
+		{ value: 'MANAGE_ROLES', label: 'Manage Roles', description: 'Can create/edit roles' },
+		{ value: 'MANAGE_MESSAGES', label: 'Manage Messages', description: 'Can delete messages' },
+		{ value: 'KICK_MEMBERS', label: 'Kick Members', description: 'Can kick members' },
+		{ value: 'BAN_MEMBERS', label: 'Ban Members', description: 'Can ban members' },
+		{
+			value: 'MODERATE_MEMBERS',
+			label: 'Moderate Members',
+			description: 'Can timeout members',
+		},
+	];
 
-  // Available HTTP methods for webhooks
-  const httpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+	// Available HTTP methods for webhooks
+	const httpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
-  return {
-    serverId,
-    guild,
-    settings,
-    permissionSettings,
-    discordPermissions,
-    hasFullAdminAccess,
-    webhooks,
-    httpMethods,
-  };
+	return {
+		serverId,
+		guild,
+		settings,
+		permissionSettings,
+		discordPermissions,
+		hasFullAdminAccess,
+		webhooks,
+		httpMethods,
+		branding,
+	};
 }
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-  /**
-   * Update server settings
-   */
-  updateSettings: async ({ request, cookies, platform, params }) => {
-    const userId = cookies.get("discord_user_id");
-    const serverId = params.serverId;
+	/**
+	 * Update server settings
+	 */
+	updateSettings: async ({ request, cookies, platform, params }) => {
+		const userId = cookies.get('discord_user_id');
+		const serverId = params.serverId;
 
-    if (!userId) {
-      return fail(401, { success: false, message: "Not authenticated" });
-    }
+		if (!userId) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
 
-    const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
-    if (denied) return denied;
+		const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
+		if (denied) return denied;
 
-    const formData = await request.formData();
-    const loggingChannelId = formData.get("loggingChannelId");
-    const timezone = formData.get("timezone") || null;
+		const formData = await request.formData();
+		const loggingChannelId = formData.get('loggingChannelId');
+		const timezone = formData.get('timezone') || null;
+		const brandingValidation = validateBranding({
+			display_name: formData.get('brandingDisplayName'),
+			accent_color: formData.get('brandingAccentColor'),
+			logo_url: formData.get('brandingLogoUrl'),
+			banner_url: formData.get('brandingBannerUrl'),
+			public_tagline: formData.get('brandingTagline'),
+		});
 
-    // Excluded log categories (JSON string from hidden input)
-    let excludedCategories = [];
-    const excludedCategoriesRaw = formData.get("excludedCategories");
-    if (excludedCategoriesRaw) {
-      try {
-        const parsed = JSON.parse(excludedCategoriesRaw as string);
-        if (Array.isArray(parsed)) {
-          excludedCategories = parsed.filter(c => typeof c === 'string');
-        }
-      } catch {
-        // Invalid JSON, ignore
-      }
-    }
+		if (!brandingValidation.ok) {
+			return fail(400, {
+				success: false,
+				message:
+					Object.values(brandingValidation.errors)[0] || 'Branding settings are invalid.',
+				brandingErrors: brandingValidation.errors,
+			});
+		}
 
-    // Log embed colors (JSON string from hidden input)
-    let logEmbedColors = {};
-    const logEmbedColorsRaw = formData.get("logEmbedColors");
-    if (logEmbedColorsRaw) {
-      try {
-        const parsed = JSON.parse(logEmbedColorsRaw as string);
-        // Validate: only allow hex color values per category
-        for (const [key, value] of Object.entries(parsed)) {
-          if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
-            logEmbedColors[key] = value;
-          }
-        }
-      } catch {
-        // Invalid JSON, ignore and use empty
-      }
-    }
+		// Excluded log categories (JSON string from hidden input)
+		let excludedCategories = [];
+		const excludedCategoriesRaw = formData.get('excludedCategories');
+		if (excludedCategoriesRaw) {
+			try {
+				const parsed = JSON.parse(excludedCategoriesRaw as string);
+				if (Array.isArray(parsed)) {
+					excludedCategories = parsed.filter((c) => typeof c === 'string');
+				}
+			} catch {
+				// Invalid JSON, ignore
+			}
+		}
 
-    // Permission settings
-    const viewDashboardPerm = formData.get("viewDashboardPerm") || "MANAGE_GUILD";
-    const viewLogsPerm = formData.get("viewLogsPerm") || "MANAGE_GUILD";
-    const manageAutomationsPerm = formData.get("manageAutomationsPerm") || "MANAGE_GUILD";
-    const manageCommandsPerm = formData.get("manageCommandsPerm") || "MANAGE_GUILD";
-    const localRunnerEnabled = formData.get("localRunnerEnabled") === "on";
-    const localRunnerAllowedUsersRaw = String(formData.get("localRunnerAllowedUsers") || "");
-    const localRunnerAllowedUsers = [...new Set(
-      localRunnerAllowedUsersRaw
-        .split(/[\s,]+/)
-        .map((id) => id.trim())
-        .filter((id) => /^\d{17,20}$/.test(id))
-    )];
+		// Log embed colors (JSON string from hidden input)
+		const logEmbedColors = {};
+		const logEmbedColorsRaw = formData.get('logEmbedColors');
+		if (logEmbedColorsRaw) {
+			try {
+				const parsed = JSON.parse(logEmbedColorsRaw as string);
+				// Validate: only allow hex color values per category
+				for (const [key, value] of Object.entries(parsed)) {
+					if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) {
+						logEmbedColors[key] = value;
+					}
+				}
+			} catch {
+				// Invalid JSON, ignore and use empty
+			}
+		}
 
-    log.info(`[Settings] Updating settings for server ${serverId}:`, {
-      loggingChannelId,
-      viewDashboardPerm,
-      viewLogsPerm,
-      manageAutomationsPerm,
-      manageCommandsPerm,
-      localRunnerEnabled,
-      localRunnerAllowedUsersCount: localRunnerAllowedUsers.length,
-    });
+		// Permission settings
+		const viewDashboardPerm = formData.get('viewDashboardPerm') || 'MANAGE_GUILD';
+		const viewLogsPerm = formData.get('viewLogsPerm') || 'MANAGE_GUILD';
+		const manageAutomationsPerm = formData.get('manageAutomationsPerm') || 'MANAGE_GUILD';
+		const manageCommandsPerm = formData.get('manageCommandsPerm') || 'MANAGE_GUILD';
+		const localRunnerEnabled = formData.get('localRunnerEnabled') === 'on';
+		const localRunnerAllowedUsersRaw = String(formData.get('localRunnerAllowedUsers') || '');
+		const localRunnerAllowedUsers = [
+			...new Set(
+				localRunnerAllowedUsersRaw
+					.split(/[\s,]+/)
+					.map((id) => id.trim())
+					.filter((id) => /^\d{17,20}$/.test(id))
+			),
+		];
 
-    // Save settings to database
-    const db = (platform as any)?.env?.DB;
-    if (!db) {
-      return fail(500, { success: false, message: "Database not available" });
-    }
+		log.info(`[Settings] Updating settings for server ${serverId}:`, {
+			loggingChannelId,
+			viewDashboardPerm,
+			viewLogsPerm,
+			manageAutomationsPerm,
+			manageCommandsPerm,
+			localRunnerEnabled,
+			localRunnerAllowedUsersCount: localRunnerAllowedUsers.length,
+		});
 
-    try {
-      await saveGuildSettings(db, serverId, {
-        logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
-        log_channel_id: loggingChannelId || null,
-        log_embed_colors: logEmbedColors,
-        excluded_categories: excludedCategories,
-        timezone: timezone,
-        permission_settings: {
-          viewDashboard: { permission: viewDashboardPerm, roles: [] },
-          viewLogs: { permission: viewLogsPerm, roles: [] },
-          manageAutomations: { permission: manageAutomationsPerm, roles: [] },
-          manageCommands: { permission: manageCommandsPerm, roles: [] },
-          manageSettings: { permission: "ADMINISTRATOR", roles: [] },
-          localRunnerAssist: {
-            enabled: localRunnerEnabled,
-            allowedUserIds: localRunnerAllowedUsers,
-          },
-        },
-      });
+		// Save settings to database
+		const db = (platform as any)?.env?.DB;
+		if (!db) {
+			return fail(500, { success: false, message: 'Database not available' });
+		}
 
-      return {
-        success: true,
-        message: "Settings updated successfully!",
-      };
-    } catch (error) {
-      log.error(`[Settings] Failed to save settings for server ${serverId}:`, error);
-      return fail(500, { success: false, message: "Failed to save settings" });
-    }
-  },
+		try {
+			await saveGuildSettings(db, serverId, {
+				logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
+				log_channel_id: loggingChannelId || null,
+				log_embed_colors: logEmbedColors,
+				excluded_categories: excludedCategories,
+				timezone: timezone,
+				permission_settings: {
+					viewDashboard: { permission: viewDashboardPerm, roles: [] },
+					viewLogs: { permission: viewLogsPerm, roles: [] },
+					manageAutomations: { permission: manageAutomationsPerm, roles: [] },
+					manageCommands: { permission: manageCommandsPerm, roles: [] },
+					manageSettings: { permission: 'ADMINISTRATOR', roles: [] },
+					localRunnerAssist: {
+						enabled: localRunnerEnabled,
+						allowedUserIds: localRunnerAllowedUsers,
+					},
+				},
+			});
+			await saveGuildBranding(db, serverId, brandingValidation.value, userId);
 
-  /**
-   * Create a new webhook
-   */
-  createWebhook: async ({ request, cookies, platform, params }) => {
-    const userId = cookies.get("discord_user_id");
-    const serverId = params.serverId;
+			return {
+				success: true,
+				message: 'Settings updated successfully!',
+			};
+		} catch (error) {
+			log.error(`[Settings] Failed to save settings for server ${serverId}:`, error);
+			return fail(500, { success: false, message: 'Failed to save settings' });
+		}
+	},
 
-    if (!userId) {
-      return fail(401, { success: false, message: "Not authenticated" });
-    }
+	/**
+	 * Create a new webhook
+	 */
+	createWebhook: async ({ request, cookies, platform, params }) => {
+		const userId = cookies.get('discord_user_id');
+		const serverId = params.serverId;
 
-    const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
-    if (denied) return denied;
+		if (!userId) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
 
-    const db = (platform as any)?.env?.DB;
-    if (!db) {
-      return fail(500, { success: false, message: "Database not available" });
-    }
+		const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
+		if (denied) return denied;
 
-    const formData = await request.formData();
-    const name = formData.get("webhookName");
-    const description = formData.get("webhookDescription");
-    const url = formData.get("webhookUrl");
-    const method = formData.get("webhookMethod") || "POST";
+		const db = (platform as any)?.env?.DB;
+		if (!db) {
+			return fail(500, { success: false, message: 'Database not available' });
+		}
 
-    // Parse custom headers (key:value pairs, one per line)
-    const headersRaw = (formData.get("webhookHeaders") || "") as string;
-    const headers = {};
-    if (headersRaw.trim()) {
-      for (const line of headersRaw.split("\n")) {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx > 0) {
-          const key = line.substring(0, colonIdx).trim();
-          const value = line.substring(colonIdx + 1).trim();
-          if (key) headers[key] = value;
-        }
-      }
-    }
+		const formData = await request.formData();
+		const name = formData.get('webhookName');
+		const description = formData.get('webhookDescription');
+		const url = formData.get('webhookUrl');
+		const method = formData.get('webhookMethod') || 'POST';
 
-    log.info(`[Settings] Creating webhook for server ${serverId}:`, { name, method });
+		// Parse custom headers (key:value pairs, one per line)
+		const headersRaw = (formData.get('webhookHeaders') || '') as string;
+		const headers = {};
+		if (headersRaw.trim()) {
+			for (const line of headersRaw.split('\n')) {
+				const colonIdx = line.indexOf(':');
+				if (colonIdx > 0) {
+					const key = line.substring(0, colonIdx).trim();
+					const value = line.substring(colonIdx + 1).trim();
+					if (key) headers[key] = value;
+				}
+			}
+		}
 
-    const result = await createWebhook(db, serverId, {
-      name,
-      description,
-      url,
-      method,
-      headers,
-      enabled: true,
-    }, userId);
+		log.info(`[Settings] Creating webhook for server ${serverId}:`, { name, method });
 
-    if (!result.success) {
-      return fail(400, { success: false, message: result.error });
-    }
+		const result = await createWebhook(
+			db,
+			serverId,
+			{
+				name,
+				description,
+				url,
+				method,
+				headers,
+				enabled: true,
+			},
+			userId
+		);
 
-    return {
-      success: true,
-      message: "Webhook created successfully!",
-    };
-  },
+		if (!result.success) {
+			return fail(400, { success: false, message: result.error });
+		}
 
-  /**
-   * Update an existing webhook
-   */
-  updateWebhook: async ({ request, cookies, platform, params }) => {
-    const userId = cookies.get("discord_user_id");
-    const serverId = params.serverId;
+		return {
+			success: true,
+			message: 'Webhook created successfully!',
+		};
+	},
 
-    if (!userId) {
-      return fail(401, { success: false, message: "Not authenticated" });
-    }
+	/**
+	 * Update an existing webhook
+	 */
+	updateWebhook: async ({ request, cookies, platform, params }) => {
+		const userId = cookies.get('discord_user_id');
+		const serverId = params.serverId;
 
-    const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
-    if (denied) return denied;
+		if (!userId) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
 
-    const db = (platform as any)?.env?.DB;
-    if (!db) {
-      return fail(500, { success: false, message: "Database not available" });
-    }
+		const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
+		if (denied) return denied;
 
-    const formData = await request.formData();
-    const webhookId = formData.get("webhookId");
-    const name = formData.get("webhookName");
-    const description = formData.get("webhookDescription");
-    const url = formData.get("webhookUrl");
-    const method = formData.get("webhookMethod") || "POST";
-    const enabled = formData.get("webhookEnabled") === "on";
+		const db = (platform as any)?.env?.DB;
+		if (!db) {
+			return fail(500, { success: false, message: 'Database not available' });
+		}
 
-    // Parse custom headers
-    const headersRaw = (formData.get("webhookHeaders") || "") as string;
-    const headers = {};
-    if (headersRaw.trim()) {
-      for (const line of headersRaw.split("\n")) {
-        const colonIdx = line.indexOf(":");
-        if (colonIdx > 0) {
-          const key = line.substring(0, colonIdx).trim();
-          const value = line.substring(colonIdx + 1).trim();
-          if (key) headers[key] = value;
-        }
-      }
-    }
+		const formData = await request.formData();
+		const webhookId = formData.get('webhookId');
+		const name = formData.get('webhookName');
+		const description = formData.get('webhookDescription');
+		const url = formData.get('webhookUrl');
+		const method = formData.get('webhookMethod') || 'POST';
+		const enabled = formData.get('webhookEnabled') === 'on';
 
-    log.info(`[Settings] Updating webhook ${webhookId} for server ${serverId}`);
+		// Parse custom headers
+		const headersRaw = (formData.get('webhookHeaders') || '') as string;
+		const headers = {};
+		if (headersRaw.trim()) {
+			for (const line of headersRaw.split('\n')) {
+				const colonIdx = line.indexOf(':');
+				if (colonIdx > 0) {
+					const key = line.substring(0, colonIdx).trim();
+					const value = line.substring(colonIdx + 1).trim();
+					if (key) headers[key] = value;
+				}
+			}
+		}
 
-    const result = await updateWebhook(db, parseInt(webhookId as string), serverId, {
-      name,
-      description,
-      url,
-      method,
-      headers,
-      enabled,
-    });
+		log.info(`[Settings] Updating webhook ${webhookId} for server ${serverId}`);
 
-    if (!result.success) {
-      return fail(400, { success: false, message: result.error });
-    }
+		const result = await updateWebhook(db, parseInt(webhookId as string), serverId, {
+			name,
+			description,
+			url,
+			method,
+			headers,
+			enabled,
+		});
 
-    return {
-      success: true,
-      message: "Webhook updated successfully!",
-    };
-  },
+		if (!result.success) {
+			return fail(400, { success: false, message: result.error });
+		}
 
-  /**
-   * Delete a webhook
-   */
-  deleteWebhook: async ({ request, cookies, platform, params }) => {
-    const userId = cookies.get("discord_user_id");
-    const serverId = params.serverId;
+		return {
+			success: true,
+			message: 'Webhook updated successfully!',
+		};
+	},
 
-    if (!userId) {
-      return fail(401, { success: false, message: "Not authenticated" });
-    }
+	/**
+	 * Delete a webhook
+	 */
+	deleteWebhook: async ({ request, cookies, platform, params }) => {
+		const userId = cookies.get('discord_user_id');
+		const serverId = params.serverId;
 
-    const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
-    if (denied) return denied;
+		if (!userId) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
 
-    const db = (platform as any)?.env?.DB;
-    if (!db) {
-      return fail(500, { success: false, message: "Database not available" });
-    }
+		const denied = await verifyActionAdmin(userId, serverId, platform, cookies);
+		if (denied) return denied;
 
-    const formData = await request.formData();
-    const webhookId = formData.get("webhookId");
+		const db = (platform as any)?.env?.DB;
+		if (!db) {
+			return fail(500, { success: false, message: 'Database not available' });
+		}
 
-    log.info(`[Settings] Deleting webhook ${webhookId} for server ${serverId}`);
+		const formData = await request.formData();
+		const webhookId = formData.get('webhookId');
 
-    const result = await deleteWebhook(db, parseInt(webhookId as string), serverId);
+		log.info(`[Settings] Deleting webhook ${webhookId} for server ${serverId}`);
 
-    if (!result.success) {
-      return fail(400, { success: false, message: result.error });
-    }
+		const result = await deleteWebhook(db, parseInt(webhookId as string), serverId);
 
-    return {
-      success: true,
-      message: "Webhook deleted successfully!",
-    };
-  },
+		if (!result.success) {
+			return fail(400, { success: false, message: result.error });
+		}
+
+		return {
+			success: true,
+			message: 'Webhook deleted successfully!',
+		};
+	},
 };

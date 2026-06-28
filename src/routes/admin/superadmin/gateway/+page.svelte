@@ -3,7 +3,7 @@
 	import { formatDate as tzFormatDate } from '$lib/timezone.js';
 	import ChartTooltip from '$lib/components/charts/ChartTooltip.svelte';
 
-	let { data } = $props();
+	const { data } = $props();
 
 	// Derived from server data as defaults
 	const serverStats = $derived(data?.stats ?? null);
@@ -77,7 +77,12 @@
 		if (selectedRange === '24h') {
 			return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 		}
-		return d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+		return d.toLocaleDateString([], {
+			month: 'short',
+			day: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+		});
 	}
 
 	// Format latency with color class
@@ -154,7 +159,10 @@
 				toast = { type: 'success', message: 'Check interval updated' };
 			} else {
 				const result = await response.json().catch(() => ({}));
-				toast = { type: 'error', message: result.error || `Failed to update interval (${response.status})` };
+				toast = {
+					type: 'error',
+					message: result.error || `Failed to update interval (${response.status})`,
+				};
 			}
 		} catch (error) {
 			toast = { type: 'error', message: error.message || 'Failed to update interval' };
@@ -164,7 +172,14 @@
 	}
 
 	// Tooltip state for latency chart
-	let latencyTooltip = $state<Record<string, any>>({ visible: false, clientX: 0, clientY: 0, date: '', value: '', hasData: true });
+	let latencyTooltip = $state<Record<string, any>>({
+		visible: false,
+		clientX: 0,
+		clientY: 0,
+		date: '',
+		value: '',
+		hasData: true,
+	});
 
 	function showLatencyTooltip(event, point) {
 		latencyTooltip = {
@@ -174,8 +189,9 @@
 			date: point.time,
 			value: `${point.latency}ms`,
 			label: point.status,
-			chartColor: point.latency < 80 ? '#57F287' : point.latency < 150 ? '#FEE75C' : '#ED4245',
-			hasData: true
+			chartColor:
+				point.latency < 80 ? '#57F287' : point.latency < 150 ? '#FEE75C' : '#ED4245',
+			hasData: true,
 		};
 	}
 
@@ -190,14 +206,14 @@
 
 	// Compute chart points
 	const chartPoints = $derived.by(() => {
-		const points = chartData.filter(d => d.heartbeat_latency_ms !== null);
+		const points = chartData.filter((d) => d.heartbeat_latency_ms !== null);
 		if (points.length === 0) return [];
 
 		const innerWidth = chartWidth - chartPadding.left - chartPadding.right;
 		const innerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
 
-		const timestamps = points.map(d => new Date(d.recorded_at + 'Z').getTime());
-		const latencies = points.map(d => d.heartbeat_latency_ms);
+		const timestamps = points.map((d) => new Date(d.recorded_at + 'Z').getTime());
+		const latencies = points.map((d) => d.heartbeat_latency_ms);
 
 		const minTime = Math.min(...timestamps);
 		const maxTime = Math.max(...timestamps);
@@ -223,12 +239,20 @@
 
 	// Y-axis labels
 	const yAxisLabels = $derived.by(() => {
-		const latencies = chartData.filter(d => d.heartbeat_latency_ms !== null).map(d => d.heartbeat_latency_ms);
+		const latencies = chartData
+			.filter((d) => d.heartbeat_latency_ms !== null)
+			.map((d) => d.heartbeat_latency_ms);
 		if (latencies.length === 0) return [];
 		const max = Math.max(...latencies, 100);
 		const innerHeight = chartHeight - chartPadding.top - chartPadding.bottom;
-		const steps = [0, Math.round(max * 0.25), Math.round(max * 0.5), Math.round(max * 0.75), Math.round(max)];
-		return steps.map(v => ({
+		const steps = [
+			0,
+			Math.round(max * 0.25),
+			Math.round(max * 0.5),
+			Math.round(max * 0.75),
+			Math.round(max),
+		];
+		return steps.map((v) => ({
 			value: v,
 			y: chartPadding.top + innerHeight - (v / max) * innerHeight,
 		}));
@@ -279,7 +303,8 @@
 
 		if (!isJson) {
 			const body = await response.text();
-			const isRedirect = response.redirected || (response.status >= 300 && response.status < 400);
+			const isRedirect =
+				response.redirected || (response.status >= 300 && response.status < 400);
 			const redirectSuffix = isRedirect ? ` (redirected to ${response.url})` : '';
 			const previewSuffix = body ? ` Preview: ${body.slice(0, 120)}` : '';
 			throw new Error(
@@ -408,7 +433,9 @@
 			<div class="stat-card stat-primary">
 				<div class="stat-icon">🏓</div>
 				<div class="stat-content">
-					<span class="stat-value {latencyClass(currentLatency)}">{formatLatency(currentLatency)}</span>
+					<span class="stat-value {latencyClass(currentLatency)}"
+						>{formatLatency(currentLatency)}</span
+					>
 					<span class="stat-label">Heartbeat Latency</span>
 				</div>
 			</div>
@@ -447,15 +474,20 @@
 		</h2>
 		{#if toast}
 			<div class="toast toast-{toast.type}">
-				<span>{toast.type === 'success' ? '✓' : '✗'}</span> {toast.message}
-				<button type="button" class="toast-close" onclick={() => toast = null}>✕</button>
+				<span>{toast.type === 'success' ? '✓' : '✗'}</span>
+				{toast.message}
+				<button type="button" class="toast-close" onclick={() => (toast = null)}>✕</button>
 			</div>
 		{/if}
 		<div class="interval-picker">
-			<p class="interval-description">How often the gateway reports latency data. Takes effect on the next check cycle.</p>
+			<p class="interval-description">
+				How often the gateway reports latency data. Takes effect on the next check cycle.
+			</p>
 			{#if requestOrigin}
 				<p class="interval-hint">
-					This dashboard is updating settings on <code>{requestOrigin}</code>. The gateway process follows its own <code>API_BASE</code>, so if it points at a different origin the reporting cadence here will not change.
+					This dashboard is updating settings on <code>{requestOrigin}</code>. The gateway
+					process follows its own <code>API_BASE</code>, so if it points at a different
+					origin the reporting cadence here will not change.
 				</p>
 			{/if}
 			<div class="interval-options">
@@ -500,15 +532,21 @@
 			<div class="stats-grid stats-grid-small">
 				<div class="stat-card-mini">
 					<span class="stat-label">Average</span>
-					<span class="stat-value {latencyClass(stats.avg_latency)}">{formatLatency(stats.avg_latency)}</span>
+					<span class="stat-value {latencyClass(stats.avg_latency)}"
+						>{formatLatency(stats.avg_latency)}</span
+					>
 				</div>
 				<div class="stat-card-mini">
 					<span class="stat-label">Minimum</span>
-					<span class="stat-value {latencyClass(stats.min_latency)}">{formatLatency(stats.min_latency)}</span>
+					<span class="stat-value {latencyClass(stats.min_latency)}"
+						>{formatLatency(stats.min_latency)}</span
+					>
 				</div>
 				<div class="stat-card-mini">
 					<span class="stat-label">Maximum</span>
-					<span class="stat-value {latencyClass(stats.max_latency)}">{formatLatency(stats.max_latency)}</span>
+					<span class="stat-value {latencyClass(stats.max_latency)}"
+						>{formatLatency(stats.max_latency)}</span
+					>
 				</div>
 				<div class="stat-card-mini">
 					<span class="stat-label">Disconnections</span>
@@ -535,8 +573,8 @@
 							x={chartPadding.left - 8}
 							y={label.y + 4}
 							class="axis-label"
-							text-anchor="end"
-						>{label.value}ms</text>
+							text-anchor="end">{label.value}ms</text
+						>
 					{/each}
 
 					<!-- Latency line -->
@@ -559,7 +597,9 @@
 			{:else if chartData.length === 0}
 				<div class="chart-empty">
 					<p>No benchmark data available for this range.</p>
-					<p class="chart-empty-hint">The gateway process reports latency every {benchmarkInterval} seconds.</p>
+					<p class="chart-empty-hint">
+						The gateway process reports latency every {benchmarkInterval} seconds.
+					</p>
 				</div>
 			{:else}
 				<div class="chart-empty">
@@ -600,7 +640,11 @@
 							<tr>
 								<td class="cell-time">{formatDate(snapshot.recorded_at)}</td>
 								<td>
-									<span class="latency-badge {latencyClass(snapshot.heartbeat_latency_ms)}">
+									<span
+										class="latency-badge {latencyClass(
+											snapshot.heartbeat_latency_ms
+										)}"
+									>
 										{formatLatency(snapshot.heartbeat_latency_ms)}
 									</span>
 								</td>
@@ -620,7 +664,9 @@
 		{:else}
 			<div class="empty-state">
 				<p>No benchmark snapshots recorded yet.</p>
-				<p class="empty-hint">The gateway process will start reporting once it's connected.</p>
+				<p class="empty-hint">
+					The gateway process will start reporting once it's connected.
+				</p>
 			</div>
 		{/if}
 	</section>
@@ -633,13 +679,25 @@
 				Gateway Logs
 			</h2>
 			<div class="gateway-logs-actions">
-				<span class:gateway-log-status={true} class:enabled={gatewayLoggingEnabled} class:disabled={!gatewayLoggingEnabled}>
+				<span
+					class:gateway-log-status={true}
+					class:enabled={gatewayLoggingEnabled}
+					class:disabled={!gatewayLoggingEnabled}
+				>
 					{gatewayLoggingEnabled ? 'Live Capture On' : 'Live Capture Off'}
 				</span>
-				<button class="btn btn-secondary btn-sm" onclick={() => refreshGatewayLogs()} disabled={gatewayLogsLoading || gatewayLogsUpdating}>
+				<button
+					class="btn btn-secondary btn-sm"
+					onclick={() => refreshGatewayLogs()}
+					disabled={gatewayLogsLoading || gatewayLogsUpdating}
+				>
 					Refresh
 				</button>
-				<button class="btn btn-sm {gatewayLoggingEnabled ? 'btn-danger' : 'btn-primary'}" onclick={toggleGatewayLogging} disabled={gatewayLogsUpdating}>
+				<button
+					class="btn btn-sm {gatewayLoggingEnabled ? 'btn-danger' : 'btn-primary'}"
+					onclick={toggleGatewayLogging}
+					disabled={gatewayLogsUpdating}
+				>
 					{#if gatewayLogsUpdating}
 						Saving...
 					{:else if gatewayLoggingEnabled}
@@ -652,18 +710,29 @@
 		</div>
 
 		<p class="gateway-logs-hint">
-			When enabled, the gateway process forwards new console output here for superadmin debugging. Toggle changes propagate to the gateway within a few seconds.
+			When enabled, the gateway process forwards new console output here for superadmin
+			debugging. Toggle changes propagate to the gateway within a few seconds.
 		</p>
 
 		<div class="gateway-logs-diagnostics">
-			<span class:gateway-connection-status={true} class:connected={gatewayLogStatus?.lastGatewayConnected === true} class:stale={gatewayLogStatus?.lastGatewayConnected !== true}>
-				{gatewayLogStatus?.lastGatewayConnected ? 'Gateway Connected' : 'Gateway Not Connected'}
+			<span
+				class:gateway-connection-status={true}
+				class:connected={gatewayLogStatus?.lastGatewayConnected === true}
+				class:stale={gatewayLogStatus?.lastGatewayConnected !== true}
+			>
+				{gatewayLogStatus?.lastGatewayConnected
+					? 'Gateway Connected'
+					: 'Gateway Not Connected'}
 			</span>
 			<span>
-				{gatewayLogStatus?.lastGatewaySeenAt ? `Last poll ${formatRelativeTime(gatewayLogStatus.lastGatewaySeenAt)}` : 'No gateway poll seen yet'}
+				{gatewayLogStatus?.lastGatewaySeenAt
+					? `Last poll ${formatRelativeTime(gatewayLogStatus.lastGatewaySeenAt)}`
+					: 'No gateway poll seen yet'}
 			</span>
 			<span>
-				{gatewayLogStatus?.lastGatewayPostedAt ? `Last stored batch ${formatRelativeTime(gatewayLogStatus.lastGatewayPostedAt)} (${gatewayLogStatus.lastStoredCount || 0} entries)` : 'No stored gateway batches yet'}
+				{gatewayLogStatus?.lastGatewayPostedAt
+					? `Last stored batch ${formatRelativeTime(gatewayLogStatus.lastGatewayPostedAt)} (${gatewayLogStatus.lastStoredCount || 0} entries)`
+					: 'No stored gateway batches yet'}
 			</span>
 		</div>
 
@@ -673,8 +742,9 @@
 
 		{#if gatewayLogsError}
 			<div class="cmd-toast cmd-toast-error">
-				<span>✗</span> {gatewayLogsError}
-				<button class="cmd-toast-close" onclick={() => gatewayLogsError = null}>✕</button>
+				<span>✗</span>
+				{gatewayLogsError}
+				<button class="cmd-toast-close" onclick={() => (gatewayLogsError = null)}>✕</button>
 			</div>
 		{/if}
 
@@ -700,7 +770,9 @@
 				{#each gatewayLogs as entry (entry.id)}
 					<div class="gateway-log-entry level-{entry.level}">
 						<div class="gateway-log-entry-meta">
-							<span class="gateway-log-time">{formatTimestamp(entry.logged_at || entry.created_at)}</span>
+							<span class="gateway-log-time"
+								>{formatTimestamp(entry.logged_at || entry.created_at)}</span
+							>
 							<span class="gateway-log-level">{entry.level.toUpperCase()}</span>
 						</div>
 						<pre class="gateway-log-message">{entry.message}</pre>
@@ -1015,9 +1087,23 @@
 		gap: 0.5rem;
 		font-size: 0.85rem;
 	}
-	.toast-success { background: var(--color-success-soft); color: var(--color-success); border: 1px solid rgba(34, 197, 94, 0.3); }
-	.toast-error { background: var(--color-danger-soft); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.3); }
-	.toast-close { background: none; border: none; color: inherit; cursor: pointer; margin-left: auto; }
+	.toast-success {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+	}
+	.toast-error {
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+	.toast-close {
+		background: none;
+		border: none;
+		color: inherit;
+		cursor: pointer;
+		margin-left: auto;
+	}
 
 	/* Interval picker */
 	.interval-picker {
@@ -1170,7 +1256,9 @@
 	}
 
 	@keyframes spin {
-		to { transform: rotate(360deg); }
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	/* Snapshots Table */

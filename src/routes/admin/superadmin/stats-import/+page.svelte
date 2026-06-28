@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 
-	let { data } = $props();
+	const { data } = $props();
 
 	const servers = $derived(data?.servers ?? []);
 
@@ -101,7 +101,9 @@
 	}
 
 	function selectedServerName() {
-		return servers.find((server) => server.guild_id === selectedGuildId)?.name || selectedGuildId;
+		return (
+			servers.find((server) => server.guild_id === selectedGuildId)?.name || selectedGuildId
+		);
 	}
 </script>
 
@@ -116,14 +118,20 @@
 				<span class="header-icon">📥</span>
 				Stats Import
 			</h1>
-			<p class="header-subtitle">Restore exported stats data into any server as a superadmin</p>
+			<p class="header-subtitle">
+				Restore exported stats data into any server as a superadmin
+			</p>
 		</div>
 	</header>
 
 	<section class="section-card">
 		<div class="form-group">
 			<label for="target-server">Target server</label>
-			<select id="target-server" bind:value={selectedGuildId} disabled={importing || servers.length === 0}>
+			<select
+				id="target-server"
+				bind:value={selectedGuildId}
+				disabled={importing || servers.length === 0}
+			>
 				<option value="" disabled>Select a server</option>
 				{#each servers as server}
 					<option value={server.guild_id}>{server.name} ({server.guild_id})</option>
@@ -157,7 +165,7 @@
 								accept=".json"
 								onchange={handleFileSelect}
 								hidden
-							>
+							/>
 						</label>
 					</div>
 				{/if}
@@ -165,7 +173,8 @@
 
 			{#if importError}
 				<div class="import-error">
-					<span>❌</span> {importError}
+					<span>❌</span>
+					{importError}
 				</div>
 			{/if}
 
@@ -192,20 +201,31 @@
 				<div class="stats-import-results">
 					<div class="stats-import-row">
 						<span class="stats-import-label">Server snapshots:</span>
-						<span>{importResult.results.server_stats?.imported || 0} / {importResult.results.server_stats?.total || 0}</span>
+						<span
+							>{importResult.results.server_stats?.imported || 0} / {importResult
+								.results.server_stats?.total || 0}</span
+						>
 					</div>
 					<div class="stats-import-row">
 						<span class="stats-import-label">Aggregated periods:</span>
-						<span>{importResult.results.aggregated_stats?.imported || 0} / {importResult.results.aggregated_stats?.total || 0}</span>
+						<span
+							>{importResult.results.aggregated_stats?.imported || 0} / {importResult
+								.results.aggregated_stats?.total || 0}</span
+						>
 					</div>
 					<div class="stats-import-row">
 						<span class="stats-import-label">Voice sessions:</span>
-						<span>{importResult.results.voice_sessions?.imported || 0} / {importResult.results.voice_sessions?.total || 0}</span>
+						<span
+							>{importResult.results.voice_sessions?.imported || 0} / {importResult
+								.results.voice_sessions?.total || 0}</span
+						>
 					</div>
 				</div>
 
 				<div class="result-actions">
-					<a href="/admin/{selectedGuildId}/stats" class="btn btn-secondary">Go to Stats</a>
+					<a href="/admin/{selectedGuildId}/stats" class="btn btn-secondary"
+						>Go to Stats</a
+					>
 					<button class="btn btn-primary" onclick={resetImport}>Import Another</button>
 				</div>
 			</div>
@@ -270,7 +290,9 @@
 		border-radius: var(--radius-lg);
 		padding: 2rem 1rem;
 		text-align: center;
-		transition: border-color var(--transition-fast), background var(--transition-fast);
+		transition:
+			border-color var(--transition-fast),
+			background var(--transition-fast);
 	}
 
 	.drop-zone.drag-over {

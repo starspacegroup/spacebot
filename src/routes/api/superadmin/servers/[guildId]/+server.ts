@@ -13,7 +13,6 @@ import { getServerPlan, upsertServerPlan, deleteServerPlan, PLAN_TIERS } from "$
 import { getGuildMetadata } from "$lib/db/guild-metadata.js";
 import { addBillingEvent, BILLING_EVENT_TYPES } from "$lib/db/billing-history.js";
 import { getUser } from "$lib/db/users.js";
-import { log } from "$lib/log.js";
 
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import Toast from '$lib/components/Toast.svelte';
-	
-	let { data, form } = $props();
-	
+
+	const { data, form } = $props();
+
 	let showToast = $state(true);
 </script>
 
@@ -12,20 +12,31 @@
 
 <div class="admin-dashboard">
 	{#if form?.message && showToast}
-		<Toast message={form.message} success={form.success} onDismiss={() => showToast = false} />
+		<Toast
+			message={form.message}
+			success={form.success}
+			onDismiss={() => (showToast = false)}
+		/>
 	{/if}
-	
+
 	{#if !data.isAdmin}
 		<!-- Access Denied State -->
 		<div class="access-denied-container">
 			<div class="access-denied-card">
 				<div class="access-denied-icon">🔒</div>
 				<h1>Access Denied</h1>
-				<p>You need to be an administrator of a server where the bot is installed to access this dashboard.</p>
+				<p>
+					You need to be an administrator of a server where the bot is installed to access
+					this dashboard.
+				</p>
 				{#if data.user}
-					<p class="hint">If you're a server admin, make sure the bot is added to your server first.</p>
+					<p class="hint">
+						If you're a server admin, make sure the bot is added to your server first.
+					</p>
 					<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
-						<span class="btn-icon"><img src="/logo.webp" alt="" class="inline-logo" /></span>
+						<span class="btn-icon"
+							><img src="/logo.webp" alt="" class="inline-logo" /></span
+						>
 						Add Bot to a Server
 					</a>
 				{:else}
@@ -47,15 +58,18 @@
 				<p class="header-subtitle">Select a server to manage</p>
 			</div>
 		</header>
-		
+
 		{#if data.adminGuilds && data.adminGuilds.length > 0}
 			<section class="servers-section">
 				<div class="servers-grid">
 					{#each data.adminGuilds as guild}
-						<a href="/admin/{guild.id}" class="server-card {guild.botIsInServer === false ? 'no-bot' : ''}">
+						<a
+							href="/admin/{guild.id}"
+							class="server-card {guild.botIsInServer === false ? 'no-bot' : ''}"
+						>
 							{#if guild.icon}
-								<img 
-									src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png" 
+								<img
+									src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png"
 									alt="{guild.name} icon"
 									class="server-icon"
 								/>
@@ -77,7 +91,7 @@
 					{/each}
 				</div>
 			</section>
-			
+
 			<div class="add-server-section">
 				<p>Don't see your server?</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-secondary">
@@ -87,7 +101,9 @@
 			</div>
 		{:else}
 			<div class="empty-state-card">
-				<div class="empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
+				<div class="empty-icon">
+					<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
+				</div>
 				<h2>No Servers Found</h2>
 				<p>Add the bot to a server where you're an admin to get started.</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
@@ -107,27 +123,25 @@
 		padding: 1rem;
 		min-height: 100vh;
 	}
-	
+
 	@media (min-width: 640px) {
 		.admin-dashboard {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.admin-dashboard {
 			padding: 2rem 3rem;
 		}
 	}
-	
+
 	@media (min-width: 1536px) {
 		.admin-dashboard {
 			padding: 2rem 4rem;
 		}
 	}
-	
 
-	
 	/* Access Denied */
 	.access-denied-container {
 		display: flex;
@@ -136,7 +150,7 @@
 		min-height: 60vh;
 		padding: 2rem;
 	}
-	
+
 	.access-denied-card {
 		text-align: center;
 		background: var(--color-surface);
@@ -146,45 +160,45 @@
 		max-width: 400px;
 		width: 100%;
 	}
-	
+
 	@media (min-width: 640px) {
 		.access-denied-card {
 			padding: 3rem;
 		}
 	}
-	
+
 	.access-denied-icon {
 		font-size: 4rem;
 		margin-bottom: 1.5rem;
 	}
-	
+
 	.access-denied-card h1 {
 		font-size: 1.5rem;
 		margin: 0 0 1rem;
 		color: var(--color-text);
 	}
-	
+
 	.access-denied-card p {
 		color: var(--color-text-muted);
 		margin: 0 0 1rem;
 	}
-	
+
 	.access-denied-card .hint {
 		font-size: 0.875rem;
 		margin-bottom: 1.5rem;
 	}
-	
+
 	/* Dashboard Header */
 	.dashboard-header {
 		margin-bottom: 1.5rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.dashboard-header {
 			margin-bottom: 2rem;
 		}
 	}
-	
+
 	.header-content h1 {
 		font-size: 1.5rem;
 		font-weight: 700;
@@ -194,53 +208,53 @@
 		gap: 0.5rem;
 		color: var(--color-text);
 	}
-	
+
 	@media (min-width: 640px) {
 		.header-content h1 {
 			font-size: 2rem;
 		}
 	}
-	
+
 	.header-icon {
 		font-size: 1.5rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.header-icon {
 			font-size: 2rem;
 		}
 	}
-	
+
 	.header-subtitle {
 		margin: 0.5rem 0 0;
 		color: var(--color-text-muted);
 		font-size: 0.9rem;
 	}
-	
+
 	/* Servers Section */
 	.servers-section {
 		margin-bottom: 2rem;
 	}
-	
+
 	.servers-grid {
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.75rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.servers-grid {
 			grid-template-columns: repeat(2, 1fr);
 			gap: 1rem;
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.servers-grid {
 			grid-template-columns: repeat(3, 1fr);
 		}
 	}
-	
+
 	.server-card {
 		display: flex;
 		align-items: center;
@@ -251,23 +265,26 @@
 		border-radius: var(--radius-lg);
 		text-decoration: none;
 		color: inherit;
-		transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			box-shadow var(--transition-fast),
+			border-color var(--transition-fast);
 	}
-	
+
 	.server-card:hover {
 		transform: translateY(-2px);
 		box-shadow: var(--shadow-md);
 		border-color: var(--color-primary);
 	}
-	
+
 	.server-card.no-bot {
 		opacity: 0.7;
 	}
-	
+
 	.server-card.no-bot:hover {
 		border-color: var(--color-border);
 	}
-	
+
 	.server-icon {
 		width: 48px;
 		height: 48px;
@@ -275,7 +292,7 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	.server-icon-placeholder {
 		width: 48px;
 		height: 48px;
@@ -289,7 +306,7 @@
 		font-weight: 600;
 		flex-shrink: 0;
 	}
-	
+
 	.server-info {
 		flex: 1;
 		display: flex;
@@ -297,7 +314,7 @@
 		gap: 0.25rem;
 		min-width: 0;
 	}
-	
+
 	.server-name {
 		font-weight: 600;
 		color: var(--color-text);
@@ -305,27 +322,29 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	
+
 	.server-status {
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.server-status.no-bot {
 		color: var(--color-warning);
 	}
-	
+
 	.server-arrow {
 		font-size: 1.25rem;
 		color: var(--color-text-muted);
-		transition: transform var(--transition-fast), color var(--transition-fast);
+		transition:
+			transform var(--transition-fast),
+			color var(--transition-fast);
 	}
-	
+
 	.server-card:hover .server-arrow {
 		transform: translateX(4px);
 		color: var(--color-primary);
 	}
-	
+
 	/* Add Server Section */
 	.add-server-section {
 		text-align: center;
@@ -334,12 +353,12 @@
 		border: 1px dashed var(--color-border);
 		border-radius: var(--radius-lg);
 	}
-	
+
 	.add-server-section p {
 		margin: 0 0 1rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	/* Empty State */
 	.empty-state-card {
 		text-align: center;
@@ -348,24 +367,32 @@
 		border-radius: var(--radius-lg);
 		border: 2px dashed var(--color-border);
 	}
-	
+
 	.empty-icon {
 		font-size: 4rem;
 		margin-bottom: 1rem;
 	}
-	
+
 	.empty-state-card h2 {
 		margin: 0 0 0.5rem;
 		font-size: 1.5rem;
 		color: var(--color-text);
 	}
-	
+
 	.empty-state-card p {
 		color: var(--color-text-muted);
 		margin: 0 0 1.5rem;
 	}
 
-	.inline-logo { height: 1.2em; width: auto; vertical-align: middle; border-radius: 4px; }
-	.bot-logo-lg { height: 3rem; width: auto; border-radius: 8px; }
-	
+	.inline-logo {
+		height: 1.2em;
+		width: auto;
+		vertical-align: middle;
+		border-radius: 4px;
+	}
+	.bot-logo-lg {
+		height: 3rem;
+		width: auto;
+		border-radius: 8px;
+	}
 </style>

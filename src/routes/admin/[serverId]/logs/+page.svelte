@@ -5,7 +5,7 @@
 	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	
-	let { data } = $props();
+	const { data } = $props();
 	
 	// State
 	let logs = $state([]);
@@ -13,7 +13,6 @@
 	let error = $state(null);
 	let stats = $state(null);
 	let total = $state(0);
-	let hasMore = $state(false);
 	
 	// Filters
 	let selectedCategory = $state('');
@@ -96,7 +95,6 @@
 			}
 			
 			total = result.total || 0;
-			hasMore = result.hasMore || false;
 			error = null;
 		} catch (e) {
 			log.error('[Logs] Fetch error:', e);
@@ -115,13 +113,8 @@
 		}
 	}
 	
-	function loadMore() {
-		offset += limit;
-		fetchLogs(true);
-	}
-	
 	// Pagination computed values
-	let totalPages = $derived(Math.ceil(Number(total) / Number(limit)) || 1);
+	const totalPages = $derived(Math.ceil(Number(total) / Number(limit)) || 1);
 	
 	function goToPage(page) {
 		if (page < 1 || page > totalPages) return;
@@ -192,10 +185,6 @@
 		return getDiscordCategoryMeta(category)?.name || category;
 	}
 	
-	function getEventDescription(eventType) {
-		return getDiscordEventTypeMeta(eventType)?.description || eventType;
-	}
-
 	function getEventMeta(eventType, eventCategory) {
 		return getDiscordEventTypeMeta(eventType, { fallbackCategory: eventCategory });
 	}
@@ -239,7 +228,7 @@
 	});
 	
 	// Get event types for selected category
-	let filteredEventTypes = $derived(() => {
+	const filteredEventTypes = $derived(() => {
 		if (!selectedCategory) return Object.keys(eventTypes);
 		return Object.entries(eventTypes)
 			.filter(([_, info]) => (info as any).category === selectedCategory)

@@ -30,15 +30,6 @@ function parseIntegration(row) {
   };
 }
 
-function parseGuildIntegration(row) {
-  if (!row) return null;
-  return {
-    ...row,
-    enabled: !!row.enabled,
-    config: parseJSON(row.config, {}),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Integration catalog (global)
 // ---------------------------------------------------------------------------
@@ -393,7 +384,7 @@ export async function revokeIntegrationToken(db, integrationId) {
  * Record a heartbeat from an integration.
  * Updates last_heartbeat_at and sets status to 'online'.
  */
-export async function recordHeartbeat(db, integrationId, metadata = {}) {
+export async function recordHeartbeat(db, integrationId, _metadata = {}) {
   if (!db || !integrationId) {
     return { success: false, error: "Missing required parameters" };
   }

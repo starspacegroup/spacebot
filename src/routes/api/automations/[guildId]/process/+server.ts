@@ -5,10 +5,7 @@
  */
 
 import { json } from "@sveltejs/kit";
-import {
-  getTriggeredAutomations,
-  logAutomationExecution,
-} from "$lib/db/automations.js";
+import { getTriggeredAutomations } from "$lib/db/automations.js";
 import { log } from "$lib/db/logger.js";
 import { matchesFilters, processTemplate, buildContext } from "$lib/automation/engine.js";
 import { getMemberFromCache } from "$lib/db/guild-cache.js";

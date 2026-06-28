@@ -2,7 +2,7 @@
 	import { formatDateFull, formatRelativeTime as tzFormatRelative } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 
-	let { data } = $props();
+	const { data } = $props();
 	
 	function formatDate(dateString) {
 		return formatDateFull(dateString, data.timezone);

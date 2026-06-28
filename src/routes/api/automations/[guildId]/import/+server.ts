@@ -5,10 +5,9 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { ACTION_TYPES, createAutomation, getAutomations } from "$lib/db/automations.js";
+import { ACTION_TYPES, createAutomation } from "$lib/db/automations.js";
 import { EVENT_TYPES, log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
-import { checkPlanLimit } from "$lib/db/server-plans.js";
 import { clearActionConfigReferences, clearFilterReferences, summarizeCleared } from "$lib/import-export.js";
 
 /** @type {import('./$types').RequestHandler} */

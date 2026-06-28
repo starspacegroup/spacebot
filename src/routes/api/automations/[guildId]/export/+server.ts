@@ -71,7 +71,7 @@ export async function GET({ params, url, cookies, platform }) {
     };
 
     return json(exportData);
-  } catch (error) {
+  } catch {
     return json({ error: "Failed to export automations" }, { status: 500 });
   }
 }

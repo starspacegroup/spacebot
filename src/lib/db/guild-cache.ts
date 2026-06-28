@@ -532,7 +532,7 @@ export async function getCacheMetadata(db, guildId) {
     return await db.prepare(
       "SELECT * FROM guild_cache_metadata WHERE guild_id = ?"
     ).bind(guildId).first();
-  } catch (error) {
+  } catch {
     return null;
   }
 }

@@ -28,6 +28,68 @@ const D1_DATABASE_ID = process.env.D1_DATABASE_ID || "6bce735c-2dca-43cd-9911-2e
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
 // ============================================================================
+// Shared types
+// ============================================================================
+
+/** A single row returned by D1 — column shapes are dynamic JSON, so values are loose. */
+type D1Row = Record<string, any>;
+
+/** Shape of a single statement result from the Cloudflare D1 query API. */
+interface D1StatementResult {
+  results: D1Row[];
+  success?: boolean;
+  meta?: Record<string, unknown>;
+}
+
+interface EventLogOptions {
+  limit?: number;
+  offset?: number;
+  category?: string;
+  eventType?: string;
+}
+
+interface AutomationListOptions {
+  enabledOnly?: boolean;
+  limit?: number;
+}
+
+interface AutomationLogOptions {
+  automationId?: number;
+  limit?: number;
+}
+
+interface CommandListOptions {
+  enabledOnly?: boolean;
+  registeredOnly?: boolean;
+  limit?: number;
+}
+
+interface CommandLogOptions {
+  commandId?: number;
+  limit?: number;
+}
+
+interface StatsHistoryOptions {
+  period?: string;
+}
+
+interface AggregatedStatsOptions {
+  period?: string;
+  periodType?: string;
+}
+
+/** Structured scheduled-event data parsed from text or supplied by a tool call. */
+interface EventData {
+  name?: string;
+  description?: string;
+  scheduledStartTime?: string;
+  scheduledEndTime?: string;
+  entityType?: number;
+  location?: string | null;
+  channelId?: string | null;
+}
+
+// ============================================================================
 // Schema Documentation - These constants help provide accurate answers about
 // what SpaceBot can do
 // ============================================================================
@@ -202,7 +264,7 @@ const COMMAND_OPTION_TYPES = {
 /**
  * Execute a query against the D1 database via Cloudflare API
  */
-async function executeD1Query(sql, params = []) {
+async function executeD1Query(sql: string, params: unknown[] = []): Promise<D1StatementResult> {
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
     throw new Error("Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN environment variables");
   }
@@ -222,8 +284,8 @@ async function executeD1Query(sql, params = []) {
     }
   );
 
-  const data = await response.json();
-  
+  const data: any = await response.json();
+
   if (!data.success) {
     throw new Error(`D1 query failed: ${JSON.stringify(data.errors)}`);
   }
@@ -234,11 +296,11 @@ async function executeD1Query(sql, params = []) {
 /**
  * Get event logs for a guild
  */
-async function getEventLogs(guildId, options = {}) {
+async function getEventLogs(guildId: string, options: EventLogOptions = {}) {
   const { limit = 50, offset = 0, category, eventType } = options;
   
   let sql = "SELECT * FROM event_logs WHERE guild_id = ?";
-  const params = [guildId];
+  const params: any[] = [guildId];
 
   if (category) {
     sql += " AND event_category = ?";
@@ -264,7 +326,7 @@ async function getEventLogs(guildId, options = {}) {
 /**
  * Get log statistics for a guild
  */
-async function getLogStats(guildId) {
+async function getLogStats(guildId: string) {
   const totalResult = await executeD1Query(
     "SELECT COUNT(*) as total FROM event_logs WHERE guild_id = ?",
     [guildId]
@@ -296,11 +358,11 @@ async function getLogStats(guildId) {
 /**
  * Get automations for a guild
  */
-async function getAutomations(guildId, options = {}) {
+async function getAutomations(guildId: string, options: AutomationListOptions = {}) {
   const { enabledOnly = false, limit = 100 } = options;
   
   let sql = "SELECT * FROM automations WHERE guild_id = ?";
-  const params = [guildId];
+  const params: any[] = [guildId];
 
   if (enabledOnly) {
     sql += " AND enabled = 1";
@@ -323,7 +385,7 @@ async function getAutomations(guildId, options = {}) {
 /**
  * Get a single automation by ID
  */
-async function getAutomation(automationId, guildId) {
+async function getAutomation(automationId: number, guildId: string) {
   const result = await executeD1Query(
     "SELECT * FROM automations WHERE id = ? AND guild_id = ?",
     [automationId, guildId]
@@ -346,11 +408,11 @@ async function getAutomation(automationId, guildId) {
 /**
  * Get automation execution logs
  */
-async function getAutomationLogs(guildId, options = {}) {
+async function getAutomationLogs(guildId: string, options: AutomationLogOptions = {}) {
   const { automationId, limit = 50 } = options;
   
   let sql = "SELECT * FROM automation_logs WHERE guild_id = ?";
-  const params = [guildId];
+  const params: any[] = [guildId];
 
   if (automationId) {
     sql += " AND automation_id = ?";
@@ -372,11 +434,11 @@ async function getAutomationLogs(guildId, options = {}) {
 /**
  * Get commands for a guild
  */
-async function getCommands(guildId, options = {}) {
+async function getCommands(guildId: string, options: CommandListOptions = {}) {
   const { enabledOnly = false, registeredOnly = false, limit = 100 } = options;
   
   let sql = "SELECT * FROM commands WHERE guild_id = ?";
-  const params = [guildId];
+  const params: any[] = [guildId];
 
   if (enabledOnly) {
     sql += " AND enabled = 1";
@@ -402,7 +464,7 @@ async function getCommands(guildId, options = {}) {
 /**
  * Get a single command by ID
  */
-async function getCommand(commandId, guildId) {
+async function getCommand(commandId: number, guildId: string) {
   const result = await executeD1Query(
     "SELECT * FROM commands WHERE id = ? AND guild_id = ?",
     [commandId, guildId]
@@ -424,11 +486,11 @@ async function getCommand(commandId, guildId) {
 /**
  * Get command usage logs
  */
-async function getCommandLogs(guildId, options = {}) {
+async function getCommandLogs(guildId: string, options: CommandLogOptions = {}) {
   const { commandId, limit = 50 } = options;
   
   let sql = "SELECT * FROM command_logs WHERE guild_id = ?";
-  const params = [guildId];
+  const params: any[] = [guildId];
 
   if (commandId) {
     sql += " AND command_id = ?";
@@ -450,7 +512,7 @@ async function getCommandLogs(guildId, options = {}) {
 /**
  * Get server settings for a guild
  */
-async function getGuildSettings(guildId) {
+async function getGuildSettings(guildId: string) {
   const result = await executeD1Query(
     "SELECT * FROM guild_settings WHERE guild_id = ?",
     [guildId]
@@ -529,7 +591,7 @@ async function listGuilds() {
 /**
  * Get the latest server statistics
  */
-async function getServerStats(guildId) {
+async function getServerStats(guildId: string) {
   const result = await executeD1Query(
     `SELECT * FROM server_stats 
      WHERE guild_id = ?
@@ -548,7 +610,7 @@ async function getServerStats(guildId) {
 /**
  * Get server statistics history for a time period
  */
-async function getServerStatsHistory(guildId, options = {}) {
+async function getServerStatsHistory(guildId: string, options: StatsHistoryOptions = {}) {
   const { period = "7d" } = options;
 
   const periodMap = {
@@ -590,7 +652,7 @@ async function getServerStatsHistory(guildId, options = {}) {
 /**
  * Get member count changes over time
  */
-async function getMemberGrowth(guildId) {
+async function getMemberGrowth(guildId: string) {
   const [current, dayAgo, weekAgo, monthAgo] = await Promise.all([
     executeD1Query(
       `SELECT member_count, human_count, bot_count FROM server_stats 
@@ -645,7 +707,7 @@ async function getMemberGrowth(guildId) {
 /**
  * Get aggregated activity statistics
  */
-async function getAggregatedStats(guildId, options = {}) {
+async function getAggregatedStats(guildId: string, options: AggregatedStatsOptions = {}) {
   const { period = "7d", periodType = "daily" } = options;
 
   const periodMap = {
@@ -683,7 +745,7 @@ async function getAggregatedStats(guildId, options = {}) {
 /**
  * Get activity summary for a guild
  */
-async function getActivitySummary(guildId) {
+async function getActivitySummary(guildId: string) {
   // Get totals for the last 7 days from aggregated stats
   const weeklyResult = await executeD1Query(
     `SELECT 
@@ -755,7 +817,7 @@ function getSchemaInfo() {
  * @param {string} userId - The user ID
  * @returns {Promise<Object>} - User's member info including roles
  */
-async function getUserRoles(guildId, userId) {
+async function getUserRoles(guildId: string, userId: string) {
   if (!DISCORD_BOT_TOKEN) {
     throw new Error("DISCORD_BOT_TOKEN not configured - cannot fetch user roles");
   }
@@ -777,7 +839,7 @@ async function getUserRoles(guildId, userId) {
     throw new Error(`Failed to fetch member: ${memberResponse.status}`);
   }
 
-  const member = await memberResponse.json();
+  const member: any = await memberResponse.json();
 
   // Fetch the guild's roles to get role names
   const rolesResponse = await fetch(
@@ -793,13 +855,13 @@ async function getUserRoles(guildId, userId) {
     throw new Error(`Failed to fetch guild roles: ${rolesResponse.status}`);
   }
 
-  const guildRoles = await rolesResponse.json();
-  const roleMap = new Map(guildRoles.map(r => [r.id, r]));
+  const guildRoles: any = await rolesResponse.json();
+  const roleMap = new Map(guildRoles.map((r: any) => [r.id, r]));
 
   // Map user's role IDs to role details
   const userRoles = member.roles
-    .map(roleId => {
-      const role = roleMap.get(roleId);
+    .map((roleId: any) => {
+      const role: any = roleMap.get(roleId);
       if (!role) return null;
       return {
         id: role.id,
@@ -830,7 +892,7 @@ async function getUserRoles(guildId, userId) {
 /**
  * Get voice and stage channels for a guild via Discord API
  */
-async function getVoiceAndStageChannels(guildId) {
+async function getVoiceAndStageChannels(guildId: string) {
   if (!DISCORD_BOT_TOKEN) {
     throw new Error("DISCORD_BOT_TOKEN not configured");
   }
@@ -844,17 +906,17 @@ async function getVoiceAndStageChannels(guildId) {
     throw new Error(`Failed to fetch channels: ${response.status}`);
   }
 
-  const channels = await response.json();
-  
+  const channels: any = await response.json();
+
   // Channel types: 2 = Voice, 13 = Stage
   const voiceChannels = channels
-    .filter(c => c.type === 2)
-    .map(c => ({ id: c.id, name: c.name, type: "voice", parentId: c.parent_id }))
+    .filter((c: any) => c.type === 2)
+    .map((c: any) => ({ id: c.id, name: c.name, type: "voice", parentId: c.parent_id }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  
+
   const stageChannels = channels
-    .filter(c => c.type === 13)
-    .map(c => ({ id: c.id, name: c.name, type: "stage", parentId: c.parent_id }))
+    .filter((c: any) => c.type === 13)
+    .map((c: any) => ({ id: c.id, name: c.name, type: "stage", parentId: c.parent_id }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return {
@@ -868,7 +930,7 @@ async function getVoiceAndStageChannels(guildId) {
 /**
  * Parse a natural language event text into structured event data
  */
-function parseEventFromText(text) {
+function parseEventFromText(text: string): EventData | null {
   const lines = text.trim().split(/\n/);
   let name, dateTimeStr;
   
@@ -960,9 +1022,9 @@ function parseEventFromText(text) {
 /**
  * Parse multiple events from text
  */
-function parseEventsFromText(text) {
+function parseEventsFromText(text: string): EventData[] {
   const eventBlocks = text.split(/\n\s*\n/).filter(block => block.trim());
-  const events = [];
+  const events: EventData[] = [];
   for (const block of eventBlocks) {
     const event = parseEventFromText(block);
     if (event) events.push(event);
@@ -973,7 +1035,7 @@ function parseEventsFromText(text) {
 /**
  * Get scheduled events for a guild via Discord API
  */
-async function getScheduledEvents(guildId) {
+async function getScheduledEvents(guildId: string) {
   if (!DISCORD_BOT_TOKEN) {
     throw new Error("DISCORD_BOT_TOKEN not configured");
   }
@@ -987,8 +1049,8 @@ async function getScheduledEvents(guildId) {
     throw new Error(`Failed to fetch scheduled events: ${response.status}`);
   }
 
-  const events = await response.json();
-  return events.map(event => ({
+  const events: any = await response.json();
+  return events.map((event: any) => ({
     id: event.id,
     name: event.name,
     description: event.description,
@@ -1004,13 +1066,13 @@ async function getScheduledEvents(guildId) {
 /**
  * Create a scheduled event in a guild via Discord API
  */
-async function createScheduledEvent(guildId, eventData) {
+async function createScheduledEvent(guildId: string, eventData: EventData) {
   if (!DISCORD_BOT_TOKEN) {
     throw new Error("DISCORD_BOT_TOKEN not configured");
   }
 
   const entityType = eventData.entityType || 3;
-  const payload = {
+  const payload: Record<string, any> = {
     name: eventData.name,
     privacy_level: 2,
     scheduled_start_time: eventData.scheduledStartTime,
@@ -1044,11 +1106,11 @@ async function createScheduledEvent(guildId, eventData) {
   );
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData: any = await response.json().catch(() => ({}));
     throw new Error(`Failed to create event: ${errorData.message || response.status}`);
   }
 
-  const event = await response.json();
+  const event: any = await response.json();
   return {
     id: event.id,
     name: event.name,
@@ -1063,7 +1125,7 @@ async function createScheduledEvent(guildId, eventData) {
 /**
  * Create multiple scheduled events from text
  */
-async function createMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null) {
+async function createMultipleScheduledEvents(guildId: string, eventsText: string, location: string | null = null, entityType: number | null = null, channelId: string | null = null) {
   const parsedEvents = parseEventsFromText(eventsText);
   
   if (parsedEvents.length === 0) {
@@ -1101,7 +1163,7 @@ async function createMultipleScheduledEvents(guildId, eventsText, location = nul
  * Preview a single scheduled event without creating it
  * Returns the parsed event data for user confirmation
  */
-function previewScheduledEvent(guildId, eventData) {
+function previewScheduledEvent(guildId: string, eventData: EventData) {
   const entityTypeNames = {
     1: "Stage Channel Event",
     2: "Voice Channel Event", 
@@ -1158,7 +1220,7 @@ function previewScheduledEvent(guildId, eventData) {
         });
       }
     }
-  } catch (e) {
+  } catch {
     errors.push("Invalid date format");
   }
   
@@ -1188,7 +1250,7 @@ function previewScheduledEvent(guildId, eventData) {
  * Preview multiple scheduled events without creating them
  * Returns parsed event data for user confirmation
  */
-function previewMultipleScheduledEvents(guildId, eventsText, location = null, entityType = null, channelId = null) {
+function previewMultipleScheduledEvents(guildId: string, eventsText: string, location: string | null = null, entityType: number | null = null, channelId: string | null = null) {
   const parsedEvents = parseEventsFromText(eventsText);
   
   if (parsedEvents.length === 0) {
@@ -1264,7 +1326,7 @@ function previewMultipleScheduledEvents(guildId, eventsText, location = null, en
           });
         }
       }
-    } catch (e) {
+    } catch {
       // Keep default "Invalid date"
     }
 
@@ -1302,7 +1364,7 @@ function previewMultipleScheduledEvents(guildId, eventsText, location = null, en
 /**
  * Search automations by name or description
  */
-async function searchAutomations(guildId, query) {
+async function searchAutomations(guildId: string, query: string) {
   const result = await executeD1Query(
     `SELECT * FROM automations 
      WHERE guild_id = ? 
@@ -1324,7 +1386,7 @@ async function searchAutomations(guildId, query) {
 /**
  * Search commands by name or description
  */
-async function searchCommands(guildId, query) {
+async function searchCommands(guildId: string, query: string) {
   const result = await executeD1Query(
     `SELECT * FROM commands 
      WHERE guild_id = ? 
@@ -1345,7 +1407,7 @@ async function searchCommands(guildId, query) {
 /**
  * Get automations by trigger event type
  */
-async function getAutomationsByTrigger(guildId, triggerEvent) {
+async function getAutomationsByTrigger(guildId: string, triggerEvent: string) {
   const result = await executeD1Query(
     `SELECT * FROM automations 
      WHERE guild_id = ? 
@@ -1366,7 +1428,7 @@ async function getAutomationsByTrigger(guildId, triggerEvent) {
 /**
  * Get automations by action type
  */
-async function getAutomationsByAction(guildId, actionType) {
+async function getAutomationsByAction(guildId: string, actionType: string) {
   const result = await executeD1Query(
     `SELECT * FROM automations 
      WHERE guild_id = ? 
@@ -2042,7 +2104,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 
 // Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+  const { name } = request.params;
+  // Tool arguments are dynamic JSON validated by each tool's inputSchema.
+  const args: Record<string, any> = request.params.arguments ?? {};
 
   try {
     let result;
@@ -2290,7 +2354,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
         mimeType: "application/json",
       })),
     };
-  } catch (error) {
+  } catch {
     return { resources: [] };
   }
 });

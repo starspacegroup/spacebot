@@ -1,26 +1,26 @@
 /**
  * Cloudflare AI Chat Module with MCP Tool Support
- * 
+ *
  * Integrates with Cloudflare Workers AI via REST API or AI Gateway
  * for LLM-based conversations with function calling capabilities.
  */
 
-import { log } from "../log.js";
-import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from "./mcp-client.js";
+import { log } from '../log.js';
+import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from './mcp-client.js';
 
 // Default model - Llama 3.3 70B is smarter and better at reasoning
 // Other options:
 //   @cf/meta/llama-3.1-8b-instruct-fast - Fast but less capable
 //   @cf/meta/llama-3.1-70b-instruct - Slower but smarter
 //   @cf/meta/llama-3.3-70b-instruct-fp8-fast - Best balance of speed and intelligence
-export const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+export const DEFAULT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // Local Ollama defaults. The Ollama path is opt-in via AI_PROVIDER=ollama and is
 // intended for LOCAL DEVELOPMENT only — Cloudflare Workers (production) cannot
 // reach localhost, and the gate var lives only in the local .env. Workers AI
 // stays the production default.
-export const DEFAULT_OLLAMA_MODEL = "gemma3:4b";
-const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
+export const DEFAULT_OLLAMA_MODEL = 'gemma3:4b';
+const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
 
 /**
  * Whether the local Ollama provider is selected (dev-only).
@@ -28,7 +28,7 @@ const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
  * @returns {boolean}
  */
 export function isOllamaSelected(env) {
-  return String(env?.AI_PROVIDER || "").toLowerCase() === "ollama";
+	return String(env?.AI_PROVIDER || '').toLowerCase() === 'ollama';
 }
 
 /**
@@ -37,46 +37,48 @@ export function isOllamaSelected(env) {
  * @returns {Promise<string>}
  */
 async function callOllamaChat({ system, messages, model, baseUrl }) {
-  const url = `${baseUrl.replace(/\/$/, "")}/api/chat`;
-  const body = {
-    model,
-    stream: false,
-    messages: [{ role: "system", content: system }, ...messages],
-  };
+	const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
+	const body = {
+		model,
+		stream: false,
+		messages: [{ role: 'system', content: system }, ...messages],
+	};
 
-  log.debug(`[AI] Sending request to Ollama model=${model} at ${url}`);
-  // Bound the request so a hung/slow local Ollama can't block the DM handler
-  // indefinitely. Default 120s to tolerate cold model loads (the first call after
-  // a model is pulled can be slow); override with OLLAMA_TIMEOUT_MS. Dev-only path.
-  const envTimeout = Number(typeof process !== "undefined" ? process.env?.OLLAMA_TIMEOUT_MS : undefined);
-  const OLLAMA_TIMEOUT_MS = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120000;
-  let response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
-    });
-  } catch (err) {
-    if (err?.name === "TimeoutError" || err?.name === "AbortError") {
-      throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms at ${url}`);
-    }
-    throw new Error(`Could not reach Ollama at ${url}: ${err?.message || err}`);
-  }
+	log.debug(`[AI] Sending request to Ollama model=${model} at ${url}`);
+	// Bound the request so a hung/slow local Ollama can't block the DM handler
+	// indefinitely. Default 120s to tolerate cold model loads (the first call after
+	// a model is pulled can be slow); override with OLLAMA_TIMEOUT_MS. Dev-only path.
+	const envTimeout = Number(
+		typeof process !== 'undefined' ? process.env?.OLLAMA_TIMEOUT_MS : undefined
+	);
+	const OLLAMA_TIMEOUT_MS = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 120000;
+	let response;
+	try {
+		response = await fetch(url, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body),
+			signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+		});
+	} catch (err) {
+		if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+			throw new Error(`Ollama request timed out after ${OLLAMA_TIMEOUT_MS}ms at ${url}`);
+		}
+		throw new Error(`Could not reach Ollama at ${url}: ${err?.message || err}`);
+	}
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => "");
-    throw new Error(`Ollama returned HTTP ${response.status}: ${errText}`);
-  }
+	if (!response.ok) {
+		const errText = await response.text().catch(() => '');
+		throw new Error(`Ollama returned HTTP ${response.status}: ${errText}`);
+	}
 
-  const data = await response.json();
-  const text = (data?.message?.content ?? "").trim();
-  if (!text) {
-    throw new Error("Ollama returned an empty response.");
-  }
-  console.info(`[AI] Completion provider=ollama model=${model}`);
-  return text;
+	const data = await response.json();
+	const text = (data?.message?.content ?? '').trim();
+	if (!text) {
+		throw new Error('Ollama returned an empty response.');
+	}
+	console.info(`[AI] Completion provider=ollama model=${model}`);
+	return text;
 }
 
 // Base system prompt for the bot assistant
@@ -197,276 +199,292 @@ Never claim you "don't have access" to local runners without trying these tools 
 
 Keep responses concise. Use Discord markdown.`;
 
-function detectLocalRunnerIntent(message = "") {
-  const text = String(message || "").toLowerCase();
-  const mentionsRunner = /\b(local\s+runner|local\s+runners|runner|runners|registered\s+runner|registered\s+runners)\b/i.test(text);
-  const asksVisibility = /\b(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered|what\s+runners|which\s+runners)\b/i.test(text);
-  // Use word boundaries so words like "runner"/"runners" do not trip action intent via substring matches.
-  const asksAction = /\b(run|execute|start|queue|trigger|launch|deploy|pull|restart)\b/i.test(text);
+function detectLocalRunnerIntent(message = '') {
+	const text = String(message || '').toLowerCase();
+	const mentionsRunner =
+		/\b(local\s+runner|local\s+runners|runner|runners|registered\s+runner|registered\s+runners)\b/i.test(
+			text
+		);
+	const asksVisibility =
+		/\b(can\s+you\s+see|do\s+you\s+see|show|list|status|online|offline|registered|what\s+runners|which\s+runners)\b/i.test(
+			text
+		);
+	// Use word boundaries so words like "runner"/"runners" do not trip action intent via substring matches.
+	const asksAction = /\b(run|execute|start|queue|trigger|launch|deploy|pull|restart)\b/i.test(
+		text
+	);
 
-  return {
-    mentionsRunner,
-    asksVisibility,
-    asksAction,
-    // Treat runner mentions in DMs as visibility checks unless the user clearly asks to execute an action.
-    isVisibilityQuery: mentionsRunner && !asksAction && (asksVisibility || /^\s*local\s+runners\??\s*$/i.test(text)),
-  };
+	return {
+		mentionsRunner,
+		asksVisibility,
+		asksAction,
+		// Treat runner mentions in DMs as visibility checks unless the user clearly asks to execute an action.
+		isVisibilityQuery:
+			mentionsRunner &&
+			!asksAction &&
+			(asksVisibility || /^\s*local\s+runners\??\s*$/i.test(text)),
+	};
 }
 
 function formatRunnerVisibilityResponse(runners = []) {
-  if (!Array.isArray(runners) || runners.length === 0) {
-    return [
-      "I checked and I don't see any registered local runner systems for your account yet.",
-      "You can create a runner token in Account -> Local Runners, start the runner script, and then I can see it here.",
-    ].join("\n\n");
-  }
+	if (!Array.isArray(runners) || runners.length === 0) {
+		return [
+			"I checked and I don't see any registered local runner systems for your account yet.",
+			'You can create a runner token in Account -> Local Runners, start the runner script, and then I can see it here.',
+		].join('\n\n');
+	}
 
-  const online = runners.filter((runner) => runner.is_online).length;
-  const lines = runners.slice(0, 8).map((runner) => {
-    const status = runner.is_online ? "online" : "offline";
-    const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
-    const host = runner.hostname ? ` (${runner.hostname})` : "";
-    const token = runner.token_name ? ` | token ${runner.token_name}` : "";
-    const platform = [runner.platform, runner.platform_release, runner.arch].filter(Boolean).join(" ");
-    const platformText = platform ? ` | ${platform}` : "";
-    const workdir = runner.default_workdir ? ` | wd ${runner.default_workdir}` : "";
-    const pending = Number(runner.pending_job_count || 0);
-    const running = Number(runner.running_job_count || 0);
-    const seenAt = runner.last_seen_at ? ` | last seen ${runner.last_seen_at} UTC` : "";
-    return `- ${name}${host}: ${status}${token}${platformText}${workdir} | pending ${pending} | running ${running}${seenAt}`;
-  });
+	const online = runners.filter((runner) => runner.is_online).length;
+	const lines = runners.slice(0, 8).map((runner) => {
+		const status = runner.is_online ? 'online' : 'offline';
+		const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
+		const host = runner.hostname ? ` (${runner.hostname})` : '';
+		const token = runner.token_name ? ` | token ${runner.token_name}` : '';
+		const platform = [runner.platform, runner.platform_release, runner.arch]
+			.filter(Boolean)
+			.join(' ');
+		const platformText = platform ? ` | ${platform}` : '';
+		const workdir = runner.default_workdir ? ` | wd ${runner.default_workdir}` : '';
+		const pending = Number(runner.pending_job_count || 0);
+		const running = Number(runner.running_job_count || 0);
+		const seenAt = runner.last_seen_at ? ` | last seen ${runner.last_seen_at} UTC` : '';
+		return `- ${name}${host}: ${status}${token}${platformText}${workdir} | pending ${pending} | running ${running}${seenAt}`;
+	});
 
-  const overflow = runners.length > 8
-    ? `\n- ...and ${runners.length - 8} more system(s)`
-    : "";
+	const overflow = runners.length > 8 ? `\n- ...and ${runners.length - 8} more system(s)` : '';
 
-  return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\nHere is your current runner list:\n${lines.join("\n")}${overflow}`;
+	return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\nHere is your current runner list:\n${lines.join('\n')}${overflow}`;
 }
 
 interface GuildPermissions {
-  administrator?: boolean;
-  manageGuild?: boolean;
-  manageChannels?: boolean;
-  manageRoles?: boolean;
-  manageMessages?: boolean;
-  manageWebhooks?: boolean;
-  manageEvents?: boolean;
-  kickMembers?: boolean;
-  banMembers?: boolean;
-  [key: string]: any;
+	administrator?: boolean;
+	manageGuild?: boolean;
+	manageChannels?: boolean;
+	manageRoles?: boolean;
+	manageMessages?: boolean;
+	manageWebhooks?: boolean;
+	manageEvents?: boolean;
+	kickMembers?: boolean;
+	banMembers?: boolean;
+	[key: string]: any;
 }
 
 interface VoiceChannelInfo {
-  name: string;
-  memberCount: number;
-  members?: string[];
-  [key: string]: any;
+	name: string;
+	memberCount: number;
+	members?: string[];
+	[key: string]: any;
 }
 
 interface ManagedGuild {
-  id: string;
-  name: string;
-  isOwner?: boolean;
-  isAdmin?: boolean;
-  userRoles?: string[];
-  permissions?: GuildPermissions;
-  memberCount?: number;
-  onlineCount?: number;
-  channelCount?: number;
-  roleCount?: number;
-  emojiCount?: number;
-  boostCount?: number;
-  boostLevel?: number;
-  voiceMemberCount?: number;
-  voiceChannels?: VoiceChannelInfo[];
-  [key: string]: any;
+	id: string;
+	name: string;
+	isOwner?: boolean;
+	isAdmin?: boolean;
+	userRoles?: string[];
+	permissions?: GuildPermissions;
+	memberCount?: number;
+	onlineCount?: number;
+	channelCount?: number;
+	roleCount?: number;
+	emojiCount?: number;
+	boostCount?: number;
+	boostLevel?: number;
+	voiceMemberCount?: number;
+	voiceChannels?: VoiceChannelInfo[];
+	[key: string]: any;
 }
 
 interface SystemPromptContext {
-  isSuperAdmin?: boolean;
-  mcpEnabled?: boolean;
-  managedGuilds?: ManagedGuild[];
-  selectedGuild?: ManagedGuild | null;
-  selectedGuildId?: string | null;
-  selectedGuildName?: string | null;
-  [key: string]: any;
+	isSuperAdmin?: boolean;
+	mcpEnabled?: boolean;
+	managedGuilds?: ManagedGuild[];
+	selectedGuild?: ManagedGuild | null;
+	selectedGuildId?: string | null;
+	selectedGuildName?: string | null;
+	[key: string]: any;
 }
 
 /**
  * Build the full system prompt with context
  */
 function buildSystemPrompt(context: SystemPromptContext = {}) {
-  let prompt = BASE_SYSTEM_PROMPT;
-  
-  // Add detailed user permission context
-  prompt += `\n\n## 🔐 CURRENT USER PERMISSIONS\n`;
-  
-  // Platform-level permissions
-  prompt += `### Platform Access:\n`;
-  if (context.isSuperAdmin) {
-    prompt += `- **Role:** 👑 SUPERADMIN (full platform access)\n`;
-    prompt += `- Can access ALL servers where SpaceBot is installed\n`;
-    prompt += `- Can view cross-server analytics and data\n`;
-    prompt += `- Can run maintenance tasks and cron jobs\n`;
-    prompt += `- Can access diagnostic/debug tools\n`;
-    prompt += `\nWhen they ask about "all servers" or cross-server data, you can provide it.\n`;
-  } else {
-    prompt += `- **Role:** Server Manager (limited to their own servers)\n`;
-    prompt += `- Can ONLY access servers where they have Manage Server or Administrator permission\n`;
-    prompt += `- Cannot view data from other servers\n`;
-    prompt += `- Cannot run global maintenance or cron tasks\n`;
-  }
-  
-  // Add selected server context with detailed permissions
-  if (context.selectedGuildId && context.selectedGuildName) {
-    const selectedGuild = context.managedGuilds?.find(g => g.id === context.selectedGuildId);
-    
-    prompt += `\n### 🎯 CURRENTLY SELECTED SERVER: ${context.selectedGuildName}\n`;
-    prompt += `**Server ID:** ${context.selectedGuildId}\n\n`;
-    
-    // Show user's specific permissions for this server
-    prompt += `**User's permissions on this server:**\n`;
-    if (context.isSuperAdmin) {
-      prompt += `- ✅ Full access (Superadmin override)\n`;
-      prompt += `- ✅ Can view all logs and statistics\n`;
-      prompt += `- ✅ Can manage automations and commands\n`;
-      prompt += `- ✅ Can change server settings\n`;
-      prompt += `- ✅ Can manage webhooks\n`;
-    } else if (selectedGuild) {
-      // Detailed server permissions
-      if (selectedGuild.isOwner) {
-        prompt += `- 👑 **Server Owner** - Full control of this server\n`;
-      }
-      if (selectedGuild.isAdmin) {
-        prompt += `- ✅ **Administrator** - Can change all server settings\n`;
-      } else {
-        prompt += `- ⚠️ **Manager** - Cannot change server settings (requires Administrator)\n`;
-      }
-      
-      // What they CAN do
-      prompt += `- ✅ Can view dashboard and statistics\n`;
-      prompt += `- ✅ Can view event logs\n`;
-      prompt += selectedGuild.isAdmin 
-        ? `- ✅ Can create/edit/delete automations\n`
-        : `- ⚠️ Automation editing depends on server permission settings\n`;
-      prompt += selectedGuild.isAdmin
-        ? `- ✅ Can create/edit/delete custom commands\n`
-        : `- ⚠️ Command editing depends on server permission settings\n`;
-      prompt += selectedGuild.isAdmin
-        ? `- ✅ Can manage server settings and webhooks\n`
-        : `- ❌ Cannot manage server settings (requires Administrator)\n`;
-    }
-    
-    prompt += `\n**IMPORTANT:** When the user asks about "my server", "the server", stats, logs, automations, etc., use this server's ID (${context.selectedGuildId}) in all tool calls.\n`;
-    prompt += `Do NOT ask them which server - they have already selected it.\n`;
-    
-    // Add permission-aware guidance
-    if (!context.isSuperAdmin && selectedGuild && !selectedGuild.isAdmin) {
-      prompt += `\n**Note:** If the user tries to do something they don't have permission for (like changing server settings), politely explain that they need the Administrator permission for that action.\n`;
-    }
-  } else if (context.managedGuilds && context.managedGuilds.length > 1) {
-    prompt += `\n### ⚠️ NO SERVER SELECTED\n`;
-    prompt += `The user manages ${context.managedGuilds.length} servers but hasn't selected one yet.\n`;
-    prompt += `When they ask about server-specific data, remind them to select a server first.\n`;
-    prompt += `They can say: "switch to <server name>", "select <server>", or "list servers"\n`;
-  } else if (context.managedGuilds?.length === 1) {
-    prompt += `\n### 📍 Single Server User\n`;
-    prompt += `User only manages one server, so that server is auto-selected.\n`;
-  }
-  
-  // Add managed guilds context if available - including live stats and permissions
-  if (context.managedGuilds && context.managedGuilds.length > 0) {
-    prompt += "\n\n## User's Managed Servers (LIVE DATA)\nThe user manages the following Discord servers where SpaceBot is installed. This data is LIVE from Discord:\n";
-    for (const guild of context.managedGuilds) {
-      const isSelected = context.selectedGuildId === guild.id;
-      
-      // Build permission badges
-      let badges = [];
-      if (isSelected) badges.push('✅ SELECTED');
-      if (guild.isOwner) badges.push('👑 Owner');
-      else if (guild.isAdmin) badges.push('🛡️ Admin');
-      else badges.push('⚙️ Manager');
-      
-      prompt += `\n### ${guild.name} [${badges.join(' | ')}]\n`;
-      prompt += `- Server ID: ${guild.id}\n`;
-      
-      // User's permission level on this server
-      prompt += `- User's Access: ${guild.isOwner ? 'Server Owner' : guild.isAdmin ? 'Administrator' : 'Manage Server'}\n`;
-      
-      // Show user's Discord roles on this server
-      if (guild.userRoles && guild.userRoles.length > 0) {
-        prompt += `- User's Roles: ${guild.userRoles.join(', ')}\n`;
-      }
-      
-      // Show detailed Discord permissions for this user
-      if (guild.permissions) {
-        const perms = guild.permissions;
-        let permList = [];
-        if (perms.administrator) permList.push('Administrator');
-        if (perms.manageGuild) permList.push('Manage Server');
-        if (perms.manageChannels) permList.push('Manage Channels');
-        if (perms.manageRoles) permList.push('Manage Roles');
-        if (perms.manageMessages) permList.push('Manage Messages');
-        if (perms.manageWebhooks) permList.push('Manage Webhooks');
-        if (perms.manageEvents) permList.push('Manage Events');
-        if (perms.kickMembers) permList.push('Kick Members');
-        if (perms.banMembers) permList.push('Ban Members');
-        if (permList.length > 0) {
-          prompt += `- Discord Permissions: ${permList.join(', ')}\n`;
-        }
-      }
-      
-      if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
-      if (guild.onlineCount !== undefined) prompt += `- Online: ${guild.onlineCount}\n`;
-      if (guild.channelCount !== undefined) prompt += `- Channels: ${guild.channelCount}\n`;
-      if (guild.roleCount !== undefined) prompt += `- Roles: ${guild.roleCount}\n`;
-      if (guild.emojiCount !== undefined) prompt += `- Custom Emojis: ${guild.emojiCount}\n`;
-      if (guild.boostCount !== undefined) prompt += `- Boosts: ${guild.boostCount} (Level ${guild.boostLevel})\n`;
-      // Voice channel stats
-      if (guild.voiceMemberCount !== undefined) {
-        prompt += `- Members in Voice: ${guild.voiceMemberCount}\n`;
-        if (guild.voiceChannels && guild.voiceChannels.length > 0) {
-          prompt += `- Active Voice Channels:\n`;
-          for (const vc of guild.voiceChannels) {
-            prompt += `  - ${vc.name}: ${vc.memberCount} member${vc.memberCount !== 1 ? 's' : ''}`;
-            if (vc.members && vc.members.length > 0) {
-              prompt += ` (${vc.members.join(', ')}${vc.memberCount > 10 ? '...' : ''})`;
-            }
-            prompt += `\n`;
-          }
-        }
-      }
-    }
-    prompt += "\n**For basic questions like member count, voice chat, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n";
-  }
-  
-  // Add MCP tools if enabled, or explain the limitation
-  if (context.mcpEnabled) {
-    prompt += "\n\n## Available Tools\n";
-    prompt += formatToolsForPrompt();
-  } else {
-    prompt += "\n\n## ⚠️ NO DATA ACCESS ⚠️\n";
-    prompt += "Database tools are NOT available. You have ZERO access to:\n";
-    prompt += "- Event logs, message counts, join counts, or ANY statistics\n";
-    prompt += "- Automation names, configurations, or execution history\n";
-    prompt += "- Custom command details or usage logs\n";
-    prompt += "- Server settings\n\n";
-    
-    const dashboardBase = "https://spacebot.starspace.group";
-    const serverPath = context.selectedGuildId ? `/admin/${context.selectedGuildId}` : "";
-    
-    prompt += "When the user asks about ANY of the above, tell them you can't look up that data right now and direct them to the appropriate dashboard page.\n";
-    prompt += "Use the most relevant link based on their question:\n";
-    prompt += `- Stats/activity/members/growth → ${dashboardBase}${serverPath}/stats\n`;
-    prompt += `- Event logs/message history → ${dashboardBase}${serverPath}/logs\n`;
-    prompt += `- Automations → ${dashboardBase}${serverPath}/automations\n`;
-    prompt += `- Commands → ${dashboardBase}${serverPath}/commands\n`;
-    prompt += `- Server settings → ${dashboardBase}${serverPath}/settings\n`;
-    prompt += `- General/unclear → ${dashboardBase}${serverPath}\n\n`;
-    prompt += "DO NOT attempt to guess, estimate, or fabricate any data. You literally have no information about their server's data.";
-  }
-  
-  return prompt;
+	let prompt = BASE_SYSTEM_PROMPT;
+
+	// Add detailed user permission context
+	prompt += `\n\n## 🔐 CURRENT USER PERMISSIONS\n`;
+
+	// Platform-level permissions
+	prompt += `### Platform Access:\n`;
+	if (context.isSuperAdmin) {
+		prompt += `- **Role:** 👑 SUPERADMIN (full platform access)\n`;
+		prompt += `- Can access ALL servers where SpaceBot is installed\n`;
+		prompt += `- Can view cross-server analytics and data\n`;
+		prompt += `- Can run maintenance tasks and cron jobs\n`;
+		prompt += `- Can access diagnostic/debug tools\n`;
+		prompt += `\nWhen they ask about "all servers" or cross-server data, you can provide it.\n`;
+	} else {
+		prompt += `- **Role:** Server Manager (limited to their own servers)\n`;
+		prompt += `- Can ONLY access servers where they have Manage Server or Administrator permission\n`;
+		prompt += `- Cannot view data from other servers\n`;
+		prompt += `- Cannot run global maintenance or cron tasks\n`;
+	}
+
+	// Add selected server context with detailed permissions
+	if (context.selectedGuildId && context.selectedGuildName) {
+		const selectedGuild = context.managedGuilds?.find((g) => g.id === context.selectedGuildId);
+
+		prompt += `\n### 🎯 CURRENTLY SELECTED SERVER: ${context.selectedGuildName}\n`;
+		prompt += `**Server ID:** ${context.selectedGuildId}\n\n`;
+
+		// Show user's specific permissions for this server
+		prompt += `**User's permissions on this server:**\n`;
+		if (context.isSuperAdmin) {
+			prompt += `- ✅ Full access (Superadmin override)\n`;
+			prompt += `- ✅ Can view all logs and statistics\n`;
+			prompt += `- ✅ Can manage automations and commands\n`;
+			prompt += `- ✅ Can change server settings\n`;
+			prompt += `- ✅ Can manage webhooks\n`;
+		} else if (selectedGuild) {
+			// Detailed server permissions
+			if (selectedGuild.isOwner) {
+				prompt += `- 👑 **Server Owner** - Full control of this server\n`;
+			}
+			if (selectedGuild.isAdmin) {
+				prompt += `- ✅ **Administrator** - Can change all server settings\n`;
+			} else {
+				prompt += `- ⚠️ **Manager** - Cannot change server settings (requires Administrator)\n`;
+			}
+
+			// What they CAN do
+			prompt += `- ✅ Can view dashboard and statistics\n`;
+			prompt += `- ✅ Can view event logs\n`;
+			prompt += selectedGuild.isAdmin
+				? `- ✅ Can create/edit/delete automations\n`
+				: `- ⚠️ Automation editing depends on server permission settings\n`;
+			prompt += selectedGuild.isAdmin
+				? `- ✅ Can create/edit/delete custom commands\n`
+				: `- ⚠️ Command editing depends on server permission settings\n`;
+			prompt += selectedGuild.isAdmin
+				? `- ✅ Can manage server settings and webhooks\n`
+				: `- ❌ Cannot manage server settings (requires Administrator)\n`;
+		}
+
+		prompt += `\n**IMPORTANT:** When the user asks about "my server", "the server", stats, logs, automations, etc., use this server's ID (${context.selectedGuildId}) in all tool calls.\n`;
+		prompt += `Do NOT ask them which server - they have already selected it.\n`;
+
+		// Add permission-aware guidance
+		if (!context.isSuperAdmin && selectedGuild && !selectedGuild.isAdmin) {
+			prompt += `\n**Note:** If the user tries to do something they don't have permission for (like changing server settings), politely explain that they need the Administrator permission for that action.\n`;
+		}
+	} else if (context.managedGuilds && context.managedGuilds.length > 1) {
+		prompt += `\n### ⚠️ NO SERVER SELECTED\n`;
+		prompt += `The user manages ${context.managedGuilds.length} servers but hasn't selected one yet.\n`;
+		prompt += `When they ask about server-specific data, remind them to select a server first.\n`;
+		prompt += `They can say: "switch to <server name>", "select <server>", or "list servers"\n`;
+	} else if (context.managedGuilds?.length === 1) {
+		prompt += `\n### 📍 Single Server User\n`;
+		prompt += `User only manages one server, so that server is auto-selected.\n`;
+	}
+
+	// Add managed guilds context if available - including live stats and permissions
+	if (context.managedGuilds && context.managedGuilds.length > 0) {
+		prompt +=
+			"\n\n## User's Managed Servers (LIVE DATA)\nThe user manages the following Discord servers where SpaceBot is installed. This data is LIVE from Discord:\n";
+		for (const guild of context.managedGuilds) {
+			const isSelected = context.selectedGuildId === guild.id;
+
+			// Build permission badges
+			const badges = [];
+			if (isSelected) badges.push('✅ SELECTED');
+			if (guild.isOwner) badges.push('👑 Owner');
+			else if (guild.isAdmin) badges.push('🛡️ Admin');
+			else badges.push('⚙️ Manager');
+
+			prompt += `\n### ${guild.name} [${badges.join(' | ')}]\n`;
+			prompt += `- Server ID: ${guild.id}\n`;
+
+			// User's permission level on this server
+			prompt += `- User's Access: ${guild.isOwner ? 'Server Owner' : guild.isAdmin ? 'Administrator' : 'Manage Server'}\n`;
+
+			// Show user's Discord roles on this server
+			if (guild.userRoles && guild.userRoles.length > 0) {
+				prompt += `- User's Roles: ${guild.userRoles.join(', ')}\n`;
+			}
+
+			// Show detailed Discord permissions for this user
+			if (guild.permissions) {
+				const perms = guild.permissions;
+				const permList = [];
+				if (perms.administrator) permList.push('Administrator');
+				if (perms.manageGuild) permList.push('Manage Server');
+				if (perms.manageChannels) permList.push('Manage Channels');
+				if (perms.manageRoles) permList.push('Manage Roles');
+				if (perms.manageMessages) permList.push('Manage Messages');
+				if (perms.manageWebhooks) permList.push('Manage Webhooks');
+				if (perms.manageEvents) permList.push('Manage Events');
+				if (perms.kickMembers) permList.push('Kick Members');
+				if (perms.banMembers) permList.push('Ban Members');
+				if (permList.length > 0) {
+					prompt += `- Discord Permissions: ${permList.join(', ')}\n`;
+				}
+			}
+
+			if (guild.memberCount !== undefined) prompt += `- Members: ${guild.memberCount}\n`;
+			if (guild.onlineCount !== undefined) prompt += `- Online: ${guild.onlineCount}\n`;
+			if (guild.channelCount !== undefined) prompt += `- Channels: ${guild.channelCount}\n`;
+			if (guild.roleCount !== undefined) prompt += `- Roles: ${guild.roleCount}\n`;
+			if (guild.emojiCount !== undefined) prompt += `- Custom Emojis: ${guild.emojiCount}\n`;
+			if (guild.boostCount !== undefined)
+				prompt += `- Boosts: ${guild.boostCount} (Level ${guild.boostLevel})\n`;
+			// Voice channel stats
+			if (guild.voiceMemberCount !== undefined) {
+				prompt += `- Members in Voice: ${guild.voiceMemberCount}\n`;
+				if (guild.voiceChannels && guild.voiceChannels.length > 0) {
+					prompt += `- Active Voice Channels:\n`;
+					for (const vc of guild.voiceChannels) {
+						prompt += `  - ${vc.name}: ${vc.memberCount} member${vc.memberCount !== 1 ? 's' : ''}`;
+						if (vc.members && vc.members.length > 0) {
+							prompt += ` (${vc.members.join(', ')}${vc.memberCount > 10 ? '...' : ''})`;
+						}
+						prompt += `\n`;
+					}
+				}
+			}
+		}
+		prompt +=
+			'\n**For basic questions like member count, voice chat, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n';
+	}
+
+	// Add MCP tools if enabled, or explain the limitation
+	if (context.mcpEnabled) {
+		prompt += '\n\n## Available Tools\n';
+		prompt += formatToolsForPrompt();
+	} else {
+		prompt += '\n\n## ⚠️ NO DATA ACCESS ⚠️\n';
+		prompt += 'Database tools are NOT available. You have ZERO access to:\n';
+		prompt += '- Event logs, message counts, join counts, or ANY statistics\n';
+		prompt += '- Automation names, configurations, or execution history\n';
+		prompt += '- Custom command details or usage logs\n';
+		prompt += '- Server settings\n\n';
+
+		const dashboardBase = 'https://spacebot.starspace.group';
+		const serverPath = context.selectedGuildId ? `/admin/${context.selectedGuildId}` : '';
+
+		prompt +=
+			"When the user asks about ANY of the above, tell them you can't look up that data right now and direct them to the appropriate dashboard page.\n";
+		prompt += 'Use the most relevant link based on their question:\n';
+		prompt += `- Stats/activity/members/growth → ${dashboardBase}${serverPath}/stats\n`;
+		prompt += `- Event logs/message history → ${dashboardBase}${serverPath}/logs\n`;
+		prompt += `- Automations → ${dashboardBase}${serverPath}/automations\n`;
+		prompt += `- Commands → ${dashboardBase}${serverPath}/commands\n`;
+		prompt += `- Server settings → ${dashboardBase}${serverPath}/settings\n`;
+		prompt += `- General/unclear → ${dashboardBase}${serverPath}\n\n`;
+		prompt +=
+			"DO NOT attempt to guess, estimate, or fabricate any data. You literally have no information about their server's data.";
+	}
+
+	return prompt;
 }
 
 /**
@@ -474,156 +492,167 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
  * Looks for tool JSON in various formats
  */
 function parseToolCalls(response) {
-  const toolCalls = [];
-  
-  // Try multiple patterns the AI might use
-  const patterns = [
-    /```tool\s*\n([\s\S]*?)```/g,           // ```tool\n{...}```
-    /```json\s*\n([\s\S]*?)```/g,           // ```json\n{...}```
-    /```\s*\n(\{"tool"[\s\S]*?)```/g,       // ```\n{"tool":...}```
-    /(?:^|\n)(\{"tool"\s*:\s*"[^"]+"[^}]*\})/g,  // Raw JSON with "tool" key
-  ];
-  
-  for (const regex of patterns) {
-    let match;
-    while ((match = regex.exec(response)) !== null) {
-      try {
-        const jsonStr = match[1].trim();
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.tool && typeof parsed.tool === "string") {
-          // Avoid duplicates
-          if (!toolCalls.some(t => t.tool === parsed.tool && JSON.stringify(t.args) === JSON.stringify(parsed.args || {}))) {
-            toolCalls.push({
-              tool: parsed.tool,
-              args: parsed.args || {},
-            });
-            log.debug(`[AI] Parsed tool call: ${parsed.tool}`);
-          }
-        }
-      } catch (e) {
-        log.warn("[AI] Failed to parse tool call:", match[1]);
-      }
-    }
-  }
-  
-  return toolCalls;
+	const toolCalls = [];
+
+	// Try multiple patterns the AI might use
+	const patterns = [
+		/```tool\s*\n([\s\S]*?)```/g, // ```tool\n{...}```
+		/```json\s*\n([\s\S]*?)```/g, // ```json\n{...}```
+		/```\s*\n(\{"tool"[\s\S]*?)```/g, // ```\n{"tool":...}```
+		/(?:^|\n)(\{"tool"\s*:\s*"[^"]+"[^}]*\})/g, // Raw JSON with "tool" key
+	];
+
+	for (const regex of patterns) {
+		let match;
+		while ((match = regex.exec(response)) !== null) {
+			try {
+				const jsonStr = match[1].trim();
+				const parsed = JSON.parse(jsonStr);
+				if (parsed.tool && typeof parsed.tool === 'string') {
+					// Avoid duplicates
+					if (
+						!toolCalls.some(
+							(t) =>
+								t.tool === parsed.tool &&
+								JSON.stringify(t.args) === JSON.stringify(parsed.args || {})
+						)
+					) {
+						toolCalls.push({
+							tool: parsed.tool,
+							args: parsed.args || {},
+						});
+						log.debug(`[AI] Parsed tool call: ${parsed.tool}`);
+					}
+				}
+			} catch {
+				log.warn('[AI] Failed to parse tool call:', match[1]);
+			}
+		}
+	}
+
+	return toolCalls;
 }
 
 /**
  * Execute tool calls and return results
  */
 async function executeToolCalls(toolCalls, env, userId = null) {
-  const mcpClient = getMCPClient(env);
-  
-  if (!mcpClient.isConfigured()) {
-    return [{
-      tool: "error",
-      result: { success: false, error: "MCP client not configured - missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN" },
-    }];
-  }
-  
-  const results = [];
-  
-  for (const call of toolCalls) {
-    log.info(`[AI] Executing tool: ${call.tool}`);
-    
-    // Inject environment variables for tools that need them (e.g., image generation)
-    const argsWithEnv = {
-      ...call.args,
-      _env: env, // Internal parameter for Cloudflare AI access
-      userId: call.args.userId || userId, // User ID for creation attribution
-    };
-    
-    const result = await mcpClient.executeTool(call.tool, argsWithEnv);
-    results.push({
-      tool: call.tool,
-      args: call.args, // Don't expose _env in the formatted output
-      result,
-    });
-  }
-  
-  return results;
+	const mcpClient = getMCPClient(env);
+
+	if (!mcpClient.isConfigured()) {
+		return [
+			{
+				tool: 'error',
+				result: {
+					success: false,
+					error: 'MCP client not configured - missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN',
+				},
+			},
+		];
+	}
+
+	const results = [];
+
+	for (const call of toolCalls) {
+		log.info(`[AI] Executing tool: ${call.tool}`);
+
+		// Inject environment variables for tools that need them (e.g., image generation)
+		const argsWithEnv = {
+			...call.args,
+			_env: env, // Internal parameter for Cloudflare AI access
+			userId: call.args.userId || userId, // User ID for creation attribution
+		};
+
+		const result = await mcpClient.executeTool(call.tool, argsWithEnv);
+		results.push({
+			tool: call.tool,
+			args: call.args, // Don't expose _env in the formatted output
+			result,
+		});
+	}
+
+	return results;
 }
 
 /**
  * Summarize an automation for AI display (keeps essential info, drops verbose config)
  */
 function summarizeAutomation(auto) {
-  // Convert enabled 0/1 to clear status string for AI understanding
-  const isEnabled = auto.enabled === 1 || auto.enabled === true;
-  return {
-    id: auto.id,
-    name: auto.name,
-    status: isEnabled ? "ACTIVE" : "INACTIVE",
-    trigger_events: auto.trigger_events,
-    action_type: auto.action_type,
-    trigger_count: auto.trigger_count,
-    created_by: auto.created_by,
-    last_triggered_at: auto.last_triggered_at,
-  };
+	// Convert enabled 0/1 to clear status string for AI understanding
+	const isEnabled = auto.enabled === 1 || auto.enabled === true;
+	return {
+		id: auto.id,
+		name: auto.name,
+		status: isEnabled ? 'ACTIVE' : 'INACTIVE',
+		trigger_events: auto.trigger_events,
+		action_type: auto.action_type,
+		trigger_count: auto.trigger_count,
+		created_by: auto.created_by,
+		last_triggered_at: auto.last_triggered_at,
+	};
 }
 
 /**
  * Summarize a command for AI display
  */
 function summarizeCommand(cmd) {
-  const isEnabled = cmd.enabled === 1 || cmd.enabled === true;
-  return {
-    id: cmd.id,
-    name: cmd.name,
-    description: cmd.description,
-    status: isEnabled ? "ACTIVE" : "INACTIVE",
-    use_count: cmd.use_count,
-    created_by: cmd.created_by,
-  };
+	const isEnabled = cmd.enabled === 1 || cmd.enabled === true;
+	return {
+		id: cmd.id,
+		name: cmd.name,
+		description: cmd.description,
+		status: isEnabled ? 'ACTIVE' : 'INACTIVE',
+		use_count: cmd.use_count,
+		created_by: cmd.created_by,
+	};
 }
 
 /**
  * Format tool results for the AI to process
  */
 function formatToolResults(results) {
-  let formatted = "Tool Results:\n\n";
-  
-  for (const { tool, args, result } of results) {
-    formatted += `### ${tool}\n`;
-    if (args && Object.keys(args).length > 0) {
-      formatted += `Arguments: ${JSON.stringify(args)}\n`;
-    }
-    if (result.success) {
-      let data = result.data;
-      
-      // For array results, provide count and summarize items
-      if (Array.isArray(data)) {
-        formatted += `Total items: ${data.length}\n`;
-        
-        // Summarize specific types to reduce token usage
-        if (tool === "get_automations" && data.length > 0) {
-          data = data.map(summarizeAutomation);
-          // Add status counts for clarity
-          const activeCount = data.filter(a => a.status === "ACTIVE").length;
-          const inactiveCount = data.filter(a => a.status === "INACTIVE").length;
-          formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
-        } else if (tool === "get_commands" && data.length > 0) {
-          data = data.map(summarizeCommand);
-          const activeCount = data.filter(c => c.status === "ACTIVE").length;
-          const inactiveCount = data.filter(c => c.status === "INACTIVE").length;
-          formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
-        }
-      }
-      
-      // Truncate large results to avoid token limits (increased from 2000)
-      const dataStr = JSON.stringify(data, null, 2);
-      if (dataStr.length > 8000) {
-        formatted += `Result (truncated):\n${dataStr.substring(0, 8000)}...\n\n`;
-      } else {
-        formatted += `Result:\n${dataStr}\n\n`;
-      }
-    } else {
-      formatted += `Error: ${result.error}\n\n`;
-    }
-  }
-  
-  return formatted;
+	let formatted = 'Tool Results:\n\n';
+
+	for (const { tool, args, result } of results) {
+		formatted += `### ${tool}\n`;
+		if (args && Object.keys(args).length > 0) {
+			formatted += `Arguments: ${JSON.stringify(args)}\n`;
+		}
+		if (result.success) {
+			let data = result.data;
+
+			// For array results, provide count and summarize items
+			if (Array.isArray(data)) {
+				formatted += `Total items: ${data.length}\n`;
+
+				// Summarize specific types to reduce token usage
+				if (tool === 'get_automations' && data.length > 0) {
+					data = data.map(summarizeAutomation);
+					// Add status counts for clarity
+					const activeCount = data.filter((a) => a.status === 'ACTIVE').length;
+					const inactiveCount = data.filter((a) => a.status === 'INACTIVE').length;
+					formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
+				} else if (tool === 'get_commands' && data.length > 0) {
+					data = data.map(summarizeCommand);
+					const activeCount = data.filter((c) => c.status === 'ACTIVE').length;
+					const inactiveCount = data.filter((c) => c.status === 'INACTIVE').length;
+					formatted += `Status breakdown: ${activeCount} ACTIVE, ${inactiveCount} INACTIVE\n`;
+				}
+			}
+
+			// Truncate large results to avoid token limits (increased from 2000)
+			const dataStr = JSON.stringify(data, null, 2);
+			if (dataStr.length > 8000) {
+				formatted += `Result (truncated):\n${dataStr.substring(0, 8000)}...\n\n`;
+			} else {
+				formatted += `Result:\n${dataStr}\n\n`;
+			}
+		} else {
+			formatted += `Error: ${result.error}\n\n`;
+		}
+	}
+
+	return formatted;
 }
 
 /**
@@ -631,12 +660,10 @@ function formatToolResults(results) {
  * CLOUDFLARE_AI_MODELS (array) and CLOUDFLARE_AI_MODEL (string fallback).
  */
 function normalizeModelList(env) {
-  const candidates = Array.isArray(env.CLOUDFLARE_AI_MODELS)
-    ? [...env.CLOUDFLARE_AI_MODELS]
-    : [];
-  const single = env.CLOUDFLARE_AI_MODEL || DEFAULT_MODEL;
-  if (!candidates.includes(single)) candidates.push(single);
-  return candidates.filter(Boolean);
+	const candidates = Array.isArray(env.CLOUDFLARE_AI_MODELS) ? [...env.CLOUDFLARE_AI_MODELS] : [];
+	const single = env.CLOUDFLARE_AI_MODEL || DEFAULT_MODEL;
+	if (!candidates.includes(single)) candidates.push(single);
+	return candidates.filter(Boolean);
 }
 
 /**
@@ -644,125 +671,128 @@ function normalizeModelList(env) {
  * so different requests in the same minute always go to the same model.
  */
 function buildModelOrder(models, env) {
-  if (!models.length) return [DEFAULT_MODEL];
-  if (env.CLOUDFLARE_AI_MODEL_ROUTING === "round_robin") {
-    const minute = Math.floor(Date.now() / 60000);
-    const offset = minute % models.length;
-    return [...models.slice(offset), ...models.slice(0, offset)];
-  }
-  return models;
+	if (!models.length) return [DEFAULT_MODEL];
+	if (env.CLOUDFLARE_AI_MODEL_ROUTING === 'round_robin') {
+		const minute = Math.floor(Date.now() / 60000);
+		const offset = minute % models.length;
+		return [...models.slice(offset), ...models.slice(0, offset)];
+	}
+	return models;
 }
 
 function parseUsageValue(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function extractUsageMetrics(payload) {
-  const usage = payload?.result?.usage || payload?.usage || null;
-  if (!usage || typeof usage !== "object") {
-    return null;
-  }
+	const usage = payload?.result?.usage || payload?.usage || null;
+	if (!usage || typeof usage !== 'object') {
+		return null;
+	}
 
-  const inputTokens = parseUsageValue(
-    usage.input_tokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.promptTokens,
-  );
-  const outputTokens = parseUsageValue(
-    usage.output_tokens ?? usage.completion_tokens ?? usage.outputTokens ?? usage.completionTokens,
-  );
+	const inputTokens = parseUsageValue(
+		usage.input_tokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.promptTokens
+	);
+	const outputTokens = parseUsageValue(
+		usage.output_tokens ??
+			usage.completion_tokens ??
+			usage.outputTokens ??
+			usage.completionTokens
+	);
 
-  let totalTokens = parseUsageValue(
-    usage.total_tokens ?? usage.totalTokens,
-  );
+	let totalTokens = parseUsageValue(usage.total_tokens ?? usage.totalTokens);
 
-  if (totalTokens === null && inputTokens !== null && outputTokens !== null) {
-    totalTokens = inputTokens + outputTokens;
-  }
+	if (totalTokens === null && inputTokens !== null && outputTokens !== null) {
+		totalTokens = inputTokens + outputTokens;
+	}
 
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  };
+	return {
+		inputTokens,
+		outputTokens,
+		totalTokens,
+	};
 }
 
 /**
  * Call the AI API, trying each model in order until one succeeds.
  */
 async function callAI(messages, env) {
-  const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken = env.CLOUDFLARE_AI_TOKEN;
-  const gatewayId = env.CLOUDFLARE_AI_GATEWAY_ID;
+	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+	const apiToken = env.CLOUDFLARE_AI_TOKEN;
+	const gatewayId = env.CLOUDFLARE_AI_GATEWAY_ID;
 
-  const modelList = buildModelOrder(normalizeModelList(env), env);
-  let lastError;
+	const modelList = buildModelOrder(normalizeModelList(env), env);
+	let lastError;
 
-  for (const model of modelList) {
-    let apiUrl;
-    if (gatewayId) {
-      apiUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/workers-ai/${model}`;
-    } else {
-      apiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
-    }
+	for (const model of modelList) {
+		let apiUrl;
+		if (gatewayId) {
+			apiUrl = `https://gateway.ai.cloudflare.com/v1/${accountId}/${gatewayId}/workers-ai/${model}`;
+		} else {
+			apiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+		}
 
-    log.debug(`[AI] Sending request to ${gatewayId ? "AI Gateway" : "Workers AI"} model=${model}`);
+		log.debug(
+			`[AI] Sending request to ${gatewayId ? 'AI Gateway' : 'Workers AI'} model=${model}`
+		);
 
-    try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages,
-          max_tokens: 1500,
-          temperature: 0.2, // Low temperature to reduce hallucination/creativity
-        }),
-      });
+		try {
+			const response = await fetch(apiUrl, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${apiToken}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					messages,
+					max_tokens: 1500,
+					temperature: 0.2, // Low temperature to reduce hallucination/creativity
+				}),
+			});
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        log.error(`[AI] API error ${response.status} for model ${model}: ${errorText}`);
-        lastError = new Error(`AI service error: ${response.status}`);
-        continue;
-      }
+			if (!response.ok) {
+				const errorText = await response.text();
+				log.error(`[AI] API error ${response.status} for model ${model}: ${errorText}`);
+				lastError = new Error(`AI service error: ${response.status}`);
+				continue;
+			}
 
-      const data = await response.json();
-      const usageMetrics = extractUsageMetrics(data);
+			const data = await response.json();
+			const usageMetrics = extractUsageMetrics(data);
 
-      let responseText;
-      if (data.result?.response) {
-        responseText = data.result.response;
-      } else if (data.response) {
-        responseText = data.response;
-      } else if (typeof data === "string") {
-        responseText = data;
-      } else {
-        lastError = new Error("Unexpected response format from AI service");
-        continue;
-      }
+			let responseText;
+			if (data.result?.response) {
+				responseText = data.result.response;
+			} else if (data.response) {
+				responseText = data.response;
+			} else if (typeof data === 'string') {
+				responseText = data;
+			} else {
+				lastError = new Error('Unexpected response format from AI service');
+				continue;
+			}
 
-      const provider = gatewayId ? "ai-gateway" : "workers-ai";
-      const usageSummary = usageMetrics
-        ? `input_tokens=${usageMetrics.inputTokens ?? "n/a"} output_tokens=${usageMetrics.outputTokens ?? "n/a"} total_tokens=${usageMetrics.totalTokens ?? "n/a"}`
-        : "input_tokens=n/a output_tokens=n/a total_tokens=n/a";
+			const provider = gatewayId ? 'ai-gateway' : 'workers-ai';
+			const usageSummary = usageMetrics
+				? `input_tokens=${usageMetrics.inputTokens ?? 'n/a'} output_tokens=${usageMetrics.outputTokens ?? 'n/a'} total_tokens=${usageMetrics.totalTokens ?? 'n/a'}`
+				: 'input_tokens=n/a output_tokens=n/a total_tokens=n/a';
 
-      console.info(`[AI] Completion provider=${provider} model=${model} ${usageSummary}`);
+			console.info(`[AI] Completion provider=${provider} model=${model} ${usageSummary}`);
 
-      return responseText;
-    } catch (err) {
-      log.error(`[AI] Request failed for model ${model}: ${err.message}`);
-      lastError = err;
-    }
-  }
+			return responseText;
+		} catch (err) {
+			log.error(`[AI] Request failed for model ${model}: ${err.message}`);
+			lastError = err;
+		}
+	}
 
-  throw lastError || new Error("All AI models failed to respond");
+	throw lastError || new Error('All AI models failed to respond');
 }
 
 /**
  * Generate a chat response with MCP tool support
- * 
+ *
  * @param {Object} options - Chat options
  * @param {string} options.message - The user's message
  * @param {string} options.userName - The user's display name
@@ -778,196 +808,218 @@ async function callAI(messages, env) {
  * @returns {Promise<{success: boolean, response?: string, error?: string, toolsUsed?: string[]}>}
  */
 export async function generateChatResponse(options, env) {
-  const { 
-    message, 
-    userName, 
-    userId,
-    isSuperAdmin = false,
-    history = [], 
-    managedGuilds = [],
-    selectedGuild = null,
-    selectedGuildId = null,
-    selectedGuildName = null,
-    maxToolIterations = 5,
-  } = options;
-  
-  // Direct console.log for debugging (bypasses LOG_LEVEL)
-  console.log("[AI] generateChatResponse called for user:", userName);
-  console.log("[AI] env keys:", Object.keys(env || {}));
-  console.log("[AI] Selected server:", selectedGuildName || "none", `(${selectedGuildId || "none"})`);
-  console.log("[AI] User is superadmin:", isSuperAdmin);
+	const {
+		message,
+		userName,
+		userId,
+		isSuperAdmin = false,
+		history = [],
+		managedGuilds = [],
+		selectedGuild = null,
+		selectedGuildId = null,
+		selectedGuildName = null,
+		maxToolIterations = 5,
+	} = options;
 
-  // Local Ollama path (dev-only, opt-in via AI_PROVIDER=ollama). No MCP
-  // tool-calling here in v1 — local models don't use the Workers-AI tool
-  // format — so this is a plain chat completion. Workers AI keeps tool-calling.
-  if (isOllamaSelected(env)) {
-    const model = env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
-    const baseUrl = env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL;
-    const systemPrompt = buildSystemPrompt({
-      managedGuilds,
-      mcpEnabled: false,
-      isSuperAdmin,
-      selectedGuild,
-      selectedGuildId,
-      selectedGuildName,
-    });
-    const ollamaMessages = [
-      ...history.slice(-10).map((msg) => ({ role: msg.role, content: msg.content })),
-      { role: "user", content: `[${userName}]: ${message}` },
-    ];
-    try {
-      const text = await callOllamaChat({ system: systemPrompt, messages: ollamaMessages, model, baseUrl });
-      return { success: true, response: text };
-    } catch (error) {
-      log.error("[AI] Ollama request failed:", error.message);
-      return { success: false, error: `Ollama request failed: ${error.message}` };
-    }
-  }
+	// Direct console.log for debugging (bypasses LOG_LEVEL)
+	console.log('[AI] generateChatResponse called for user:', userName);
+	console.log('[AI] env keys:', Object.keys(env || {}));
+	console.log(
+		'[AI] Selected server:',
+		selectedGuildName || 'none',
+		`(${selectedGuildId || 'none'})`
+	);
+	console.log('[AI] User is superadmin:', isSuperAdmin);
 
-  const accountId = env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken = env.CLOUDFLARE_AI_TOKEN;
-  
-  console.log("[AI] CLOUDFLARE_ACCOUNT_ID:", accountId ? "SET" : "MISSING");
-  console.log("[AI] CLOUDFLARE_AI_TOKEN:", apiToken ? "SET" : "MISSING");
-  console.log("[AI] CLOUDFLARE_API_TOKEN:", env.CLOUDFLARE_API_TOKEN ? "SET" : "MISSING");
-  
-  if (!accountId || !apiToken) {
-    log.error("[AI] Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_AI_TOKEN");
-    return {
-      success: false,
-      error: "AI service not configured. Please set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN.",
-    };
-  }
-  
-  // Check if MCP is enabled (needs D1 access via Cloudflare API)
-  const mcpClient = getMCPClient(env);
-  const mcpEnabled = mcpClient.isConfigured();
-  const localRunnerIntent = detectLocalRunnerIntent(message);
-  
-  console.log("[AI] MCP enabled:", mcpEnabled);
-  
-  log.info(`[AI] MCP enabled: ${mcpEnabled}`);
+	// Local Ollama path (dev-only, opt-in via AI_PROVIDER=ollama). No MCP
+	// tool-calling here in v1 — local models don't use the Workers-AI tool
+	// format — so this is a plain chat completion. Workers AI keeps tool-calling.
+	if (isOllamaSelected(env)) {
+		const model = env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
+		const baseUrl = env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL;
+		const systemPrompt = buildSystemPrompt({
+			managedGuilds,
+			mcpEnabled: false,
+			isSuperAdmin,
+			selectedGuild,
+			selectedGuildId,
+			selectedGuildName,
+		});
+		const ollamaMessages = [
+			...history.slice(-10).map((msg) => ({ role: msg.role, content: msg.content })),
+			{ role: 'user', content: `[${userName}]: ${message}` },
+		];
+		try {
+			const text = await callOllamaChat({
+				system: systemPrompt,
+				messages: ollamaMessages,
+				model,
+				baseUrl,
+			});
+			return { success: true, response: text };
+		} catch (error) {
+			log.error('[AI] Ollama request failed:', error.message);
+			return { success: false, error: `Ollama request failed: ${error.message}` };
+		}
+	}
 
-  // Deterministic runner discovery path so visibility questions always hit tools.
-  if (localRunnerIntent.isVisibilityQuery) {
-    if (!mcpEnabled) {
-      return {
-        success: true,
-        response: "I can't check local runners right now because MCP tools are not configured on this deployment (missing CLOUDFLARE_API_TOKEN).",
-      };
-    }
+	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
+	const apiToken = env.CLOUDFLARE_AI_TOKEN;
 
-    const runnerResults = await executeToolCalls([
-      { tool: "list_local_runners", args: { includeOffline: true, limit: 100 } },
-    ], env, userId);
+	console.log('[AI] CLOUDFLARE_ACCOUNT_ID:', accountId ? 'SET' : 'MISSING');
+	console.log('[AI] CLOUDFLARE_AI_TOKEN:', apiToken ? 'SET' : 'MISSING');
+	console.log('[AI] CLOUDFLARE_API_TOKEN:', env.CLOUDFLARE_API_TOKEN ? 'SET' : 'MISSING');
 
-    const toolResult = runnerResults[0]?.result;
-    if (!toolResult?.success) {
-      return {
-        success: true,
-        response: `I tried to check your local runners, but the lookup failed: ${toolResult?.error || "unknown error"}`,
-        toolsUsed: ["list_local_runners"],
-      };
-    }
+	if (!accountId || !apiToken) {
+		log.error('[AI] Missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_AI_TOKEN');
+		return {
+			success: false,
+			error: 'AI service not configured. Please set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN.',
+		};
+	}
 
-    return {
-      success: true,
-      response: formatRunnerVisibilityResponse(toolResult.data || []),
-      toolsUsed: ["list_local_runners"],
-    };
-  }
-  
-  // Build system prompt with context including selected server and permissions
-  const systemPrompt = buildSystemPrompt({
-    managedGuilds,
-    mcpEnabled,
-    isSuperAdmin,
-    selectedGuild,
-    selectedGuildId,
-    selectedGuildName,
-  });
-  
-  // Build initial messages
-  const messages = [
-    { role: "system", content: systemPrompt },
-    ...history.slice(-10).map(msg => ({ role: msg.role, content: msg.content })),
-    { role: "user", content: `[${userName}]: ${message}` },
-  ];
-  
-  try {
-    // First AI call
-    let aiResponse = await callAI(messages, env);
-    console.log("[AI] Full initial response:", aiResponse);
-    
-    const toolsUsed = [];
-    const MAX_TOOL_ITERATIONS = Math.max(1, Math.min(20, Math.trunc(Number(maxToolIterations) || 5)));
-    let iteration = 0;
-    
-    // Tool call loop - keep processing until AI stops making tool calls or we hit the limit
-    while (iteration < MAX_TOOL_ITERATIONS) {
-      // Check if AI wants to use tools
-      const toolCalls = parseToolCalls(aiResponse);
-      console.log(`[AI] Iteration ${iteration + 1}: Parsed ${toolCalls.length} tool call(s)`, toolCalls.map(t => t.tool));
-      
-      if (toolCalls.length === 0 || !mcpEnabled) {
-        // No more tool calls, we're done
-        break;
-      }
-      
-      console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
-      
-      // Execute the tools
-      const results = await executeToolCalls(toolCalls, env, userId);
-      console.log("[AI] Tool results:", JSON.stringify(results, null, 2));
-      toolsUsed.push(...toolCalls.map(t => t.tool));
-      
-      // Add the tool results to the conversation
-      const toolResultsText = formatToolResults(results);
-      
-      // Add assistant response and tool results
-      messages.push({ role: "assistant", content: aiResponse });
-      messages.push({ 
-        role: "user", 
-        content: `Here are the results from the tools you requested:\n\n${toolResultsText}\n\nBased on these results, either use more tools if needed, or provide a helpful response to the user.` 
-      });
-      
-      // Get next response (may contain more tool calls or final answer)
-      aiResponse = await callAI(messages, env);
-      log.debug(`[AI] Response after iteration ${iteration + 1}:`, aiResponse.substring(0, 200));
-      
-      iteration++;
-    }
-    
-    if (iteration >= MAX_TOOL_ITERATIONS) {
-      log.warn("[AI] Hit max tool iterations limit");
-    }
-    
-    // Clean up response - remove tool blocks and related text for final output
-    let cleanResponse = aiResponse
-      .replace(/```tool\s*\n[\s\S]*?```/g, "")           // ```tool blocks
-      .replace(/```json\s*\n[\s\S]*?```/g, "")           // ```json blocks
-      .replace(/```\s*\n\{"tool"[\s\S]*?```/g, "")       // ``` blocks with tool JSON
-      .replace(/\{"tool"\s*:\s*"[^"]+"[^}]*\}/g, "")     // Raw tool JSON
-      .replace(/Please wait for the result\.*/gi, "")    // "Please wait" text
-      .replace(/Here's how to do it:\s*/gi, "")          // Instructional text
-      .replace(/This should return[^.]*\./gi, "")        // "This should return" text
-      .replace(/I can then provide[^.]*\./gi, "")        // "I can then provide" text
-      .replace(/\n{3,}/g, "\n\n")                         // Collapse multiple newlines
-      .trim();
-    
-    return {
-      success: true,
-      response: cleanResponse || "I processed your request but have no additional information to share.",
-      toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
-    };
-    
-  } catch (error) {
-    log.error("[AI] Request failed:", error.message);
-    return {
-      success: false,
-      error: `AI request failed: ${error.message}`,
-    };
-  }
+	// Check if MCP is enabled (needs D1 access via Cloudflare API)
+	const mcpClient = getMCPClient(env);
+	const mcpEnabled = mcpClient.isConfigured();
+	const localRunnerIntent = detectLocalRunnerIntent(message);
+
+	console.log('[AI] MCP enabled:', mcpEnabled);
+
+	log.info(`[AI] MCP enabled: ${mcpEnabled}`);
+
+	// Deterministic runner discovery path so visibility questions always hit tools.
+	if (localRunnerIntent.isVisibilityQuery) {
+		if (!mcpEnabled) {
+			return {
+				success: true,
+				response:
+					"I can't check local runners right now because MCP tools are not configured on this deployment (missing CLOUDFLARE_API_TOKEN).",
+			};
+		}
+
+		const runnerResults = await executeToolCalls(
+			[{ tool: 'list_local_runners', args: { includeOffline: true, limit: 100 } }],
+			env,
+			userId
+		);
+
+		const toolResult = runnerResults[0]?.result;
+		if (!toolResult?.success) {
+			return {
+				success: true,
+				response: `I tried to check your local runners, but the lookup failed: ${toolResult?.error || 'unknown error'}`,
+				toolsUsed: ['list_local_runners'],
+			};
+		}
+
+		return {
+			success: true,
+			response: formatRunnerVisibilityResponse(toolResult.data || []),
+			toolsUsed: ['list_local_runners'],
+		};
+	}
+
+	// Build system prompt with context including selected server and permissions
+	const systemPrompt = buildSystemPrompt({
+		managedGuilds,
+		mcpEnabled,
+		isSuperAdmin,
+		selectedGuild,
+		selectedGuildId,
+		selectedGuildName,
+	});
+
+	// Build initial messages
+	const messages = [
+		{ role: 'system', content: systemPrompt },
+		...history.slice(-10).map((msg) => ({ role: msg.role, content: msg.content })),
+		{ role: 'user', content: `[${userName}]: ${message}` },
+	];
+
+	try {
+		// First AI call
+		let aiResponse = await callAI(messages, env);
+		console.log('[AI] Full initial response:', aiResponse);
+
+		const toolsUsed = [];
+		const MAX_TOOL_ITERATIONS = Math.max(
+			1,
+			Math.min(20, Math.trunc(Number(maxToolIterations) || 5))
+		);
+		let iteration = 0;
+
+		// Tool call loop - keep processing until AI stops making tool calls or we hit the limit
+		while (iteration < MAX_TOOL_ITERATIONS) {
+			// Check if AI wants to use tools
+			const toolCalls = parseToolCalls(aiResponse);
+			console.log(
+				`[AI] Iteration ${iteration + 1}: Parsed ${toolCalls.length} tool call(s)`,
+				toolCalls.map((t) => t.tool)
+			);
+
+			if (toolCalls.length === 0 || !mcpEnabled) {
+				// No more tool calls, we're done
+				break;
+			}
+
+			console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
+
+			// Execute the tools
+			const results = await executeToolCalls(toolCalls, env, userId);
+			console.log('[AI] Tool results:', JSON.stringify(results, null, 2));
+			toolsUsed.push(...toolCalls.map((t) => t.tool));
+
+			// Add the tool results to the conversation
+			const toolResultsText = formatToolResults(results);
+
+			// Add assistant response and tool results
+			messages.push({ role: 'assistant', content: aiResponse });
+			messages.push({
+				role: 'user',
+				content: `Here are the results from the tools you requested:\n\n${toolResultsText}\n\nBased on these results, either use more tools if needed, or provide a helpful response to the user.`,
+			});
+
+			// Get next response (may contain more tool calls or final answer)
+			aiResponse = await callAI(messages, env);
+			log.debug(
+				`[AI] Response after iteration ${iteration + 1}:`,
+				aiResponse.substring(0, 200)
+			);
+
+			iteration++;
+		}
+
+		if (iteration >= MAX_TOOL_ITERATIONS) {
+			log.warn('[AI] Hit max tool iterations limit');
+		}
+
+		// Clean up response - remove tool blocks and related text for final output
+		const cleanResponse = aiResponse
+			.replace(/```tool\s*\n[\s\S]*?```/g, '') // ```tool blocks
+			.replace(/```json\s*\n[\s\S]*?```/g, '') // ```json blocks
+			.replace(/```\s*\n\{"tool"[\s\S]*?```/g, '') // ``` blocks with tool JSON
+			.replace(/\{"tool"\s*:\s*"[^"]+"[^}]*\}/g, '') // Raw tool JSON
+			.replace(/Please wait for the result\.*/gi, '') // "Please wait" text
+			.replace(/Here's how to do it:\s*/gi, '') // Instructional text
+			.replace(/This should return[^.]*\./gi, '') // "This should return" text
+			.replace(/I can then provide[^.]*\./gi, '') // "I can then provide" text
+			.replace(/\n{3,}/g, '\n\n') // Collapse multiple newlines
+			.trim();
+
+		return {
+			success: true,
+			response:
+				cleanResponse ||
+				'I processed your request but have no additional information to share.',
+			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+		};
+	} catch (error) {
+		log.error('[AI] Request failed:', error.message);
+		return {
+			success: false,
+			error: `AI request failed: ${error.message}`,
+		};
+	}
 }
 
 /**
@@ -976,7 +1028,7 @@ export async function generateChatResponse(options, env) {
  * @returns {boolean}
  */
 export function isAIEnabled(env) {
-  return Boolean(isOllamaSelected(env) || (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN));
+	return Boolean(isOllamaSelected(env) || (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN));
 }
 
 /**
@@ -985,7 +1037,7 @@ export function isAIEnabled(env) {
  * @returns {boolean}
  */
 export function isMCPEnabled(env) {
-  return Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
+	return Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
 }
 
 export { detectLocalRunnerIntent, formatRunnerVisibilityResponse };

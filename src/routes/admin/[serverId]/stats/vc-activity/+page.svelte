@@ -3,18 +3,25 @@
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { onMount } from 'svelte';
 
-	let { data } = $props();
+	const { data } = $props();
 
 	const LIVE_VOICE_POLL_MS = 15000;
 	const VOICE_LOG_FILTER_DEBOUNCE_MS = 220;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
-	const voiceActivityLog = $derived(Array.isArray(data.voiceActivityLog) ? data.voiceActivityLog : []);
-	const voiceEventTypeOptions = $derived(Array.isArray(data.voiceEventTypeOptions) ? data.voiceEventTypeOptions : []);
+	const voiceActivityLog = $derived(
+		Array.isArray(data.voiceActivityLog) ? data.voiceActivityLog : []
+	);
+	const voiceEventTypeOptions = $derived(
+		Array.isArray(data.voiceEventTypeOptions) ? data.voiceEventTypeOptions : []
+	);
 
 	function normalizeVoiceLogPagination(pagination?: any) {
 		const pageSize = Number(pagination?.pageSize || 30);
 		const total = Number(pagination?.total || 0);
-		const totalPages = Math.max(1, Number(pagination?.totalPages || Math.ceil(total / pageSize) || 1));
+		const totalPages = Math.max(
+			1,
+			Number(pagination?.totalPages || Math.ceil(total / pageSize) || 1)
+		);
 		const page = Math.min(Math.max(Number(pagination?.page || 1), 1), totalPages);
 
 		return {
@@ -38,7 +45,9 @@
 	}
 
 	const initialVoiceLogFilters = $derived(getInitialVoiceLogFilters(data.voiceActivityFilters));
-	const initialVoiceLogPagination = $derived(normalizeVoiceLogPagination(data.voiceActivityPagination));
+	const initialVoiceLogPagination = $derived(
+		normalizeVoiceLogPagination(data.voiceActivityPagination)
+	);
 
 	let voiceLogEntries = $state([]);
 	let voiceLogPagination = $state(normalizeVoiceLogPagination());
@@ -75,10 +84,13 @@
 
 		try {
 			const params = buildVoiceLogQueryParams({ page: 1 });
-			const response = await fetch(`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`, {
-				headers: { accept: 'application/json' },
-				signal: voiceLogLiveRefreshController.signal,
-			});
+			const response = await fetch(
+				`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`,
+				{
+					headers: { accept: 'application/json' },
+					signal: voiceLogLiveRefreshController.signal,
+				}
+			);
 			if (!response.ok) return;
 			const payload = await response.json();
 			voiceLogEntries = Array.isArray(payload?.entries) ? payload.entries : [];
@@ -148,7 +160,10 @@
 		let stream;
 
 		if (liveUpdatesAuth?.signature && liveUpdatesAuth?.userId && liveUpdatesAuth?.expiresAt) {
-			const streamUrl = new URL(`/api/admin/${data.serverId}/live-updates/stream`, window.location.origin);
+			const streamUrl = new URL(
+				`/api/admin/${data.serverId}/live-updates/stream`,
+				window.location.origin
+			);
 			streamUrl.searchParams.set('user', liveUpdatesAuth.userId);
 			streamUrl.searchParams.set('exp', String(liveUpdatesAuth.expiresAt));
 			streamUrl.searchParams.set('sig', liveUpdatesAuth.signature);
@@ -227,13 +242,26 @@
 			{ key: 'stream', label: 'Share', active: !!member.streaming, tone: 'stream' },
 			{ key: 'self-mute', label: 'Self Mute', active: !!member.selfMute, tone: 'self-mute' },
 			{ key: 'self-deaf', label: 'Self Deaf', active: !!member.selfDeaf, tone: 'self-deaf' },
-			{ key: 'server-mute', label: 'Server Mute', active: !!member.serverMute, tone: 'server-mute' },
-			{ key: 'server-deaf', label: 'Server Deaf', active: !!member.serverDeaf, tone: 'server-deaf' },
+			{
+				key: 'server-mute',
+				label: 'Server Mute',
+				active: !!member.serverMute,
+				tone: 'server-mute',
+			},
+			{
+				key: 'server-deaf',
+				label: 'Server Deaf',
+				active: !!member.serverDeaf,
+				tone: 'server-deaf',
+			},
 			{ key: 'stage', label: 'Suppressed', active: !!member.suppress, tone: 'stage' },
 		];
 	}
 
-	function buildVoiceLogQueryParams({ page = voiceLogPagination.page, pageSize = voiceLogPageSize } = {}) {
+	function buildVoiceLogQueryParams({
+		page = voiceLogPagination.page,
+		pageSize = voiceLogPageSize,
+	} = {}) {
 		const params = new URLSearchParams();
 		params.set('page', String(Math.max(1, page)));
 		params.set('pageSize', String(Math.max(1, Number(pageSize) || 30)));
@@ -292,10 +320,13 @@
 
 			try {
 				const params = buildVoiceLogQueryParams();
-				const response = await fetch(`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`, {
-					headers: { accept: 'application/json' },
-					signal: voiceLogAbortController.signal,
-				});
+				const response = await fetch(
+					`/api/admin/${data.serverId}/voice-activity-log?${params.toString()}`,
+					{
+						headers: { accept: 'application/json' },
+						signal: voiceLogAbortController.signal,
+					}
+				);
 
 				if (!response.ok) {
 					throw new Error(`Failed to load history (${response.status})`);
@@ -376,7 +407,9 @@
 			<div class="title-row">
 				<div class="title-section">
 					<h1>🔴 VC activity</h1>
-					<p class="subtitle">Real-time voice activity for {data.guild?.name || 'your server'}</p>
+					<p class="subtitle">
+						Real-time voice activity for {data.guild?.name || 'your server'}
+					</p>
 				</div>
 				<div class="header-actions">
 					<div class="live-voice-actions">
@@ -389,7 +422,9 @@
 							class:live-voice-refresh--connected={liveVoiceStreamConnected}
 							onclick={() => refreshLiveVoiceSnapshot()}
 							disabled={liveVoiceRefreshing || liveVoiceStreamConnected}
-							title={liveVoiceStreamConnected ? 'Live updates active via WebSocket' : 'Click to manually refresh'}
+							title={liveVoiceStreamConnected
+								? 'Live updates active via WebSocket'
+								: 'Click to manually refresh'}
 						>
 							{#if liveVoiceStreamConnected}
 								<span class="live-voice-refresh-dot"></span> Live
@@ -407,24 +442,34 @@
 
 	<div class="page-body">
 		<div class="updated-label">
-			{liveVoiceSnapshot.updatedAt ? `Updated ${formatRelativeTime(liveVoiceSnapshot.updatedAt)}` : 'Waiting for voice snapshot'}
+			{liveVoiceSnapshot.updatedAt
+				? `Updated ${formatRelativeTime(liveVoiceSnapshot.updatedAt)}`
+				: 'Waiting for voice snapshot'}
 		</div>
 
 		<div class="live-voice-summary-grid">
 			<div class="live-voice-summary-card">
-				<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.totalChannels)}</span>
+				<span class="live-voice-summary-value"
+					>{formatNumber(liveVoiceSnapshot.totalChannels)}</span
+				>
 				<span class="live-voice-summary-label">Active Channels</span>
 			</div>
 			<div class="live-voice-summary-card">
-				<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.totalUsers)}</span>
+				<span class="live-voice-summary-value"
+					>{formatNumber(liveVoiceSnapshot.totalUsers)}</span
+				>
 				<span class="live-voice-summary-label">People In Voice</span>
 			</div>
 			<div class="live-voice-summary-card">
-				<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.activeCameras)}</span>
+				<span class="live-voice-summary-value"
+					>{formatNumber(liveVoiceSnapshot.activeCameras)}</span
+				>
 				<span class="live-voice-summary-label">Cameras On</span>
 			</div>
 			<div class="live-voice-summary-card">
-				<span class="live-voice-summary-value">{formatNumber(liveVoiceSnapshot.activeStreams)}</span>
+				<span class="live-voice-summary-value"
+					>{formatNumber(liveVoiceSnapshot.activeStreams)}</span
+				>
 				<span class="live-voice-summary-label">Screensharing</span>
 			</div>
 		</div>
@@ -436,7 +481,10 @@
 						<div class="live-voice-channel-header">
 							<div>
 								<h3 class="live-voice-channel-name">{channel.channelName}</h3>
-								<p class="live-voice-channel-meta">{channel.memberCount} {channel.memberCount === 1 ? 'member' : 'members'}</p>
+								<p class="live-voice-channel-meta">
+									{channel.memberCount}
+									{channel.memberCount === 1 ? 'member' : 'members'}
+								</p>
 							</div>
 							<span class="live-voice-channel-count">{channel.memberCount}</span>
 						</div>
@@ -446,23 +494,40 @@
 								<div class="live-voice-member-row">
 									<div class="live-voice-member-avatar-wrap">
 										{#if member.avatarUrl}
-											<img class="live-voice-member-avatar" src={member.avatarUrl} alt={member.displayName} />
+											<img
+												class="live-voice-member-avatar"
+												src={member.avatarUrl}
+												alt={member.displayName}
+											/>
 										{:else}
-											<div class="live-voice-member-avatar live-voice-member-avatar-fallback">{getAvatarInitial(member.displayName || member.userName)}</div>
+											<div
+												class="live-voice-member-avatar live-voice-member-avatar-fallback"
+											>
+												{getAvatarInitial(
+													member.displayName || member.userName
+												)}
+											</div>
 										{/if}
 									</div>
 
 									<div class="live-voice-member-main">
 										<div class="live-voice-member-heading">
-											<span class="live-voice-member-name">{member.displayName}</span>
+											<span class="live-voice-member-name"
+												>{member.displayName}</span
+											>
 											{#if member.userName && member.userName !== member.displayName}
-												<span class="live-voice-member-handle">@{member.userName}</span>
+												<span class="live-voice-member-handle"
+													>@{member.userName}</span
+												>
 											{/if}
 										</div>
 
 										<div class="live-voice-badge-row">
 											{#each getLiveVoiceBadges(member) as badge}
-												<span class={`live-voice-badge ${badge.active ? 'active' : 'inactive'} ${badge.tone}`} title={`${badge.label}: ${badge.active ? 'on' : 'off'}`}>
+												<span
+													class={`live-voice-badge ${badge.active ? 'active' : 'inactive'} ${badge.tone}`}
+													title={`${badge.label}: ${badge.active ? 'on' : 'off'}`}
+												>
 													{badge.label}
 												</span>
 											{/each}
@@ -523,12 +588,20 @@
 
 				<label class="voice-log-filter">
 					<span>From</span>
-					<input type="date" bind:value={voiceLogStartDate} onchange={onVoiceLogFilterChange} />
+					<input
+						type="date"
+						bind:value={voiceLogStartDate}
+						onchange={onVoiceLogFilterChange}
+					/>
 				</label>
 
 				<label class="voice-log-filter">
 					<span>To</span>
-					<input type="date" bind:value={voiceLogEndDate} onchange={onVoiceLogFilterChange} />
+					<input
+						type="date"
+						bind:value={voiceLogEndDate}
+						onchange={onVoiceLogFilterChange}
+					/>
 				</label>
 
 				<label class="voice-log-filter">
@@ -558,29 +631,46 @@
 								<span class="voice-log-actor">
 									{#if entry.actorId}
 										<img
-											src={getAvatarUrl(entry.actorId, entry.actorAvatar, entry.actorDiscriminator, 20)}
+											src={getAvatarUrl(
+												entry.actorId,
+												entry.actorAvatar,
+												entry.actorDiscriminator,
+												20
+											)}
 											alt="{entry.actorName}'s avatar"
 											class="voice-log-actor-avatar"
-											onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+											onerror={(e) => {
+												(e.target as HTMLElement).style.display = 'none';
+											}}
 										/>
 									{/if}
 									{entry.actorName}
 								</span>
-								<span class="voice-log-action-icon" title={entry.actionLabel} aria-label={entry.actionLabel}>
+								<span
+									class="voice-log-action-icon"
+									title={entry.actionLabel}
+									aria-label={entry.actionLabel}
+								>
 									{entry.actionIcon || '🎤'}
 								</span>
 								<span class="voice-log-action">{entry.actionLabel}</span>
 								<span class="voice-log-channel">in {entry.channelName}</span>
 							</div>
 							<span class="voice-log-time" title={entry.createdAt || ''}>
-								{entry.createdAt ? formatRelativeTime(entry.createdAt) : 'Unknown time'}
+								{entry.createdAt
+									? formatRelativeTime(entry.createdAt)
+									: 'Unknown time'}
 							</span>
 						</div>
 					{/each}
 				</div>
 
 				<div class="voice-log-pagination">
-					<button type="button" onclick={() => goToVoiceLogPage(1)} disabled={voiceLogLoading || !voiceLogPagination.hasPreviousPage}>
+					<button
+						type="button"
+						onclick={() => goToVoiceLogPage(1)}
+						disabled={voiceLogLoading || !voiceLogPagination.hasPreviousPage}
+					>
 						First
 					</button>
 					<button
@@ -726,8 +816,8 @@
 	}
 
 	.live-voice-refresh--connected {
-		border-color: #57F287;
-		color: #57F287;
+		border-color: #57f287;
+		color: #57f287;
 		cursor: default;
 	}
 
@@ -736,15 +826,20 @@
 		width: 0.5rem;
 		height: 0.5rem;
 		border-radius: 50%;
-		background: #57F287;
-		box-shadow: 0 0 6px #57F287;
+		background: #57f287;
+		box-shadow: 0 0 6px #57f287;
 		animation: live-pulse 1.5s ease-in-out infinite;
 		margin-right: 0.1rem;
 	}
 
 	@keyframes live-pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.4; }
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.4;
+		}
 	}
 
 	.live-voice-summary-grid {
@@ -791,7 +886,11 @@
 	}
 
 	.live-voice-channel-card {
-		background: linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-soft) 12%) 0%, var(--color-surface) 100%);
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--color-surface) 88%, var(--color-primary-soft) 12%) 0%,
+			var(--color-surface) 100%
+		);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		padding: 1rem;
@@ -865,7 +964,11 @@
 		justify-content: center;
 		font-weight: 700;
 		color: var(--color-text);
-		background: linear-gradient(135deg, var(--color-primary-soft), color-mix(in srgb, var(--color-primary) 20%, var(--color-surface)));
+		background: linear-gradient(
+			135deg,
+			var(--color-primary-soft),
+			color-mix(in srgb, var(--color-primary) 20%, var(--color-surface))
+		);
 	}
 
 	.live-voice-member-main {

@@ -8,12 +8,9 @@ import {
   logAutomationExecution,
 } from "../db/automations.js";
 import { callWebhook, getWebhook } from "../db/webhooks.js";
-import {
-  createScheduledMessage,
-  parseDelay,
-} from "../db/scheduled-messages.js";
+import { createScheduledMessage } from "../db/scheduled-messages.js";
 import { log } from "../log.js";
-import { detectCommandResult, getBot } from "../discord/bots.js";
+import { detectCommandResult } from "../discord/bots.js";
 import {
   fetchSignedWidgetPng,
   resolveWidgetOrigin,
@@ -184,7 +181,7 @@ async function sendInteractionFollowup(
   applicationId,
   interactionToken,
   payload,
-  botToken,
+  _botToken,
 ) {
   const res = await fetch(
     `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,

@@ -2,29 +2,29 @@
 	import { log } from '$lib/log.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	
-	let { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
+
+	const { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
-	
+
 	// Debug logging
 	$effect(() => {
 		log.debug('[ServerSelector] guilds:', guilds.length, guilds);
 		log.debug('[ServerSelector] selectedGuildId:', selectedGuildId);
 	});
-	
+
 	// Filter to only show servers where the bot is installed
-	const availableGuilds = $derived(guilds.filter(g => g.botIsInServer !== false));
-	
-	const selectedGuild = $derived(availableGuilds.find(g => g.id === selectedGuildId));
-	
+	const availableGuilds = $derived(guilds.filter((g) => g.botIsInServer !== false));
+
+	const selectedGuild = $derived(availableGuilds.find((g) => g.id === selectedGuildId));
+
 	function toggleDropdown() {
 		isOpen = !isOpen;
 	}
-	
+
 	function closeDropdown() {
 		isOpen = false;
 	}
-	
+
 	function selectGuild(guildId) {
 		closeDropdown();
 		const pathname = $page.url.pathname;
@@ -39,7 +39,7 @@
 
 		goto(`${basePath}/${guildId}`, { invalidateAll: true });
 	}
-	
+
 	function handleKeydown(event) {
 		if (event.key === 'Escape') {
 			closeDropdown();
@@ -51,7 +51,7 @@
 
 {#if availableGuilds.length > 0}
 	<div class="server-selector" class:open={isOpen}>
-		<button 
+		<button
 			class="selector-trigger"
 			onclick={toggleDropdown}
 			aria-expanded={isOpen}
@@ -60,8 +60,8 @@
 		>
 			{#if selectedGuild}
 				{#if selectedGuild.icon}
-					<img 
-						src="https://cdn.discordapp.com/icons/{selectedGuild.id}/{selectedGuild.icon}.png?size=32" 
+					<img
+						src="https://cdn.discordapp.com/icons/{selectedGuild.id}/{selectedGuild.icon}.png?size=32"
 						alt=""
 						class="server-icon"
 					/>
@@ -75,10 +75,16 @@
 				<span class="server-name placeholder">Select server</span>
 			{/if}
 			<svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
-				<path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				<path
+					d="M3 4.5L6 7.5L9 4.5"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				/>
 			</svg>
 		</button>
-		
+
 		{#if isOpen}
 			<!-- svelte-ignore a11y_click_events_have_key_events -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -94,8 +100,8 @@
 							onclick={() => selectGuild(guild.id)}
 						>
 							{#if guild.icon}
-								<img 
-									src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=32" 
+								<img
+									src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=32"
 									alt=""
 									class="item-icon"
 								/>
@@ -113,9 +119,25 @@
 				{/each}
 				<li class="dropdown-divider"></li>
 				<li>
-					<a href="/admin/servers/add" class="dropdown-item add-server-btn" onclick={closeDropdown}>
-						<svg class="add-icon" width="24" height="24" viewBox="0 0 24 24" fill="none">
-							<path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+					<a
+						href="/admin/servers/add"
+						class="dropdown-item add-server-btn"
+						onclick={closeDropdown}
+					>
+						<svg
+							class="add-icon"
+							width="24"
+							height="24"
+							viewBox="0 0 24 24"
+							fill="none"
+						>
+							<path
+								d="M12 5V19M5 12H19"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+							/>
 						</svg>
 						<span class="item-name">Add Server...</span>
 					</a>
@@ -126,7 +148,13 @@
 {:else}
 	<a href="/admin/servers/add" class="add-server-link">
 		<svg class="add-icon-small" width="16" height="16" viewBox="0 0 24 24" fill="none">
-			<path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			<path
+				d="M12 5V19M5 12H19"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			/>
 		</svg>
 		Add Server...
 	</a>
@@ -136,7 +164,7 @@
 	.server-selector {
 		position: relative;
 	}
-	
+
 	.selector-trigger {
 		display: flex;
 		align-items: center;
@@ -148,21 +176,23 @@
 		color: var(--color-text);
 		font-size: 0.875rem;
 		cursor: pointer;
-		transition: border-color var(--transition-fast), background var(--transition-fast);
+		transition:
+			border-color var(--transition-fast),
+			background var(--transition-fast);
 		max-width: 180px;
 	}
-	
+
 	.selector-trigger:hover {
 		border-color: var(--color-primary);
 		background: var(--color-surface-hover);
 	}
-	
+
 	.selector-trigger:focus {
 		outline: none;
 		border-color: var(--color-primary);
 		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.25);
 	}
-	
+
 	.server-icon {
 		width: 24px;
 		height: 24px;
@@ -170,7 +200,7 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	.server-icon-placeholder {
 		width: 24px;
 		height: 24px;
@@ -184,34 +214,34 @@
 		font-size: 0.75rem;
 		flex-shrink: 0;
 	}
-	
+
 	.server-name {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-weight: 500;
 	}
-	
+
 	.server-name.placeholder {
 		color: var(--color-text-muted);
 	}
-	
+
 	.chevron {
 		flex-shrink: 0;
 		transition: transform var(--transition-fast);
 		color: var(--color-text-muted);
 	}
-	
+
 	.server-selector.open .chevron {
 		transform: rotate(180deg);
 	}
-	
+
 	.dropdown-backdrop {
 		position: fixed;
 		inset: 0;
 		z-index: 99;
 	}
-	
+
 	.dropdown-list {
 		position: absolute;
 		top: calc(100% + 0.5rem);
@@ -229,7 +259,7 @@
 		border-radius: var(--radius-md);
 		box-shadow: var(--shadow-lg);
 	}
-	
+
 	.dropdown-item {
 		display: flex;
 		align-items: center;
@@ -245,34 +275,34 @@
 		cursor: pointer;
 		transition: background var(--transition-fast);
 	}
-	
+
 	.dropdown-item:hover {
 		background: var(--color-surface-hover);
 	}
-	
+
 	.dropdown-item.selected {
 		background: var(--color-primary-soft);
 	}
-	
+
 	.dropdown-item.add-server-btn {
 		color: var(--color-primary);
 		text-decoration: none;
 	}
-	
+
 	.dropdown-item.add-server-btn:hover {
 		background: var(--color-primary-soft);
 	}
-	
+
 	.dropdown-divider {
 		height: 1px;
 		margin: 0.375rem 0;
 		background: var(--color-border);
 	}
-	
+
 	.add-icon {
 		flex-shrink: 0;
 	}
-	
+
 	.add-server-link {
 		display: flex;
 		align-items: center;
@@ -286,16 +316,16 @@
 		text-decoration: none;
 		transition: background var(--transition-fast);
 	}
-	
+
 	.add-server-link:hover {
 		background: var(--color-primary-button-hover);
 		color: var(--color-primary-button-text);
 	}
-	
+
 	.add-icon-small {
 		flex-shrink: 0;
 	}
-	
+
 	.item-icon {
 		width: 24px;
 		height: 24px;
@@ -303,7 +333,7 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	.item-icon-placeholder {
 		width: 24px;
 		height: 24px;
@@ -317,14 +347,14 @@
 		font-size: 0.75rem;
 		flex-shrink: 0;
 	}
-	
+
 	.item-name {
 		flex: 1;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	
+
 	.badge {
 		flex-shrink: 0;
 		padding: 0.125rem 0.375rem;
@@ -333,28 +363,28 @@
 		font-weight: 600;
 		text-transform: uppercase;
 	}
-	
+
 	.badge.owner {
 		background: var(--color-primary-soft);
 		color: var(--color-primary);
 	}
-	
+
 	/* Mobile responsive */
 	@media (max-width: 480px) {
 		.selector-trigger {
 			max-width: 140px;
 			padding: 0.25rem 0.5rem;
 		}
-		
+
 		.server-name {
 			display: none;
 		}
-		
+
 		.selector-trigger:has(.server-icon),
 		.selector-trigger:has(.server-icon-placeholder) {
 			max-width: none;
 		}
-		
+
 		.dropdown-list {
 			position: fixed;
 			top: auto;
@@ -365,7 +395,7 @@
 			max-height: 60vh;
 			border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 		}
-		
+
 		.dropdown-item {
 			padding: 0.75rem;
 		}

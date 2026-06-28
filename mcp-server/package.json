@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "description": "MCP server for SpaceBot - read events, automations, commands, and server settings",
   "type": "module",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js"
+    "start": "bun index.ts",
+    "dev": "bun --watch index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

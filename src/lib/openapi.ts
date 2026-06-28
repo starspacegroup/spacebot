@@ -1,0 +1,61 @@
+export const openApiDocument = {
+	openapi: '3.1.0',
+	info: {
+		title: 'SpaceBot API',
+		version: '1.0.0',
+		description:
+			'Stable external API for SpaceBot stats, settings, commands, automations, and integrations.',
+	},
+	servers: [{ url: '/api/v1' }],
+	components: {
+		securitySchemes: {
+			bearerApiKey: { type: 'http', scheme: 'bearer', bearerFormat: 'SpaceBot API key' },
+		},
+		schemas: {
+			Error: {
+				type: 'object',
+				properties: { error: { type: 'string' } },
+				required: ['error'],
+			},
+		},
+	},
+	security: [{ bearerApiKey: [] }],
+	paths: {
+		'/stats': {
+			get: {
+				summary: 'Read server statistics',
+				parameters: [
+					{ name: 'days', in: 'query', schema: { type: 'integer', maximum: 90 } },
+				],
+				responses: {
+					'200': { description: 'Statistics payload' },
+					'429': { description: 'Rate limited' },
+				},
+			},
+		},
+		'/settings': {
+			get: {
+				summary: 'Read guild settings',
+				responses: { '200': { description: 'Settings payload' } },
+			},
+		},
+		'/commands': {
+			get: {
+				summary: 'List custom commands',
+				responses: { '200': { description: 'Command list' } },
+			},
+		},
+		'/automations': {
+			get: {
+				summary: 'List automations',
+				responses: { '200': { description: 'Automation list' } },
+			},
+		},
+		'/integrations/status': {
+			get: {
+				summary: 'Read integration status',
+				responses: { '200': { description: 'Integration status' } },
+			},
+		},
+	},
+};

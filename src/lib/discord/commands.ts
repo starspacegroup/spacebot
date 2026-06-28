@@ -3,16 +3,16 @@
  * Register these commands using the Discord API
  */
 
-import { log } from "../log.js";
+import { log } from '../log.js';
 import {
 	ensureBuiltInCommands,
 	getBuiltInCommandsForGuild,
 	getGuildCommands,
 	markCommandRegistered,
 	toDiscordCommand,
-} from "../db/commands.js";
-import { getEnabledGuildIntegrations } from "../db/integrations.js";
-import { getIntegrationCommands } from "../integrations/registry.js";
+} from '../db/commands.js';
+import { getEnabledGuildIntegrations } from '../db/integrations.js';
+import { getIntegrationCommands } from '../integrations/registry.js';
 
 /**
  * Hardcoded built-in command definitions for initial registration (before DB is available).
@@ -20,53 +20,53 @@ import { getIntegrationCommands } from "../integrations/registry.js";
  */
 export const commands = [
 	{
-		name: "ping",
-		description: "Check if the bot is responsive",
+		name: 'ping',
+		description: 'Check if the bot is responsive',
 		type: 1, // CHAT_INPUT
 	},
 	{
-		name: "info",
-		description: "View bot information and statistics",
+		name: 'info',
+		description: 'View bot information and statistics',
 		type: 1, // CHAT_INPUT
 	},
 	{
-		name: "help",
-		description: "Get help with bot commands",
+		name: 'help',
+		description: 'Get help with bot commands',
 		type: 1, // CHAT_INPUT
 		dm_permission: true,
 	},
 	{
-		name: "stats",
-		description: "Show server stats charts and voice leaderboards",
+		name: 'stats',
+		description: 'Show server stats charts and voice leaderboards',
 		type: 1, // CHAT_INPUT
 		options: [
 			{
-				name: "type",
-				description: "Which stats to show",
+				name: 'type',
+				description: 'Which stats to show',
 				type: 3, // STRING
 				required: false,
 				choices: [
-					{ name: "Voice Leaderboard", value: "voice_leaderboard" },
-					{ name: "Voice Time", value: "voice_time" },
-					{ name: "Voice Users", value: "voice_users" },
-					{ name: "Voice Peak", value: "voice_peak" },
-					{ name: "Member Count", value: "member_count" },
-					{ name: "Member Growth", value: "member_growth" },
-					{ name: "Member Joins", value: "member_joins" },
-					{ name: "Member Leaves", value: "member_leaves" },
-					{ name: "Member Net Change", value: "member_net_change" },
-					{ name: "Message Count", value: "message_count" },
-					{ name: "Message Authors", value: "message_users" },
+					{ name: 'Voice Leaderboard', value: 'voice_leaderboard' },
+					{ name: 'Voice Time', value: 'voice_time' },
+					{ name: 'Voice Users', value: 'voice_users' },
+					{ name: 'Voice Peak', value: 'voice_peak' },
+					{ name: 'Member Count', value: 'member_count' },
+					{ name: 'Member Growth', value: 'member_growth' },
+					{ name: 'Member Joins', value: 'member_joins' },
+					{ name: 'Member Leaves', value: 'member_leaves' },
+					{ name: 'Member Net Change', value: 'member_net_change' },
+					{ name: 'Message Count', value: 'message_count' },
+					{ name: 'Message Authors', value: 'message_users' },
 				],
 			},
 			{
-				name: "period",
-				description: "Time period",
+				name: 'period',
+				description: 'Time period',
 				type: 3, // STRING
 				required: false,
 				choices: [
-					{ name: "Last 30 days", value: "30d" },
-					{ name: "Last 7 days", value: "7d" },
+					{ name: 'Last 30 days', value: '30d' },
+					{ name: 'Last 7 days', value: '7d' },
 				],
 			},
 		],
@@ -91,10 +91,10 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 
 	try {
 		const response = await fetch(url, {
-			method: "PUT",
+			method: 'PUT',
 			headers: {
-				"Content-Type": "application/json",
-				"Authorization": `Bot ${botToken}`,
+				'Content-Type': 'application/json',
+				Authorization: `Bot ${botToken}`,
 			},
 			body: JSON.stringify(commands),
 		});
@@ -105,10 +105,10 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 		}
 
 		const data = await response.json();
-		log.info("Successfully registered commands:", data);
+		log.info('Successfully registered commands:', data);
 		return data;
 	} catch (error) {
-		log.error("Error registering commands:", error);
+		log.error('Error registering commands:', error);
 		throw error;
 	}
 }
@@ -128,13 +128,13 @@ export async function syncGuildCommands(db, guildId, env) {
 	const clientId = env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
 
 	if (!botToken || !clientId) {
-		log.warn("syncGuildCommands: Bot configuration not available, skipping sync");
-		return { success: false, error: "Bot configuration not available" };
+		log.warn('syncGuildCommands: Bot configuration not available, skipping sync');
+		return { success: false, error: 'Bot configuration not available' };
 	}
 
 	if (!db) {
-		log.warn("syncGuildCommands: Database not available, skipping sync");
-		return { success: false, error: "Database not available" };
+		log.warn('syncGuildCommands: Database not available, skipping sync');
+		return { success: false, error: 'Database not available' };
 	}
 
 	try {
@@ -144,8 +144,8 @@ export async function syncGuildCommands(db, guildId, env) {
 		// Get built-in commands from DB with per-guild overrides applied.
 		const builtInCommands = await getBuiltInCommandsForGuild(db, guildId);
 		const builtInDiscord = builtInCommands
-			.filter(cmd => cmd.enabled)
-			.map(cmd => toDiscordCommand(cmd))
+			.filter((cmd) => cmd.enabled)
+			.map((cmd) => toDiscordCommand(cmd))
 			.flat();
 
 		// Get all enabled custom commands
@@ -168,21 +168,25 @@ export async function syncGuildCommands(db, guildId, env) {
 		// Register commands regardless of status so they remain available in Discord
 		// even if the integration is temporarily offline. The interaction handler
 		// will show an appropriate message if the integration cannot handle the command.
-		let integrationCommands = [];
+		const integrationCommands = [];
 		try {
 			const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
 			for (const integration of enabledIntegrations) {
 				const cmds = getIntegrationCommands(integration);
 				if (cmds.length > 0) {
-					log.debug(`syncGuildCommands: Adding ${cmds.length} command(s) from ${integration.slug} (status: ${integration.status || 'unknown'})`);
+					log.debug(
+						`syncGuildCommands: Adding ${cmds.length} command(s) from ${integration.slug} (status: ${integration.status || 'unknown'})`
+					);
 				}
 				integrationCommands.push(...cmds);
 			}
 			if (integrationCommands.length > 0) {
-				log.info(`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`);
+				log.info(
+					`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`
+				);
 			}
 		} catch (err) {
-			log.warn("syncGuildCommands: Failed to load integration commands:", err);
+			log.warn('syncGuildCommands: Failed to load integration commands:', err);
 		}
 
 		// Combine built-in (from DB), custom, and integration commands
@@ -196,9 +200,9 @@ export async function syncGuildCommands(db, guildId, env) {
 		const url = `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
 
 		const response = await fetch(url, {
-			method: "PUT",
+			method: 'PUT',
 			headers: {
-				"Content-Type": "application/json",
+				'Content-Type': 'application/json',
 				Authorization: `Bot ${botToken}`,
 			},
 			body: JSON.stringify(allCommands),
@@ -206,7 +210,7 @@ export async function syncGuildCommands(db, guildId, env) {
 
 		if (!response.ok) {
 			const error = await response.text();
-			log.error("syncGuildCommands: Discord registration error:", error);
+			log.error('syncGuildCommands: Discord registration error:', error);
 			return { success: false, error: `Discord API error: ${error}` };
 		}
 
@@ -220,10 +224,12 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
-		log.info(`syncGuildCommands: Synced ${registeredCommands.length} commands for guild ${guildId}`);
+		log.info(
+			`syncGuildCommands: Synced ${registeredCommands.length} commands for guild ${guildId}`
+		);
 		return { success: true, registered: registeredCommands.length };
 	} catch (error) {
-		log.error("syncGuildCommands error:", error);
+		log.error('syncGuildCommands error:', error);
 		return { success: false, error: error.message || String(error) };
 	}
 }

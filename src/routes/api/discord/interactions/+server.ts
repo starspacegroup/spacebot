@@ -1,29 +1,27 @@
-import { json } from "@sveltejs/kit";
-import {
-	InteractionResponseType,
-	InteractionType,
-	verifyKey,
-} from "discord-interactions";
+import { json } from '@sveltejs/kit';
+import { InteractionResponseType, InteractionType, verifyKey } from 'discord-interactions';
 import {
 	buildCommandContext,
 	getCommandByName,
 	logCommandExecution,
 	recordCommandUse,
-} from "$lib/db/commands.js";
-import { executeAction, processTemplate } from "$lib/automation/engine.js";
-import { log } from "$lib/db/logger.js";
-import { getEnabledGuildIntegrations } from "$lib/db/integrations.js";
-import { getIntegrationCommands } from "$lib/integrations/registry.js";
-import { getLatestServerStats } from "$lib/db/server-stats.js";
-import { getGuildMetadata } from "$lib/db/guild-metadata.js";
+} from '$lib/db/commands.js';
+import { executeAction, processTemplate } from '$lib/automation/engine.js';
+import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
+import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
+import { log } from '$lib/db/logger.js';
+import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
+import { getIntegrationCommands } from '$lib/integrations/registry.js';
+import { getLatestServerStats } from '$lib/db/server-stats.js';
+import { getGuildMetadata } from '$lib/db/guild-metadata.js';
 import {
 	getMemberGrowthChart,
 	getMessageActivityChart,
 	getVoiceActivityChart,
 	runStatsAggregation,
-} from "$lib/db/stats-aggregation.js";
-import { getTopVoiceUsers } from "$lib/db/statistics.js";
-import { WIDGET_TYPES } from "$lib/stats-widget.js";
+} from '$lib/db/stats-aggregation.js';
+import { getTopVoiceUsers } from '$lib/db/statistics.js';
+import { WIDGET_TYPES } from '$lib/stats-widget.js';
 
 /** Cloudflare-style platform context with env bindings and waitUntil. */
 interface PlatformLike {
@@ -54,6 +52,7 @@ interface ActionEvent {
 	voice_channel_id?: any;
 	voice_channel_name?: any;
 	target_id?: any;
+	target_message_id?: any;
 }
 
 /** Result returned by action execution / accumulated across actions. */
@@ -80,20 +79,20 @@ async function verifyWithWebCrypto(body, signature, timestamp, publicKey) {
 	try {
 		const encoder = new TextEncoder();
 		const key = await crypto.subtle.importKey(
-			"raw",
+			'raw',
 			hexToUint8Array(publicKey),
-			{ name: "Ed25519", namedCurve: "Ed25519" },
+			{ name: 'Ed25519', namedCurve: 'Ed25519' },
 			false,
-			["verify"],
+			['verify']
 		);
 
 		return await crypto.subtle.verify(
-			"Ed25519",
+			'Ed25519',
 			key,
 			hexToUint8Array(signature),
-			encoder.encode(timestamp + body),
+			encoder.encode(timestamp + body)
 		);
-	} catch (error) {
+	} catch {
 		// Ed25519 not supported, fall back to discord-interactions library
 		return null;
 	}
@@ -103,8 +102,8 @@ async function verifyWithWebCrypto(body, signature, timestamp, publicKey) {
  * Verify Discord request signature
  */
 async function verifyDiscordRequest(request, publicKey) {
-	const signature = request.headers.get("x-signature-ed25519");
-	const timestamp = request.headers.get("x-signature-timestamp");
+	const signature = request.headers.get('x-signature-ed25519');
+	const timestamp = request.headers.get('x-signature-timestamp');
 	const body = await request.text();
 
 	if (!signature || !timestamp) {
@@ -112,12 +111,7 @@ async function verifyDiscordRequest(request, publicKey) {
 	}
 
 	// Try Web Crypto first (for Cloudflare Workers)
-	const webCryptoResult = await verifyWithWebCrypto(
-		body,
-		signature,
-		timestamp,
-		publicKey,
-	);
+	const webCryptoResult = await verifyWithWebCrypto(body, signature, timestamp, publicKey);
 
 	if (webCryptoResult !== null) {
 		return { isValid: webCryptoResult, body };
@@ -128,19 +122,19 @@ async function verifyDiscordRequest(request, publicKey) {
 		const isValid = verifyKey(body, signature, timestamp, publicKey);
 		return { isValid, body };
 	} catch (error) {
-		log.error("Signature verification error:", error);
+		log.error('Signature verification error:', error);
 		return { isValid: false, body: null };
 	}
 }
 
 function normalizeConditionValue(value) {
-	if (value === undefined || value === null) return "";
-	if (typeof value === "boolean") return value ? "true" : "false";
+	if (value === undefined || value === null) return '';
+	if (typeof value === 'boolean') return value ? 'true' : 'false';
 	return String(value).trim().toLowerCase();
 }
 
 function evaluateActionCondition(condition, event) {
-	if (!condition || !condition.mode || condition.mode === "always") {
+	if (!condition || !condition.mode || condition.mode === 'always') {
 		return true;
 	}
 
@@ -152,11 +146,11 @@ function evaluateActionCondition(condition, event) {
 	const actual = normalizeConditionValue(event.options?.[optionName]);
 	const expected = normalizeConditionValue(condition.value);
 
-	if (condition.mode === "if_equals") {
+	if (condition.mode === 'if_equals') {
 		return actual === expected;
 	}
 
-	if (condition.mode === "if_not_equals") {
+	if (condition.mode === 'if_not_equals') {
 		return actual !== expected;
 	}
 
@@ -170,24 +164,27 @@ function filterActionsByConditions(actions, event) {
 
 	const groupConditions = new Map();
 	for (const action of actions) {
-		const groupName = (action.group || "default").trim() || "default";
+		const groupName = (action.group || 'default').trim() || 'default';
 		const condition = action.condition;
 		if (
-			!groupConditions.has(groupName) && condition && condition.mode &&
-			condition.mode !== "always" && condition.option
+			!groupConditions.has(groupName) &&
+			condition &&
+			condition.mode &&
+			condition.mode !== 'always' &&
+			condition.option
 		) {
 			groupConditions.set(groupName, condition);
 		}
 	}
 
 	return actions.filter((action) => {
-		const groupName = (action.group || "default").trim() || "default";
+		const groupName = (action.group || 'default').trim() || 'default';
 		const effectiveCondition = groupConditions.get(groupName) || action.condition;
 		const shouldRun = evaluateActionCondition(effectiveCondition, event);
 
 		if (!shouldRun) {
 			log.debug(
-				`[Command] Skipping action ${action.type} in group ${groupName} due to option condition mismatch`,
+				`[Command] Skipping action ${action.type} in group ${groupName} due to option condition mismatch`
 			);
 		}
 
@@ -196,44 +193,43 @@ function filterActionsByConditions(actions, event) {
 }
 
 function getEnv(platform: PlatformLike | undefined, name: string) {
-	return platform?.env?.[name] ?? (typeof process !== "undefined" ? process.env?.[name] : undefined);
+	return (
+		platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined)
+	);
 }
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request, platform: rawPlatform }) {
 	const platform = rawPlatform as PlatformLike | undefined;
-	log.debug("=== Discord Interaction Request Received ===");
+	log.debug('=== Discord Interaction Request Received ===');
 
 	// Get the public key from environment
-	const PUBLIC_KEY = getEnv(platform, "DISCORD_PUBLIC_KEY");
+	const PUBLIC_KEY = getEnv(platform, 'DISCORD_PUBLIC_KEY');
 
 	if (!PUBLIC_KEY) {
-		log.error("DISCORD_PUBLIC_KEY not configured");
-		return json({ error: "Server configuration error" }, { status: 500 });
+		log.error('DISCORD_PUBLIC_KEY not configured');
+		return json({ error: 'Server configuration error' }, { status: 500 });
 	}
 
-	log.debug("Public key loaded, length:", PUBLIC_KEY.length);
+	log.debug('Public key loaded, length:', PUBLIC_KEY.length);
 
 	// Verify the request is from Discord
-	const { isValid, body: rawBody } = await verifyDiscordRequest(
-		request,
-		PUBLIC_KEY,
-	);
+	const { isValid, body: rawBody } = await verifyDiscordRequest(request, PUBLIC_KEY);
 
-	log.debug("Verification result:", isValid);
+	log.debug('Verification result:', isValid);
 
 	if (!isValid) {
-		log.error("Invalid request signature");
-		return json({ error: "Invalid request signature" }, { status: 401 });
+		log.error('Invalid request signature');
+		return json({ error: 'Invalid request signature' }, { status: 401 });
 	}
 
 	let body;
 	try {
 		body = JSON.parse(rawBody);
-		log.debug("Parsed body type:", body.type);
+		log.debug('Parsed body type:', body.type);
 	} catch (error) {
-		log.error("Failed to parse request body:", error);
-		return json({ error: "Invalid JSON" }, { status: 400 });
+		log.error('Failed to parse request body:', error);
+		return json({ error: 'Invalid JSON' }, { status: 400 });
 	}
 
 	// Get database for custom commands
@@ -251,24 +247,24 @@ export async function POST({ request, platform: rawPlatform }) {
 		const guildId = body.guild_id;
 
 		// DM slash commands do not include guild_id. Provide a built-in /help response there.
-		if (!guildId && data.name === "help") {
+		if (!guildId && data.name === 'help') {
 			return json({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
 					embeds: [
 						{
-							title: "🚀 SpaceBot Help",
+							title: '🚀 SpaceBot Help',
 							description:
-								"Welcome to SpaceBot! Use /ping to check if the bot is online, /info for bot details, and /help for this message. Custom commands are configured by your server admin.",
-							color: 0x57F287,
+								'Welcome to SpaceBot! Use /ping to check if the bot is online, /info for bot details, and /help for this message. Custom commands are configured by your server admin.',
+							color: 0x57f287,
 							fields: [
 								{
-									name: "🔗 Links",
-									value: "[GitHub](https://github.com/starspacegroup/spacebot)",
+									name: '🔗 Links',
+									value: '[GitHub](https://github.com/starspacegroup/spacebot)',
 									inline: false,
 								},
 							],
-							footer: { text: "Use /command to run a command" },
+							footer: { text: 'Use /command to run a command' },
 						},
 					],
 				},
@@ -276,7 +272,7 @@ export async function POST({ request, platform: rawPlatform }) {
 		}
 
 		// Handle /stats built-in command (generates chart image)
-		if (data.name === "stats" && guildId) {
+		if (data.name === 'stats' && guildId) {
 			const applicationId = body.application_id;
 			const interactionToken = body.token;
 
@@ -285,7 +281,7 @@ export async function POST({ request, platform: rawPlatform }) {
 			if (platform?.context?.waitUntil) {
 				platform.context.waitUntil(asyncWork);
 			} else {
-				asyncWork.catch(err => log.error("[Stats] Command error:", err));
+				asyncWork.catch((err) => log.error('[Stats] Command error:', err));
 			}
 
 			return json({
@@ -299,10 +295,31 @@ export async function POST({ request, platform: rawPlatform }) {
 			const customCommand = await getCommandByName(db, data.name, guildId);
 
 			if (customCommand) {
+				// Enforce configured permission restrictions server-side. Discord
+				// also gates on default_member_permissions at its UI layer, but that
+				// is advisory — re-check the invoking member's permissions here so a
+				// crafted/stale interaction cannot bypass the restriction.
+				if (
+					!memberHasCommandPermission(
+						body.member?.permissions,
+						customCommand.default_member_permissions
+					)
+				) {
+					return json({
+						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+						data: {
+							content: "🚫 You don't have permission to use this command.",
+							flags: 64, // EPHEMERAL
+						},
+					});
+				}
+
 				// Check if command has actions that need deferring
-				const hasActions = (customCommand.actions && customCommand.actions.length > 0) ||
-					(customCommand.action_type && customCommand.action_type !== "NONE" &&
-						customCommand.action_type !== "MULTIPLE");
+				const hasActions =
+					(customCommand.actions && customCommand.actions.length > 0) ||
+					(customCommand.action_type &&
+						customCommand.action_type !== 'NONE' &&
+						customCommand.action_type !== 'MULTIPLE');
 
 				if (hasActions) {
 					// Defer the response so Discord doesn't time out
@@ -311,7 +328,12 @@ export async function POST({ request, platform: rawPlatform }) {
 
 					// Fire off the async work
 					const asyncWork = handleDeferredCommand(
-						customCommand, body, db, platform, applicationId, interactionToken
+						customCommand,
+						body,
+						db,
+						platform,
+						applicationId,
+						interactionToken
 					);
 
 					// Use platform.context.waitUntil if available (Cloudflare Workers)
@@ -319,7 +341,9 @@ export async function POST({ request, platform: rawPlatform }) {
 						platform.context.waitUntil(asyncWork);
 					} else {
 						// Fire and forget for non-Cloudflare environments
-						asyncWork.catch(err => log.error("[Command] Deferred command error:", err));
+						asyncWork.catch((err) =>
+							log.error('[Command] Deferred command error:', err)
+						);
 					}
 
 					// Return deferred response immediately (type 5)
@@ -347,7 +371,7 @@ export async function POST({ request, platform: rawPlatform }) {
 		return json({
 			type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 			data: {
-				content: "Unknown command",
+				content: 'Unknown command',
 			},
 		});
 	}
@@ -357,12 +381,12 @@ export async function POST({ request, platform: rawPlatform }) {
 		return json({
 			type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 			data: {
-				content: "Button interaction received!",
+				content: 'Button interaction received!',
 			},
 		});
 	}
 
-	return json({ error: "Unknown interaction type" }, { status: 400 });
+	return json({ error: 'Unknown interaction type' }, { status: 400 });
 }
 
 /**
@@ -400,7 +424,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 				try {
 					const handlerUrl = manifest.webhooks.command_handler;
 					const payload = {
-						type: "command",
+						type: 'command',
 						command: data.name,
 						options: data.options || [],
 						guild_id: guildId,
@@ -409,16 +433,14 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 						integration_slug: integration.slug,
 					};
 
-					log.debug(
-						`[Interactions] Proxying /${data.name} to ${handlerUrl}`,
-					);
+					log.debug(`[Interactions] Proxying /${data.name} to ${handlerUrl}`);
 
 					const webhookResponse = await fetch(handlerUrl, {
-						method: "POST",
+						method: 'POST',
 						headers: {
-							"Content-Type": "application/json",
-							"X-SpaceBot-Integration": integration.slug,
-							"X-SpaceBot-Guild": guildId,
+							'Content-Type': 'application/json',
+							'X-SpaceBot-Integration': integration.slug,
+							'X-SpaceBot-Guild': guildId,
 						},
 						body: JSON.stringify(payload),
 						signal: AbortSignal.timeout(8_000), // 8s timeout (Discord allows ~15s)
@@ -436,7 +458,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 						return json({
 							type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 							data: {
-								content: responseData.content || "Command executed.",
+								content: responseData.content || 'Command executed.',
 								embeds: responseData.embeds || undefined,
 								components: responseData.components || undefined,
 								flags: responseData.ephemeral ? 64 : undefined,
@@ -445,7 +467,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 					}
 
 					log.warn(
-						`[Interactions] Integration webhook returned ${webhookResponse.status} for /${data.name}`,
+						`[Interactions] Integration webhook returned ${webhookResponse.status} for /${data.name}`
 					);
 
 					return json({
@@ -458,7 +480,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 				} catch (err) {
 					log.error(
 						`[Interactions] Error proxying to integration ${integration.slug}:`,
-						err,
+						err
 					);
 
 					return json({
@@ -475,10 +497,9 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 			const subcommand = data.options?.find((o) => o.type === 1)?.name;
 
 			// --- StarSpace Game fallback handling (no webhook) ---
-			if (integration.slug === "starspace-game") {
-				if (subcommand === "play") {
-					const homepage =
-						manifest?.homepage || "https://game.starspace.group/";
+			if (integration.slug === 'starspace-game') {
+				if (subcommand === 'play') {
+					const homepage = manifest?.homepage || 'https://game.starspace.group/';
 					return json({
 						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 						data: {
@@ -490,7 +511,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 				return json({
 					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 					data: {
-						content: `The \`/game ${subcommand || ""}\` command requires the Game server to be online. It doesn't appear to be connected right now.`,
+						content: `The \`/game ${subcommand || ''}\` command requires the Game server to be online. It doesn't appear to be connected right now.`,
 					},
 				});
 			}
@@ -504,7 +525,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 			});
 		}
 	} catch (err) {
-		log.error("[Interactions] Integration command lookup error:", err);
+		log.error('[Interactions] Integration command lookup error:', err);
 	}
 
 	return null;
@@ -517,7 +538,12 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
  * @param {D1Database} db - Database connection
  * @param {Object} platform - Platform context
  */
-async function handleCustomCommand(command: any, interaction: any, db: any, platform: PlatformLike | undefined) {
+async function handleCustomCommand(
+	command: any,
+	interaction: any,
+	db: any,
+	platform: PlatformLike | undefined
+) {
 	const startTime = Date.now();
 	const userId = interaction.member?.user?.id || interaction.user?.id;
 	const guildId = interaction.guild_id;
@@ -532,21 +558,21 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 			try {
 				const vsRes = await fetch(
 					`https://discord.com/api/v10/guilds/${guildId}/voice-states/${userId}`,
-					{ headers: { "Authorization": `Bot ${token}` } },
+					{ headers: { Authorization: `Bot ${token}` } }
 				);
 				if (vsRes.ok) {
 					const vsData = await vsRes.json();
 					if (vsData.channel_id) {
 						// Fetch channel name for template variables
-						let channelName = "";
+						let channelName = '';
 						try {
 							const chRes = await fetch(
 								`https://discord.com/api/v10/channels/${vsData.channel_id}`,
-								{ headers: { "Authorization": `Bot ${token}` } },
+								{ headers: { Authorization: `Bot ${token}` } }
 							);
 							if (chRes.ok) {
 								const chData = await chRes.json();
-								channelName = chData.name || "";
+								channelName = chData.name || '';
 							}
 						} catch {
 							// Channel name is nice-to-have, not critical
@@ -558,7 +584,7 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 					}
 				}
 			} catch (err) {
-				log.error("[Command] Failed to fetch voice state:", err);
+				log.error('[Command] Failed to fetch voice state:', err);
 			}
 		}
 
@@ -566,7 +592,7 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 			return json({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
-					content: "🔇 You must be in a voice channel to use this command.",
+					content: '🔇 You must be in a voice channel to use this command.',
 					flags: 64, // EPHEMERAL
 				},
 			});
@@ -578,7 +604,7 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 		getLatestServerStats(db, guildId).catch(() => null),
 	]);
 	const guildInfo = {
-		name: guildMeta?.name || "Unknown Server",
+		name: guildMeta?.name || 'Unknown Server',
 		member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
 		human_count: guildStats?.human_count ?? null,
 		bot_count: guildStats?.bot_count ?? null,
@@ -588,17 +614,18 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 
 	const context: any = buildCommandContext(interaction, guildInfo, voiceState);
 	context.widget_signing_secret = getEnv(platform, 'DISCORD_PUBLIC_KEY');
-	context.widget_origin = getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? "http://localhost:4269";
+	context.widget_origin =
+		getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? 'http://localhost:4269';
 
 	// Record usage
 	await recordCommandUse(db, command.id);
 
 	// Build response based on configuration
-	let responseData: ResponseData = {};
+	const responseData: ResponseData = {};
 
-	if (command.response_type === "message" && command.response_content) {
+	if (command.response_type === 'message' && command.response_content) {
 		responseData.content = processTemplate(command.response_content, context);
-	} else if (command.response_type === "embed" && command.response_embed) {
+	} else if (command.response_type === 'embed' && command.response_embed) {
 		const embed = { ...command.response_embed };
 		if (embed.description) {
 			embed.description = processTemplate(embed.description, context);
@@ -607,9 +634,9 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 			embed.title = processTemplate(embed.title, context);
 		}
 		responseData.embeds = [embed];
-	} else if (command.response_type === "action_only") {
+	} else if (command.response_type === 'action_only') {
 		// No visible response, but we still need to acknowledge
-		responseData.content = "✅ Command executed";
+		responseData.content = '✅ Command executed';
 	} else {
 		// Default fallback
 		responseData.content = `Command /${command.name} executed`;
@@ -625,9 +652,11 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 	let actionResult: ActionResult = { success: true };
 
 	// Check if command has actions to execute (either stacked or legacy)
-	const hasActions = (command.actions && command.actions.length > 0) ||
-		(command.action_type && command.action_type !== "NONE" &&
-			command.action_type !== "MULTIPLE");
+	const hasActions =
+		(command.actions && command.actions.length > 0) ||
+		(command.action_type &&
+			command.action_type !== 'NONE' &&
+			command.action_type !== 'MULTIPLE');
 
 	if (hasActions) {
 		// Create a minimal event object for the action executor
@@ -648,12 +677,9 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 			event.voice_channel_name = voiceState.channel_name;
 		}
 
-		// For user context menu commands, the target user is in data.target_id
-		// data.type === 2 means USER context menu command
-		if (interaction.data?.type === 2 && interaction.data?.target_id) {
-			event.target_id = interaction.data.target_id;
-			event.options.user = interaction.data.target_id;
-		}
+		// Resolve user/message context-menu targets into the action event so
+		// context-menu commands reuse the slash-command action pipeline.
+		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
 		// Add option values to event for action processing
 		if (interaction.data?.options) {
@@ -662,7 +688,8 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 				event.options[opt.name] = opt.value;
 
 				// Legacy: Map first user option to target_id for backwards compatibility
-				if (opt.type === 6 && !event.target_id) { // USER
+				if (opt.type === 6 && !event.target_id) {
+					// USER
 					event.target_id = opt.value;
 				}
 			}
@@ -674,9 +701,10 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 
 		if (discord) {
 			// Get actions array - either from stacked format or construct from legacy
-			const actionsToExecute = command.actions && command.actions.length > 0
-				? command.actions
-				: [{ type: command.action_type, config: command.action_config || {} }];
+			const actionsToExecute =
+				command.actions && command.actions.length > 0
+					? command.actions
+					: [{ type: command.action_type, config: command.action_config || {} }];
 			const filteredActions = filterActionsByConditions(actionsToExecute, event);
 
 			// Execute each action in sequence
@@ -691,7 +719,7 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 					event,
 					context,
 					discord,
-					db,
+					db
 				);
 				results.push(result);
 				// Stop on first failure
@@ -726,10 +754,8 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
 	});
 
 	// If action failed, modify response
-	if (!actionResult.success && command.action_type !== "NONE") {
-		responseData.content = `❌ Command failed: ${
-			actionResult.error || "Unknown error"
-		}`;
+	if (!actionResult.success && command.action_type !== 'NONE') {
+		responseData.content = `❌ Command failed: ${actionResult.error || 'Unknown error'}`;
 		if (command.ephemeral) {
 			responseData.flags = 64;
 		}
@@ -745,7 +771,14 @@ async function handleCustomCommand(command: any, interaction: any, db: any, plat
  * Handle a deferred custom command - executes actions asynchronously
  * and follows up via Discord webhook
  */
-async function handleDeferredCommand(command: any, interaction: any, db: any, platform: PlatformLike | undefined, applicationId: any, interactionToken: any) {
+async function handleDeferredCommand(
+	command: any,
+	interaction: any,
+	db: any,
+	platform: PlatformLike | undefined,
+	applicationId: any,
+	interactionToken: any
+) {
 	const startTime = Date.now();
 	const userId = interaction.member?.user?.id || interaction.user?.id;
 	const guildId = interaction.guild_id;
@@ -760,20 +793,20 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 			const res = await fetch(
 				`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`,
 				{
-					method: "PATCH",
+					method: 'PATCH',
 					headers: {
-						"Authorization": `Bot ${botToken}`,
-						"Content-Type": "application/json",
+						Authorization: `Bot ${botToken}`,
+						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify(data),
-				},
+				}
 			);
 			if (!res.ok) {
 				const errText = await res.text();
-				log.error("[Command] Failed to edit deferred response:", errText);
+				log.error('[Command] Failed to edit deferred response:', errText);
 			}
 		} catch (err) {
-			log.error("[Command] Error editing deferred response:", err);
+			log.error('[Command] Error editing deferred response:', err);
 		}
 	}
 
@@ -785,22 +818,24 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 				try {
 					const vsRes = await fetch(
 						`https://discord.com/api/v10/guilds/${guildId}/voice-states/${userId}`,
-						{ headers: { "Authorization": `Bot ${botToken}` } },
+						{ headers: { Authorization: `Bot ${botToken}` } }
 					);
 					if (vsRes.ok) {
 						const vsData = await vsRes.json();
 						if (vsData.channel_id) {
-							let channelName = "";
+							let channelName = '';
 							try {
 								const chRes = await fetch(
 									`https://discord.com/api/v10/channels/${vsData.channel_id}`,
-									{ headers: { "Authorization": `Bot ${botToken}` } },
+									{ headers: { Authorization: `Bot ${botToken}` } }
 								);
 								if (chRes.ok) {
 									const chData = await chRes.json();
-									channelName = chData.name || "";
+									channelName = chData.name || '';
 								}
-							} catch { /* not critical */ }
+							} catch {
+								/* not critical */
+							}
 							voiceState = {
 								channel_id: vsData.channel_id,
 								channel_name: channelName,
@@ -808,13 +843,13 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 						}
 					}
 				} catch (err) {
-					log.error("[Command] Failed to fetch voice state:", err);
+					log.error('[Command] Failed to fetch voice state:', err);
 				}
 			}
 
 			if (!voiceState) {
 				await editOriginalResponse({
-					content: "🔇 You must be in a voice channel to use this command.",
+					content: '🔇 You must be in a voice channel to use this command.',
 				});
 				return;
 			}
@@ -825,7 +860,7 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 			getLatestServerStats(db, guildId).catch(() => null),
 		]);
 		const guildInfo = {
-			name: guildMeta?.name || "Unknown Server",
+			name: guildMeta?.name || 'Unknown Server',
 			member_count: guildStats?.member_count ?? guildMeta?.approximate_member_count ?? null,
 			human_count: guildStats?.human_count ?? null,
 			bot_count: guildStats?.bot_count ?? null,
@@ -835,22 +870,23 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 
 		const context: any = buildCommandContext(interaction, guildInfo, voiceState);
 		context.widget_signing_secret = getEnv(platform, 'DISCORD_PUBLIC_KEY');
-		context.widget_origin = getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? "http://localhost:4269";
+		context.widget_origin =
+			getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? 'http://localhost:4269';
 
 		// Record usage
 		await recordCommandUse(db, command.id);
 
 		// Build response
-		let responseData: ResponseData = {};
-		if (command.response_type === "message" && command.response_content) {
+		const responseData: ResponseData = {};
+		if (command.response_type === 'message' && command.response_content) {
 			responseData.content = processTemplate(command.response_content, context);
-		} else if (command.response_type === "embed" && command.response_embed) {
+		} else if (command.response_type === 'embed' && command.response_embed) {
 			const embed = { ...command.response_embed };
 			if (embed.description) embed.description = processTemplate(embed.description, context);
 			if (embed.title) embed.title = processTemplate(embed.title, context);
 			responseData.embeds = [embed];
-		} else if (command.response_type === "action_only") {
-			responseData.content = "✅ Command executed";
+		} else if (command.response_type === 'action_only') {
+			responseData.content = '✅ Command executed';
 		} else {
 			responseData.content = `Command /${command.name} executed`;
 		}
@@ -874,10 +910,8 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 			event.voice_channel_name = voiceState.channel_name;
 		}
 
-		if (interaction.data?.type === 2 && interaction.data?.target_id) {
-			event.target_id = interaction.data.target_id;
-			event.options.user = interaction.data.target_id;
-		}
+		// Resolve user/message context-menu targets into the action event.
+		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
 		if (interaction.data?.options) {
 			for (const opt of interaction.data.options) {
@@ -891,9 +925,10 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 		const discord = createRESTClient(platform);
 
 		if (discord) {
-			const actionsToExecute = command.actions && command.actions.length > 0
-				? command.actions
-				: [{ type: command.action_type, config: command.action_config || {} }];
+			const actionsToExecute =
+				command.actions && command.actions.length > 0
+					? command.actions
+					: [{ type: command.action_type, config: command.action_config || {} }];
 			const filteredActions = filterActionsByConditions(actionsToExecute, event);
 
 			const results = [];
@@ -907,7 +942,7 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 					event,
 					context,
 					discord,
-					db,
+					db
 				);
 				results.push(result);
 				if (!result.success) {
@@ -939,16 +974,15 @@ async function handleDeferredCommand(command: any, interaction: any, db: any, pl
 		});
 
 		// Update the deferred response with the result
-		if (!actionResult.success && command.action_type !== "NONE") {
-			responseData.content = `❌ Command failed: ${actionResult.error || "Unknown error"}`;
+		if (!actionResult.success && command.action_type !== 'NONE') {
+			responseData.content = `❌ Command failed: ${actionResult.error || 'Unknown error'}`;
 		}
 
 		await editOriginalResponse(responseData);
-
 	} catch (err) {
-		log.error("[Command] Deferred command failed:", err);
+		log.error('[Command] Deferred command failed:', err);
 		await editOriginalResponse({
-			content: `❌ Command failed: ${err.message || "Unknown error"}`,
+			content: `❌ Command failed: ${err.message || 'Unknown error'}`,
 		});
 	}
 }
@@ -967,7 +1001,7 @@ function formatChartDateLabel(dateStr) {
  */
 function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMemberCount = null) {
 	const labels = chartRows.map((row) => formatChartDateLabel(row.date));
-	const isSevenDay = period === "7d";
+	const isSevenDay = period === '7d';
 	const pointRadius = isSevenDay ? 3 : 2;
 
 	const baseOptions = {
@@ -976,80 +1010,86 @@ function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMember
 		plugins: {
 			legend: {
 				labels: {
-					color: "#f8fafc",
+					color: '#f8fafc',
 					font: { size: 12 },
 				},
 			},
 			title: {
 				display: true,
 				text: widgetInfo.name,
-				color: "#ffffff",
-				font: { size: 18, weight: "bold" },
+				color: '#ffffff',
+				font: { size: 18, weight: 'bold' },
 			},
 		},
 		scales: {
 			x: {
-				ticks: { color: "#cbd5e1", maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
-				grid: { color: "rgba(148, 163, 184, 0.15)" },
+				ticks: { color: '#cbd5e1', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+				grid: { color: 'rgba(148, 163, 184, 0.15)' },
 			},
 			y: {
 				beginAtZero: true,
-				ticks: { color: "#cbd5e1" },
-				grid: { color: "rgba(148, 163, 184, 0.15)" },
+				ticks: { color: '#cbd5e1' },
+				grid: { color: 'rgba(148, 163, 184, 0.15)' },
 			},
 		},
 	};
 
-	if (type === "voice_time") {
+	if (type === 'voice_time') {
 		return {
-			type: "line",
+			type: 'line',
 			data: {
 				labels,
-				datasets: [{
-					label: "Hours in Voice",
-					data: chartRows.map((row) => row.totalHours || 0),
-					borderColor: "#06b6d4",
-					backgroundColor: "rgba(6, 182, 212, 0.25)",
-					fill: true,
-					tension: 0.35,
-					pointRadius,
-				}],
+				datasets: [
+					{
+						label: 'Hours in Voice',
+						data: chartRows.map((row) => row.totalHours || 0),
+						borderColor: '#06b6d4',
+						backgroundColor: 'rgba(6, 182, 212, 0.25)',
+						fill: true,
+						tension: 0.35,
+						pointRadius,
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
-	if (type === "voice_users") {
+	if (type === 'voice_users') {
 		return {
-			type: "bar",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Unique Voice Users",
-					data: chartRows.map((row) => row.uniqueUsers || 0),
-					backgroundColor: "rgba(59, 130, 246, 0.8)",
-				}],
+				datasets: [
+					{
+						label: 'Unique Voice Users',
+						data: chartRows.map((row) => row.uniqueUsers || 0),
+						backgroundColor: 'rgba(59, 130, 246, 0.8)',
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
-	if (type === "voice_peak") {
+	if (type === 'voice_peak') {
 		return {
-			type: "bar",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Peak Concurrent Voice",
-					data: chartRows.map((row) => row.peakConcurrent || 0),
-					backgroundColor: "rgba(14, 165, 233, 0.85)",
-				}],
+				datasets: [
+					{
+						label: 'Peak Concurrent Voice',
+						data: chartRows.map((row) => row.peakConcurrent || 0),
+						backgroundColor: 'rgba(14, 165, 233, 0.85)',
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
-	if (type === "member_count") {
+	if (type === 'member_count') {
 		const latest = Number(latestMemberCount);
 		let running = Number.isFinite(latest) ? latest : 0;
 		const memberCounts = new Array(chartRows.length);
@@ -1060,38 +1100,18 @@ function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMember
 		}
 
 		return {
-			type: "line",
-			data: {
-				labels,
-				datasets: [{
-					label: "Estimated Member Count",
-					data: memberCounts,
-					borderColor: "#22c55e",
-					backgroundColor: "rgba(34, 197, 94, 0.25)",
-					fill: true,
-					tension: 0.25,
-					pointRadius,
-				}],
-			},
-			options: baseOptions,
-		};
-	}
-
-	if (type === "member_growth") {
-		return {
-			type: "bar",
+			type: 'line',
 			data: {
 				labels,
 				datasets: [
 					{
-						label: "Joins",
-						data: chartRows.map((row) => row.joins || 0),
-						backgroundColor: "rgba(34, 197, 94, 0.85)",
-					},
-					{
-						label: "Leaves",
-						data: chartRows.map((row) => row.leaves || 0),
-						backgroundColor: "rgba(239, 68, 68, 0.85)",
+						label: 'Estimated Member Count',
+						data: memberCounts,
+						borderColor: '#22c55e',
+						backgroundColor: 'rgba(34, 197, 94, 0.25)',
+						fill: true,
+						tension: 0.25,
+						pointRadius,
 					},
 				],
 			},
@@ -1099,50 +1119,78 @@ function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMember
 		};
 	}
 
-	if (type === "member_joins") {
+	if (type === 'member_growth') {
 		return {
-			type: "bar",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Member Joins",
-					data: chartRows.map((row) => row.joins || 0),
-					backgroundColor: "rgba(16, 185, 129, 0.85)",
-				}],
+				datasets: [
+					{
+						label: 'Joins',
+						data: chartRows.map((row) => row.joins || 0),
+						backgroundColor: 'rgba(34, 197, 94, 0.85)',
+					},
+					{
+						label: 'Leaves',
+						data: chartRows.map((row) => row.leaves || 0),
+						backgroundColor: 'rgba(239, 68, 68, 0.85)',
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
-	if (type === "member_leaves") {
+	if (type === 'member_joins') {
 		return {
-			type: "bar",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Member Leaves",
-					data: chartRows.map((row) => row.leaves || 0),
-					backgroundColor: "rgba(244, 63, 94, 0.85)",
-				}],
+				datasets: [
+					{
+						label: 'Member Joins',
+						data: chartRows.map((row) => row.joins || 0),
+						backgroundColor: 'rgba(16, 185, 129, 0.85)',
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
-	if (type === "member_net_change") {
+	if (type === 'member_leaves') {
 		return {
-			type: "line",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Net Change",
-					data: chartRows.map((row) => row.netChange || 0),
-					borderColor: "#f59e0b",
-					backgroundColor: "rgba(245, 158, 11, 0.25)",
-					fill: true,
-					tension: 0.25,
-					pointRadius,
-				}],
+				datasets: [
+					{
+						label: 'Member Leaves',
+						data: chartRows.map((row) => row.leaves || 0),
+						backgroundColor: 'rgba(244, 63, 94, 0.85)',
+					},
+				],
+			},
+			options: baseOptions,
+		};
+	}
+
+	if (type === 'member_net_change') {
+		return {
+			type: 'line',
+			data: {
+				labels,
+				datasets: [
+					{
+						label: 'Net Change',
+						data: chartRows.map((row) => row.netChange || 0),
+						borderColor: '#f59e0b',
+						backgroundColor: 'rgba(245, 158, 11, 0.25)',
+						fill: true,
+						tension: 0.25,
+						pointRadius,
+					},
+				],
 			},
 			options: {
 				...baseOptions,
@@ -1157,34 +1205,38 @@ function buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMember
 		};
 	}
 
-	if (type === "message_count") {
+	if (type === 'message_count') {
 		return {
-			type: "bar",
+			type: 'bar',
 			data: {
 				labels,
-				datasets: [{
-					label: "Messages",
-					data: chartRows.map((row) => row.messageCount || 0),
-					backgroundColor: "rgba(168, 85, 247, 0.85)",
-				}],
+				datasets: [
+					{
+						label: 'Messages',
+						data: chartRows.map((row) => row.messageCount || 0),
+						backgroundColor: 'rgba(168, 85, 247, 0.85)',
+					},
+				],
 			},
 			options: baseOptions,
 		};
 	}
 
 	return {
-		type: "line",
+		type: 'line',
 		data: {
 			labels,
-			datasets: [{
-				label: "Unique Message Authors",
-				data: chartRows.map((row) => row.messageUniqueUsers || 0),
-				borderColor: "#a855f7",
-				backgroundColor: "rgba(168, 85, 247, 0.25)",
-				fill: true,
-				tension: 0.3,
-				pointRadius,
-			}],
+			datasets: [
+				{
+					label: 'Unique Message Authors',
+					data: chartRows.map((row) => row.messageUniqueUsers || 0),
+					borderColor: '#a855f7',
+					backgroundColor: 'rgba(168, 85, 247, 0.25)',
+					fill: true,
+					tension: 0.3,
+					pointRadius,
+				},
+			],
 		},
 		options: baseOptions,
 	};
@@ -1197,16 +1249,16 @@ async function createQuickChartUrl(chartConfig) {
 	const payload = {
 		width: 900,
 		height: 420,
-		backgroundColor: "#0f172a",
+		backgroundColor: '#0f172a',
 		devicePixelRatio: 2,
-		format: "png",
+		format: 'png',
 		chart: chartConfig,
 	};
 
 	try {
-		const res = await fetch("https://quickchart.io/chart/create", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
+		const res = await fetch('https://quickchart.io/chart/create', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(payload),
 		});
 
@@ -1217,7 +1269,7 @@ async function createQuickChartUrl(chartConfig) {
 			}
 		}
 	} catch (err) {
-		log.warn("[Stats] QuickChart short URL creation failed, using direct URL fallback:", err);
+		log.warn('[Stats] QuickChart short URL creation failed, using direct URL fallback:', err);
 	}
 
 	const encoded = encodeURIComponent(JSON.stringify(chartConfig));
@@ -1237,15 +1289,20 @@ function formatLeaderboardDuration(totalSeconds) {
 }
 
 function getStatsPeriodLabel(period) {
-	return period === "7d" ? "Last 7 Days" : "Last 30 Days";
+	return period === '7d' ? 'Last 7 Days' : 'Last 30 Days';
 }
 
 /**
  * Handle the /stats built-in command.
  * Builds a QuickChart image from server stats data and responds with an embed containing the chart.
  */
-async function handleStatsCommand(interaction: any, platform: PlatformLike | undefined, applicationId: any, interactionToken: any) {
-	const botToken = getEnv(platform, "DISCORD_BOT_TOKEN");
+async function handleStatsCommand(
+	interaction: any,
+	platform: PlatformLike | undefined,
+	applicationId: any,
+	interactionToken: any
+) {
+	const botToken = getEnv(platform, 'DISCORD_BOT_TOKEN');
 	const guildId = interaction.guild_id;
 	const db = platform?.env?.DB;
 
@@ -1254,39 +1311,39 @@ async function handleStatsCommand(interaction: any, platform: PlatformLike | und
 			const res = await fetch(
 				`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`,
 				{
-					method: "PATCH",
+					method: 'PATCH',
 					headers: {
-						"Authorization": `Bot ${botToken}`,
-						"Content-Type": "application/json",
+						Authorization: `Bot ${botToken}`,
+						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify(data),
-				},
+				}
 			);
 			if (!res.ok) {
 				const errText = await res.text();
-				log.error("[Stats] Failed to edit response:", errText);
+				log.error('[Stats] Failed to edit response:', errText);
 			}
 		} catch (err) {
-			log.error("[Stats] Error editing response:", err);
+			log.error('[Stats] Error editing response:', err);
 		}
 	}
 
 	try {
 		// Parse options
 		const options = interaction.data?.options || [];
-		const type = options.find(o => o.name === "type")?.value || "voice_time";
-		const period = options.find(o => o.name === "period")?.value || "30d";
+		const type = options.find((o) => o.name === 'type')?.value || 'voice_time';
+		const period = options.find((o) => o.name === 'period')?.value || '30d';
 		const periodLabel = getStatsPeriodLabel(period);
-		const isVoiceLeaderboard = type === "voice_leaderboard";
+		const isVoiceLeaderboard = type === 'voice_leaderboard';
 
 		const widgetInfo = isVoiceLeaderboard ? null : WIDGET_TYPES[type];
 		if (!isVoiceLeaderboard && !widgetInfo) {
-			await editOriginal({ content: "❌ Unknown stats type." });
+			await editOriginal({ content: '❌ Unknown stats type.' });
 			return;
 		}
 
 		if (!db) {
-			await editOriginal({ content: "❌ Database not available." });
+			await editOriginal({ content: '❌ Database not available.' });
 			return;
 		}
 
@@ -1305,7 +1362,8 @@ async function handleStatsCommand(interaction: any, platform: PlatformLike | und
 
 			if (!leaderboardRows.length) {
 				await editOriginal({
-					content: "ℹ️ Not enough voice history data yet. Try again after more voice activity has been logged.",
+					content:
+						'ℹ️ Not enough voice history data yet. Try again after more voice activity has been logged.',
 				});
 				return;
 			}
@@ -1313,67 +1371,80 @@ async function handleStatsCommand(interaction: any, platform: PlatformLike | und
 			const topLines = leaderboardRows.map((row, index) => {
 				const userLabel = row.actor_id
 					? `<@${row.actor_id}>`
-					: (row.actor_name || "Unknown User");
+					: row.actor_name || 'Unknown User';
 				const duration = formatLeaderboardDuration(row.total_seconds);
 				return `${index + 1}. ${userLabel} - ${duration}`;
 			});
 
 			await editOriginal({
-				embeds: [{
-					title: "🎙️ Voice Chat Leaderboard",
-					description: `${periodLabel}`,
-					color: 0x57F287,
-					fields: [{
-						name: "Top Voice Time",
-						value: topLines.join("\n"),
-					}],
-					footer: { text: "SpaceBot Stats" },
-					timestamp: new Date().toISOString(),
-				}],
+				embeds: [
+					{
+						title: '🎙️ Voice Chat Leaderboard',
+						description: `${periodLabel}`,
+						color: 0x57f287,
+						fields: [
+							{
+								name: 'Top Voice Time',
+								value: topLines.join('\n'),
+							},
+						],
+						footer: { text: 'SpaceBot Stats' },
+						timestamp: new Date().toISOString(),
+					},
+				],
 			});
 			return;
 		}
 
 		let chartRows = [];
-		if (type === "voice_time" || type === "voice_users" || type === "voice_peak") {
+		if (type === 'voice_time' || type === 'voice_users' || type === 'voice_peak') {
 			chartRows = await getVoiceActivityChart(db, guildId, period, timezone);
 		} else if (
-			type === "member_count" ||
-			type === "member_growth" ||
-			type === "member_joins" ||
-			type === "member_leaves" ||
-			type === "member_net_change"
+			type === 'member_count' ||
+			type === 'member_growth' ||
+			type === 'member_joins' ||
+			type === 'member_leaves' ||
+			type === 'member_net_change'
 		) {
 			chartRows = await getMemberGrowthChart(db, guildId, period, timezone);
-		} else if (type === "message_count" || type === "message_users") {
+		} else if (type === 'message_count' || type === 'message_users') {
 			chartRows = await getMessageActivityChart(db, guildId, period, timezone);
 		}
 
 		if (!chartRows.length) {
 			await editOriginal({
-				content: "ℹ️ Not enough stats data yet. Try again after some server activity has been logged.",
+				content:
+					'ℹ️ Not enough stats data yet. Try again after some server activity has been logged.',
 			});
 			return;
 		}
 
 		const latestMemberCount = latest?.human_count ?? latest?.member_count ?? null;
-		const chartConfig = buildStatsChartConfig(type, period, widgetInfo, chartRows, latestMemberCount);
+		const chartConfig = buildStatsChartConfig(
+			type,
+			period,
+			widgetInfo,
+			chartRows,
+			latestMemberCount
+		);
 		const imageUrl = await createQuickChartUrl(chartConfig);
 
 		await editOriginal({
-			embeds: [{
-				title: `📊 ${widgetInfo.name}`,
-				description: `${widgetInfo.description} • ${periodLabel}`,
-				color: widgetInfo.color || 0x5865F2,
-				image: { url: imageUrl },
-				footer: { text: "SpaceBot Stats" },
-				timestamp: new Date().toISOString(),
-			}],
+			embeds: [
+				{
+					title: `📊 ${widgetInfo.name}`,
+					description: `${widgetInfo.description} • ${periodLabel}`,
+					color: widgetInfo.color || 0x5865f2,
+					image: { url: imageUrl },
+					footer: { text: 'SpaceBot Stats' },
+					timestamp: new Date().toISOString(),
+				},
+			],
 		});
 	} catch (err) {
-		log.error("[Stats] Stats command failed:", err);
+		log.error('[Stats] Stats command failed:', err);
 		await editOriginal({
-			content: `❌ Failed to generate stats chart: ${err.message || "Unknown error"}`,
+			content: `❌ Failed to generate stats chart: ${err.message || 'Unknown error'}`,
 		});
 	}
 }
@@ -1387,13 +1458,13 @@ function createRESTClient(platform: PlatformLike | undefined) {
 	const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 
 	if (!token) {
-		log.warn("No bot token available for REST client");
+		log.warn('No bot token available for REST client');
 		return null;
 	}
 
 	const headers = {
-		"Authorization": `Bot ${token}`,
-		"Content-Type": "application/json",
+		Authorization: `Bot ${token}`,
+		'Content-Type': 'application/json',
 	};
 
 	// Simple Collection-like Map that supports discord.js .filter() chaining
@@ -1415,10 +1486,9 @@ function createRESTClient(platform: PlatformLike | undefined) {
 	return {
 		channels: {
 			async fetch(channelId) {
-				const response = await fetch(
-					`https://discord.com/api/v10/channels/${channelId}`,
-					{ headers },
-				);
+				const response = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+					headers,
+				});
 				if (!response.ok) return null;
 				const channel = await response.json();
 
@@ -1441,11 +1511,11 @@ function createRESTClient(platform: PlatformLike | undefined) {
 					messages: {
 						async fetch(options: { limit?: any; before?: any } = {}) {
 							const params = new URLSearchParams();
-							if (options.limit) params.set("limit", options.limit);
-							if (options.before) params.set("before", options.before);
+							if (options.limit) params.set('limit', options.limit);
+							if (options.before) params.set('before', options.before);
 							const res = await fetch(
 								`https://discord.com/api/v10/channels/${channelId}/messages?${params}`,
-								{ headers },
+								{ headers }
 							);
 							if (!res.ok) return createCollection();
 							const msgs = await res.json();
@@ -1460,7 +1530,7 @@ function createRESTClient(platform: PlatformLike | undefined) {
 									async delete() {
 										await fetch(
 											`https://discord.com/api/v10/channels/${channelId}/messages/${m.id}`,
-											{ method: "DELETE", headers },
+											{ method: 'DELETE', headers }
 										);
 									},
 								});
@@ -1473,36 +1543,37 @@ function createRESTClient(platform: PlatformLike | undefined) {
 						await fetch(
 							`https://discord.com/api/v10/channels/${channelId}/messages/bulk-delete`,
 							{
-								method: "POST",
+								method: 'POST',
 								headers,
 								body: JSON.stringify({ messages: ids }),
-							},
+							}
 						);
 					},
 					async send(content) {
-						const body = typeof content === "string" ? { content } : content;
+						const body = typeof content === 'string' ? { content } : content;
 
 						if (body?.files && Array.isArray(body.files) && body.files.length > 0) {
 							const { files, ...payloadBody } = body;
 							const formData = new FormData();
-							formData.append("payload_json", JSON.stringify(payloadBody));
+							formData.append('payload_json', JSON.stringify(payloadBody));
 
 							files.forEach((file, index) => {
 								const attachment = file?.attachment;
 								const name = file?.name || `file-${index}.png`;
-								const blob = attachment instanceof Blob
-									? attachment
-									: new Blob([attachment], { type: "image/png" });
+								const blob =
+									attachment instanceof Blob
+										? attachment
+										: new Blob([attachment], { type: 'image/png' });
 								formData.append(`files[${index}]`, blob, name);
 							});
 
 							const fileRes = await fetch(
 								`https://discord.com/api/v10/channels/${channelId}/messages`,
 								{
-									method: "POST",
-									headers: { "Authorization": headers.Authorization },
+									method: 'POST',
+									headers: { Authorization: headers.Authorization },
 									body: formData,
-								},
+								}
 							);
 							return fileRes.json();
 						}
@@ -1510,10 +1581,10 @@ function createRESTClient(platform: PlatformLike | undefined) {
 						const res = await fetch(
 							`https://discord.com/api/v10/channels/${channelId}/messages`,
 							{
-								method: "POST",
+								method: 'POST',
 								headers,
 								body: JSON.stringify(body),
-							},
+							}
 						);
 						return res.json();
 					},
@@ -1522,10 +1593,9 @@ function createRESTClient(platform: PlatformLike | undefined) {
 		},
 		guilds: {
 			async fetch(guildId) {
-				const response = await fetch(
-					`https://discord.com/api/v10/guilds/${guildId}`,
-					{ headers },
-				);
+				const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+					headers,
+				});
 				if (!response.ok) return null;
 				const guild = await response.json();
 
@@ -1536,7 +1606,7 @@ function createRESTClient(platform: PlatformLike | undefined) {
 						async fetch() {
 							const res = await fetch(
 								`https://discord.com/api/v10/guilds/${guildId}/channels`,
-								{ headers },
+								{ headers }
 							);
 							if (!res.ok) return createCollection();
 							const channels = await res.json();
@@ -1563,7 +1633,7 @@ function createRESTClient(platform: PlatformLike | undefined) {
 						async fetch(userId) {
 							const res = await fetch(
 								`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
-								{ headers },
+								{ headers }
 							);
 							if (!res.ok) return null;
 							const member = await res.json();
@@ -1575,22 +1645,22 @@ function createRESTClient(platform: PlatformLike | undefined) {
 									async add(roleId) {
 										const res = await fetch(
 											`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`,
-											{ method: "PUT", headers },
+											{ method: 'PUT', headers }
 										);
 										if (!res.ok) {
 											const error = await res.text();
-											log.error("Add role failed:", error);
+											log.error('Add role failed:', error);
 											throw new Error(`Failed to add role: ${res.status}`);
 										}
 									},
 									async remove(roleId) {
 										const res = await fetch(
 											`https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${roleId}`,
-											{ method: "DELETE", headers },
+											{ method: 'DELETE', headers }
 										);
 										if (!res.ok) {
 											const error = await res.text();
-											log.error("Remove role failed:", error);
+											log.error('Remove role failed:', error);
 											throw new Error(`Failed to remove role: ${res.status}`);
 										}
 									},
@@ -1599,16 +1669,16 @@ function createRESTClient(platform: PlatformLike | undefined) {
 									const res = await fetch(
 										`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
 										{
-											method: "DELETE",
+											method: 'DELETE',
 											headers: {
 												...headers,
-												"X-Audit-Log-Reason": reason || "",
+												'X-Audit-Log-Reason': reason || '',
 											},
-										},
+										}
 									);
 									if (!res.ok) {
 										const error = await res.text();
-										log.error("Kick failed:", error);
+										log.error('Kick failed:', error);
 										throw new Error(`Failed to kick member: ${res.status}`);
 									}
 								},
@@ -1617,41 +1687,44 @@ function createRESTClient(platform: PlatformLike | undefined) {
 									const res = await fetch(
 										`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`,
 										{
-											method: "PATCH",
+											method: 'PATCH',
 											headers: {
 												...headers,
-												"X-Audit-Log-Reason": reason || "",
+												'X-Audit-Log-Reason': reason || '',
 											},
 											body: JSON.stringify({
 												communication_disabled_until: until,
 											}),
-										},
+										}
 									);
 									if (!res.ok) {
 										const error = await res.text();
-										log.error("Timeout failed:", error);
+										log.error('Timeout failed:', error);
 										throw new Error(`Failed to timeout member: ${res.status}`);
 									}
 								},
 							};
 						},
-						async ban(userId: any, options: { reason?: any; deleteMessageSeconds?: any } = {}) {
+						async ban(
+							userId: any,
+							options: { reason?: any; deleteMessageSeconds?: any } = {}
+						) {
 							const res = await fetch(
 								`https://discord.com/api/v10/guilds/${guildId}/bans/${userId}`,
 								{
-									method: "PUT",
+									method: 'PUT',
 									headers: {
 										...headers,
-										"X-Audit-Log-Reason": options.reason || "",
+										'X-Audit-Log-Reason': options.reason || '',
 									},
 									body: JSON.stringify({
 										delete_message_seconds: options.deleteMessageSeconds || 0,
 									}),
-								},
+								}
 							);
 							if (!res.ok) {
 								const error = await res.text();
-								log.error("Ban failed:", error);
+								log.error('Ban failed:', error);
 								throw new Error(`Failed to ban member: ${res.status}`);
 							}
 						},

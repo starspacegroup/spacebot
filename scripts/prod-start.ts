@@ -8,7 +8,7 @@
  *   node scripts/prod-start.js
  */
 
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { platform } from 'os';
 import { loadSecrets, getSecret } from '../src/lib/secrets.js';
 
@@ -32,7 +32,7 @@ function run(cmd, label) {
 	console.log(`  → ${cmd}`);
 	try {
 		execSync(cmd, { stdio: 'inherit' });
-	} catch (err) {
+	} catch {
 		console.error(`\n❌ Failed: ${label || cmd}`);
 		process.exit(1);
 	}
@@ -46,7 +46,9 @@ async function setupGitHubWebhook() {
 	const secret = getSecret('DEPLOY_WEBHOOK_SECRET');
 
 	if (!token || !secret) {
-		console.log('\n⏭️  Skipping GitHub webhook setup (GITHUB_TOKEN or DEPLOY_WEBHOOK_SECRET not set).');
+		console.log(
+			'\n⏭️  Skipping GitHub webhook setup (GITHUB_TOKEN or DEPLOY_WEBHOOK_SECRET not set).'
+		);
 		return;
 	}
 
@@ -68,29 +70,32 @@ async function setupGitHubWebhook() {
 		}
 
 		const hooks = await listRes.json();
-		const existing = hooks.find(h => h.config?.url === WEBHOOK_URL);
+		const existing = hooks.find((h) => h.config?.url === WEBHOOK_URL);
 
 		if (existing) {
 			console.log(`  ✅ Deploy webhook already exists (id: ${existing.id}).`);
 
 			// Update the secret in case it changed
-			const updateRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/hooks/${existing.id}`, {
-				method: 'PATCH',
-				headers: {
-					Authorization: `Bearer ${token}`,
-					Accept: 'application/vnd.github+json',
-					'Content-Type': 'application/json',
-					'X-GitHub-Api-Version': '2022-11-28',
-				},
-				body: JSON.stringify({
-					config: {
-						url: WEBHOOK_URL,
-						content_type: 'json',
-						secret,
+			const updateRes = await fetch(
+				`https://api.github.com/repos/${GITHUB_REPO}/hooks/${existing.id}`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: 'application/vnd.github+json',
+						'Content-Type': 'application/json',
+						'X-GitHub-Api-Version': '2022-11-28',
 					},
-					active: true,
-				}),
-			});
+					body: JSON.stringify({
+						config: {
+							url: WEBHOOK_URL,
+							content_type: 'json',
+							secret,
+						},
+						active: true,
+					}),
+				}
+			);
 
 			if (updateRes.ok) {
 				console.log('  ✅ Webhook secret synced.');
@@ -141,9 +146,14 @@ if (commandExists('cloudflared')) {
 
 	if (os === 'win32') {
 		if (commandExists('winget')) {
-			run('winget install --id Cloudflare.cloudflared --accept-source-agreements --accept-package-agreements', 'install cloudflared via winget');
+			run(
+				'winget install --id Cloudflare.cloudflared --accept-source-agreements --accept-package-agreements',
+				'install cloudflared via winget'
+			);
 		} else {
-			console.error('❌ Please install cloudflared manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/');
+			console.error(
+				'❌ Please install cloudflared manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'
+			);
 			process.exit(1);
 		}
 	} else if (os === 'darwin') {
@@ -156,11 +166,22 @@ if (commandExists('cloudflared')) {
 	} else {
 		// Linux — use the official Cloudflare package repo
 		try {
-			run('curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null', 'add cloudflare GPG key');
-			run('echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list', 'add cloudflare repo');
-			run('sudo apt-get update && sudo apt-get install -y cloudflared', 'install cloudflared via apt');
+			run(
+				'curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null',
+				'add cloudflare GPG key'
+			);
+			run(
+				'echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list',
+				'add cloudflare repo'
+			);
+			run(
+				'sudo apt-get update && sudo apt-get install -y cloudflared',
+				'install cloudflared via apt'
+			);
 		} catch {
-			console.error('❌ Auto-install failed. Please install cloudflared manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/');
+			console.error(
+				'❌ Auto-install failed. Please install cloudflared manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/'
+			);
 			process.exit(1);
 		}
 	}
@@ -208,6 +229,8 @@ console.log('\n✅ Production services started.');
 console.log('   • spacebot-gateway  — Discord gateway bot');
 console.log('   • spacebot-tunnel   — Cloudflare tunnel (spacebot.starspace.group)');
 console.log('   • spacebot-deploy   — Auto-deploy webhook (port 9090)');
-console.log('   • spacebot-cron     — Workflow dispatcher tick (/api/superadmin/workflows/dispatch)\n');
+console.log(
+	'   • spacebot-cron     — Workflow dispatcher tick (/api/superadmin/workflows/dispatch)\n'
+);
 console.log('   Run "bun run gateway:status" to check status.');
 console.log('   Run "bun run gateway:logs" to view logs.\n');

@@ -8,8 +8,8 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { ACTION_TYPES, createAutomation, getAutomations } from "$lib/db/automations.js";
-import { createCommand, getGuildCommands } from "$lib/db/commands.js";
+import { ACTION_TYPES, createAutomation } from "$lib/db/automations.js";
+import { createCommand } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { getGuildSettings, saveGuildSettings } from "$lib/db/settings.js";
 import { EVENT_TYPES, log } from "$lib/db/logger.js";

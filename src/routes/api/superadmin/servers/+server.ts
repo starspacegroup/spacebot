@@ -10,7 +10,6 @@
 import { json } from "@sveltejs/kit";
 import { getAllServerPlans, upsertServerPlan, getServerPlan, PLAN_TIERS } from "$lib/db/server-plans.js";
 import { getAllGuildMetadata } from "$lib/db/guild-metadata.js";
-import { log } from "$lib/log.js";
 
 function checkIsSuperAdmin(userId, platform) {
   if (!userId) return false;
@@ -19,7 +18,7 @@ function checkIsSuperAdmin(userId, platform) {
 }
 
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ cookies, platform, url }) {
+export async function GET({ cookies, platform }) {
   const userId = cookies.get("discord_user_id");
   if (!checkIsSuperAdmin(userId, platform)) {
     return json({ error: "Forbidden" }, { status: 403 });

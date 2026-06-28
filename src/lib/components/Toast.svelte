@@ -1,9 +1,9 @@
 <script lang="ts">
-	let { message, success = true, onDismiss = () => {} } = $props();
-	
+	const { message, success = true, onDismiss = () => {} } = $props();
+
 	let visible = $state(true);
 	let hiding = $state(false);
-	
+
 	$effect(() => {
 		// Auto-dismiss after 5 seconds
 		const timer = setTimeout(() => {
@@ -14,10 +14,10 @@
 				onDismiss();
 			}, 300);
 		}, 5000);
-		
+
 		return () => clearTimeout(timer);
 	});
-	
+
 	function dismiss() {
 		hiding = true;
 		setTimeout(() => {
@@ -28,7 +28,7 @@
 </script>
 
 {#if visible}
-	<div 
+	<div
 		class="toast {success ? 'toast-success' : 'toast-error'} {hiding ? 'toast-hiding' : ''}"
 		role="alert"
 	>
@@ -53,11 +53,11 @@
 		box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.3));
 		max-width: 400px;
 	}
-	
+
 	.toast-hiding {
 		animation: slideOut 0.3s ease forwards;
 	}
-	
+
 	@keyframes slideIn {
 		from {
 			transform: translateX(100%);
@@ -68,7 +68,7 @@
 			opacity: 1;
 		}
 	}
-	
+
 	@keyframes slideOut {
 		from {
 			transform: translateX(0);
@@ -79,26 +79,26 @@
 			opacity: 0;
 		}
 	}
-	
+
 	.toast-success {
 		background: var(--color-success, #43b581);
-		color: #1B1730;
+		color: #1b1730;
 	}
-	
+
 	.toast-error {
 		background: var(--color-danger, #f04747);
-		color: #1B1730;
+		color: #1b1730;
 	}
-	
+
 	.toast-icon {
 		font-weight: bold;
 		font-size: 1.1rem;
 	}
-	
+
 	.toast-message {
 		flex: 1;
 	}
-	
+
 	.toast-close {
 		background: none;
 		border: none;
@@ -111,7 +111,7 @@
 		transition: opacity 0.2s;
 		line-height: 1;
 	}
-	
+
 	.toast-close:hover {
 		opacity: 1;
 	}

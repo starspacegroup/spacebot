@@ -2,26 +2,29 @@
 
 This document outlines future enhancements and features. Status reflects what is
 actually implemented in the codebase (reconciled 2026-06-18 against a full
-feature inventory). Items marked _(partial)_ exist but are not fully wired.
+feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are scaffold-only / not fully wired / require external setup.
 
 ## Priority: High
 
 ### Authentication & Authorization
+
 - [x] Implement full Discord OAuth session management — `src/hooks.server.ts`, `src/routes/api/auth/discord/`
 - [x] Add Cloudflare KV or D1 storage for user sessions — cookie sessions + D1 user store
 - [x] Complete admin authorization logic (check ADMIN_USER_IDS)
 - [x] Add logout functionality — `/api/auth/logout`
-- [ ] Implement session expiration and refresh — no explicit TTL/refresh yet
+- [x] Implement session expiration and refresh — configurable sliding session TTL _(note: OAuth access-token refresh not implemented)_
 
 ### Discord Bot Features
+
 - [x] Add more slash commands — custom command system (`src/lib/db/commands.ts`)
-- [ ] Implement message context menu commands
-- [ ] Add user context menu commands
+- [x] Implement message context menu commands — message context menu registration + routing
+- [x] Add user context menu commands
 - [x] Create button and select menu interactions — `src/lib/db/button-actions.ts`
 - [x] Add modal (form) interactions — automation action system
-- [ ] Implement command permission controls — _(partial: permission fields exist, enforcement incomplete)_
+- [x] Implement command permission controls — server-side command permission enforcement
 
 ### Database & Persistence
+
 - [x] Set up Cloudflare D1 database — `wrangler.toml`
 - [x] Create schema for server settings, user data, bot statistics, command usage logs — 52 migrations
 - [x] Implement data migration scripts — `scripts/migrate.ts`
@@ -29,94 +32,105 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 ## Priority: Medium
 
 ### Admin Dashboard Enhancements
+
 - [x] Real-time bot status monitoring — live updates / gateway logs
 - [x] Command usage analytics and charts — stats dashboard + `ChartCard`
 - [x] Server management interface — `/admin/[serverId]/`
 - [x] User management and permissions — superadmin user management
-- [ ] Bot configuration editor — _(partial: settings page exists; persistence being completed)_
+- [x] Bot configuration editor — settings persistence, validation, and toast feedback
 - [x] Audit log viewer — event logs + user activity
 
 ### Bot Statistics
+
 - [x] Track command usage per server
 - [x] Track active users and servers
 - [x] Calculate uptime and latency metrics — gateway benchmarks
 - [x] Store historical data for trends — stats aggregation (hourly/daily)
-- [ ] Export statistics as reports
+- [x] Export statistics as reports — JSON/CSV stats export
 
 ### API Endpoints
+
 - [x] Create REST API for bot stats — `/api/stats/`, `/api/v1/`
 - [x] Add webhook endpoints for external services — `/api/webhooks/`, GitHub integration
-- [ ] Implement rate limiting on API endpoints
+- [x] Implement rate limiting on API endpoints — D1-backed helper with route policies/exemptions
 - [x] Add API authentication tokens — API keys + integration tokens
 
 ## Priority: Low
 
 ### Frontend Improvements
+
 - [x] Add dark mode toggle — `src/lib/theme.svelte.ts`
-- [ ] Improve responsive design for mobile
-- [ ] Add loading states and skeletons
-- [ ] Implement error boundaries
-- [ ] Add toast notifications
-- [ ] Create animated transitions
+- [x] Improve responsive design for mobile
+- [x] Add loading states and skeletons — shared `Skeleton` component
+- [x] Implement error boundaries — SvelteKit `+error.svelte`
+- [x] Add toast notifications — global toast store + container
+- [x] Create animated transitions — reduced-motion-aware route/UI transitions
 
 ### Developer Experience
+
 - [x] Add TypeScript support — full JS→TS migration (all `src/` + `scripts/` are `.ts`, components `<script lang="ts">`, `bun run typecheck` via svelte-check)
-- [ ] Set up ESLint and Prettier
-- [ ] Add pre-commit hooks with Husky
-- [ ] Create component library/design system
-- [ ] Add Storybook for component documentation
+- [x] Set up ESLint and Prettier — flat ESLint config, Prettier config, package scripts
+- [x] Add pre-commit hooks with Husky — lint-staged formatting hook
+- [x] Create component library/design system
+- [x] Add Storybook for component documentation
 
 ### Testing
+
 - [x] Set up Vitest for unit tests — 94 tests across 28 files
-- [ ] Add Playwright for e2e tests
+- [x] Add Playwright for e2e tests — smoke scaffold + `bun run test:e2e`
 - [x] Create test coverage reports — `bun run test:coverage` (v8)
-- [ ] Add CI/CD testing pipeline
+- [x] Add CI/CD testing pipeline — GitHub Actions test workflow
 - [x] Mock Discord API for testing — vi.mock in test suite
 
 ### Documentation
-- [ ] Add inline code documentation (JSDoc)
-- [ ] Create API documentation
-- [ ] Add architecture diagrams
-- [ ] Write contributing guidelines
-- [ ] Create video tutorials
+
+- [x] Add inline code documentation (JSDoc)
+- [x] Create API documentation
+- [x] Add architecture diagrams — `docs/architecture.md`
+- [x] Write contributing guidelines — `CONTRIBUTING.md`
+- [~] Create video tutorials — _(Markdown outlines with hosted-video **placeholders** in `docs/tutorials.md`; no actual videos)_
 
 ## Optional Enhancements
 
 ### Advanced Features
-- [ ] Multi-language support (i18n)
-- [ ] Custom branding per server
+
+- [~] Multi-language support (i18n) — _(scaffold: locale resolution + `LanguageSelector`; UI strings not yet translated)_
+- [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
 - [x] Scheduled tasks and cron jobs — superadmin workflows + `scripts/cron.ts` dispatcher
 - [x] Webhook integrations — webhooks + GitHub integration
 
 ### Monitoring & Observability
-- [ ] Set up Sentry for error tracking
-- [ ] Add application performance monitoring (APM)
+
+- [~] Set up Sentry for error tracking — _(scaffold: `sentry.{client,server}.config.ts` present and DSN-gated, but not yet imported into hooks; needs a Sentry account + wiring)_
+- [~] Add application performance monitoring (APM) — _(scaffold: `src/lib/server/telemetry.ts`; requires an external APM backend)_
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
-- [ ] Create Grafana dashboards
-- [ ] Set up alerting for critical issues
+- [~] Create Grafana dashboards — _(docs/dashboard JSON under `docs/grafana/`; requires a running Grafana)_
+- [~] Set up alerting for critical issues — _(documented in `docs/alerts.md`; requires external alerting infra)_
 
 ### Security Enhancements
-- [ ] Add CSRF protection
-- [ ] Implement content security policy (CSP)
+
+- [x] Add CSRF protection — same-origin helper for cookie-authenticated JSON mutations
+- [x] Implement content security policy (CSP) — report-only HTML CSP from hooks
 - [x] Add request signing for webhooks — Discord interaction signature verification
-- [ ] Set up security headers
-- [ ] Regular dependency audits and updates
+- [x] Set up security headers — HTML response hardening in hooks
+- [x] Regular dependency audits and updates
 
 ### Performance
+
 - [x] Implement caching strategies — guild cache, AI gateway caching
-- [ ] Add service worker for offline support
-- [ ] Optimize images and assets
-- [ ] Enable HTTP/3 on Cloudflare
+- [x] Add service worker for offline support
+- [~] Optimize images and assets — _(audit script `scripts/check-images.ts`; no automated optimization step yet)_
+- [~] Enable HTTP/3 on Cloudflare — _(verify script `scripts/verify-http3.ts` + `docs/http3.md`; actual enablement is a Cloudflare dashboard setting)_
 - [x] Add CDN for static assets — Cloudflare edge
 
 ## Community Features
 
-- [ ] Public bot invite page
-- [ ] Server leaderboards — _(partial: voice leaderboard stats exist)_
-- [ ] User profiles and badges
-- [ ] Bot voting and reviews
-- [ ] Discord server for support
+- [x] Public bot invite page
+- [x] Server leaderboards
+- [x] User profiles and badges
+- [~] Bot voting and reviews — _(in-app `/vote` page; external listing-site voting/reviews not integrated)_
+- [~] Discord server for support — _(in-app `/support` page added; the support Discord server itself is external)_
 
 ## Done ✅
 

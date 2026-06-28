@@ -7,6 +7,7 @@
 	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { log } from '$lib/log.js';
 	
+	// eslint-disable-next-line prefer-const -- form is reassigned in form-action callbacks
 	let { data, form } = $props();
 	
 	// Form submission state
@@ -144,7 +145,6 @@
 		return 'custom';
 	}
 	
-	// svelte-ignore state_referenced_locally
 	let selectedPermissionPreset = $state(getInitialPermissionPreset());
 	// svelte-ignore state_referenced_locally
 	let selectedCustomPermissions = $state(
@@ -217,22 +217,6 @@
 	const selectedGuildId = $derived(data.selectedGuildId);
 	const command = $derived(data.command);
 	
-	// Initialize config values when action type changes to avoid undefined bind errors
-	function initializeActionConfig(actionIndex, actionType) {
-		const schema = getActionConfigSchema(actionType);
-		const action = actions[actionIndex];
-		const newConfig = { ...action.config };
-		for (const configKey of Object.keys(schema)) {
-			if (newConfig[configKey] === undefined) {
-				newConfig[configKey] = '';
-			}
-		}
-		// Create a new array to trigger reactivity
-		actions = actions.map((a, i) => 
-			i === actionIndex ? { ...a, config: newConfig } : a
-		);
-	}
-
 	function addAction() {
 		actions = [...actions, withActionRoutingDefaults({ type: '', config: {} })];
 	}
@@ -344,7 +328,7 @@
 	// Touch drag reorder for choices
 	let touchState = $state({ optionIndex: -1, choiceIndex: -1, dropTarget: -1 });
 	
-	function choiceTouchStart(optionIndex, choiceIndex, e) {
+	function choiceTouchStart(optionIndex, choiceIndex, _e) {
 		touchState = { optionIndex, choiceIndex, dropTarget: -1 };
 	}
 	
@@ -482,11 +466,6 @@
 		return value;
 	}
 	
-	// Helper to get option reference from number_source field
-	function getOptionValue(value) {
-		if (isOptionReference(value)) return value;
-		return '';
-	}
 </script>
 
 <svelte:head>
@@ -1213,7 +1192,7 @@
 					<!-- svelte-ignore a11y_label_has_associated_control -->
 					<label>Required Permissions (user must have at least one):</label>
 					<div class="permissions-grid">
-						{#each Object.entries(data.permissionFlags) as [key, perm]}
+						{#each Object.entries(data.permissionFlags) as [_key, perm]}
 							<label class="permission-checkbox">
 								<input 
 									type="checkbox" 

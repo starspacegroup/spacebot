@@ -120,7 +120,7 @@ async function validateToken(db, rawToken, clientIp) {
       .prepare("SELECT id, user_id, revoked FROM local_runner_tokens WHERE token_prefix = ? AND token_hash = ?")
       .bind(tokenPrefix, tokenHash)
       .first();
-  } catch (e) {
+  } catch {
     return { valid: false, error: "Database error" };
   }
 

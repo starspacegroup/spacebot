@@ -38,7 +38,7 @@ function verifyAuth(request, platform) {
 }
 
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ params, url, platform, cookies }) {
+export async function GET({ params, url, platform }) {
   const { guildId } = params;
 
   if (!guildId) {

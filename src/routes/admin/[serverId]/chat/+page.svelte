@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { browser } from '$app/environment';
 
-	let { data } = $props();
+	const { data } = $props();
 
 	// ─── Chat session management ───
 	const STORAGE_KEY = $derived(`spacebot_chats_${data.serverId}`);
@@ -35,7 +35,9 @@
 		if (!browser) return;
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-		} catch { /* quota exceeded – silently ignore */ }
+		} catch {
+			/* quota exceeded – silently ignore */
+		}
 	}
 
 	function loadSessions() {
@@ -51,7 +53,7 @@
 	}
 
 	// Current active session
-	const activeSession = $derived(sessions.find(s => s.id === activeSessionId) || null);
+	const activeSession = $derived(sessions.find((s) => s.id === activeSessionId) || null);
 	const messages = $derived(activeSession?.messages || []);
 
 	// ─── Session CRUD ───
@@ -80,7 +82,7 @@
 	}
 
 	function deleteSession(id) {
-		sessions = sessions.filter(s => s.id !== id);
+		sessions = sessions.filter((s) => s.id !== id);
 		if (activeSessionId === id) {
 			activeSessionId = sessions[0]?.id || null;
 		}
@@ -89,7 +91,9 @@
 	}
 
 	function renameSession(id, newTitle) {
-		sessions = sessions.map(s => s.id === id ? { ...s, title: newTitle.trim() || s.title } : s);
+		sessions = sessions.map((s) =>
+			s.id === id ? { ...s, title: newTitle.trim() || s.title } : s
+		);
 		editingSessionId = null;
 		editTitle = '';
 		saveSessions();
@@ -102,30 +106,31 @@
 
 	// Auto-title from first user message
 	function autoTitle(sessionId, firstMessage) {
-		const s = sessions.find(s => s.id === sessionId);
+		const s = sessions.find((s) => s.id === sessionId);
 		if (s && s.title === 'New Chat' && firstMessage) {
-			const title = firstMessage.length > 40 ? firstMessage.substring(0, 40) + '…' : firstMessage;
-			sessions = sessions.map(s => s.id === sessionId ? { ...s, title } : s);
+			const title =
+				firstMessage.length > 40 ? firstMessage.substring(0, 40) + '…' : firstMessage;
+			sessions = sessions.map((s) => (s.id === sessionId ? { ...s, title } : s));
 		}
 	}
 
 	// Helper: append a message to a session by ID (immutable update)
 	function appendMessage(sessionId, msg) {
-		sessions = sessions.map(s =>
+		sessions = sessions.map((s) =>
 			s.id === sessionId ? { ...s, messages: [...s.messages, msg] } : s
 		);
 	}
 
 	// Helper: remove a message from a session by message ID (immutable update)
 	function removeMessage(sessionId, msgId) {
-		sessions = sessions.map(s =>
-			s.id === sessionId ? { ...s, messages: s.messages.filter(m => m.id !== msgId) } : s
+		sessions = sessions.map((s) =>
+			s.id === sessionId ? { ...s, messages: s.messages.filter((m) => m.id !== msgId) } : s
 		);
 	}
 
 	// Helper: get messages for a session
 	function getSessionMessages(sessionId) {
-		const s = sessions.find(s => s.id === sessionId);
+		const s = sessions.find((s) => s.id === sessionId);
 		return s?.messages || [];
 	}
 
@@ -158,7 +163,10 @@
 		dmLoadingMore = true;
 
 		const oldestId = dmMessages[0]?.id;
-		if (!oldestId) { dmLoadingMore = false; return; }
+		if (!oldestId) {
+			dmLoadingMore = false;
+			return;
+		}
 
 		try {
 			const res = await fetch(`/api/chat?limit=50&before=${oldestId}`);
@@ -209,7 +217,7 @@
 		}
 
 		const sid = activeSessionId;
-		if (!sid || !sessions.find(s => s.id === sid)) return;
+		if (!sid || !sessions.find((s) => s.id === sid)) return;
 
 		// Add user message
 		const userMsg = {
@@ -235,12 +243,18 @@
 
 		// Build history for AI context
 		const history = getSessionMessages(sid)
-			.filter(m => !m.typing)
+			.filter((m) => !m.typing)
 			.slice(-10)
-			.map(m => ({ role: m.role, content: m.content }));
+			.map((m) => ({ role: m.role, content: m.content }));
 
 		// Add typing indicator
-		const typingMsg = { id: 'typing', role: 'assistant', content: '', typing: true, timestamp: new Date().toISOString() };
+		const typingMsg = {
+			id: 'typing',
+			role: 'assistant',
+			content: '',
+			typing: true,
+			timestamp: new Date().toISOString(),
+		};
 		appendMessage(sid, typingMsg);
 		scrollToBottom();
 
@@ -318,7 +332,11 @@
 		yesterday.setDate(yesterday.getDate() - 1);
 		if (d.toDateString() === today.toDateString()) return 'Today';
 		if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-		return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+		return d.toLocaleDateString([], {
+			month: 'short',
+			day: 'numeric',
+			year: d.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
+		});
 	}
 
 	function formatSessionDate(isoString) {
@@ -372,18 +390,48 @@
 	{#if sidebarOpen}
 		<!-- svelte-ignore a11y_click_events_have_key_events -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="sidebar-overlay" onclick={() => sidebarOpen = false}></div>
+		<div class="sidebar-overlay" onclick={() => (sidebarOpen = false)}></div>
 	{/if}
 
 	<!-- Sidebar -->
 	<aside class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
 			<button class="new-chat-btn" onclick={createSession}>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+				<svg
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					><line x1="12" y1="5" x2="12" y2="19" /><line
+						x1="5"
+						y1="12"
+						x2="19"
+						y2="12"
+					/></svg
+				>
 				New Chat
 			</button>
-			<button class="sidebar-close" onclick={() => sidebarOpen = false} aria-label="Close sidebar">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			<button
+				class="sidebar-close"
+				onclick={() => (sidebarOpen = false)}
+				aria-label="Close sidebar"
+			>
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					><line x1="18" y1="6" x2="6" y2="18" /><line
+						x1="6"
+						y1="6"
+						x2="18"
+						y2="18"
+					/></svg
+				>
 			</button>
 		</div>
 
@@ -410,7 +458,13 @@
 			{#each sessions as session (session.id)}
 				<div class="session-item-wrapper">
 					{#if editingSessionId === session.id}
-						<form class="rename-form" onsubmit={(e) => { e.preventDefault(); renameSession(session.id, editTitle); }}>
+						<form
+							class="rename-form"
+							onsubmit={(e) => {
+								e.preventDefault();
+								renameSession(session.id, editTitle);
+							}}
+						>
 							<!-- svelte-ignore a11y_autofocus -->
 							<input
 								class="rename-input"
@@ -428,20 +482,70 @@
 						>
 							<div class="session-info">
 								<span class="session-title">{session.title}</span>
-								<span class="session-sub">{session.messages.length} messages · {formatSessionDate(session.createdAt)}</span>
+								<span class="session-sub"
+									>{session.messages.length} messages · {formatSessionDate(
+										session.createdAt
+									)}</span
+								>
 							</div>
 						</button>
 						<div class="session-actions">
-							<button class="session-action-btn" onclick={() => startRename(session.id, session.title)} aria-label="Rename" title="Rename">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+							<button
+								class="session-action-btn"
+								onclick={() => startRename(session.id, session.title)}
+								aria-label="Rename"
+								title="Rename"
+							>
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									><path
+										d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+									/><path
+										d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+									/></svg
+								>
 							</button>
 							{#if confirmDeleteId === session.id}
-								<button class="session-action-btn danger" onclick={() => deleteSession(session.id)} aria-label="Confirm delete" title="Confirm delete">
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+								<button
+									class="session-action-btn danger"
+									onclick={() => deleteSession(session.id)}
+									aria-label="Confirm delete"
+									title="Confirm delete"
+								>
+									<svg
+										width="14"
+										height="14"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg
+									>
 								</button>
 							{:else}
-								<button class="session-action-btn" onclick={() => confirmDeleteId = session.id} aria-label="Delete" title="Delete">
-									<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6L18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V3h6v3"/></svg>
+								<button
+									class="session-action-btn"
+									onclick={() => (confirmDeleteId = session.id)}
+									aria-label="Delete"
+									title="Delete"
+								>
+									<svg
+										width="14"
+										height="14"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										><polyline points="3 6 5 6 21 6" /><path
+											d="M19 6L18 20a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+										/><path d="M10 11v6" /><path d="M14 11v6" /><path
+											d="M9 6V3h6v3"
+										/></svg
+									>
 								</button>
 							{/if}
 						</div>
@@ -452,7 +556,17 @@
 
 		<div class="sidebar-footer">
 			<a href="/admin/{data.serverId}" class="sidebar-back">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+				<svg
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					><line x1="19" y1="12" x2="5" y2="12" /><polyline
+						points="12 19 5 12 12 5"
+					/></svg
+				>
 				Back to Dashboard
 			</a>
 		</div>
@@ -462,15 +576,35 @@
 	<div class="chat-main">
 		<!-- Chat header -->
 		<header class="chat-header">
-			<button class="menu-btn" onclick={() => sidebarOpen = true} aria-label="Open chat menu">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+			<button
+				class="menu-btn"
+				onclick={() => (sidebarOpen = true)}
+				aria-label="Open chat menu"
+			>
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					><line x1="3" y1="12" x2="21" y2="12" /><line
+						x1="3"
+						y1="6"
+						x2="21"
+						y2="6"
+					/><line x1="3" y1="18" x2="21" y2="18" /></svg
+				>
 			</button>
 			<div class="chat-header-info">
 				{#if showDMHistory}
 					<h1>💬 Discord DM History</h1>
 					<p class="chat-header-sub">Read-only timeline from Discord</p>
 				{:else if activeSession}
-					<h1><img src="/logo.webp" alt="" class="inline-logo" /> {activeSession.title}</h1>
+					<h1>
+						<img src="/logo.webp" alt="" class="inline-logo" />
+						{activeSession.title}
+					</h1>
 					<p class="chat-header-sub">
 						{#if data.guild?.name}
 							Server: <strong>{data.guild.name}</strong>
@@ -483,8 +617,26 @@
 					<p class="chat-header-sub">Start a chat or open DM history</p>
 				{/if}
 			</div>
-			<button class="new-chat-header-btn" onclick={createSession} aria-label="New chat" title="New chat">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+			<button
+				class="new-chat-header-btn"
+				onclick={createSession}
+				aria-label="New chat"
+				title="New chat"
+			>
+				<svg
+					width="18"
+					height="18"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					><line x1="12" y1="5" x2="12" y2="19" /><line
+						x1="5"
+						y1="12"
+						x2="19"
+						y2="12"
+					/></svg
+				>
 			</button>
 		</header>
 
@@ -497,64 +649,42 @@
 
 		<!-- Chat messages -->
 		<div class="chat-container" bind:this={chatContainer}>
-				{#if !data.aiEnabled && !showDMHistory}
-					<div class="chat-disabled">
-						<div class="chat-disabled-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
-						<h2>AI Chat Not Available</h2>
-						<p>This server has AI disabled. You can still browse Discord DM history.</p>
+			{#if !data.aiEnabled && !showDMHistory}
+				<div class="chat-disabled">
+					<div class="chat-disabled-icon">
+						<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
 					</div>
-				{:else if showDMHistory && dmLoading}
-					<div class="chat-loading">
-						<div class="typing-dots"><span></span><span></span><span></span></div>
-						<p>Loading DM history...</p>
+					<h2>AI Chat Not Available</h2>
+					<p>This server has AI disabled. You can still browse Discord DM history.</p>
+				</div>
+			{:else if showDMHistory && dmLoading}
+				<div class="chat-loading">
+					<div class="typing-dots"><span></span><span></span><span></span></div>
+					<p>Loading DM history...</p>
+				</div>
+			{:else if showDMHistory}
+				{#if dmHasMore}
+					<div class="load-more">
+						<button
+							class="btn btn-secondary btn-sm"
+							onclick={loadMoreDMs}
+							disabled={dmLoadingMore}
+						>
+							{dmLoadingMore ? 'Loading...' : 'Load older messages'}
+						</button>
 					</div>
-				{:else if showDMHistory}
-					{#if dmHasMore}
-						<div class="load-more">
-							<button class="btn btn-secondary btn-sm" onclick={loadMoreDMs} disabled={dmLoadingMore}>
-								{dmLoadingMore ? 'Loading...' : 'Load older messages'}
-							</button>
-						</div>
-					{/if}
-					{#if dmMessages.length === 0}
-						<div class="chat-empty">
-							<div class="chat-empty-icon">💬</div>
-							<h3>No DM History</h3>
-							<p>You haven't chatted with SpaceBot via Discord DM yet. You can DM the bot directly on Discord, or start a new chat here.</p>
-							<button class="suggestion" onclick={createSession}>✨ Start a new chat</button>
-						</div>
-					{:else}
-						{#each groupedMessages as group}
-							<div class="date-divider"><span>{group.date}</span></div>
-							{#each group.messages as msg (msg.id)}
-								{@render messageBlock(msg)}
-							{/each}
-						{/each}
-					{/if}
-				{:else if !activeSession}
-					<!-- No session selected -->
-					<div class="chat-empty">
-						<div class="chat-empty-icon"><img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" /></div>
-						<h3>SpaceBot AI Assistant</h3>
-						<p>Ask about stats, automations, logs, and settings.</p>
-						<div class="chat-suggestions">
-							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('How active has my server been this week?')); }}>📊 Server activity</button>
-							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('List my automations')); }}>⚡ Automations</button>
-							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('Who are the most active members?')); }}>👥 Active members</button>
-							<button class="suggestion" onclick={() => { createSession(); tick().then(() => sendMessage('Show server stats')); }}>📈 Stats</button>
-						</div>
-					</div>
-				{:else if messages.length === 0}
+				{/if}
+				{#if dmMessages.length === 0}
 					<div class="chat-empty">
 						<div class="chat-empty-icon">💬</div>
-						<h3>Start a conversation</h3>
-						<p>Try one of these quick prompts.</p>
-						<div class="chat-suggestions">
-							<button class="suggestion" onclick={() => sendMessage('How active has my server been this week?')}>📊 Server activity this week</button>
-							<button class="suggestion" onclick={() => sendMessage('List my automations')}>⚡ List automations</button>
-							<button class="suggestion" onclick={() => sendMessage('Who are the most active members?')}>👥 Most active members</button>
-							<button class="suggestion" onclick={() => sendMessage('Show my server stats')}>📈 Server stats</button>
-						</div>
+						<h3>No DM History</h3>
+						<p>
+							You haven't chatted with SpaceBot via Discord DM yet. You can DM the bot
+							directly on Discord, or start a new chat here.
+						</p>
+						<button class="suggestion" onclick={createSession}
+							>✨ Start a new chat</button
+						>
 					</div>
 				{:else}
 					{#each groupedMessages as group}
@@ -564,6 +694,83 @@
 						{/each}
 					{/each}
 				{/if}
+			{:else if !activeSession}
+				<!-- No session selected -->
+				<div class="chat-empty">
+					<div class="chat-empty-icon">
+						<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
+					</div>
+					<h3>SpaceBot AI Assistant</h3>
+					<p>Ask about stats, automations, logs, and settings.</p>
+					<div class="chat-suggestions">
+						<button
+							class="suggestion"
+							onclick={() => {
+								createSession();
+								tick().then(() =>
+									sendMessage('How active has my server been this week?')
+								);
+							}}>📊 Server activity</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => {
+								createSession();
+								tick().then(() => sendMessage('List my automations'));
+							}}>⚡ Automations</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => {
+								createSession();
+								tick().then(() => sendMessage('Who are the most active members?'));
+							}}>👥 Active members</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => {
+								createSession();
+								tick().then(() => sendMessage('Show server stats'));
+							}}>📈 Stats</button
+						>
+					</div>
+				</div>
+			{:else if messages.length === 0}
+				<div class="chat-empty">
+					<div class="chat-empty-icon">💬</div>
+					<h3>Start a conversation</h3>
+					<p>Try one of these quick prompts.</p>
+					<div class="chat-suggestions">
+						<button
+							class="suggestion"
+							onclick={() => sendMessage('How active has my server been this week?')}
+							>📊 Server activity this week</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => sendMessage('List my automations')}
+							>⚡ List automations</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => sendMessage('Who are the most active members?')}
+							>👥 Most active members</button
+						>
+						<button
+							class="suggestion"
+							onclick={() => sendMessage('Show my server stats')}
+							>📈 Server stats</button
+						>
+					</div>
+				</div>
+			{:else}
+				{#each groupedMessages as group}
+					<div class="date-divider"><span>{group.date}</span></div>
+					{#each group.messages as msg (msg.id)}
+						{@render messageBlock(msg)}
+					{/each}
+				{/each}
+			{/if}
 		</div>
 
 		<!-- Input area -->
@@ -574,7 +781,11 @@
 						bind:this={inputEl}
 						bind:value={input}
 						onkeydown={handleKeydown}
-						placeholder={data.aiEnabled ? (activeSession ? 'Type a message...' : 'Type to start a new chat...') : 'AI is disabled for this server'}
+						placeholder={data.aiEnabled
+							? activeSession
+								? 'Type a message...'
+								: 'Type to start a new chat...'
+							: 'AI is disabled for this server'}
 						rows="1"
 						disabled={sending || !data.aiEnabled}
 						class="chat-input"
@@ -586,9 +797,39 @@
 						aria-label="Send message"
 					>
 						{#if sending}
-							<svg class="send-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/><animate attributeName="stroke-dashoffset" values="32;0;32" dur="1.5s" repeatCount="indefinite"/></circle></svg>
+							<svg
+								class="send-spinner"
+								width="16"
+								height="16"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								><circle
+									cx="12"
+									cy="12"
+									r="10"
+									stroke-dasharray="32"
+									stroke-dashoffset="32"
+									><animateTransform
+										attributeName="transform"
+										type="rotate"
+										from="0 12 12"
+										to="360 12 12"
+										dur="1s"
+										repeatCount="indefinite"
+									/><animate
+										attributeName="stroke-dashoffset"
+										values="32;0;32"
+										dur="1.5s"
+										repeatCount="indefinite"
+									/></circle
+								></svg
+							>
 						{:else}
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
+								><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg
+							>
 						{/if}
 					</button>
 				</div>
@@ -605,18 +846,23 @@
 				<img src="/logo.webp" alt="SpaceBot" class="avatar-img" />
 			{:else if msg.author?.avatar}
 				<img
-					src="https://cdn.discordapp.com/avatars/{msg.author.id}/{msg.author.avatar}.png?size=64"
+					src="https://cdn.discordapp.com/avatars/{msg.author.id}/{msg.author
+						.avatar}.png?size=64"
 					alt={msg.author?.username}
 					class="avatar-img"
 				/>
 			{:else}
-				<div class="avatar-fallback">{(msg.author?.username || 'U').charAt(0).toUpperCase()}</div>
+				<div class="avatar-fallback">
+					{(msg.author?.username || 'U').charAt(0).toUpperCase()}
+				</div>
 			{/if}
 		</div>
 		<div class="message-body">
 			<div class="message-meta">
 				<span class="message-author">
-					{msg.role === 'assistant' ? 'SpaceBot' : (msg.author?.globalName || msg.author?.username || 'You')}
+					{msg.role === 'assistant'
+						? 'SpaceBot'
+						: msg.author?.globalName || msg.author?.username || 'You'}
 				</span>
 				{#if msg.timestamp}
 					<span class="message-time">{formatTime(msg.timestamp)}</span>
@@ -695,7 +941,9 @@
 		transition: opacity 0.15s;
 	}
 
-	.new-chat-btn:hover { opacity: 0.9; }
+	.new-chat-btn:hover {
+		opacity: 0.9;
+	}
 
 	.sidebar-sessions {
 		flex: 1;
@@ -991,8 +1239,14 @@
 		color: var(--color-text-secondary);
 	}
 
-	.chat-disabled-icon { font-size: 3rem; margin-bottom: 1rem; }
-	.chat-disabled h2 { color: var(--color-text); margin-bottom: 0.5rem; }
+	.chat-disabled-icon {
+		font-size: 3rem;
+		margin-bottom: 1rem;
+	}
+	.chat-disabled h2 {
+		color: var(--color-text);
+		margin-bottom: 0.5rem;
+	}
 
 	/* Chat container */
 	.chat-container {
@@ -1034,8 +1288,15 @@
 		padding: 1.5rem;
 	}
 
-	.chat-empty-icon { font-size: 2.5rem; margin-bottom: 0.6rem; }
-	.chat-empty h3 { color: var(--color-text); margin-bottom: 0.4rem; font-size: 1.1rem; }
+	.chat-empty-icon {
+		font-size: 2.5rem;
+		margin-bottom: 0.6rem;
+	}
+	.chat-empty h3 {
+		color: var(--color-text);
+		margin-bottom: 0.4rem;
+		font-size: 1.1rem;
+	}
 	.chat-empty p {
 		color: var(--color-text-secondary);
 		max-width: 400px;
@@ -1196,12 +1457,24 @@
 		animation: typingBounce 1.4s infinite ease-in-out;
 	}
 
-	.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-	.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+	.typing-dots span:nth-child(2) {
+		animation-delay: 0.2s;
+	}
+	.typing-dots span:nth-child(3) {
+		animation-delay: 0.4s;
+	}
 
 	@keyframes typingBounce {
-		0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-		30% { transform: translateY(-5px); opacity: 1; }
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+			opacity: 0.4;
+		}
+		30% {
+			transform: translateY(-5px);
+			opacity: 1;
+		}
 	}
 
 	/* Input area */
@@ -1264,8 +1537,13 @@
 		transition: opacity 0.15s ease;
 	}
 
-	.send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-	.send-btn:not(:disabled):hover { opacity: 0.85; }
+	.send-btn:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+	.send-btn:not(:disabled):hover {
+		opacity: 0.85;
+	}
 
 	.chat-disclaimer {
 		text-align: center;
@@ -1346,7 +1624,7 @@
 
 		.sidebar.open {
 			transform: translateX(0);
-			box-shadow: var(--shadow-lg, 0 10px 40px rgba(0,0,0,0.3));
+			box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.3));
 		}
 
 		.sidebar-close {

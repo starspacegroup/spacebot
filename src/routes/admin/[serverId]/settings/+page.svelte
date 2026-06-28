@@ -2,17 +2,15 @@
 	import { enhance } from '$app/forms';
 	import Toast from '$lib/components/Toast.svelte';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
-	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
-	import { TIMEZONE_OPTIONS, getTimezone, getTimezoneAbbreviation } from '$lib/timezone.js';
-	
-	let { data, form } = $props();
-	
+	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
+
+	const { data, form } = $props();
+
 	let showToast = $state(true);
-	let saving = $state(false);
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
-	
+
 	/** Auto-save: debounce and submit the settings form */
 	function autoSave() {
 		if (autoSaveTimer) clearTimeout(autoSaveTimer);
@@ -22,16 +20,16 @@
 			}
 		}, 500);
 	}
-	
+
 	// Track the server ID to detect when we navigate to a different server
 	// svelte-ignore state_referenced_locally
 	let lastServerId = $state(data.serverId);
-	
+
 	// Local state for form fields - initialized from data, re-synced via $effect below.
 	// These are mutable form values that the user edits, so they must be $state, not $derived.
 	// svelte-ignore state_referenced_locally
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
-	
+
 	// Log embed color settings per category
 	const defaultEmbedColors = {
 		message: '#3498db',
@@ -50,8 +48,11 @@
 		github: '#24292e',
 	};
 	// svelte-ignore state_referenced_locally
-	let logEmbedColors = $state({ ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) });
-	
+	let logEmbedColors = $state({
+		...defaultEmbedColors,
+		...(data.settings?.logEmbedColors || {}),
+	});
+
 	// Serialize embed colors for hidden form input
 	const logEmbedColorsJson = $derived(JSON.stringify(logEmbedColors));
 
@@ -62,38 +63,48 @@
 
 	function toggleCategory(key) {
 		if (excludedCategories.includes(key)) {
-			excludedCategories = excludedCategories.filter(c => c !== key);
+			excludedCategories = excludedCategories.filter((c) => c !== key);
 		} else {
 			excludedCategories = [...excludedCategories, key];
 		}
 		autoSave();
 	}
-	
+
 	function resetEmbedColor(category) {
 		logEmbedColors[category] = defaultEmbedColors[category] || '#95a5a6';
 		autoSave();
 	}
-	
+
 	function resetAllEmbedColors() {
 		logEmbedColors = { ...defaultEmbedColors };
 		autoSave();
 	}
-	
+
 	// Timezone setting
 	// svelte-ignore state_referenced_locally
 	let timezone = $state(data.settings?.timezone || '');
-	
+	// svelte-ignore state_referenced_locally
+	let brandingDisplayName = $state(data.branding?.display_name || '');
+	// svelte-ignore state_referenced_locally
+	let brandingAccentColor = $state(data.branding?.accent_color || '#5865f2');
+	// svelte-ignore state_referenced_locally
+	let brandingLogoUrl = $state(data.branding?.logo_url || '');
+	// svelte-ignore state_referenced_locally
+	let brandingBannerUrl = $state(data.branding?.banner_url || '');
+	// svelte-ignore state_referenced_locally
+	let brandingTagline = $state(data.branding?.public_tagline || '');
+
 	// Browser timezone detection
 	let browserTimezone = $state('');
 	let browserTime = $state('');
-	
+
 	$effect(() => {
 		try {
 			browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		} catch {
 			browserTimezone = 'Unknown';
 		}
-		
+
 		function tick() {
 			const tz = timezone || browserTimezone;
 			browserTime = new Date().toLocaleTimeString('en-US', {
@@ -108,31 +119,29 @@
 		const interval = setInterval(tick, 1000);
 		return () => clearInterval(interval);
 	});
-	
+
 	// Permission settings state
 	// svelte-ignore state_referenced_locally
-	let viewDashboardPerm = $state(data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD');
+	let viewDashboardPerm = $state(
+		data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD'
+	);
 	// svelte-ignore state_referenced_locally
 	let viewLogsPerm = $state(data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD');
 	// svelte-ignore state_referenced_locally
-	let manageAutomationsPerm = $state(data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD');
+	let manageAutomationsPerm = $state(
+		data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD'
+	);
 	// svelte-ignore state_referenced_locally
-	let manageCommandsPerm = $state(data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD');
+	let manageCommandsPerm = $state(
+		data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD'
+	);
 	// svelte-ignore state_referenced_locally
 	let localRunnerEnabled = $state(Boolean(data.permissionSettings?.localRunnerAssist?.enabled));
 	// svelte-ignore state_referenced_locally
-	let localRunnerAllowedUsers = $state((data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n'));
-	
-	// Role overrides for permissions
-	// svelte-ignore state_referenced_locally
-	let viewDashboardRoles = $state(data.permissionSettings?.viewDashboard?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let viewLogsRoles = $state(data.permissionSettings?.viewLogs?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let manageAutomationsRoles = $state(data.permissionSettings?.manageAutomations?.roles || []);
-	// svelte-ignore state_referenced_locally
-	let manageCommandsRoles = $state(data.permissionSettings?.manageCommands?.roles || []);
-	
+	let localRunnerAllowedUsers = $state(
+		(data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n')
+	);
+
 	// Webhook state
 	let showWebhookModal = $state(false);
 	let editingWebhook = $state(null);
@@ -144,7 +153,7 @@
 	let webhookHeaders = $state('');
 	let webhookEnabled = $state(true);
 	let deleteConfirmId = $state(null);
-	
+
 	function openWebhookModal(webhook = null) {
 		if (webhook) {
 			editingWebhook = webhook;
@@ -167,12 +176,12 @@
 		}
 		showWebhookModal = true;
 	}
-	
+
 	function closeWebhookModal() {
 		showWebhookModal = false;
 		editingWebhook = null;
 	}
-	
+
 	// Re-sync when navigating to a different server or when data is reloaded after save
 	$effect(() => {
 		// Only re-sync if server changed or we're not currently saving
@@ -181,22 +190,26 @@
 		if (serverChanged) {
 			lastServerId = data.serverId;
 		}
-		
+
 		// Always sync from data - the form enhance uses invalidateAll which reloads data
 		loggingChannelId = data.settings?.loggingChannelId || '';
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		excludedCategories = data.settings?.excludedCategories || [];
 		timezone = data.settings?.timezone || '';
+		brandingDisplayName = data.branding?.display_name || '';
+		brandingAccentColor = data.branding?.accent_color || '#5865f2';
+		brandingLogoUrl = data.branding?.logo_url || '';
+		brandingBannerUrl = data.branding?.banner_url || '';
+		brandingTagline = data.branding?.public_tagline || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
-		manageAutomationsPerm = data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
+		manageAutomationsPerm =
+			data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
 		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
 		localRunnerEnabled = Boolean(data.permissionSettings?.localRunnerAssist?.enabled);
-		localRunnerAllowedUsers = (data.permissionSettings?.localRunnerAssist?.allowedUserIds || []).join('\n');
-		viewDashboardRoles = data.permissionSettings?.viewDashboard?.roles || [];
-		viewLogsRoles = data.permissionSettings?.viewLogs?.roles || [];
-		manageAutomationsRoles = data.permissionSettings?.manageAutomations?.roles || [];
-		manageCommandsRoles = data.permissionSettings?.manageCommands?.roles || [];
+		localRunnerAllowedUsers = (
+			data.permissionSettings?.localRunnerAssist?.allowedUserIds || []
+		).join('\n');
 	});
 </script>
 
@@ -206,13 +219,13 @@
 
 <div class="settings-page">
 	{#if form?.message && showToast}
-		<Toast 
-			message={form.message} 
-			success={form.success} 
-			onDismiss={() => showToast = false} 
+		<Toast
+			message={form.message}
+			success={form.success}
+			onDismiss={() => (showToast = false)}
 		/>
 	{/if}
-	
+
 	<header class="page-header">
 		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
 		<div class="header-content">
@@ -220,18 +233,23 @@
 				<span class="header-icon">⚙️</span>
 				Server Settings
 			</h1>
-			<p class="header-desc">Configure bot settings for {data.guild?.name || 'this server'}</p>
+			<p class="header-desc">
+				Configure bot settings for {data.guild?.name || 'this server'}
+			</p>
 		</div>
 	</header>
-	
-	<form bind:this={settingsFormEl} method="POST" action="?/updateSettings" use:enhance={() => {
-		saving = true;
-		return async ({ update }) => {
-			await update({ reset: false, invalidateAll: true });
-			saving = false;
-			showToast = true;
-		};
-	}}>
+
+	<form
+		bind:this={settingsFormEl}
+		method="POST"
+		action="?/updateSettings"
+		use:enhance={() => {
+			return async ({ update }) => {
+				await update({ reset: false, invalidateAll: true });
+				showToast = true;
+			};
+		}}
+	>
 		<!-- Dashboard Access Permissions - Most Important! -->
 		<section class="settings-section permissions-section">
 			<h2>
@@ -240,20 +258,23 @@
 				<span class="important-badge">Important</span>
 			</h2>
 			<p class="section-desc">
-				Control who can access different features in this web dashboard based on their Discord permissions.
-				Users with <strong>Administrator</strong> permission always have full access.
+				Control who can access different features in this web dashboard based on their
+				Discord permissions. Users with <strong>Administrator</strong> permission always have
+				full access.
 			</p>
-			
+
 			<div class="settings-card">
 				<!-- View Dashboard -->
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">📊 View Dashboard</span>
-						<span class="permission-desc">Access the server dashboard and view basic information</span>
+						<span class="permission-desc"
+							>Access the server dashboard and view basic information</span
+						>
 					</div>
 					<div class="permission-control">
-						<select 
-							name="viewDashboardPerm" 
+						<select
+							name="viewDashboardPerm"
 							bind:value={viewDashboardPerm}
 							class="permission-select"
 							onchange={autoSave}
@@ -264,16 +285,18 @@
 						</select>
 					</div>
 				</div>
-				
+
 				<!-- View Logs -->
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">📜 View Event Logs</span>
-						<span class="permission-desc">View server activity logs and audit history</span>
+						<span class="permission-desc"
+							>View server activity logs and audit history</span
+						>
 					</div>
 					<div class="permission-control">
-						<select 
-							name="viewLogsPerm" 
+						<select
+							name="viewLogsPerm"
 							bind:value={viewLogsPerm}
 							class="permission-select"
 							onchange={autoSave}
@@ -284,16 +307,18 @@
 						</select>
 					</div>
 				</div>
-				
+
 				<!-- Manage Automations -->
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">⚡ Manage Automations</span>
-						<span class="permission-desc">Create, edit, and delete automated actions</span>
+						<span class="permission-desc"
+							>Create, edit, and delete automated actions</span
+						>
 					</div>
 					<div class="permission-control">
-						<select 
-							name="manageAutomationsPerm" 
+						<select
+							name="manageAutomationsPerm"
 							bind:value={manageAutomationsPerm}
 							class="permission-select"
 							onchange={autoSave}
@@ -304,16 +329,18 @@
 						</select>
 					</div>
 				</div>
-				
+
 				<!-- Manage Commands -->
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">💬 Manage Commands</span>
-						<span class="permission-desc">Create and configure custom slash commands</span>
+						<span class="permission-desc"
+							>Create and configure custom slash commands</span
+						>
 					</div>
 					<div class="permission-control">
-						<select 
-							name="manageCommandsPerm" 
+						<select
+							name="manageCommandsPerm"
 							bind:value={manageCommandsPerm}
 							class="permission-select"
 							onchange={autoSave}
@@ -324,12 +351,14 @@
 						</select>
 					</div>
 				</div>
-				
+
 				<!-- Server Settings - Always Admin -->
 				<div class="permission-row locked">
 					<div class="permission-info">
 						<span class="permission-label">⚙️ Server Settings</span>
-						<span class="permission-desc">Access this settings page (cannot be changed)</span>
+						<span class="permission-desc"
+							>Access this settings page (cannot be changed)</span
+						>
 					</div>
 					<div class="permission-control">
 						<span class="permission-locked">
@@ -342,11 +371,19 @@
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">🤖 Local Runner Assist</span>
-						<span class="permission-desc">Default is off. Enable this server if local runners are allowed to assist here.</span>
+						<span class="permission-desc"
+							>Default is off. Enable this server if local runners are allowed to
+							assist here.</span
+						>
 					</div>
 					<div class="permission-control">
 						<label class="runner-option-toggle">
-							<input type="checkbox" name="localRunnerEnabled" bind:checked={localRunnerEnabled} onchange={autoSave} />
+							<input
+								type="checkbox"
+								name="localRunnerEnabled"
+								bind:checked={localRunnerEnabled}
+								onchange={autoSave}
+							/>
 							<span>{localRunnerEnabled ? 'Enabled' : 'Disabled'}</span>
 						</label>
 					</div>
@@ -355,7 +392,10 @@
 				<div class="permission-row">
 					<div class="permission-info">
 						<span class="permission-label">👥 Allowed User IDs</span>
-						<span class="permission-desc">Optional. One Discord user ID per line. Leave empty to allow any manager in this server.</span>
+						<span class="permission-desc"
+							>Optional. One Discord user ID per line. Leave empty to allow any
+							manager in this server.</span
+						>
 					</div>
 					<div class="permission-control">
 						<textarea
@@ -370,22 +410,24 @@
 				</div>
 			</div>
 		</section>
-		
+
 		<!-- Logging Settings -->
 		<section class="settings-section">
 			<h2>
 				<span class="section-icon">📊</span>
 				Logging
 			</h2>
-			
+
 			<div class="settings-card">
 				<div class="setting-row">
 					<div class="setting-info">
 						<span class="setting-label">Logging Channel</span>
-						<span class="setting-desc">Channel where bot activity logs will be sent</span>
+						<span class="setting-desc"
+							>Channel where bot activity logs will be sent</span
+						>
 					</div>
 					<div class="setting-control">
-						<ChannelSelector 
+						<ChannelSelector
 							guildId={data.serverId}
 							bind:value={loggingChannelId}
 							name="loggingChannelId"
@@ -400,7 +442,10 @@
 				<div class="settings-card log-categories-card">
 					<div class="setting-info">
 						<span class="setting-label">Event Categories</span>
-						<span class="setting-desc">Choose which types of events to log. Disabled categories will not be recorded.</span>
+						<span class="setting-desc"
+							>Choose which types of events to log. Disabled categories will not be
+							recorded.</span
+						>
 					</div>
 					<div class="category-toggles-grid">
 						{#each Object.entries(EVENT_CATEGORIES) as [key, category]}
@@ -413,7 +458,9 @@
 							>
 								<span class="category-toggle-icon">{category.icon}</span>
 								<span class="category-toggle-name">{category.name}</span>
-								<span class="category-toggle-status">{excludedCategories.includes(key) ? 'Off' : 'On'}</span>
+								<span class="category-toggle-status"
+									>{excludedCategories.includes(key) ? 'Off' : 'On'}</span
+								>
 							</button>
 						{/each}
 					</div>
@@ -425,16 +472,27 @@
 					<div class="embed-colors-header">
 						<div class="setting-info">
 							<span class="setting-label">Embed Colors</span>
-							<span class="setting-desc">Customize the left sidebar color of log embeds per event category</span>
+							<span class="setting-desc"
+								>Customize the left sidebar color of log embeds per event category</span
+							>
 						</div>
-						<button type="button" class="btn btn-sm btn-secondary" onclick={resetAllEmbedColors}>
+						<button
+							type="button"
+							class="btn btn-sm btn-secondary"
+							onclick={resetAllEmbedColors}
+						>
 							Reset All
 						</button>
 					</div>
 					<div class="embed-colors-grid">
 						{#each Object.entries(EVENT_CATEGORIES) as [key, category]}
 							<div class="embed-color-item">
-								<div class="embed-color-preview" style="background-color: {logEmbedColors[key] || defaultEmbedColors[key] || '#95a5a6'}"></div>
+								<div
+									class="embed-color-preview"
+									style="background-color: {logEmbedColors[key] ||
+										defaultEmbedColors[key] ||
+										'#95a5a6'}"
+								></div>
 								<div class="embed-color-info">
 									<span class="embed-color-icon">{category.icon}</span>
 									<span class="embed-color-name">{category.name}</span>
@@ -442,13 +500,24 @@
 								<div class="embed-color-controls">
 									<input
 										type="color"
-										value={logEmbedColors[key] || defaultEmbedColors[key] || '#95a5a6'}
-										oninput={(e) => { logEmbedColors[key] = (e.target as HTMLInputElement).value; }}
+										value={logEmbedColors[key] ||
+											defaultEmbedColors[key] ||
+											'#95a5a6'}
+										oninput={(e) => {
+											logEmbedColors[key] = (
+												e.target as HTMLInputElement
+											).value;
+										}}
 										onchange={autoSave}
 										class="color-picker"
 									/>
 									{#if logEmbedColors[key] !== defaultEmbedColors[key]}
-										<button type="button" class="btn-icon btn-reset-color" onclick={() => resetEmbedColor(key)} title="Reset to default">
+										<button
+											type="button"
+											class="btn-icon btn-reset-color"
+											onclick={() => resetEmbedColor(key)}
+											title="Reset to default"
+										>
 											↩
 										</button>
 									{/if}
@@ -459,24 +528,95 @@
 				</div>
 			{/if}
 			<input type="hidden" name="logEmbedColors" value={logEmbedColorsJson} />
-		<input type="hidden" name="excludedCategories" value={excludedCategoriesJson} />
+			<input type="hidden" name="excludedCategories" value={excludedCategoriesJson} />
 		</section>
-		
+
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">🎨</span>
+				Custom Branding
+			</h2>
+			<p class="section-desc">Customize the public presentation for this server.</p>
+
+			<div class="settings-grid">
+				<div class="settings-card">
+					<label for="brandingDisplayName" class="setting-label">Display name</label>
+					<input
+						id="brandingDisplayName"
+						name="brandingDisplayName"
+						class="form-input"
+						bind:value={brandingDisplayName}
+						maxlength="80"
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingAccentColor" class="setting-label">Accent color</label>
+					<input
+						id="brandingAccentColor"
+						name="brandingAccentColor"
+						class="form-input"
+						type="color"
+						bind:value={brandingAccentColor}
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingLogoUrl" class="setting-label">Logo URL</label>
+					<input
+						id="brandingLogoUrl"
+						name="brandingLogoUrl"
+						class="form-input"
+						bind:value={brandingLogoUrl}
+						placeholder="/logo.webp"
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingBannerUrl" class="setting-label">Banner URL</label>
+					<input
+						id="brandingBannerUrl"
+						name="brandingBannerUrl"
+						class="form-input"
+						bind:value={brandingBannerUrl}
+						placeholder="/server-admin-dark.webp"
+						onchange={autoSave}
+					/>
+				</div>
+			</div>
+			<div class="settings-card">
+				<label for="brandingTagline" class="setting-label">Public tagline</label>
+				<input
+					id="brandingTagline"
+					name="brandingTagline"
+					class="form-input"
+					bind:value={brandingTagline}
+					maxlength="180"
+					onchange={autoSave}
+				/>
+			</div>
+		</section>
+
 		<!-- Timezone Settings -->
 		<section class="settings-section">
 			<h2>
 				<span class="section-icon">🌐</span>
 				Timezone
 			</h2>
-			
+
 			<div class="settings-card">
 				<div class="setting-row">
 					<div class="setting-info">
 						<label for="timezone" class="setting-label">Display Timezone</label>
-						<span class="setting-desc">All dates and times in the dashboard will be displayed in this timezone. Leave on "Browser Default" to use each viewer's local timezone.</span>
+						<span class="setting-desc"
+							>All dates and times in the dashboard will be displayed in this
+							timezone. Leave on "Browser Default" to use each viewer's local
+							timezone.</span
+						>
 						{#if browserTimezone}
 							<span class="setting-hint">
-								🕐 Your browser: <strong>{browserTimezone}</strong>{#if browserTime} — {browserTime}{/if}
+								🕐 Your browser: <strong>{browserTimezone}</strong>{#if browserTime}
+									— {browserTime}{/if}
 							</span>
 						{/if}
 					</div>
@@ -497,9 +637,8 @@
 				</div>
 			</div>
 		</section>
-		
 	</form>
-	
+
 	<!-- Webhooks Section (outside main form since it has its own forms) -->
 	<section class="settings-section webhooks-section">
 		<h2>
@@ -507,10 +646,10 @@
 			Webhook Endpoints
 		</h2>
 		<p class="section-desc">
-			Configure webhook URLs that can be called from automations and command actions.
-			These webhooks can send data to external services when triggered.
+			Configure webhook URLs that can be called from automations and command actions. These
+			webhooks can send data to external services when triggered.
 		</p>
-		
+
 		<div class="settings-card">
 			{#if data.webhooks?.length > 0}
 				<div class="webhooks-list">
@@ -519,7 +658,10 @@
 							<div class="webhook-info">
 								<div class="webhook-header">
 									<span class="webhook-name">{webhook.name}</span>
-									<span class="webhook-method method-{webhook.method.toLowerCase()}">{webhook.method}</span>
+									<span
+										class="webhook-method method-{webhook.method.toLowerCase()}"
+										>{webhook.method}</span
+									>
 									{#if !webhook.enabled}
 										<span class="webhook-badge disabled">Disabled</span>
 									{/if}
@@ -530,38 +672,42 @@
 								<span class="webhook-url">{webhook.url}</span>
 							</div>
 							<div class="webhook-actions">
-								<button 
-									type="button" 
+								<button
+									type="button"
 									class="btn btn-small btn-secondary"
 									onclick={() => openWebhookModal(webhook)}
 								>
 									Edit
 								</button>
 								{#if deleteConfirmId === webhook.id}
-									<form method="POST" action="?/deleteWebhook" use:enhance={() => {
-										return async ({ update }) => {
-											await update({ invalidateAll: true });
-											deleteConfirmId = null;
-											showToast = true;
-										};
-									}}>
+									<form
+										method="POST"
+										action="?/deleteWebhook"
+										use:enhance={() => {
+											return async ({ update }) => {
+												await update({ invalidateAll: true });
+												deleteConfirmId = null;
+												showToast = true;
+											};
+										}}
+									>
 										<input type="hidden" name="webhookId" value={webhook.id} />
 										<button type="submit" class="btn btn-small btn-danger">
 											Confirm
 										</button>
-										<button 
-											type="button" 
+										<button
+											type="button"
 											class="btn btn-small btn-secondary"
-											onclick={() => deleteConfirmId = null}
+											onclick={() => (deleteConfirmId = null)}
 										>
 											Cancel
 										</button>
 									</form>
 								{:else}
-									<button 
-										type="button" 
+									<button
+										type="button"
 										class="btn btn-small btn-danger-outline"
-										onclick={() => deleteConfirmId = webhook.id}
+										onclick={() => (deleteConfirmId = webhook.id)}
 									>
 										Delete
 									</button>
@@ -574,38 +720,41 @@
 				<div class="empty-state">
 					<span class="empty-icon">🔗</span>
 					<p>No webhooks configured yet</p>
-					<span class="empty-hint">Add webhook endpoints to use in automations and commands</span>
+					<span class="empty-hint"
+						>Add webhook endpoints to use in automations and commands</span
+					>
 				</div>
 			{/if}
-			
+
 			<div class="webhooks-footer">
-				<button 
-					type="button" 
-					class="btn btn-secondary"
-					onclick={() => openWebhookModal()}
-				>
+				<button type="button" class="btn btn-secondary" onclick={() => openWebhookModal()}>
 					<span class="btn-icon">➕</span>
 					Add Webhook
 				</button>
 			</div>
 		</div>
 	</section>
-
 </div>
 
 <!-- Webhook Modal -->
 {#if showWebhookModal}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions a11y_interactive_supports_focus -->
-	<div class="modal-overlay" onclick={closeWebhookModal} role="dialog" aria-modal="true" aria-labelledby="webhook-modal-title" tabindex="-1">
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<div
+		class="modal-overlay"
+		onclick={closeWebhookModal}
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="webhook-modal-title"
+		tabindex="-1"
+	>
 		<div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h3 id="webhook-modal-title">{editingWebhook ? 'Edit Webhook' : 'Add Webhook'}</h3>
 				<button type="button" class="modal-close" onclick={closeWebhookModal}>×</button>
 			</div>
-			
-			<form 
-				method="POST" 
+
+			<form
+				method="POST"
 				action={editingWebhook ? '?/updateWebhook' : '?/createWebhook'}
 				use:enhance={() => {
 					webhookSaving = true;
@@ -613,7 +762,7 @@
 						await update({ invalidateAll: true });
 						webhookSaving = false;
 						showToast = true;
-						if (result.type === 'success' || (result.type === 'redirect')) {
+						if (result.type === 'success' || result.type === 'redirect') {
 							closeWebhookModal();
 						}
 					};
@@ -622,13 +771,13 @@
 				{#if editingWebhook}
 					<input type="hidden" name="webhookId" value={editingWebhook.id} />
 				{/if}
-				
+
 				<div class="modal-body">
 					<div class="form-group">
 						<label for="webhookName" class="form-label">Name *</label>
-						<input 
-							type="text" 
-							id="webhookName" 
+						<input
+							type="text"
+							id="webhookName"
 							name="webhookName"
 							bind:value={webhookName}
 							class="form-input"
@@ -637,24 +786,24 @@
 						/>
 						<span class="form-hint">A unique name to identify this webhook</span>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="webhookDescription" class="form-label">Description</label>
-						<input 
-							type="text" 
-							id="webhookDescription" 
+						<input
+							type="text"
+							id="webhookDescription"
 							name="webhookDescription"
 							bind:value={webhookDescription}
 							class="form-input"
 							placeholder="e.g., Send notifications to #alerts channel"
 						/>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="webhookUrl" class="form-label">URL *</label>
-						<input 
-							type="url" 
-							id="webhookUrl" 
+						<input
+							type="url"
+							id="webhookUrl"
 							name="webhookUrl"
 							bind:value={webhookUrl}
 							class="form-input"
@@ -663,11 +812,11 @@
 						/>
 						<span class="form-hint">The endpoint URL to call</span>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="webhookMethod" class="form-label">HTTP Method</label>
-						<select 
-							id="webhookMethod" 
+						<select
+							id="webhookMethod"
 							name="webhookMethod"
 							bind:value={webhookMethod}
 							class="form-select"
@@ -677,36 +826,40 @@
 							{/each}
 						</select>
 					</div>
-					
+
 					<div class="form-group">
 						<label for="webhookHeaders" class="form-label">Custom Headers</label>
-						<textarea 
-							id="webhookHeaders" 
+						<textarea
+							id="webhookHeaders"
 							name="webhookHeaders"
 							bind:value={webhookHeaders}
 							class="form-textarea"
 							rows="3"
 							placeholder="Authorization: Bearer token&#10;X-Custom-Header: value"
 						></textarea>
-						<span class="form-hint">One header per line in format: Header-Name: value</span>
+						<span class="form-hint"
+							>One header per line in format: Header-Name: value</span
+						>
 					</div>
-					
+
 					{#if editingWebhook}
 						<div class="form-group form-group-inline">
 							<span class="form-label">Status</span>
 							<label class="toggle">
-								<input 
-									type="checkbox" 
+								<input
+									type="checkbox"
 									name="webhookEnabled"
 									bind:checked={webhookEnabled}
 								/>
 								<span class="toggle-slider"></span>
 							</label>
-							<span class="toggle-label">{webhookEnabled ? 'Enabled' : 'Disabled'}</span>
+							<span class="toggle-label"
+								>{webhookEnabled ? 'Enabled' : 'Disabled'}</span
+							>
 						</div>
 					{/if}
 				</div>
-				
+
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" onclick={closeWebhookModal}>
 						Cancel
@@ -730,7 +883,9 @@
 		<span class="section-icon">🔑</span>
 		API Keys
 	</h2>
-	<p class="section-desc">Manage API keys for connecting external apps and MCP clients to your server.</p>
+	<p class="section-desc">
+		Manage API keys for connecting external apps and MCP clients to your server.
+	</p>
 	<a href="/admin/{data.serverId}/api-keys" class="btn btn-secondary">
 		<span class="btn-icon">🔑</span>
 		Manage API Keys
@@ -743,24 +898,24 @@
 		margin: 0 auto;
 		padding: 1rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.settings-page {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.settings-page {
 			padding: 2rem;
 		}
 	}
-	
+
 	/* Header */
 	.page-header {
 		margin-bottom: 2rem;
 	}
-	
+
 	.back-link {
 		display: inline-block;
 		color: var(--color-text-muted);
@@ -769,11 +924,11 @@
 		margin-bottom: 1rem;
 		transition: color 0.2s;
 	}
-	
+
 	.back-link:hover {
 		color: var(--color-text);
 	}
-	
+
 	.header-content h1 {
 		font-size: 1.5rem;
 		font-weight: 700;
@@ -783,27 +938,27 @@
 		gap: 0.5rem;
 		color: var(--color-text);
 	}
-	
+
 	@media (min-width: 640px) {
 		.header-content h1 {
 			font-size: 2rem;
 		}
 	}
-	
+
 	.header-icon {
 		font-size: 1.25rem;
 	}
-	
+
 	.header-desc {
 		color: var(--color-text-muted);
 		margin: 0.5rem 0 0;
 	}
-	
+
 	/* Sections */
 	.settings-section {
 		margin-bottom: 2rem;
 	}
-	
+
 	.settings-section h2 {
 		font-size: 1.1rem;
 		font-weight: 600;
@@ -813,22 +968,22 @@
 		gap: 0.5rem;
 		color: var(--color-text);
 	}
-	
+
 	.section-icon {
 		font-size: 1rem;
 	}
-	
+
 	.section-desc {
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		margin: -0.5rem 0 1rem;
 		line-height: 1.5;
 	}
-	
+
 	.section-desc strong {
 		color: var(--color-text);
 	}
-	
+
 	/* Important Badge */
 	.important-badge {
 		font-size: 0.65rem;
@@ -841,13 +996,13 @@
 		border-radius: var(--radius-sm);
 		margin-left: auto;
 	}
-	
+
 	/* Permissions Section */
 	.permissions-section .settings-card {
 		border-color: var(--color-primary);
 		border-width: 2px;
 	}
-	
+
 	.permission-row {
 		display: flex;
 		align-items: center;
@@ -857,25 +1012,25 @@
 		border-bottom: 1px solid var(--color-border);
 		transition: background 0.2s;
 	}
-	
+
 	.permission-row:last-child {
 		border-bottom: none;
 	}
-	
+
 	.permission-row:hover:not(.locked) {
 		background: var(--color-surface-hover);
 	}
-	
+
 	.permission-row.locked {
 		opacity: 0.7;
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.permission-info {
 		flex: 1;
 		min-width: 0;
 	}
-	
+
 	.permission-label {
 		display: block;
 		font-weight: 600;
@@ -883,17 +1038,17 @@
 		font-size: 0.95rem;
 		margin-bottom: 0.25rem;
 	}
-	
+
 	.permission-desc {
 		display: block;
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.permission-control {
 		flex-shrink: 0;
 	}
-	
+
 	.permission-select {
 		padding: 0.5rem 2rem 0.5rem 0.75rem;
 		border: 1px solid var(--color-border);
@@ -908,16 +1063,16 @@
 		background-repeat: no-repeat;
 		background-position: right 0.65rem center;
 	}
-	
+
 	.permission-select:focus {
 		outline: none;
 		border-color: var(--color-primary);
 	}
-	
+
 	.permission-select:hover {
 		border-color: var(--color-primary);
 	}
-	
+
 	.permission-locked {
 		display: flex;
 		align-items: center;
@@ -929,24 +1084,24 @@
 		font-size: 0.85rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.lock-icon {
 		font-size: 0.9rem;
 	}
-	
+
 	.settings-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
 		padding: 1rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.settings-card {
 			padding: 1.25rem;
 		}
 	}
-	
+
 	/* Setting Rows */
 	.setting-row {
 		display: flex;
@@ -956,21 +1111,21 @@
 		padding: 0.75rem 0;
 		border-bottom: 1px solid var(--color-border);
 	}
-	
+
 	.setting-row:last-child {
 		border-bottom: none;
 	}
-	
+
 	.setting-row.column {
 		flex-direction: column;
 		align-items: stretch;
 	}
-	
+
 	.setting-info {
 		flex: 1;
 		min-width: 0;
 	}
-	
+
 	.setting-label {
 		display: block;
 		font-weight: 500;
@@ -978,25 +1133,25 @@
 		font-size: 0.9rem;
 		margin-bottom: 0.125rem;
 	}
-	
+
 	.setting-desc {
 		display: block;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.setting-hint {
 		display: block;
 		font-size: 0.75rem;
 		color: var(--color-text-secondary);
 		margin-top: 0.375rem;
 	}
-	
+
 	.setting-control {
 		flex-shrink: 0;
 		min-width: 200px;
 	}
-	
+
 	.setting-textarea {
 		width: 100%;
 		padding: 0.75rem;
@@ -1010,12 +1165,12 @@
 		margin-top: 0.5rem;
 		transition: border-color 0.2s;
 	}
-	
+
 	.setting-textarea:focus {
 		outline: none;
 		border-color: var(--color-primary);
 	}
-	
+
 	/* Toggle Switch */
 	.toggle {
 		position: relative;
@@ -1024,13 +1179,13 @@
 		height: 26px;
 		flex-shrink: 0;
 	}
-	
+
 	.toggle input {
 		opacity: 0;
 		width: 0;
 		height: 0;
 	}
-	
+
 	.toggle-slider {
 		position: absolute;
 		cursor: pointer;
@@ -1043,10 +1198,10 @@
 		transition: 0.2s;
 		border-radius: 26px;
 	}
-	
+
 	.toggle-slider:before {
 		position: absolute;
-		content: "";
+		content: '';
 		height: 20px;
 		width: 20px;
 		left: 2px;
@@ -1055,32 +1210,32 @@
 		transition: 0.2s;
 		border-radius: 50%;
 	}
-	
+
 	.toggle input:checked + .toggle-slider {
 		background-color: var(--color-primary);
 		border-color: var(--color-primary);
 	}
-	
+
 	.toggle input:checked + .toggle-slider:before {
 		background-color: white;
 		transform: translateX(22px);
 	}
-	
+
 	.toggle input:focus + .toggle-slider {
 		box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.3);
 	}
-	
+
 	/* Webhooks Section */
 	.webhooks-section {
 		margin-top: 2rem;
 	}
-	
+
 	.webhooks-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 	}
-	
+
 	.webhook-item {
 		display: flex;
 		justify-content: space-between;
@@ -1092,15 +1247,15 @@
 		border-radius: var(--radius-md);
 		transition: border-color 0.2s;
 	}
-	
+
 	.webhook-item:hover {
 		border-color: var(--color-primary);
 	}
-	
+
 	.webhook-item.disabled {
 		opacity: 0.6;
 	}
-	
+
 	.webhook-info {
 		flex: 1;
 		min-width: 0;
@@ -1108,19 +1263,19 @@
 		flex-direction: column;
 		gap: 0.25rem;
 	}
-	
+
 	.webhook-header {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 		flex-wrap: wrap;
 	}
-	
+
 	.webhook-name {
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.webhook-method {
 		font-size: 0.7rem;
 		font-weight: 600;
@@ -1128,13 +1283,28 @@
 		border-radius: var(--radius-sm);
 		text-transform: uppercase;
 	}
-	
-	.method-get { background: #28a745; color: white; }
-	.method-post { background: #007bff; color: white; }
-	.method-put { background: #fd7e14; color: white; }
-	.method-patch { background: #6f42c1; color: white; }
-	.method-delete { background: #dc3545; color: white; }
-	
+
+	.method-get {
+		background: #28a745;
+		color: white;
+	}
+	.method-post {
+		background: #007bff;
+		color: white;
+	}
+	.method-put {
+		background: #fd7e14;
+		color: white;
+	}
+	.method-patch {
+		background: #6f42c1;
+		color: white;
+	}
+	.method-delete {
+		background: #dc3545;
+		color: white;
+	}
+
 	.webhook-badge {
 		font-size: 0.7rem;
 		padding: 0.15rem 0.4rem;
@@ -1142,17 +1312,17 @@
 		background: var(--color-surface);
 		color: var(--color-text-muted);
 	}
-	
+
 	.webhook-badge.disabled {
 		background: rgba(220, 53, 69, 0.15);
 		color: var(--color-danger, #dc3545);
 	}
-	
+
 	.webhook-description {
 		font-size: 0.85rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.webhook-url {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
@@ -1161,50 +1331,50 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	
+
 	.webhook-actions {
 		display: flex;
 		gap: 0.5rem;
 		flex-shrink: 0;
 	}
-	
+
 	.webhook-actions form {
 		display: flex;
 		gap: 0.5rem;
 	}
-	
+
 	.webhooks-footer {
 		margin-top: 1rem;
 		padding-top: 1rem;
 		border-top: 1px solid var(--color-border);
 	}
-	
+
 	/* Empty State */
 	.empty-state {
 		text-align: center;
 		padding: 2rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.empty-icon {
 		font-size: 2.5rem;
 		display: block;
 		margin-bottom: 0.5rem;
 		opacity: 0.5;
 	}
-	
+
 	.empty-state p {
 		margin: 0;
 		font-weight: 500;
 		color: var(--color-text);
 	}
-	
+
 	.empty-hint {
 		font-size: 0.85rem;
 		display: block;
 		margin-top: 0.25rem;
 	}
-	
+
 	/* Modal */
 	.modal-overlay {
 		position: fixed;
@@ -1219,7 +1389,7 @@
 		z-index: 1000;
 		padding: 1rem;
 	}
-	
+
 	.modal {
 		background: var(--color-surface);
 		border-radius: var(--radius-lg);
@@ -1229,7 +1399,7 @@
 		overflow-y: auto;
 		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
 	}
-	
+
 	.modal-header {
 		display: flex;
 		justify-content: space-between;
@@ -1237,14 +1407,14 @@
 		padding: 1rem 1.25rem;
 		border-bottom: 1px solid var(--color-border);
 	}
-	
+
 	.modal-header h3 {
 		margin: 0;
 		font-size: 1.1rem;
 		font-weight: 600;
 		color: var(--color-text);
 	}
-	
+
 	.modal-close {
 		background: none;
 		border: none;
@@ -1255,15 +1425,15 @@
 		line-height: 1;
 		transition: color 0.2s;
 	}
-	
+
 	.modal-close:hover {
 		color: var(--color-text);
 	}
-	
+
 	.modal-body {
 		padding: 1.25rem;
 	}
-	
+
 	.modal-footer {
 		display: flex;
 		justify-content: flex-end;
@@ -1271,16 +1441,16 @@
 		padding: 1rem 1.25rem;
 		border-top: 1px solid var(--color-border);
 	}
-	
+
 	/* Form Elements */
 	.form-group {
 		margin-bottom: 1rem;
 	}
-	
+
 	.form-group:last-child {
 		margin-bottom: 0;
 	}
-	
+
 	.form-label {
 		display: block;
 		font-weight: 500;
@@ -1288,7 +1458,7 @@
 		color: var(--color-text);
 		margin-bottom: 0.375rem;
 	}
-	
+
 	.form-input,
 	.form-select,
 	.form-textarea {
@@ -1302,30 +1472,30 @@
 		font-family: inherit;
 		transition: border-color 0.2s;
 	}
-	
+
 	.form-input:focus,
 	.form-select:focus,
 	.form-textarea:focus {
 		outline: none;
 		border-color: var(--color-primary);
 	}
-	
+
 	.form-textarea {
 		resize: vertical;
 		min-height: 80px;
 	}
-	
+
 	.form-hint {
 		display: block;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 		margin-top: 0.25rem;
 	}
-	
+
 	.form-group .toggle {
 		vertical-align: middle;
 	}
-	
+
 	.toggle-label {
 		margin-left: 0.5rem;
 		font-size: 0.875rem;
@@ -1341,7 +1511,7 @@
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-	
+
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
@@ -1557,7 +1727,9 @@
 		padding: 0.2rem 0.35rem;
 		font-size: 0.75rem;
 		line-height: 1;
-		transition: color 0.2s, border-color 0.2s;
+		transition:
+			color 0.2s,
+			border-color 0.2s;
 	}
 
 	.btn-reset-color:hover {

@@ -38,7 +38,6 @@ export async function load({ cookies, platform }) {
   ]);
 
   const { models, syncedAt } = cached;
-  const stale = isCatalogStale(syncedAt);
   const source = "database";
   const warning =
     models.length === 0

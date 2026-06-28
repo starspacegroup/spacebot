@@ -5,93 +5,103 @@
 	 * Beautiful, responsive bar chart component
 	 * @type {{ data: Array<{date: string, label?: string, hasData?: boolean, values: {label: string, value: number, color: string}[]}>, title?: string, emptyMessage?: string, height?: string, showLegend?: boolean }}
 	 */
-	let { 
-		data = [], 
+	const {
+		data = [],
 		title = '',
 		emptyMessage = 'No data available',
 		height = 'auto',
 		showLegend = true,
-		loading = false
+		loading = false,
 	} = $props();
-	
+
 	// Tooltip state
-	let tooltip = $state({ visible: false, clientX: 0, clientY: 0, date: '', items: [], hasData: true });
+	let tooltip = $state({
+		visible: false,
+		clientX: 0,
+		clientY: 0,
+		date: '',
+		items: [],
+		hasData: true,
+	});
 	const missingBarColor = 'rgba(148, 163, 184, 0.55)';
-	
+
 	function showTooltip(event, group) {
 		tooltip = {
 			visible: true,
 			clientX: event.clientX,
 			clientY: event.clientY,
 			date: group.label || formatDate(group.date),
-			items: group.bars.map(b => ({ label: b.label, value: b.value, color: b.color })),
+			items: group.bars.map((b) => ({ label: b.label, value: b.value, color: b.color })),
 			hasData: group.hasData !== false,
 		};
 	}
-	
+
 	function hideTooltip() {
 		tooltip.visible = false;
 	}
-	
+
 	// Responsive chart dimensions
 	const viewBoxWidth = 800;
 	const viewBoxHeight = 200;
 	const padding = { top: 20, right: 20, bottom: 35, left: 50 };
-	
+
 	const innerWidth = viewBoxWidth - padding.left - padding.right;
 	const innerHeight = viewBoxHeight - padding.top - padding.bottom;
-	
+
 	// Extract unique legend items from data
 	const legendItems = $derived.by(() => {
 		if (!data || data.length === 0) return [];
 		const first = data[0];
 		if (!first.values) return [];
-		return first.values.map(v => ({ label: v.label, color: v.color }));
+		return first.values.map((v) => ({ label: v.label, color: v.color }));
 	});
-	
+
 	// Compute chart data
 	const chartData = $derived.by(() => {
 		if (!data || data.length === 0) return null;
-		
+
 		// Find max value across all bars
-		const allValues = data.flatMap(d => d.values?.map(v => v.value) || []);
+		const allValues = data.flatMap((d) => d.values?.map((v) => v.value) || []);
 		const maxValue = Math.max(...allValues, 1);
-		
+
 		// Calculate bar positions
 		const barGroupWidth = innerWidth / data.length;
 		const numBars = data[0]?.values?.length || 1;
 		const barWidth = Math.min((barGroupWidth * 0.7) / numBars, 20);
 		const groupGap = (barGroupWidth - barWidth * numBars) / 2;
-		
+
 		const bars = data.map((d, groupIndex) => {
 			const groupX = padding.left + groupIndex * barGroupWidth;
 			return {
 				...d,
-				bars: d.values?.map((v, barIndex) => {
-					const barHeight = (v.value / maxValue) * innerHeight;
-					return {
-						...v,
-						x: groupX + groupGap + barIndex * barWidth,
-						y: padding.top + innerHeight - barHeight,
-						width: barWidth - 2,
-						height: barHeight,
-					};
-				}) || [],
+				bars:
+					d.values?.map((v, barIndex) => {
+						const barHeight = (v.value / maxValue) * innerHeight;
+						return {
+							...v,
+							x: groupX + groupGap + barIndex * barWidth,
+							y: padding.top + innerHeight - barHeight,
+							width: barWidth - 2,
+							height: barHeight,
+						};
+					}) || [],
 				labelX: groupX + barGroupWidth / 2,
 			};
 		});
-		
+
 		// Grid lines
-		const gridLines = [0, 0.25, 0.5, 0.75, 1].map(tick => ({
+		const gridLines = [0, 0.25, 0.5, 0.75, 1].map((tick) => ({
 			y: padding.top + innerHeight * (1 - tick),
 			value: Math.round(maxValue * tick),
-			label: formatAxisValue(maxValue * tick)
+			label: formatAxisValue(maxValue * tick),
 		}));
-		
+
 		// X-axis labels (show ~10 labels max)
 		const labelInterval = Math.max(1, Math.ceil(data.length / 10));
-		const xLabels = bars.filter((_, i) => i === 0 || i === bars.length - 1 || i % labelInterval === 0);
-		
+		const xLabels = bars.filter(
+			(_, i) => i === 0 || i === bars.length - 1 || i % labelInterval === 0
+		);
+
 		return {
 			bars,
 			gridLines,
@@ -100,14 +110,14 @@
 			barWidth,
 		};
 	});
-	
+
 	// Format axis values
 	function formatAxisValue(value) {
 		if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
 		if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
 		return Math.round(value).toString();
 	}
-	
+
 	// Format date for labels
 	function formatDate(dateStr) {
 		if (!dateStr) return '';
@@ -123,13 +133,17 @@
 			<div class="chart-skeleton-grid"></div>
 			<div class="chart-skeleton-bars">
 				{#each Array(10) as _, index}
-					<span class="chart-skeleton-bar" style:left={`${6 + index * 8}%`} style:height={`${28 + (index % 5) * 10}%`}></span>
+					<span
+						class="chart-skeleton-bar"
+						style:left={`${6 + index * 8}%`}
+						style:height={`${28 + (index % 5) * 10}%`}
+					></span>
 				{/each}
 			</div>
 		</div>
 	{:else if chartData && chartData.bars.length > 0}
-		<svg 
-			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}" 
+		<svg
+			viewBox="0 0 {viewBoxWidth} {viewBoxHeight}"
 			class="bar-chart"
 			preserveAspectRatio="xMidYMid meet"
 			role="img"
@@ -149,26 +163,26 @@
 					</filter>
 				{/each}
 			</defs>
-			
+
 			<!-- Grid lines -->
 			{#each chartData.gridLines as line}
-				<line 
-					x1={padding.left} 
-					y1={line.y} 
-					x2={viewBoxWidth - padding.right} 
-					y2={line.y} 
+				<line
+					x1={padding.left}
+					y1={line.y}
+					x2={viewBoxWidth - padding.right}
+					y2={line.y}
 					class="grid-line"
 				/>
-				<text 
-					x={padding.left - 8} 
-					y={line.y + 4} 
+				<text
+					x={padding.left - 8}
+					y={line.y + 4}
 					class="axis-label y-label"
 					text-anchor="end"
 				>
 					{line.label}
 				</text>
 			{/each}
-			
+
 			<!-- Bars -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			{#each chartData.bars as group}
@@ -189,12 +203,12 @@
 					/>
 				{/each}
 			{/each}
-			
+
 			<!-- X-axis labels -->
 			{#each chartData.xLabels as group}
-				<text 
-					x={group.labelX} 
-					y={viewBoxHeight - 8} 
+				<text
+					x={group.labelX}
+					y={viewBoxHeight - 8}
 					class="axis-label x-label"
 					text-anchor="middle"
 				>
@@ -202,7 +216,7 @@
 				</text>
 			{/each}
 		</svg>
-		
+
 		<!-- Legend -->
 		{#if showLegend && legendItems.length > 0}
 			<div class="chart-legend">
@@ -234,7 +248,7 @@
 		width: 100%;
 		min-height: 180px;
 		border-radius: var(--radius-lg, 12px);
-		background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+		background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
 		overflow: hidden;
 	}
 
@@ -246,8 +260,58 @@
 
 	.chart-skeleton-grid {
 		background-image:
-			linear-gradient(to bottom, transparent 0%, transparent 24%, rgba(255,255,255,0.05) 24%, rgba(255,255,255,0.05) 25%, transparent 25%, transparent 49%, rgba(255,255,255,0.05) 49%, rgba(255,255,255,0.05) 50%, transparent 50%, transparent 74%, rgba(255,255,255,0.05) 74%, rgba(255,255,255,0.05) 75%, transparent 75%),
-			linear-gradient(to right, transparent 0%, transparent 10%, rgba(255,255,255,0.04) 10%, rgba(255,255,255,0.04) 11%, transparent 11%, transparent 21%, rgba(255,255,255,0.04) 21%, rgba(255,255,255,0.04) 22%, transparent 22%, transparent 32%, rgba(255,255,255,0.04) 32%, rgba(255,255,255,0.04) 33%, transparent 33%, transparent 43%, rgba(255,255,255,0.04) 43%, rgba(255,255,255,0.04) 44%, transparent 44%, transparent 54%, rgba(255,255,255,0.04) 54%, rgba(255,255,255,0.04) 55%, transparent 55%, transparent 65%, rgba(255,255,255,0.04) 65%, rgba(255,255,255,0.04) 66%, transparent 66%, transparent 76%, rgba(255,255,255,0.04) 76%, rgba(255,255,255,0.04) 77%, transparent 77%, transparent 87%, rgba(255,255,255,0.04) 87%, rgba(255,255,255,0.04) 88%, transparent 88%);
+			linear-gradient(
+				to bottom,
+				transparent 0%,
+				transparent 24%,
+				rgba(255, 255, 255, 0.05) 24%,
+				rgba(255, 255, 255, 0.05) 25%,
+				transparent 25%,
+				transparent 49%,
+				rgba(255, 255, 255, 0.05) 49%,
+				rgba(255, 255, 255, 0.05) 50%,
+				transparent 50%,
+				transparent 74%,
+				rgba(255, 255, 255, 0.05) 74%,
+				rgba(255, 255, 255, 0.05) 75%,
+				transparent 75%
+			),
+			linear-gradient(
+				to right,
+				transparent 0%,
+				transparent 10%,
+				rgba(255, 255, 255, 0.04) 10%,
+				rgba(255, 255, 255, 0.04) 11%,
+				transparent 11%,
+				transparent 21%,
+				rgba(255, 255, 255, 0.04) 21%,
+				rgba(255, 255, 255, 0.04) 22%,
+				transparent 22%,
+				transparent 32%,
+				rgba(255, 255, 255, 0.04) 32%,
+				rgba(255, 255, 255, 0.04) 33%,
+				transparent 33%,
+				transparent 43%,
+				rgba(255, 255, 255, 0.04) 43%,
+				rgba(255, 255, 255, 0.04) 44%,
+				transparent 44%,
+				transparent 54%,
+				rgba(255, 255, 255, 0.04) 54%,
+				rgba(255, 255, 255, 0.04) 55%,
+				transparent 55%,
+				transparent 65%,
+				rgba(255, 255, 255, 0.04) 65%,
+				rgba(255, 255, 255, 0.04) 66%,
+				transparent 66%,
+				transparent 76%,
+				rgba(255, 255, 255, 0.04) 76%,
+				rgba(255, 255, 255, 0.04) 77%,
+				transparent 77%,
+				transparent 87%,
+				rgba(255, 255, 255, 0.04) 87%,
+				rgba(255, 255, 255, 0.04) 88%,
+				transparent 88%
+			);
 	}
 
 	.chart-skeleton-bars {
@@ -263,62 +327,73 @@
 		width: 5%;
 		min-width: 0.7rem;
 		border-radius: 999px 999px 0 0;
-		background: linear-gradient(180deg, rgba(96,165,250,0.45), rgba(96,165,250,0.18));
+		background: linear-gradient(180deg, rgba(96, 165, 250, 0.45), rgba(96, 165, 250, 0.18));
 		animation: shimmer 1.8s ease-in-out infinite;
 	}
 
 	@keyframes shimmer {
-		0% { opacity: 0.5; transform: translateY(0); }
-		50% { opacity: 1; transform: translateY(-2px); }
-		100% { opacity: 0.5; transform: translateY(0); }
+		0% {
+			opacity: 0.5;
+			transform: translateY(0);
+		}
+		50% {
+			opacity: 1;
+			transform: translateY(-2px);
+		}
+		100% {
+			opacity: 0.5;
+			transform: translateY(0);
+		}
 	}
-	
+
 	.bar-chart {
 		display: block;
 		width: 100%;
 		height: var(--chart-height, auto);
 		min-height: 180px;
 	}
-	
+
 	@container (min-width: 400px) {
 		.bar-chart {
 			min-height: 220px;
 		}
 	}
-	
+
 	@container (min-width: 600px) {
 		.bar-chart {
 			min-height: 260px;
 		}
 	}
-	
+
 	.grid-line {
 		stroke: var(--color-border, rgba(255, 255, 255, 0.1));
 		stroke-width: 1;
 		stroke-dasharray: 4 4;
 		opacity: 0.5;
 	}
-	
+
 	.axis-label {
 		fill: var(--color-text-muted, rgba(255, 255, 255, 0.5));
 		font-size: 11px;
 		font-family: var(--font-sans, system-ui, sans-serif);
 	}
-	
+
 	.y-label {
 		font-size: 10px;
 		font-variant-numeric: tabular-nums;
 	}
-	
+
 	.x-label {
 		font-size: 10px;
 	}
-	
+
 	.bar {
-		transition: opacity 0.15s ease, filter 0.15s ease;
+		transition:
+			opacity 0.15s ease,
+			filter 0.15s ease;
 		cursor: pointer;
 	}
-	
+
 	.bar:hover {
 		opacity: 0.85;
 	}
@@ -326,7 +401,7 @@
 	.bar.missing-data {
 		opacity: 0.8;
 	}
-	
+
 	.chart-legend {
 		display: flex;
 		justify-content: center;
@@ -335,25 +410,25 @@
 		margin-top: 0.75rem;
 		padding: 0 0.5rem;
 	}
-	
+
 	.legend-item {
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
 	}
-	
+
 	.legend-color {
 		width: 12px;
 		height: 12px;
 		border-radius: 3px;
 		flex-shrink: 0;
 	}
-	
+
 	.legend-label {
 		font-size: 0.8rem;
 		color: var(--color-text-muted, rgba(255, 255, 255, 0.7));
 	}
-	
+
 	.chart-empty {
 		display: flex;
 		flex-direction: column;
@@ -366,12 +441,12 @@
 		border-radius: var(--radius-lg, 12px);
 		min-height: 180px;
 	}
-	
+
 	.empty-icon {
 		font-size: 2rem;
 		opacity: 0.5;
 	}
-	
+
 	.empty-text {
 		color: var(--color-text-muted, rgba(255, 255, 255, 0.5));
 		font-size: 0.9rem;

@@ -8,7 +8,7 @@
 	const RUNNER_MIN_MAX_ATTEMPTS = 1;
 	const RUNNER_MAX_MAX_ATTEMPTS = 20;
 
-	let { data } = $props();
+	const { data } = $props();
 
 	let toastMessage = $state(null);
 	let toastSuccess = $state(true);
@@ -17,7 +17,10 @@
 	function normalizeRunnerMaxAttempts(value) {
 		const raw = Number(value);
 		if (!Number.isFinite(raw)) return RUNNER_DEFAULT_MAX_ATTEMPTS;
-		return Math.max(RUNNER_MIN_MAX_ATTEMPTS, Math.min(RUNNER_MAX_MAX_ATTEMPTS, Math.round(raw)));
+		return Math.max(
+			RUNNER_MIN_MAX_ATTEMPTS,
+			Math.min(RUNNER_MAX_MAX_ATTEMPTS, Math.round(raw))
+		);
 	}
 
 	let runnerTokens = $state(untrack(() => data.runnerTokens ?? []));
@@ -29,8 +32,12 @@
 	let newRawToken = $state(null);
 	let newRawTokenCopied = $state(false);
 	let showRevokedRunners = $state(untrack(() => Boolean(data?.runnerUiPrefs?.showRevoked)));
-	let preferLocalRunnerForDM = $state(untrack(() => Boolean(data?.runnerUiPrefs?.preferLocalRunnerForDM)));
-	let defaultMaxAttempts = $state(untrack(() => normalizeRunnerMaxAttempts(data?.runnerUiPrefs?.defaultMaxAttempts)));
+	let preferLocalRunnerForDM = $state(
+		untrack(() => Boolean(data?.runnerUiPrefs?.preferLocalRunnerForDM))
+	);
+	let defaultMaxAttempts = $state(
+		untrack(() => normalizeRunnerMaxAttempts(data?.runnerUiPrefs?.defaultMaxAttempts))
+	);
 	let runnerPrefsInitialized = $state(false);
 	let runnerPrefsSaveInFlight = false;
 	let lastSavedRunnerPrefs = null;
@@ -152,7 +159,7 @@
 				showToast = true;
 				return;
 			}
-			workflows = workflows.map((item) => item.id === workflow.id ? body.workflow : item);
+			workflows = workflows.map((item) => (item.id === workflow.id ? body.workflow : item));
 		} catch {
 			toastMessage = 'Network error. Please try again.';
 			toastSuccess = false;
@@ -267,12 +274,13 @@
 			})
 			.finally(() => {
 				runnerPrefsSaveInFlight = false;
-				const pendingChanged = runnerPrefsPendingValue !== null
-					&& (
-						runnerPrefsPendingValue.showRevoked !== lastSavedRunnerPrefs?.showRevoked
-						|| runnerPrefsPendingValue.preferLocalRunnerForDM !== lastSavedRunnerPrefs?.preferLocalRunnerForDM
-						|| runnerPrefsPendingValue.defaultMaxAttempts !== lastSavedRunnerPrefs?.defaultMaxAttempts
-					);
+				const pendingChanged =
+					runnerPrefsPendingValue !== null &&
+					(runnerPrefsPendingValue.showRevoked !== lastSavedRunnerPrefs?.showRevoked ||
+						runnerPrefsPendingValue.preferLocalRunnerForDM !==
+							lastSavedRunnerPrefs?.preferLocalRunnerForDM ||
+						runnerPrefsPendingValue.defaultMaxAttempts !==
+							lastSavedRunnerPrefs?.defaultMaxAttempts);
 				if (pendingChanged) {
 					const pending = runnerPrefsPendingValue;
 					runnerPrefsPendingValue = null;
@@ -293,11 +301,12 @@
 		};
 
 		if (
-			lastSavedRunnerPrefs
-			&& lastSavedRunnerPrefs.showRevoked === nextPrefs.showRevoked
-			&& lastSavedRunnerPrefs.preferLocalRunnerForDM === nextPrefs.preferLocalRunnerForDM
-			&& lastSavedRunnerPrefs.defaultMaxAttempts === nextPrefs.defaultMaxAttempts
-		) return;
+			lastSavedRunnerPrefs &&
+			lastSavedRunnerPrefs.showRevoked === nextPrefs.showRevoked &&
+			lastSavedRunnerPrefs.preferLocalRunnerForDM === nextPrefs.preferLocalRunnerForDM &&
+			lastSavedRunnerPrefs.defaultMaxAttempts === nextPrefs.defaultMaxAttempts
+		)
+			return;
 
 		try {
 			localStorage.setItem(RUNNER_UI_PREFS_STORAGE_KEY, showRevokedRunners ? '1' : '0');
@@ -346,7 +355,7 @@
 				showToast = true;
 				return;
 			}
-			runnerTokens = runnerTokens.map(t => t.id === id ? { ...t, revoked: true } : t);
+			runnerTokens = runnerTokens.map((t) => (t.id === id ? { ...t, revoked: true } : t));
 			toastMessage = 'Runner revoked.';
 			toastSuccess = true;
 			showToast = true;
@@ -358,7 +367,12 @@
 	}
 
 	async function deleteRunner(id) {
-		if (!confirm('Permanently delete this revoked runner and all its history? This cannot be undone.')) return;
+		if (
+			!confirm(
+				'Permanently delete this revoked runner and all its history? This cannot be undone.'
+			)
+		)
+			return;
 		try {
 			const res = await fetch(`/api/account/runners/${id}?permanent=1`, { method: 'DELETE' });
 			const body = await res.json();
@@ -420,7 +434,13 @@
 		}
 	}
 
-	async function queueTypedJob(tokenId, jobType, payload = {}, label = null, targetInstanceId = undefined) {
+	async function queueTypedJob(
+		tokenId,
+		jobType,
+		payload = {},
+		label = null,
+		targetInstanceId = undefined
+	) {
 		dispatching = true;
 		try {
 			const oneShotJobTypes = new Set(['screenshot_capture', 'dm']);
@@ -503,7 +523,9 @@
 		const cpuCount = Number.isFinite(hardware.cpuCount) ? hardware.cpuCount : null;
 		const memoryLabel = formatBytes(hardware.totalMemoryBytes);
 		const displayCount = Number.isFinite(displays.count) ? displays.count : 0;
-		const arrangementLabel = displays.arrangementKnown ? 'arrangement known' : 'arrangement unknown';
+		const arrangementLabel = displays.arrangementKnown
+			? 'arrangement known'
+			: 'arrangement unknown';
 		return `${machineClassLabel} · ${osFamilyLabel} (${platformLabel}/${archLabel})${cpuCount ? ` · ${cpuCount} cores` : ''} · ${memoryLabel} RAM · ${displayCount} display${displayCount === 1 ? '' : 's'} · ${arrangementLabel}`;
 	}
 
@@ -562,7 +584,6 @@
 			newRawTokenCopied = true;
 		});
 	}
-
 </script>
 
 <svelte:head>
@@ -571,7 +592,11 @@
 
 <div class="runners-page">
 	{#if showToast && toastMessage}
-		<Toast message={toastMessage} success={toastSuccess} onDismiss={() => showToast = false} />
+		<Toast
+			message={toastMessage}
+			success={toastSuccess}
+			onDismiss={() => (showToast = false)}
+		/>
 	{/if}
 
 	<header class="page-header">
@@ -582,7 +607,8 @@
 				Local Runner
 			</h1>
 			<p class="header-desc">
-				Manage runners, workflows, and job dispatch. Runners authenticate with a secret token and execute jobs from the queue.
+				Manage runners, workflows, and job dispatch. Runners authenticate with a secret
+				token and execute jobs from the queue.
 			</p>
 		</div>
 	</header>
@@ -594,7 +620,10 @@
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">Route DMs to local runner</span>
-					<span class="setting-desc">When you DM the bot, use your active local runner first instead of the cloud pipeline.</span>
+					<span class="setting-desc"
+						>When you DM the bot, use your active local runner first instead of the
+						cloud pipeline.</span
+					>
 				</div>
 				<div class="setting-control">
 					<label class="runner-option-toggle">
@@ -606,7 +635,10 @@
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">Default max retries</span>
-					<span class="setting-desc">How many times to retry a failed runner job before giving up (1–20). Screenshot and DM jobs always use 1.</span>
+					<span class="setting-desc"
+						>How many times to retry a failed runner job before giving up (1–20).
+						Screenshot and DM jobs always use 1.</span
+					>
 				</div>
 				<div class="setting-control">
 					<input
@@ -615,7 +647,9 @@
 						min="1"
 						max="20"
 						bind:value={defaultMaxAttempts}
-						onblur={() => { defaultMaxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts); }}
+						onblur={() => {
+							defaultMaxAttempts = normalizeRunnerMaxAttempts(defaultMaxAttempts);
+						}}
 						style="width: 5rem; text-align: center;"
 					/>
 				</div>
@@ -635,7 +669,9 @@
 		<h2><span class="section-icon">🧭</span> Automation Hub</h2>
 
 		<div class="operations-links">
-			<a href="/account/ai-workflows" class="btn btn-outline btn-sm">Open Automation Console</a>
+			<a href="/account/ai-workflows" class="btn btn-outline btn-sm"
+				>Open Automation Console</a
+			>
 			<a href="/account/ai-workflows#jobs" class="btn btn-outline btn-sm">Open Queue Board</a>
 		</div>
 
@@ -644,7 +680,10 @@
 				<h3>Queue Workflows</h3>
 				<span class="workflow-count">{workflows.length} total</span>
 			</div>
-			<p class="workflow-help">Define reusable queue rules so specific job types route to selected runners and instances.</p>
+			<p class="workflow-help">
+				Define reusable queue rules so specific job types route to selected runners and
+				instances.
+			</p>
 
 			<div class="workflow-create-grid">
 				<input
@@ -669,13 +708,21 @@
 					<option value="vscode_send_copilot_message">vscode_send_copilot_message</option>
 					<option value="dm">dm</option>
 				</select>
-				<select class="input" bind:value={newWorkflowTargetTokenId} disabled={creatingWorkflow}>
+				<select
+					class="input"
+					bind:value={newWorkflowTargetTokenId}
+					disabled={creatingWorkflow}
+				>
 					<option value="">No target runner</option>
 					{#each runnerTokens.filter((token) => !token.revoked) as token (token.id)}
 						<option value={token.id}>{token.name} ({token.token_prefix}...)</option>
 					{/each}
 				</select>
-				<button class="btn btn-primary btn-sm" onclick={createWorkflow} disabled={creatingWorkflow || !newWorkflowName.trim()}>
+				<button
+					class="btn btn-primary btn-sm"
+					onclick={createWorkflow}
+					disabled={creatingWorkflow || !newWorkflowName.trim()}
+				>
 					{creatingWorkflow ? 'Creating…' : 'Create Workflow'}
 				</button>
 			</div>
@@ -687,10 +734,29 @@
 						<option value={workflow.id}>{workflow.name} ({workflow.job_type})</option>
 					{/each}
 				</select>
-				<input class="input" type="text" placeholder="Command override (optional)" bind:value={workflowDispatchCommand} />
-				<input class="input" type="text" placeholder="Label override (optional)" bind:value={workflowDispatchLabel} />
-				<input class="input" type="text" placeholder="Payload JSON (optional)" bind:value={workflowDispatchPayload} />
-				<button class="btn btn-outline btn-sm" onclick={dispatchWorkflowNow} disabled={dispatchingWorkflow || !workflowDispatchId}>
+				<input
+					class="input"
+					type="text"
+					placeholder="Command override (optional)"
+					bind:value={workflowDispatchCommand}
+				/>
+				<input
+					class="input"
+					type="text"
+					placeholder="Label override (optional)"
+					bind:value={workflowDispatchLabel}
+				/>
+				<input
+					class="input"
+					type="text"
+					placeholder="Payload JSON (optional)"
+					bind:value={workflowDispatchPayload}
+				/>
+				<button
+					class="btn btn-outline btn-sm"
+					onclick={dispatchWorkflowNow}
+					disabled={dispatchingWorkflow || !workflowDispatchId}
+				>
 					{dispatchingWorkflow ? 'Queuing…' : 'Run Workflow'}
 				</button>
 			</div>
@@ -702,9 +768,16 @@
 							<div class="workflow-main">
 								<strong>{workflow.name}</strong>
 								<span class="workflow-meta">type: {workflow.job_type}</span>
-								<span class="workflow-meta">token: {workflow.target_runner_token_id || 'none'}</span>
-								<span class="workflow-meta">instance: {workflow.target_runner_instance_id || 'auto'}</span>
-								<span class="workflow-meta">priority: {workflow.priority}, retries: {workflow.max_attempts}, timeout: {workflow.timeout_seconds}s</span>
+								<span class="workflow-meta"
+									>token: {workflow.target_runner_token_id || 'none'}</span
+								>
+								<span class="workflow-meta"
+									>instance: {workflow.target_runner_instance_id || 'auto'}</span
+								>
+								<span class="workflow-meta"
+									>priority: {workflow.priority}, retries: {workflow.max_attempts},
+									timeout: {workflow.timeout_seconds}s</span
+								>
 								{#if workflow.description}
 									<span class="workflow-meta">{workflow.description}</span>
 								{/if}
@@ -714,17 +787,26 @@
 									<input
 										type="checkbox"
 										checked={Boolean(workflow.enabled)}
-										onchange={(event) => setWorkflowEnabled(workflow, event.currentTarget.checked)}
+										onchange={(event) =>
+											setWorkflowEnabled(
+												workflow,
+												event.currentTarget.checked
+											)}
 									/>
 									<span>{workflow.enabled ? 'Enabled' : 'Disabled'}</span>
 								</label>
-								<button class="btn btn-danger btn-sm" onclick={() => deleteWorkflow(workflow.id)}>Delete</button>
+								<button
+									class="btn btn-danger btn-sm"
+									onclick={() => deleteWorkflow(workflow.id)}>Delete</button
+								>
 							</div>
 						</div>
 					{/each}
 				</div>
 			{:else}
-				<p class="workflow-empty">No workflows yet. Create one to start routing jobs by policy.</p>
+				<p class="workflow-empty">
+					No workflows yet. Create one to start routing jobs by policy.
+				</p>
 			{/if}
 		</div>
 
@@ -738,7 +820,11 @@
 				onkeydown={(e) => e.key === 'Enter' && createRunner()}
 				disabled={creatingRunner}
 			/>
-			<button class="btn btn-primary btn-sm" onclick={createRunner} disabled={creatingRunner || !newRunnerName.trim()}>
+			<button
+				class="btn btn-primary btn-sm"
+				onclick={createRunner}
+				disabled={creatingRunner || !newRunnerName.trim()}
+			>
 				{creatingRunner ? 'Creating…' : 'Create Runner'}
 			</button>
 		</div>
@@ -765,7 +851,9 @@
 				<p class="token-reveal-hint">
 					Add it to your runner config file as <code>SPACEBOT_RUNNER_TOKEN</code>.
 				</p>
-				<button class="btn btn-sm btn-ghost" onclick={() => newRawToken = null}>Dismiss</button>
+				<button class="btn btn-sm btn-ghost" onclick={() => (newRawToken = null)}
+					>Dismiss</button
+				>
 			</div>
 		{/if}
 
@@ -773,7 +861,8 @@
 		{#if runnerTokens.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">🖥️</span>
-				No runners yet. Create one above and run <code>bun run scripts/local-runner/index.ts</code> on your machine.
+				No runners yet. Create one above and run
+				<code>bun run scripts/local-runner/index.ts</code> on your machine.
 			</div>
 		{:else if visibleRunnerTokens().length === 0}
 			<div class="empty-state">
@@ -786,27 +875,46 @@
 					<div class="runner-card" class:revoked={t.revoked}>
 						<div class="runner-card-header">
 							<div class="runner-identity">
-								<span class="runner-status-dot" class:online={!t.revoked && isRunnerOnline(t)}></span>
+								<span
+									class="runner-status-dot"
+									class:online={!t.revoked && isRunnerOnline(t)}
+								></span>
 								<span class="runner-name">{t.name}</span>
 								<code class="runner-prefix">{t.token_prefix}…</code>
 							</div>
 							<div class="runner-meta">
 								{#if t.revoked}
 									<span class="status-badge badge-danger">Revoked</span>
-									<button class="btn btn-danger btn-sm" onclick={() => deleteRunner(t.id)}>Delete</button>
+									<button
+										class="btn btn-danger btn-sm"
+										onclick={() => deleteRunner(t.id)}>Delete</button
+									>
 								{:else if isRunnerOnline(t)}
 									<span class="status-badge badge-success">Online</span>
 								{:else}
 									<span class="status-badge badge-neutral">Offline</span>
 								{/if}
 								{#if t.last_seen_at}
-									<span class="runner-last-seen">Last seen {new Date(t.last_seen_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+									<span class="runner-last-seen"
+										>Last seen {new Date(t.last_seen_at).toLocaleDateString(
+											'en-US',
+											{ year: 'numeric', month: 'long', day: 'numeric' }
+										)}</span
+									>
 								{/if}
 								{#if !t.revoked}
-									<button class="btn btn-outline btn-sm" onclick={() => dispatchTokenId = dispatchTokenId === t.id ? null : t.id}>
+									<button
+										class="btn btn-outline btn-sm"
+										onclick={() =>
+											(dispatchTokenId =
+												dispatchTokenId === t.id ? null : t.id)}
+									>
 										{dispatchTokenId === t.id ? 'Cancel' : 'Dispatch'}
 									</button>
-									<button class="btn btn-danger btn-sm" onclick={() => revokeRunner(t.id)}>Revoke</button>
+									<button
+										class="btn btn-danger btn-sm"
+										onclick={() => revokeRunner(t.id)}>Revoke</button
+									>
 								{/if}
 							</div>
 						</div>
@@ -817,14 +925,40 @@
 									<div class="runner-instance-row">
 										<div class="runner-instance-main">
 											<strong>{inst.display_name}</strong>
-											<span class="runner-instance-meta">system: {getRunnerSystemSummary(inst)}</span>
-											<span class="runner-instance-meta">permissions: {getRunnerPermissionsSummary(inst)}</span>
-											<span class="runner-instance-meta">screenshots: {getRunnerCapabilityState(inst, 'screenshotAvailable')}</span>
-											<span class="runner-instance-meta">vscode: {getRunnerCapabilityState(inst, 'vscodeControlAvailable')}</span>
-											<span class="runner-instance-meta">copilot chat: {getCopilotAvailability(inst)}</span>
-											<span class="runner-instance-meta">copilot config: {getCopilotConfigSummary(inst)}</span>
-											<span class="runner-instance-meta">provider: {providerLabel(inst)}</span>
-											<span class="runner-instance-meta">model: {modelLabel(inst)}</span>
+											<span class="runner-instance-meta"
+												>system: {getRunnerSystemSummary(inst)}</span
+											>
+											<span class="runner-instance-meta"
+												>permissions: {getRunnerPermissionsSummary(
+													inst
+												)}</span
+											>
+											<span class="runner-instance-meta"
+												>screenshots: {getRunnerCapabilityState(
+													inst,
+													'screenshotAvailable'
+												)}</span
+											>
+											<span class="runner-instance-meta"
+												>vscode: {getRunnerCapabilityState(
+													inst,
+													'vscodeControlAvailable'
+												)}</span
+											>
+											<span class="runner-instance-meta"
+												>copilot chat: {getCopilotAvailability(inst)}</span
+											>
+											<span class="runner-instance-meta"
+												>copilot config: {getCopilotConfigSummary(
+													inst
+												)}</span
+											>
+											<span class="runner-instance-meta"
+												>provider: {providerLabel(inst)}</span
+											>
+											<span class="runner-instance-meta"
+												>model: {modelLabel(inst)}</span
+											>
 										</div>
 									</div>
 								{/each}
@@ -853,7 +987,11 @@
 									bind:value={dispatchLabel}
 								/>
 								<div class="dispatch-actions">
-									<button class="btn btn-primary btn-sm" onclick={dispatchJob} disabled={dispatching || !dispatchCommand.trim()}>
+									<button
+										class="btn btn-primary btn-sm"
+										onclick={dispatchJob}
+										disabled={dispatching || !dispatchCommand.trim()}
+									>
 										{dispatching ? 'Queuing…' : 'Queue Job'}
 									</button>
 									<input
@@ -864,12 +1002,21 @@
 									/>
 									<button
 										class="btn btn-outline btn-sm"
-										onclick={() => queueTypedJob(t.id, 'vscode_send_copilot_message', { message: copilotPrompt }, 'Send Copilot Message')}
+										onclick={() =>
+											queueTypedJob(
+												t.id,
+												'vscode_send_copilot_message',
+												{ message: copilotPrompt },
+												'Send Copilot Message'
+											)}
 										disabled={dispatching || !copilotPrompt.trim()}
 									>
 										Send to Copilot
 									</button>
-									<button class="btn btn-ghost btn-sm" onclick={() => dispatchTokenId = null}>Cancel</button>
+									<button
+										class="btn btn-ghost btn-sm"
+										onclick={() => (dispatchTokenId = null)}>Cancel</button
+									>
 								</div>
 							</div>
 						{/if}

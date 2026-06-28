@@ -5,11 +5,10 @@
  */
 
 import { json } from "@sveltejs/kit";
-import { ACTION_TYPES, createCommand, getGuildCommands } from "$lib/db/commands.js";
+import { ACTION_TYPES, createCommand } from "$lib/db/commands.js";
 import { syncGuildCommands } from "$lib/discord/commands.js";
 import { log } from "$lib/db/logger.js";
 import { verifyGuildAdmin } from "$lib/discord/guilds.js";
-import { checkPlanLimit } from "$lib/db/server-plans.js";
 import { clearActionConfigReferences, summarizeCleared } from "$lib/import-export.js";
 
 /** @type {import('./$types').RequestHandler} */

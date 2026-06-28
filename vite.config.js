@@ -1,7 +1,5 @@
-import { sveltekit } from "@sveltejs/kit/vite";
-import { defineConfig } from "vite";
-import fs from "node:fs";
-import path from "node:path";
+import { sveltekit } from '@sveltejs/kit/vite';
+import { defineConfig } from 'vite';
 
 /**
  * Vite plugin that fixes stale dep hash 504s when serving through cloudflared.
@@ -40,7 +38,7 @@ function excludeNativeModules() {
 			if (id === '\0virtual:better-sqlite3-stub') {
 				return 'export default class Database { constructor() { throw new Error("better-sqlite3 is not available in Cloudflare Workers"); } }';
 			}
-		}
+		},
 	};
 }
 
@@ -101,39 +99,36 @@ export default defineConfig({
 		// Without this, the first page load triggers on-demand transforms that
 		// can 504 through the cloudflared tunnel.
 		warmup: {
-			clientFiles: [
-				'./src/routes/**/*.svelte',
-				'./src/lib/components/**/*.svelte',
-			],
+			clientFiles: ['./src/routes/**/*.svelte', './src/lib/components/**/*.svelte'],
 			// clientFiles only pre-transforms the browser bundle — every full page
 			// navigation also does an SSR render, which is a separate compile pass.
 			// Without this, the first hit on a large page (e.g. the superadmin
 			// workflows graph editor, ~3800 lines) pays that cold-compile cost on
 			// the actual request instead of at startup.
-			ssrFiles: [
-				'./src/routes/**/*.svelte',
-				'./src/lib/components/**/*.svelte',
-			],
+			ssrFiles: ['./src/routes/**/*.svelte', './src/lib/components/**/*.svelte'],
 		},
 		port: 4269,
 		host: true, // Listen on all interfaces for tunnel access
 		// Leading "." matches any subdomain, so per-dev tunnels created by
 		// scripts/dev-tunnel.ts (spacebot-<host>-<hash>-<label>.starspace.group)
 		// work without editing this file each time.
-		allowedHosts: [".starspace.group", "localhost"],
+		allowedHosts: ['.starspace.group', 'localhost'],
 		// Disable HMR completely to prevent WebSocket connection issues over tunnels
 		// This prevents the site from hanging when the HMR WebSocket fails to connect
 		// For local development, you can set VITE_HMR=true to re-enable HMR
-		hmr: process.env.VITE_HMR === 'true' ? {
-			timeout: 5000,
-		} : false,
+		hmr:
+			process.env.VITE_HMR === 'true'
+				? {
+						timeout: 5000,
+					}
+				: false,
 		// Prevent browsers from caching modules and CSS with 304 responses.
 		// Without HMR the only way to pick up changes is a full reload,
 		// so stale 304s cause "flash then revert" styling bugs.
 		headers: {
 			'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-			'Pragma': 'no-cache',
-			'Expires': '0',
+			Pragma: 'no-cache',
+			Expires: '0',
 		},
 	},
 });

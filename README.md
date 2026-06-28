@@ -29,8 +29,15 @@ beautiful admin dashboard.
   connection
 - **Interactions Endpoint** — HTTP-based slash command handling via Cloudflare
   Workers
+- **Context Menu Commands** — Message context menu registration and routing with
+  server-side permission enforcement
 - **AI Chat for Managers** — Server managers can DM the bot for AI-powered
-  assistance using Cloudflare Workers AI
+  assistance. In production this runs on Cloudflare Workers AI (optionally
+  through an AI Gateway for analytics/caching); in local development you can
+  point it at an Ollama model instead (`AI_PROVIDER=ollama`, default `gemma3:4b`).
+- **AI DM Autopilot** — When enabled, gateway DMs are enqueued onto a Cloudflare
+  Queue and handled by a standalone orchestrator worker (see
+  [docs/ai-autopilot.md](docs/ai-autopilot.md)).
 
 ### 🌐 Web Dashboard
 
@@ -41,13 +48,31 @@ beautiful admin dashboard.
 - **Command Builder** — Design custom slash commands with the automation action
   system
 - **Dark/Light Theme** — Beautiful UI with theme toggle support
+- **Operational UX** — Global toasts, skeleton loading states, route-level error
+  handling, and reduced-motion-aware transitions
+
+### 🧩 Automation & Extensibility
+
+- **Local Runner** — A standalone Bun CLI users install on their own machine. It
+  connects to the server over WebSocket, runs jobs as shell commands inside a
+  path allowlist, and streams results back (see
+  [docs/local-runner-v2.md](docs/local-runner-v2.md)).
+- **Superadmin Workflows** — Scheduled, server-spanning workflow templates driven
+  by `cron_expression` values stored in D1 (see
+  [docs/superadmin-workflows.md](docs/superadmin-workflows.md)).
+- **MCP Server** — A standalone Model Context Protocol server (`mcp-server/`) that
+  exposes SpaceBot data/operations to MCP-aware clients.
 
 ### 🔐 Authentication & Security
 
 - **Discord OAuth2** — Secure login with Discord credentials
+- **Sliding Session TTL** — Configurable cookie lifetime via
+  `SESSION_TTL_SECONDS`
 - **Admin Access Control** — Only server admins can manage their servers
 - **Request Signature Verification** — All Discord interactions are
   cryptographically verified
+- **Browser Hardening** — Same-origin checks for cookie-authenticated JSON
+  mutations plus HTML security headers and report-only CSP
 
 ### ⚡ Cloudflare-Native
 
@@ -56,6 +81,23 @@ beautiful admin dashboard.
 - **Workers AI** — AI-powered DM responses via Cloudflare's free LLM models
 - **AI Gateway** — Optional analytics, caching, and rate limiting for AI requests
 - **Zero Cold Starts** — Fast response times worldwide
+
+## Roadmap Operations
+
+Repository-ready external integrations are configured with environment variables, not hardcoded credentials:
+
+- `PUBLIC_SUPPORT_DISCORD_URL`, `PUBLIC_BOT_VOTE_URL`, and `PUBLIC_BOT_REVIEW_URL` power public community CTAs.
+- `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, and `SENTRY_TRACES_SAMPLE_RATE` enable Sentry.
+- `RATE_LIMIT_ENABLED`, `RATE_LIMIT_DEFAULT_WINDOW_SECONDS`, and `RATE_LIMIT_DEFAULT_MAX_REQUESTS` enable D1-backed API limits.
+
+Useful checks:
+
+```bash
+bun run docs:api
+bun run audit:deps
+bun run images:check
+bun run verify:http3
+```
 
 ## 📸 Screenshots
 
@@ -136,20 +178,23 @@ Comprehensive logging of all Discord events with filtering and search.
 
 ## 🛠️ Tech Stack
 
-| Layer       | Technology                    |
-| ----------- | ----------------------------- |
-| Framework   | SvelteKit 2 (Svelte 5)        |
-| Runtime     | Cloudflare Pages/Workers      |
-| Database    | Cloudflare D1 (SQLite)        |
-| Bot Library | Discord.js 14                 |
-| Styling     | Custom CSS with CSS Variables |
-| Auth        | Discord OAuth2                |
+| Layer           | Technology                                                   |
+| --------------- | ------------------------------------------------------------ |
+| Framework       | SvelteKit 2 (Svelte 5)                                       |
+| Edge runtime    | Cloudflare Pages/Workers                                     |
+| Package manager | Bun                                                          |
+| Database        | Cloudflare D1 (SQLite)                                       |
+| Bot Library     | Discord.js 14                                                |
+| AI              | Cloudflare Workers AI / AI Gateway (prod); Ollama (dev only) |
+| Styling         | Custom CSS with CSS Variables                                |
+| Auth            | Discord OAuth2                                               |
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
+- [Bun](https://bun.sh) 1.3+ (the project's package manager and runtime — used for
+  every script; Node.js is not required)
 - A Discord Application
   ([create one here](https://discord.com/developers/applications))
 - A Cloudflare account ([sign up here](https://dash.cloudflare.com/sign-up))
@@ -160,69 +205,78 @@ Comprehensive logging of all Discord events with filtering and search.
 ### Installation
 
 1. **Clone the repository**
-   ```bash
-   git clone https://github.com/starspacegroup/spacebot.git
-   cd spacebot
-   ```
+
+    ```bash
+    git clone https://github.com/starspacegroup/spacebot.git
+    cd spacebot
+    ```
 
 2. **Install dependencies**
-   ```bash
-   bun install
-   ```
+
+    ```bash
+    bun install
+    ```
 
 3. **Configure environment variables**
 
-   Copy `.env.example` to `.env` and fill in your Discord credentials:
-   ```bash
-   cp .env.example .env
-   ```
+    Copy `.env.example` to `.env` and fill in your Discord credentials:
 
-   Required variables:
-   | Variable                | Description                                               |
-   | ----------------------- | --------------------------------------------------------- |
-   | `DISCORD_PUBLIC_KEY`    | Found in your app's "General Information"                 |
-   | `DISCORD_CLIENT_ID`     | Your application's Client ID                              |
-   | `DISCORD_CLIENT_SECRET` | Found under OAuth2 settings                               |
-   | `DISCORD_BOT_TOKEN`     | Found under "Bot" settings                                |
-   | `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with global admin access |
-   | `LOG_LEVEL`             | Logging verbosity: `error`, `warn`, `info`, `debug`       |
+    ```bash
+    cp .env.example .env
+    ```
 
-   Optional AI variables (for DM chat functionality):
-   | Variable                    | Description                                        |
-   | --------------------------- | -------------------------------------------------- |
-   | `CLOUDFLARE_ACCOUNT_ID`     | Your Cloudflare account ID                         |
-   | `CLOUDFLARE_AI_TOKEN`       | API token with Workers AI permissions              |
-   | `CLOUDFLARE_AI_GATEWAY_ID`  | (Optional) AI Gateway ID for analytics/caching    |
-   | `CLOUDFLARE_AI_MODEL`       | (Optional) Override default LLM model             |
+    Required variables:
+
+    | Variable                | Description                                               |
+    | ----------------------- | --------------------------------------------------------- |
+    | `DISCORD_PUBLIC_KEY`    | Found in your app's "General Information"                 |
+    | `DISCORD_CLIENT_ID`     | Your application's Client ID                              |
+    | `DISCORD_CLIENT_SECRET` | Found under OAuth2 settings                               |
+    | `DISCORD_BOT_TOKEN`     | Found under "Bot" settings                                |
+    | `ADMIN_USER_IDS`        | Comma-separated Discord user IDs with global admin access |
+    | `LOG_LEVEL`             | Logging verbosity: `error`, `warn`, `info`, `debug`       |
+
+    Optional AI variables (for DM chat functionality):
+
+    | Variable                   | Description                                    |
+    | -------------------------- | ---------------------------------------------- |
+    | `CLOUDFLARE_ACCOUNT_ID`    | Your Cloudflare account ID                     |
+    | `CLOUDFLARE_AI_TOKEN`      | API token with Workers AI permissions          |
+    | `CLOUDFLARE_AI_GATEWAY_ID` | (Optional) AI Gateway ID for analytics/caching |
+    | `CLOUDFLARE_AI_MODEL`      | (Optional) Override default LLM model          |
 
 4. **Set up the database (local development)**
-   ```bash
-   bun run db:migrate:local
-   ```
+
+    ```bash
+    bun run db:migrate:local
+    ```
 
 5. **Run the development server**
-   ```bash
-   bun run dev
-   ```
-   The app will be available at `http://localhost:5173`
+
+    ```bash
+    bun run dev
+    ```
+
+    The app will be available at `http://localhost:4269` (the port is pinned in
+    `vite.config.js`).
 
 6. **Start the Gateway bot** (in a separate terminal)
-   ```bash
-   bun run dev:gateway
-   ```
-   This captures Discord events and processes automations.
+    ```bash
+    bun run dev:gateway
+    ```
+    This captures Discord events and processes automations.
 
 ### Discord Bot Setup
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Select your application → **Bot**
 3. Enable **Privileged Gateway Intents**:
-   - ✅ Presence Intent
-   - ✅ Server Members Intent
-   - ✅ Message Content Intent
+    - ✅ Presence Intent
+    - ✅ Server Members Intent
+    - ✅ Message Content Intent
 4. Go to **OAuth2** → **URL Generator**
-   - Scopes: `bot`, `applications.commands`
-   - Permissions: Administrator (or customize as needed)
+    - Scopes: `bot`, `applications.commands`
+    - Permissions: Administrator (or customize as needed)
 5. Use the generated URL to invite the bot to your server
 
 ### Setting up Interactions Endpoint
@@ -233,9 +287,9 @@ URL:
 1. Deploy to Cloudflare Pages (see [Deployment](#-deployment))
 2. Go to Discord Developer Portal → Your Application → **General Information**
 3. Set **Interactions Endpoint URL** to:
-   ```
-   https://your-domain.pages.dev/api/discord/interactions
-   ```
+    ```
+    https://your-domain.pages.dev/api/discord/interactions
+    ```
 
 ## 📦 Available Bun Scripts
 
@@ -249,6 +303,11 @@ URL:
 | `bun run db:migrate`        | Run database migrations (production)             |
 | `bun run db:migrate:local`  | Run database migrations (local)                  |
 | `bun run register-commands` | Register slash commands with Discord             |
+| `bun run test`              | Run the Vitest test suite                        |
+| `bun run test:e2e`          | Run the Playwright smoke suite                   |
+| `bun run typecheck`         | Type-check with `svelte-check`                   |
+| `bun run lint`              | Run ESLint                                       |
+| `bun run runner`            | Start the local runner CLI                       |
 
 ## 🔄 Automations
 
@@ -294,10 +353,10 @@ Create custom slash commands through the web dashboard:
 1. Navigate to **Admin** → **Your Server** → **Commands**
 2. Click **New Command**
 3. Configure:
-   - Command name and description
-   - Parameters (text, numbers, users, channels, roles, etc.)
-   - Response message or embed
-   - Optional: Tie to an automation action
+    - Command name and description
+    - Parameters (text, numbers, users, channels, roles, etc.)
+    - Response message or embed
+    - Optional: Tie to an automation action
 4. Click **Register with Discord** to sync
 
 ## 📋 Event Logging
@@ -320,41 +379,45 @@ SpaceBot captures and logs all Discord events:
 ### Deploy to Cloudflare Pages (Recommended)
 
 1. **Push to GitHub**
-   ```bash
-   git push origin main
-   ```
+
+    ```bash
+    git push origin main
+    ```
 
 2. **Connect to Cloudflare Pages**
-   - Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-   - **Workers & Pages** → **Create application** → **Pages** → **Connect to
-     Git**
-   - Select your repository
-   - Configure:
-       - **Build command**: `bun run build`
-     - **Build output**: `.svelte-kit/cloudflare`
+    - Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
+    - **Workers & Pages** → **Create application** → **Pages** → **Connect to
+      Git**
+    - Select your repository
+    - Configure:
+        - **Build command**: `bun run build`
+        - **Build output**: `.svelte-kit/cloudflare`
 
 3. **Add Environment Variables** In Cloudflare Pages Settings → Environment
    Variables, add all required variables.
 
 4. **Create D1 Database**
-   ```bash
-   wrangler d1 create spacebot-logs
-   ```
-   Update `wrangler.toml` with the database ID.
+
+    ```bash
+    wrangler d1 create spacebot-logs
+    ```
+
+    Update `wrangler.toml` with the database ID.
 
 5. **Run Migrations**
-   ```bash
-   bun run db:migrate
-   ```
+
+    ```bash
+    bun run db:migrate
+    ```
 
 6. **Deploy** Future pushes to `main` will auto-deploy.
 
-   AI queue orchestration also auto-deploys via GitHub Actions in `.github/workflows/deploy-orchestrator-worker.yml`.
-   Configure these repository secrets so worker deploys can run:
-   - `CLOUDFLARE_API_TOKEN`
-   - `CLOUDFLARE_ACCOUNT_ID`
-   - `ORCHESTRATOR_SPACEBOT_API_BASE`
-   - `AI_AUTOPILOT_INTERNAL_KEY`
+    AI queue orchestration also auto-deploys via GitHub Actions in `.github/workflows/deploy-orchestrator-worker.yml`.
+    Configure these repository secrets so worker deploys can run:
+    - `CLOUDFLARE_API_TOKEN`
+    - `CLOUDFLARE_ACCOUNT_ID`
+    - `ORCHESTRATOR_SPACEBOT_API_BASE`
+    - `AI_AUTOPILOT_INTERNAL_KEY`
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
@@ -364,41 +427,39 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 spacebot/
 ├── src/
 │   ├── lib/
-│   │   ├── automation/       # Automation engine
+│   │   ├── ai/               # AI chat, MCP client, retry policy
+│   │   ├── automation/       # Event → action automation engine
 │   │   ├── components/       # Svelte components
-│   │   ├── db/               # Database functions
-│   │   │   ├── automations.ts
-│   │   │   ├── commands.ts
-│   │   │   └── logger.ts
-│   │   └── discord/          # Discord integration
-│   │       ├── cache.ts
-│   │       ├── commands.ts
-│   │       ├── gateway.ts    # Gateway bot service
-│   │       └── guilds.ts
+│   │   ├── db/               # D1/SQLite access, one module per domain
+│   │   ├── discord/          # Gateway client, REST, bot registry, commands
+│   │   ├── integrations/     # External integrations (e.g. GitHub) + auth
+│   │   ├── server/           # Server-only helpers (cron, workflow runtime)
+│   │   └── utils/            # Shared utilities
 │   ├── routes/
-│   │   ├── admin/            # Admin dashboard pages
-│   │   │   ├── [serverId]/   # Per-server management
-│   │   │   │   ├── automations/
-│   │   │   │   ├── commands/
-│   │   │   │   └── logs/
-│   │   ├── api/              # API endpoints
-│   │   │   ├── automations/
-│   │   │   ├── commands/
-│   │   │   ├── discord/
-│   │   │   └── logs/
-│   │   └── login/
-│   └── app.html
-├── migrations/               # D1 database migrations
-├── scripts/                  # Utility scripts
+│   │   ├── admin/            # Per-server dashboard (under [serverId]/)
+│   │   ├── account/          # User-level AI jobs / workflows / operations
+│   │   └── api/              # REST endpoints (+ api/v1, api/runner/ws)
+│   ├── tests/                # Vitest test suites
+│   └── hooks.server.ts       # Edge auth + request handling
+├── orchestrator-worker/      # Cloudflare Queue consumer (AI autopilot, cron)
+├── mcp-server/               # Standalone MCP server
+├── scripts/                  # CLIs and tooling (incl. scripts/local-runner/)
+├── migrations/               # D1 database migrations (immutable once applied)
+├── _functions/               # Cloudflare Pages Functions
 ├── static/                   # Static assets
-└── docs/
-    └── screenshots/          # Documentation images
+└── docs/                     # Documentation (incl. architecture.md, screenshots/)
 ```
+
+See [docs/architecture.md](docs/architecture.md) for a diagram of how the runtimes
+fit together, and [CLAUDE.md](CLAUDE.md) for the authoritative architecture notes.
 
 ## 🔒 Security
 
 - ✅ Discord request signature verification
+- ✅ Same-origin checks for cookie-authenticated JSON mutations
+- ✅ Security headers and report-only CSP for HTML responses
 - ✅ HTTP-only secure cookies
+- ✅ Configurable sliding session TTL
 - ✅ Admin permission checks
 - ✅ Environment variable secrets
 - ✅ HTTPS via Cloudflare
@@ -406,6 +467,12 @@ spacebot/
 ## 🗺️ Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for planned features and enhancements.
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the project's hard rules
+(immutable migrations, Bun-only, the multi-runtime model), and how to run tests
+before opening a PR.
 
 ## 📄 License
 
