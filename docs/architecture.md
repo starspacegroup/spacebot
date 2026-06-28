@@ -1,3 +1,8 @@
+---
+title: Architecture
+layout: default
+---
+
 # Architecture
 
 SpaceBot is **not** a single process. The same repository produces code for
@@ -5,16 +10,16 @@ several cooperating runtimes that share one Cloudflare D1 (SQLite) database. A
 file's location determines which runtime it runs in, and therefore how it reaches
 environment variables and the database.
 
-| Runtime | Entry | Env access | DB access |
-| --- | --- | --- | --- |
-| **SvelteKit edge app** (Cloudflare Workers/Pages) | `src/routes/**`, `src/hooks.server.ts` | `platform.env.X` | D1 binding `platform.env.DB` |
-| **Discord gateway bot** (long-running Bun/Node) | `src/lib/discord/gateway.ts` | `process.env.X` (+ `loadSecrets()`) | `bun:sqlite` / `better-sqlite3` |
-| **AI orchestrator worker** (Queue consumer) | `orchestrator-worker/src/` | Worker `env` | calls back into Pages API (no direct DB) |
-| **Local runner** (user machine CLI) | `scripts/local-runner/index.ts` | `process.env` | none — talks to server over WebSocket |
-| **Pages Functions** | `_functions/` | Pages `env` | D1 |
-| **Standalone MCP server** | `mcp-server/index.js` | `process.env` | Cloudflare API / local SQLite |
+| Runtime                                           | Entry                                  | Env access                          | DB access                                |
+| ------------------------------------------------- | -------------------------------------- | ----------------------------------- | ---------------------------------------- |
+| **SvelteKit edge app** (Cloudflare Workers/Pages) | `src/routes/**`, `src/hooks.server.ts` | `platform.env.X`                    | D1 binding `platform.env.DB`             |
+| **Discord gateway bot** (long-running Bun/Node)   | `src/lib/discord/gateway.ts`           | `process.env.X` (+ `loadSecrets()`) | `bun:sqlite` / `better-sqlite3`          |
+| **AI orchestrator worker** (Queue consumer)       | `orchestrator-worker/src/`             | Worker `env`                        | calls back into Pages API (no direct DB) |
+| **Local runner** (user machine CLI)               | `scripts/local-runner/index.ts`        | `process.env`                       | none — talks to server over WebSocket    |
+| **Pages Functions**                               | `_functions/`                          | Pages `env`                         | D1                                       |
+| **Standalone MCP server**                         | `mcp-server/index.js`                  | `process.env`                       | Cloudflare API / local SQLite            |
 
-Because code in `src/lib/` is imported by *both* the edge app and the Node
+Because code in `src/lib/` is imported by _both_ the edge app and the Node
 gateway, env access goes through the `getEnv(name, platform)` helper
 (`platform.env` first, then `process.env`).
 

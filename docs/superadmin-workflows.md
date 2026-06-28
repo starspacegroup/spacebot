@@ -1,3 +1,8 @@
+---
+title: Superadmin Workflows
+layout: default
+---
+
 # Superadmin Workflows
 
 The superadmin workflow system replaces the hardcoded gateway cron jobs with
@@ -36,20 +41,20 @@ Both paths share $lib/server/superadmin-workflow-runtime.js.
 
 `GET /api/superadmin/workflows/dispatch` returns the live catalog. Highlights:
 
-| Operation | What it does |
-| --- | --- |
-| `runStatsAggregation` | Hourly+daily aggregation for all active guilds |
-| `fetchGuildStatsFromDiscord` | Server stats + metadata refresh for all bot guilds |
-| `refreshGuildCache` | Member/role cache refresh for all bot guilds |
-| `cleanupOldData` | Prune old stats + cleanup expired operational data |
-| `claimScheduledMessages` / `processScheduledMessages` | Scheduled message delivery |
-| `syncWorkersAICatalog` | Workers AI model catalog refresh |
-| `sweepAllTimedOutRunnerJobs` | Runner job timeout hygiene |
-| `deleteAggregatedStats` / `runRebuildStats` / `verifyAggregateIntegrity` | Recovery path (destructive ops flagged) |
-| `local_runner_job` | Dispatch a job to a local runner and optionally wait for the result |
-| `http_request` | Generic HTTP call with `{token}` templating |
-| `legacy_cron_job` | Per-step bridge to a named `/api/cron` job |
-| `sleep`, `noop` | Structural helpers |
+| Operation                                                                | What it does                                                        |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `runStatsAggregation`                                                    | Hourly+daily aggregation for all active guilds                      |
+| `fetchGuildStatsFromDiscord`                                             | Server stats + metadata refresh for all bot guilds                  |
+| `refreshGuildCache`                                                      | Member/role cache refresh for all bot guilds                        |
+| `cleanupOldData`                                                         | Prune old stats + cleanup expired operational data                  |
+| `claimScheduledMessages` / `processScheduledMessages`                    | Scheduled message delivery                                          |
+| `syncWorkersAICatalog`                                                   | Workers AI model catalog refresh                                    |
+| `sweepAllTimedOutRunnerJobs`                                             | Runner job timeout hygiene                                          |
+| `deleteAggregatedStats` / `runRebuildStats` / `verifyAggregateIntegrity` | Recovery path (destructive ops flagged)                             |
+| `local_runner_job`                                                       | Dispatch a job to a local runner and optionally wait for the result |
+| `http_request`                                                           | Generic HTTP call with `{token}` templating                         |
+| `legacy_cron_job`                                                        | Per-step bridge to a named `/api/cron` job                          |
+| `sleep`, `noop`                                                          | Structural helpers                                                  |
 
 ### Talking to a local runner
 
@@ -57,13 +62,13 @@ Task node data for `local_runner_job`:
 
 ```json
 {
-  "operation": "local_runner_job",
-  "runner_token_id": 3,
-  "job_type": "shell_command",
-  "command": "uptime",
-  "wait_for_result": true,
-  "wait_timeout_seconds": 60,
-  "fail_on_timeout": false
+	"operation": "local_runner_job",
+	"runner_token_id": 3,
+	"job_type": "shell_command",
+	"command": "uptime",
+	"wait_for_result": true,
+	"wait_timeout_seconds": 60,
+	"fail_on_timeout": false
 }
 ```
 

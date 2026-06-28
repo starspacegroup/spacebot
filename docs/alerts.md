@@ -1,3 +1,8 @@
+---
+title: Alerting
+layout: default
+---
+
 # Alerting
 
 ## Sentry

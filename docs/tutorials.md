@@ -1,3 +1,8 @@
+---
+title: SpaceBot Tutorials
+layout: default
+---
+
 # SpaceBot Tutorials
 
 Hosted video links can be added later; the Markdown guides below are the source of truth today.

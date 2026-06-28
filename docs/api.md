@@ -1,3 +1,8 @@
+---
+title: SpaceBot API
+layout: default
+---
+
 # SpaceBot API
 
 The stable external API lives under `/api/v1/*` and uses `Authorization: Bearer sb_live_...` API keys.

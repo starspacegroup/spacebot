@@ -1,161 +1,75 @@
-# SpaceBot - Project Summary
+# SpaceBot — Project Summary
 
-## 🎯 Mission Accomplished
+SpaceBot is a self-hosted Discord bot platform: a **SvelteKit 2 / Svelte 5** web
+dashboard plus Discord integration, deployed on **Cloudflare Pages** and backed by
+**Cloudflare D1** (SQLite). It is not a single process — several cooperating runtimes
+share one database (see [`docs/architecture.md`](docs/architecture.md)).
 
-Successfully created a **production-ready SvelteKit Discord bot** with web frontend, configured for **Cloudflare Pages deployment directly from GitHub** (no CLI required).
+## Runtimes
 
-## 📦 What Was Delivered
+| Runtime                                 | Entry                                  | Env            | DB                              |
+| --------------------------------------- | -------------------------------------- | -------------- | ------------------------------- |
+| SvelteKit edge app (Pages/Workers)      | `src/routes/**`, `src/hooks.server.ts` | `platform.env` | D1 binding                      |
+| Discord gateway bot (Bun/Node)          | `src/lib/discord/gateway.ts`           | `process.env`  | `bun:sqlite` / `better-sqlite3` |
+| AI orchestrator worker (Queue consumer) | `orchestrator-worker/src/`             | Worker `env`   | calls back into Pages API       |
+| Local runner (user CLI)                 | `scripts/local-runner/`                | `process.env`  | none (WebSocket to server)      |
+| Pages Functions                         | `_functions/`                          | Pages `env`    | D1                              |
+| Standalone MCP server                   | `mcp-server/`                          | `process.env`  | Cloudflare API / local SQLite   |
 
-### Core Functionality
-- ✅ Complete SvelteKit 2 application (Svelte 5)
-- ✅ Discord bot with interactions endpoint
-- ✅ Web frontend with public stats page
-- ✅ Discord OAuth authentication system
-- ✅ Protected admin dashboard
-- ✅ Cloudflare Pages adapter configured
+Shared `src/lib/` code reaches env via the `getEnv(name, platform)` helper so it works
+in both the edge app and the Node gateway.
 
-### Discord Bot Features
-- ✅ `/ping` - Health check command
-- ✅ `/stats` - Bot statistics
-- ✅ `/help` - Help command
-- ✅ Button/menu interaction support
-- ✅ Signature verification for security
-- ✅ Command registration script
+## Capabilities
 
-### Web Frontend Pages
-1. **Homepage** (`/`) - Public bot statistics
-2. **Login** (`/login`) - Discord OAuth
-3. **Admin** (`/admin`) - Management dashboard
+- **Discord bot:** custom slash commands, message & user context-menu commands,
+  button/select/modal interactions, signature-verified interactions endpoint, gateway
+  event capture, AI DM autopilot.
+- **Automation engine:** event → action rules (send message, kick/ban/timeout, roles,
+  DM, webhook, scheduled message) with template variables.
+- **Dashboard:** per-server admin (automations, commands, logs, stats, settings,
+  branding), account area (AI jobs, workflows), superadmin (users, servers, workflows).
+- **AI:** Workers AI / Cloudflare AI Gateway in production; optional local Ollama
+  (`AI_PROVIDER=ollama`, default `gemma3:4b`) in dev.
+- **Local runner v2:** typed jobs over WebSocket, path allowlist, TUI, VS Code bridge.
+- **Superadmin workflows:** cron-dispatched workflow engine.
+- **Security:** Discord OAuth2 + admin gating, request signature verification, response
+  security headers + CSP (report-only), CSRF same-origin helper, sliding session TTL,
+  API rate limiting (exempts interactions + runner WS).
 
-### API Endpoints
-- `POST /api/discord/interactions` - Discord webhook
-- `GET /api/auth/discord` - OAuth initiation
-- `GET /api/auth/discord/callback` - OAuth callback
+## Tooling & quality
 
-## 📋 Files Created/Modified
+- **Bun** for all package/runtime management.
+- **TypeScript** throughout (`src/`, `scripts/`, `mcp-server/`, `orchestrator-worker/`).
+- **Tests:** Vitest (`bun run test`), coverage thresholds enforced (`bun run test:coverage`),
+  Playwright e2e scaffold (`bun run test:e2e`).
+- **Lint/format:** ESLint (flat config) + Prettier, husky + lint-staged pre-commit.
+- **CI:** GitHub Actions — typecheck/test/lint on push & PR; orchestrator-worker auto-deploy;
+  docs published to GitHub Pages from [`docs/`](docs/).
 
-### Configuration Files
-- `package.json` - Dependencies and scripts
-- `svelte.config.js` - SvelteKit config with Cloudflare adapter
-- `vite.config.js` - Vite configuration
-- `wrangler.toml` - Wrangler CLI config
-- `.env.example` - Environment variable template
-- `.gitignore` - Git ignore rules
-
-### Source Code
-- `src/routes/+page.svelte` - Homepage
-- `src/routes/+page.server.ts` - Homepage data loader
-- `src/routes/+layout.svelte` - App layout
-- `src/routes/login/+page.svelte` - Login page
-- `src/routes/admin/+page.svelte` - Admin dashboard
-- `src/routes/admin/+page.server.ts` - Admin data loader
-- `src/routes/api/discord/interactions/+server.ts` - Discord webhook
-- `src/routes/api/auth/discord/+server.ts` - OAuth start
-- `src/routes/api/auth/discord/callback/+server.ts` - OAuth callback
-- `src/lib/discord/commands.ts` - Command definitions
-
-### Scripts & Utilities
-- `scripts/register-commands.ts` - Register commands with Discord
-
-### Documentation
-- `README.md` - Complete project documentation
-- `DEPLOYMENT.md` - Step-by-step deployment guide
-- `ROADMAP.md` - Future enhancement plans
-- `SUMMARY.md` - This file
-
-## 🔒 Security Status
-
-✅ **CodeQL Security Scan: PASSED (0 vulnerabilities)**
-
-Security measures implemented:
-- Discord signature verification
-- Secure environment variables
-- HTTP-only cookies
-- HTTPS enforcement via Cloudflare
-- No hardcoded secrets
-- Error handling for malformed requests
-
-## 🚀 Deployment Ready
-
-### Build Configuration
-- **Build command**: `bun run build`
-- **Build output**: `.svelte-kit/cloudflare`
-- **Node version**: 18+
-
-### Required Environment Variables
-```
-DISCORD_PUBLIC_KEY
-DISCORD_CLIENT_ID
-DISCORD_CLIENT_SECRET
-DISCORD_BOT_TOKEN
-ADMIN_USER_IDS
-```
-
-### Cloudflare Pages Setup
-1. Connect GitHub repository
-2. Configure build settings
-3. Add environment variables
-4. Deploy (automatic on push)
-
-See `DEPLOYMENT.md` for detailed instructions.
-
-## 📊 Build Verification
+## Commands
 
 ```bash
-bun install           # ✅ Success
-bun run build         # ✅ Success - 0 errors
-bun run dev           # ✅ Success - Tested locally
+bun install
+bun run dev                # SvelteKit dev server on :4269
+bun run dev:gateway        # Discord gateway bot (separate terminal)
+bun run build              # production build → .svelte-kit/cloudflare
+bun run db:migrate:local   # apply migrations to local D1
+bun run test               # vitest
+bun run typecheck          # svelte-check
+bun run lint               # eslint
 ```
 
-Build output verified:
-- Client bundle: ~31 KB (gzipped: ~12 KB)
-- Server bundle: ~127 KB
-- Cloudflare worker generated
-- Static assets optimized
+## Documentation
 
-## 🧪 Testing Performed
+Full docs are published to **GitHub Pages** and live in [`docs/`](docs/):
+architecture, API, integrations, AI autopilot, local runner, superadmin workflows,
+observability, alerting, HTTP/3, and tutorials. See also [`README.md`](README.md),
+[`DEPLOYMENT.md`](DEPLOYMENT.md), [`ROADMAP.md`](ROADMAP.md), and
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-- ✅ Local development server tested
-- ✅ Build process verified
-- ✅ All pages render correctly
-- ✅ Code review completed
-- ✅ Security scan passed
-- ✅ Error handling tested
+## Status
 
-## 📈 Next Steps (Optional)
-
-See `ROADMAP.md` for comprehensive list. Key priorities:
-
-1. **Deploy to Cloudflare Pages** using the GitHub dashboard
-2. **Configure Discord application** in Developer Portal
-3. **Register commands** using the provided script
-4. **Test interactions** with the bot
-5. **Implement session storage** (KV or D1)
-6. **Add more commands** and features
-
-## 🎓 Learning Resources
-
-- [SvelteKit Docs](https://kit.svelte.dev)
-- [Cloudflare Pages Docs](https://developers.cloudflare.com/pages)
-- [Discord Developer Docs](https://discord.com/developers/docs)
-- Project README (comprehensive guide)
-- DEPLOYMENT.md (step-by-step)
-
-## 📞 Support
-
-For issues or questions:
-1. Check README.md and DEPLOYMENT.md
-2. Review Cloudflare Pages logs
-3. Check Discord Developer Portal
-4. Open GitHub issue
-
-## ✨ Conclusion
-
-This project is **production-ready** and follows all best practices:
-- ✅ Secure by design
-- ✅ Well documented
-- ✅ Easy to deploy
-- ✅ Scalable architecture
-- ✅ Extensible codebase
-
-Ready to deploy to Cloudflare Pages and start building your Discord community! 🚀
+Roadmap features are largely implemented; items requiring external infrastructure
+(Sentry/APM/Grafana/alerting), full i18n translation, HTTP/3 enablement, and a few
+community surfaces are tracked as scaffold/external in [`ROADMAP.md`](ROADMAP.md) and
+are intentionally not claimed as fully wired.

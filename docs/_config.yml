@@ -1,0 +1,19 @@
+title: SpaceBot Documentation
+description: >-
+    Self-hosted Discord bot platform — SvelteKit 2 dashboard + Discord
+    integration on Cloudflare Pages & D1.
+theme: jekyll-theme-cayman
+baseurl: '/spacebot'
+url: 'https://starspacegroup.github.io'
+
+# GitHub Pages enables jekyll-relative-links by default, so in-page links to
+# *.md files resolve to the generated *.html on the site (and still work when
+# browsing the repo on GitHub).
+defaults:
+    - scope:
+          path: ''
+      values:
+          layout: default
+
+exclude:
+    - screenshots/
