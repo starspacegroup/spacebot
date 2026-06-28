@@ -27,6 +27,11 @@ jobs:
               uses: actions/checkout@v4
             - name: Configure Pages
               uses: actions/configure-pages@v5
+              with:
+                  # Self-enable Pages (Source: GitHub Actions) using the
+                  # workflow's pages:write token, so no manual repo-settings
+                  # toggle is required on first deploy.
+                  enablement: true
             - name: Build Jekyll site from docs/
               uses: actions/jekyll-build-pages@v1
               with:
