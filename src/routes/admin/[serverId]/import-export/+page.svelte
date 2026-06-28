@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
-	import Toast from '$lib/components/Toast.svelte';
+	import { toast } from '$lib/toast.svelte.js';
 
 	const { data } = $props();
 
@@ -10,7 +10,6 @@
 	let selectedAutomations = $state(new Set());
 	let selectedCommands = $state(new Set());
 	let exporting = $state(false);
-	let exportToast = $state(null);
 
 	const automationCount = $derived(data.automations?.length || 0);
 	const commandCount = $derived(data.commands?.length || 0);
@@ -59,12 +58,9 @@
 			}
 			const d = await response.json();
 			downloadJson(d, `spacebot-automations-export.json`);
-			exportToast = {
-				message: `Exported ${d.count} automation${d.count !== 1 ? 's' : ''}`,
-				success: true,
-			};
+			toast.success(`Exported ${d.count} automation${d.count !== 1 ? 's' : ''}`);
 		} catch (error) {
-			exportToast = { message: `Export failed: ${error.message}`, success: false };
+			toast.error(`Export failed: ${error.message}`);
 		} finally {
 			exporting = false;
 		}
@@ -84,12 +80,9 @@
 			}
 			const d = await response.json();
 			downloadJson(d, `spacebot-commands-export.json`);
-			exportToast = {
-				message: `Exported ${d.count} command${d.count !== 1 ? 's' : ''}`,
-				success: true,
-			};
+			toast.success(`Exported ${d.count} command${d.count !== 1 ? 's' : ''}`);
 		} catch (error) {
-			exportToast = { message: `Export failed: ${error.message}`, success: false };
+			toast.error(`Export failed: ${error.message}`);
 		} finally {
 			exporting = false;
 		}
@@ -116,12 +109,9 @@
 				(d.counts?.aggregated_stats || 0) +
 				(d.counts?.voice_sessions || 0);
 			downloadJson(d, `spacebot-stats-export.json`);
-			exportToast = {
-				message: `Exported ${total} stats record${total !== 1 ? 's' : ''}`,
-				success: true,
-			};
+			toast.success(`Exported ${total} stats record${total !== 1 ? 's' : ''}`);
 		} catch (error) {
-			exportToast = { message: `Export failed: ${error.message}`, success: false };
+			toast.error(`Export failed: ${error.message}`);
 		} finally {
 			exporting = false;
 		}
@@ -153,9 +143,9 @@
 				(counts.voice_sessions || 0);
 			if (statsTotal) parts.push(`${statsTotal} stats record${statsTotal !== 1 ? 's' : ''}`);
 			downloadJson(d, `spacebot-backup.json`);
-			exportToast = { message: `Exported ${parts.join(', ') || 'backup'}`, success: true };
+			toast.success(`Exported ${parts.join(', ') || 'backup'}`);
 		} catch (error) {
-			exportToast = { message: `Export failed: ${error.message}`, success: false };
+			toast.error(`Export failed: ${error.message}`);
 		} finally {
 			exporting = false;
 		}
@@ -281,14 +271,6 @@
 </svelte:head>
 
 <div class="import-export-page">
-	{#if exportToast}
-		<Toast
-			message={exportToast.message}
-			success={exportToast.success}
-			onDismiss={() => (exportToast = null)}
-		/>
-	{/if}
-
 	<a href="/admin/{selectedGuildId}" class="back-link">← Back to Dashboard</a>
 
 	<header class="page-header">
