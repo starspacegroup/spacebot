@@ -1,5 +1,10 @@
 function escapeCsv(value: any): string {
-	const text = value === null || value === undefined ? '' : String(value);
+	let text = value === null || value === undefined ? '' : String(value);
+	// CSV formula-injection guard: spreadsheet apps execute cells beginning with
+	// = + - @ (and tab/CR). Prefix with a single quote so they render as text.
+	if (/^[=+\-@\t\r]/.test(text)) {
+		text = `'${text}`;
+	}
 	return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
