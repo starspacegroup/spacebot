@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.js';
+
 	const { data } = $props();
 </script>
 
 <svelte:head><title>SpaceBot Leaderboards</title></svelte:head>
 
 <section class="leaderboard-page">
-	<h1>Server leaderboards</h1>
+	<h1>{t(data.locale, 'leaderboards.title')}</h1>
 	<p>
 		Voice leaderboard entries are privacy-safe: only Discord IDs and aggregate time are shown.
 	</p>

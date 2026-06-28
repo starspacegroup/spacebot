@@ -1,5 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="%lang%">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,7 +8,9 @@
 		<script async src="https://www.googletagmanager.com/gtag/js?id=G-SNR54XEMV8"></script>
 		<script>
 			window.dataLayer = window.dataLayer || [];
-			function gtag(){dataLayer.push(arguments);}
+			function gtag() {
+				dataLayer.push(arguments);
+			}
 			gtag('js', new Date());
 			gtag('config', 'G-SNR54XEMV8');
 		</script>
@@ -19,39 +21,41 @@
 		<script>
 			// Prevent FOUC by setting theme before any rendering
 			(function () {
-				const stored = localStorage.getItem("theme");
+				const stored = localStorage.getItem('theme');
 				let theme;
-				if (stored === "light" || stored === "dark") {
+				if (stored === 'light' || stored === 'dark') {
 					theme = stored;
 				} else {
 					// Default to system preference
-					theme =
-						window.matchMedia("(prefers-color-scheme: dark)").matches
-							? "dark"
-							: "light";
+					theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+						? 'dark'
+						: 'light';
 				}
 				document.documentElement.dataset.theme = theme;
 				document.documentElement.style.colorScheme = theme;
 				// Set base font size immediately to prevent flash
-				document.documentElement.style.fontSize = "118%";
+				document.documentElement.style.fontSize = '118%';
 			})();
-			
+
 			// Auto-reload on critical Svelte errors (cache busting)
-			window.addEventListener('error', function(e) {
+			window.addEventListener('error', function (e) {
 				if (e.message && e.message.includes('state_unsafe_mutation')) {
 					const reloadKey = 'spacebot_error_reload';
 					const lastReload = sessionStorage.getItem(reloadKey);
 					const now = Date.now();
 					// Only auto-reload once per 30 seconds to avoid loops
-					if (!lastReload || (now - parseInt(lastReload)) > 30000) {
+					if (!lastReload || now - parseInt(lastReload) > 30000) {
 						sessionStorage.setItem(reloadKey, now.toString());
 						// Clear module cache and reload
 						if ('caches' in window) {
-							caches.keys().then(names => {
-								names.forEach(name => caches.delete(name));
-							}).finally(() => {
-								location.reload(true);
-							});
+							caches
+								.keys()
+								.then((names) => {
+									names.forEach((name) => caches.delete(name));
+								})
+								.finally(() => {
+									location.reload(true);
+								});
 						} else {
 							location.reload(true);
 						}
@@ -79,20 +83,21 @@
 				white-space: nowrap;
 			}
 			.btn-primary {
-				background: var(--color-primary-button, #5610C6);
+				background: var(--color-primary-button, #5610c6);
 				color: var(--color-primary-button-text, white);
 				font-weight: 600;
 			}
 			.btn-secondary {
 				background: var(--color-surface-elevated, #242045);
-				color: var(--color-text, #F0EEF8);
-				border-color: var(--color-border, #302B58);
+				color: var(--color-text, #f0eef8);
+				border-color: var(--color-border, #302b58);
 			}
 			.btn-danger {
-				background: #EF4444;
+				background: #ef4444;
 				color: white;
 			}
-			.btn-sm, .btn-small {
+			.btn-sm,
+			.btn-small {
 				padding: 0.375rem 0.75rem;
 				font-size: 0.8rem;
 			}

@@ -1,11 +1,13 @@
 <script lang="ts">
+	import { t } from '$lib/i18n.js';
+
 	const { data } = $props();
 </script>
 
 <svelte:head><title>SpaceBot Support</title></svelte:head>
 
 <section class="link-page">
-	<h1>Support server</h1>
+	<h1>{t(data.locale, 'public.support.title')}</h1>
 	<p>Join the SpaceBot Discord support server for setup help and release updates.</p>
 	{#if data.enabled}
 		<a class="primary-action" href={data.url}>Open support server</a>
