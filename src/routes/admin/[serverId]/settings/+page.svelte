@@ -85,6 +85,16 @@
 	// Timezone setting
 	// svelte-ignore state_referenced_locally
 	let timezone = $state(data.settings?.timezone || '');
+	// svelte-ignore state_referenced_locally
+	let brandingDisplayName = $state(data.branding?.display_name || '');
+	// svelte-ignore state_referenced_locally
+	let brandingAccentColor = $state(data.branding?.accent_color || '#5865f2');
+	// svelte-ignore state_referenced_locally
+	let brandingLogoUrl = $state(data.branding?.logo_url || '');
+	// svelte-ignore state_referenced_locally
+	let brandingBannerUrl = $state(data.branding?.banner_url || '');
+	// svelte-ignore state_referenced_locally
+	let brandingTagline = $state(data.branding?.public_tagline || '');
 
 	// Browser timezone detection
 	let browserTimezone = $state('');
@@ -198,6 +208,11 @@
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		excludedCategories = data.settings?.excludedCategories || [];
 		timezone = data.settings?.timezone || '';
+		brandingDisplayName = data.branding?.display_name || '';
+		brandingAccentColor = data.branding?.accent_color || '#5865f2';
+		brandingLogoUrl = data.branding?.logo_url || '';
+		brandingBannerUrl = data.branding?.banner_url || '';
+		brandingTagline = data.branding?.public_tagline || '';
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
 		manageAutomationsPerm =
@@ -532,6 +547,72 @@
 			{/if}
 			<input type="hidden" name="logEmbedColors" value={logEmbedColorsJson} />
 			<input type="hidden" name="excludedCategories" value={excludedCategoriesJson} />
+		</section>
+
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">🎨</span>
+				Custom Branding
+			</h2>
+			<p class="section-desc">Customize the public presentation for this server.</p>
+
+			<div class="settings-grid">
+				<div class="settings-card">
+					<label for="brandingDisplayName" class="setting-label">Display name</label>
+					<input
+						id="brandingDisplayName"
+						name="brandingDisplayName"
+						class="form-input"
+						bind:value={brandingDisplayName}
+						maxlength="80"
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingAccentColor" class="setting-label">Accent color</label>
+					<input
+						id="brandingAccentColor"
+						name="brandingAccentColor"
+						class="form-input"
+						type="color"
+						bind:value={brandingAccentColor}
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingLogoUrl" class="setting-label">Logo URL</label>
+					<input
+						id="brandingLogoUrl"
+						name="brandingLogoUrl"
+						class="form-input"
+						bind:value={brandingLogoUrl}
+						placeholder="/logo.webp"
+						onchange={autoSave}
+					/>
+				</div>
+				<div class="settings-card">
+					<label for="brandingBannerUrl" class="setting-label">Banner URL</label>
+					<input
+						id="brandingBannerUrl"
+						name="brandingBannerUrl"
+						class="form-input"
+						bind:value={brandingBannerUrl}
+						placeholder="/server-admin-dark.webp"
+						onchange={autoSave}
+					/>
+				</div>
+			</div>
+			<div class="settings-card">
+				<label for="brandingTagline" class="setting-label">Public tagline</label>
+				<input
+					id="brandingTagline"
+					name="brandingTagline"
+					class="form-input"
+					bind:value={brandingTagline}
+					maxlength="180"
+					onchange={autoSave}
+				/>
+			</div>
 		</section>
 
 		<!-- Timezone Settings -->

@@ -7,6 +7,12 @@ import {
 	normalizeLocalRunnerAssistPolicy,
 } from '$lib/db/settings.js';
 import { getGuildWebhooks, createWebhook, updateWebhook, deleteWebhook } from '$lib/db/webhooks.js';
+import {
+	getGuildBranding,
+	mergeBranding,
+	saveGuildBranding,
+	validateBranding,
+} from '$lib/db/branding.js';
 import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 
 /**
@@ -93,6 +99,7 @@ export async function load({ cookies, platform, parent, params }) {
 	// Load server settings from database
 	const db = (platform as any)?.env?.DB;
 	const dbSettings = db ? await getGuildSettings(db, serverId) : DEFAULT_SETTINGS;
+	const branding = db ? mergeBranding(await getGuildBranding(db, serverId)) : mergeBranding(null);
 
 	// Map database settings to UI format
 	const settings = {
@@ -171,6 +178,7 @@ export async function load({ cookies, platform, parent, params }) {
 		hasFullAdminAccess,
 		webhooks,
 		httpMethods,
+		branding,
 	};
 }
 
@@ -193,6 +201,22 @@ export const actions = {
 		const formData = await request.formData();
 		const loggingChannelId = formData.get('loggingChannelId');
 		const timezone = formData.get('timezone') || null;
+		const brandingValidation = validateBranding({
+			display_name: formData.get('brandingDisplayName'),
+			accent_color: formData.get('brandingAccentColor'),
+			logo_url: formData.get('brandingLogoUrl'),
+			banner_url: formData.get('brandingBannerUrl'),
+			public_tagline: formData.get('brandingTagline'),
+		});
+
+		if (!brandingValidation.ok) {
+			return fail(400, {
+				success: false,
+				message:
+					Object.values(brandingValidation.errors)[0] || 'Branding settings are invalid.',
+				brandingErrors: brandingValidation.errors,
+			});
+		}
 
 		// Excluded log categories (JSON string from hidden input)
 		let excludedCategories = [];
@@ -276,6 +300,7 @@ export const actions = {
 					},
 				},
 			});
+			await saveGuildBranding(db, serverId, brandingValidation.value, userId);
 
 			return {
 				success: true,

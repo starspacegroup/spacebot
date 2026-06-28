@@ -32,6 +32,9 @@ dist/
 # Test coverage (vitest --coverage)
 coverage/
 
+# Storybook static build output
+storybook-static/
+
 # Wrangler local secrets
 .dev.vars
 

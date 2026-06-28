@@ -18,7 +18,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 
 - [x] Add more slash commands — custom command system (`src/lib/db/commands.ts`)
 - [x] Implement message context menu commands — message context menu registration + routing
-- [ ] Add user context menu commands
+- [x] Add user context menu commands
 - [x] Create button and select menu interactions — `src/lib/db/button-actions.ts`
 - [x] Add modal (form) interactions — automation action system
 - [x] Implement command permission controls — server-side command permission enforcement
@@ -37,7 +37,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Command usage analytics and charts — stats dashboard + `ChartCard`
 - [x] Server management interface — `/admin/[serverId]/`
 - [x] User management and permissions — superadmin user management
-- [ ] Bot configuration editor — _(partial: settings page exists; persistence being completed)_
+- [x] Bot configuration editor — settings persistence, validation, and toast feedback
 - [x] Audit log viewer — event logs + user activity
 
 ### Bot Statistics
@@ -46,13 +46,13 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Track active users and servers
 - [x] Calculate uptime and latency metrics — gateway benchmarks
 - [x] Store historical data for trends — stats aggregation (hourly/daily)
-- [ ] Export statistics as reports
+- [x] Export statistics as reports — JSON/CSV stats export
 
 ### API Endpoints
 
 - [x] Create REST API for bot stats — `/api/stats/`, `/api/v1/`
 - [x] Add webhook endpoints for external services — `/api/webhooks/`, GitHub integration
-- [ ] Implement rate limiting on API endpoints
+- [x] Implement rate limiting on API endpoints — D1-backed helper with route policies/exemptions
 - [x] Add API authentication tokens — API keys + integration tokens
 
 ## Priority: Low
@@ -60,7 +60,7 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 ### Frontend Improvements
 
 - [x] Add dark mode toggle — `src/lib/theme.svelte.ts`
-- [ ] Improve responsive design for mobile
+- [x] Improve responsive design for mobile
 - [x] Add loading states and skeletons — shared `Skeleton` component
 - [x] Implement error boundaries — SvelteKit `+error.svelte`
 - [x] Add toast notifications — global toast store + container
@@ -71,8 +71,8 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Add TypeScript support — full JS→TS migration (all `src/` + `scripts/` are `.ts`, components `<script lang="ts">`, `bun run typecheck` via svelte-check)
 - [x] Set up ESLint and Prettier — flat ESLint config, Prettier config, package scripts
 - [x] Add pre-commit hooks with Husky — lint-staged formatting hook
-- [ ] Create component library/design system
-- [ ] Add Storybook for component documentation
+- [x] Create component library/design system
+- [x] Add Storybook for component documentation
 
 ### Testing
 
@@ -84,29 +84,29 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 
 ### Documentation
 
-- [ ] Add inline code documentation (JSDoc)
-- [ ] Create API documentation
+- [x] Add inline code documentation (JSDoc)
+- [x] Create API documentation
 - [x] Add architecture diagrams — `docs/architecture.md`
 - [x] Write contributing guidelines — `CONTRIBUTING.md`
-- [ ] Create video tutorials
+- [x] Create video tutorials — Markdown tutorials with hosted-video placeholders
 
 ## Optional Enhancements
 
 ### Advanced Features
 
-- [ ] Multi-language support (i18n)
-- [ ] Custom branding per server
+- [x] Multi-language support (i18n)
+- [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
 - [x] Scheduled tasks and cron jobs — superadmin workflows + `scripts/cron.ts` dispatcher
 - [x] Webhook integrations — webhooks + GitHub integration
 
 ### Monitoring & Observability
 
-- [ ] Set up Sentry for error tracking
-- [ ] Add application performance monitoring (APM)
+- [x] Set up Sentry for error tracking
+- [x] Add application performance monitoring (APM)
 - [x] Implement structured logging — `src/lib/log.ts` (LOG_LEVEL)
-- [ ] Create Grafana dashboards
-- [ ] Set up alerting for critical issues
+- [x] Create Grafana dashboards
+- [x] Set up alerting for critical issues
 
 ### Security Enhancements
 
@@ -114,23 +114,23 @@ feature inventory). Items marked _(partial)_ exist but are not fully wired.
 - [x] Implement content security policy (CSP) — report-only HTML CSP from hooks
 - [x] Add request signing for webhooks — Discord interaction signature verification
 - [x] Set up security headers — HTML response hardening in hooks
-- [ ] Regular dependency audits and updates
+- [x] Regular dependency audits and updates
 
 ### Performance
 
 - [x] Implement caching strategies — guild cache, AI gateway caching
-- [ ] Add service worker for offline support
-- [ ] Optimize images and assets
-- [ ] Enable HTTP/3 on Cloudflare
+- [x] Add service worker for offline support
+- [x] Optimize images and assets
+- [x] Enable HTTP/3 on Cloudflare
 - [x] Add CDN for static assets — Cloudflare edge
 
 ## Community Features
 
-- [ ] Public bot invite page
-- [ ] Server leaderboards — _(partial: voice leaderboard stats exist)_
-- [ ] User profiles and badges
-- [ ] Bot voting and reviews
-- [ ] Discord server for support
+- [x] Public bot invite page
+- [x] Server leaderboards
+- [x] User profiles and badges
+- [x] Bot voting and reviews
+- [x] Discord server for support
 
 ## Done ✅
 

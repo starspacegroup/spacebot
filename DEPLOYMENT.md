@@ -13,25 +13,25 @@ This guide walks you through deploying SpaceBot to Cloudflare Pages from the Git
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application or select an existing one
 3. Note down these values (you'll need them later):
-   - **Application ID** (from General Information)
-   - **Public Key** (from General Information)
-   - **Client Secret** (from OAuth2 → General)
-   - **Bot Token** (from Bot section)
+    - **Application ID** (from General Information)
+    - **Public Key** (from General Information)
+    - **Client Secret** (from OAuth2 → General)
+    - **Bot Token** (from Bot section)
 
 ### Configure Discord Bot
 
 1. Go to the **Bot** section
 2. Click "Reset Token" to get your bot token (save it securely!)
 3. Enable these intents if needed:
-   - Server Members Intent (optional)
-   - Message Content Intent (optional)
+    - Server Members Intent (optional)
+    - Message Content Intent (optional)
 
 ### Configure OAuth2
 
 1. Go to **OAuth2** → **General**
 2. Add redirect URLs:
-   - `https://your-project-name.pages.dev/api/auth/discord/callback`
-   - (Replace `your-project-name` with your actual Cloudflare Pages URL)
+    - `https://your-project-name.pages.dev/api/auth/discord/callback`
+    - (Replace `your-project-name` with your actual Cloudflare Pages URL)
 
 ## Step 2: Deploy to Cloudflare Pages
 
@@ -58,18 +58,35 @@ Enter the following build configuration:
 
 Click on **Environment variables** and add the following:
 
-| Variable Name | Value | Notes |
-|--------------|-------|-------|
-| `DISCORD_PUBLIC_KEY` | Your Discord public key | From Discord Developer Portal |
-| `DISCORD_CLIENT_ID` | Your Discord application ID | From Discord Developer Portal |
-| `DISCORD_CLIENT_SECRET` | Your Discord client secret | From OAuth2 settings |
-| `DISCORD_BOT_TOKEN` | Your Discord bot token | From Bot settings |
-| `ADMIN_USER_IDS` | Your Discord user ID(s) | Comma-separated list for multiple admins |
-| `CLOUDFLARE_API_TOKEN` | Your Cloudflare API token | Needs D1 edit permissions for auto-migrations |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID | Required for D1 migrations during build |
-| `BUN_VERSION` | `1.2` | Tells Cloudflare Pages to use Bun as the runtime |
+| Variable Name           | Value                       | Notes                                            |
+| ----------------------- | --------------------------- | ------------------------------------------------ |
+| `DISCORD_PUBLIC_KEY`    | Your Discord public key     | From Discord Developer Portal                    |
+| `DISCORD_CLIENT_ID`     | Your Discord application ID | From Discord Developer Portal                    |
+| `DISCORD_CLIENT_SECRET` | Your Discord client secret  | From OAuth2 settings                             |
+| `DISCORD_BOT_TOKEN`     | Your Discord bot token      | From Bot settings                                |
+| `ADMIN_USER_IDS`        | Your Discord user ID(s)     | Comma-separated list for multiple admins         |
+| `CLOUDFLARE_API_TOKEN`  | Your Cloudflare API token   | Needs D1 edit permissions for auto-migrations    |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID  | Required for D1 migrations during build          |
+| `BUN_VERSION`           | `1.2`                       | Tells Cloudflare Pages to use Bun as the runtime |
+
+Optional roadmap integrations:
+
+| Variable Name                       | Purpose                                     |
+| ----------------------------------- | ------------------------------------------- |
+| `PUBLIC_SUPPORT_DISCORD_URL`        | Public support server CTA                   |
+| `PUBLIC_BOT_VOTE_URL`               | Public voting CTA                           |
+| `PUBLIC_BOT_REVIEW_URL`             | Public review CTA                           |
+| `SENTRY_DSN`                        | Enables Sentry client/server error tracking |
+| `SENTRY_ENVIRONMENT`                | Sentry environment tag                      |
+| `SENTRY_TRACES_SAMPLE_RATE`         | Sentry trace sample rate                    |
+| `RATE_LIMIT_ENABLED`                | Enables D1-backed API rate limiting         |
+| `RATE_LIMIT_DEFAULT_WINDOW_SECONDS` | Default API rate-limit window               |
+| `RATE_LIMIT_DEFAULT_MAX_REQUESTS`   | Default max API requests per window         |
+
+HTTP/3 is a Cloudflare zone-level setting. See `docs/http3.md` and verify with `bun run verify:http3 -- https://your-domain.example`.
 
 **How to get your Discord User ID:**
+
 1. Enable Developer Mode in Discord (User Settings → Advanced → Developer Mode)
 2. Right-click your username in Discord
 3. Click "Copy User ID"
@@ -87,7 +104,7 @@ Click on **Environment variables** and add the following:
 3. Go to **General Information**
 4. Find **Interactions Endpoint URL**
 5. Enter: `https://your-project-name.pages.dev/api/discord/interactions`
-   - Replace `your-project-name` with your actual Cloudflare Pages URL
+    - Replace `your-project-name` with your actual Cloudflare Pages URL
 6. Click **Save Changes**
 
 Discord will verify the endpoint by sending a test request. If configured correctly, you'll see a success message.
@@ -116,26 +133,26 @@ Create a temporary Cloudflare Worker to register commands:
 
 ```javascript
 export default {
-  async fetch(request, env) {
-    const commands = [
-      { name: 'ping', description: 'Check if the bot is responsive', type: 1 },
-      { name: 'stats', description: 'View bot statistics', type: 1 },
-      { name: 'help', description: 'Get help with bot commands', type: 1 }
-    ];
-    
-    const url = `https://discord.com/api/v10/applications/${env.DISCORD_CLIENT_ID}/commands`;
-    
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bot ${env.DISCORD_BOT_TOKEN}`
-      },
-      body: JSON.stringify(commands)
-    });
-    
-    return new Response(await response.text(), { status: response.status });
-  }
+	async fetch(request, env) {
+		const commands = [
+			{ name: 'ping', description: 'Check if the bot is responsive', type: 1 },
+			{ name: 'stats', description: 'View bot statistics', type: 1 },
+			{ name: 'help', description: 'Get help with bot commands', type: 1 },
+		];
+
+		const url = `https://discord.com/api/v10/applications/${env.DISCORD_CLIENT_ID}/commands`;
+
+		const response = await fetch(url, {
+			method: 'PUT',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+			},
+			body: JSON.stringify(commands),
+		});
+
+		return new Response(await response.text(), { status: response.status });
+	},
 };
 ```
 
@@ -143,12 +160,12 @@ export default {
 
 1. Go to Discord Developer Portal → Your Application → **OAuth2** → **URL Generator**
 2. Select scopes:
-   - ✅ `bot`
-   - ✅ `applications.commands`
+    - ✅ `bot`
+    - ✅ `applications.commands`
 3. Select bot permissions as needed:
-   - ✅ Send Messages
-   - ✅ Use Slash Commands
-   - ✅ (Add others as needed)
+    - ✅ Send Messages
+    - ✅ Use Slash Commands
+    - ✅ (Add others as needed)
 4. Copy the generated URL
 5. Open the URL in your browser
 6. Select a server and authorize the bot
@@ -305,6 +322,7 @@ bun run gateway
 ```
 
 This runs `scripts/prod-start.ts` which:
+
 1. Checks for `cloudflared` and installs it if missing
 2. Checks for `pm2` and installs it if missing
 3. Starts `spacebot-gateway`, `spacebot-tunnel`, `spacebot-deploy`, and `spacebot-cron` via PM2
@@ -334,18 +352,19 @@ When a new commit is detected, the server automatically:
 **Setup (one-time):**
 
 1. Set `DEPLOY_WEBHOOK_SECRET` in your environment (e.g., in `.env` or PM2 env config):
-   ```bash
-   export DEPLOY_WEBHOOK_SECRET="your-secret-here"
-   ```
+
+    ```bash
+    export DEPLOY_WEBHOOK_SECRET="your-secret-here"
+    ```
 
 2. Configure the GitHub webhook to call `https://spacebot.starspace.group/deploy`.
-    The gateway app now handles that path directly and proxies it to the internal deploy listener, so a separate Cloudflare ingress rule for `/deploy` is no longer required.
+   The gateway app now handles that path directly and proxies it to the internal deploy listener, so a separate Cloudflare ingress rule for `/deploy` is no longer required.
 
 3. Add a GitHub webhook at **Settings > Webhooks** for the `spacebot` repo:
-   - **Payload URL:** `https://spacebot.starspace.group/deploy`
-   - **Content type:** `application/json`
-   - **Secret:** same value as `DEPLOY_WEBHOOK_SECRET`
-   - **Events:** Just the `push` event
+    - **Payload URL:** `https://spacebot.starspace.group/deploy`
+    - **Content type:** `application/json`
+    - **Secret:** same value as `DEPLOY_WEBHOOK_SECRET`
+    - **Events:** Just the `push` event
 
 ### PM2 Commands
 
@@ -369,6 +388,7 @@ This ensures the gateway bot restarts automatically if the server reboots.
 ### Log Files
 
 PM2 writes logs to the `logs/` directory:
+
 - `logs/gateway-out.log` — Standard output
 - `logs/gateway-error.log` — Errors
 - `logs/deploy-out.log` — Deploy webhook logs

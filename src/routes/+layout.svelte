@@ -7,6 +7,7 @@
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
+	import LanguageSelector from '$lib/components/LanguageSelector.svelte';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
@@ -56,6 +57,13 @@
 	const user = $derived(data?.user ?? null);
 	const selectedGuildId = $derived(data?.selectedGuildId ?? $page.url.searchParams.get('guild'));
 	const isSuperAdmin = $derived(data?.isSuperAdmin ?? false);
+	const locale = $derived(data?.locale ?? 'en');
+
+	$effect(() => {
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.register('/sw.js').catch(() => {});
+		}
+	});
 
 	// adminGuilds may arrive as a streamed Promise (to avoid blocking page render on Discord API).
 	// Resolve it reactively so the server selector appears once the list is ready.
@@ -215,6 +223,7 @@
 					> Login</a
 				>
 			{/if}
+			<LanguageSelector {locale} />
 			<ThemeToggle />
 		</nav>
 	</header>

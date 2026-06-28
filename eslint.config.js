@@ -29,6 +29,7 @@ export default ts.config(
 			'.claude/',
 			'node_modules/',
 			'playwright-report/',
+			'storybook-static/',
 			'test-results/',
 			'**/*.timestamp-*',
 			'orchestrator-worker/node_modules/',

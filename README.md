@@ -82,6 +82,23 @@ beautiful admin dashboard.
 - **AI Gateway** — Optional analytics, caching, and rate limiting for AI requests
 - **Zero Cold Starts** — Fast response times worldwide
 
+## Roadmap Operations
+
+Repository-ready external integrations are configured with environment variables, not hardcoded credentials:
+
+- `PUBLIC_SUPPORT_DISCORD_URL`, `PUBLIC_BOT_VOTE_URL`, and `PUBLIC_BOT_REVIEW_URL` power public community CTAs.
+- `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, and `SENTRY_TRACES_SAMPLE_RATE` enable Sentry.
+- `RATE_LIMIT_ENABLED`, `RATE_LIMIT_DEFAULT_WINDOW_SECONDS`, and `RATE_LIMIT_DEFAULT_MAX_REQUESTS` enable D1-backed API limits.
+
+Useful checks:
+
+```bash
+bun run docs:api
+bun run audit:deps
+bun run images:check
+bun run verify:http3
+```
+
 ## 📸 Screenshots
 
 <details>
