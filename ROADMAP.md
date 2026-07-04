@@ -97,7 +97,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [~] Multi-language support (i18n) — _(wired: cookie/Accept-Language locale resolution, dynamic `<html lang>`, en/es catalog, `LanguageSelector`, public pages translated; full app-wide string translation still pending)_
 - [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
-- [x] Scheduled tasks and cron jobs — superadmin workflows + `scripts/cron.ts` dispatcher
+- [x] Scheduled tasks and cron jobs — superadmin workflows on Cloudflare Cron Triggers + Workflows (PM2 tick retired to deploy-poll only)
+- [x] Durable workflow execution — per-run Cloudflare Workflow instances (queue-driven advance loop, approval gates, timed steps, retry/backoff, watchdog)
+- [x] Workflow version control — every definition change snapshotted (`superadmin_workflow_template_versions`); revert to any version + reset-to-built-in from the UI
+- [x] Workflow builder UI v2 — componentized step-list builder (no raw-JSON fallback), run drill-down with live approval decisions, version history panel
 - [x] Webhook integrations — webhooks + GitHub integration
 
 ### Monitoring & Observability

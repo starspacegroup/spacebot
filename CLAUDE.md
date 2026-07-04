@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 SpaceBot is a self-hosted Discord bot platform: a **SvelteKit 2 / Svelte 5** web dashboard + Discord
-integration deployed on **Cloudflare Pages**, backed by **Cloudflare D1** (SQLite). It is *not* a single
+integration deployed on **Cloudflare Pages**, backed by **Cloudflare D1** (SQLite). It is _not_ a single
 process — it is several cooperating runtimes that share one D1 database (see Architecture).
 
 ## Hard rules (from `.github/copilot-instructions.md`)
@@ -44,16 +44,16 @@ Production gateway process management uses PM2 (`bun run gateway`, `gateway:rest
 This is the key mental model. The same repo produces code for **four+ distinct runtimes**, and a file's
 runtime determines how it reaches env vars and the database:
 
-| Runtime | Entry | Env access | DB access |
-| --- | --- | --- | --- |
-| **SvelteKit edge app** (Cloudflare Workers/Pages) | `src/routes/**`, `src/hooks.server.ts` | `platform.env.X` | D1 binding `platform.env.DB` |
-| **Discord gateway bot** (long-running Bun/Node) | `src/lib/discord/gateway.ts` | `process.env.X` (+ `loadSecrets()`) | `bun:sqlite` / `better-sqlite3` |
-| **AI orchestrator worker** (Queue consumer) | `orchestrator-worker/src/` | Worker `env` | calls back into Pages API |
-| **Local runner** (user machine CLI) | `scripts/local-runner/index.ts` | `process.env` | none — talks to server over WebSocket |
-| **Pages Functions** | `_functions/` | Pages `env` | D1 |
-| **Standalone MCP server** | `mcp-server/index.js` | `process.env` | Cloudflare API / local SQLite |
+| Runtime                                           | Entry                                  | Env access                          | DB access                             |
+| ------------------------------------------------- | -------------------------------------- | ----------------------------------- | ------------------------------------- |
+| **SvelteKit edge app** (Cloudflare Workers/Pages) | `src/routes/**`, `src/hooks.server.ts` | `platform.env.X`                    | D1 binding `platform.env.DB`          |
+| **Discord gateway bot** (long-running Bun/Node)   | `src/lib/discord/gateway.ts`           | `process.env.X` (+ `loadSecrets()`) | `bun:sqlite` / `better-sqlite3`       |
+| **AI orchestrator worker** (Queue consumer)       | `orchestrator-worker/src/`             | Worker `env`                        | calls back into Pages API             |
+| **Local runner** (user machine CLI)               | `scripts/local-runner/index.ts`        | `process.env`                       | none — talks to server over WebSocket |
+| **Pages Functions**                               | `_functions/`                          | Pages `env`                         | D1                                    |
+| **Standalone MCP server**                         | `mcp-server/index.js`                  | `process.env`                       | Cloudflare API / local SQLite         |
 
-Because code in `src/lib/` is imported by *both* the edge app and the Node gateway, env access goes through
+Because code in `src/lib/` is imported by _both_ the edge app and the Node gateway, env access goes through
 the `getEnv(name, platform)` helper (Workers `platform.env` first, then `process.env`). When adding shared
 code, support both. `vite.config.js`'s `excludeNativeModules` plugin stubs `better-sqlite3` at build time so
 the Node-only SQLite path doesn't break the Workers bundle (`src/lib/ai/mcp-client.ts` is the dynamic importer).
@@ -95,14 +95,20 @@ streams results back. It has a TUI (`tui.tsx`, OpenTUI/React), a VS Code bridge
 ## Scheduling
 
 Cloudflare Pages does **not** support cron triggers, but `orchestrator-worker` (a plain Cloudflare
-Worker) does. It has a native Cron Trigger (`* * * * *`) that runs a Cloudflare Workflow
-(`CronDispatchWorkflow`, in `orchestrator-worker/src/cron-dispatch-workflow.js`) which durably POSTs
-`/api/superadmin/workflows/dispatch` — this is the scheduler tick, provisioned entirely via
-`wrangler deploy` (no Cloudflare dashboard steps). A second Cron Trigger (`*/5 * * * *`) enqueues the
-AI autopilot watchdog sweep. `scripts/cron.ts` (the old GCP/PM2-hosted tick) is being retired now that
-this is live; its git-polling auto-deploy responsibility is separate and untouched. Schedules for
-superadmin workflow templates still live as `cron_expression` in D1, managed under Admin → Superadmin →
-Workflows (`docs/superadmin-workflows.md`), not in config files — only the trigger mechanism changed.
+Worker) does. Its Cron Trigger (`* * * * *`) runs `CronDispatchWorkflow`, which durably POSTs
+`/api/superadmin/workflows/dispatch`; due runs are created `queued` and enqueued onto the
+`spacebot-workflow-runs` queue, where the worker creates one durable `SuperadminRunWorkflow`
+instance per run (instance id `sa-run-<runId>`). That instance drives the run by looping the
+idempotent `runs/:id/advance` endpoint — graph logic stays in Pages
+(`src/lib/server/superadmin-workflow-advance.ts`); the Workflow just turns wait instructions into
+`step.sleep` / `step.waitForEvent` (approval gates). A second Cron Trigger (`*/5 * * * *`) enqueues
+the AI autopilot watchdog sweep. Everything is provisioned via `wrangler deploy` (plus a one-time
+`wrangler queues create spacebot-workflow-runs`). `scripts/cron.ts` (PM2) is deploy-poll only —
+the dispatcher tick was removed. Workflow templates are **versioned**: every definition change
+snapshots into `superadmin_workflow_template_versions` and can be reverted from the UI. Schedules
+live as `cron_expression` in D1, managed under Admin → Superadmin → Workflows
+(`docs/superadmin-workflows.md`), not in config files. In vite dev (or with
+`WORKFLOW_DURABLE_EXECUTION=false`), runs execute inline instead of via the queue.
 
 ## Auth model
 

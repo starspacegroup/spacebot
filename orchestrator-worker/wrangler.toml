@@ -1,10 +1,19 @@
 name = "spacebot-ai-orchestrator"
 main = "src/index.ts"
-compatibility_date = "2024-01-26"
+# Needs a 2025+ runtime for Workflows step.waitForEvent (approval gates).
+compatibility_date = "2025-06-01"
 
 # Bind this consumer to the queue used by the Pages producer.
 [[queues.consumers]]
 queue = "spacebot-ai-autopilot"
+max_batch_size = 10
+max_batch_timeout = 5
+
+# Superadmin workflow runs: Pages enqueues run starts / approval wake-ups;
+# this worker creates or signals the SuperadminRunWorkflow instances.
+# Create the queue once with: bunx wrangler queues create spacebot-workflow-runs
+[[queues.consumers]]
+queue = "spacebot-workflow-runs"
 max_batch_size = 10
 max_batch_timeout = 5
 
@@ -21,6 +30,14 @@ queue = "spacebot-ai-autopilot"
 name = "spacebot-cron-dispatch"
 binding = "CRON_DISPATCH_WORKFLOW"
 class_name = "CronDispatchWorkflow"
+
+# Durable driver for individual superadmin workflow runs: loops the Pages
+# advance endpoint with durable sleeps and approval waits. One instance per
+# run, deterministic id sa-run-<runId>.
+[[workflows]]
+name = "spacebot-superadmin-run"
+binding = "SUPERADMIN_RUN_WORKFLOW"
+class_name = "SuperadminRunWorkflow"
 
 # Native Cloudflare Cron Triggers — provisioned automatically on `wrangler
 # deploy`, no Cloudflare dashboard interaction required. "* * * * *" drives

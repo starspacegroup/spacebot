@@ -30,226 +30,391 @@
  * templates need more than this.
  */
 
-export type WorkflowNodeType = "trigger" | "task" | "approval" | "branch";
+export type WorkflowNodeType = 'trigger' | 'task' | 'approval' | 'branch';
 
 export interface WorkflowGraphNode {
-  id: string;
-  type: WorkflowNodeType;
-  title?: string;
-  position?: { x: number; y: number };
-  data?: Record<string, any>;
+	id: string;
+	type: WorkflowNodeType;
+	title?: string;
+	position?: { x: number; y: number };
+	data?: Record<string, any>;
 }
 
 export interface WorkflowGraphEdge {
-  id: string;
-  source: string;
-  target: string;
-  source_handle?: string;
-  label?: string;
+	id: string;
+	source: string;
+	target: string;
+	source_handle?: string;
+	label?: string;
 }
 
 export interface WorkflowCanvasJson {
-  nodes: WorkflowGraphNode[];
-  edges: WorkflowGraphEdge[];
+	nodes: WorkflowGraphNode[];
+	edges: WorkflowGraphEdge[];
 }
 
 export interface WorkflowStep {
-  id: string;
-  type: "task" | "approval" | "branch";
-  title: string;
-  data: Record<string, any>;
-  /** routeName -> target step id, or null to end the workflow on that route */
-  routes: Record<string, string | null>;
+	id: string;
+	type: 'task' | 'approval' | 'branch';
+	title: string;
+	data: Record<string, any>;
+	/** routeName -> target step id, or null to end the workflow on that route */
+	routes: Record<string, string | null>;
 }
 
 export type ParsedWorkflow =
-  | { valid: true; triggerData: Record<string, any>; steps: WorkflowStep[] }
-  | { valid: false; reason: string; raw: any };
+	| { valid: true; triggerData: Record<string, any>; steps: WorkflowStep[] }
+	| { valid: false; reason: string; raw: any };
 
 const ROUTES_BY_TYPE: Record<string, string[]> = {
-  approval: ["approved", "rejected"],
-  branch: ["true", "false"],
+	approval: ['approved', 'rejected'],
+	branch: ['true', 'false'],
 };
 
 export function routesForType(type: string): string[] {
-  return ROUTES_BY_TYPE[type] || [];
+	return ROUTES_BY_TYPE[type] || [];
 }
 
 export function createStepId(): string {
-  return `step-${crypto.randomUUID()}`;
+	return `step-${crypto.randomUUID()}`;
 }
 
-export function createStep(type: "task" | "approval" | "branch", title: string): WorkflowStep {
-  const routes: Record<string, string | null> = {};
-  for (const routeName of routesForType(type)) routes[routeName] = null;
-  return {
-    id: createStepId(),
-    type,
-    title,
-    data: type === "task" ? { operation: "" } : {},
-    routes,
-  };
+export function createStep(type: 'task' | 'approval' | 'branch', title: string): WorkflowStep {
+	const routes: Record<string, string | null> = {};
+	for (const routeName of routesForType(type)) routes[routeName] = null;
+	return {
+		id: createStepId(),
+		type,
+		title,
+		data: type === 'task' ? { operation: '' } : {},
+		routes,
+	};
 }
 
-function resolveRouteTarget(outgoing: Map<string, WorkflowGraphEdge[]>, node: WorkflowGraphNode, routeName: string): string | null {
-  const edgesFromNode = outgoing.get(String(node.id)) || [];
-  if (edgesFromNode.length === 0) return null;
-  const byHandle = edgesFromNode.find((e) => String(e.source_handle || "").trim() === routeName);
-  if (byHandle) return String(byHandle.target);
-  const byLabel = edgesFromNode.find((e) => String(e.label || "").trim().toLowerCase() === routeName.toLowerCase());
-  if (byLabel) return String(byLabel.target);
-  return null;
+function resolveRouteTarget(
+	outgoing: Map<string, WorkflowGraphEdge[]>,
+	node: WorkflowGraphNode,
+	routeName: string
+): string | null {
+	const edgesFromNode = outgoing.get(String(node.id)) || [];
+	if (edgesFromNode.length === 0) return null;
+	const byHandle = edgesFromNode.find((e) => String(e.source_handle || '').trim() === routeName);
+	if (byHandle) return String(byHandle.target);
+	const byLabel = edgesFromNode.find(
+		(e) =>
+			String(e.label || '')
+				.trim()
+				.toLowerCase() === routeName.toLowerCase()
+	);
+	if (byLabel) return String(byLabel.target);
+	return null;
 }
 
 /** Returns the primary-chain successor id, null if terminal, or undefined if "too complex" (2+ edges on a plain task/trigger node). */
-function primaryTarget(outgoing: Map<string, WorkflowGraphEdge[]>, node: WorkflowGraphNode): string | null | undefined {
-  if (node.type === "task" || node.type === "trigger") {
-    const edgesFromNode = outgoing.get(String(node.id)) || [];
-    if (edgesFromNode.length === 0) return null;
-    if (edgesFromNode.length > 1) return undefined;
-    return String(edgesFromNode[0].target);
-  }
-  for (const routeName of routesForType(node.type)) {
-    const target = resolveRouteTarget(outgoing, node, routeName);
-    if (target) return target;
-  }
-  return null;
+function primaryTarget(
+	outgoing: Map<string, WorkflowGraphEdge[]>,
+	node: WorkflowGraphNode
+): string | null | undefined {
+	if (node.type === 'task' || node.type === 'trigger') {
+		const edgesFromNode = outgoing.get(String(node.id)) || [];
+		if (edgesFromNode.length === 0) return null;
+		if (edgesFromNode.length > 1) return undefined;
+		return String(edgesFromNode[0].target);
+	}
+	for (const routeName of routesForType(node.type)) {
+		const target = resolveRouteTarget(outgoing, node, routeName);
+		if (target) return target;
+	}
+	return null;
 }
 
 export function parseCanvasJson(canvasJson: unknown): ParsedWorkflow {
-  let parsed: WorkflowCanvasJson;
-  try {
-    parsed = typeof canvasJson === "string" ? JSON.parse(canvasJson || "{}") : ((canvasJson as WorkflowCanvasJson) || { nodes: [], edges: [] });
-  } catch {
-    return { valid: false, reason: "canvas_json is not valid JSON", raw: canvasJson };
-  }
+	let parsed: WorkflowCanvasJson;
+	try {
+		parsed =
+			typeof canvasJson === 'string'
+				? JSON.parse(canvasJson || '{}')
+				: (canvasJson as WorkflowCanvasJson) || { nodes: [], edges: [] };
+	} catch {
+		return { valid: false, reason: 'canvas_json is not valid JSON', raw: canvasJson };
+	}
 
-  const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
-  const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
-  if (nodes.length === 0) return { valid: true, triggerData: {}, steps: [] };
+	const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
+	const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
+	if (nodes.length === 0) return { valid: true, triggerData: {}, steps: [] };
 
-  const nodeById = new Map(nodes.map((n) => [String(n.id), n]));
-  const outgoing = new Map<string, WorkflowGraphEdge[]>();
-  for (const edge of edges) {
-    const list = outgoing.get(String(edge.source)) || [];
-    list.push(edge);
-    outgoing.set(String(edge.source), list);
-  }
+	const nodeById = new Map(nodes.map((n) => [String(n.id), n]));
+	const outgoing = new Map<string, WorkflowGraphEdge[]>();
+	for (const edge of edges) {
+		const list = outgoing.get(String(edge.source)) || [];
+		list.push(edge);
+		outgoing.set(String(edge.source), list);
+	}
 
-  // Mirrors the runtime's own entry-point fallback exactly — not every
-  // template has a trigger node (e.g. "Rebuild Stats Recovery Run" enters
-  // directly on an approval node).
-  const triggerNode = nodes.find((n) => n.type === "trigger") ?? null;
-  const entryNode = triggerNode ?? nodes[0];
+	// Mirrors the runtime's own entry-point fallback exactly — not every
+	// template has a trigger node (e.g. "Rebuild Stats Recovery Run" enters
+	// directly on an approval node).
+	const triggerNode = nodes.find((n) => n.type === 'trigger') ?? null;
+	const entryNode = triggerNode ?? nodes[0];
 
-  let cursor: string | null | undefined = triggerNode
-    ? primaryTarget(outgoing, triggerNode)
-    : String(entryNode.id);
+	let cursor: string | null | undefined = triggerNode
+		? primaryTarget(outgoing, triggerNode)
+		: String(entryNode.id);
 
-  if (cursor === undefined) {
-    return { valid: false, reason: "the trigger node has more than one outgoing edge", raw: canvasJson };
-  }
+	if (cursor === undefined) {
+		return {
+			valid: false,
+			reason: 'the trigger node has more than one outgoing edge',
+			raw: canvasJson,
+		};
+	}
 
-  const chainOrder: string[] = [];
-  const chainSet = new Set<string>();
+	const chainOrder: string[] = [];
+	const chainSet = new Set<string>();
 
-  while (cursor) {
-    if (chainSet.has(cursor)) {
-      return { valid: false, reason: "cycle detected in workflow graph", raw: canvasJson };
-    }
-    const node = nodeById.get(cursor);
-    if (!node) {
-      return { valid: false, reason: "an edge points to a missing node", raw: canvasJson };
-    }
-    if (node.type === "trigger") {
-      return { valid: false, reason: "a trigger node appears mid-chain", raw: canvasJson };
-    }
-    chainSet.add(cursor);
-    chainOrder.push(cursor);
-    const next = primaryTarget(outgoing, node);
-    if (next === undefined) {
-      return { valid: false, reason: `step "${node.title || node.id}" has more than one outgoing edge`, raw: canvasJson };
-    }
-    cursor = next;
-  }
+	while (cursor) {
+		if (chainSet.has(cursor)) {
+			return { valid: false, reason: 'cycle detected in workflow graph', raw: canvasJson };
+		}
+		const node = nodeById.get(cursor);
+		if (!node) {
+			return { valid: false, reason: 'an edge points to a missing node', raw: canvasJson };
+		}
+		if (node.type === 'trigger') {
+			return { valid: false, reason: 'a trigger node appears mid-chain', raw: canvasJson };
+		}
+		chainSet.add(cursor);
+		chainOrder.push(cursor);
+		const next = primaryTarget(outgoing, node);
+		if (next === undefined) {
+			return {
+				valid: false,
+				reason: `step "${node.title || node.id}" has more than one outgoing edge`,
+				raw: canvasJson,
+			};
+		}
+		cursor = next;
+	}
 
-  // v1 limit: every non-trigger node must be reachable via the primary chain.
-  for (const node of nodes) {
-    if (node.type === "trigger") continue;
-    if (!chainSet.has(String(node.id))) {
-      return {
-        valid: false,
-        reason: `step "${node.title || node.id}" is only reachable via a non-primary route — not supported by the simple editor yet`,
-        raw: canvasJson,
-      };
-    }
-  }
+	// v1 limit: every non-trigger node must be reachable via the primary chain.
+	for (const node of nodes) {
+		if (node.type === 'trigger') continue;
+		if (!chainSet.has(String(node.id))) {
+			return {
+				valid: false,
+				reason: `step "${node.title || node.id}" is only reachable via a non-primary route — not supported by the simple editor yet`,
+				raw: canvasJson,
+			};
+		}
+	}
 
-  const steps: WorkflowStep[] = chainOrder.map((id) => {
-    const node = nodeById.get(id)!;
-    const routes: Record<string, string | null> = {};
-    for (const routeName of routesForType(node.type)) {
-      routes[routeName] = resolveRouteTarget(outgoing, node, routeName);
-    }
-    return {
-      id,
-      type: node.type as "task" | "approval" | "branch",
-      title: node.title || "",
-      data: node.data || {},
-      routes,
-    };
-  });
+	const steps: WorkflowStep[] = chainOrder.map((id) => {
+		const node = nodeById.get(id)!;
+		const routes: Record<string, string | null> = {};
+		for (const routeName of routesForType(node.type)) {
+			routes[routeName] = resolveRouteTarget(outgoing, node, routeName);
+		}
+		return {
+			id,
+			type: node.type as 'task' | 'approval' | 'branch',
+			title: node.title || '',
+			data: node.data || {},
+			routes,
+		};
+	});
 
-  return { valid: true, triggerData: triggerNode?.data || {}, steps };
+	return { valid: true, triggerData: triggerNode?.data || {}, steps };
 }
 
-export function compileCanvasJson(triggerData: Record<string, any>, steps: WorkflowStep[]): WorkflowCanvasJson {
-  const nodes: WorkflowGraphNode[] = [];
-  const edges: WorkflowGraphEdge[] = [];
-  const triggerId = "start";
-  const stamp = Date.now();
+/**
+ * Fully general editor model: EVERY node (trigger included) becomes an
+ * editable step with explicit per-route target selects. Faithful to runtime
+ * semantics for arbitrary graphs:
+ * - trigger/task nodes follow exactly one edge (route "next" here) — the
+ *   runtime picks the first edge, so capturing only the first is lossless.
+ * - approval/branch nodes route by source_handle/label.
+ * This replaces the old read-only raw-JSON fallback for graphs the simple
+ * chain editor can't represent.
+ */
+export interface FlatWorkflowStep {
+	id: string;
+	type: WorkflowNodeType;
+	title: string;
+	data: Record<string, any>;
+	/** routeName -> target node id, or null to end the workflow on that route */
+	routes: Record<string, string | null>;
+}
 
-  nodes.push({ id: triggerId, type: "trigger", title: "Trigger", position: { x: 0, y: 0 }, data: triggerData });
+function flatRoutesForType(type: string): string[] {
+	const named = ROUTES_BY_TYPE[type];
+	return named ? named : ['next'];
+}
 
-  steps.forEach((step, index) => {
-    nodes.push({
-      id: step.id,
-      type: step.type,
-      title: step.title,
-      position: { x: 0, y: (index + 1) * 200 },
-      data: step.data,
-    });
-  });
+export function parseWorkflowFlat(canvasJson: unknown): FlatWorkflowStep[] {
+	let parsed: WorkflowCanvasJson;
+	try {
+		parsed =
+			typeof canvasJson === 'string'
+				? JSON.parse(canvasJson || '{}')
+				: (canvasJson as WorkflowCanvasJson) || { nodes: [], edges: [] };
+	} catch {
+		return [];
+	}
 
-  if (steps.length > 0) {
-    edges.push({ id: `edge-${stamp}-trigger`, source: triggerId, target: steps[0].id, label: "start" });
-  }
+	const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
+	const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
+	if (nodes.length === 0) return [];
 
-  steps.forEach((step, index) => {
-    const nextStepId = steps[index + 1]?.id ?? null;
-    const routeNames = routesForType(step.type);
+	const outgoing = new Map<string, WorkflowGraphEdge[]>();
+	for (const edge of edges) {
+		const list = outgoing.get(String(edge.source)) || [];
+		list.push(edge);
+		outgoing.set(String(edge.source), list);
+	}
 
-    if (routeNames.length === 0) {
-      // Plain task: a single implicit edge to the following step (or none if last).
-      if (nextStepId) {
-        edges.push({ id: `edge-${stamp}-${index}-next`, source: step.id, target: nextStepId, label: "next" });
-      }
-      return;
-    }
+	// Display order: entry node first, then BFS by routes, then unreachable.
+	const entry =
+		nodes.find((n) => n.id === 'start' && n.type === 'trigger') ??
+		nodes.find((n) => n.type === 'trigger') ??
+		nodes[0];
+	const nodeById = new Map(nodes.map((n) => [String(n.id), n]));
+	const ordered: string[] = [];
+	const seen = new Set<string>();
+	const queue = [String(entry.id)];
+	while (queue.length > 0) {
+		const id = queue.shift()!;
+		if (seen.has(id) || !nodeById.has(id)) continue;
+		seen.add(id);
+		ordered.push(id);
+		for (const edge of outgoing.get(id) || []) queue.push(String(edge.target));
+	}
+	for (const node of nodes) {
+		if (!seen.has(String(node.id))) ordered.push(String(node.id));
+	}
 
-    routeNames.forEach((routeName, routeIndex) => {
-      const target = step.routes[routeName] ?? (routeIndex === 0 ? nextStepId : null);
-      if (target) {
-        edges.push({
-          id: `edge-${stamp}-${index}-${routeName}`,
-          source: step.id,
-          target,
-          source_handle: routeName,
-          label: routeName,
-        });
-      }
-    });
-  });
+	return ordered.map((id) => {
+		const node = nodeById.get(id)!;
+		const routes: Record<string, string | null> = {};
+		for (const routeName of flatRoutesForType(node.type)) {
+			if (routeName === 'next') {
+				const first = (outgoing.get(id) || [])[0];
+				routes.next = first ? String(first.target) : null;
+			} else {
+				routes[routeName] = resolveRouteTarget(outgoing, node, routeName);
+			}
+		}
+		return {
+			id,
+			type: node.type as WorkflowNodeType,
+			title: node.title || '',
+			data: node.data || {},
+			routes,
+		};
+	});
+}
 
-  return { nodes, edges };
+export function compileWorkflowFlat(steps: FlatWorkflowStep[]): WorkflowCanvasJson {
+	const stamp = Date.now();
+	const nodes: WorkflowGraphNode[] = steps.map((step, index) => ({
+		id: step.id,
+		type: step.type,
+		title: step.title,
+		position: { x: 0, y: index * 200 },
+		data: step.data,
+	}));
+
+	const edges: WorkflowGraphEdge[] = [];
+	steps.forEach((step, index) => {
+		for (const [routeName, target] of Object.entries(step.routes)) {
+			if (!target) continue;
+			if (routeName === 'next') {
+				edges.push({
+					id: `edge-${stamp}-${index}-next`,
+					source: step.id,
+					target,
+					label: step.type === 'trigger' ? 'start' : 'next',
+				});
+			} else {
+				edges.push({
+					id: `edge-${stamp}-${index}-${routeName}`,
+					source: step.id,
+					target,
+					source_handle: routeName,
+					label: routeName,
+				});
+			}
+		}
+	});
+
+	return { nodes, edges };
+}
+
+export function compileCanvasJson(
+	triggerData: Record<string, any>,
+	steps: WorkflowStep[]
+): WorkflowCanvasJson {
+	const nodes: WorkflowGraphNode[] = [];
+	const edges: WorkflowGraphEdge[] = [];
+	const triggerId = 'start';
+	const stamp = Date.now();
+
+	nodes.push({
+		id: triggerId,
+		type: 'trigger',
+		title: 'Trigger',
+		position: { x: 0, y: 0 },
+		data: triggerData,
+	});
+
+	steps.forEach((step, index) => {
+		nodes.push({
+			id: step.id,
+			type: step.type,
+			title: step.title,
+			position: { x: 0, y: (index + 1) * 200 },
+			data: step.data,
+		});
+	});
+
+	if (steps.length > 0) {
+		edges.push({
+			id: `edge-${stamp}-trigger`,
+			source: triggerId,
+			target: steps[0].id,
+			label: 'start',
+		});
+	}
+
+	steps.forEach((step, index) => {
+		const nextStepId = steps[index + 1]?.id ?? null;
+		const routeNames = routesForType(step.type);
+
+		if (routeNames.length === 0) {
+			// Plain task: a single implicit edge to the following step (or none if last).
+			if (nextStepId) {
+				edges.push({
+					id: `edge-${stamp}-${index}-next`,
+					source: step.id,
+					target: nextStepId,
+					label: 'next',
+				});
+			}
+			return;
+		}
+
+		routeNames.forEach((routeName, routeIndex) => {
+			const target = step.routes[routeName] ?? (routeIndex === 0 ? nextStepId : null);
+			if (target) {
+				edges.push({
+					id: `edge-${stamp}-${index}-${routeName}`,
+					source: step.id,
+					target,
+					source_handle: routeName,
+					label: routeName,
+				});
+			}
+		});
+	});
+
+	return { nodes, edges };
 }

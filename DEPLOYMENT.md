@@ -203,6 +203,22 @@ Recommended rollout for first enablement:
 2. Deploy the orchestrator worker and confirm queue consumption is healthy.
 3. Set `DM_AUTOPILOT_ENABLED=true` in Pages.
 
+### Durable workflow runs queue (one-time setup)
+
+Superadmin workflow runs execute as Cloudflare Workflow instances driven
+through the `spacebot-workflow-runs` queue. The queue must exist **before**
+the orchestrator worker deploys (a consumer binding for a missing queue fails
+the deploy):
+
+```bash
+bunx wrangler queues create spacebot-workflow-runs
+```
+
+The worker also needs the `CRON_SECRET` secret (same value as the Pages app)
+to call the run advance/fail endpoints. To disable durable execution anywhere
+(runs execute inline instead), set `WORKFLOW_DURABLE_EXECUTION=false` on the
+Pages app.
+
 Database migrations run automatically during builds only when migration SQL files changed in the commit (before the SvelteKit build step). Set `DB_MIGRATE_FORCE=1` to force migrations regardless of git diff. If a migration fails, the build will fail and the deploy will be blocked.
 
 ## Troubleshooting

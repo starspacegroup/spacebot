@@ -58,3 +58,11 @@ database_id = "6bce735c-2dca-43cd-9911-2eef7062377a"
 [[queues.producers]]
 binding = "AI_AUTOPILOT_QUEUE"
 queue = "spacebot-ai-autopilot"
+
+# Queue producer for durable superadmin workflow runs: dispatch/manual-run
+# endpoints enqueue run starts and approval wake-ups; the orchestrator worker
+# consumes them and drives each run as a Cloudflare Workflow instance.
+# Create the queue once with: bunx wrangler queues create spacebot-workflow-runs
+[[queues.producers]]
+binding = "WORKFLOW_RUNS_QUEUE"
+queue = "spacebot-workflow-runs"
