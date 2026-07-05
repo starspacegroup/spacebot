@@ -62,7 +62,7 @@
 		"@cloudflare/vite-plugin": "^1.42.3",
 		"@eslint/js": "^10",
 		"@playwright/test": "^1.61.1",
-		"@sentry/sveltekit": "^10.62.0",
+		"@sentry/sveltekit": "^10.63.0",
 		"@storybook/sveltekit": "^10.4.6",
 		"@sveltejs/adapter-auto": "^7.0.1",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
