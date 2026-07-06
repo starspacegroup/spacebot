@@ -40,5 +40,6 @@ database — see the architecture overview below.
 
 ---
 
-_Built from the [`docs/`](https://github.com/starspacegroup/spacebot/tree/main/docs)
-folder and published with GitHub Pages._
+_These docs are rendered on the main site at
+[spacebot.starspace.group/docs/dev](https://spacebot.starspace.group/docs/dev),
+built at deploy time from this `docs/` folder._

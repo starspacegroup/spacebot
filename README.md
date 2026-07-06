@@ -455,8 +455,9 @@ fit together, and [CLAUDE.md](CLAUDE.md) for the authoritative architecture note
 
 ## 📚 Documentation
 
-Full documentation is published to **GitHub Pages**:
-**<https://starspacegroup.github.io/spacebot/>** (built from [`docs/`](docs/)).
+Developer documentation is served on the main site at
+**<https://spacebot.starspace.group/docs/dev>** — rendered at build time from
+[`docs/`](docs/), so there's no separate docs host to maintain.
 
 Highlights: [Architecture](docs/architecture.md) · [API](docs/api.md) ·
 [Integrations](docs/integrations.md) · [AI Autopilot](docs/ai-autopilot.md) ·
