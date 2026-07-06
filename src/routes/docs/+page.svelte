@@ -284,6 +284,11 @@
 		align-items: start;
 	}
 
+	.docs-content {
+		min-width: 0;
+		overflow-wrap: break-word;
+	}
+
 	.docs-header {
 		margin-bottom: 2rem;
 	}
@@ -431,8 +436,12 @@
 
 	/* Stack the TOC above content on narrow screens. */
 	@media (max-width: 820px) {
+		.docs-page {
+			padding: 2rem 1.25rem 3rem;
+		}
+
 		.docs-body {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 			gap: 1.5rem;
 		}
 

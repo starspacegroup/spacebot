@@ -143,7 +143,11 @@ function renderDoc(slug: string, raw: string): RenderedDoc {
 	const title = fmTitle || (h1 ? h1[1].trim() : slug);
 	const bodyWithoutH1 = h1 ? body.replace(h1[0], '') : body;
 
-	const html = marked.parse(bodyWithoutH1) as string;
+	// Wrap tables in a horizontally scrollable container so a wide table never
+	// forces the whole page past the viewport width on mobile.
+	const html = (marked.parse(bodyWithoutH1) as string)
+		.replace(/<table>/g, '<div class="doc-table"><table>')
+		.replace(/<\/table>/g, '</table></div>');
 
 	return { slug, title, description: firstParagraph(bodyWithoutH1), html, headings };
 }

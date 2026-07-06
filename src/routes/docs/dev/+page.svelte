@@ -101,8 +101,16 @@
 
 	.card-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		/* min(260px, 100%) lets the column shrink to the container on phones
+		   narrower than 260px, so the grid never overflows the viewport. */
+		grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
 		gap: 1rem;
+	}
+
+	@media (max-width: 720px) {
+		.dev-index {
+			padding: 2rem 1.25rem 3rem;
+		}
 	}
 
 	.doc-card {

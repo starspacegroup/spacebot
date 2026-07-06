@@ -65,6 +65,13 @@
 		align-items: start;
 	}
 
+	/* Content column must be allowed to shrink below its content's intrinsic
+	   width, otherwise wide tables/code blocks force horizontal page overflow
+	   on narrow screens. Wide children scroll internally instead. */
+	.doc-main {
+		min-width: 0;
+	}
+
 	/* Left nav */
 	.doc-nav {
 		position: sticky;
@@ -125,6 +132,12 @@
 	}
 
 	/* Article */
+	.doc-article {
+		min-width: 0;
+		/* Long inline code / URLs wrap instead of forcing overflow. */
+		overflow-wrap: break-word;
+	}
+
 	.doc-article h1 {
 		font-size: 2rem;
 		font-weight: 700;
@@ -223,10 +236,19 @@
 		margin-bottom: 0.5rem;
 	}
 
+	/* Wide tables scroll within their own container instead of stretching the
+	   page. Wrapper (added in docs.ts) is the scroll box; the table keeps its
+	   natural width and fills when it fits. */
+	.doc-article :global(.doc-table) {
+		max-width: 100%;
+		overflow-x: auto;
+		margin: 0 0 1.25rem;
+	}
+
 	.doc-article :global(table) {
 		width: 100%;
+		min-width: max-content;
 		border-collapse: collapse;
-		margin: 0 0 1.25rem;
 		font-size: 0.9rem;
 	}
 
@@ -316,8 +338,9 @@
 
 	@media (max-width: 720px) {
 		.doc-layout {
-			grid-template-columns: 1fr;
+			grid-template-columns: minmax(0, 1fr);
 			gap: 1.5rem;
+			padding: 1.5rem 1.25rem 3rem;
 		}
 		.doc-nav {
 			position: static;
