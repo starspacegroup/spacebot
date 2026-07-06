@@ -175,7 +175,7 @@
 	<header class="app-header">
 		<a href={isLoggedIn ? '/admin' : '/'} class="logo">
 			<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
-			SpaceBot
+			<span class="logo-text">SpaceBot</span>
 		</a>
 		<button
 			class="palette-trigger"
@@ -375,12 +375,21 @@
 	}
 
 	@media (max-width: 640px) {
-		.palette-trigger {
-			position: static;
-			transform: none;
+		/* Trim the header so it fits a phone without overflowing: drop the
+		   command-palette trigger (keyboard-only) and the logo wordmark, and
+		   tighten spacing. */
+		.app-header {
+			padding: 0.6rem 0.75rem;
+			gap: 0.4rem;
 		}
-		.palette-trigger-key {
+		.palette-trigger {
 			display: none;
+		}
+		.logo-text {
+			display: none;
+		}
+		.nav {
+			gap: 0.4rem;
 		}
 	}
 </style>

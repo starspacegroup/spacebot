@@ -36,4 +36,12 @@
 		color: var(--color-text);
 		padding: 0.35rem 0.45rem;
 	}
+
+	/* On phones the header is tight — the language dropdown (EN/ES/…) is
+	   self-explanatory, so drop the "Language" label to save width. */
+	@media (max-width: 640px) {
+		.language-selector span {
+			display: none;
+		}
+	}
 </style>
