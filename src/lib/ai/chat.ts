@@ -301,6 +301,7 @@ function buildRunnerInventorySection(inventory) {
 	}
 
 	const online = runners.filter((runner) => runner.is_online).length;
+	section += `This is the user's OWN registered local runners — you DO have this information. Answer any question about their runners (do they have one, which are online, names, platforms) directly from this list. Never say you "can't access" or "don't have" this data.\n\n`;
 	section += `The user has ${runners.length} registered local runner system(s): ${online} online, ${runners.length - online} offline.\n\n`;
 
 	for (const runner of runners.slice(0, 8)) {
@@ -533,17 +534,14 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 			'\n**For basic questions like member count, voice chat, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n';
 	}
 
-	// Live local-runner inventory (fetched once per turn in generateChatResponse).
-	prompt += buildRunnerInventorySection(context.runnerInventory);
-
 	// Add MCP tools if enabled, or explain the limitation
 	if (context.mcpEnabled) {
 		prompt += '\n\n## Available Tools\n';
 		prompt += formatToolsForPrompt();
 	} else {
-		prompt += '\n\n## ⚠️ NO DATA ACCESS ⚠️\n';
-		prompt += 'Database tools are NOT available. You have ZERO access to:\n';
-		prompt += '- Event logs, message counts, join counts, or ANY statistics\n';
+		prompt += '\n\n## ⚠️ LIMITED DATA ACCESS ⚠️\n';
+		prompt += 'Live database tools are NOT available on this path. You cannot look up:\n';
+		prompt += '- Event logs, message counts, join counts, or historical statistics\n';
 		prompt += '- Automation names, configurations, or execution history\n';
 		prompt += '- Custom command details or usage logs\n';
 		prompt += '- Server settings\n\n';
@@ -552,7 +550,7 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 		const serverPath = context.selectedGuildId ? `/admin/${context.selectedGuildId}` : '';
 
 		prompt +=
-			"When the user asks about ANY of the above, tell them you can't look up that data right now and direct them to the appropriate dashboard page.\n";
+			"When the user asks about the items above, tell them you can't look up that data right now and direct them to the appropriate dashboard page.\n";
 		prompt += 'Use the most relevant link based on their question:\n';
 		prompt += `- Stats/activity/members/growth → ${dashboardBase}${serverPath}/stats\n`;
 		prompt += `- Event logs/message history → ${dashboardBase}${serverPath}/logs\n`;
@@ -561,8 +559,13 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 		prompt += `- Server settings → ${dashboardBase}${serverPath}/settings\n`;
 		prompt += `- General/unclear → ${dashboardBase}${serverPath}\n\n`;
 		prompt +=
-			"DO NOT attempt to guess, estimate, or fabricate any data. You literally have no information about their server's data.";
+			'Do NOT guess or fabricate statistics. This limitation does NOT apply to the local-runner and live-server data provided elsewhere in this prompt — that information is accurate, so use it.';
 	}
+
+	// Live local-runner inventory LAST so it's the freshest instruction — small
+	// local models weight the end of the prompt heavily, and this must override
+	// any "no data access" hedging above for runner questions.
+	prompt += buildRunnerInventorySection(context.runnerInventory);
 
 	return prompt;
 }
@@ -930,9 +933,17 @@ export async function generateChatResponse(options, env) {
 	);
 	console.log('[AI] User is superadmin:', isSuperAdmin);
 
-	// Local Ollama path (dev-only, opt-in via AI_PROVIDER=ollama). No MCP
-	// tool-calling here in v1 — local models don't use the Workers-AI tool
-	// format — so this is a plain chat completion. Workers AI keeps tool-calling.
+	// MCP (D1) access is independent of which chat provider answers, so resolve
+	// the runner inventory up front. Both the local (Ollama) path and the
+	// Workers AI path inject it, so even a local model that can't tool-call can
+	// still answer "what runners do I have / are they online".
+	const mcpClient = getMCPClient(env);
+	const mcpEnabled = mcpClient.isConfigured();
+	const runnerInventory = mcpEnabled && userId ? await fetchRunnerInventory(env, userId) : null;
+
+	// Local Ollama path (opt-in via AI_PROVIDER=ollama). No MCP tool-calling —
+	// local models don't use the Workers-AI tool format — so this is a plain
+	// chat completion grounded with the runner inventory fetched above.
 	if (isOllamaSelected(env)) {
 		const model = env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL;
 		const baseUrl = env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_BASE_URL;
@@ -943,6 +954,7 @@ export async function generateChatResponse(options, env) {
 			selectedGuild,
 			selectedGuildId,
 			selectedGuildName,
+			runnerInventory,
 		});
 		const ollamaMessages = [
 			...history.slice(-10).map((msg) => ({ role: msg.role, content: msg.content })),
@@ -977,19 +989,12 @@ export async function generateChatResponse(options, env) {
 		};
 	}
 
-	// Check if MCP is enabled (needs D1 access via Cloudflare API)
-	const mcpClient = getMCPClient(env);
-	const mcpEnabled = mcpClient.isConfigured();
+	// mcpClient / mcpEnabled / runnerInventory were resolved above (shared with
+	// the Ollama path). Only the intent classifier is Workers-AI-path specific.
 	const localRunnerIntent = detectLocalRunnerIntent(message);
 
 	console.log('[AI] MCP enabled:', mcpEnabled);
-
 	log.info(`[AI] MCP enabled: ${mcpEnabled}`);
-
-	// Fetch the runner inventory once per turn: it feeds both the deterministic
-	// visibility path below and the system prompt, so the model always knows
-	// what runners the user has without needing to think of a tool call.
-	const runnerInventory = mcpEnabled && userId ? await fetchRunnerInventory(env, userId) : null;
 
 	// Deterministic runner discovery path so visibility questions always hit tools.
 	if (localRunnerIntent.isVisibilityQuery) {

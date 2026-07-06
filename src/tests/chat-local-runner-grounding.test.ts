@@ -100,6 +100,48 @@ describe('local runner grounding in chat responses', () => {
 		expect(result.response).toContain("don't see any registered local runner");
 	});
 
+	it('grounds the local (Ollama) DM path with the runner inventory', async () => {
+		// Runner lookup returns one online runner.
+		executeToolMock.mockResolvedValueOnce({
+			success: true,
+			data: [{ id: 7, display_name: 'Dirac', hostname: 'dirac', is_online: true }],
+		});
+
+		// Capture the system prompt sent to Ollama and return a canned reply.
+		let capturedSystem = '';
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+			const body = JSON.parse((init as RequestInit).body as string);
+			capturedSystem =
+				body.messages.find((m: { role: string }) => m.role === 'system')?.content ?? '';
+			return new Response(
+				JSON.stringify({ message: { content: 'Yes — Dirac is online.' } }),
+				{
+					status: 200,
+				}
+			);
+		});
+
+		const result = await generateChatResponse(
+			{ message: 'do I have any local runners?', userName: 'David', userId: 'user-1' },
+			{
+				AI_PROVIDER: 'ollama',
+				OLLAMA_MODEL: 'gemma3:4b',
+				CLOUDFLARE_ACCOUNT_ID: 'a',
+				CLOUDFLARE_AI_TOKEN: 'b',
+			}
+		);
+
+		expect(result.success).toBe(true);
+		// The runner inventory was fetched and injected into the local-model prompt.
+		expect(executeToolMock).toHaveBeenCalledWith(
+			'list_local_runners',
+			expect.objectContaining({ userId: 'user-1' })
+		);
+		expect(capturedSystem).toContain("USER'S LOCAL RUNNERS");
+		expect(capturedSystem).toContain('Dirac');
+		fetchSpy.mockRestore();
+	});
+
 	it('reports lookup failures instead of guessing runner state', async () => {
 		executeToolMock.mockResolvedValueOnce({ success: false, error: 'db unavailable' });
 
