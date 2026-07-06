@@ -194,10 +194,25 @@ function splitSqlStatements(sql) {
 	return statements;
 }
 
+/**
+ * True when a statement contains executable SQL once comments are removed.
+ * splitSqlStatements keeps trailing/standalone comments attached, so a chunk
+ * like "-- note" after the final semicolon becomes a comment-only "statement".
+ * Passing that to `wrangler d1 execute --command` fails with "Missing required
+ * option --command" because the effective SQL is empty.
+ */
+function hasExecutableSql(statement) {
+	const withoutComments = statement
+		.replace(/\/\*[\s\S]*?\*\//g, '') // block comments
+		.replace(/--[^\n]*/g, ''); // line comments
+	return withoutComments.trim().length > 0;
+}
+
 function executeSqlFileViaCommand(filePath) {
 	const sql = readFileSync(filePath, 'utf8');
 	const statements = splitSqlStatements(sql);
 	for (const statement of statements) {
+		if (!hasExecutableSql(statement)) continue;
 		d1CliExecute(['--command', statement]);
 	}
 }
