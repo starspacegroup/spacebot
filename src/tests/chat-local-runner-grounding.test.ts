@@ -73,13 +73,31 @@ describe('local runner grounding in chat responses', () => {
 
 		expect(result.success).toBe(true);
 		expect(result.toolsUsed).toEqual(['list_local_runners']);
-		expect(result.response).toContain('I can see 2 registered local runner system(s) (1 online, 1 offline).');
+		expect(result.response).toContain(
+			'I can see 2 registered local runner system(s) (1 online, 1 offline).'
+		);
 		expect(result.response).toContain('Runner 1');
 		expect(result.response).toContain('Runner 2');
 		expect(executeToolMock).toHaveBeenCalledWith(
 			'list_local_runners',
 			expect.objectContaining({ includeOffline: true, limit: 100, userId: 'user-1' })
 		);
+	});
+
+	it('reports "no runners" honestly on the visibility path', async () => {
+		executeToolMock.mockResolvedValueOnce({ success: true, data: [] });
+
+		const result = await generateChatResponse(
+			{ message: 'do you see my runners?', userName: 'David', userId: 'user-1' },
+			{
+				CLOUDFLARE_ACCOUNT_ID: 'acct',
+				CLOUDFLARE_AI_TOKEN: 'ai-token',
+				CLOUDFLARE_API_TOKEN: 'api-token',
+			}
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.response).toContain("don't see any registered local runner");
 	});
 
 	it('reports lookup failures instead of guessing runner state', async () => {

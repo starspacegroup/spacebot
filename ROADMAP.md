@@ -147,6 +147,12 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Security audit with CodeQL
 - [x] AI DM autopilot + Cloudflare Queue orchestrator
 - [x] Local runner v2 (typed jobs, VS Code bridge, artifacts)
+- [x] Local runner self-healing startup — connects to prod immediately on launch, expands `~` in
+      path/workdir env vars, surfaces the real handshake-rejection reason, and auto-negotiates +
+      persists a fresh token when the configured one is missing or revoked (`token-store.ts`)
+- [x] DM runner orchestration — the DM assistant is grounded on a live runner inventory each turn
+      and can queue/inspect/cancel tasks across the user's machines; runner tools pinned to the
+      authenticated user (`src/lib/ai/chat.ts`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration

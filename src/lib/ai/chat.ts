@@ -174,7 +174,7 @@ You can send messages to Discord channels on the user's behalf. For requests lik
 
 ## LOCAL RUNNERS IN DMS
 
-In DMs, you CAN inspect and control the user's registered local runners using local-runner tools.
+In DMs, you CAN inspect and control the user's registered local runners using local-runner tools. A live snapshot of the user's runners is included below under "USER'S LOCAL RUNNERS" — read it first; it already answers "what runners do I have / are they online" without a tool call. Use tools when you need fresher data or to act.
 
 - For runner discovery/status questions ("can you see my runner", "list my runners", "is my runner online"), use \`list_local_runners\`.
 - For current jobs and event timeline, use \`get_local_runner_activity\`.
@@ -256,6 +256,82 @@ function formatRunnerVisibilityResponse(runners = []) {
 	return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\nHere is your current runner list:\n${lines.join('\n')}${overflow}`;
 }
 
+/**
+ * Fetch the DM user's local-runner inventory once per turn so the system
+ * prompt always knows what runners exist without waiting for the model to
+ * think of calling a tool. Returns null-ish ok:false on failure — chat must
+ * never break because the inventory lookup did.
+ */
+async function fetchRunnerInventory(env, userId) {
+	try {
+		const results = await executeToolCalls(
+			[{ tool: 'list_local_runners', args: { includeOffline: true, limit: 100 } }],
+			env,
+			userId
+		);
+		const result = results[0]?.result;
+		if (!result?.success || !Array.isArray(result.data)) {
+			return { ok: false, error: result?.error || 'unknown error', runners: [] };
+		}
+		return { ok: true, runners: result.data };
+	} catch (error) {
+		return { ok: false, error: error?.message || String(error), runners: [] };
+	}
+}
+
+/**
+ * Render the runner inventory as a system-prompt section, including
+ * orchestration guidance so the model proactively offers to run tasks.
+ */
+function buildRunnerInventorySection(inventory) {
+	if (!inventory) return '';
+
+	let section = "\n\n## USER'S LOCAL RUNNERS (LIVE DATA)\n";
+
+	if (!inventory.ok) {
+		section += `The runner inventory lookup failed (${inventory.error}). If the user asks about runners, retry with \`list_local_runners\` and be honest if it fails again.\n`;
+		return section;
+	}
+
+	const runners = Array.isArray(inventory.runners) ? inventory.runners : [];
+	if (runners.length === 0) {
+		section +=
+			'The user has NO registered local runner systems. If they ask to run something locally, explain how to set one up: create a token under Account -> Local Runners on the dashboard, then start the runner on their machine (`bun run runner`).\n';
+		return section;
+	}
+
+	const online = runners.filter((runner) => runner.is_online).length;
+	section += `The user has ${runners.length} registered local runner system(s): ${online} online, ${runners.length - online} offline.\n\n`;
+
+	for (const runner of runners.slice(0, 8)) {
+		const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
+		const status = runner.is_online ? '🟢 online' : '⚫ offline';
+		const platform = [runner.platform, runner.arch].filter(Boolean).join('/');
+		const pending = Number(runner.pending_job_count || 0);
+		const running = Number(runner.running_job_count || 0);
+		section += `- **${name}** (id ${runner.id}): ${status}`;
+		if (runner.hostname && runner.hostname !== name) section += ` | host ${runner.hostname}`;
+		if (platform) section += ` | ${platform}`;
+		if (runner.default_workdir) section += ` | workdir ${runner.default_workdir}`;
+		section += ` | jobs: ${pending} pending, ${running} running`;
+		if (runner.last_seen_at) section += ` | last seen ${runner.last_seen_at} UTC`;
+		section += '\n';
+	}
+	if (runners.length > 8) {
+		section += `- ...and ${runners.length - 8} more (use list_local_runners for the full list)\n`;
+	}
+
+	section += `
+### Orchestrating tasks on these runners
+- You can run shell commands on these machines with \`start_local_runner_task\` (target a specific runner by name/id when the user names one, otherwise prefer an online runner).
+- After queueing, report the job ID and offer to check on it; use \`get_local_runner_job\` to fetch output/exit code and \`get_local_runner_activity\` for the overall queue.
+- Offline runners can still accept queued jobs — they run them on reconnect. Say so when targeting one.
+- For multi-step requests ("build X then deploy"), queue steps one at a time and check each result before continuing, narrating progress to the user.
+- Confirm before destructive commands (deletes, resets, force-pushes). Never invent job results — only report what the tools returned.\n`;
+
+	return section;
+}
+
 interface GuildPermissions {
 	administrator?: boolean;
 	manageGuild?: boolean;
@@ -302,6 +378,7 @@ interface SystemPromptContext {
 	selectedGuild?: ManagedGuild | null;
 	selectedGuildId?: string | null;
 	selectedGuildName?: string | null;
+	runnerInventory?: { ok: boolean; error?: string; runners: any[] } | null;
 	[key: string]: any;
 }
 
@@ -456,6 +533,9 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 			'\n**For basic questions like member count, voice chat, use the data above directly. Use database tools for historical stats, logs, automations, and commands.**\n';
 	}
 
+	// Live local-runner inventory (fetched once per turn in generateChatResponse).
+	prompt += buildRunnerInventorySection(context.runnerInventory);
+
 	// Add MCP tools if enabled, or explain the limitation
 	if (context.mcpEnabled) {
 		prompt += '\n\n## Available Tools\n';
@@ -551,16 +631,35 @@ async function executeToolCalls(toolCalls, env, userId = null) {
 		];
 	}
 
+	// Local-runner tools operate on the DM user's own machines. The user id
+	// MUST come from the authenticated session, never from model-supplied args,
+	// or a crafted tool call could target another account's runners.
+	const LOCAL_RUNNER_TOOLS = new Set([
+		'list_local_runners',
+		'get_local_runner_activity',
+		'start_local_runner_task',
+		'get_local_runner_job',
+		'cancel_local_runner_job',
+		'retry_local_runner_job',
+		'discover_vscode_instances',
+		'open_vscode_workspace',
+		'send_vscode_copilot_message',
+	]);
+
 	const results = [];
 
 	for (const call of toolCalls) {
 		log.info(`[AI] Executing tool: ${call.tool}`);
 
+		const forceSessionUser = userId && LOCAL_RUNNER_TOOLS.has(call.tool);
+
 		// Inject environment variables for tools that need them (e.g., image generation)
 		const argsWithEnv = {
 			...call.args,
 			_env: env, // Internal parameter for Cloudflare AI access
-			userId: call.args.userId || userId, // User ID for creation attribution
+			// Runner tools are pinned to the session user; other tools fall back
+			// to the session user only when the model didn't attribute one.
+			userId: forceSessionUser ? userId : call.args.userId || userId,
 		};
 
 		const result = await mcpClient.executeTool(call.tool, argsWithEnv);
@@ -887,6 +986,11 @@ export async function generateChatResponse(options, env) {
 
 	log.info(`[AI] MCP enabled: ${mcpEnabled}`);
 
+	// Fetch the runner inventory once per turn: it feeds both the deterministic
+	// visibility path below and the system prompt, so the model always knows
+	// what runners the user has without needing to think of a tool call.
+	const runnerInventory = mcpEnabled && userId ? await fetchRunnerInventory(env, userId) : null;
+
 	// Deterministic runner discovery path so visibility questions always hit tools.
 	if (localRunnerIntent.isVisibilityQuery) {
 		if (!mcpEnabled) {
@@ -897,24 +1001,17 @@ export async function generateChatResponse(options, env) {
 			};
 		}
 
-		const runnerResults = await executeToolCalls(
-			[{ tool: 'list_local_runners', args: { includeOffline: true, limit: 100 } }],
-			env,
-			userId
-		);
-
-		const toolResult = runnerResults[0]?.result;
-		if (!toolResult?.success) {
+		if (!runnerInventory?.ok) {
 			return {
 				success: true,
-				response: `I tried to check your local runners, but the lookup failed: ${toolResult?.error || 'unknown error'}`,
+				response: `I tried to check your local runners, but the lookup failed: ${runnerInventory?.error || 'unknown error'}`,
 				toolsUsed: ['list_local_runners'],
 			};
 		}
 
 		return {
 			success: true,
-			response: formatRunnerVisibilityResponse(toolResult.data || []),
+			response: formatRunnerVisibilityResponse(runnerInventory.runners),
 			toolsUsed: ['list_local_runners'],
 		};
 	}
@@ -927,6 +1024,7 @@ export async function generateChatResponse(options, env) {
 		selectedGuild,
 		selectedGuildId,
 		selectedGuildName,
+		runnerInventory,
 	});
 
 	// Build initial messages

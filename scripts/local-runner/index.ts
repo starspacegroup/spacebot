@@ -49,7 +49,7 @@ import {
 	bridgeSendCopilotMessage,
 } from './vscode-bridge-client';
 import { collectWorkspaceContext } from './workspace-context';
-import { resolveEffectiveAllowedPaths } from './permission-config';
+import { expandTilde, resolveEffectiveAllowedPaths } from './permission-config';
 import {
 	DEFAULT_COPILOT_MODEL,
 	detectCopilotAvailability,
@@ -71,6 +71,7 @@ import {
 	scaffoldRunnerHome,
 	writeRunnerHomeConfig,
 } from './runner-home';
+import { resolveRunnerToken } from './token-store';
 import { appendJournal, buildMemoryContext, refreshSystemMemory } from './memory';
 import { startInboxWatcher } from './md-interface';
 
@@ -78,12 +79,13 @@ import { startInboxWatcher } from './md-interface';
 // Config
 // ---------------------------------------------------------------------------
 
-const TOKEN = process.env.SPACEBOT_RUNNER_TOKEN ?? '';
+const TOKEN_RESOLUTION = resolveRunnerToken();
+const TOKEN = TOKEN_RESOLUTION.token;
 const API_URL = (process.env.SPACEBOT_API_URL ?? 'https://spacebot.starspace.group').replace(
 	/\/$/,
 	''
 );
-const DEFAULT_WORKDIR = process.env.RUNNER_DEFAULT_WORKDIR ?? process.cwd();
+const DEFAULT_WORKDIR = expandTilde(process.env.RUNNER_DEFAULT_WORKDIR ?? process.cwd());
 const MAX_OUTPUT_BYTES = Number(process.env.RUNNER_MAX_OUTPUT_BYTES ?? '65536');
 const PERMISSION_RESOLUTION = resolveEffectiveAllowedPaths();
 const ALLOWED_PATHS: string[] = PERMISSION_RESOLUTION.paths;
@@ -301,7 +303,13 @@ function err(...args: unknown[]) {
 const STATUS_FRAME_PREFIX = '__SPACEBOT_STATUS__';
 
 function emitStatusFrame(
-	state: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'heartbeat',
+	state:
+		| 'connecting'
+		| 'connected'
+		| 'reconnecting'
+		| 'disconnected'
+		| 'heartbeat'
+		| 'auth-rejected',
 	details?: Record<string, unknown>
 ) {
 	try {
@@ -330,6 +338,36 @@ function stopKeepalive() {
 	keepaliveTimer = null;
 }
 
+/**
+ * When the WS handshake is refused, Bun's WebSocket only reports "Expected
+ * 101 status code". Probe the endpoint over plain HTTP — the server checks
+ * the token after seeing upgrade headers — to surface the real rejection
+ * reason (e.g. "Token revoked") in the logs.
+ */
+async function diagnoseHandshakeRejection(): Promise<{
+	status: number;
+	message: string;
+} | null> {
+	try {
+		const res = await fetch(WS_URL.replace(/^ws/, 'http'), {
+			headers: {
+				Connection: 'Upgrade',
+				Upgrade: 'websocket',
+				'Sec-WebSocket-Version': '13',
+				'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+			},
+		});
+		// 101/2xx means the server accepted the token; 426 means it never saw
+		// the upgrade headers (proxy stripped them) — neither is an auth error.
+		if (res.status === 101 || res.ok || res.status === 426) return null;
+		const body = (await res.text()).slice(0, 200).trim();
+		return { status: res.status, message: `HTTP ${res.status}${body ? `: ${body}` : ''}` };
+	} catch {
+		// Network-level failure — the reconnect loop already covers it.
+		return null;
+	}
+}
+
 function scheduleReconnect(reason: string, code: number) {
 	if (!running) return;
 	if (reconnectTimer) return;
@@ -343,6 +381,23 @@ function scheduleReconnect(reason: string, code: number) {
 	warn(
 		`WebSocket closed (code ${code}). Reconnecting in ${delay}ms… (attempt ${reconnectAttempts})`
 	);
+
+	if (reconnectAttempts === 1 || reconnectAttempts % 10 === 0) {
+		void diagnoseHandshakeRejection().then((rejection) => {
+			if (!rejection) return;
+			err(`Server refused the runner connection — ${rejection.message}.`);
+			// Only auth failures are worth abandoning the token over; transient
+			// 5xx responses just leave the reconnect loop running.
+			if (rejection.status === 401 || rejection.status === 403) {
+				// The TUI parent watches for this frame and reacts by negotiating
+				// a fresh token in the browser automatically.
+				emitStatusFrame('auth-rejected', { rejection: rejection.message });
+				err(
+					'Start the runner interactively (`bun run runner`) to negotiate a fresh token automatically, or mint one under Account → Local Runners and update SPACEBOT_RUNNER_TOKEN.'
+				);
+			}
+		});
+	}
 
 	reconnectTimer = setTimeout(() => {
 		reconnectTimer = null;
@@ -1956,7 +2011,9 @@ function connect() {
 function validateRunnerToken() {
 	if (!TOKEN || !TOKEN.startsWith('sbr_')) {
 		err('SPACEBOT_RUNNER_TOKEN is missing or has an invalid format (expected sbr_…).');
-		err('Set it via environment variable or create a .env file.');
+		err(
+			'Set it via environment variable / .env file, or start the runner interactively (`bun run runner`) to negotiate one in the browser.'
+		);
 		process.exit(1);
 	}
 }
@@ -2060,6 +2117,9 @@ function startHeadlessRunner() {
 	log(`  CWD:    ${DEFAULT_WORKDIR}`);
 	log(`  Name:   ${DISPLAY_NAME}`);
 	log(`  Host:   ${HOSTNAME}`);
+	if (TOKEN_RESOLUTION.source === 'negotiated') {
+		log('  Token:  negotiated via browser (stored in the spacebot config dir)');
+	}
 	if (RUNNER_WATCH_PATHS.length > 0 && CODE_WATCH_INTERVAL_MS > 0) {
 		log(`  Watch:  ${RUNNER_WATCH_PATHS.join(', ')} (every ${CODE_WATCH_INTERVAL_MS}ms)`);
 	}

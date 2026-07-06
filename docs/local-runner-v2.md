@@ -65,6 +65,18 @@ TUI's runner child):
 ## Startup Experience
 
 - `bun run runner` now opens an interactive OpenTUI dashboard when launched from a real terminal.
+- When a token and permission scope are already configured, the TUI connects to the server
+  immediately on launch — the auto-start prompt and setup wizards no longer delay the
+  WebSocket connection.
+- If the server refuses the handshake (e.g. a revoked token), the runner logs the HTTP
+  rejection reason alongside the reconnect loop instead of only "Expected 101 status code".
+- The TUI **self-heals bad tokens on startup**: when no token is configured, or the server
+  rejects the current one with 401, it automatically opens the browser negotiation flow
+  (same as `/token`), once per session. Successfully negotiated tokens are persisted to
+  `runner-token.json` in the spacebot config dir (e.g. `~/.config/spacebot/`) together with
+  the env token they replaced — so future launches (including headless/autostart ones)
+  prefer the fresh token while the stale one still lingers in `.env`, but a _newly set_
+  `SPACEBOT_RUNNER_TOKEN` always wins again.
 - If `SPACEBOT_RUNNER_TOKEN` is missing, press `k` in the dashboard to negotiate a token from the production site.
 - The negotiation flow opens your browser to `/api/account/runners/negotiate`, reuses your logged-in website session, creates a runner token, and sends it back to a localhost callback.
 - On first interactive launch, the runner checks for an existing auto-start entry on the current machine:
@@ -77,6 +89,32 @@ TUI's runner child):
     - don't ask again
 - Installed auto-start entries persist the current `SPACEBOT_*` and `RUNNER_*` environment variables so the runner can reconnect without a shell profile.
 - Headless contexts still work by launching `bun run runner:headless` or `bun run scripts/local-runner/index.ts --headless`.
+
+## DM Orchestration
+
+When you DM SpaceBot, the assistant is grounded on a **live inventory of your local
+runners**. Every DM turn, `generateChatResponse` (`src/lib/ai/chat.ts`) calls
+`list_local_runners` once and injects a "USER'S LOCAL RUNNERS" section into the system
+prompt — names, ids, online/offline status, platform, workdir, and pending/running job
+counts — so the bot always knows what machines you have without you asking twice.
+
+From there you can orchestrate work through them conversationally:
+
+- **Discovery** ("what runners do I have?", "is Dirac online?") is answered from the
+  injected snapshot; the deterministic visibility path still hits `list_local_runners` so
+  counts are never guessed.
+- **Running tasks** ("run `bun test` on Dirac", "pull latest on the desktop") go through
+  `start_local_runner_task`, which queues per-machine jobs. Name a runner to target it,
+  otherwise an online one is chosen; offline runners pick the job up on reconnect.
+- **Following up** — the bot reports the job id and can fetch output/exit code with
+  `get_local_runner_job`, list the queue with `get_local_runner_activity`, and
+  cancel/retry with `cancel_local_runner_job` / `retry_local_runner_job`.
+
+Runner tools are **pinned to the authenticated DM user** — the target user id always comes
+from the session, never from model-supplied tool arguments, so a crafted request can't
+reach another account's machines. This grounding applies to both DM routing modes: the
+cloud-AI default and the opt-in "prefer local runner for DMs" path (which runs the same
+assistant on the runner itself).
 
 ## Supported Job Types
 
@@ -95,7 +133,7 @@ TUI's runner child):
 ## Optional Security/Feature Flags
 
 - `SPACEBOT_RUNNER_HOME=/path/to/home` (overrides the persisted runner-home choice)
-- `RUNNER_ALLOWED_PATHS=/path/one:/path/two`
+- `RUNNER_ALLOWED_PATHS=/path/one:/path/two` (a leading `~` is expanded to the home directory, as in `RUNNER_DEFAULT_WORKDIR`)
 - `RUNNER_ENABLE_SCREENSHOTS=1`
 - `RUNNER_ENABLE_VSCODE_CONTROL=1`
 - `RUNNER_ENABLE_COPILOT_CHAT=1`
