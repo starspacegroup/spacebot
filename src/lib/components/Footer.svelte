@@ -1,14 +1,25 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
 	const year = new Date().getFullYear();
+	const tr = getTranslator();
 </script>
 
 <footer class="app-footer">
 	<div class="footer-content">
-		<span class="footer-copy">&copy; {year} SpaceBot by <a href="https://starspace.group" target="_blank" rel="noopener noreferrer">*Space</a></span>
+		<span class="footer-copy"
+			>&copy; {year}
+			{tr('footer.tagline')}
+			<a href="https://starspace.group" target="_blank" rel="noopener noreferrer">*Space</a
+			></span
+		>
 		<nav class="footer-links">
-			<a href="/terms">Terms of Service</a>
-			<a href="/privacy">Privacy Policy</a>
-			<a href="https://github.com/starspacegroup/spacebot" target="_blank" rel="noopener noreferrer">GitHub</a>
+			<a href="/terms">{tr('footer.terms')}</a>
+			<a href="/privacy">{tr('footer.privacy')}</a>
+			<a
+				href="https://github.com/starspacegroup/spacebot"
+				target="_blank"
+				rel="noopener noreferrer">{tr('footer.github')}</a
+			>
 		</nav>
 	</div>
 </footer>

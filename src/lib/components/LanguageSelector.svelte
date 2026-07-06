@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { catalogs, normalizeLocale, t, type Locale } from '$lib/i18n.js';
+	import { LOCALE_NAMES, SUPPORTED_LOCALES, normalizeLocale, t, type Locale } from '$lib/i18n.js';
 
 	const { locale = 'en' }: { locale?: Locale } = $props();
 	const current = $derived(normalizeLocale(locale));
@@ -14,8 +14,8 @@
 <label class="language-selector">
 	<span>{t(current, 'language.label')}</span>
 	<select aria-label={t(current, 'language.label')} onchange={changeLanguage} value={current}>
-		{#each Object.keys(catalogs) as code}
-			<option value={code}>{code.toUpperCase()}</option>
+		{#each SUPPORTED_LOCALES as code}
+			<option value={code}>{LOCALE_NAMES[code]}</option>
 		{/each}
 	</select>
 </label>

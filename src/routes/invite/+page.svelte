@@ -4,21 +4,19 @@
 	const { data } = $props();
 </script>
 
-<svelte:head><title>Invite SpaceBot</title></svelte:head>
+<svelte:head><title>{t(data.locale, 'invite.pageTitle')}</title></svelte:head>
 
 <section class="public-action">
 	<div>
-		<p class="eyebrow">Discord install</p>
+		<p class="eyebrow">{t(data.locale, 'invite.eyebrow')}</p>
 		<h1>{t(data.locale, 'public.invite.title')}</h1>
-		<p>
-			Install the bot with slash commands, context menus, automations, and analytics enabled.
-		</p>
+		<p>{t(data.locale, 'invite.body')}</p>
 		{#if data.inviteUrl}
-			<a class="primary-action" href={data.inviteUrl}>Open Discord install</a>
+			<a class="primary-action" href={data.inviteUrl}>{t(data.locale, 'invite.cta')}</a>
 		{:else}
 			<div class="disabled-state">
-				<strong>Invite link disabled</strong>
-				<span>Set DISCORD_CLIENT_ID to enable the public install CTA.</span>
+				<strong>{t(data.locale, 'invite.disabledTitle')}</strong>
+				<span>{t(data.locale, 'invite.disabledHint')}</span>
 			</div>
 		{/if}
 	</div>

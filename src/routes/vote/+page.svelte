@@ -4,25 +4,25 @@
 	const { data } = $props();
 </script>
 
-<svelte:head><title>Vote for SpaceBot</title></svelte:head>
+<svelte:head><title>{t(data.locale, 'vote.pageTitle')}</title></svelte:head>
 
 <section class="vote-page">
 	<h1>{t(data.locale, 'public.vote.title')}</h1>
 	<div class="actions">
 		<div class="action-card">
-			<h2>Vote</h2>
+			<h2>{t(data.locale, 'vote.vote')}</h2>
 			{#if data.vote.enabled}
-				<a href={data.vote.url}>Open voting page</a>
+				<a href={data.vote.url}>{t(data.locale, 'vote.openVoting')}</a>
 			{:else}
-				<p>Set {data.vote.envName} to enable voting.</p>
+				<p>{t(data.locale, 'vote.enableVoting', { envName: data.vote.envName })}</p>
 			{/if}
 		</div>
 		<div class="action-card">
-			<h2>Review</h2>
+			<h2>{t(data.locale, 'vote.review')}</h2>
 			{#if data.review.enabled}
-				<a href={data.review.url}>Open review page</a>
+				<a href={data.review.url}>{t(data.locale, 'vote.openReview')}</a>
 			{:else}
-				<p>Set {data.review.envName} to enable reviews.</p>
+				<p>{t(data.locale, 'vote.enableReviews', { envName: data.review.envName })}</p>
 			{/if}
 		</div>
 	</div>

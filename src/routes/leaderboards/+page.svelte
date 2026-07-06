@@ -4,20 +4,28 @@
 	const { data } = $props();
 </script>
 
-<svelte:head><title>SpaceBot Leaderboards</title></svelte:head>
+<svelte:head><title>{t(data.locale, 'leaderboards.pageTitle')}</title></svelte:head>
 
 <section class="leaderboard-page">
 	<h1>{t(data.locale, 'leaderboards.title')}</h1>
-	<p>
-		Voice leaderboard entries are privacy-safe: only Discord IDs and aggregate time are shown.
-	</p>
+	<p>{t(data.locale, 'leaderboards.body')}</p>
 	{#if !data.guildId}
-		<div class="empty">Add <code>?guild=SERVER_ID</code> to view a server leaderboard.</div>
+		<div class="empty">
+			{t(data.locale, 'leaderboards.needGuildBefore')}
+			<code>?guild=SERVER_ID</code>
+			{t(data.locale, 'leaderboards.needGuildAfter')}
+		</div>
 	{:else if data.rows.length === 0}
-		<div class="empty">No leaderboard data is available for this server yet.</div>
+		<div class="empty">{t(data.locale, 'leaderboards.empty')}</div>
 	{:else}
 		<table>
-			<thead><tr><th>Rank</th><th>User</th><th>Voice hours</th></tr></thead>
+			<thead
+				><tr
+					><th>{t(data.locale, 'leaderboards.rank')}</th><th
+						>{t(data.locale, 'leaderboards.user')}</th
+					><th>{t(data.locale, 'leaderboards.voiceHours')}</th></tr
+				></thead
+			>
 			<tbody>
 				{#each data.rows as row, index}
 					<tr>

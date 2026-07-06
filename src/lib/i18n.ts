@@ -1,44 +1,19 @@
+import { getContext, setContext } from 'svelte';
+import { en } from './i18n/en.js';
+import { es } from './i18n/es.js';
+
 export const SUPPORTED_LOCALES = ['en', 'es'] as const;
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = 'en';
 
-export const catalogs: Record<Locale, Record<string, string>> = {
-	en: {
-		'nav.pricing': 'Pricing',
-		'nav.login': 'Login',
-		'nav.invite': 'Invite',
-		'nav.support': 'Support',
-		'nav.vote': 'Vote',
-		'nav.leaderboards': 'Leaderboards',
-		'language.label': 'Language',
-		'public.invite.title': 'Invite SpaceBot',
-		'public.support.title': 'Support server',
-		'public.vote.title': 'Vote and reviews',
-		'public.disabled': 'This link is not configured yet.',
-		'public.setup': 'Set the environment variable shown below to enable this action.',
-		'leaderboards.title': 'Server leaderboards',
-		'profile.title': 'User profile',
-		'settings.branding': 'Custom branding',
-	},
-	es: {
-		'nav.pricing': 'Precios',
-		'nav.login': 'Iniciar sesion',
-		'nav.invite': 'Invitar',
-		'nav.support': 'Soporte',
-		'nav.vote': 'Votar',
-		'nav.leaderboards': 'Clasificaciones',
-		'language.label': 'Idioma',
-		'public.invite.title': 'Invitar SpaceBot',
-		'public.support.title': 'Servidor de soporte',
-		'public.vote.title': 'Votos y resenas',
-		'public.disabled': 'Este enlace todavia no esta configurado.',
-		'public.setup': 'Define la variable de entorno indicada para activar esta accion.',
-		'leaderboards.title': 'Clasificaciones del servidor',
-		'profile.title': 'Perfil de usuario',
-		'settings.branding': 'Marca personalizada',
-	},
+/** Human-readable names for the language picker (in their own language). */
+export const LOCALE_NAMES: Record<Locale, string> = {
+	en: 'English',
+	es: 'Español',
 };
+
+export const catalogs: Record<Locale, Record<string, string>> = { en, es };
 
 export function normalizeLocale(value: string | null | undefined): Locale {
 	const lower = String(value || '')
@@ -62,6 +37,42 @@ export function resolveLocale({
 	return normalizeLocale(firstAccepted);
 }
 
-export function t(locale: Locale, key: string): string {
-	return catalogs[locale]?.[key] ?? catalogs[DEFAULT_LOCALE][key] ?? key;
+/**
+ * Translate a key for a locale, falling back to English then the raw key.
+ * Optional params fill `{name}` placeholders in the string.
+ */
+export function t(locale: Locale, key: string, params?: Record<string, string | number>): string {
+	let value = catalogs[locale]?.[key] ?? catalogs[DEFAULT_LOCALE][key] ?? key;
+	if (params) {
+		for (const [name, replacement] of Object.entries(params)) {
+			value = value.replaceAll(`{${name}}`, String(replacement));
+		}
+	}
+	return value;
+}
+
+// ---------------------------------------------------------------------------
+// Component context helpers
+//
+// The active locale is put on Svelte context by the root layout, so any
+// component can obtain a translator bound to it without prop-drilling
+// `data.locale`. Because switching language triggers a full reload, the locale
+// is fixed for the lifetime of a render — no reactivity plumbing needed, and
+// no risk of cross-request state leaking on the server.
+// ---------------------------------------------------------------------------
+
+const LOCALE_CONTEXT_KEY = Symbol('spacebot.locale');
+
+export function setLocaleContext(locale: Locale): void {
+	setContext(LOCALE_CONTEXT_KEY, locale);
+}
+
+export function getLocale(): Locale {
+	return getContext<Locale>(LOCALE_CONTEXT_KEY) ?? DEFAULT_LOCALE;
+}
+
+/** Grab a translator bound to the context locale. Call once at component init. */
+export function getTranslator(): (key: string, params?: Record<string, string | number>) => string {
+	const locale = getLocale();
+	return (key, params) => t(locale, key, params);
 }

@@ -4,15 +4,17 @@
 	const { data } = $props();
 </script>
 
-<svelte:head><title>SpaceBot Support</title></svelte:head>
+<svelte:head><title>{t(data.locale, 'support.pageTitle')}</title></svelte:head>
 
 <section class="link-page">
 	<h1>{t(data.locale, 'public.support.title')}</h1>
-	<p>Join the SpaceBot Discord support server for setup help and release updates.</p>
+	<p>{t(data.locale, 'support.body')}</p>
 	{#if data.enabled}
-		<a class="primary-action" href={data.url}>Open support server</a>
+		<a class="primary-action" href={data.url}>{t(data.locale, 'support.cta')}</a>
 	{:else}
-		<div class="disabled-state">Set {data.envName} to show the support server link.</div>
+		<div class="disabled-state">
+			{t(data.locale, 'support.disabled', { envName: data.envName })}
+		</div>
 	{/if}
 </section>
 

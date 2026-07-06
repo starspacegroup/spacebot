@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const { user, selectedGuildId = null, isSuperAdmin = false } = $props();
 	let isOpen = $state(false);
 
@@ -76,7 +78,7 @@
 					<path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
 					<polyline points="9 22 9 12 15 12 15 22" />
 				</svg>
-				Dashboard
+				{tr('userMenu.dashboard')}
 			</a>
 
 			<a href="/account" class="dropdown-item" role="menuitem" onclick={closeMenu}>
@@ -91,7 +93,7 @@
 					<circle cx="12" cy="8" r="4" />
 					<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
 				</svg>
-				Account
+				{tr('userMenu.account')}
 			</a>
 
 			{#if isSuperAdmin}
@@ -113,7 +115,7 @@
 						<path d="M12 14c-6 0-8 3-8 6v1h16v-1c0-3-2-6-8-6z" />
 						<path d="M20 8l2 2-5 5-2-2 5-5z" />
 					</svg>
-					<span class="superadmin-text">Superadmin</span>
+					<span class="superadmin-text">{tr('userMenu.superadmin')}</span>
 					<span class="superadmin-badge">👑</span>
 				</a>
 			{/if}
@@ -133,7 +135,7 @@
 					<polyline points="16 17 21 12 16 7" />
 					<line x1="21" y1="12" x2="9" y2="12" />
 				</svg>
-				Logout
+				{tr('userMenu.logout')}
 			</a>
 		</div>
 	{/if}
