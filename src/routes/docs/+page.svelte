@@ -272,9 +272,7 @@
 
 <style>
 	.docs-page {
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: 2.5rem 1.5rem 4rem;
+		padding: 2.5rem 2rem 4rem;
 	}
 
 	/* Two-column body: sticky TOC sidebar + content, so the page fills the
