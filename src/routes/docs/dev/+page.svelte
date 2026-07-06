@@ -45,9 +45,9 @@
 
 <style>
 	.dev-index {
-		max-width: 900px;
+		max-width: 1200px;
 		margin: 0 auto;
-		padding: 2.5rem 1.25rem 4rem;
+		padding: 2.5rem 1.5rem 4rem;
 	}
 
 	.dev-hero {

@@ -59,11 +59,11 @@
 <style>
 	.doc-layout {
 		display: grid;
-		grid-template-columns: 220px minmax(0, 1fr) 200px;
-		gap: 2.5rem;
-		max-width: 1200px;
+		grid-template-columns: 230px minmax(0, 1fr) 210px;
+		gap: 3rem;
+		max-width: 1280px;
 		margin: 0 auto;
-		padding: 2rem 1.25rem 4rem;
+		padding: 2rem 1.5rem 4rem;
 		align-items: start;
 	}
 
