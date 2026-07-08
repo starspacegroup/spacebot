@@ -213,15 +213,23 @@ function detectLocalRunnerIntent(message = '') {
 	const asksAction = /\b(run|execute|start|queue|trigger|launch|deploy|pull|restart)\b/i.test(
 		text
 	);
+	// If the user is asking about a non-runner system attribute (monitors, disk, cpu, etc.),
+	// "online" is describing *which* runner to use, not asking about runner status — let the LLM handle it.
+	const asksAboutSystemAttribute =
+		/\b(monitor|screen|display|cpu|memory|ram|disk|gpu|processor|window|resolution|file|folder|process|service|network|battery|temperature|speed|version|storage|port|interface)\b/i.test(
+			text
+		);
 
 	return {
 		mentionsRunner,
 		asksVisibility,
 		asksAction,
-		// Treat runner mentions in DMs as visibility checks unless the user clearly asks to execute an action.
+		// Treat runner mentions in DMs as visibility checks unless the user clearly asks to execute an action
+		// or is asking about a system attribute (in which case they want to run a command on the runner).
 		isVisibilityQuery:
 			mentionsRunner &&
 			!asksAction &&
+			!asksAboutSystemAttribute &&
 			(asksVisibility || /^\s*local\s+runners\??\s*$/i.test(text)),
 	};
 }
@@ -234,26 +242,51 @@ function formatRunnerVisibilityResponse(runners = []) {
 		].join('\n\n');
 	}
 
-	const online = runners.filter((runner) => runner.is_online).length;
-	const lines = runners.slice(0, 8).map((runner) => {
-		const status = runner.is_online ? 'online' : 'offline';
-		const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
-		const host = runner.hostname ? ` (${runner.hostname})` : '';
-		const token = runner.token_name ? ` | token ${runner.token_name}` : '';
-		const platform = [runner.platform, runner.platform_release, runner.arch]
-			.filter(Boolean)
-			.join(' ');
-		const platformText = platform ? ` | ${platform}` : '';
-		const workdir = runner.default_workdir ? ` | wd ${runner.default_workdir}` : '';
-		const pending = Number(runner.pending_job_count || 0);
-		const running = Number(runner.running_job_count || 0);
-		const seenAt = runner.last_seen_at ? ` | last seen ${runner.last_seen_at} UTC` : '';
-		return `- ${name}${host}: ${status}${token}${platformText}${workdir} | pending ${pending} | running ${running}${seenAt}`;
-	});
+	const onlineRunners = runners.filter((r) => r.is_online);
+	const offlineRunners = runners.filter((r) => !r.is_online);
 
-	const overflow = runners.length > 8 ? `\n- ...and ${runners.length - 8} more system(s)` : '';
+	const onlineCount = onlineRunners.length;
+	const offlineCount = offlineRunners.length;
 
-	return `Yes. I can see ${runners.length} registered local runner system(s) (${online} online, ${runners.length - online} offline).\n\nHere is your current runner list:\n${lines.join('\n')}${overflow}`;
+	let response = `Yes. I can see ${runners.length} registered local runner system(s) (${onlineCount} online, ${offlineCount} offline).`;
+
+	if (onlineCount > 0) {
+		response += '\n\n**Online:**';
+		for (const runner of onlineRunners.slice(0, 5)) {
+			const name = runner.display_name || runner.hostname || `Runner ${runner.id}`;
+			const host = runner.hostname && runner.hostname !== name ? ` (${runner.hostname})` : '';
+			const token = runner.token_name ? ` | token ${runner.token_name}` : '';
+			const platform = [runner.platform, runner.platform_release, runner.arch]
+				.filter(Boolean)
+				.join(' ');
+			const platformText = platform ? ` | ${platform}` : '';
+			const workdir = runner.default_workdir ? ` | wd ${runner.default_workdir}` : '';
+			const pending = Number(runner.pending_job_count || 0);
+			const running = Number(runner.running_job_count || 0);
+			const seenAt = runner.last_seen_at ? ` | last seen ${runner.last_seen_at} UTC` : '';
+			response += `\n- **${name}**${host}${token}${platformText}${workdir} | pending ${pending} | running ${running}${seenAt}`;
+		}
+		if (onlineRunners.length > 5)
+			response += `\n- ...and ${onlineRunners.length - 5} more online`;
+	}
+
+	if (offlineCount > 0) {
+		if (offlineCount === 1) {
+			const r = offlineRunners[0];
+			const name = r.display_name || r.hostname || `Runner ${r.id}`;
+			const seenAt = r.last_seen_at ? `, last seen ${r.last_seen_at} UTC` : '';
+			response += `\n\n**Offline (1):** ${name}${seenAt}`;
+		} else {
+			response += `\n\n**Offline (${offlineCount}):** ${offlineRunners
+				.slice(0, 5)
+				.map((r) => r.display_name || r.hostname || `Runner ${r.id}`)
+				.join(
+					', '
+				)}${offlineRunners.length > 5 ? ` and ${offlineRunners.length - 5} more` : ''}`;
+		}
+	}
+
+	return response;
 }
 
 /**
