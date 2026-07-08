@@ -77,9 +77,13 @@ function formatEventEmbed(event, customColors = {}) {
   // Add details if present
   if (event.details) {
     const details = typeof event.details === 'string' ? JSON.parse(event.details) : event.details;
+    if (details.roleName) {
+      const roleMention = details.roleId ? `<@&${details.roleId}>` : details.roleName;
+      description += `**Role:** ${roleMention} (${details.roleName})\n`;
+    }
     if (details.content) {
-      const content = details.content.length > 200 
-        ? details.content.substring(0, 200) + "..." 
+      const content = details.content.length > 200
+        ? details.content.substring(0, 200) + "..."
         : details.content;
       description += `\n**Content:**\n\`\`\`\n${content}\n\`\`\``;
     }
