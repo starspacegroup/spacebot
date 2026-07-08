@@ -137,7 +137,7 @@
 
 	// --- API orchestration ---
 	async function refresh() {
-		const res = await fetch('/api/superadmin/workflows?limit=100&runLimit=100');
+		const res = await fetch('/api/superadmin/workflows?limit=100&runLimit=25');
 		const result = await res.json();
 		if (res.ok) {
 			templates = result.templates || [];

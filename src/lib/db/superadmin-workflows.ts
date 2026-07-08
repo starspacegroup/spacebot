@@ -29,6 +29,7 @@ interface CreateTemplateInput {
 
 interface ListRunsOptions {
 	limit?: number;
+	offset?: number;
 	templateId?: number | string;
 }
 
@@ -416,13 +417,14 @@ export async function listSuperadminWorkflowRuns(db, options: ListRunsOptions = 
 	if (!db) return [];
 
 	const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200));
+	const offset = Math.max(0, Number(options.offset) || 0);
 	const templateId = options.templateId ? Number(options.templateId) : null;
 
 	try {
 		const query = templateId
-			? `SELECT * FROM superadmin_workflow_runs WHERE template_id = ? ORDER BY created_at DESC LIMIT ?`
-			: `SELECT * FROM superadmin_workflow_runs ORDER BY created_at DESC LIMIT ?`;
-		const binds = templateId ? [templateId, limit] : [limit];
+			? `SELECT * FROM superadmin_workflow_runs WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+			: `SELECT * FROM superadmin_workflow_runs ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+		const binds = templateId ? [templateId, limit, offset] : [limit, offset];
 		const result = await db
 			.prepare(query)
 			.bind(...binds)

@@ -26,11 +26,12 @@ export async function GET({ cookies, platform, url }) {
 
 	const includeArchived = url.searchParams.get('includeArchived') === 'true';
 	const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-	const runLimit = parseInt(url.searchParams.get('runLimit') || '50', 10);
+	const runLimit = parseInt(url.searchParams.get('runLimit') || '25', 10);
+	const runOffset = parseInt(url.searchParams.get('runOffset') || '0', 10);
 
 	const [templates, runs] = await Promise.all([
 		listSuperadminWorkflowTemplates(db, { includeArchived, limit }),
-		listSuperadminWorkflowRuns(db, { limit: runLimit }),
+		listSuperadminWorkflowRuns(db, { limit: runLimit, offset: runOffset }),
 	]);
 
 	return json({ templates, runs });
