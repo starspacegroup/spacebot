@@ -155,10 +155,15 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       authenticated user (`src/lib/ai/chat.ts`)
 - [x] Seamless DM ↔ runner loop — `start_local_runner_task` now **waits** for a single online
       runner and returns real output/exit code in the same turn (no more "queued #N" dead-ends);
-      the runner ships a compact machine-context summary (system facts + tools + memories) in its
-      hello metadata, injected into every `generateChatResponse` turn so the bot reasons about the
-      machine and the runner inherits server knowledge — one brain, both contexts, across all DM
-      routing modes (`src/lib/ai/mcp-client.ts`, `src/lib/ai/chat.ts`, `scripts/local-runner/index.ts`)
+      the runner ships a machine-context summary (OS + displays/monitors + hardware + tools +
+      memories) in its hello metadata, injected into every `generateChatResponse` turn so the bot
+      reasons about the machine and the runner inherits server knowledge — one brain, both contexts.
+      Conversational DMs now default to the cloud model: naming a runner ("how many monitors on
+      Dirac?") no longer hijacks the turn to the runner's weak local model — only screenshots and the
+      explicit "prefer local runner for DMs" preference dispatch there. Both the cloud and local
+      prompts forbid closed-book "the text does not specify" refusals about the user's own machine
+      (`src/lib/ai/mcp-client.ts`, `src/lib/ai/chat.ts`, `src/routes/api/gateway/dm-runner/+server.ts`,
+      `scripts/local-runner/index.ts`, `scripts/local-runner/memory.ts`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration

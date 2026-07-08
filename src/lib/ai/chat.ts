@@ -370,6 +370,11 @@ function buildRunnerInventorySection(inventory) {
 	}
 
 	section += `
+### Answering questions about these machines
+- The user OWNS these machines and is asking about their own hardware. "How many monitors/displays do I have on X?", "what OS is X?", "does X have docker?" are answered from the **Machine context** line above — use it directly and confidently.
+- If a specific detail is not in the machine context line, call \`list_local_runners\` (its result includes each runner's full \`metadata.systemProfile\` — displays, hardware, installed tools) and answer from that. Only if it is truly not there, say what you DO know and offer to run a command to find out.
+- NEVER reply "the text does not specify" or "I cannot answer" for a question about the user's own machine — that is always wrong here. You either have the fact, can fetch it with a tool, or can offer to run a command.
+
 ### Orchestrating tasks on these runners
 - You can run shell commands on these machines with \`start_local_runner_task\` (target a specific runner by name/id when the user names one, otherwise prefer an online runner).
 - **When targeting a single online runner, this tool WAITS and returns the real \`output\`, \`exitCode\`, and \`status\` (\`awaited: true\`).** Report those actual results directly — do NOT just say "queued #N", and do NOT make a redundant \`get_local_runner_job\` call for a result you already have.
