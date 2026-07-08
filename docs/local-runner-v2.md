@@ -98,23 +98,39 @@ runners**. Every DM turn, `generateChatResponse` (`src/lib/ai/chat.ts`) calls
 prompt — names, ids, online/offline status, platform, workdir, and pending/running job
 counts — so the bot always knows what machines you have without you asking twice.
 
+Every runner line in that snapshot also carries a **machine-context** summary — the
+system facts, available tools, and stored memories the runner knows about that machine
+(built by `buildMemoryContext` and shipped in the runner's hello metadata, rendered by
+`buildRunnerInventorySection`). So the assistant can answer "what's on Dirac?" / "does it
+have docker?" and pick sensible commands without a round-trip — the bot reasons about the
+machine while it talks to you, and the runner's own assistant turns (dm jobs routed back
+through `/api/runner/assistant`) inherit the same server knowledge. Both halves are grounded
+in one turn.
+
 From there you can orchestrate work through them conversationally:
 
 - **Discovery** ("what runners do I have?", "is Dirac online?") is answered from the
   injected snapshot; the deterministic visibility path still hits `list_local_runners` so
   counts are never guessed.
 - **Running tasks** ("run `bun test` on Dirac", "pull latest on the desktop") go through
-  `start_local_runner_task`, which queues per-machine jobs. Name a runner to target it,
-  otherwise an online one is chosen; offline runners pick the job up on reconnect.
-- **Following up** — the bot reports the job id and can fetch output/exit code with
-  `get_local_runner_job`, list the queue with `get_local_runner_activity`, and
-  cancel/retry with `cancel_local_runner_job` / `retry_local_runner_job`.
+  `start_local_runner_task`. When the task targets **exactly one online runner** the tool
+  **waits for it to finish** (bounded by `waitSeconds`, default 25, max 90) and returns the
+  real `output`, `exitCode`, and `status` in the same turn (`awaited: true`) — so the bot
+  reports the actual result immediately, not just "queued #N". Multi-runner fan-outs and
+  offline targets stay fire-and-queue (`awaited: false`): they run on reconnect and the bot
+  follows up. Pass `waitForResult: false` to force fire-and-queue for a known-long command,
+  or raise `waitSeconds`.
+- **Following up** — for queued or timed-out jobs the bot reports the job id and can fetch
+  output/exit code with `get_local_runner_job`, list the queue with
+  `get_local_runner_activity`, and cancel/retry with `cancel_local_runner_job` /
+  `retry_local_runner_job`.
 
 Runner tools are **pinned to the authenticated DM user** — the target user id always comes
 from the session, never from model-supplied tool arguments, so a crafted request can't
-reach another account's machines. This grounding applies to both DM routing modes: the
-cloud-AI default and the opt-in "prefer local runner for DMs" path (which runs the same
-assistant on the runner itself).
+reach another account's machines. This grounding applies to every DM routing mode — the
+cloud-AI default, the durable autopilot queue, and the opt-in "prefer local runner for DMs"
+path — because all three funnel through the same `generateChatResponse`, which fetches the
+runner inventory (with machine context) itself.
 
 ## Supported Job Types
 

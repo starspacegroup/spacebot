@@ -153,6 +153,12 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] DM runner orchestration — the DM assistant is grounded on a live runner inventory each turn
       and can queue/inspect/cancel tasks across the user's machines; runner tools pinned to the
       authenticated user (`src/lib/ai/chat.ts`)
+- [x] Seamless DM ↔ runner loop — `start_local_runner_task` now **waits** for a single online
+      runner and returns real output/exit code in the same turn (no more "queued #N" dead-ends);
+      the runner ships a compact machine-context summary (system facts + tools + memories) in its
+      hello metadata, injected into every `generateChatResponse` turn so the bot reasons about the
+      machine and the runner inherits server knowledge — one brain, both contexts, across all DM
+      routing modes (`src/lib/ai/mcp-client.ts`, `src/lib/ai/chat.ts`, `scripts/local-runner/index.ts`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration

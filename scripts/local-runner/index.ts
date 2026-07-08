@@ -281,6 +281,13 @@ interface RunnerHelloPayload {
 			};
 		};
 		systemProfile: unknown;
+		/**
+		 * Compact human-readable machine context (system summary + available
+		 * tools + stored memories) so the server-side assistant is grounded on
+		 * what this machine actually is — not just its platform/arch row. Kept
+		 * small; the full systemProfile is above for structured lookups.
+		 */
+		machineContext: string;
 	};
 }
 
@@ -607,6 +614,7 @@ function buildHelloPayload(): RunnerHelloPayload {
 			capabilities: profile.capabilities,
 			llm: buildProviderMetadata(),
 			systemProfile: profile,
+			machineContext: RUNNER_HOME ? buildMemoryContext(RUNNER_HOME, 1800) : '',
 		},
 	};
 }

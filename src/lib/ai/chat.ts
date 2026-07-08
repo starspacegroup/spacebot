@@ -350,6 +350,20 @@ function buildRunnerInventorySection(inventory) {
 		section += ` | jobs: ${pending} pending, ${running} running`;
 		if (runner.last_seen_at) section += ` | last seen ${runner.last_seen_at} UTC`;
 		section += '\n';
+
+		// Machine context: what the runner actually knows about this machine
+		// (system summary, available tools, stored memories). Lets you answer
+		// "what's on my desktop?" / "does it have docker?" and pick sensible
+		// commands without a round-trip. Reported by the runner in its metadata.
+		const machineContext =
+			typeof runner.metadata?.machineContext === 'string'
+				? runner.metadata.machineContext.trim()
+				: '';
+		if (machineContext) {
+			const compact =
+				machineContext.length > 900 ? `${machineContext.slice(0, 900)}…` : machineContext;
+			section += `  - Machine context: ${compact.replace(/\n+/g, ' ')}\n`;
+		}
 	}
 	if (runners.length > 8) {
 		section += `- ...and ${runners.length - 8} more (use list_local_runners for the full list)\n`;
@@ -358,9 +372,10 @@ function buildRunnerInventorySection(inventory) {
 	section += `
 ### Orchestrating tasks on these runners
 - You can run shell commands on these machines with \`start_local_runner_task\` (target a specific runner by name/id when the user names one, otherwise prefer an online runner).
-- After queueing, report the job ID and offer to check on it; use \`get_local_runner_job\` to fetch output/exit code and \`get_local_runner_activity\` for the overall queue.
-- Offline runners can still accept queued jobs — they run them on reconnect. Say so when targeting one.
-- For multi-step requests ("build X then deploy"), queue steps one at a time and check each result before continuing, narrating progress to the user.
+- **When targeting a single online runner, this tool WAITS and returns the real \`output\`, \`exitCode\`, and \`status\` (\`awaited: true\`).** Report those actual results directly — do NOT just say "queued #N", and do NOT make a redundant \`get_local_runner_job\` call for a result you already have.
+- If the result comes back with \`waitStatus: "timeout"\` (a long-running command), tell the user it's still running, give the job ID, and offer to check back with \`get_local_runner_job\`.
+- Offline or multi-runner targets are queued only (\`awaited: false\`) — report the job ID(s), say offline ones run on reconnect, and use \`get_local_runner_job\` later for output.
+- For multi-step requests ("build X then deploy"), run steps one at a time and check each result before continuing, narrating progress to the user.
 - Confirm before destructive commands (deletes, resets, force-pushes). Never invent job results — only report what the tools returned.\n`;
 
 	return section;
@@ -1176,6 +1191,6 @@ export function isMCPEnabled(env) {
 	return Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_API_TOKEN);
 }
 
-export { detectLocalRunnerIntent, formatRunnerVisibilityResponse };
+export { detectLocalRunnerIntent, formatRunnerVisibilityResponse, buildRunnerInventorySection };
 
 export { BASE_SYSTEM_PROMPT as SYSTEM_PROMPT, MCP_TOOLS };
