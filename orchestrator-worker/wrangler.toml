@@ -39,6 +39,15 @@ name = "spacebot-superadmin-run"
 binding = "SUPERADMIN_RUN_WORKFLOW"
 class_name = "SuperadminRunWorkflow"
 
+# Durable driver for server-wide message purges (/spam-style delete sweeps):
+# loops the Pages /api/discord/purge/advance endpoint one bounded batch per
+# step, escaping the per-request subrequest cap. One instance per interaction,
+# deterministic id purge-<interactionId>.
+[[workflows]]
+name = "spacebot-message-purge"
+binding = "MESSAGE_PURGE_WORKFLOW"
+class_name = "MessagePurgeWorkflow"
+
 # Native Cloudflare Cron Triggers — provisioned automatically on `wrangler
 # deploy`, no Cloudflare dashboard interaction required. "* * * * *" drives
 # the superadmin workflows dispatch; "*/5 * * * *" drives the AI autopilot

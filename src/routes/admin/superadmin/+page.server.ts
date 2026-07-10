@@ -1,24 +1,21 @@
 /**
  * Superadmin Dashboard
- * 
+ *
  * Provides global bot statistics and management for superadmins only.
  */
 
-import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
-import { 
-	getGlobalMemberGrowthChart, 
-	getGlobalVoiceActivityChart, 
-	getGlobalStatsSummary 
-} from "$lib/db/stats-aggregation.js";
+import { redirect } from '@sveltejs/kit';
+import { log } from '$lib/db/logger.js';
 import {
-	getBuiltInCommands,
-	ACTION_TYPES,
-	RESPONSE_TYPES,
-} from "$lib/db/commands.js";
-import { listIntegrations } from "$lib/db/integrations.js";
-import { usesIntegrationTokenAuth } from "$lib/integrations/registry.js";
-import { getFirstLoginDmEnabled } from "$lib/server/superadmin-notifications.js";
+	getGlobalMemberGrowthChart,
+	getGlobalVoiceActivityChart,
+	getGlobalStatsSummary,
+} from '$lib/db/stats-aggregation.js';
+import { getBuiltInCommands, ACTION_TYPES, RESPONSE_TYPES } from '$lib/db/commands.js';
+import { listIntegrations } from '$lib/db/integrations.js';
+import { usesIntegrationTokenAuth } from '$lib/integrations/registry.js';
+import { getFirstLoginDmEnabled } from '$lib/server/superadmin-notifications.js';
+import { getMessagePurgeSettings } from '$lib/server/message-purge-settings.js';
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
 
@@ -28,33 +25,35 @@ const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
 function getCronJobDefinitions() {
 	return [
 		{
-			name: "hourly_aggregation",
-			displayName: "Hourly Stats Aggregation",
-			description: "Aggregates event logs into hourly and daily statistics",
-			cronPattern: "0 * * * *",
-			schedule: "Every hour at :00",
+			name: 'hourly_aggregation',
+			displayName: 'Hourly Stats Aggregation',
+			description: 'Aggregates event logs into hourly and daily statistics',
+			cronPattern: '0 * * * *',
+			schedule: 'Every hour at :00',
 		},
 		{
-			name: "daily_refresh",
-			displayName: "Daily Discord Refresh",
-			description: "Refreshes server stats from Discord API and cleans up old data",
-			cronPattern: "0 0 * * *",
-			schedule: "Daily at midnight UTC",
+			name: 'daily_refresh',
+			displayName: 'Daily Discord Refresh',
+			description: 'Refreshes server stats from Discord API and cleans up old data',
+			cronPattern: '0 0 * * *',
+			schedule: 'Daily at midnight UTC',
 		},
 		{
-			name: "rebuild_stats",
-			displayName: "Rebuild All Stats",
-			description: "Deletes all aggregated stats and rebuilds from event logs. Use after schema changes.",
+			name: 'rebuild_stats',
+			displayName: 'Rebuild All Stats',
+			description:
+				'Deletes all aggregated stats and rebuilds from event logs. Use after schema changes.',
 			cronPattern: null,
-			schedule: "Manual only",
+			schedule: 'Manual only',
 			dangerous: true,
 		},
 		{
-			name: "sync_workers_ai_models",
-			displayName: "Sync Workers AI Models",
-			description: "Refreshes the Workers AI model catalog from Cloudflare and stores it in the database cache.",
-			cronPattern: "0 */6 * * *",
-			schedule: "Every 6 hours",
+			name: 'sync_workers_ai_models',
+			displayName: 'Sync Workers AI Models',
+			description:
+				'Refreshes the Workers AI model catalog from Cloudflare and stores it in the database cache.',
+			cronPattern: '0 */6 * * *',
+			schedule: 'Every 6 hours',
 		},
 	];
 }
@@ -67,16 +66,22 @@ async function getCronJobData(db) {
 
 	try {
 		// Check if the table exists
-		const tableCheck = await db.prepare(`
+		const tableCheck = await db
+			.prepare(
+				`
 			SELECT name FROM sqlite_master 
 			WHERE type='table' AND name='cron_job_history'
-		`).first();
+		`
+			)
+			.first();
 
 		if (!tableCheck) {
 			return { history: [], lastRuns: {} };
 		}
 
-		await db.prepare(`
+		await db
+			.prepare(
+				`
 			UPDATE cron_job_history
 			SET status = 'failed',
 				error_message = COALESCE(error_message, 'Job did not report completion before timeout'),
@@ -85,18 +90,27 @@ async function getCronJobData(db) {
 			WHERE status = 'running'
 			  AND completed_at IS NULL
 			  AND started_at < datetime('now', ?)
-		`).bind(`-${STALE_RUNNING_JOB_TIMEOUT_MINUTES} minutes`).run();
+		`
+			)
+			.bind(`-${STALE_RUNNING_JOB_TIMEOUT_MINUTES} minutes`)
+			.run();
 
 		// Get recent history
-		const historyResult = await db.prepare(`
+		const historyResult = await db
+			.prepare(
+				`
 			SELECT *
 			FROM cron_job_history
 			ORDER BY started_at DESC
 			LIMIT 20
-		`).all();
+		`
+			)
+			.all();
 
 		// Get last run for each job
-		const lastRunResult = await db.prepare(`
+		const lastRunResult = await db
+			.prepare(
+				`
 			SELECT job_name, 
 			       MAX(started_at) as last_run,
 			       (SELECT status FROM cron_job_history c2 
@@ -107,7 +121,9 @@ async function getCronJobData(db) {
 			        ORDER BY started_at DESC LIMIT 1) as last_duration
 			FROM cron_job_history
 			GROUP BY job_name
-		`).all();
+		`
+			)
+			.all();
 
 		const lastRuns = {};
 		for (const row of lastRunResult.results || []) {
@@ -119,14 +135,14 @@ async function getCronJobData(db) {
 		}
 
 		return {
-			history: (historyResult.results || []).map(h => ({
+			history: (historyResult.results || []).map((h) => ({
 				...h,
 				result_data: h.result_data ? JSON.parse(h.result_data) : null,
 			})),
 			lastRuns,
 		};
 	} catch (error) {
-		log.error("[Superadmin] Failed to get cron job data:", error);
+		log.error('[Superadmin] Failed to get cron job data:', error);
 		return { history: [], lastRuns: {} };
 	}
 }
@@ -137,10 +153,11 @@ async function getCronJobData(db) {
 function checkIsSuperAdmin(userId, platform) {
 	if (!userId) return false;
 
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
-		process.env.ADMIN_USER_IDS || "";
+	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
 
-	const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
+	const superAdminIdList = adminUserIds
+		.split(',')
+		.map((id) => id.trim())
 		.filter(Boolean);
 
 	return superAdminIdList.includes(userId);
@@ -153,11 +170,14 @@ async function getBotGuildsWithDetails(botToken) {
 	if (!botToken) return [];
 
 	try {
-		const response = await fetch("https://discord.com/api/v10/users/@me/guilds?with_counts=true", {
-			headers: {
-				Authorization: `Bot ${botToken}`,
-			},
-		});
+		const response = await fetch(
+			'https://discord.com/api/v10/users/@me/guilds?with_counts=true',
+			{
+				headers: {
+					Authorization: `Bot ${botToken}`,
+				},
+			}
+		);
 
 		if (!response.ok) {
 			log.warn(`[Superadmin] Failed to fetch bot guilds: ${response.status}`);
@@ -166,7 +186,7 @@ async function getBotGuildsWithDetails(botToken) {
 
 		return await response.json();
 	} catch (error) {
-		log.error("[Superadmin] Failed to fetch bot guilds:", error);
+		log.error('[Superadmin] Failed to fetch bot guilds:', error);
 		return [];
 	}
 }
@@ -178,7 +198,7 @@ async function getBotApplicationInfo(botToken) {
 	if (!botToken) return null;
 
 	try {
-		const response = await fetch("https://discord.com/api/v10/oauth2/applications/@me", {
+		const response = await fetch('https://discord.com/api/v10/oauth2/applications/@me', {
 			headers: {
 				Authorization: `Bot ${botToken}`,
 			},
@@ -191,7 +211,7 @@ async function getBotApplicationInfo(botToken) {
 
 		return await response.json();
 	} catch (error) {
-		log.error("[Superadmin] Failed to fetch bot app info:", error);
+		log.error('[Superadmin] Failed to fetch bot app info:', error);
 		return null;
 	}
 }
@@ -218,21 +238,29 @@ async function getGlobalStats(db) {
 			// Total custom commands
 			db.prepare(`SELECT COUNT(*) as count FROM commands`).first(),
 			// Total event logs (last 30 days)
-			db.prepare(`
+			db
+				.prepare(
+					`
 				SELECT COUNT(*) as count FROM event_logs 
 				WHERE created_at >= datetime('now', '-30 days')
-			`).first(),
+			`
+				)
+				.first(),
 			// Total webhooks
 			db.prepare(`SELECT COUNT(*) as count FROM webhooks`).first(),
 			// Activity by guild (last 7 days)
-			db.prepare(`
+			db
+				.prepare(
+					`
 				SELECT guild_id, COUNT(*) as event_count
 				FROM event_logs
 				WHERE created_at >= datetime('now', '-7 days')
 				GROUP BY guild_id
 				ORDER BY event_count DESC
 				LIMIT 10
-			`).all(),
+			`
+				)
+				.all(),
 		]);
 
 		return {
@@ -244,7 +272,7 @@ async function getGlobalStats(db) {
 			recentActivityByGuild: recentActivityByGuild?.results || [],
 		};
 	} catch (error) {
-		log.error("[Superadmin] Failed to fetch global stats:", error);
+		log.error('[Superadmin] Failed to fetch global stats:', error);
 		return null;
 	}
 }
@@ -257,7 +285,9 @@ async function getServerStatsSummary(db) {
 
 	try {
 		// Get the latest stats for each guild
-		const result = await db.prepare(`
+		const result = await db
+			.prepare(
+				`
 			SELECT 
 				s1.guild_id,
 				s1.member_count,
@@ -271,22 +301,24 @@ async function getServerStatsSummary(db) {
 				FROM server_stats
 				GROUP BY guild_id
 			) s2 ON s1.guild_id = s2.guild_id AND s1.recorded_at = s2.max_recorded
-		`).all();
+		`
+			)
+			.all();
 
 		return result?.results || [];
 	} catch (error) {
-		log.error("[Superadmin] Failed to fetch server stats summary:", error);
+		log.error('[Superadmin] Failed to fetch server stats summary:', error);
 		return [];
 	}
 }
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform }) {
-	const userId = cookies.get("discord_user_id");
+	const userId = cookies.get('discord_user_id');
 
 	// Verify superadmin access
 	if (!checkIsSuperAdmin(userId, platform)) {
-		throw redirect(302, "/admin");
+		throw redirect(302, '/admin');
 	}
 
 	const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
@@ -294,7 +326,7 @@ export async function load({ cookies, platform }) {
 
 	// Dev-bypass sessions use a fake access token and have no real bot — skip
 	// the Discord round-trips entirely instead of letting them fail with 401.
-	const isDevMockToken = cookies.get("discord_access_token") === "dev_mock_token";
+	const isDevMockToken = cookies.get('discord_access_token') === 'dev_mock_token';
 
 	// Fetch all data in parallel
 	const [
@@ -309,22 +341,24 @@ export async function load({ cookies, platform }) {
 		builtInCommands,
 		integrations,
 		firstLoginDmEnabled,
+		messagePurgeSettings,
 	] = await Promise.all([
 		isDevMockToken ? Promise.resolve([]) : getBotGuildsWithDetails(botToken),
 		isDevMockToken ? Promise.resolve(null) : getBotApplicationInfo(botToken),
 		getGlobalStats(db),
 		getServerStatsSummary(db),
 		getCronJobData(db),
-		getGlobalMemberGrowthChart(db, "30d"),
-		getGlobalVoiceActivityChart(db, "30d"),
-		getGlobalStatsSummary(db, "30d"),
+		getGlobalMemberGrowthChart(db, '30d'),
+		getGlobalVoiceActivityChart(db, '30d'),
+		getGlobalStatsSummary(db, '30d'),
 		db ? getBuiltInCommands(db) : [],
 		db ? listIntegrations(db) : [],
 		db ? getFirstLoginDmEnabled(db) : false,
+		getMessagePurgeSettings(db),
 	]);
 
 	// Build cron jobs with last run info
-	const cronJobs = getCronJobDefinitions().map(job => ({
+	const cronJobs = getCronJobDefinitions().map((job) => ({
 		...job,
 		lastRun: cronJobData.lastRuns[job.name]?.lastRun || null,
 		lastStatus: cronJobData.lastRuns[job.name]?.lastStatus || null,
@@ -332,8 +366,8 @@ export async function load({ cookies, platform }) {
 	}));
 
 	// Merge server stats with guild info
-	const statsMap = new Map(serverStatsSummary.map(s => [s.guild_id, s]));
-	const guildsWithStats = botGuilds.map(guild => ({
+	const statsMap = new Map(serverStatsSummary.map((s) => [s.guild_id, s]));
+	const guildsWithStats = botGuilds.map((guild) => ({
 		...guild,
 		stats: statsMap.get(guild.id) || null,
 	}));
@@ -346,22 +380,28 @@ export async function load({ cookies, platform }) {
 	});
 
 	// Calculate totals
-	const totalMembers = guildsWithStats.reduce((sum, g) => 
-		sum + (g.stats?.member_count || g.approximate_member_count || 0), 0);
-	const totalChannels = guildsWithStats.reduce((sum, g) => 
-		sum + (g.stats?.channel_count || 0), 0);
+	const totalMembers = guildsWithStats.reduce(
+		(sum, g) => sum + (g.stats?.member_count || g.approximate_member_count || 0),
+		0
+	);
+	const totalChannels = guildsWithStats.reduce(
+		(sum, g) => sum + (g.stats?.channel_count || 0),
+		0
+	);
 	const externalIntegrations = integrations.filter(usesIntegrationTokenAuth);
 
 	return {
 		isSuperAdmin: true,
-		botApp: botAppInfo ? {
-			id: botAppInfo.id,
-			name: botAppInfo.name,
-			icon: botAppInfo.icon,
-			description: botAppInfo.description,
-			isPublic: botAppInfo.bot_public,
-			approximateGuildCount: botAppInfo.approximate_guild_count,
-		} : null,
+		botApp: botAppInfo
+			? {
+					id: botAppInfo.id,
+					name: botAppInfo.name,
+					icon: botAppInfo.icon,
+					description: botAppInfo.description,
+					isPublic: botAppInfo.bot_public,
+					approximateGuildCount: botAppInfo.approximate_guild_count,
+				}
+			: null,
 		guilds: guildsWithStats,
 		summary: {
 			totalGuilds: botGuilds.length,
@@ -387,10 +427,11 @@ export async function load({ cookies, platform }) {
 		actionTypes: ACTION_TYPES,
 		responseTypes: RESPONSE_TYPES,
 		firstLoginDmEnabled,
+		messagePurgeSettings,
 		user: {
 			id: userId,
-			username: cookies.get("discord_username") || "Superadmin",
-			avatar: cookies.get("discord_avatar") || null,
+			username: cookies.get('discord_username') || 'Superadmin',
+			avatar: cookies.get('discord_avatar') || null,
 		},
 	};
 }

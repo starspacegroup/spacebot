@@ -29,6 +29,11 @@ import { log } from '../log.js';
 import { buildLiveVoiceSnapshot } from '../db/live-voice.js';
 import { generateChatResponse, isAIEnabled } from '../ai/chat.js';
 import { resolveTargetUser } from '../automation/engine.js';
+import {
+	deleteUserMessages,
+	deleteMessagesByUser,
+	deleteMentionedMessages,
+} from '../automation/message-delete.js';
 import { fetchSignedWidgetPng, resolveWidgetOrigin } from '../stats-widget-delivery.js';
 import { verifyLiveUpdateAccess } from '../live-updates.js';
 
@@ -56,6 +61,7 @@ const GATEWAY_SELF_UPDATE_WORKDIR = process.env.GATEWAY_SELF_UPDATE_WORKDIR || p
 const VOICE_SESSION_RECONCILE_COOLDOWN_MS = 60_000;
 const VOICE_SESSION_POLL_INTERVAL_MS = 60_000;
 const WORKERS_AI_MODEL_CONFIG_CACHE_MS = 0;
+const MESSAGE_PURGE_SETTINGS_CACHE_MS = 30_000;
 
 let gatewayLogCaptureEnabled = false;
 let gatewayLogQueue = [];
@@ -69,6 +75,7 @@ let lastVoiceSessionReconcileAt = 0;
 let voiceSessionReconcileInFlight = false;
 let voiceSessionPollTimer = null;
 let cachedWorkersAIModelConfig = null;
+let cachedMessagePurgeMaxScan = null;
 const liveUpdateClientsByGuild = new Map();
 
 function parseVersionParts(value) {
@@ -328,6 +335,44 @@ async function getWorkersAIModelConfig() {
 	} catch (error) {
 		log.warn(`[AI] Could not load Workers AI model config: ${error.message}`);
 		return null;
+	}
+}
+
+/**
+ * The gateway has no direct D1, so it reads the superadmin message-lookback cap
+ * over HTTP (short-cached). Returns the max messages a delete action may scan in
+ * one run — the same knob the edge and durable purge honour. Falls back to the
+ * default (33 batches × 100) when the API is unreachable, so deletes still work.
+ */
+async function getMessagePurgeMaxScan() {
+	const now = Date.now();
+	if (
+		cachedMessagePurgeMaxScan &&
+		now - cachedMessagePurgeMaxScan.cachedAt < MESSAGE_PURGE_SETTINGS_CACHE_MS
+	) {
+		return cachedMessagePurgeMaxScan.value;
+	}
+
+	const fallback = 33 * 100;
+	const botToken = process.env.DISCORD_BOT_TOKEN;
+	if (!botToken) return fallback;
+
+	try {
+		const response = await fetch(`${API_BASE}/api/gateway/message-purge-settings`, {
+			headers: { Authorization: `Bot ${botToken}` },
+		});
+		if (!response.ok) {
+			log.warn(`[Automation] Failed to fetch purge settings: ${response.status}`);
+			return fallback;
+		}
+		const payload = await response.json();
+		const maxBatches = Number(payload?.maxBatches) || 33;
+		const value = maxBatches * 100;
+		cachedMessagePurgeMaxScan = { cachedAt: now, value };
+		return value;
+	} catch (error) {
+		log.warn(`[Automation] Could not load purge settings: ${error.message}`);
+		return fallback;
 	}
 }
 
@@ -1691,7 +1736,6 @@ async function executeAutomationAction(automation, event) {
 
 	switch (action_type) {
 		case 'DELETE_USER_MESSAGES': {
-			// Enhanced version that supports multiple channels
 			const channelIds = action_config.channel_ids || 'ALL';
 			const maxAgeDays = resolveNumberValue(action_config.max_age_days, event, null);
 			const maxMessages = resolveNumberValue(action_config.max_messages, event, null);
@@ -1703,95 +1747,22 @@ async function executeAutomationAction(automation, event) {
 				throw new Error('Missing user ID');
 			}
 
-			const guild = await client.guilds.fetch(event.guild_id);
-			if (!guild) throw new Error('Guild not found');
-
-			let channelsToProcess = [];
-
-			// Handle "ALL" option or empty - get all text channels in the guild
-			if (!channelIds || channelIds === 'ALL') {
-				const allChannels = await guild.channels.fetch();
-				channelsToProcess = Array.from(allChannels.values())
-					.filter((c: any) => c && c.isTextBased() && !c.isVoiceBased())
-					.map((c: any) => c.id);
-			} else {
-				// Parse comma-separated channel IDs
-				channelsToProcess = channelIds.split(',').map((id) => id.trim());
-			}
-
-			// Calculate cutoff date if max_age_days is specified
-			const cutoffTime = maxAgeDays ? Date.now() - maxAgeDays * 24 * 60 * 60 * 1000 : null;
-
-			log.info(
-				`[Automation] Deleting messages from ${userId} in ${channelsToProcess.length} channel(s)` +
-					(maxAgeDays ? ` (last ${maxAgeDays} days)` : '') +
-					(maxMessages ? ` (max ${maxMessages})` : '')
-			);
-
-			let totalDeleted = 0;
-
-			for (const channelId of channelsToProcess) {
-				// Stop if we've hit the max messages limit
-				if (maxMessages && totalDeleted >= maxMessages) break;
-
-				const channel = await client.channels.fetch(channelId).catch(() => null);
-				if (!channel || !channel.messages) continue;
-
-				try {
-					const messages = await channel.messages.fetch({ limit: 100 });
-					let userMessages = messages.filter((m) => m.author.id === userId);
-
-					// Filter by age if specified
-					if (cutoffTime) {
-						userMessages = userMessages.filter((m) => m.createdTimestamp >= cutoffTime);
-					}
-
-					// Skip pinned messages if configured
-					if (skipPinned) {
-						userMessages = userMessages.filter((m) => !m.pinned);
-					}
-
-					// Limit to remaining quota if max_messages is set
-					const remainingQuota = maxMessages ? maxMessages - totalDeleted : Infinity;
-					const toDelete: any[] = Array.from(userMessages.values()).slice(
-						0,
-						remainingQuota
-					);
-
-					if (toDelete.length === 0) continue;
-
-					// Try bulk delete for recent messages
-					const recentMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
-					);
-
-					if (recentMessages.length > 1) {
-						await channel.bulkDelete(recentMessages);
-					} else if (recentMessages.length === 1) {
-						await recentMessages[0].delete();
-					}
-
-					// Delete older messages individually
-					const oldMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
-					);
-
-					for (const msg of oldMessages) {
-						await msg.delete().catch(() => {});
-						await new Promise((r) => setTimeout(r, 500));
-					}
-
-					totalDeleted += toDelete.length;
-					log.info(
-						`[Automation] Deleted ${toDelete.length} messages in #${channel.name}`
-					);
-				} catch (err) {
-					log.error(`[Automation] Error deleting in ${channelId}:`, err.message);
-				}
-			}
+			// Shared, paginated implementation (same as the edge engine), bounded by
+			// the superadmin lookback ceiling fetched over HTTP.
+			const { totalDeleted, channelsProcessed } = await deleteUserMessages(client, {
+				guildId: event.guild_id,
+				channelIds,
+				userId,
+				maxMessages,
+				maxAgeDays,
+				skipPinned,
+				maxScan: await getMessagePurgeMaxScan(),
+				onChannelDeleted: (channel, deleted) =>
+					log.info(`[Automation] Deleted ${deleted} messages in #${channel.name}`),
+			});
 
 			log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
-			return { totalDeleted, channelsProcessed: channelsToProcess.length };
+			return { totalDeleted, channelsProcessed };
 		}
 
 		case 'DELETE_MESSAGES': {
@@ -1803,74 +1774,18 @@ async function executeAutomationAction(automation, event) {
 				throw new Error('Missing user ID');
 			}
 
-			const guild = await client.guilds.fetch(event.guild_id);
-			if (!guild) throw new Error('Guild not found');
-
-			let channelsToProcess = [];
-
-			// Handle "ALL" option or empty - get all text channels in the guild
-			if (!channelIds || channelIds === 'ALL') {
-				const allChannels = await guild.channels.fetch();
-				channelsToProcess = Array.from(allChannels.values())
-					.filter((c: any) => c && c.isTextBased() && !c.isVoiceBased())
-					.map((c: any) => c.id);
-			} else {
-				// Parse comma-separated channel IDs
-				channelsToProcess = channelIds.split(',').map((id) => id.trim());
-			}
-
-			let totalDeleted = 0;
-
-			for (const channelId of channelsToProcess) {
-				if (totalDeleted >= limit) break;
-
-				const channel = await client.channels.fetch(channelId).catch(() => null);
-				if (!channel || !channel.messages) continue;
-
-				try {
-					// Fetch messages and filter by user
-					const messages = await channel.messages.fetch({ limit: 100 });
-					const userMessages = messages.filter((m) => m.author.id === userId);
-					const remainingQuota = limit - totalDeleted;
-					const toDelete: any[] = Array.from(userMessages.values()).slice(
-						0,
-						remainingQuota
-					);
-
-					if (toDelete.length === 0) continue;
-
-					// Try bulk delete for recent messages
-					const recentMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
-					);
-
-					if (recentMessages.length > 1) {
-						await channel.bulkDelete(recentMessages);
-					} else if (recentMessages.length === 1) {
-						await recentMessages[0].delete();
-					}
-
-					// Delete older messages individually
-					const oldMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
-					);
-
-					for (const msg of oldMessages) {
-						await msg.delete().catch(() => {});
-						await new Promise((r) => setTimeout(r, 500));
-					}
-
-					totalDeleted += toDelete.length;
-					log.info(
-						`[Automation] Deleted ${toDelete.length} messages in #${channel.name}`
-					);
-				} catch (err) {
-					log.error(`[Automation] Error deleting in ${channelId}:`, err.message);
-				}
-			}
+			const { totalDeleted, channelsProcessed } = await deleteMessagesByUser(client, {
+				guildId: event.guild_id,
+				channelIds,
+				userId,
+				limit,
+				maxScan: await getMessagePurgeMaxScan(),
+				onChannelDeleted: (channel, deleted) =>
+					log.info(`[Automation] Deleted ${deleted} messages in #${channel.name}`),
+			});
 
 			log.info(`[Automation] Total deleted: ${totalDeleted} messages`);
-			return { totalDeleted, channelsProcessed: channelsToProcess.length };
+			return { totalDeleted, channelsProcessed };
 		}
 
 		case 'DELETE_MENTIONED_MESSAGES': {
@@ -1886,67 +1801,20 @@ async function executeAutomationAction(automation, event) {
 				throw new Error('No channels specified');
 			}
 
-			const guild = await client.guilds.fetch(event.guild_id);
-			if (!guild) throw new Error('Guild not found');
-
-			// Parse comma-separated channel IDs
-			const channelsToProcess = channelIds
-				.split(',')
-				.map((id) => id.trim())
-				.filter(Boolean);
-
-			let totalDeleted = 0;
-
-			for (const channelId of channelsToProcess) {
-				if (totalDeleted >= limit) break;
-
-				const channel = await client.channels.fetch(channelId).catch(() => null);
-				if (!channel || !channel.messages) continue;
-
-				try {
-					// Fetch messages and filter by mentions
-					const messages = await channel.messages.fetch({ limit: 100 });
-					const mentionedMessages = messages.filter((m) => m.mentions.has(userId));
-					const remainingQuota = limit - totalDeleted;
-					const toDelete: any[] = Array.from(mentionedMessages.values()).slice(
-						0,
-						remainingQuota
-					);
-
-					if (toDelete.length === 0) continue;
-
-					// Try bulk delete for recent messages
-					const recentMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp < 14 * 24 * 60 * 60 * 1000
-					);
-
-					if (recentMessages.length > 1) {
-						await channel.bulkDelete(recentMessages);
-					} else if (recentMessages.length === 1) {
-						await recentMessages[0].delete();
-					}
-
-					// Delete older messages individually
-					const oldMessages = toDelete.filter(
-						(m: any) => Date.now() - m.createdTimestamp >= 14 * 24 * 60 * 60 * 1000
-					);
-
-					for (const msg of oldMessages) {
-						await msg.delete().catch(() => {});
-						await new Promise((r) => setTimeout(r, 500));
-					}
-
-					totalDeleted += toDelete.length;
+			const { totalDeleted, channelsProcessed } = await deleteMentionedMessages(client, {
+				guildId: event.guild_id,
+				channelIds,
+				userId,
+				limit,
+				maxScan: await getMessagePurgeMaxScan(),
+				onChannelDeleted: (channel, deleted) =>
 					log.info(
-						`[Automation] Deleted ${toDelete.length} messages mentioning <@${userId}> in #${channel.name}`
-					);
-				} catch (err) {
-					log.error(`[Automation] Error deleting in ${channelId}:`, err.message);
-				}
-			}
+						`[Automation] Deleted ${deleted} messages mentioning <@${userId}> in #${channel.name}`
+					),
+			});
 
 			log.info(`[Automation] Total deleted: ${totalDeleted} messages mentioning user`);
-			return { totalDeleted, channelsProcessed: channelsToProcess.length };
+			return { totalDeleted, channelsProcessed };
 		}
 
 		case 'SEND_MESSAGE': {

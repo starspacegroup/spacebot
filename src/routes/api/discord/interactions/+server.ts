@@ -6,7 +6,18 @@ import {
 	logCommandExecution,
 	recordCommandUse,
 } from '$lib/db/commands.js';
-import { executeAction, processTemplate } from '$lib/automation/engine.js';
+import {
+	executeAction,
+	processTemplate,
+	resolveTargetUser,
+	resolveNumberValue,
+} from '$lib/automation/engine.js';
+import {
+	canOffloadPurge,
+	enqueueMessagePurge,
+	type PurgeMeta,
+} from '$lib/server/message-purge-queue.js';
+import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { log } from '$lib/db/logger.js';
@@ -767,6 +778,52 @@ async function handleCustomCommand(
 	});
 }
 
+/** Delete actions that sweep message history and can grow unbounded. */
+const PURGE_ACTION_TYPES = new Set([
+	'DELETE_USER_MESSAGES',
+	'DELETE_MESSAGES',
+	'DELETE_MENTIONED_MESSAGES',
+]);
+
+/** A server-wide sweep (every channel) is the case the edge can't reliably
+ * finish within one request's subrequest budget — offload those. Explicit,
+ * bounded channel lists stay inline. */
+function isBroadSweep(config: any): boolean {
+	const channels = config?.channel_ids;
+	return !channels || channels === 'ALL';
+}
+
+/** Map a delete action's config into a durable PurgeDescriptor, resolving the
+ * target user and any option-ref numbers against the interaction event. Returns
+ * null when the target user can't be resolved. */
+function buildPurgeDescriptor(actionType: string, config: any, event: any): PurgeDescriptor | null {
+	const userId = resolveTargetUser(config, event);
+	if (!userId) return null;
+
+	const channel_ids = config?.channel_ids || 'ALL';
+	const common = { guild_id: event.guild_id, user_id: userId, channel_ids };
+
+	if (actionType === 'DELETE_USER_MESSAGES') {
+		return {
+			...common,
+			mode: 'user' as PurgeMode,
+			max_age_days: resolveNumberValue(config?.max_age_days, event, null),
+			max_messages: resolveNumberValue(config?.max_messages, event, null),
+			skip_pinned: config?.skip_pinned !== false && config?.skip_pinned !== 'false',
+		};
+	}
+
+	// DELETE_MESSAGES / DELETE_MENTIONED_MESSAGES: bounded by `limit`, no age/pin.
+	const mode: PurgeMode = actionType === 'DELETE_MENTIONED_MESSAGES' ? 'mentions' : 'user';
+	return {
+		...common,
+		mode,
+		max_age_days: null,
+		max_messages: Number(config?.limit) || 100,
+		skip_pinned: false,
+	};
+}
+
 /**
  * Handle a deferred custom command - executes actions asynchronously
  * and follows up via Discord webhook
@@ -932,7 +989,40 @@ async function handleDeferredCommand(
 			const filteredActions = filterActionsByConditions(actionsToExecute, event);
 
 			const results = [];
+			let purgeOffloaded = false;
 			for (const action of filteredActions) {
+				// A server-wide message purge can exceed a single edge request's
+				// subrequest budget. Hand those to the durable MessagePurgeWorkflow,
+				// which pages through history one bounded batch at a time. Bounded,
+				// single-channel deletes still run inline below.
+				if (
+					PURGE_ACTION_TYPES.has(action.type) &&
+					isBroadSweep(action.config || {}) &&
+					canOffloadPurge(platform)
+				) {
+					const descriptor = buildPurgeDescriptor(
+						action.type,
+						action.config || {},
+						event
+					);
+					if (descriptor) {
+						const meta: PurgeMeta = {
+							interaction_id: interaction.id,
+							application_id: applicationId,
+							interaction_token: interactionToken,
+							channel_id: interaction.channel_id,
+							command_name: command.name,
+						};
+						const enqueued = await enqueueMessagePurge(platform, descriptor, meta);
+						if (enqueued) {
+							purgeOffloaded = true;
+							results.push({ success: true, result: { offloaded: 'message_purge' } });
+							continue;
+						}
+						// Enqueue failed → fall through to inline execution.
+					}
+				}
+
 				const result = await executeAction(
 					{
 						name: command.name,
@@ -956,6 +1046,30 @@ async function handleDeferredCommand(
 					success: true,
 					result: results.map((r) => r.result),
 				};
+			}
+
+			// A queued purge updates its own reply as it runs; show a starting note
+			// instead of the generic command response and skip the final edit below.
+			// If another action in the command failed, fall through to the normal
+			// failure edit rather than masking it.
+			if (purgeOffloaded && actionResult.success) {
+				await editOriginalResponse({
+					content:
+						'🧹 Purging messages across the server… I’ll update this message as it runs.',
+				});
+				await logCommandExecution(db, {
+					command_id: command.id,
+					guild_id: interaction.guild_id,
+					user_id: context.user.id,
+					user_name: context.user.name,
+					channel_id: interaction.channel_id,
+					options_used: interaction.data?.options || null,
+					action_result: { offloaded: 'message_purge' },
+					success: true,
+					error_message: null,
+					execution_time_ms: Date.now() - startTime,
+				});
+				return;
 			}
 		}
 
@@ -1527,6 +1641,14 @@ function createRESTClient(platform: PlatformLike | undefined) {
 									content: m.content,
 									pinned: m.pinned,
 									createdTimestamp: new Date(m.timestamp).getTime(),
+									// discord.js exposes MessageMentions.has(); mirror it over the
+									// raw mentions array so DELETE_MENTIONED_MESSAGES works on the
+									// edge REST client, not just the gateway.
+									mentions: {
+										has: (id: string) =>
+											Array.isArray(m.mentions) &&
+											m.mentions.some((u: { id?: string }) => u?.id === id),
+									},
 									async delete() {
 										await fetch(
 											`https://discord.com/api/v10/channels/${channelId}/messages/${m.id}`,

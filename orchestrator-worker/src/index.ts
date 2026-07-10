@@ -1,7 +1,8 @@
 import { CronDispatchWorkflow } from './cron-dispatch-workflow';
 import { SuperadminRunWorkflow } from './superadmin-run-workflow';
+import { MessagePurgeWorkflow } from './message-purge-workflow';
 
-export { CronDispatchWorkflow, SuperadminRunWorkflow };
+export { CronDispatchWorkflow, SuperadminRunWorkflow, MessagePurgeWorkflow };
 
 export interface Env {
 	SPACEBOT_API_BASE?: string;
@@ -9,6 +10,7 @@ export interface Env {
 	AI_AUTOPILOT_INTERNAL_KEY?: string;
 	CRON_DISPATCH_WORKFLOW: Workflow;
 	SUPERADMIN_RUN_WORKFLOW: Workflow;
+	MESSAGE_PURGE_WORKFLOW: Workflow;
 	AI_AUTOPILOT_QUEUE: Queue<QueueMessage>;
 }
 
@@ -19,10 +21,17 @@ interface QueueMessage {
 		| 'ai_watchdog_sweep'
 		| 'superadmin_run_start'
 		| 'superadmin_run_approval'
+		| 'message_purge_start'
 		| string;
 	jobId?: string;
 	runId?: number;
 	stepKey?: string;
+	/** message_purge_start payload. */
+	purge?: Record<string, unknown>;
+	meta?: Record<string, unknown>;
+	/** Set on a checkpoint continuation — resume from this saved state. */
+	resume_state?: Record<string, unknown>;
+	continuation?: number;
 }
 
 async function postJson(url: string, body: unknown, env: Env): Promise<unknown> {
@@ -84,6 +93,33 @@ async function startSuperadminRun(runId: number | undefined, env: Env): Promise<
 	}
 }
 
+/** Start a durable message-purge Workflow. The instance id is derived from the
+ * interaction id (plus continuation index) so duplicate queue deliveries are
+ * no-ops while a checkpoint continuation still gets a fresh instance. */
+async function startMessagePurge(payload: QueueMessage, env: Env): Promise<void> {
+	const purge = payload.purge;
+	const meta = payload.meta;
+	if (!purge) return;
+
+	const interactionId = meta?.interaction_id ? String(meta.interaction_id) : '';
+	const continuation = Number(payload.continuation) || 0;
+	const baseId = interactionId ? `purge-${interactionId}` : '';
+	const id = baseId ? (continuation > 0 ? `${baseId}-c${continuation}` : baseId) : undefined;
+
+	try {
+		await env.MESSAGE_PURGE_WORKFLOW.create({
+			...(id ? { id } : {}),
+			params: { purge, meta, resume_state: payload.resume_state, continuation },
+		});
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/already exists|instance.*exists/i.test(message)) {
+			return; // Duplicate delivery — the purge is already running.
+		}
+		throw error;
+	}
+}
+
 /** Wake a run's driver Workflow after an operator approval decision. The
  * decision itself is already durable in D1; failing to wake only means the
  * gate resolves at its waitForEvent timeout instead of instantly, so
@@ -135,6 +171,12 @@ const handler: ExportedHandler<Env, QueueMessage> = {
 				if (type === 'superadmin_run_approval') {
 					// Best-effort wake-up; the dispatch watchdog is the safety net.
 					await wakeSuperadminRun(payload.runId, payload.stepKey, env);
+					message.ack();
+					continue;
+				}
+
+				if (type === 'message_purge_start') {
+					await startMessagePurge(payload, env);
 					message.ack();
 					continue;
 				}

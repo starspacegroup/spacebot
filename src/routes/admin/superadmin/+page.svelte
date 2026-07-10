@@ -33,6 +33,13 @@
 	let firstLoginDmSaving = $state(false);
 	let firstLoginDmError = $state(null);
 
+	// Message purge (server-wide delete sweep) settings
+	let purgeMaxBatches = $state(33);
+	let purgeCheckpointContinue = $state(false);
+	let purgeSaving = $state(false);
+	let purgeError = $state(null);
+	let purgeSaved = $state(false);
+
 	// State for running cron jobs
 	const runningJobs = $state({});
 	const jobResults = $state({});
@@ -42,6 +49,8 @@
 		cronJobs = data?.cronJobs ?? [];
 		cronJobHistory = data?.cronJobHistory ?? [];
 		firstLoginDmEnabled = data?.firstLoginDmEnabled === true;
+		purgeMaxBatches = data?.messagePurgeSettings?.maxBatches ?? 33;
+		purgeCheckpointContinue = data?.messagePurgeSettings?.checkpointContinue === true;
 	});
 
 	// Built-in commands state
@@ -156,6 +165,32 @@
 
 	function toggleFirstLoginDmSetting() {
 		return updateFirstLoginDmSetting(!firstLoginDmEnabled);
+	}
+
+	async function saveMessagePurgeSettings() {
+		purgeSaving = true;
+		purgeError = null;
+		purgeSaved = false;
+
+		try {
+			const response = await fetch('/api/superadmin/settings/message-purge', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					maxBatches: purgeMaxBatches,
+					checkpointContinue: purgeCheckpointContinue,
+				}),
+			});
+			const result = await parseJsonResponse(response, 'Failed to update purge settings');
+
+			purgeMaxBatches = result.maxBatches ?? purgeMaxBatches;
+			purgeCheckpointContinue = result.checkpointContinue === true;
+			purgeSaved = true;
+		} catch (error) {
+			purgeError = error.message;
+		} finally {
+			purgeSaving = false;
+		}
 	}
 
 	onMount(() => {
@@ -643,6 +678,64 @@
 			{/if}
 		</section>
 
+		<section class="stats-section superadmin-settings-section">
+			<div class="superadmin-settings-header">
+				<h2 class="section-title">
+					<span class="section-icon">🧹</span>
+					Message Purge
+				</h2>
+			</div>
+
+			<p class="gateway-logs-hint">
+				Server-wide delete sweeps (e.g. a <code>/spam</code> command deleting a user's messages
+				across every channel) run as a durable background job that pages through history one batch
+				at a time. Each batch scans up to one 100-message page; the first batch resolves the channel
+				list.
+			</p>
+
+			<div class="purge-settings-row">
+				<label class="purge-field">
+					<span class="purge-field-label">Max scan batches per run</span>
+					<input
+						type="number"
+						min="2"
+						max="500"
+						bind:value={purgeMaxBatches}
+						class="purge-number-input"
+					/>
+				</label>
+
+				<label class="purge-checkbox">
+					<input type="checkbox" bind:checked={purgeCheckpointContinue} />
+					<span>
+						<strong>Checkpoint &amp; continue</strong> — when a run hits the batch cap, automatically
+						re-queue to keep going instead of stopping. Off = stop and let the user re-run.
+					</span>
+				</label>
+
+				<div class="purge-settings-actions">
+					<button
+						class="btn btn-sm btn-primary"
+						onclick={saveMessagePurgeSettings}
+						disabled={purgeSaving}
+					>
+						{purgeSaving ? 'Saving...' : 'Save'}
+					</button>
+					{#if purgeSaved}
+						<span class="purge-saved">✓ Saved</span>
+					{/if}
+				</div>
+			</div>
+
+			{#if purgeError}
+				<div class="cmd-toast cmd-toast-error">
+					<span>✗</span>
+					{purgeError}
+					<button class="cmd-toast-close" onclick={() => (purgeError = null)}>✕</button>
+				</div>
+			{/if}
+		</section>
+
 		<!-- Cron Jobs -->
 		<section class="cron-section">
 			<h2 class="section-title">
@@ -864,8 +957,7 @@
 											bind:value={editingCommand.response_content}
 											class="form-textarea"
 											rows="3"
-											placeholder="Response text..."
-										></textarea>
+											placeholder="Response text..."></textarea>
 									</div>
 								{/if}
 								{#if editingCommand.response_type === 'embed'}
@@ -898,8 +990,7 @@
 											}}
 											class="form-textarea"
 											rows="3"
-											placeholder="Embed description..."
-										></textarea>
+											placeholder="Embed description..."></textarea>
 									</div>
 								{/if}
 								<div class="form-row form-row-inline">
@@ -1025,8 +1116,7 @@
 									bind:value={newCommand.response_content}
 									class="form-textarea"
 									rows="3"
-									placeholder="Response text..."
-								></textarea>
+									placeholder="Response text..."></textarea>
 							</div>
 						{/if}
 						{#if newCommand.response_type === 'embed'}
@@ -1059,8 +1149,7 @@
 									}}
 									class="form-textarea"
 									rows="3"
-									placeholder="Embed description..."
-								></textarea>
+									placeholder="Embed description..."></textarea>
 							</div>
 						{/if}
 						<div class="form-row form-row-inline">
@@ -1609,6 +1698,60 @@
 		margin: 0 0 0.75rem;
 		color: var(--color-text-muted);
 		font-size: 0.9rem;
+	}
+
+	.purge-settings-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 1.25rem;
+	}
+
+	.purge-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.purge-field-label {
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+	}
+
+	.purge-number-input {
+		width: 7rem;
+		padding: 0.4rem 0.5rem;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-bg);
+		color: var(--color-text);
+		font-size: 0.95rem;
+	}
+
+	.purge-checkbox {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		max-width: 32rem;
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+		line-height: 1.4;
+	}
+
+	.purge-checkbox input {
+		margin-top: 0.2rem;
+	}
+
+	.purge-settings-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+
+	.purge-saved {
+		color: var(--color-success, #22c55e);
+		font-size: 0.85rem;
 	}
 
 	.section-title {

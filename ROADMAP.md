@@ -99,6 +99,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
 - [x] Scheduled tasks and cron jobs — superadmin workflows on Cloudflare Cron Triggers + Workflows (PM2 tick retired to deploy-poll only)
 - [x] Durable workflow execution — per-run Cloudflare Workflow instances (queue-driven advance loop, approval gates, timed steps, retry/backoff, watchdog)
+- [x] Durable message purge — server-wide delete sweeps (`/spam`-style) offloaded to a `MessagePurgeWorkflow` that pages history one bounded batch at a time via `/api/discord/purge/advance`, escaping the per-request subrequest cap; superadmin-tunable per-run batch cap + optional checkpoint-and-continue (Admin → Superadmin → Message Purge). Inline delete actions unified into one shared paginated implementation (`message-delete.ts`) used by both the edge engine and the gateway (which reads the lookback setting over HTTP), so one lookback setting governs every message-lookback delete (`docs/message-purge.md`)
 - [x] Workflow version control — every definition change snapshotted (`superadmin_workflow_template_versions`); revert to any version + reset-to-built-in from the UI
 - [x] Workflow builder UI v2 — componentized step-list builder (no raw-JSON fallback), run drill-down with live approval decisions, version history panel
 - [x] Webhook integrations — webhooks + GitHub integration
@@ -164,6 +165,13 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       prompts forbid closed-book "the text does not specify" refusals about the user's own machine
       (`src/lib/ai/mcp-client.ts`, `src/lib/ai/chat.ts`, `src/routes/api/gateway/dm-runner/+server.ts`,
       `scripts/local-runner/index.ts`, `scripts/local-runner/memory.ts`)
+- [x] Runner-side Discord server visibility — new `GET /api/runner/guilds` gives the TUI a
+      deterministic, non-LLM `/servers` (`/guilds`) command listing every Discord server SpaceBot
+      has data for (superadmins) or the user's managed servers (everyone else), with member/boost
+      info from `guild_metadata`; free-form prompts ("what servers do I have") still route through
+      `callRunnerAssistant` to the same cloud MCP tools (`list_guilds`, `get_event_logs`, etc.) DMs
+      use (`src/routes/api/runner/guilds/+server.ts`, `scripts/local-runner/spacebot-assistant.ts`,
+      `scripts/local-runner/tui.tsx`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration
