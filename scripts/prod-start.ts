@@ -5,7 +5,7 @@
  * then starts the gateway and tunnel via PM2.
  *
  * Usage:
- *   node scripts/prod-start.js
+ *   bun scripts/prod-start.ts
  */
 
 import { execSync } from 'child_process';
@@ -200,8 +200,8 @@ if (commandExists('pm2')) {
 	console.log('  ✅ pm2 is available.');
 } else {
 	console.log('  ⚠️  pm2 not found. Installing globally...\n');
-	const npmCmd = commandExists('bun') ? 'bun add -g pm2' : 'npm install -g pm2';
-	run(npmCmd, 'install pm2');
+	// This script runs under Bun, so Bun is always available here.
+	run('bun add -g pm2', 'install pm2');
 	if (!commandExists('pm2')) {
 		console.error('❌ pm2 installation did not succeed. Please install it manually.');
 		process.exit(1);

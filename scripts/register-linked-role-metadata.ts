@@ -1,5 +1,5 @@
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 /**
  * Register Linked Role Connection Metadata with Discord
@@ -7,19 +7,19 @@ import { resolve } from "path";
  * This script registers the metadata schema that Discord uses to evaluate
  * linked role requirements. Run this once (or whenever you change metadata fields).
  *
- * Usage: node scripts/register-linked-role-metadata.js
+ * Usage: bun scripts/register-linked-role-metadata.ts
  */
 
 // Load .env file manually
 try {
-	const envPath = resolve(process.cwd(), ".env");
-	const envContent = readFileSync(envPath, "utf-8");
-	for (const line of envContent.split("\n")) {
+	const envPath = resolve(process.cwd(), '.env');
+	const envContent = readFileSync(envPath, 'utf-8');
+	for (const line of envContent.split('\n')) {
 		const trimmed = line.trim();
-		if (trimmed && !trimmed.startsWith("#")) {
-			const [key, ...valueParts] = trimmed.split("=");
+		if (trimmed && !trimmed.startsWith('#')) {
+			const [key, ...valueParts] = trimmed.split('=');
 			if (key && valueParts.length > 0) {
-				const value = valueParts.join("=").replace(/^["']|["']$/g, "");
+				const value = valueParts.join('=').replace(/^["']|["']$/g, '');
 				process.env[key.trim()] = value;
 			}
 		}
@@ -32,11 +32,11 @@ const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
 if (!CLIENT_ID || !BOT_TOKEN) {
-	console.error("Missing required environment variables:");
-	console.error("- DISCORD_CLIENT_ID");
-	console.error("- DISCORD_BOT_TOKEN");
-	console.error("");
-	console.error("Either set them in your environment or create a .env file");
+	console.error('Missing required environment variables:');
+	console.error('- DISCORD_CLIENT_ID');
+	console.error('- DISCORD_BOT_TOKEN');
+	console.error('');
+	console.error('Either set them in your environment or create a .env file');
 	process.exit(1);
 }
 
@@ -56,24 +56,24 @@ if (!CLIENT_ID || !BOT_TOKEN) {
  */
 const metadata = [
 	{
-		key: "verified",
-		name: "Verified",
-		description: "User has verified through SpaceBot",
+		key: 'verified',
+		name: 'Verified',
+		description: 'User has verified through SpaceBot',
 		type: 7, // BOOLEAN_EQUAL
 	},
 ];
 
 async function registerMetadata() {
-	console.log("Registering linked role metadata...");
-	console.log("Metadata:", JSON.stringify(metadata, null, 2));
+	console.log('Registering linked role metadata...');
+	console.log('Metadata:', JSON.stringify(metadata, null, 2));
 
 	const response = await fetch(
 		`https://discord.com/api/v10/applications/${CLIENT_ID}/role-connections/metadata`,
 		{
-			method: "PUT",
+			method: 'PUT',
 			headers: {
 				Authorization: `Bot ${BOT_TOKEN}`,
-				"Content-Type": "application/json",
+				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify(metadata),
 		}
@@ -86,8 +86,8 @@ async function registerMetadata() {
 	}
 
 	const result = await response.json();
-	console.log("✅ Linked role metadata registered successfully!");
-	console.log("Result:", JSON.stringify(result, null, 2));
+	console.log('✅ Linked role metadata registered successfully!');
+	console.log('Result:', JSON.stringify(result, null, 2));
 }
 
 registerMetadata();

@@ -7,8 +7,8 @@
  * Run this once (or after changing secrets) to sync .env -> GCP.
  *
  * Usage:
- *   node scripts/setup-secrets.js              # Dry run — shows what would be created
- *   node scripts/setup-secrets.js --confirm     # Actually create/update secrets
+ *   bun scripts/setup-secrets.ts              # Dry run — shows what would be created
+ *   bun scripts/setup-secrets.ts --confirm     # Actually create/update secrets
  *
  * Prerequisites:
  *   - gcloud CLI installed and authenticated
@@ -58,7 +58,10 @@ function parseEnvFile(filePath) {
 		const key = trimmed.slice(0, eqIdx).trim();
 		let value = trimmed.slice(eqIdx + 1).trim();
 		// Remove surrounding quotes
-		if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
 			value = value.slice(1, -1);
 		}
 		vars[key] = value;
@@ -71,7 +74,9 @@ function getProjectId() {
 	try {
 		return execSync('gcloud config get-value project', { stdio: 'pipe' }).toString().trim();
 	} catch {
-		console.error('❌ Could not determine GCP project. Set GCP_PROJECT_ID or run: gcloud config set project YOUR_PROJECT');
+		console.error(
+			'❌ Could not determine GCP project. Set GCP_PROJECT_ID or run: gcloud config set project YOUR_PROJECT'
+		);
 		process.exit(1);
 	}
 }
@@ -142,10 +147,13 @@ for (const name of toCreate) {
 	console.log(`  Creating ${name}...`);
 	try {
 		execSync(`gcloud secrets create ${name} --replication-policy=automatic`, { stdio: 'pipe' });
-		execSync(`echo -n "${envVars[name].replace(/"/g, '\\"')}" | gcloud secrets versions add ${name} --data-file=-`, {
-			stdio: 'pipe',
-			shell: true,
-		});
+		execSync(
+			`echo -n "${envVars[name].replace(/"/g, '\\"')}" | gcloud secrets versions add ${name} --data-file=-`,
+			{
+				stdio: 'pipe',
+				shell: true,
+			}
+		);
 		console.log(`  ✅ ${name} created`);
 	} catch (err) {
 		console.error(`  ❌ Failed to create ${name}: ${err.message}`);
@@ -155,10 +163,13 @@ for (const name of toCreate) {
 for (const name of toUpdate) {
 	console.log(`  Updating ${name}...`);
 	try {
-		execSync(`echo -n "${envVars[name].replace(/"/g, '\\"')}" | gcloud secrets versions add ${name} --data-file=-`, {
-			stdio: 'pipe',
-			shell: true,
-		});
+		execSync(
+			`echo -n "${envVars[name].replace(/"/g, '\\"')}" | gcloud secrets versions add ${name} --data-file=-`,
+			{
+				stdio: 'pipe',
+				shell: true,
+			}
+		);
 		console.log(`  ✅ ${name} updated (new version)`);
 	} catch (err) {
 		console.error(`  ❌ Failed to update ${name}: ${err.message}`);

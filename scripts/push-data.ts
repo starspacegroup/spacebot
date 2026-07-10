@@ -8,10 +8,10 @@
  * migration history independently.
  *
  * Usage:
- *   node scripts/push-data.js              # Dry run (shows what would be pushed)
- *   node scripts/push-data.js --confirm    # Actually push data to production
- *   node scripts/push-data.js --table=automations --table=commands  # Push specific tables only
- *   node scripts/push-data.js --exclude=event_logs  # Exclude specific tables
+ *   bun scripts/push-data.ts              # Dry run (shows what would be pushed)
+ *   bun scripts/push-data.ts --confirm    # Actually push data to production
+ *   bun scripts/push-data.ts --table=automations --table=commands  # Push specific tables only
+ *   bun scripts/push-data.ts --exclude=event_logs  # Exclude specific tables
  */
 
 import { execSync } from 'child_process';

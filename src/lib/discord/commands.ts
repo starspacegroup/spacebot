@@ -78,10 +78,10 @@ export const commands = [
  * Run this script to deploy commands to Discord
  *
  * Usage:
- * DISCORD_CLIENT_ID=xxx DISCORD_BOT_TOKEN=xxx node register-commands.js
+ * DISCORD_CLIENT_ID=xxx DISCORD_BOT_TOKEN=xxx bun run register-commands
  *
  * For instant guild-specific registration (recommended for testing):
- * DISCORD_CLIENT_ID=xxx DISCORD_BOT_TOKEN=xxx DISCORD_GUILD_ID=xxx node register-commands.js
+ * DISCORD_CLIENT_ID=xxx DISCORD_BOT_TOKEN=xxx DISCORD_GUILD_ID=xxx bun run register-commands
  */
 export async function registerCommands(clientId, botToken, guildId = null) {
 	// Guild commands update instantly, global commands can take up to an hour
