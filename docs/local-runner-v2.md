@@ -132,6 +132,23 @@ cloud-AI default, the durable autopilot queue, and the opt-in "prefer local runn
 path — because all three funnel through the same `generateChatResponse`, which fetches the
 runner inventory (with machine context) itself.
 
+## Discord Server Visibility (TUI)
+
+The runner TUI can see the Discord side of the platform, not just the local machine:
+
+- `/servers` (alias `/guilds`) — a **deterministic** (non-LLM) command that calls
+  `GET /api/runner/guilds` and prints every Discord server SpaceBot has data for, with
+  member count and boost tier. Superadmins (matching `ADMIN_USER_IDS`) see every guild;
+  everyone else sees only the guilds from their most recent managed-guilds snapshot (the
+  same data DM grounding uses), enriched with the richer `guild_metadata` table. If no
+  snapshot exists yet, DM the bot once from Discord so it can learn which servers you
+  manage, then retry.
+- Free-form prompts also work — typing something like "what servers do I have" or "show
+  event logs for Dirac's guild" is classified by `isSpaceBotManagementRequest` and routed
+  through `callRunnerAssistant` (`/api/runner/assistant`) to the same cloud assistant DMs
+  use, which has full MCP tool access (`list_guilds`, `get_event_logs`,
+  `get_voice_activity`, `get_activity_summary`, etc.) — no need to leave the terminal.
+
 ## Supported Job Types
 
 - `shell_command` (legacy default)

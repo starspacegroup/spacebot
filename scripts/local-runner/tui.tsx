@@ -44,7 +44,11 @@ import {
 	type CopilotAvailability,
 	type CopilotConfig,
 } from './copilot-utils';
-import { callRunnerAssistant, isSpaceBotManagementRequest } from './spacebot-assistant';
+import {
+	callRunnerAssistant,
+	isSpaceBotManagementRequest,
+	fetchRunnerGuilds,
+} from './spacebot-assistant';
 
 type LlmProvider = 'ollama' | 'copilot';
 
@@ -840,6 +844,8 @@ function App({
 		{ cmd: '/provider', args: '<copilot|ollama>' },
 		{ cmd: '/providers' },
 		{ cmd: '/config' },
+		{ cmd: '/servers' },
+		{ cmd: '/guilds' },
 		{ cmd: '/token' },
 		{ cmd: '/autostart' },
 		{ cmd: '/restart' },
@@ -1297,6 +1303,9 @@ function App({
 				'- `/config`             Show active provider configuration',
 				'- `/clear`              Clear conversation history',
 				'',
+				'### Discord',
+				'- `/servers` (`/guilds`) List Discord servers SpaceBot has data for, with member/boost info',
+				'',
 				'### Runner',
 				'- `/token`               Negotiate a runner token via browser',
 				'- `/autostart`           Install autostart service',
@@ -1464,6 +1473,67 @@ function App({
 			addChatMessage({
 				type: 'system',
 				text: `### Ollama Config\n- **Active provider**: \`ollama\`\n- **Host**: ${config.host}\n- **Port**: ${config.port}\n- **Model**: \`${config.model}\``,
+			});
+			return;
+		}
+
+		if (text === '/servers' || text === '/guilds') {
+			if (!runnerToken.startsWith('sbr_')) {
+				addChatMessage({
+					type: 'error',
+					text: 'No runner token configured yet. Run `/token` to negotiate one first.',
+				});
+				return;
+			}
+
+			setChatBusy(true);
+			const result = await fetchRunnerGuilds(apiUrl, runnerToken);
+			setChatBusy(false);
+
+			if (!result.success) {
+				addChatMessage({
+					type: 'error',
+					text: `Could not load Discord servers: ${result.error ?? 'unknown error'}`,
+				});
+				return;
+			}
+
+			const guilds = result.guilds ?? [];
+			if (guilds.length === 0) {
+				addChatMessage({
+					type: 'system',
+					text:
+						result.scope === 'managed'
+							? 'No managed servers found yet — DM SpaceBot on Discord once so it can learn which servers you manage, then try `/servers` again.'
+							: 'SpaceBot has no Discord servers on record yet.',
+				});
+				return;
+			}
+
+			const scopeLabel =
+				result.scope === 'all' ? 'ALL SERVERS (superadmin)' : 'YOUR MANAGED SERVERS';
+			const lines: string[] = [`### ${scopeLabel} (${guilds.length})`];
+			for (const g of guilds as Array<Record<string, any>>) {
+				const badges = [g.isOwner && 'owner', g.isAdmin && 'admin']
+					.filter(Boolean)
+					.join(', ');
+				const members =
+					typeof g.approximate_member_count === 'number'
+						? `${g.approximate_member_count.toLocaleString()} members`
+						: 'member count unknown';
+				const boost =
+					typeof g.premium_subscription_count === 'number' &&
+					g.premium_subscription_count > 0
+						? ` · boost tier ${g.premium_tier ?? 0} (${g.premium_subscription_count} boosts)`
+						: '';
+				lines.push(
+					`- **${g.name ?? g.guild_id}** \`${g.guild_id}\`${badges ? ` (${badges})` : ''} — ${members}${boost}`
+				);
+			}
+			addChatMessage({
+				type: 'assistant',
+				text: lines.join('\n'),
+				model: 'SpaceBot guild registry',
 			});
 			return;
 		}
