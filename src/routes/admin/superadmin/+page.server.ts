@@ -102,7 +102,7 @@ async function getCronJobData(db) {
 			SELECT *
 			FROM cron_job_history
 			ORDER BY started_at DESC
-			LIMIT 20
+			LIMIT 100
 		`
 			)
 			.all();

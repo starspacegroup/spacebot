@@ -26,6 +26,21 @@
 	const botApp = $derived(data?.botApp ?? null);
 	let cronJobs = $state([]);
 	let cronJobHistory = $state([]);
+
+	// Client-side pagination for the Recent Executions table
+	const HISTORY_PAGE_SIZE = 10;
+	let historyPage = $state(1);
+	const totalHistoryPages = $derived(
+		Math.max(1, Math.ceil(cronJobHistory.length / HISTORY_PAGE_SIZE))
+	);
+	const paginatedHistory = $derived(
+		cronJobHistory.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE)
+	);
+
+	// Keep the current page in range when the history list shrinks (e.g. on refresh)
+	$effect(() => {
+		if (historyPage > totalHistoryPages) historyPage = totalHistoryPages;
+	});
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
 	const integrations = $derived(data?.integrations ?? []);
 	const responseTypes: Record<string, any> = $derived(data?.responseTypes ?? {});
@@ -845,7 +860,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								{#each cronJobHistory as entry}
+								{#each paginatedHistory as entry}
 									<tr>
 										<td class="job-name-cell">
 											{cronJobs.find((j) => j.name === entry.job_name)
@@ -882,6 +897,27 @@
 							</tbody>
 						</table>
 					</div>
+
+					{#if totalHistoryPages > 1}
+						<div class="pagination">
+							<button
+								class="btn btn-sm btn-secondary"
+								onclick={() => (historyPage = Math.max(1, historyPage - 1))}
+								disabled={historyPage <= 1}
+							>
+								← Prev
+							</button>
+							<span class="page-info">Page {historyPage} of {totalHistoryPages}</span>
+							<button
+								class="btn btn-sm btn-secondary"
+								onclick={() =>
+									(historyPage = Math.min(totalHistoryPages, historyPage + 1))}
+								disabled={historyPage >= totalHistoryPages}
+							>
+								Next →
+							</button>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</section>
@@ -2428,6 +2464,19 @@
 	/* Cron History */
 	.cron-history {
 		margin-top: 1.5rem;
+	}
+
+	.pagination {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 1rem 0 0;
+	}
+
+	.page-info {
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
 	}
 
 	.subsection-title {
