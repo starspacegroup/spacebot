@@ -4,7 +4,9 @@
 	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
 	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
-	
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 	const { data } = $props();
 	
 	// State
@@ -80,7 +82,7 @@
 			}
 			
 			if (!response.ok) {
-				throw new Error('Failed to fetch logs');
+				throw new Error(tr('logs.toastFetchFailed'));
 			}
 			
 			if (append) {
@@ -99,9 +101,9 @@
 		} catch (e) {
 			log.error('[Logs] Fetch error:', e);
 			if (e.name === 'AbortError') {
-				error = 'Request timed out - the server may be slow or unavailable';
+				error = tr('logs.toastTimeout');
 			} else {
-				error = e.message || 'Unknown error occurred';
+				error = e.message || tr('logs.toastUnknownError');
 			}
 			// Still load category/event metadata even on error
 			if (!append) {
@@ -237,13 +239,13 @@
 </script>
 
 <svelte:head>
-	<title>Server Logs - {data.guild?.name || 'Unknown'} | SpaceBot Admin</title>
+	<title>{tr('logs.metaTitle', { name: data.guild?.name || tr('adash.unknownServer') })}</title>
 </svelte:head>
 
 <div class="logs-container">
 	<header class="logs-header">
 		<div class="header-left">
-			<a href="/admin/{data.serverId}" class="back-link">← Back to Admin</a>
+			<a href="/admin/{data.serverId}" class="back-link">{tr('logs.backToAdmin')}</a>
 			<div class="guild-info">
 				{#if data.guild?.icon}
 					<img 
@@ -257,30 +259,30 @@
 					</div>
 				{/if}
 				<div class="guild-text">
-					<h1>{data.guild?.name || 'Unknown Server'}</h1>
+					<h1>{data.guild?.name || tr('adash.unknownServer')}</h1>
 					<span class="guild-id">ID: {data.serverId}</span>
 				</div>
 			</div>
 		</div>
 		<div class="header-right">
-			<button 
-				class="refresh-btn" 
+			<button
+				class="refresh-btn"
 				class:active={autoRefresh}
 				onclick={toggleAutoRefresh}
 			>
-				{autoRefresh ? '⏸ Pause' : '▶ Auto-refresh'}
+				{autoRefresh ? tr('logs.pause') : tr('logs.autoRefresh')}
 			</button>
 			<button class="refresh-btn" onclick={() => fetchLogs()} disabled={loading}>
-				🔄 Refresh
+				{tr('logs.refresh')}
 			</button>
 		</div>
 	</header>
-	
+
 	{#if !data.botInGuild}
 		<div class="error-card">
-			<h2>⚠️ Bot Not Installed</h2>
-			<p>The bot is not installed in this server. Add the bot to start logging events.</p>
-			<a href="/api/auth/discord?flow=install" class="btn">Add Bot to Server</a>
+			<h2>⚠️ {tr('adash.botNotInstalled')}</h2>
+			<p>{tr('logs.botNotInstalledDesc')}</p>
+			<a href="/api/auth/discord?flow=install" class="btn">{tr('adash.addBotShort')}</a>
 		</div>
 	{:else}
 		<!-- Stats Section -->
@@ -293,16 +295,16 @@
 					type="button"
 				>
 					<span class="stat-value">{stats.totalEvents.toLocaleString()}</span>
-					<span class="stat-label">Total Events</span>
+					<span class="stat-label">{tr('logs.totalEvents')}</span>
 				</button>
 				{#each Object.entries(stats.byCategory || {}) as [cat, count]}
-					<button 
-						class="stat-card" 
+					<button
+						class="stat-card"
 						class:active={selectedCategory === cat}
 						style="--cat-color: {getEventColor(cat)}"
 						onclick={() => toggleCategoryFilter(cat)}
 						type="button"
-						title="Click to filter by {getCategoryName(cat)}"
+						title={tr('logs.clickToFilter', { name: getCategoryName(cat) })}
 					>
 						<span class="stat-icon">{getEventIcon(cat)}</span>
 						<span class="stat-value">{count.toLocaleString()}</span>
@@ -315,73 +317,75 @@
 		<!-- Filters Section -->
 		<details class="filters-section" open>
 			<summary class="filters-header">
-				<span class="filters-title">🔍 Filters</span>
+				<span class="filters-title">🔍 {tr('logs.filters')}</span>
 				{#if selectedCategory || selectedEventType || searchQuery || startDate || endDate}
-					<span class="filter-badge">Active</span>
+					<span class="filter-badge">{tr('logs.filterActive')}</span>
 				{/if}
 				<span class="filters-toggle">▼</span>
 			</summary>
 			<div class="filters-content">
 				<div class="filters-row">
 					<div class="filter-group">
-						<label for="category">Category</label>
+						<label for="category">{tr('logs.category')}</label>
 						<select id="category" bind:value={selectedCategory} onchange={applyFilters}>
-							<option value="">All Categories</option>
+							<option value="">{tr('logs.allCategories')}</option>
 							{#each Object.entries(categories) as [key, info]}
 								<option value={key}>{(info as any).icon} {(info as any).name}</option>
 							{/each}
 						</select>
 					</div>
-					
+
 					<div class="filter-group">
-						<label for="eventType">Event Type</label>
+						<label for="eventType">{tr('logs.eventType')}</label>
 						<select id="eventType" bind:value={selectedEventType} onchange={applyFilters}>
-							<option value="">All Events</option>
+							<option value="">{tr('logs.allEvents')}</option>
 							{#each filteredEventTypes() as type}
 								{@const typeMeta = getEventMeta(type, selectedCategory)}
 								<option value={type}>{typeMeta.icon} {typeMeta.description}</option>
 							{/each}
 						</select>
 					</div>
-					
+
 					<div class="filter-group filter-group-search">
-						<label for="search">Search</label>
+						<label for="search">{tr('logs.search')}</label>
 						<div class="search-input-wrapper">
-							<input 
-								id="search" 
-								type="text" 
-								placeholder="Search users, channels..." 
+							<input
+								id="search"
+								type="text"
+								placeholder={tr('logs.searchPlaceholder')}
 								bind:value={searchQuery}
 								onkeydown={(e) => e.key === 'Enter' && applyFilters()}
 							/>
-							<button class="search-btn" onclick={applyFilters} type="button">Go</button>
+							<button class="search-btn" onclick={applyFilters} type="button"
+								>{tr('logs.go')}</button
+							>
 						</div>
 					</div>
 				</div>
-				
+
 				<div class="filters-row filters-row-secondary">
 					<div class="filter-group filter-group-date">
-						<label for="startDate">From</label>
-						<input 
-							id="startDate" 
-							type="datetime-local" 
+						<label for="startDate">{tr('logs.from')}</label>
+						<input
+							id="startDate"
+							type="datetime-local"
 							bind:value={startDate}
 							onchange={applyFilters}
 						/>
 					</div>
-					
+
 					<div class="filter-group filter-group-date">
-						<label for="endDate">To</label>
-						<input 
-							id="endDate" 
-							type="datetime-local" 
+						<label for="endDate">{tr('logs.to')}</label>
+						<input
+							id="endDate"
+							type="datetime-local"
 							bind:value={endDate}
 							onchange={applyFilters}
 						/>
 					</div>
-					
+
 					<button class="clear-btn" onclick={clearFilters} type="button">
-						✕ Clear All
+						{tr('logs.clearAll')}
 					</button>
 				</div>
 			</div>
@@ -391,15 +395,18 @@
 		<div class="results-info">
 			<div class="results-left">
 				<span class="results-count">
-					<strong>{offset + 1}-{Math.min(offset + logs.length, total)}</strong> of <strong>{total.toLocaleString()}</strong> events
+					<strong>{offset + 1}-{Math.min(offset + logs.length, total)}</strong>
+					{tr('logs.of')}
+					<strong>{total.toLocaleString()}</strong>
+					{tr('logs.eventsWord')}
 				</span>
 				{#if loading}
-					<span class="loading-indicator">⟳ Loading...</span>
+					<span class="loading-indicator">⟳ {tr('logs.loadingShort')}</span>
 				{/if}
 			</div>
 			<div class="results-right">
 				<div class="page-size-selector">
-					<label for="pageSize">Show:</label>
+					<label for="pageSize">{tr('logs.show')}</label>
 					<select id="pageSize" value={limit} onchange={(e) => changePageSize(parseInt((e.target as HTMLSelectElement).value))}>
 						{#each pageSizeOptions as size}
 							<option value={size} selected={size === limit}>{size}</option>
@@ -417,20 +424,20 @@
 					class="pagination-btn" 
 					onclick={() => goToPage(1)} 
 					disabled={currentPage === 1 || loading}
-					title="First page"
+					title={tr('logs.firstPage')}
 				>
 					<span class="pagination-btn-icon">⏮</span>
-					<span class="pagination-btn-text">First</span>
+					<span class="pagination-btn-text">{tr('logs.first')}</span>
 				</button>
 				<button 
 					type="button"
 					class="pagination-btn" 
 					onclick={() => goToPage(currentPage - 1)} 
 					disabled={currentPage === 1 || loading}
-					title="Previous page"
+					title={tr('logs.prevPage')}
 				>
 					<span class="pagination-btn-icon">◀</span>
-					<span class="pagination-btn-text">Prev</span>
+					<span class="pagination-btn-text">{tr('logs.prev')}</span>
 				</button>
 				
 				<div class="page-indicator">
@@ -444,9 +451,9 @@
 					class="pagination-btn" 
 					onclick={() => goToPage(currentPage + 1)} 
 					disabled={currentPage >= totalPages || loading}
-					title="Next page"
+					title={tr('logs.nextPage')}
 				>
-					<span class="pagination-btn-text">Next</span>
+					<span class="pagination-btn-text">{tr('logs.next')}</span>
 					<span class="pagination-btn-icon">▶</span>
 				</button>
 				<button 
@@ -454,9 +461,9 @@
 					class="pagination-btn" 
 					onclick={() => goToPage(totalPages)} 
 					disabled={currentPage >= totalPages || loading}
-					title="Last page"
+					title={tr('logs.lastPage')}
 				>
-					<span class="pagination-btn-text">Last</span>
+					<span class="pagination-btn-text">{tr('logs.last')}</span>
 					<span class="pagination-btn-icon">⏭</span>
 				</button>
 			</div>
@@ -466,17 +473,17 @@
 		{#if loading && logs.length === 0}
 			<div class="loading-state">
 				<div class="loading-spinner"></div>
-				<p>Loading event logs...</p>
+				<p>{tr('logs.loadingLogs')}</p>
 			</div>
 		{:else if error}
 			<div class="error-card">
-				<p>Error: {error}</p>
+				<p>{tr('logs.errorPrefix', { message: error })}</p>
 			</div>
 		{:else if logs.length === 0 && !loading}
 			<div class="empty-state">
-				<h3>📭 No Events Found</h3>
-				<p>No events match your filters, or no events have been logged yet.</p>
-				<p class="hint">Events are logged when the Gateway bot is running.</p>
+				<h3>📭 {tr('logs.noEvents')}</h3>
+				<p>{tr('logs.noEventsDesc')}</p>
+				<p class="hint">{tr('logs.noEventsHint')}</p>
 			</div>
 		{:else}
 			<div class="logs-table-container">
@@ -484,15 +491,20 @@
 					<thead>
 						<tr>
 							<th class="sortable" onclick={toggleSortOrder}>
-								Time <span class="tz-label">({getTimezoneAbbreviation(data.timezone)})</span>
+								{tr('logs.colTime')}
+								<span class="tz-label">({getTimezoneAbbreviation(data.timezone)})</span>
 								<span class="sort-indicator">{sortOrder === 'desc' ? '↓' : '↑'}</span>
-								<span class="sort-hint">{sortOrder === 'desc' ? 'Newest first' : 'Oldest first'}</span>
+								<span class="sort-hint"
+									>{sortOrder === 'desc'
+										? tr('logs.newestFirst')
+										: tr('logs.oldestFirst')}</span
+								>
 							</th>
-							<th>Event</th>
-							<th>Actor</th>
-							<th>Target</th>
-							<th>Channel</th>
-							<th>Details</th>
+							<th>{tr('logs.colEvent')}</th>
+							<th>{tr('logDetail.actor')}</th>
+							<th>{tr('logDetail.target')}</th>
+							<th>{tr('logDetail.channel')}</th>
+							<th>{tr('logs.colDetails')}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -552,18 +564,18 @@
 								</td>
 								<td class="details-cell">
 									{#if log.details}
-										<a 
+										<a
 											href="/admin/{data.serverId}/logs/{log.id}"
 											class="details-btn"
 										>
-											View Details
+											{tr('logs.viewDetails')}
 										</a>
 									{:else}
-										<a 
+										<a
 											href="/admin/{data.serverId}/logs/{log.id}"
 											class="details-btn secondary"
 										>
-											View
+											{tr('logs.view')}
 										</a>
 									{/if}
 								</td>
@@ -582,20 +594,20 @@
 							class="pagination-btn" 
 							onclick={() => goToPage(1)} 
 							disabled={currentPage === 1 || loading}
-							title="First page"
+							title={tr('logs.firstPage')}
 						>
 							<span class="pagination-btn-icon">⏮</span>
-							<span class="pagination-btn-text">First</span>
+							<span class="pagination-btn-text">{tr('logs.first')}</span>
 						</button>
 						<button 
 							type="button"
 							class="pagination-btn" 
 							onclick={() => goToPage(currentPage - 1)} 
 							disabled={currentPage === 1 || loading}
-							title="Previous page"
+							title={tr('logs.prevPage')}
 						>
 							<span class="pagination-btn-icon">◀</span>
-							<span class="pagination-btn-text">Prev</span>
+							<span class="pagination-btn-text">{tr('logs.prev')}</span>
 						</button>
 						
 						<div class="page-indicator">
@@ -609,9 +621,9 @@
 							class="pagination-btn" 
 							onclick={() => goToPage(currentPage + 1)} 
 							disabled={currentPage >= totalPages || loading}
-							title="Next page"
+							title={tr('logs.nextPage')}
 						>
-							<span class="pagination-btn-text">Next</span>
+							<span class="pagination-btn-text">{tr('logs.next')}</span>
 							<span class="pagination-btn-icon">▶</span>
 						</button>
 						<button 
@@ -619,9 +631,9 @@
 							class="pagination-btn" 
 							onclick={() => goToPage(totalPages)} 
 							disabled={currentPage >= totalPages || loading}
-							title="Last page"
+							title={tr('logs.lastPage')}
 						>
-							<span class="pagination-btn-text">Last</span>
+							<span class="pagination-btn-text">{tr('logs.last')}</span>
 							<span class="pagination-btn-icon">⏭</span>
 						</button>
 					</div>
