@@ -4,7 +4,9 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	let { data, form } = $props();
 
 	let showLogs = $state(false);
@@ -21,9 +23,9 @@
 	// Check for success messages from redirects
 	const successMessage = $derived(() => {
 		const url = page.url;
-		if (url.searchParams.has('created')) return 'Command created successfully!';
-		if (url.searchParams.has('updated')) return 'Command updated successfully!';
-		if (url.searchParams.has('deleted')) return 'Command deleted successfully!';
+		if (url.searchParams.has('created')) return tr('commands.created');
+		if (url.searchParams.has('updated')) return tr('commands.updated');
+		if (url.searchParams.has('deleted')) return tr('commands.deleted');
 		return null;
 	});
 
@@ -52,14 +54,18 @@
 	// Get action type info
 	function getActionInfo(actionType) {
 		if (!actionType || actionType === 'NONE') {
-			return { name: 'Response Only', icon: '💬', description: 'Just send a response' };
+			return {
+				name: tr('commands.responseOnly'),
+				icon: '💬',
+				description: tr('commands.responseOnlyDesc'),
+			};
 		}
 		return data.actionTypes[actionType] || { name: actionType, icon: '⚡', description: '' };
 	}
 
 	// Format relative time
 	function formatRelativeTime(dateString) {
-		if (!dateString) return 'Never';
+		if (!dateString) return tr('apik.never');
 		const date = parseUTCDate(dateString);
 		if (!date) return dateString;
 		const now = new Date();
@@ -69,47 +75,47 @@
 		const diffHours = Math.floor(diffMins / 60);
 		const diffDays = Math.floor(diffHours / 24);
 
-		if (diffSecs < 60) return 'just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		if (diffDays < 7) return `${diffDays}d ago`;
+		if (diffSecs < 60) return tr('commands.justNow');
+		if (diffMins < 60) return tr('commands.minsAgo', { count: diffMins });
+		if (diffHours < 24) return tr('commands.hoursAgo', { count: diffHours });
+		if (diffDays < 7) return tr('commands.daysAgo', { count: diffDays });
 
 		return formatChartDate(dateString, data.timezone);
 	}
 </script>
 
 <svelte:head>
-	<title>Slash Commands | SpaceBot Admin</title>
+	<title>{tr('commands.metaTitle')}</title>
 </svelte:head>
 
 <div class="commands-page">
-	<a href="/admin/{selectedGuildId}" class="back-link">← Back to Dashboard</a>
+	<a href="/admin/{selectedGuildId}" class="back-link">{tr('account.backToDashboard')}</a>
 
 	<header class="page-header">
 		<div class="header-content">
 			<h1>
 				<span class="header-icon">⚡</span>
-				Slash Commands
+				{tr('adash.links.commands')}
 			</h1>
-			<p class="header-subtitle">Create custom slash commands with automated actions</p>
+			<p class="header-subtitle">{tr('commands.subtitle')}</p>
 		</div>
 		<div class="header-actions">
 			<button class="btn btn-secondary" onclick={() => (showLogs = !showLogs)}>
 				<span>📋</span>
-				{showLogs ? 'Hide Logs' : 'View Logs'}
+				{showLogs ? tr('commands.hideLogs') : tr('commands.viewLogs')}
 			</button>
 			<a href="/admin/{selectedGuildId}/commands/new" class="btn btn-primary">
 				<span>➕</span>
-				Create Command
+				{tr('commands.createCommand')}
 			</a>
 		</div>
 	</header>
 
 	{#if showLogs}
 		<section class="logs-section card">
-			<h2>Recent Command Usage</h2>
+			<h2>{tr('commands.recentUsage')}</h2>
 			{#if data.recentLogs.length === 0}
-				<p class="empty-state">No command usage logs yet</p>
+				<p class="empty-state">{tr('commands.noLogs')}</p>
 			{:else}
 				<div class="logs-list">
 					{#each data.recentLogs as log}
@@ -117,16 +123,21 @@
 							<button
 								class="log-row"
 								onclick={() => toggleLogExpand(log.id)}
-								title="Click to expand details"
+								title={tr('commands.clickExpand')}
 							>
 								<div class="log-status">
 									{log.success ? '✓' : '✕'}
 								</div>
 								<div class="log-info">
 									<span class="log-name"
-										>/{log.command_name || `Command #${log.command_id}`}</span
+										>/{log.command_name ||
+											tr('commands.commandNum', { id: log.command_id })}</span
 									>
-									<span class="log-user">by {log.user_name || log.user_id}</span>
+									<span class="log-user"
+										>{tr('commands.byUser', {
+											name: log.user_name || log.user_id,
+										})}</span
+									>
 								</div>
 								<div class="log-time">{formatRelativeTime(log.created_at)}</div>
 								<div class="log-expand-icon">
@@ -140,7 +151,9 @@
 								<div class="log-details">
 									{#if log.execution_time_ms}
 										<div class="log-detail-row">
-											<span class="log-detail-label">Execution Time</span>
+											<span class="log-detail-label"
+												>{tr('commands.executionTime')}</span
+											>
 											<span class="log-detail-value"
 												>{log.execution_time_ms}ms</span
 											>
@@ -148,19 +161,25 @@
 									{/if}
 									{#if log.channel_id}
 										<div class="log-detail-row">
-											<span class="log-detail-label">Channel</span>
+											<span class="log-detail-label"
+												>{tr('logDetail.channel')}</span
+											>
 											<span class="log-detail-value">{log.channel_id}</span>
 										</div>
 									{/if}
 									{#if log.user_id}
 										<div class="log-detail-row">
-											<span class="log-detail-label">User ID</span>
+											<span class="log-detail-label"
+												>{tr('logDetail.userId')}</span
+											>
 											<span class="log-detail-value">{log.user_id}</span>
 										</div>
 									{/if}
 									{#if log.created_at}
 										<div class="log-detail-row">
-											<span class="log-detail-label">Timestamp</span>
+											<span class="log-detail-label"
+												>{tr('logDetail.timestamp')}</span
+											>
 											<span class="log-detail-value"
 												>{tzFormatDate(log.created_at, data.timezone)}</span
 											>
@@ -168,7 +187,9 @@
 									{/if}
 									{#if log.options_used}
 										<div class="log-detail-section">
-											<span class="log-detail-label">Options Used</span>
+											<span class="log-detail-label"
+												>{tr('commands.optionsUsed')}</span
+											>
 											<pre class="log-detail-json">{JSON.stringify(
 													log.options_used,
 													null,
@@ -178,7 +199,9 @@
 									{/if}
 									{#if log.action_result}
 										<div class="log-detail-section">
-											<span class="log-detail-label">Action Result</span>
+											<span class="log-detail-label"
+												>{tr('commands.actionResult')}</span
+											>
 											<pre class="log-detail-json">{JSON.stringify(
 													log.action_result,
 													null,
@@ -200,11 +223,11 @@
 		{#if data.commands.length === 0}
 			<div class="empty-state-card">
 				<div class="empty-icon">⚡</div>
-				<h2>No Custom Commands Yet</h2>
-				<p>Create your first slash command to extend your bot's functionality.</p>
+				<h2>{tr('commands.noCommands')}</h2>
+				<p>{tr('commands.noCommandsDesc')}</p>
 				<a href="/admin/{selectedGuildId}/commands/new" class="btn btn-primary btn-lg">
 					<span>➕</span>
-					Create Your First Command
+					{tr('commands.createFirst')}
 				</a>
 			</div>
 		{:else}
@@ -238,7 +261,9 @@
 								<button
 									type="submit"
 									class="toggle-btn {command.enabled ? 'enabled' : ''}"
-									title={command.enabled ? 'Disable' : 'Enable'}
+									title={command.enabled
+										? tr('commands.disable')
+										: tr('commands.enable')}
 									disabled={processingId === command.id}
 								>
 									<span class="toggle-track">
@@ -253,7 +278,7 @@
 
 							{#if command.options && command.options.length > 0}
 								<div class="command-options">
-									<span class="options-label">Options:</span>
+									<span class="options-label">{tr('commands.optionsLabel')}</span>
 									{#each command.options as option}
 										<span class="option-tag" class:required={option.required}>
 											{option.name}
@@ -274,7 +299,9 @@
 										>{command.ephemeral ? '👁️' : '📢'}</span
 									>
 									<span class="config-label"
-										>{command.ephemeral ? 'Private' : 'Public'}</span
+										>{command.ephemeral
+											? tr('commands.private')
+											: tr('commands.public')}</span
 									>
 								</div>
 							</div>
@@ -282,10 +309,10 @@
 
 						<div class="command-footer">
 							<div class="command-stats">
-								<span class="stat" title="Times used">
+								<span class="stat" title={tr('commands.timesUsed')}>
 									🔄 {command.use_count || 0}
 								</span>
-								<span class="stat" title="Last used">
+								<span class="stat" title={tr('commands.lastUsed')}>
 									🕐 {formatRelativeTime(command.last_used_at)}
 								</span>
 							</div>
@@ -294,7 +321,7 @@
 									href="/admin/{selectedGuildId}/commands/{command.id}"
 									class="btn btn-sm btn-secondary"
 								>
-									✏️ Edit
+									✏️ {tr('common.edit')}
 								</a>
 								<form
 									method="POST"
@@ -311,7 +338,8 @@
 										};
 									}}
 									onsubmit={(e) => {
-										if (!confirm('Delete this command?')) e.preventDefault();
+										if (!confirm(tr('commands.confirmDelete')))
+											e.preventDefault();
 									}}
 								>
 									<input type="hidden" name="id" value={command.id} />
@@ -321,7 +349,9 @@
 										class="btn btn-sm btn-danger"
 										disabled={processingId === command.id}
 									>
-										{processingId === command.id ? '...' : '🗑️ Delete'}
+										{processingId === command.id
+											? '...'
+											: `🗑️ ${tr('common.delete')}`}
 									</button>
 								</form>
 							</div>
@@ -335,11 +365,8 @@
 	<!-- Built-in Commands -->
 	{#if data.builtInCommands?.length > 0}
 		<section class="builtin-commands">
-			<h2 class="section-title">Built-in Commands</h2>
-			<p class="builtin-hint">
-				Built-ins are global commands with server-level enable/disable and permission
-				overrides.
-			</p>
+			<h2 class="section-title">{tr('commands.builtinTitle')}</h2>
+			<p class="builtin-hint">{tr('commands.builtinHint')}</p>
 			<div class="command-grid">
 				{#each data.builtInCommands as command}
 					{@const actionInfo = getActionInfo(command.action_type)}
@@ -350,7 +377,7 @@
 								<span class="command-name">{command.name}</span>
 							</div>
 							<div class="builtin-header-actions">
-								<span class="builtin-badge">Built-in</span>
+								<span class="builtin-badge">{tr('commands.builtinBadge')}</span>
 								<form
 									method="POST"
 									action="?/toggle"
@@ -374,8 +401,8 @@
 										type="submit"
 										class="toggle-btn {command.enabled ? 'enabled' : ''}"
 										title={command.enabled
-											? 'Disable for this server'
-											: 'Enable for this server'}
+											? tr('commands.disableForServer')
+											: tr('commands.enableForServer')}
 										disabled={processingId === command.id}
 									>
 										<span class="toggle-track">
@@ -390,7 +417,7 @@
 
 							{#if command.options && command.options.length > 0}
 								<div class="command-options">
-									<span class="options-label">Options:</span>
+									<span class="options-label">{tr('commands.optionsLabel')}</span>
 									{#each command.options as option}
 										<span class="option-tag" class:required={option.required}>
 											{option.name}
@@ -411,7 +438,9 @@
 										>{command.ephemeral ? '👁️' : '📢'}</span
 									>
 									<span class="config-label"
-										>{command.ephemeral ? 'Private' : 'Public'}</span
+										>{command.ephemeral
+											? tr('commands.private')
+											: tr('commands.public')}</span
 									>
 								</div>
 							</div>
@@ -419,10 +448,10 @@
 
 						<div class="command-footer">
 							<div class="command-stats">
-								<span class="stat" title="Times used">
+								<span class="stat" title={tr('commands.timesUsed')}>
 									🔄 {command.use_count || 0}
 								</span>
-								<span class="stat" title="Last used">
+								<span class="stat" title={tr('commands.lastUsed')}>
 									🕐 {formatRelativeTime(command.last_used_at)}
 								</span>
 							</div>
@@ -431,7 +460,7 @@
 									href="/admin/{selectedGuildId}/commands/{command.id}?builtin=true"
 									class="btn btn-sm btn-secondary"
 								>
-									🔐 Permissions
+									🔐 {tr('commands.permissions')}
 								</a>
 							</div>
 						</div>
