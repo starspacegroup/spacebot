@@ -2,6 +2,10 @@
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { toast } from '$lib/toast.svelte.js';
+	import { getTranslator, getLocale } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
 
 	const { data } = $props();
 
@@ -44,8 +48,8 @@
 	);
 
 	function formatDate(dateStr) {
-		if (!dateStr) return 'N/A';
-		return new Date(dateStr).toLocaleDateString('en-US', {
+		if (!dateStr) return tr('account.na');
+		return new Date(dateStr).toLocaleDateString(dateLocale, {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric',
@@ -53,7 +57,7 @@
 	}
 
 	function formatPrice(cents) {
-		if (!cents) return 'Starter';
+		if (!cents) return tr('account.starter');
 		return `$${(cents / 100).toFixed(2)}`;
 	}
 
@@ -76,12 +80,13 @@
 			!stripeSubscriptionId &&
 			!['active', 'trialing'].includes(stripeStatus)
 		)
-			return 'Admin Granted';
-		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus)) return 'Active';
-		if (stripeStatus === 'canceling') return 'Canceling';
-		if (stripeStatus === 'past_due') return 'Past Due';
-		if (plan === 'pro') return 'Pro';
-		return 'Starter';
+			return tr('account.status.adminGranted');
+		if (plan === 'pro' && ['active', 'trialing'].includes(stripeStatus))
+			return tr('account.status.active');
+		if (stripeStatus === 'canceling') return tr('account.status.canceling');
+		if (stripeStatus === 'past_due') return tr('account.status.pastDue');
+		if (plan === 'pro') return tr('account.pro');
+		return tr('account.starter');
 	}
 
 	// Aggregate billing history from all servers, sorted by date (newest first)
@@ -128,27 +133,27 @@
 	function getEventLabel(eventType) {
 		switch (eventType) {
 			case 'checkout_completed':
-				return 'Upgrade';
+				return tr('account.event.upgrade');
 			case 'plan_upgrade':
-				return 'Plan Upgrade';
+				return tr('account.event.planUpgrade');
 			case 'plan_downgrade':
-				return 'Downgrade';
+				return tr('account.event.downgrade');
 			case 'admin_edit':
-				return 'Admin Edit';
+				return tr('account.event.adminEdit');
 			case 'payment_success':
-				return 'Payment';
+				return tr('account.event.payment');
 			case 'payment_failed':
-				return 'Payment Failed';
+				return tr('account.event.paymentFailed');
 			case 'subscription_canceled':
-				return 'Canceled';
+				return tr('account.event.canceled');
 			case 'subscription_reactivated':
-				return 'Reactivated';
+				return tr('account.event.reactivated');
 			case 'subscription_renewed':
-				return 'Renewed';
+				return tr('account.event.renewed');
 			case 'plan_reset':
-				return 'Plan Reset';
+				return tr('account.event.planReset');
 			default:
-				return 'Event';
+				return tr('account.event.generic');
 		}
 	}
 
@@ -175,8 +180,8 @@
 	}
 
 	function formatDateTime(dateStr) {
-		if (!dateStr) return 'N/A';
-		return new Date(dateStr).toLocaleDateString('en-US', {
+		if (!dateStr) return tr('account.na');
+		return new Date(dateStr).toLocaleDateString(dateLocale, {
 			year: 'numeric',
 			month: 'short',
 			day: 'numeric',
@@ -188,17 +193,17 @@
 	function formatAIJobStatus(status) {
 		switch (status) {
 			case 'pending':
-				return { label: 'Queued', cls: 'badge-neutral' };
+				return { label: tr('account.job.queued'), cls: 'badge-neutral' };
 			case 'running':
-				return { label: 'Running', cls: 'badge-info' };
+				return { label: tr('account.job.running'), cls: 'badge-info' };
 			case 'completed':
-				return { label: 'Completed', cls: 'badge-success' };
+				return { label: tr('account.job.completed'), cls: 'badge-success' };
 			case 'failed_terminal':
-				return { label: 'Failed', cls: 'badge-danger' };
+				return { label: tr('account.job.failed'), cls: 'badge-danger' };
 			case 'canceled':
-				return { label: 'Canceled', cls: 'badge-warning' };
+				return { label: tr('account.job.canceled'), cls: 'badge-warning' };
 			default:
-				return { label: status || 'Unknown', cls: 'badge-neutral' };
+				return { label: status || tr('account.job.unknown'), cls: 'badge-neutral' };
 		}
 	}
 
@@ -227,9 +232,7 @@
 			const result = await res.json().catch(() => ({}));
 
 			if (!res.ok) {
-				toast.error(
-					result.error || 'Could not open billing portal right now. Please try again.'
-				);
+				toast.error(result.error || tr('account.toast.portalError'));
 				return;
 			}
 
@@ -238,9 +241,9 @@
 				return;
 			}
 
-			toast.error('Billing portal is temporarily unavailable. Please try again in a moment.');
+			toast.error(tr('account.toast.portalUnavailable'));
 		} catch {
-			toast.error('Failed to open billing portal. Please try again.');
+			toast.error(tr('account.toast.portalFailed'));
 		} finally {
 			portalLoading = null;
 		}
@@ -256,23 +259,21 @@
 </script>
 
 <svelte:head>
-	<title>My Account | SpaceBot</title>
+	<title>{tr('account.metaTitle')}</title>
 </svelte:head>
 
 <div class="account-page">
 	<header class="page-header">
 		<a
 			href={data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin'}
-			class="back-link">&#8592; Back to Dashboard</a
+			class="back-link">{tr('account.backToDashboard')}</a
 		>
 		<div class="header-content">
 			<h1>
 				<span class="header-icon">👤</span>
-				My Account
+				{tr('account.title')}
 			</h1>
-			<p class="header-desc">
-				Manage your profile, billing, AI workflows, and local runner preferences.
-			</p>
+			<p class="header-desc">{tr('account.headerDesc')}</p>
 		</div>
 	</header>
 
@@ -284,7 +285,7 @@
 			onclick={() => scrollToSection('profile')}
 		>
 			<span class="nav-icon">👤</span>
-			Profile
+			{tr('account.nav.profile')}
 		</button>
 		<button
 			class="section-nav-item"
@@ -292,7 +293,7 @@
 			onclick={() => scrollToSection('billing')}
 		>
 			<span class="nav-icon">💳</span>
-			Billing
+			{tr('account.nav.billing')}
 		</button>
 		<button
 			class="section-nav-item"
@@ -300,15 +301,15 @@
 			onclick={() => scrollToSection('payment')}
 		>
 			<span class="nav-icon">💰</span>
-			Payment
+			{tr('account.nav.payment')}
 		</button>
 		<a class="section-nav-item" href="/account/ai-workflows">
 			<span class="nav-icon">🧭</span>
-			AI Workflows
+			{tr('account.nav.aiWorkflows')}
 		</a>
 		<a class="section-nav-item" href="/account/runners">
 			<span class="nav-icon">🖥️</span>
-			Local Runner
+			{tr('account.nav.localRunner')}
 		</a>
 		<button
 			class="section-nav-item"
@@ -316,13 +317,13 @@
 			onclick={() => scrollToSection('settings')}
 		>
 			<span class="nav-icon">⚙️</span>
-			Settings
+			{tr('account.nav.settings')}
 		</button>
 	</nav>
 
 	<!-- Profile Section -->
 	<section id="section-profile" class="content-section">
-		<h2><span class="section-icon">👤</span> Profile</h2>
+		<h2><span class="section-icon">👤</span> {tr('account.profile.heading')}</h2>
 
 		<div class="profile-card">
 			<div class="profile-header">
@@ -344,20 +345,20 @@
 				<div class="detail-grid">
 					{#if dbUser?.email}
 						<div class="detail-item">
-							<span class="detail-label">Email</span>
+							<span class="detail-label">{tr('account.profile.email')}</span>
 							<span class="detail-value">{dbUser.email}</span>
 						</div>
 					{/if}
 					<div class="detail-item">
-						<span class="detail-label">Member Since</span>
+						<span class="detail-label">{tr('account.profile.memberSince')}</span>
 						<span class="detail-value">{formatDate(dbUser?.created_at)}</span>
 					</div>
 					<div class="detail-item">
-						<span class="detail-label">Last Login</span>
+						<span class="detail-label">{tr('account.profile.lastLogin')}</span>
 						<span class="detail-value">{formatDate(dbUser?.last_login_at)}</span>
 					</div>
 					<div class="detail-item">
-						<span class="detail-label">Login Count</span>
+						<span class="detail-label">{tr('account.profile.loginCount')}</span>
 						<span class="detail-value">{dbUser?.login_count || 0}</span>
 					</div>
 				</div>
@@ -366,50 +367,52 @@
 			{#if data.isSuperAdmin}
 				<div class="profile-badge superadmin-badge">
 					<span class="badge-icon">👑</span>
-					<span>Superadmin</span>
+					<span>{tr('account.profile.superadmin')}</span>
 				</div>
 			{/if}
 		</div>
 
 		<div class="servers-summary">
-			<h3>Your Servers</h3>
+			<h3>{tr('account.servers.heading')}</h3>
 			<div class="server-stats-row">
 				<div class="stat-chip">
 					<span class="stat-value">{totalServers}</span>
-					<span class="stat-label">Total</span>
+					<span class="stat-label">{tr('account.total')}</span>
 				</div>
 				<div class="stat-chip pro">
 					<span class="stat-value">{proServers}</span>
-					<span class="stat-label">Pro</span>
+					<span class="stat-label">{tr('account.pro')}</span>
 				</div>
 				<div class="stat-chip starter">
 					<span class="stat-value">{starterServers}</span>
-					<span class="stat-label">Starter</span>
+					<span class="stat-label">{tr('account.starter')}</span>
 				</div>
 			</div>
 		</div>
 
 		<div class="autopilot-summary">
 			<div class="autopilot-summary-header">
-				<h3>AI Autopilot</h3>
-				<a class="btn btn-outline btn-sm" href="/account/ai-jobs">Open AI Jobs</a>
+				<h3>{tr('account.autopilot.heading')}</h3>
+				<a class="btn btn-outline btn-sm" href="/account/ai-jobs"
+					>{tr('account.autopilot.openJobs')}</a
+				>
 			</div>
 			<div class="server-stats-row">
 				<div class="stat-chip">
 					<span class="stat-value">{aiJobSummary.total}</span>
-					<span class="stat-label">Total</span>
+					<span class="stat-label">{tr('account.total')}</span>
 				</div>
 				<div class="stat-chip">
 					<span class="stat-value">{aiJobSummary.pending + aiJobSummary.running}</span>
-					<span class="stat-label">Active</span>
+					<span class="stat-label">{tr('account.active')}</span>
 				</div>
 				<div class="stat-chip pro">
 					<span class="stat-value">{aiJobSummary.completed}</span>
-					<span class="stat-label">Completed</span>
+					<span class="stat-label">{tr('account.completed')}</span>
 				</div>
 				<div class="stat-chip">
 					<span class="stat-value">{aiJobSummary.failed_terminal}</span>
-					<span class="stat-label">Failed</span>
+					<span class="stat-label">{tr('account.failed')}</span>
 				</div>
 			</div>
 
@@ -418,7 +421,7 @@
 				<div class="autopilot-latest">
 					<div class="autopilot-latest-main">
 						<div class="autopilot-latest-row">
-							<strong>Latest Job</strong>
+							<strong>{tr('account.autopilot.latestJob')}</strong>
 							<span class="status-badge {latestState.cls}">{latestState.label}</span>
 						</div>
 						<div class="autopilot-latest-meta mono">
@@ -428,17 +431,18 @@
 							{aiJobSummary.latest.requestText?.slice(0, 140)}
 						</div>
 						<div class="autopilot-latest-meta">
-							Attempts {aiJobSummary.latest.attemptCount}/{aiJobSummary.latest
-								.maxAttempts} · Updated {formatDateTime(
-								aiJobSummary.latest.updatedAt
-							)}
+							{tr('account.autopilot.attempts', {
+								count: aiJobSummary.latest.attemptCount,
+								max: aiJobSummary.latest.maxAttempts,
+								date: formatDateTime(aiJobSummary.latest.updatedAt),
+							})}
 						</div>
 					</div>
 					<a
 						class="btn btn-sm btn-outline"
 						href={`/api/ai/jobs/${aiJobSummary.latest.id}`}
 						target="_blank"
-						rel="noreferrer">Timeline JSON</a
+						rel="noreferrer">{tr('account.autopilot.timelineJson')}</a
 					>
 				</div>
 			{/if}
@@ -447,14 +451,15 @@
 
 	<!-- Billing Section -->
 	<section id="section-billing" class="content-section">
-		<h2><span class="section-icon">💳</span> Billing</h2>
+		<h2><span class="section-icon">💳</span> {tr('account.billing.heading')}</h2>
 
 		{#if totalMonthlySpend > 0}
 			<div class="billing-overview">
 				<div class="billing-total">
-					<span class="billing-total-label">Current Monthly Spend</span>
+					<span class="billing-total-label">{tr('account.billing.monthlySpend')}</span>
 					<span class="billing-total-value"
-						>{formatPrice(totalMonthlySpend)}<span class="billing-period">/mo</span
+						>{formatPrice(totalMonthlySpend)}<span class="billing-period"
+							>{tr('account.perMonth')}</span
 						></span
 					>
 				</div>
@@ -464,7 +469,7 @@
 		{#if serverPlans.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">📭</span>
-				<p>No servers found. Add SpaceBot to a server to get started.</p>
+				<p>{tr('account.billing.noServers')}</p>
 			</div>
 		{:else}
 			<div class="server-plans-list">
@@ -490,7 +495,9 @@
 							</div>
 							<div class="server-plan-status">
 								<span class="plan-badge {server.plan}">
-									{server.plan === 'pro' ? '⚡ Pro' : '🚀 Starter'}
+									{server.plan === 'pro'
+										? tr('account.billing.proBadge')
+										: tr('account.billing.starterBadge')}
 								</span>
 								{#if server.stripeStatus}
 									<span
@@ -509,16 +516,22 @@
 							<div class="server-plan-details">
 								{#if server.plan === 'pro' && !server.stripeSubscriptionId}
 									<div class="plan-detail">
-										<span class="plan-detail-label">Price</span>
+										<span class="plan-detail-label"
+											>{tr('account.billing.price')}</span
+										>
 										<span class="plan-detail-value admin-granted-price"
-											>Granted by admin</span
+											>{tr('account.billing.grantedByAdmin')}</span
 										>
 									</div>
 								{:else if server.priceCents}
 									<div class="plan-detail">
-										<span class="plan-detail-label">Price</span>
+										<span class="plan-detail-label"
+											>{tr('account.billing.price')}</span
+										>
 										<span class="plan-detail-value"
-											>{formatPrice(server.priceCents)}/mo</span
+											>{formatPrice(server.priceCents)}{tr(
+												'account.perMonth'
+											)}</span
 										>
 									</div>
 								{/if}
@@ -526,8 +539,8 @@
 									<div class="plan-detail">
 										<span class="plan-detail-label"
 											>{server.stripeStatus === 'canceling'
-												? 'Access Until'
-												: 'Next Billing'}</span
+												? tr('account.billing.accessUntil')
+												: tr('account.billing.nextBilling')}</span
 										>
 										<span class="plan-detail-value"
 											>{formatDate(server.stripeCurrentPeriodEnd)}</span
@@ -542,7 +555,7 @@
 								href="/admin/{server.guildId}/account"
 								class="btn btn-secondary btn-sm"
 							>
-								Manage
+								{tr('account.billing.manage')}
 							</a>
 						</div>
 					</div>
@@ -552,7 +565,7 @@
 
 		{#if allBillingHistory.length > 0}
 			<div class="billing-history">
-				<h3>Billing History</h3>
+				<h3>{tr('account.billing.historyHeading')}</h3>
 				<div class="timeline">
 					{#each allBillingHistory as event}
 						<div class="timeline-item">
@@ -602,7 +615,9 @@
 													}}
 												/>
 											{/if}
-											by {event.actor_name}
+											{tr('account.billing.byActor', {
+												name: event.actor_name,
+											})}
 										</span>
 									{/if}
 								</div>
@@ -614,51 +629,63 @@
 		{/if}
 
 		<div class="plan-comparison">
-			<h3>Plan Comparison</h3>
+			<h3>{tr('account.plans.heading')}</h3>
 			<div class="plan-table-wrapper">
 				<table class="plan-table">
 					<thead>
 						<tr>
-							<th>Feature</th>
-							<th>Starter</th>
-							<th class="highlight">Pro</th>
+							<th>{tr('account.plans.feature')}</th>
+							<th>{tr('account.starter')}</th>
+							<th class="highlight">{tr('account.pro')}</th>
 						</tr>
 					</thead>
 					<tbody>
 						<tr>
-							<td>Commands</td>
+							<td>{tr('account.plans.commands')}</td>
 							<td>{planTiers.free.max_commands}</td>
-							<td class="highlight">Unlimited</td>
+							<td class="highlight">{tr('account.unlimited')}</td>
 						</tr>
 						<tr>
-							<td>Automations</td>
+							<td>{tr('account.plans.automations')}</td>
 							<td>{planTiers.free.max_automations}</td>
-							<td class="highlight">Unlimited</td>
+							<td class="highlight">{tr('account.unlimited')}</td>
 						</tr>
 						<tr>
-							<td>API Keys</td>
+							<td>{tr('account.plans.apiKeys')}</td>
 							<td>{planTiers.free.max_api_keys}</td>
 							<td class="highlight">{planTiers.pro.max_api_keys}</td>
 						</tr>
 						<tr>
-							<td>Webhooks</td>
+							<td>{tr('account.plans.webhooks')}</td>
 							<td>{planTiers.free.max_webhooks}</td>
 							<td class="highlight">{planTiers.pro.max_webhooks}</td>
 						</tr>
 						<tr>
-							<td>Log Retention</td>
-							<td>{planTiers.free.log_retention_days} days</td>
-							<td class="highlight">Unlimited</td>
+							<td>{tr('account.plans.logRetention')}</td>
+							<td
+								>{tr('account.days', {
+									count: planTiers.free.log_retention_days,
+								})}</td
+							>
+							<td class="highlight">{tr('account.unlimited')}</td>
 						</tr>
 						<tr>
-							<td>Stats Retention</td>
-							<td>{planTiers.free.stats_retention_days} days</td>
-							<td class="highlight">Unlimited</td>
+							<td>{tr('account.plans.statsRetention')}</td>
+							<td
+								>{tr('account.days', {
+									count: planTiers.free.stats_retention_days,
+								})}</td
+							>
+							<td class="highlight">{tr('account.unlimited')}</td>
 						</tr>
 						<tr>
-							<td>Price</td>
-							<td>FREE</td>
-							<td class="highlight">{formatPrice(planTiers.pro.price_cents)}/mo</td>
+							<td>{tr('account.billing.price')}</td>
+							<td>{tr('account.free')}</td>
+							<td class="highlight"
+								>{formatPrice(planTiers.pro.price_cents)}{tr(
+									'account.perMonth'
+								)}</td
+							>
 						</tr>
 					</tbody>
 				</table>
@@ -668,36 +695,34 @@
 
 	<!-- Payment Methods Section -->
 	<section id="section-payment" class="content-section">
-		<h2><span class="section-icon">💳</span> Payment Methods</h2>
+		<h2><span class="section-icon">💳</span> {tr('account.payment.heading')}</h2>
 
 		{#if serversWithBilling.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">💳</span>
-				<p>
-					No payment methods on file. Payment methods are added when you upgrade a server
-					to Pro.
-				</p>
+				<p>{tr('account.payment.none')}</p>
 			</div>
 		{:else}
 			<div class="payment-hero-card">
 				<div class="payment-hero-main">
-					<h3>Your Billing Portal</h3>
-					<p>
-						Update payment methods, download invoices, and manage subscriptions for each
-						server.
-					</p>
+					<h3>{tr('account.payment.portalHeading')}</h3>
+					<p>{tr('account.payment.portalDesc')}</p>
 				</div>
 				<div class="payment-hero-metrics">
 					<div class="payment-metric">
-						<span class="payment-metric-label">Billing Accounts</span>
+						<span class="payment-metric-label"
+							>{tr('account.payment.billingAccounts')}</span
+						>
 						<strong>{serversWithBilling.length}</strong>
 					</div>
 					<div class="payment-metric">
-						<span class="payment-metric-label">Active Subs</span>
+						<span class="payment-metric-label">{tr('account.payment.activeSubs')}</span>
 						<strong>{activeBillingSubscriptions.length}</strong>
 					</div>
 					<div class="payment-metric">
-						<span class="payment-metric-label">Monthly Total</span>
+						<span class="payment-metric-label"
+							>{tr('account.payment.monthlyTotal')}</span
+						>
 						<strong>{formatPrice(totalMonthlySpend)}</strong>
 					</div>
 				</div>
@@ -742,13 +767,17 @@
 						<div class="billing-server-meta">
 							<span>
 								{#if server.stripeSubscriptionId}
-									{formatPrice(server.priceCents)}/mo
+									{formatPrice(server.priceCents)}{tr('account.perMonth')}
 								{:else}
-									No active subscription
+									{tr('account.payment.noSubscription')}
 								{/if}
 							</span>
 							{#if server.stripeCurrentPeriodEnd}
-								<span>Renews {formatDate(server.stripeCurrentPeriodEnd)}</span>
+								<span
+									>{tr('account.payment.renews', {
+										date: formatDate(server.stripeCurrentPeriodEnd),
+									})}</span
+								>
 							{/if}
 						</div>
 
@@ -759,8 +788,8 @@
 								disabled={portalLoading !== null}
 							>
 								{portalLoading === server.guildId
-									? 'Opening...'
-									: 'Open Billing Portal'}
+									? tr('account.payment.opening')
+									: tr('account.payment.openPortal')}
 							</button>
 						</div>
 					</div>
@@ -773,23 +802,21 @@
 	<a href="/account/runners" class="runner-link-card">
 		<div class="runner-link-card-icon">🖥️</div>
 		<div class="runner-link-card-body">
-			<strong>Local Runner</strong>
-			<span>Manage runners, workflows, dispatch jobs, and configure runner behavior.</span>
+			<strong>{tr('account.runnerCard.title')}</strong>
+			<span>{tr('account.runnerCard.desc')}</span>
 		</div>
 		<span class="runner-link-card-arrow">&#8594;</span>
 	</a>
 
 	<!-- Settings Section -->
 	<section id="section-settings" class="content-section">
-		<h2><span class="section-icon">⚙️</span> Settings</h2>
+		<h2><span class="section-icon">⚙️</span> {tr('account.settings.heading')}</h2>
 
 		<div class="settings-group">
 			<div class="setting-item">
 				<div class="setting-info">
-					<span class="setting-label">Theme</span>
-					<span class="setting-desc"
-						>Switch between light and dark mode, or follow your system preference.</span
-					>
+					<span class="setting-label">{tr('account.settings.theme')}</span>
+					<span class="setting-desc">{tr('account.settings.themeDesc')}</span>
 				</div>
 				<div class="setting-control">
 					<ThemeToggle />
@@ -798,31 +825,33 @@
 		</div>
 
 		<div class="settings-group">
-			<h3>Connected Account</h3>
+			<h3>{tr('account.settings.connectedAccount')}</h3>
 			<div class="setting-item">
 				<div class="setting-info">
-					<span class="setting-label">Discord</span>
+					<span class="setting-label">{tr('account.settings.discord')}</span>
 					<span class="setting-desc"
-						>Logged in as <strong>@{user.username}</strong> via Discord OAuth.</span
+						>{@html tr('account.settings.loggedInAs', {
+							username: user.username,
+						})}</span
 					>
 				</div>
 				<div class="setting-control">
-					<span class="connected-badge">Connected</span>
+					<span class="connected-badge">{tr('account.settings.connected')}</span>
 				</div>
 			</div>
 		</div>
 
 		<div class="settings-group danger-zone">
-			<h3>Session</h3>
+			<h3>{tr('account.settings.session')}</h3>
 			<div class="setting-item">
 				<div class="setting-info">
-					<span class="setting-label">Log Out</span>
-					<span class="setting-desc"
-						>Sign out of SpaceBot. You'll need to log in again via Discord.</span
-					>
+					<span class="setting-label">{tr('account.settings.logOut')}</span>
+					<span class="setting-desc">{tr('account.settings.logOutDesc')}</span>
 				</div>
 				<div class="setting-control">
-					<a href="/api/auth/logout" class="btn btn-danger btn-sm">Log Out</a>
+					<a href="/api/auth/logout" class="btn btn-danger btn-sm"
+						>{tr('account.settings.logOut')}</a
+					>
 				</div>
 			</div>
 		</div>

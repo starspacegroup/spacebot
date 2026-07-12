@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { toast } from '$lib/toast.svelte.js';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 
 	const { data, form } = $props();
 
@@ -13,7 +16,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin Dashboard | SpaceBot</title>
+	<title>{tr('adash.homeMetaTitle')}</title>
 </svelte:head>
 
 <div class="admin-dashboard">
@@ -22,25 +25,20 @@
 		<div class="access-denied-container">
 			<div class="access-denied-card">
 				<div class="access-denied-icon">🔒</div>
-				<h1>Access Denied</h1>
-				<p>
-					You need to be an administrator of a server where the bot is installed to access
-					this dashboard.
-				</p>
+				<h1>{tr('adash.accessDenied')}</h1>
+				<p>{tr('adash.accessDeniedBody')}</p>
 				{#if data.user}
-					<p class="hint">
-						If you're a server admin, make sure the bot is added to your server first.
-					</p>
+					<p class="hint">{tr('adash.accessDeniedHint')}</p>
 					<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
 						<span class="btn-icon"
 							><img src="/logo.webp" alt="" class="inline-logo" /></span
 						>
-						Add Bot to a Server
+						{tr('adash.addBotToServer')}
 					</a>
 				{:else}
 					<a href="/login" class="btn btn-primary btn-lg">
 						<span class="btn-icon">🔑</span>
-						Login with Discord
+						{tr('adash.loginWithDiscord')}
 					</a>
 				{/if}
 			</div>
@@ -51,9 +49,9 @@
 			<div class="header-content">
 				<h1>
 					<span class="header-icon">🚀</span>
-					Admin Dashboard
+					{tr('adash.homeTitle')}
 				</h1>
-				<p class="header-subtitle">Select a server to manage</p>
+				<p class="header-subtitle">{tr('adash.selectServer')}</p>
 			</div>
 		</header>
 
@@ -79,9 +77,11 @@
 							<div class="server-info">
 								<span class="server-name">{guild.name}</span>
 								{#if guild.botIsInServer === false}
-									<span class="server-status no-bot">Bot not installed</span>
+									<span class="server-status no-bot"
+										>{tr('adash.botNotInstalledShort')}</span
+									>
 								{:else}
-									<span class="server-status">Ready to manage</span>
+									<span class="server-status">{tr('adash.readyToManage')}</span>
 								{/if}
 							</div>
 							<span class="server-arrow">→</span>
@@ -91,10 +91,10 @@
 			</section>
 
 			<div class="add-server-section">
-				<p>Don't see your server?</p>
+				<p>{tr('adash.dontSeeServer')}</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-secondary">
 					<span><img src="/logo.webp" alt="" class="inline-logo" /></span>
-					Add Bot to Another Server
+					{tr('adash.addBotAnother')}
 				</a>
 			</div>
 		{:else}
@@ -102,11 +102,11 @@
 				<div class="empty-icon">
 					<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
 				</div>
-				<h2>No Servers Found</h2>
-				<p>Add the bot to a server where you're an admin to get started.</p>
+				<h2>{tr('adash.noServersFound')}</h2>
+				<p>{tr('adash.noServersBody')}</p>
 				<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
 					<span class="btn-icon">➕</span>
-					Add Bot to a Server
+					{tr('adash.addBotToServer')}
 				</a>
 			</div>
 		{/if}

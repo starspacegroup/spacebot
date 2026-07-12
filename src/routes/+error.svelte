@@ -1,26 +1,29 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { fly } from 'svelte/transition';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 
 	const status = $derived($page.status);
-	const message = $derived($page.error?.message ?? 'Something went wrong');
+	const message = $derived($page.error?.message ?? tr('error.default'));
 
 	const title = $derived(
 		status === 404
-			? 'Page not found'
+			? tr('error.notFound.title')
 			: status === 403
-				? 'Access denied'
+				? tr('error.forbidden.title')
 				: status >= 500
-					? 'Server error'
-					: 'Something went wrong'
+					? tr('error.server.title')
+					: tr('error.generic.title')
 	);
 
 	const blurb = $derived(
 		status === 404
-			? "We couldn't find the page you were looking for. It may have moved or never existed."
+			? tr('error.notFound.blurb')
 			: status === 403
-				? "You don't have permission to view this page."
-				: 'An unexpected error occurred. Trying again in a moment usually helps.'
+				? tr('error.forbidden.blurb')
+				: tr('error.generic.blurb')
 	);
 </script>
 
@@ -37,8 +40,8 @@
 			<p class="error-detail">{message}</p>
 		{/if}
 		<div class="error-actions">
-			<a href="/admin" class="btn btn-primary">Back to dashboard</a>
-			<a href="/" class="btn btn-secondary">Go home</a>
+			<a href="/admin" class="btn btn-primary">{tr('error.backToDashboard')}</a>
+			<a href="/" class="btn btn-secondary">{tr('error.goHome')}</a>
 		</div>
 	</div>
 </div>

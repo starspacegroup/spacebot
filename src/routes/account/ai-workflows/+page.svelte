@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { toast } from '$lib/toast.svelte.js';
+	import { getTranslator, getLocale } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
 
 	const { data } = $props();
 
@@ -41,7 +45,7 @@
 	function formatDate(value) {
 		if (!value) return '-';
 		try {
-			return new Date(value).toLocaleString();
+			return new Date(value).toLocaleString(dateLocale);
 		} catch {
 			return value;
 		}
@@ -139,7 +143,7 @@
 			});
 			const result = await res.json();
 			if (!res.ok) {
-				showToast(result.error || 'Failed to create workflow', false);
+				showToast(result.error || tr('aiwf.toast.createFailed'), false);
 				return;
 			}
 
@@ -154,9 +158,9 @@
 			formRequireCopilot = false;
 
 			await refreshAll();
-			showToast('Workflow created.');
+			showToast(tr('aiwf.toast.created'));
 		} catch {
-			showToast('Network error while creating workflow', false);
+			showToast(tr('aiwf.toast.createNetErr'), false);
 		} finally {
 			creatingWorkflow = false;
 		}
@@ -171,28 +175,28 @@
 			});
 			const result = await res.json();
 			if (!res.ok) {
-				showToast(result.error || 'Failed to update workflow', false);
+				showToast(result.error || tr('aiwf.toast.updateFailed'), false);
 				return;
 			}
 			workflows = workflows.map((item) => (item.id === workflow.id ? result.workflow : item));
 		} catch {
-			showToast('Network error while updating workflow', false);
+			showToast(tr('aiwf.toast.updateNetErr'), false);
 		}
 	}
 
 	async function deleteWorkflow(id) {
-		if (!confirm('Delete this workflow?')) return;
+		if (!confirm(tr('aiwf.confirmDelete'))) return;
 		try {
 			const res = await fetch(`/api/account/workflows/${id}`, { method: 'DELETE' });
 			const result = await res.json();
 			if (!res.ok) {
-				showToast(result.error || 'Failed to delete workflow', false);
+				showToast(result.error || tr('aiwf.toast.deleteFailed'), false);
 				return;
 			}
 			workflows = workflows.filter((item) => item.id !== id);
-			showToast('Workflow deleted.');
+			showToast(tr('aiwf.toast.deleted'));
 		} catch {
-			showToast('Network error while deleting workflow', false);
+			showToast(tr('aiwf.toast.deleteNetErr'), false);
 		}
 	}
 
@@ -205,7 +209,7 @@
 				try {
 					payloadJson = JSON.parse(dispatchPayload);
 				} catch {
-					showToast('Dispatch payload JSON is invalid', false);
+					showToast(tr('aiwf.toast.payloadInvalid'), false);
 					return;
 				}
 			}
@@ -221,24 +225,36 @@
 			});
 			const result = await res.json();
 			if (!res.ok) {
-				showToast(result.error || 'Failed to dispatch workflow', false);
+				showToast(result.error || tr('aiwf.toast.dispatchFailed'), false);
 				return;
 			}
 
 			const jobCount = Array.isArray(result.jobIds) ? result.jobIds.length : 1;
-			showToast(`Workflow dispatched (${jobCount} job${jobCount === 1 ? '' : 's'}).`);
+			showToast(tr('aiwf.toast.dispatched', { count: jobCount }));
 			dispatchCommand = '';
 			dispatchLabel = '';
 			dispatchPayload = '';
 			await refreshAll();
 		} catch {
-			showToast('Network error while dispatching workflow', false);
+			showToast(tr('aiwf.toast.dispatchNetErr'), false);
 		} finally {
 			dispatching = false;
 		}
 	}
 
 	async function updateJob(jobId, action) {
+		const msgs =
+			action === 'cancel'
+				? {
+						failed: tr('aiwf.toast.cancelFailed'),
+						done: tr('aiwf.toast.cancelDone'),
+						net: tr('aiwf.toast.cancelNetErr'),
+					}
+				: {
+						failed: tr('aiwf.toast.retryFailed'),
+						done: tr('aiwf.toast.retryDone'),
+						net: tr('aiwf.toast.retryNetErr'),
+					};
 		try {
 			const res = await fetch(`/api/account/runners/jobs/${jobId}`, {
 				method: 'PATCH',
@@ -247,13 +263,13 @@
 			});
 			const result = await res.json();
 			if (!res.ok) {
-				showToast(result.error || `Failed to ${action} job`, false);
+				showToast(result.error || msgs.failed, false);
 				return;
 			}
 			await refreshAll();
-			showToast(`Job ${action}ed.`);
+			showToast(msgs.done);
 		} catch {
-			showToast(`Network error while trying to ${action} job`, false);
+			showToast(msgs.net, false);
 		}
 	}
 
@@ -311,82 +327,83 @@
 </script>
 
 <svelte:head>
-	<title>AI Workflows | SpaceBot</title>
+	<title>{tr('aiwf.metaTitle')}</title>
 </svelte:head>
 
 <div class="ops-page">
 	<header class="ops-header">
 		<div>
-			<h1>Automation Console</h1>
-			<p>Build workflow templates, dispatch jobs, and manage queue execution in one place.</p>
+			<h1>{tr('aiwf.title')}</h1>
+			<p>{tr('aiwf.subtitle')}</p>
 		</div>
 		<div class="ops-header-links">
-			<a href="/account">Account</a>
-			<a href="#jobs">Queue</a>
+			<a href="/account">{tr('aiwf.account')}</a>
+			<a href="#jobs">{tr('aiwf.queue')}</a>
 		</div>
 	</header>
 
 	<section class="panel quickstart-panel">
-		<h2>Start Here</h2>
-		<p class="muted">
-			Use this order for day-to-day operations: define a workflow, dispatch it, then
-			monitor/cancel/retry in queue.
-		</p>
+		<h2>{tr('aiwf.startHere')}</h2>
+		<p class="muted">{tr('aiwf.startDesc')}</p>
 		<div class="quickstart-grid">
 			<a class="quickstart-card" href="#workflow-builder">
-				<strong>1. Build workflow</strong>
-				<span>Set job type, machine strategy, and model behavior.</span>
+				<strong>{tr('aiwf.qs1.title')}</strong>
+				<span>{tr('aiwf.qs1.desc')}</span>
 			</a>
 			<a class="quickstart-card" href="#dispatch">
-				<strong>2. Dispatch</strong>
-				<span>Queue jobs from a workflow with optional command/payload override.</span>
+				<strong>{tr('aiwf.qs2.title')}</strong>
+				<span>{tr('aiwf.qs2.desc')}</span>
 			</a>
 			<a class="quickstart-card" href="#jobs">
-				<strong>3. Run queue</strong>
-				<span>Filter jobs, inspect status, and cancel/retry with one click.</span>
+				<strong>{tr('aiwf.qs3.title')}</strong>
+				<span>{tr('aiwf.qs3.desc')}</span>
 			</a>
 		</div>
 	</section>
 
 	<section class="ops-grid stats-grid">
 		<article>
-			<h3>Workflows</h3>
+			<h3>{tr('aiwf.workflows')}</h3>
 			<strong>{workflows.length}</strong>
-			<span>{workflows.filter((workflow) => workflow.enabled).length} enabled</span>
+			<span
+				>{tr('aiwf.enabledCount', {
+					count: workflows.filter((workflow) => workflow.enabled).length,
+				})}</span
+			>
 		</article>
 		<article>
-			<h3>Runners</h3>
+			<h3>{tr('aiwf.runners')}</h3>
 			<strong>{runnerTokens.filter((token) => !token.revoked).length}</strong>
-			<span>{onlineInstances().length} online instances</span>
+			<span>{tr('aiwf.onlineInstances', { count: onlineInstances().length })}</span>
 		</article>
 		<article>
-			<h3>Queue</h3>
+			<h3>{tr('aiwf.queue')}</h3>
 			<strong>{runnerJobs.length}</strong>
 			<span
-				>{runnerJobs.filter((job) => job.status === 'pending' || job.status === 'running')
-					.length} active</span
+				>{tr('aiwf.activeCount', {
+					count: runnerJobs.filter(
+						(job) => job.status === 'pending' || job.status === 'running'
+					).length,
+				})}</span
 			>
 		</article>
 	</section>
 
 	<section id="workflow-builder" class="panel">
-		<h2>Create Workflow</h2>
-		<p class="muted">
-			Create a reusable template for how jobs are routed and executed. Leave allow-lists blank
-			to allow all available runners.
-		</p>
+		<h2>{tr('aiwf.createWorkflow')}</h2>
+		<p class="muted">{tr('aiwf.createDesc')}</p>
 
 		<div class="form-grid">
 			<input
 				class="input"
 				type="text"
-				placeholder="Workflow template name"
+				placeholder={tr('aiwf.ph.name')}
 				bind:value={formName}
 			/>
 			<input
 				class="input"
 				type="text"
-				placeholder="Description (what this workflow should do)"
+				placeholder={tr('aiwf.ph.description')}
 				bind:value={formDescription}
 			/>
 
@@ -400,68 +417,70 @@
 			</select>
 
 			<select class="input" bind:value={formRunnerStrategy}>
-				<option value="pinned">pinned (specific machine/token)</option>
-				<option value="any_online">any_online (pick one live instance)</option>
-				<option value="all_online">all_online (fan out to all live instances)</option>
+				<option value="pinned">{tr('aiwf.strategy.pinned')}</option>
+				<option value="any_online">{tr('aiwf.strategy.anyOnline')}</option>
+				<option value="all_online">{tr('aiwf.strategy.allOnline')}</option>
 			</select>
 
 			<select class="input" bind:value={formTargetTokenId}>
-				<option value="">Target token (optional)</option>
+				<option value="">{tr('aiwf.targetToken')}</option>
 				{#each runnerTokens.filter((token) => !token.revoked) as token (token.id)}
 					<option value={token.id}>{token.name} ({token.token_prefix}...)</option>
 				{/each}
 			</select>
 
 			<select class="input" bind:value={formTargetInstanceId}>
-				<option value="">Target instance (optional)</option>
+				<option value="">{tr('aiwf.targetInstance')}</option>
 				{#each runnerInstances as instance (instance.id)}
 					<option value={instance.id}
 						>{instance.display_name}
-						{instance.is_online ? '(online)' : '(offline)'}</option
+						{instance.is_online ? tr('aiwf.online') : tr('aiwf.offline')}</option
 					>
 				{/each}
 			</select>
 
 			<select class="input" bind:value={formModelMode}>
-				<option value="first_success">first_success (fallback chain)</option>
-				<option value="fanout_all">fanout_all (one job per model)</option>
+				<option value="first_success">{tr('aiwf.mode.firstSuccess')}</option>
+				<option value="fanout_all">{tr('aiwf.mode.fanoutAll')}</option>
 			</select>
 
 			<textarea
 				class="input"
 				rows="3"
 				bind:value={formModelChain}
-				placeholder="Model chain, one per line (provider:model[:via])"></textarea>
+				placeholder={tr('aiwf.ph.modelChain')}></textarea>
 
 			<select class="input" multiple bind:value={formAllowedTokenIds}>
 				{#each runnerTokens.filter((token) => !token.revoked) as token (token.id)}
-					<option value={String(token.id)}>Allow token: {token.name}</option>
+					<option value={String(token.id)}
+						>{tr('aiwf.allowToken', { name: token.name })}</option
+					>
 				{/each}
 			</select>
 
 			<select class="input" multiple bind:value={formAllowedInstanceIds}>
 				{#each runnerInstances as instance (instance.id)}
 					<option value={String(instance.id)}
-						>Allow instance: {instance.display_name}</option
+						>{tr('aiwf.allowInstance', { name: instance.display_name })}</option
 					>
 				{/each}
 			</select>
 		</div>
 
-		<p class="muted form-hint">
-			Model chain format: one entry per line, for example <code>copilot:gpt-4.1</code> or
-			<code>ollama:llama3</code>.
-		</p>
+		<p class="muted form-hint">{@html tr('aiwf.modelChainHint')}</p>
 
 		<div class="capability-row">
 			<label
-				><input type="checkbox" bind:checked={formRequireScreenshots} /> require screenshots</label
+				><input type="checkbox" bind:checked={formRequireScreenshots} />
+				{tr('aiwf.requireScreenshots')}</label
 			>
 			<label
-				><input type="checkbox" bind:checked={formRequireVscode} /> require vscode control</label
+				><input type="checkbox" bind:checked={formRequireVscode} />
+				{tr('aiwf.requireVscode')}</label
 			>
 			<label
-				><input type="checkbox" bind:checked={formRequireCopilot} /> require copilot bridge</label
+				><input type="checkbox" bind:checked={formRequireCopilot} />
+				{tr('aiwf.requireCopilot')}</label
 			>
 		</div>
 
@@ -470,21 +489,21 @@
 			onclick={createWorkflow}
 			disabled={creatingWorkflow || !formName.trim()}
 		>
-			{creatingWorkflow ? 'Creating...' : 'Create Workflow'}
+			{creatingWorkflow ? tr('aiwf.creating') : tr('aiwf.createWorkflow')}
 		</button>
 	</section>
 
 	<section id="workflow-inventory" class="panel">
-		<h2>Workflow Inventory</h2>
+		<h2>{tr('aiwf.inventory')}</h2>
 		<div class="workflow-list">
 			{#if workflows.length === 0}
-				<p class="muted">No workflows yet.</p>
+				<p class="muted">{tr('aiwf.noWorkflows')}</p>
 			{:else}
 				{#each workflows as workflow (workflow.id)}
 					<article class="workflow-card">
 						<div>
 							<strong>{workflow.name}</strong>
-							<p class="muted">{workflow.description || 'No description'}</p>
+							<p class="muted">{workflow.description || tr('aiwf.noDescription')}</p>
 							<p class="meta">
 								{workflow.job_type} • {workflow.runner_strategy || 'pinned'} • {workflow
 									.model_preferences_json?.mode || 'first_success'}
@@ -498,11 +517,14 @@
 									onchange={(event) =>
 										toggleWorkflow(workflow, event.currentTarget.checked)}
 								/>
-								{workflow.enabled ? 'Enabled' : 'Disabled'}
+								{workflow.enabled
+									? tr('aiwf.enabledLabel')
+									: tr('aiwf.disabledLabel')}
 							</label>
 							<button
 								class="btn btn-danger"
-								onclick={() => deleteWorkflow(workflow.id)}>Delete</button
+								onclick={() => deleteWorkflow(workflow.id)}
+								>{tr('aiwf.delete')}</button
 							>
 						</div>
 					</article>
@@ -512,10 +534,10 @@
 	</section>
 
 	<section id="dispatch" class="panel">
-		<h2>Dispatch Workflow</h2>
+		<h2>{tr('aiwf.dispatchWorkflow')}</h2>
 		<div class="dispatch-grid">
 			<select class="input" bind:value={dispatchWorkflowId}>
-				<option value="">Choose workflow</option>
+				<option value="">{tr('aiwf.chooseWorkflow')}</option>
 				{#each workflows.filter((workflow) => workflow.enabled) as workflow (workflow.id)}
 					<option value={String(workflow.id)}>{workflow.name}</option>
 				{/each}
@@ -523,19 +545,19 @@
 			<input
 				class="input"
 				type="text"
-				placeholder="Command override (shell workflows)"
+				placeholder={tr('aiwf.ph.commandOverride')}
 				bind:value={dispatchCommand}
 			/>
 			<input
 				class="input"
 				type="text"
-				placeholder="Label override"
+				placeholder={tr('aiwf.ph.labelOverride')}
 				bind:value={dispatchLabel}
 			/>
 			<input
 				class="input"
 				type="text"
-				placeholder="Payload JSON (optional)"
+				placeholder={tr('aiwf.ph.payloadJson')}
 				bind:value={dispatchPayload}
 			/>
 			<button
@@ -543,29 +565,27 @@
 				onclick={dispatchWorkflow}
 				disabled={dispatching || !dispatchWorkflowId}
 			>
-				{dispatching ? 'Dispatching...' : 'Dispatch'}
+				{dispatching ? tr('aiwf.dispatching') : tr('aiwf.dispatchBtn')}
 			</button>
 		</div>
 	</section>
 
 	<section id="jobs" class="panel">
-		<h2>Queue Control</h2>
-		<p class="muted">
-			This is your live operations board for queued work across all workflows.
-		</p>
+		<h2>{tr('aiwf.queueControl')}</h2>
+		<p class="muted">{tr('aiwf.queueDesc')}</p>
 
 		<div class="queue-toolbar">
 			<select class="input" bind:value={queueStatusFilter}>
-				<option value="all">All statuses</option>
-				<option value="pending">pending</option>
-				<option value="running">running</option>
-				<option value="completed">completed</option>
-				<option value="failed">failed</option>
-				<option value="canceled">canceled</option>
+				<option value="all">{tr('aiwf.allStatuses')}</option>
+				<option value="pending">{tr('aiwf.status.pending')}</option>
+				<option value="running">{tr('aiwf.status.running')}</option>
+				<option value="completed">{tr('aiwf.status.completed')}</option>
+				<option value="failed">{tr('aiwf.status.failed')}</option>
+				<option value="canceled">{tr('aiwf.status.canceled')}</option>
 			</select>
 
 			<select class="input" bind:value={queueTypeFilter}>
-				<option value="all">All job types</option>
+				<option value="all">{tr('aiwf.allJobTypes')}</option>
 				{#each queueJobTypes as type (type)}
 					<option value={type}>{type}</option>
 				{/each}
@@ -574,35 +594,35 @@
 			<input
 				class="input"
 				type="text"
-				placeholder="Search id, type, label, command, or runner"
+				placeholder={tr('aiwf.ph.searchQueue')}
 				bind:value={queueSearch}
 			/>
 		</div>
 
 		<p class="meta">
-			Showing {Math.min(filteredRunnerJobs.length, 80)} of {filteredRunnerJobs.length} matching
-			job(s).
+			{tr('aiwf.showingJobs', {
+				shown: Math.min(filteredRunnerJobs.length, 80),
+				total: filteredRunnerJobs.length,
+			})}
 		</p>
 
 		<div class="table-wrap">
 			<table>
 				<thead>
 					<tr>
-						<th>ID</th>
-						<th>Type</th>
-						<th>Status</th>
-						<th>Runner</th>
-						<th>Attempts</th>
-						<th>Updated</th>
-						<th>Actions</th>
+						<th>{tr('aiwf.col.id')}</th>
+						<th>{tr('aiwf.col.type')}</th>
+						<th>{tr('aiwf.col.status')}</th>
+						<th>{tr('aiwf.col.runner')}</th>
+						<th>{tr('aiwf.col.attempts')}</th>
+						<th>{tr('aiwf.col.updated')}</th>
+						<th>{tr('aiwf.col.actions')}</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#if filteredRunnerJobs.length === 0}
 						<tr>
-							<td colspan="7" class="muted"
-								>No jobs match the current queue filters.</td
-							>
+							<td colspan="7" class="muted">{tr('aiwf.noJobsMatch')}</td>
 						</tr>
 					{:else}
 						{#each filteredRunnerJobs.slice(0, 80) as job (job.id)}
@@ -627,12 +647,13 @@
 										<button
 											class="btn btn-danger"
 											onclick={() => updateJob(job.id, 'cancel')}
-											>Cancel</button
+											>{tr('aiwf.cancel')}</button
 										>
 									{:else if job.status === 'failed' || job.status === 'canceled'}
 										<button
 											class="btn"
-											onclick={() => updateJob(job.id, 'retry')}>Retry</button
+											onclick={() => updateJob(job.id, 'retry')}
+											>{tr('aiwf.retry')}</button
 										>
 									{:else}
 										<span class="muted">-</span>

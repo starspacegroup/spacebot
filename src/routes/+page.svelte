@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
 	const { data } = $props();
+	const tr = getTranslator();
 
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
@@ -8,23 +11,14 @@
 </script>
 
 <svelte:head>
-	<title>SpaceBot – Discord Bot Platform</title>
-	<meta
-		name="description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
-	/>
-	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		property="og:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
-	/>
+	<title>{tr('home.meta.title')}</title>
+	<meta name="description" content={tr('home.meta.description')} />
+	<meta property="og:title" content={tr('home.meta.title')} />
+	<meta property="og:description" content={tr('home.meta.description')} />
 	<meta property="og:url" content="https://spacebot.starspace.group" />
 	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		name="twitter:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations. Free for servers up to 9,000 members."
-	/>
+	<meta name="twitter:title" content={tr('home.meta.title')} />
+	<meta name="twitter:description" content={tr('home.meta.description')} />
 	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
@@ -33,20 +27,17 @@
 	<section class="hero">
 		<div class="hero-content">
 			<h1 class="hero-identity">
-				<img src="/logo.webp" alt="SpaceBot logo" class="hero-logo" /> SpaceBot
+				<img src="/logo.webp" alt={tr('home.hero.logoAlt')} class="hero-logo" /> SpaceBot
 			</h1>
-			<p class="tagline">The powerful Discord bot platform you control</p>
+			<p class="tagline">{tr('home.hero.tagline')}</p>
 			<p class="description">
-				Custom commands, event-driven automations, an AI assistant, server analytics,
-				webhooks, integrations, and a full REST API — all from a beautiful dashboard. <strong
-					>100% open source.</strong
-				>
+				{tr('home.hero.description')} <strong>{tr('home.hero.openSource')}</strong>
 			</p>
 			<div class="cta-buttons">
 				{#if data.isLoggedIn}
-					<a href={adminUrl} class="btn btn-primary">Go to Dashboard</a>
+					<a href={adminUrl} class="btn btn-primary">{tr('common.goToDashboard')}</a>
 				{:else}
-					<a href="/login" class="btn btn-primary">Get Started Free</a>
+					<a href="/login" class="btn btn-primary">{tr('common.getStartedFree')}</a>
 				{/if}
 				<a
 					href="https://github.com/starspacegroup/spacebot"
@@ -57,19 +48,20 @@
 						><path
 							d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"
 						/></svg
-					> View on GitHub</a
+					>
+					{tr('home.hero.viewOnGitHub')}</a
 				>
 			</div>
 		</div>
 		<div class="hero-screenshot">
 			<img
 				src="/server-admin-light.webp"
-				alt="SpaceBot Admin Dashboard"
+				alt={tr('home.hero.dashboardAlt')}
 				class="screenshot-light"
 			/>
 			<img
 				src="/server-admin-dark.webp"
-				alt="SpaceBot Admin Dashboard"
+				alt={tr('home.hero.dashboardAlt')}
 				class="screenshot-dark"
 			/>
 		</div>
@@ -77,89 +69,65 @@
 
 	<!-- Features Section -->
 	<section id="features" class="features">
-		<h2>Everything you need to supercharge your Discord server</h2>
+		<h2>{tr('home.features.heading')}</h2>
 
 		<div class="feature-grid">
 			<div class="feature-card">
 				<span class="feature-icon"
 					><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span
 				>
-				<h3>Custom Slash Commands</h3>
-				<p>
-					Create unlimited commands with parameters, permissions, and rich responses —
-					including embeds, context menus, and voice-only commands. No coding required.
-				</p>
+				<h3>{tr('home.features.commands.title')}</h3>
+				<p>{tr('home.features.commands.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">⚡</span>
-				<h3>Event-Driven Automations</h3>
-				<p>
-					26 trigger events, 17 filters, and 15 action types. Auto-assign roles, send
-					welcome messages, moderate content, call webhooks, and more — all from a visual
-					builder.
-				</p>
+				<h3>{tr('home.features.automations.title')}</h3>
+				<p>{tr('home.features.automations.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">🧠</span>
-				<h3>AI Assistant</h3>
-				<p>
-					DM the bot for an AI-powered assistant that can query your server data, create
-					scheduled events, send messages, and manage your server with natural language.
-				</p>
+				<h3>{tr('home.features.ai.title')}</h3>
+				<p>{tr('home.features.ai.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">📊</span>
-				<h3>Server Analytics & Logs</h3>
-				<p>
-					Track member growth, message activity, voice usage, and more with time-series
-					charts. Searchable event logs capture every Discord event in real time.
-				</p>
+				<h3>{tr('home.features.analytics.title')}</h3>
+				<p>{tr('home.features.analytics.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">🔗</span>
-				<h3>Webhooks & Integrations</h3>
-				<p>
-					Connect to external services with outbound webhooks and a plugin system. Install
-					integrations or build your own with the manifest-based SDK.
-				</p>
+				<h3>{tr('home.features.webhooks.title')}</h3>
+				<p>{tr('home.features.webhooks.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">🔑</span>
-				<h3>REST API & API Keys</h3>
-				<p>
-					Full versioned REST API with scoped API keys. Read logs, manage automations and
-					commands, query stats, and integrate with any external tool.
-				</p>
+				<h3>{tr('home.features.api.title')}</h3>
+				<p>{tr('home.features.api.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">📅</span>
-				<h3>Scheduled Events</h3>
-				<p>
-					Create and manage Discord scheduled events right from the dashboard — or let the
-					AI assistant parse events from natural language and generate banner images.
-				</p>
+				<h3>{tr('home.features.events.title')}</h3>
+				<p>{tr('home.features.events.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">🔐</span>
-				<h3>Granular Permissions</h3>
-				<p>
-					Role-based dashboard access, per-command permission presets, and per-section
-					permission controls. Keep your team in sync with fine-grained security.
-				</p>
+				<h3>{tr('home.features.permissions.title')}</h3>
+				<p>{tr('home.features.permissions.body')}</p>
 			</div>
 
 			<div class="feature-card">
 				<span class="feature-icon">📖</span>
-				<h3>Open Source & Edge-Deployed</h3>
+				<h3>{tr('home.features.openSource.title')}</h3>
 				<p>
-					Fully open source on <a
+					{tr('home.features.openSource.pre')}
+					<a
 						href="https://github.com/starspacegroup/spacebot"
 						target="_blank"
 						rel="noopener noreferrer"
@@ -169,8 +137,7 @@
 								d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"
 							/></svg
 						> GitHub</a
-					>. Deployed on Cloudflare's edge network for lightning-fast response times with
-					zero cold starts.
+					>{tr('home.features.openSource.post')}
 				</p>
 			</div>
 		</div>
@@ -178,115 +145,121 @@
 
 	<!-- Pricing Section -->
 	<section id="pricing" class="pricing">
-		<h2>Full-featured, for everyone</h2>
-		<p class="pricing-subtitle">
-			We believe powerful tools shouldn't be expensive. Get everything you need to start — go
-			unlimited for the price of a coffee.
-		</p>
+		<h2>{tr('home.pricing.heading')}</h2>
+		<p class="pricing-subtitle">{tr('home.pricing.subtitle')}</p>
 
 		<div class="billing-toggle">
 			<button
 				class="billing-option"
 				class:active={billingInterval === 'monthly'}
-				onclick={() => (billingInterval = 'monthly')}>Monthly</button
+				onclick={() => (billingInterval = 'monthly')}>{tr('home.pricing.monthly')}</button
 			>
 			<button
 				class="billing-option"
 				class:active={billingInterval === 'yearly'}
 				onclick={() => (billingInterval = 'yearly')}
-				>Yearly <span class="billing-save">Save 17%</span></button
+				>{tr('home.pricing.yearly')}
+				<span class="billing-save">{tr('home.pricing.save')}</span></button
 			>
 		</div>
 
 		<div class="pricing-grid">
 			<div class="pricing-card">
-				<div class="pricing-badge">Starter</div>
+				<div class="pricing-badge">{tr('home.pricing.starter.badge')}</div>
 				<div class="pricing-price">
-					<span class="price-amount price-free">FREE</span>
+					<span class="price-amount price-free">{tr('home.pricing.free')}</span>
 				</div>
-				<p class="pricing-description">Everything you need to get started.</p>
+				<p class="pricing-description">{tr('home.pricing.starter.description')}</p>
 				<ul class="pricing-features">
-					<li><span class="check">✓</span> Unlimited servers</li>
-					<li><span class="check">✓</span> Unlimited members per server</li>
-					<li><span class="check">✓</span> Up to 3 custom commands</li>
-					<li><span class="check">✓</span> Up to 9 automations</li>
-					<li><span class="check">✓</span> AI assistant</li>
-					<li><span class="check">✓</span> Event logs & search</li>
-					<li><span class="check">✓</span> Webhooks & integrations</li>
-					<li><span class="check">✓</span> REST API & API keys</li>
-					<li><span class="check">✓</span> Scheduled events</li>
-					<li><span class="check">✓</span> 90 days of server stats</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f1')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f2')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f3')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f4')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f5')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f6')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f7')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f8')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f9')}</li>
+					<li><span class="check">✓</span> {tr('home.pricing.starter.f10')}</li>
 				</ul>
 				{#if data.isLoggedIn}
-					<a href={adminUrl} class="btn btn-secondary btn-block">Go to Dashboard</a>
+					<a href={adminUrl} class="btn btn-secondary btn-block"
+						>{tr('common.goToDashboard')}</a
+					>
 				{:else}
-					<a href="/login" class="btn btn-secondary btn-block">Get Started</a>
+					<a href="/login" class="btn btn-secondary btn-block"
+						>{tr('home.pricing.starter.cta')}</a
+					>
 				{/if}
 			</div>
 
 			<div class="pricing-card pricing-card-featured">
-				<div class="pricing-badge pricing-badge-featured">Pro</div>
+				<div class="pricing-badge pricing-badge-featured">
+					{tr('home.pricing.pro.badge')}
+				</div>
 				<div class="pricing-price">
 					{#if billingInterval === 'yearly'}
 						<span class="price-amount">$2.50</span>
-						<span class="price-period">/server/mo</span>
-						<div class="price-billed-note">Billed $30/server/year</div>
+						<span class="price-period">{tr('home.pricing.perServerMonth')}</span>
+						<div class="price-billed-note">
+							{tr('home.pricing.billedYearly', { amount: '$30' })}
+						</div>
 					{:else}
 						<span class="price-amount">$3</span>
-						<span class="price-period">/server/mo</span>
+						<span class="price-period">{tr('home.pricing.perServerMonth')}</span>
 					{/if}
 				</div>
-				<p class="pricing-description">
-					Unlimited commands, automations, and 1 year of stats history.
-				</p>
+				<p class="pricing-description">{tr('home.pricing.pro.description')}</p>
 				<ul class="pricing-features">
-					<li><span class="check">✓</span> Everything in Starter</li>
-					<li><span class="check-pro">✓</span> Unlimited custom commands</li>
-					<li><span class="check-pro">✓</span> Unlimited automations</li>
-					<li><span class="check-pro">✓</span> 1 year server stats history</li>
+					<li><span class="check">✓</span> {tr('home.pricing.pro.f1')}</li>
+					<li><span class="check-pro">✓</span> {tr('home.pricing.pro.f2')}</li>
+					<li><span class="check-pro">✓</span> {tr('home.pricing.pro.f3')}</li>
+					<li><span class="check-pro">✓</span> {tr('home.pricing.pro.f4')}</li>
 				</ul>
 				{#if data.isLoggedIn}
 					<a
 						href="/admin/upgrade?interval={billingInterval}"
-						class="btn btn-primary btn-block">Sign Up</a
+						class="btn btn-primary btn-block">{tr('common.signUp')}</a
 					>
 				{:else}
 					<a
 						href="/admin/upgrade?interval={billingInterval}"
-						class="btn btn-primary btn-block">Sign Up</a
+						class="btn btn-primary btn-block">{tr('common.signUp')}</a
 					>
 				{/if}
 			</div>
 
 			<div class="pricing-card pricing-card-coming-soon">
-				<div class="pricing-badge">Ultimate</div>
+				<div class="pricing-badge">{tr('home.pricing.ultimate.badge')}</div>
 				<div class="pricing-price">
 					{#if billingInterval === 'yearly'}
 						<span class="price-amount">$35</span>
-						<span class="price-period">/server/mo</span>
-						<div class="price-billed-note">Billed $420/server/year</div>
+						<span class="price-period">{tr('home.pricing.perServerMonth')}</span>
+						<div class="price-billed-note">
+							{tr('home.pricing.billedYearly', { amount: '$420' })}
+						</div>
 					{:else}
 						<span class="price-amount">$42</span>
-						<span class="price-period">/server/mo</span>
+						<span class="price-period">{tr('home.pricing.perServerMonth')}</span>
 					{/if}
 				</div>
-				<p class="pricing-description">
-					Deep insights with advanced and comparative server stats.
-				</p>
+				<p class="pricing-description">{tr('home.pricing.ultimate.description')}</p>
 				<ul class="pricing-features">
-					<li><span class="check">✓</span> Everything in Pro</li>
-					<li><span class="check-ultimate">✓</span> Advanced stats</li>
-					<li><span class="check-ultimate">✓</span> Comparative stats</li>
-					<li><span class="check-ultimate">✓</span> Unlimited stats history</li>
+					<li><span class="check">✓</span> {tr('home.pricing.ultimate.f1')}</li>
+					<li><span class="check-ultimate">✓</span> {tr('home.pricing.ultimate.f2')}</li>
+					<li><span class="check-ultimate">✓</span> {tr('home.pricing.ultimate.f3')}</li>
+					<li><span class="check-ultimate">✓</span> {tr('home.pricing.ultimate.f4')}</li>
 				</ul>
-				<button class="btn btn-secondary btn-block" disabled>Coming Soon</button>
+				<button class="btn btn-secondary btn-block" disabled
+					>{tr('common.comingSoon')}</button
+				>
 			</div>
 		</div>
 	</section>
 
 	<!-- How It Works Section -->
 	<section class="how-it-works">
-		<h2>How It Works</h2>
+		<h2>{tr('home.how.heading')}</h2>
 
 		<div class="steps">
 			<!-- Step 1: Login -->
@@ -298,10 +271,10 @@
 								d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"
 							/></svg
 						>
-						Login
+						{tr('home.how.login')}
 					</div>
 				</div>
-				<span class="step-label">Login with Discord</span>
+				<span class="step-label">{tr('home.how.step1')}</span>
 			</div>
 
 			<div class="step-connector">
@@ -329,7 +302,7 @@
 						</div>
 					</div>
 				</div>
-				<span class="step-label">Add to Server</span>
+				<span class="step-label">{tr('home.how.step2')}</span>
 			</div>
 
 			<div class="step-connector">
@@ -362,7 +335,7 @@
 						</div>
 					</div>
 				</div>
-				<span class="step-label">Create Commands</span>
+				<span class="step-label">{tr('home.how.step3')}</span>
 			</div>
 
 			<div class="step-connector">
@@ -390,7 +363,7 @@
 								height="16"
 								class="mock-dash-logo"
 							/>
-							<span>Dashboard</span>
+							<span>{tr('home.how.dashboard')}</span>
 						</div>
 						<div class="mock-bars">
 							<div class="mock-bar" style="height: 40%"></div>
@@ -402,16 +375,13 @@
 						</div>
 					</div>
 				</div>
-				<span class="step-label">Monitor & Manage</span>
+				<span class="step-label">{tr('home.how.step4')}</span>
 			</div>
 		</div>
 
 		<div class="how-it-works-subflow">
-			<h3>Run Local Runner Access</h3>
-			<p class="how-it-works-subtitle">
-				Use SpaceBot in Discord to securely reach tools and services running on your own
-				workstation.
-			</p>
+			<h3>{tr('home.how.runner.heading')}</h3>
+			<p class="how-it-works-subtitle">{tr('home.how.runner.subtitle')}</p>
 
 			<div class="steps steps-local-runner">
 				<div class="step">
@@ -424,7 +394,7 @@
 							<div class="mock-terminal-line ok">runner online</div>
 						</div>
 					</div>
-					<span class="step-label">Start Local Runner</span>
+					<span class="step-label">{tr('home.how.runner.step1')}</span>
 				</div>
 
 				<div class="step-connector">
@@ -456,7 +426,7 @@
 							</div>
 						</div>
 					</div>
-					<span class="step-label">Connect in Discord</span>
+					<span class="step-label">{tr('home.how.runner.step2')}</span>
 				</div>
 
 				<div class="step-connector">
@@ -476,11 +446,11 @@
 					<div class="step-card">
 						<div class="mock-bridge-status">
 							<div class="mock-status-dot"></div>
-							<span>Tunnel Active</span>
+							<span>{tr('home.how.runner.tunnelActive')}</span>
 							<small>localhost:3000</small>
 						</div>
 					</div>
-					<span class="step-label">Bridge Your Local Service</span>
+					<span class="step-label">{tr('home.how.runner.step3')}</span>
 				</div>
 
 				<div class="step-connector">
@@ -503,7 +473,7 @@
 							<div class="mock-browser-window"></div>
 						</div>
 					</div>
-					<span class="step-label">Access Workstation Tools</span>
+					<span class="step-label">{tr('home.how.runner.step4')}</span>
 				</div>
 			</div>
 		</div>
@@ -511,10 +481,10 @@
 
 	<!-- CTA Section -->
 	<section class="cta-section">
-		<h2>Ready to supercharge your Discord server?</h2>
-		<p>Get started in minutes — free forever, no credit card required.</p>
+		<h2>{tr('home.cta.heading')}</h2>
+		<p>{tr('home.cta.body')}</p>
 		{#if data.isLoggedIn}
-			<a href={adminUrl} class="btn btn-primary btn-large">Go to Dashboard</a>
+			<a href={adminUrl} class="btn btn-primary btn-large">{tr('common.goToDashboard')}</a>
 		{:else}
 			<a href="/login" class="btn btn-primary btn-large"
 				><svg
@@ -527,7 +497,8 @@
 					><path
 						d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"
 					/></svg
-				> Login with Discord</a
+				>
+				{tr('home.cta.login')}</a
 			>
 		{/if}
 	</section>

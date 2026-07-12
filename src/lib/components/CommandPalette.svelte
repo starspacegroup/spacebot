@@ -3,7 +3,10 @@
 	import { page } from '$app/stores';
 	import { theme } from '$lib/theme.svelte.js';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
+	import { getTranslator } from '$lib/i18n.js';
 	import { onMount, tick } from 'svelte';
+
+	const tr = getTranslator();
 
 	/** @type {{ isLoggedIn?: boolean, user?: any, adminGuilds?: any[], selectedGuildId?: string|null, isSuperAdmin?: boolean }} */
 	const {
@@ -41,115 +44,115 @@
 		// --- Navigation ---
 		commands.push({
 			id: 'nav-home',
-			label: 'Home',
-			description: 'Go to the landing page',
+			label: tr('cmd.home.label'),
+			description: tr('cmd.home.desc'),
 			icon: '🏠',
-			group: 'Navigation',
+			group: tr('cmd.group.navigation'),
 			action: () => goto('/'),
-			keywords: ['landing', 'index', 'start'],
+			keywords: ['landing', 'index', 'start', 'home', 'inicio'],
 		});
 
 		if (isLoggedIn) {
 			commands.push({
 				id: 'nav-dashboard',
-				label: 'Dashboard',
-				description: 'Server selection overview',
+				label: tr('cmd.dashboard.label'),
+				description: tr('cmd.dashboard.desc'),
 				icon: '🚀',
-				group: 'Navigation',
+				group: tr('cmd.group.navigation'),
 				action: () => goto('/admin'),
-				keywords: ['admin', 'servers', 'overview'],
+				keywords: ['admin', 'servers', 'overview', 'dashboard', 'panel'],
 			});
 		}
 
 		/** @type {{ label: string, icon: string, iconHtml?: string, path: string, desc: string, keywords: string[], badge?: string, requiresSuperAdmin?: boolean }[]} */
 		const serverPages = [
 			{
-				label: 'Overview',
+				label: tr('cmd.overview.label'),
 				icon: '📊',
 				path: '',
-				desc: 'Server dashboard',
-				keywords: ['dashboard', 'home', 'overview', 'stats'],
+				desc: tr('cmd.overview.desc'),
+				keywords: ['dashboard', 'home', 'overview', 'stats', 'resumen'],
 			},
 			{
-				label: 'Automations',
+				label: tr('cmd.automations.label'),
 				icon: '⚡',
 				path: '/automations',
-				desc: 'Manage event-driven automations',
-				keywords: ['triggers', 'actions', 'events', 'workflow'],
+				desc: tr('cmd.automations.desc'),
+				keywords: ['triggers', 'actions', 'events', 'workflow', 'automatizaciones'],
 			},
 			{
-				label: 'Slash Commands',
+				label: tr('cmd.commands.label'),
 				icon: '💬',
 				path: '/commands',
-				desc: 'Create and edit slash commands',
-				keywords: ['command', 'slash', 'bot'],
+				desc: tr('cmd.commands.desc'),
+				keywords: ['command', 'slash', 'bot', 'comandos'],
 			},
 			{
-				label: 'Scheduled Events',
+				label: tr('cmd.events.label'),
 				icon: '📅',
 				path: '/scheduled-server-events',
-				desc: 'Manage Discord scheduled events',
-				keywords: ['calendar', 'events', 'schedule'],
+				desc: tr('cmd.events.desc'),
+				keywords: ['calendar', 'events', 'schedule', 'eventos'],
 			},
 			{
-				label: 'Integrations',
+				label: tr('cmd.integrations.label'),
 				icon: '🔌',
 				path: '/integrations',
-				desc: 'Connect apps and services',
-				keywords: ['plugins', 'apps', 'connect', 'external'],
+				desc: tr('cmd.integrations.desc'),
+				keywords: ['plugins', 'apps', 'connect', 'external', 'integraciones'],
 			},
 			{
-				label: 'Event Logs',
+				label: tr('cmd.logs.label'),
 				icon: '📋',
 				path: '/logs',
-				desc: 'View server event history',
-				keywords: ['events', 'history', 'audit', 'activity'],
+				desc: tr('cmd.logs.desc'),
+				keywords: ['events', 'history', 'audit', 'activity', 'registros'],
 			},
 			{
-				label: 'Statistics',
+				label: tr('cmd.stats.label'),
 				icon: '📈',
 				path: '/stats',
-				desc: 'Charts and analytics',
-				keywords: ['analytics', 'charts', 'metrics', 'data', 'graphs'],
+				desc: tr('cmd.stats.desc'),
+				keywords: ['analytics', 'charts', 'metrics', 'data', 'graphs', 'estadísticas'],
 			},
 			{
-				label: 'API Keys',
+				label: tr('cmd.apiKeys.label'),
 				icon: '🔑',
 				path: '/api-keys',
-				desc: 'Manage REST API access keys',
-				keywords: ['api', 'tokens', 'keys', 'rest', 'access'],
+				desc: tr('cmd.apiKeys.desc'),
+				keywords: ['api', 'tokens', 'keys', 'rest', 'access', 'claves'],
 			},
 			{
-				label: 'Server Settings',
+				label: tr('cmd.settings.label'),
 				icon: '⚙️',
 				path: '/settings',
-				desc: 'Bot and server configuration',
-				keywords: ['config', 'configure', 'preferences'],
+				desc: tr('cmd.settings.desc'),
+				keywords: ['config', 'configure', 'preferences', 'ajustes'],
 			},
 			{
-				label: 'Import & Export',
+				label: tr('cmd.importExport.label'),
 				icon: '📦',
 				path: '/import-export',
-				desc: 'Share or back up automations & commands',
-				keywords: ['backup', 'share', 'transfer', 'migrate'],
+				desc: tr('cmd.importExport.desc'),
+				keywords: ['backup', 'share', 'transfer', 'migrate', 'importar', 'exportar'],
 			},
 			{
-				label: 'AI Assistant',
+				label: tr('cmd.ai.label'),
 				icon: '🤖',
 				iconHtml:
 					'<img src="/logo.webp" alt="" style="height:1.2em;width:auto;vertical-align:middle;border-radius:4px;" />',
 				path: '/chat',
-				desc: 'Chat with SpaceBot about this server',
-				keywords: ['chat', 'ai', 'assistant', 'dm', 'message', 'ask', 'help'],
-				badge: 'COMING SOON',
+				desc: tr('cmd.ai.desc'),
+				keywords: ['chat', 'ai', 'assistant', 'dm', 'message', 'ask', 'help', 'ia'],
+				badge: tr('cmd.comingSoon'),
 				requiresSuperAdmin: true,
 			},
 			{
-				label: 'Account & Billing',
+				label: tr('cmd.account.label'),
 				icon: '💳',
 				path: '/account',
-				desc: 'Plan, usage, and subscription',
-				keywords: ['billing', 'plan', 'subscription', 'payment', 'upgrade'],
+				desc: tr('cmd.account.desc'),
+				keywords: ['billing', 'plan', 'subscription', 'payment', 'upgrade', 'cuenta'],
 			},
 		];
 
@@ -166,7 +169,11 @@
 		// Active server gets its own top-level group; others are nested
 		for (const guild of serversWithBot) {
 			const isActive = guild.id === activeServerId;
-			const groupName = hasMultipleServers ? (isActive ? guild.name : guild.name) : 'Server';
+			const groupName = hasMultipleServers
+				? isActive
+					? guild.name
+					: guild.name
+				: tr('cmd.group.server');
 
 			for (const pg of serverPages) {
 				const isDisabled = Boolean(pg.requiresSuperAdmin && !isSuperAdmin);
@@ -191,78 +198,96 @@
 		if (isSuperAdmin) {
 			commands.push({
 				id: 'nav-superadmin',
-				label: 'Superadmin Panel',
-				description: 'Global administration',
+				label: tr('cmd.superadmin.label'),
+				description: tr('cmd.superadmin.desc'),
 				icon: '👑',
-				group: 'Navigation',
+				group: tr('cmd.group.navigation'),
 				action: () => goto('/admin/superadmin'),
-				keywords: ['super', 'admin', 'global', 'system'],
+				keywords: ['super', 'admin', 'global', 'system', 'superadmin'],
 			});
 		}
 
 		// --- Actions ---
 		commands.push({
 			id: 'action-theme',
-			label: theme.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode',
-			description: 'Toggle the color theme',
+			label: theme.isDark ? tr('cmd.themeLight') : tr('cmd.themeDark'),
+			description: tr('cmd.themeDesc'),
 			icon: theme.isDark ? '☀️' : '🌙',
-			group: 'Actions',
+			group: tr('cmd.group.actions'),
 			action: () => theme.toggle(),
-			keywords: ['theme', 'dark', 'light', 'mode', 'toggle', 'color'],
+			keywords: ['theme', 'dark', 'light', 'mode', 'toggle', 'color', 'tema'],
 		});
 
 		if (isLoggedIn) {
 			commands.push({
 				id: 'action-logout',
-				label: 'Logout',
-				description: 'Sign out of SpaceBot',
+				label: tr('cmd.logout.label'),
+				description: tr('cmd.logout.desc'),
 				icon: '🚪',
-				group: 'Actions',
+				group: tr('cmd.group.actions'),
 				action: () => {
 					window.location.href = '/api/auth/logout';
 				},
-				keywords: ['sign out', 'log out', 'exit'],
+				keywords: ['sign out', 'log out', 'exit', 'cerrar sesión'],
 			});
 		} else {
 			commands.push({
 				id: 'action-login',
-				label: 'Login with Discord',
-				description: 'Sign in to manage your servers',
+				label: tr('cmd.login.label'),
+				description: tr('cmd.login.desc'),
 				icon: '🔐',
 				iconHtml:
 					'<svg width="16" height="16" viewBox="0 0 71 55" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"/></svg>',
-				group: 'Actions',
+				group: tr('cmd.group.actions'),
 				action: () => goto('/login'),
-				keywords: ['sign in', 'log in', 'discord', 'auth'],
+				keywords: ['sign in', 'log in', 'discord', 'auth', 'iniciar sesión'],
 			});
 		}
 
 		commands.push({
 			id: 'nav-pricing',
-			label: 'Pricing',
-			description: 'View plans and pricing',
+			label: tr('cmd.pricing.label'),
+			description: tr('cmd.pricing.desc'),
 			icon: '💰',
-			group: 'Navigation',
+			group: tr('cmd.group.navigation'),
 			action: () => goto('/#pricing'),
-			keywords: ['pricing', 'plans', 'cost', 'free', 'pro', 'subscription', 'upgrade'],
+			keywords: [
+				'pricing',
+				'plans',
+				'cost',
+				'free',
+				'pro',
+				'subscription',
+				'upgrade',
+				'precios',
+			],
 		});
 
 		commands.push({
 			id: 'nav-docs',
-			label: 'Documentation',
-			description: 'Guides and feature reference',
+			label: tr('cmd.docs.label'),
+			description: tr('cmd.docs.desc'),
 			icon: '📖',
-			group: 'Navigation',
+			group: tr('cmd.group.navigation'),
 			action: () => goto('/docs'),
-			keywords: ['docs', 'documentation', 'help', 'guide', 'manual', 'reference', 'how to'],
+			keywords: [
+				'docs',
+				'documentation',
+				'help',
+				'guide',
+				'manual',
+				'reference',
+				'how to',
+				'documentación',
+			],
 		});
 
 		commands.push({
 			id: 'action-github',
-			label: 'View on GitHub',
-			description: 'Open the source code repository',
+			label: tr('cmd.github.label'),
+			description: tr('cmd.github.desc'),
 			icon: '🐙',
-			group: 'Actions',
+			group: tr('cmd.group.actions'),
 			action: () => {
 				window.open('https://github.com/starspacegroup/spacebot', '_blank');
 			},
@@ -467,7 +492,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="palette-backdrop" onclick={handleBackdropClick} onwheel={handleWheel}>
-		<div class="palette" role="dialog" aria-label="Command palette">
+		<div class="palette" role="dialog" aria-label={tr('cmd.aria')}>
 			<div class="palette-header">
 				<svg
 					class="search-icon"
@@ -488,18 +513,18 @@
 					bind:value={query}
 					type="text"
 					class="palette-input"
-					placeholder="Type a command or search..."
+					placeholder={tr('cmd.placeholder')}
 					spellcheck="false"
 					autocomplete="off"
 				/>
-				<kbd class="palette-esc">Esc</kbd>
+				<kbd class="palette-esc">{tr('cmd.esc')}</kbd>
 			</div>
 
 			<div class="palette-list" bind:this={listEl} role="listbox">
 				{#if filteredCommands.length === 0}
 					<div class="palette-empty">
 						<span class="empty-icon">🔍</span>
-						<span>No results for "<strong>{query}</strong>"</span>
+						<span>{tr('cmd.noResults')} "<strong>{query}</strong>"</span>
 					</div>
 				{:else}
 					{#each filteredCommands as cmd, idx}
@@ -547,13 +572,16 @@
 
 			<div class="palette-footer">
 				<span class="footer-hint">
-					<kbd>↑</kbd><kbd>↓</kbd> navigate
+					<kbd>↑</kbd><kbd>↓</kbd>
+					{tr('cmd.footer.navigate')}
 				</span>
 				<span class="footer-hint">
-					<kbd>↵</kbd> select
+					<kbd>↵</kbd>
+					{tr('cmd.footer.select')}
 				</span>
 				<span class="footer-hint">
-					<kbd>esc</kbd> close
+					<kbd>esc</kbd>
+					{tr('cmd.footer.close')}
 				</span>
 			</div>
 		</div>

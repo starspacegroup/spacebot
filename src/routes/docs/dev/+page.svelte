@@ -1,29 +1,23 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
 	let { data } = $props();
+	const tr = getTranslator();
 </script>
 
 <svelte:head>
-	<title>Developer Docs – SpaceBot</title>
-	<meta
-		name="description"
-		content="SpaceBot developer documentation — architecture, REST API, local runner, workflows, integrations, and operations."
-	/>
-	<meta property="og:title" content="Developer Docs – SpaceBot" />
-	<meta
-		property="og:description"
-		content="Architecture, REST API, local runner, workflows, integrations, and operations."
-	/>
+	<title>{tr('docs.dev.meta.title')}</title>
+	<meta name="description" content={tr('docs.dev.meta.description')} />
+	<meta property="og:title" content={tr('docs.dev.meta.title')} />
+	<meta property="og:description" content={tr('docs.dev.meta.ogDescription')} />
 	<meta property="og:url" content="https://spacebot.starspace.group/docs/dev" />
 </svelte:head>
 
 <div class="dev-index">
 	<header class="dev-hero">
-		<a class="back-link" href="/docs">← User docs</a>
-		<h1>Developer Documentation</h1>
-		<p class="hero-sub">
-			How SpaceBot is built and operated — the runtimes, the REST API, the local runner, the
-			workflow engine, and integrations. Sourced from the repo's <code>docs/</code> folder.
-		</p>
+		<a class="back-link" href="/docs">{tr('docs.dev.backToUser')}</a>
+		<h1>{tr('docs.dev.title')}</h1>
+		<p class="hero-sub">{@html tr('docs.dev.heroSub')}</p>
 	</header>
 
 	{#each data.sections as section (section.title)}

@@ -2,12 +2,19 @@
 	import { fly, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { toast } from '$lib/toast.svelte.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const icons = { success: '✓', error: '✕', info: 'ℹ' } as const;
 </script>
 
 {#if toast.items.length > 0}
-	<div class="toast-stack" role="region" aria-live="polite" aria-label="Notifications">
+	<div
+		class="toast-stack"
+		role="region"
+		aria-live="polite"
+		aria-label={tr('toast.notifications')}
+	>
 		{#each toast.items as item (item.id)}
 			<div
 				class="toast toast-{item.type}"
@@ -21,8 +28,8 @@
 				<button
 					class="toast-close"
 					onclick={() => toast.dismiss(item.id)}
-					aria-label="Dismiss notification"
-				>×</button>
+					aria-label={tr('toast.dismiss')}>×</button
+				>
 			</div>
 		{/each}
 	</div>
@@ -55,12 +62,12 @@
 
 	.toast-success {
 		background: var(--color-success);
-		color: #1B1730;
+		color: #1b1730;
 	}
 
 	.toast-error {
 		background: var(--color-danger);
-		color: #1B1730;
+		color: #1b1730;
 	}
 
 	.toast-info {

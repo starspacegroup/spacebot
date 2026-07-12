@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { getTranslator, getLocale } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
+
 	const { data }: { data: any } = $props();
 
 	const filters = $derived(
@@ -61,7 +66,7 @@
 	function formatDate(value) {
 		if (!value) return '-';
 		try {
-			return new Date(value).toLocaleString();
+			return new Date(value).toLocaleString(dateLocale);
 		} catch {
 			return value;
 		}
@@ -103,67 +108,75 @@
 </script>
 
 <svelte:head>
-	<title>Jobs | SpaceBot</title>
+	<title>{tr('aiJobs.metaTitle')}</title>
 </svelte:head>
 
 <div class="container">
 	<header class="header">
 		<div>
-			<h1>Jobs</h1>
-			<p class="muted">
-				Forensic view of AI autopilot and local runner activity with status rollups, event
-				stream, and job-level diagnostics.
-			</p>
+			<h1>{tr('aiJobs.title')}</h1>
+			<p class="muted">{tr('aiJobs.subtitle')}</p>
 		</div>
 		<div class="header-actions">
-			<a class="manage-link" href="/account/ai-workflows">Manage workflows and runners</a>
-			<a class="back-link" href="/account">Back to account</a>
+			<a class="manage-link" href="/account/ai-workflows">{tr('aiJobs.manageWorkflows')}</a>
+			<a class="back-link" href="/account">{tr('aiJobs.backToAccount')}</a>
 		</div>
 	</header>
 
 	<section class="ops-callout">
 		<div>
-			<h3>Operations Console</h3>
-			<p class="muted">
-				Use the operations hub to edit workflow routing rules, target specific runners, and
-				tune queue behavior without leaving account settings.
-			</p>
+			<h3>{tr('aiJobs.opsConsole')}</h3>
+			<p class="muted">{tr('aiJobs.opsDesc')}</p>
 		</div>
-		<a class="ops-callout-btn" href="/account/ai-workflows">Open Operations Console</a>
+		<a class="ops-callout-btn" href="/account/ai-workflows">{tr('aiJobs.openOpsConsole')}</a>
 	</section>
 
 	<section class="summary-grid">
 		<article class="summary-card">
-			<h3>AI Jobs</h3>
+			<h3>{tr('aiJobs.aiJobs')}</h3>
 			<p class="summary-total">{data.summary?.ai?.total || 0}</p>
 			<div class="summary-row">
-				<span><strong>{data.summary?.ai?.counts?.running || 0}</strong> running</span>
-				<span><strong>{data.summary?.ai?.counts?.pending || 0}</strong> pending</span>
 				<span
-					><strong>{data.summary?.ai?.counts?.failed_terminal || 0}</strong> terminal failures</span
+					><strong>{data.summary?.ai?.counts?.running || 0}</strong>
+					{tr('aiJobs.running')}</span
+				>
+				<span
+					><strong>{data.summary?.ai?.counts?.pending || 0}</strong>
+					{tr('aiJobs.pending')}</span
+				>
+				<span
+					><strong>{data.summary?.ai?.counts?.failed_terminal || 0}</strong>
+					{tr('aiJobs.terminalFailures')}</span
 				>
 			</div>
 		</article>
 
 		<article class="summary-card">
-			<h3>Runner Jobs</h3>
+			<h3>{tr('aiJobs.runnerJobs')}</h3>
 			<p class="summary-total">{data.summary?.runner?.total || 0}</p>
 			<div class="summary-row">
-				<span><strong>{data.summary?.runner?.counts?.running || 0}</strong> running</span>
-				<span><strong>{data.summary?.runner?.counts?.failed || 0}</strong> failed</span>
 				<span
-					><strong>{data.summary?.runner?.timeoutCount || 0}</strong> timeout-linked</span
+					><strong>{data.summary?.runner?.counts?.running || 0}</strong>
+					{tr('aiJobs.running')}</span
+				>
+				<span
+					><strong>{data.summary?.runner?.counts?.failed || 0}</strong>
+					{tr('aiJobs.failed')}</span
+				>
+				<span
+					><strong>{data.summary?.runner?.timeoutCount || 0}</strong>
+					{tr('aiJobs.timeoutLinked')}</span
 				>
 			</div>
 		</article>
 
 		<article class="summary-card">
-			<h3>Timeline Coverage</h3>
+			<h3>{tr('aiJobs.timelineCoverage')}</h3>
 			<p class="summary-total">{data.summary?.timelineCount || 0}</p>
 			<div class="summary-row single">
 				<span
-					>Latest activity: <strong>{formatDate(data.summary?.latestActivityAt)}</strong
-					></span
+					>{tr('aiJobs.latestActivity')}
+					<strong>{formatDate(data.summary?.latestActivityAt)}</strong></span
 				>
 			</div>
 		</article>
@@ -171,33 +184,39 @@
 
 	<form class="filters" method="GET" action="/account/ai-jobs">
 		<label>
-			AI Status
+			{tr('aiJobs.aiStatus')}
 			<select name="status">
-				<option value="" selected={!filters.status}>all</option>
-				<option value="pending" selected={filters.status === 'pending'}>pending</option>
-				<option value="running" selected={filters.status === 'running'}>running</option>
+				<option value="" selected={!filters.status}>{tr('aiJobs.all')}</option>
+				<option value="pending" selected={filters.status === 'pending'}
+					>{tr('aiJobs.status.pending')}</option
+				>
+				<option value="running" selected={filters.status === 'running'}
+					>{tr('aiJobs.status.running')}</option
+				>
 				<option value="completed" selected={filters.status === 'completed'}
-					>completed</option
+					>{tr('aiJobs.status.completed')}</option
 				>
 				<option value="failed_terminal" selected={filters.status === 'failed_terminal'}
-					>failed_terminal</option
+					>{tr('aiJobs.status.failedTerminal')}</option
 				>
-				<option value="canceled" selected={filters.status === 'canceled'}>canceled</option>
+				<option value="canceled" selected={filters.status === 'canceled'}
+					>{tr('aiJobs.status.canceled')}</option
+				>
 			</select>
 		</label>
 
 		<label class="search">
-			Search
+			{tr('aiJobs.search')}
 			<input
 				type="search"
 				name="q"
-				placeholder="correlation, request, error"
+				placeholder={tr('aiJobs.searchPlaceholder')}
 				value={filters.q || ''}
 			/>
 		</label>
 
 		<label>
-			Per page
+			{tr('aiJobs.perPage')}
 			<select name="limit">
 				<option value="25" selected={Number(filters.limit) === 25}>25</option>
 				<option value="50" selected={Number(filters.limit) === 50}>50</option>
@@ -206,42 +225,43 @@
 		</label>
 
 		<label>
-			Timeline depth
+			{tr('aiJobs.timelineDepth')}
 			<select name="eventLimit">
-				<option value="100" selected={Number(filters.eventLimit) === 100}>100 events</option
+				<option value="100" selected={Number(filters.eventLimit) === 100}
+					>{tr('aiJobs.eventsCount', { count: 100 })}</option
 				>
-				<option value="200" selected={Number(filters.eventLimit) === 200}>200 events</option
+				<option value="200" selected={Number(filters.eventLimit) === 200}
+					>{tr('aiJobs.eventsCount', { count: 200 })}</option
 				>
-				<option value="400" selected={Number(filters.eventLimit) === 400}>400 events</option
+				<option value="400" selected={Number(filters.eventLimit) === 400}
+					>{tr('aiJobs.eventsCount', { count: 400 })}</option
 				>
-				<option value="800" selected={Number(filters.eventLimit) === 800}>800 events</option
+				<option value="800" selected={Number(filters.eventLimit) === 800}
+					>{tr('aiJobs.eventsCount', { count: 800 })}</option
 				>
 			</select>
 		</label>
 
 		<input type="hidden" name="offset" value="0" />
-		<button type="submit">Apply</button>
+		<button type="submit">{tr('aiJobs.apply')}</button>
 	</form>
-	<p class="filters-scope">
-		AI filters control AI table and event stream breadth. Runner type filter controls runner
-		table only.
-	</p>
+	<p class="filters-scope">{tr('aiJobs.filtersScope')}</p>
 
 	<p class="meta">
-		Showing {pagination.returned} AI job{pagination.returned === 1 ? '' : 's'}
+		{tr('aiJobs.showing', { count: pagination.returned })}
 		{#if filters.q}
-			matching "{filters.q}"
+			{tr('aiJobs.matching', { q: filters.q })}
 		{/if}
 		{#if filters.status}
-			in status "{filters.status}"
+			{tr('aiJobs.inStatus', { status: filters.status })}
 		{/if}
 		.
 	</p>
 
 	<section class="timeline">
 		<div class="section-head">
-			<h2>Unified Event Stream</h2>
-			<p class="muted">Merged AI and runner events sorted by newest first.</p>
+			<h2>{tr('aiJobs.unifiedStream')}</h2>
+			<p class="muted">{tr('aiJobs.unifiedStreamDesc')}</p>
 		</div>
 
 		{#if data.timeline?.length}
@@ -249,13 +269,13 @@
 				<table>
 					<thead>
 						<tr>
-							<th>When</th>
-							<th>Domain</th>
-							<th>Level</th>
-							<th>Type</th>
-							<th>Source</th>
-							<th>Message</th>
-							<th>Ref</th>
+							<th>{tr('aiJobs.col.when')}</th>
+							<th>{tr('aiJobs.col.domain')}</th>
+							<th>{tr('aiJobs.col.level')}</th>
+							<th>{tr('aiJobs.col.type')}</th>
+							<th>{tr('aiJobs.col.source')}</th>
+							<th>{tr('aiJobs.col.message')}</th>
+							<th>{tr('aiJobs.col.ref')}</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -274,7 +294,7 @@
 									<div>{truncate(event.message || '-', 120)}</div>
 									{#if event.metadata}
 										<details>
-											<summary>metadata</summary>
+											<summary>{tr('aiJobs.metadata')}</summary>
 											<pre>{formatJson(event.metadata)}</pre>
 										</details>
 									{/if}
@@ -292,18 +312,15 @@
 				</table>
 			</div>
 		{:else}
-			<p class="muted">No events available for the current scope.</p>
+			<p class="muted">{tr('aiJobs.noEvents')}</p>
 		{/if}
 	</section>
 
 	{#if filters.runnerJobType || data.runnerRecentJobs?.length}
 		<section class="runner-jobs">
 			<div class="section-head">
-				<h2>Runner Jobs</h2>
-				<p class="muted">
-					Expanded diagnostics include retries, timeout windows, terminal errors,
-					payload/result JSON, and attached runner events.
-				</p>
+				<h2>{tr('aiJobs.runnerJobs')}</h2>
+				<p class="muted">{tr('aiJobs.runnerJobsDesc')}</p>
 			</div>
 			<div class="runner-jobs-toolbar">
 				<form class="runner-type-filter" method="GET" action="/account/ai-jobs">
@@ -317,9 +334,11 @@
 						/>{/if}
 					{#if filters.q}<input type="hidden" name="q" value={filters.q} />{/if}
 					<label>
-						Type
+						{tr('aiJobs.type')}
 						<select name="runnerJobType" onchange={submitClosestForm}>
-							<option value="" selected={!filters.runnerJobType}>all</option>
+							<option value="" selected={!filters.runnerJobType}
+								>{tr('aiJobs.all')}</option
+							>
 							<option
 								value="screenshot_capture"
 								selected={filters.runnerJobType === 'screenshot_capture'}
@@ -349,7 +368,7 @@
 				</form>
 				{#if filters.runnerJobType}
 					<a class="clear-filter" href={queryHref({ runnerJobType: '', offset: 0 })}
-						>Clear type filter</a
+						>{tr('aiJobs.clearTypeFilter')}</a
 					>
 				{/if}
 			</div>
@@ -358,14 +377,14 @@
 					<table>
 						<thead>
 							<tr>
-								<th>ID</th>
-								<th>Type</th>
-								<th>Status</th>
-								<th>Attempts</th>
-								<th>Runner</th>
-								<th>Timing</th>
-								<th>Updated</th>
-								<th>Diagnostics</th>
+								<th>{tr('aiJobs.col.id')}</th>
+								<th>{tr('aiJobs.col.type')}</th>
+								<th>{tr('aiJobs.col.status')}</th>
+								<th>{tr('aiJobs.col.attempts')}</th>
+								<th>{tr('aiJobs.col.runner')}</th>
+								<th>{tr('aiJobs.col.timing')}</th>
+								<th>{tr('aiJobs.col.updated')}</th>
+								<th>{tr('aiJobs.col.diagnostics')}</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -385,13 +404,17 @@
 											'-'}</td
 									>
 									<td>
-										timeout {job.timeoutSeconds || '-'}s
+										{tr('aiJobs.timeoutSeconds', {
+											seconds: job.timeoutSeconds || '-',
+										})}
 										{#if job.startedAt && job.completedAt}
 											<div class="muted small">
-												duration {formatDuration(
-													job.startedAt,
-													job.completedAt
-												)}
+												{tr('aiJobs.duration', {
+													value: formatDuration(
+														job.startedAt,
+														job.completedAt
+													),
+												})}
 											</div>
 										{/if}
 									</td>
@@ -404,49 +427,56 @@
 											) || '-'}
 										</div>
 										<div class="muted small">
-											next retry {formatDate(job.nextRetryAt)}
+											{tr('aiJobs.nextRetry', {
+												date: formatDate(job.nextRetryAt),
+											})}
 										</div>
 										<div class="muted small">
-											artifacts {job.artifactCount || 0}, exit {job.exitCode ??
-												'-'}
+											{tr('aiJobs.artifacts', {
+												count: job.artifactCount || 0,
+												code: job.exitCode ?? '-',
+											})}
 										</div>
 										<details>
-											<summary>inspect</summary>
+											<summary>{tr('aiJobs.inspect')}</summary>
 											<div class="inspect-grid">
 												<div>
-													<strong>Command:</strong>
+													<strong>{tr('aiJobs.commandLabel')}</strong>
 													{job.command || '-'}
 												</div>
 												<div>
-													<strong>Label:</strong>
+													<strong>{tr('aiJobs.labelLabel')}</strong>
 													{job.label || '-'}
 												</div>
 												<div>
-													<strong>Terminal error:</strong>
+													<strong
+														>{tr('aiJobs.terminalErrorLabel')}</strong
+													>
 													{job.terminalError || '-'}
 												</div>
 												<div>
-													<strong>Output:</strong>
+													<strong>{tr('aiJobs.outputLabel')}</strong>
 													{truncate(job.output || '-', 280)}
 												</div>
 												<div>
-													<strong>Payload JSON</strong>
+													<strong>{tr('aiJobs.payloadJson')}</strong>
 													<pre>{formatJson(job.payload)}</pre>
 												</div>
 												<div>
-													<strong>Result JSON</strong>
+													<strong>{tr('aiJobs.resultJson')}</strong>
 													<pre>{formatJson(job.result)}</pre>
 												</div>
 												<div>
-													<strong>Capabilities</strong>
+													<strong>{tr('aiJobs.capabilities')}</strong>
 													<pre>{formatJson(
 															job.capabilityRequirements
 														)}</pre>
 												</div>
 												<div>
 													<strong
-														>Runner events ({job.runnerEvents?.length ||
-															0})</strong
+														>{tr('aiJobs.runnerEventsCount', {
+															count: job.runnerEvents?.length || 0,
+														})}</strong
 													>
 													{#if job.runnerEvents?.length}
 														{#each job.runnerEvents as event}
@@ -463,7 +493,7 @@
 														{/each}
 													{:else}
 														<div class="muted small">
-															No recent runner events for this job.
+															{tr('aiJobs.noRunnerEvents')}
 														</div>
 													{/if}
 												</div>
@@ -476,34 +506,31 @@
 					</table>
 				</div>
 			{:else}
-				<p class="muted">No runner jobs match the selected type.</p>
+				<p class="muted">{tr('aiJobs.noRunnerJobsMatch')}</p>
 			{/if}
 		</section>
 	{/if}
 
 	{#if !data.jobs?.length}
-		<div class="empty">No AI autopilot jobs yet.</div>
+		<div class="empty">{tr('aiJobs.noJobs')}</div>
 	{:else}
 		<section class="section-head">
-			<h2>AI Jobs</h2>
-			<p class="muted">
-				Each row includes event counts and latest event context. Expand inspect for raw
-				timeline payload and retry decisions.
-			</p>
+			<h2>{tr('aiJobs.aiJobs')}</h2>
+			<p class="muted">{tr('aiJobs.aiJobsDesc')}</p>
 		</section>
 
 		<div class="table-wrap">
 			<table>
 				<thead>
 					<tr>
-						<th>Correlation</th>
-						<th>Status</th>
-						<th>Attempts</th>
-						<th>Created</th>
-						<th>Updated</th>
-						<th>Latest event</th>
-						<th>Request</th>
-						<th>Diagnostics</th>
+						<th>{tr('aiJobs.col.correlation')}</th>
+						<th>{tr('aiJobs.col.status')}</th>
+						<th>{tr('aiJobs.col.attempts')}</th>
+						<th>{tr('aiJobs.col.created')}</th>
+						<th>{tr('aiJobs.col.updated')}</th>
+						<th>{tr('aiJobs.col.latestEvent')}</th>
+						<th>{tr('aiJobs.col.request')}</th>
+						<th>{tr('aiJobs.col.diagnostics')}</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -526,7 +553,9 @@
 										72
 									)}
 								</div>
-								<div class="muted small">{job.eventCount || 0} event(s)</div>
+								<div class="muted small">
+									{tr('aiJobs.eventsN', { count: job.eventCount || 0 })}
+								</div>
 							</td>
 							<td title={job.requestText}>{truncate(job.requestText, 100)}</td>
 							<td>
@@ -534,14 +563,16 @@
 									<a
 										href={`/api/ai/jobs/${job.id}`}
 										target="_blank"
-										rel="noreferrer">raw API</a
+										rel="noreferrer">{tr('aiJobs.rawApi')}</a
 									>
 								</div>
 								<div class="muted small">
-									next retry {formatDate(job.nextRetryAt)}
+									{tr('aiJobs.nextRetry', { date: formatDate(job.nextRetryAt) })}
 								</div>
 								<div class="muted small">
-									completed {formatDate(job.completedAt)}
+									{tr('aiJobs.completedDate', {
+										date: formatDate(job.completedAt),
+									})}
 								</div>
 								{#if job.lastError}
 									<div class="small error-line">
@@ -549,27 +580,34 @@
 									</div>
 								{/if}
 								<details>
-									<summary>inspect</summary>
+									<summary>{tr('aiJobs.inspect')}</summary>
 									<div class="inspect-grid">
-										<div><strong>Source:</strong> {job.source || '-'}</div>
 										<div>
-											<strong>Started:</strong>
+											<strong>{tr('aiJobs.sourceLabel')}</strong>
+											{job.source || '-'}
+										</div>
+										<div>
+											<strong>{tr('aiJobs.startedLabel')}</strong>
 											{formatDate(job.startedAt)}
 										</div>
 										<div>
-											<strong>Completed:</strong>
+											<strong>{tr('aiJobs.completedLabel')}</strong>
 											{formatDate(job.completedAt)}
 										</div>
 										<div>
-											<strong>Duration:</strong>
+											<strong>{tr('aiJobs.durationLabel')}</strong>
 											{formatDuration(job.startedAt, job.completedAt)}
 										</div>
 										<div>
-											<strong>Last error:</strong>
+											<strong>{tr('aiJobs.lastErrorLabel')}</strong>
 											{job.lastError || '-'}
 										</div>
 										<div>
-											<strong>Events ({job.events?.length || 0})</strong>
+											<strong
+												>{tr('aiJobs.eventsHeading', {
+													count: job.events?.length || 0,
+												})}</strong
+											>
 											{#if job.events?.length}
 												{#each job.events as event}
 													<details>
@@ -586,7 +624,7 @@
 												{/each}
 											{:else}
 												<div class="muted small">
-													No events captured in current window.
+													{tr('aiJobs.noEventsWindow')}
 												</div>
 											{/if}
 										</div>
@@ -608,10 +646,10 @@
 							0,
 							Number(filters.offset || 0) - Number(filters.limit || 50)
 						),
-					})}>Previous</a
+					})}>{tr('aiJobs.previous')}</a
 				>
 			{:else}
-				<span class="pager-btn disabled">Previous</span>
+				<span class="pager-btn disabled">{tr('aiJobs.previous')}</span>
 			{/if}
 
 			{#if pagination.hasNext}
@@ -619,10 +657,10 @@
 					class="pager-btn"
 					href={queryHref({
 						offset: Number(filters.offset || 0) + Number(filters.limit || 50),
-					})}>Next</a
+					})}>{tr('aiJobs.next')}</a
 				>
 			{:else}
-				<span class="pager-btn disabled">Next</span>
+				<span class="pager-btn disabled">{tr('aiJobs.next')}</span>
 			{/if}
 		</div>
 	{/if}

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { theme } from '$lib/theme.svelte.js';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 
 	/** @type {{ showLabels?: boolean }} */
 	const { showLabels = false } = $props();
@@ -17,8 +20,8 @@
 	<button
 		class="theme-toggle"
 		onclick={() => theme.toggle()}
-		aria-label={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-		title={theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+		aria-label={theme.isDark ? tr('theme.switchToLight') : tr('theme.switchToDark')}
+		title={theme.isDark ? tr('theme.switchToLight') : tr('theme.switchToDark')}
 	>
 		{#if theme.isDark}
 			<!-- Sun icon for dark mode (click to go light) -->
@@ -60,7 +63,7 @@
 			</svg>
 		{/if}
 		{#if showLabels}
-			<span class="label">{theme.isDark ? 'Light' : 'Dark'}</span>
+			<span class="label">{theme.isDark ? tr('theme.light') : tr('theme.dark')}</span>
 		{/if}
 	</button>
 {:else}

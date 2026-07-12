@@ -2,7 +2,9 @@
 	import { log } from '$lib/log.js';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const { guilds = [], selectedGuildId = null, basePath = '/admin' } = $props();
 	let isOpen = $state(false);
 
@@ -56,7 +58,7 @@
 			onclick={toggleDropdown}
 			aria-expanded={isOpen}
 			aria-haspopup="listbox"
-			aria-label="Select server"
+			aria-label={tr('serverSelector.select')}
 		>
 			{#if selectedGuild}
 				{#if selectedGuild.icon}
@@ -72,7 +74,7 @@
 				{/if}
 				<span class="server-name">{selectedGuild.name}</span>
 			{:else}
-				<span class="server-name placeholder">Select server</span>
+				<span class="server-name placeholder">{tr('serverSelector.select')}</span>
 			{/if}
 			<svg class="chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
 				<path
@@ -112,7 +114,7 @@
 							{/if}
 							<span class="item-name">{guild.name}</span>
 							{#if guild.owner}
-								<span class="badge owner">Owner</span>
+								<span class="badge owner">{tr('serverSelector.owner')}</span>
 							{/if}
 						</button>
 					</li>
@@ -139,7 +141,7 @@
 								stroke-linejoin="round"
 							/>
 						</svg>
-						<span class="item-name">Add Server...</span>
+						<span class="item-name">{tr('serverSelector.addServer')}</span>
 					</a>
 				</li>
 			</ul>
@@ -156,7 +158,7 @@
 				stroke-linejoin="round"
 			/>
 		</svg>
-		Add Server...
+		{tr('serverSelector.addServer')}
 	</a>
 {/if}
 
