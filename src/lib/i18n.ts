@@ -13,6 +13,12 @@ export const LOCALE_NAMES: Record<Locale, string> = {
 	es: 'Español',
 };
 
+/** Compact codes for the nav language picker where space is tight (EN, ES, …). */
+export const LOCALE_SHORT_NAMES: Record<Locale, string> = {
+	en: 'EN',
+	es: 'ES',
+};
+
 export const catalogs: Record<Locale, Record<string, string>> = { en, es };
 
 export function normalizeLocale(value: string | null | undefined): Locale {

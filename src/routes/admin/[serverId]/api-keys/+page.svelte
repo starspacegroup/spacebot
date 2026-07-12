@@ -2,7 +2,9 @@
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	let { data, form } = $props();
 
 	let showCreateModal = $state(false);
@@ -63,7 +65,7 @@
 	}
 
 	function formatDate(dateStr) {
-		if (!dateStr) return 'Never';
+		if (!dateStr) return tr('apik.never');
 		return tzFormatDate(dateStr, data.timezone);
 	}
 
@@ -74,9 +76,10 @@
 	}
 
 	function getKeyStatus(key) {
-		if (key.revoked) return { label: 'Revoked', class: 'status-revoked' };
-		if (isExpired(key.expires_at)) return { label: 'Expired', class: 'status-expired' };
-		return { label: 'Active', class: 'status-active' };
+		if (key.revoked) return { label: tr('apik.status.revoked'), class: 'status-revoked' };
+		if (isExpired(key.expires_at))
+			return { label: tr('apik.status.expired'), class: 'status-expired' };
+		return { label: tr('apik.status.active'), class: 'status-active' };
 	}
 
 	// Push a toast and close the modal when a new form result arrives
@@ -96,17 +99,14 @@
 </script>
 
 <svelte:head>
-	<title>API Keys - {data.guild?.name || 'Server'} | SpaceBot</title>
+	<title>{tr('apik.metaTitle', { name: data.guild?.name || tr('adash.serverFallback') })}</title>
 </svelte:head>
 
 <div class="api-keys-page">
 	<header class="page-header">
-		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
-		<h1>🔑 API Keys</h1>
-		<p class="page-desc">
-			Create API keys to allow external applications to connect to the SpaceBot API and MCP
-			server for this server.
-		</p>
+		<a href="/admin/{data.serverId}" class="back-link">{tr('account.backToDashboard')}</a>
+		<h1>🔑 {tr('apik.title')}</h1>
+		<p class="page-desc">{tr('apik.pageDesc')}</p>
 	</header>
 
 	<!-- Newly Created Key Display -->
@@ -115,32 +115,32 @@
 			<div class="new-key-header">
 				<span class="new-key-icon">✅</span>
 				<div>
-					<h3>API Key Created</h3>
-					<p>Copy this key now. You won't be able to see it again!</p>
+					<h3>{tr('apik.created')}</h3>
+					<p>{tr('apik.copyNow')}</p>
 				</div>
 			</div>
 			<div class="new-key-value">
 				<code class="key-display">{form.rawKey}</code>
 				<button class="btn btn-small" onclick={() => copyToClipboard(form.rawKey)}>
-					{copiedKey ? '✓ Copied!' : '📋 Copy'}
+					{copiedKey ? tr('apik.copied') : tr('apik.copy')}
 				</button>
 			</div>
 			<div class="new-key-usage">
-				<h4>Usage</h4>
+				<h4>{tr('apik.usage')}</h4>
 				<div class="usage-examples">
 					<div class="usage-example">
-						<span class="usage-label">HTTP Header</span>
+						<span class="usage-label">{tr('apik.httpHeader')}</span>
 						<code>Authorization: Bearer {form.rawKey}</code>
 					</div>
 					<div class="usage-example">
-						<span class="usage-label">cURL</span>
+						<span class="usage-label">{tr('apik.curl')}</span>
 						<code
 							>curl -H "Authorization: Bearer {form.rawKey}"
 							https://spacebot-dev.starspace.group/api/v1/logs</code
 						>
 					</div>
 					<div class="usage-example">
-						<span class="usage-label">MCP Config</span>
+						<span class="usage-label">{tr('apik.mcpConfig')}</span>
 						<code>{`{ "apiKey": "${form.rawKey}" }`}</code>
 					</div>
 				</div>
@@ -152,7 +152,7 @@
 					showCreateModal = false;
 				}}
 			>
-				Dismiss
+				{tr('apik.dismiss')}
 			</button>
 		</div>
 	{/if}
@@ -160,18 +160,17 @@
 	<!-- API Keys List -->
 	<section class="keys-section">
 		<div class="section-header">
-			<h2>Your API Keys</h2>
-			<button class="btn btn-primary" onclick={openCreateModal}> + Create API Key </button>
+			<h2>{tr('apik.yourKeys')}</h2>
+			<button class="btn btn-primary" onclick={openCreateModal}>
+				+ {tr('apik.createKey')}
+			</button>
 		</div>
 
 		{#if data.apiKeys.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">🔑</span>
-				<p>No API keys yet</p>
-				<span class="empty-hint"
-					>Create an API key to allow external apps to access the SpaceBot API for this
-					server.</span
-				>
+				<p>{tr('apik.noKeys')}</p>
+				<span class="empty-hint">{tr('apik.noKeysHint')}</span>
 			</div>
 		{:else}
 			<div class="keys-list">
@@ -201,21 +200,26 @@
 						</div>
 
 						<div class="key-meta">
-							<span title="Created">📅 Created: {formatDate(key.created_at)}</span>
-							<span title="Last used"
-								>🕐 Last used: {formatDate(key.last_used_at)}</span
+							<span
+								>{tr('apik.createdMeta', {
+									date: formatDate(key.created_at),
+								})}</span
+							>
+							<span
+								>{tr('apik.lastUsed', { date: formatDate(key.last_used_at) })}</span
 							>
 							{#if key.expires_at}
-								<span
-									title="Expires"
-									class:expired-text={isExpired(key.expires_at)}
-								>
-									⏳ {isExpired(key.expires_at) ? 'Expired' : 'Expires'}: {formatDate(
-										key.expires_at
-									)}
+								<span class:expired-text={isExpired(key.expires_at)}>
+									{isExpired(key.expires_at)
+										? tr('apik.expiredMeta', {
+												date: formatDate(key.expires_at),
+											})
+										: tr('apik.expiresMeta', {
+												date: formatDate(key.expires_at),
+											})}
 								</span>
 							{:else}
-								<span>♾️ No expiration</span>
+								<span>{tr('apik.noExpiration')}</span>
 							{/if}
 						</div>
 
@@ -233,14 +237,15 @@
 										}}
 									>
 										<input type="hidden" name="keyId" value={key.id} />
-										<span class="confirm-text">Revoke this key?</span>
+										<span class="confirm-text">{tr('apik.confirmRevoke')}</span>
 										<button type="submit" class="btn btn-danger btn-small"
-											>Yes, Revoke</button
+											>{tr('apik.yesRevoke')}</button
 										>
 										<button
 											type="button"
 											class="btn btn-secondary btn-small"
-											onclick={() => (revokeConfirmId = null)}>Cancel</button
+											onclick={() => (revokeConfirmId = null)}
+											>{tr('common.cancel')}</button
 										>
 									</form>
 								{:else}
@@ -248,7 +253,7 @@
 										class="btn btn-warning-outline btn-small"
 										onclick={() => (revokeConfirmId = key.id)}
 									>
-										Revoke
+										{tr('apik.revoke')}
 									</button>
 								{/if}
 							{/if}
@@ -265,14 +270,15 @@
 									}}
 								>
 									<input type="hidden" name="keyId" value={key.id} />
-									<span class="confirm-text">Delete permanently?</span>
+									<span class="confirm-text">{tr('apik.confirmDelete')}</span>
 									<button type="submit" class="btn btn-danger btn-small"
-										>Yes, Delete</button
+										>{tr('apik.yesDelete')}</button
 									>
 									<button
 										type="button"
 										class="btn btn-secondary btn-small"
-										onclick={() => (deleteConfirmId = null)}>Cancel</button
+										onclick={() => (deleteConfirmId = null)}
+										>{tr('common.cancel')}</button
 									>
 								</form>
 							{:else}
@@ -280,7 +286,7 @@
 									class="btn btn-danger-outline btn-small"
 									onclick={() => (deleteConfirmId = key.id)}
 								>
-									Delete
+									{tr('common.delete')}
 								</button>
 							{/if}
 						</div>
@@ -292,13 +298,13 @@
 
 	<!-- API Documentation Hint -->
 	<section class="docs-section">
-		<h2><span class="section-icon">📖</span> API Usage</h2>
+		<h2><span class="section-icon">📖</span> {tr('apik.apiUsage')}</h2>
 		<div class="docs-card">
-			<h3>Authentication</h3>
-			<p>Include your API key in the <code>Authorization</code> header of every request:</p>
+			<h3>{tr('apik.authentication')}</h3>
+			<p>{@html tr('apik.authDesc')}</p>
 			<pre><code>Authorization: Bearer sb_live_your_key_here</code></pre>
 
-			<h3>Available Endpoints</h3>
+			<h3>{tr('apik.availableEndpoints')}</h3>
 			<div class="endpoint-list">
 				<div class="endpoint">
 					<span class="endpoint-method get">GET</span>
@@ -327,8 +333,8 @@
 				</div>
 			</div>
 
-			<h3>MCP Server</h3>
-			<p>Use your API key with the SpaceBot MCP server to connect AI assistants:</p>
+			<h3>{tr('apik.mcpServer')}</h3>
+			<p>{tr('apik.mcpDesc')}</p>
 			<pre><code
 					>{JSON.stringify(
 						{
@@ -361,9 +367,11 @@
 				tabindex="-1"
 			>
 				<div class="modal-header">
-					<h2 id="create-key-title">Create API Key</h2>
-					<button class="modal-close" onclick={closeCreateModal} aria-label="Close"
-						>×</button
+					<h2 id="create-key-title">{tr('apik.createKey')}</h2>
+					<button
+						class="modal-close"
+						onclick={closeCreateModal}
+						aria-label={tr('apik.close')}>×</button
 					>
 				</div>
 
@@ -378,46 +386,47 @@
 				>
 					<div class="modal-body">
 						<div class="form-group">
-							<label class="form-label" for="keyName">Name *</label>
+							<label class="form-label" for="keyName">{tr('apik.name')} *</label>
 							<input
 								type="text"
 								id="keyName"
 								name="keyName"
 								class="form-input"
 								bind:value={keyName}
-								placeholder="e.g., My Dashboard App"
+								placeholder={tr('apik.namePlaceholder')}
 								required
 								maxlength="100"
 							/>
-							<span class="form-hint">A descriptive name for this API key</span>
+							<span class="form-hint">{tr('apik.nameHint')}</span>
 						</div>
 
 						<div class="form-group">
-							<label class="form-label" for="keyDescription">Description</label>
+							<label class="form-label" for="keyDescription"
+								>{tr('apik.description')}</label
+							>
 							<textarea
 								id="keyDescription"
 								name="keyDescription"
 								class="form-textarea"
 								bind:value={keyDescription}
-								placeholder="What is this key used for?"
+								placeholder={tr('apik.descPlaceholder')}
 								rows="2"
 								maxlength="500"></textarea>
 						</div>
 
 						<div class="form-group">
-							<span class="form-label">Permissions *</span>
-							<span class="form-hint">Select which resources this key can access</span
-							>
+							<span class="form-label">{tr('apik.permissions')} *</span>
+							<span class="form-hint">{tr('apik.permissionsHint')}</span>
 							<div class="scope-presets">
 								<button
 									type="button"
 									class="btn btn-small btn-secondary"
-									onclick={selectReadOnly}>Read Only</button
+									onclick={selectReadOnly}>{tr('apik.readOnly')}</button
 								>
 								<button
 									type="button"
 									class="btn btn-small btn-secondary"
-									onclick={selectAllScopes}>All Permissions</button
+									onclick={selectAllScopes}>{tr('apik.allPermissions')}</button
 								>
 							</div>
 							<div class="scopes-grid">
@@ -440,7 +449,8 @@
 						</div>
 
 						<div class="form-group">
-							<label class="form-label" for="expiresAt">Expiration (optional)</label>
+							<label class="form-label" for="expiresAt">{tr('apik.expiration')}</label
+							>
 							<input
 								type="datetime-local"
 								id="expiresAt"
@@ -448,20 +458,20 @@
 								class="form-input"
 								bind:value={expiresAt}
 							/>
-							<span class="form-hint">Leave empty for a key that never expires</span>
+							<span class="form-hint">{tr('apik.expirationHint')}</span>
 						</div>
 					</div>
 
 					<div class="modal-footer">
 						<button type="button" class="btn btn-secondary" onclick={closeCreateModal}
-							>Cancel</button
+							>{tr('common.cancel')}</button
 						>
 						<button
 							type="submit"
 							class="btn btn-primary"
 							disabled={!keyName.trim() || selectedScopes.length === 0}
 						>
-							Create API Key
+							{tr('apik.createKey')}
 						</button>
 					</div>
 				</form>

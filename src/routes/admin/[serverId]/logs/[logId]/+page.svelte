@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { formatDateFull, formatRelativeTime as tzFormatRelative } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const { data } = $props();
 	
 	function formatDate(dateString) {
@@ -18,13 +20,13 @@
 </script>
 
 <svelte:head>
-	<title>Event Details - {data.eventTypeInfo.description} | SpaceBot Admin</title>
+	<title>{tr('logDetail.metaTitle', { desc: data.eventTypeInfo.description })}</title>
 </svelte:head>
 
 <div class="event-detail-container">
 	<header class="event-header">
 		<div class="header-left">
-			<a href="/admin/{data.serverId}/logs" class="back-link">← Back to Logs</a>
+			<a href="/admin/{data.serverId}/logs" class="back-link">{tr('logDetail.backToLogs')}</a>
 			<div class="guild-info">
 				{#if data.guild?.icon}
 					<img 
@@ -38,8 +40,8 @@
 					</div>
 				{/if}
 				<div class="guild-text">
-					<h1>Event Details</h1>
-					<span class="guild-name">{data.guild?.name || 'Unknown Server'}</span>
+					<h1>{tr('logDetail.title')}</h1>
+					<span class="guild-name">{data.guild?.name || tr('adash.unknownServer')}</span>
 				</div>
 			</div>
 		</div>
@@ -61,7 +63,7 @@
 				</span>
 				<span class="event-id">
 					ID: {data.log.id}
-					<button class="copy-btn" onclick={() => copyToClipboard(data.log.id.toString())} title="Copy ID">
+					<button class="copy-btn" onclick={() => copyToClipboard(data.log.id.toString())} title={tr('logDetail.copyId')}>
 						📋
 					</button>
 				</span>
@@ -73,7 +75,7 @@
 		<div class="details-grid">
 			<!-- Actor Section -->
 			<div class="detail-card">
-				<h3>👤 Actor</h3>
+				<h3>👤 {tr('logDetail.actor')}</h3>
 				{#if data.log.actor_name || data.log.actor_id}
 					<div class="detail-content">
 						{#if data.log.actor_id && data.log.actor_name}
@@ -91,16 +93,16 @@
 							</div>
 						{:else if data.log.actor_name}
 							<div class="detail-row">
-								<span class="label">Username</span>
+								<span class="label">{tr('logDetail.username')}</span>
 								<span class="value">{data.log.actor_name}</span>
 							</div>
 						{/if}
 						{#if data.log.actor_id && !data.log.actor_name}
 							<div class="detail-row">
-								<span class="label">User ID</span>
+								<span class="label">{tr('logDetail.userId')}</span>
 								<span class="value mono">
 									{data.log.actor_id}
-									<button class="copy-btn" onclick={() => copyToClipboard(data.log.actor_id)} title="Copy ID">
+									<button class="copy-btn" onclick={() => copyToClipboard(data.log.actor_id)} title={tr('logDetail.copyId')}>
 										📋
 									</button>
 								</span>
@@ -108,27 +110,27 @@
 						{/if}
 					</div>
 				{:else}
-					<p class="no-data">No actor information available</p>
+					<p class="no-data">{tr('logDetail.noActor')}</p>
 				{/if}
 			</div>
-			
+
 			<!-- Target Section -->
 			<div class="detail-card">
-				<h3>🎯 Target</h3>
+				<h3>🎯 {tr('logDetail.target')}</h3>
 				{#if data.log.target_name || data.log.target_id}
 					<div class="detail-content">
 						{#if data.log.target_name}
 							<div class="detail-row">
-								<span class="label">Name</span>
+								<span class="label">{tr('logDetail.name')}</span>
 								<span class="value">{data.log.target_name}</span>
 							</div>
 						{/if}
 						{#if data.log.target_id}
 							<div class="detail-row">
-								<span class="label">ID</span>
+								<span class="label">{tr('logDetail.id')}</span>
 								<span class="value mono">
 									{data.log.target_id}
-									<button class="copy-btn" onclick={() => copyToClipboard(data.log.target_id)} title="Copy ID">
+									<button class="copy-btn" onclick={() => copyToClipboard(data.log.target_id)} title={tr('logDetail.copyId')}>
 										📋
 									</button>
 								</span>
@@ -136,27 +138,27 @@
 						{/if}
 					</div>
 				{:else}
-					<p class="no-data">No target information available</p>
+					<p class="no-data">{tr('logDetail.noTarget')}</p>
 				{/if}
 			</div>
-			
+
 			<!-- Channel Section -->
 			<div class="detail-card">
-				<h3>📁 Channel</h3>
+				<h3>📁 {tr('logDetail.channel')}</h3>
 				{#if data.log.channel_name || data.log.channel_id}
 					<div class="detail-content">
 						{#if data.log.channel_name}
 							<div class="detail-row">
-								<span class="label">Name</span>
+								<span class="label">{tr('logDetail.name')}</span>
 								<span class="value channel-name">#{data.log.channel_name}</span>
 							</div>
 						{/if}
 						{#if data.log.channel_id}
 							<div class="detail-row">
-								<span class="label">Channel ID</span>
+								<span class="label">{tr('logDetail.channelId')}</span>
 								<span class="value mono">
 									{data.log.channel_id}
-									<button class="copy-btn" onclick={() => copyToClipboard(data.log.channel_id)} title="Copy ID">
+									<button class="copy-btn" onclick={() => copyToClipboard(data.log.channel_id)} title={tr('logDetail.copyId')}>
 										📋
 									</button>
 								</span>
@@ -164,27 +166,27 @@
 						{/if}
 					</div>
 				{:else}
-					<p class="no-data">No channel information available</p>
+					<p class="no-data">{tr('logDetail.noChannel')}</p>
 				{/if}
 			</div>
-			
+
 			<!-- Timestamp Section -->
 			<div class="detail-card">
-				<h3>🕐 Timestamp</h3>
+				<h3>🕐 {tr('logDetail.timestamp')}</h3>
 				<div class="detail-content">
 					<div class="detail-row">
-						<span class="label">Date & Time</span>
+						<span class="label">{tr('logDetail.dateTime')}</span>
 						<span class="value">{formatDate(data.log.created_at)}</span>
 					</div>
 					<div class="detail-row">
-						<span class="label">Relative</span>
+						<span class="label">{tr('logDetail.relative')}</span>
 						<span class="value">{formatRelativeTime(data.log.created_at)}</span>
 					</div>
 					<div class="detail-row">
-						<span class="label">ISO</span>
+						<span class="label">{tr('logDetail.iso')}</span>
 						<span class="value mono">
 							{data.log.created_at}
-							<button class="copy-btn" onclick={() => copyToClipboard(data.log.created_at)} title="Copy timestamp">
+							<button class="copy-btn" onclick={() => copyToClipboard(data.log.created_at)} title={tr('logDetail.copyTimestamp')}>
 								📋
 							</button>
 						</span>
@@ -196,24 +198,24 @@
 		<!-- Additional Details Section -->
 		{#if data.log.details}
 			<div class="extra-details-card">
-				<h3>📝 Additional Details</h3>
+				<h3>📝 {tr('logDetail.additionalDetails')}</h3>
 				<div class="json-viewer">
 					<pre>{JSON.stringify(data.log.details, null, 2)}</pre>
 				</div>
 				<button class="copy-json-btn" onclick={() => copyToClipboard(JSON.stringify(data.log.details, null, 2))}>
-					📋 Copy JSON
+					📋 {tr('logDetail.copyJson')}
 				</button>
 			</div>
 		{/if}
-		
+
 		<!-- Raw Event Data (Collapsible) -->
 		<details class="raw-data-section">
-			<summary>🔧 Raw Event Data</summary>
+			<summary>🔧 {tr('logDetail.rawData')}</summary>
 			<div class="json-viewer">
 				<pre>{JSON.stringify(data.log, null, 2)}</pre>
 			</div>
 			<button class="copy-json-btn" onclick={() => copyToClipboard(JSON.stringify(data.log, null, 2))}>
-				📋 Copy Raw JSON
+				📋 {tr('logDetail.copyRawJson')}
 			</button>
 		</details>
 	</div>

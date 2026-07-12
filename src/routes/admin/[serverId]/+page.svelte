@@ -2,6 +2,10 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { formatChartDate } from '$lib/timezone.js';
+	import { getTranslator, getLocale } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
 
 	const { data, form } = $props();
 
@@ -75,8 +79,8 @@
 			date: d.date,
 			label: formatChartDate(d.date, data.timezone),
 			values: [
-				{ label: 'Joined', value: d.joins || 0, color: '#22c55e' },
-				{ label: 'Left', value: d.leaves || 0, color: '#ef4444' },
+				{ label: tr('adash.joined'), value: d.joins || 0, color: '#22c55e' },
+				{ label: tr('adash.left'), value: d.leaves || 0, color: '#ef4444' },
 			],
 		}))
 	);
@@ -113,17 +117,17 @@
 	function formatAutopilotStatus(status) {
 		switch (status) {
 			case 'pending':
-				return { label: 'Queued', cls: 'badge-neutral' };
+				return { label: tr('account.job.queued'), cls: 'badge-neutral' };
 			case 'running':
-				return { label: 'Running', cls: 'badge-info' };
+				return { label: tr('account.job.running'), cls: 'badge-info' };
 			case 'completed':
-				return { label: 'Completed', cls: 'badge-success' };
+				return { label: tr('account.job.completed'), cls: 'badge-success' };
 			case 'failed_terminal':
-				return { label: 'Failed', cls: 'badge-danger' };
+				return { label: tr('account.job.failed'), cls: 'badge-danger' };
 			case 'canceled':
-				return { label: 'Canceled', cls: 'badge-warning' };
+				return { label: tr('account.job.canceled'), cls: 'badge-warning' };
 			default:
-				return { label: status || 'Unknown', cls: 'badge-neutral' };
+				return { label: status || tr('account.job.unknown'), cls: 'badge-neutral' };
 		}
 	}
 
@@ -135,7 +139,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.guild?.name || 'Server'} - Admin Dashboard | SpaceBot</title>
+	<title>{tr('adash.metaTitle', { name: data.guild?.name || tr('adash.serverFallback') })}</title>
 </svelte:head>
 
 <div class="admin-dashboard">
@@ -144,25 +148,20 @@
 		<div class="access-denied-container">
 			<div class="access-denied-card">
 				<div class="access-denied-icon">🔒</div>
-				<h1>Access Denied</h1>
-				<p>
-					You need to be an administrator of a server where the bot is installed to access
-					this dashboard.
-				</p>
+				<h1>{tr('adash.accessDenied')}</h1>
+				<p>{tr('adash.accessDeniedBody')}</p>
 				{#if data.user}
-					<p class="hint">
-						If you're a server admin, make sure the bot is added to your server first.
-					</p>
+					<p class="hint">{tr('adash.accessDeniedHint')}</p>
 					<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-lg">
 						<span class="btn-icon"
 							><img src="/logo.webp" alt="" class="inline-logo" /></span
 						>
-						Add Bot to a Server
+						{tr('adash.addBotToServer')}
 					</a>
 				{:else}
 					<a href="/login" class="btn btn-primary btn-lg">
 						<span class="btn-icon">🔑</span>
-						Login with Discord
+						{tr('adash.loginWithDiscord')}
 					</a>
 				{/if}
 			</div>
@@ -185,7 +184,7 @@
 						</div>
 					{/if}
 					<div class="guild-text">
-						<h1>{data.guild?.name || 'Unknown Server'}</h1>
+						<h1>{data.guild?.name || tr('adash.unknownServer')}</h1>
 						<span class="guild-id">ID: {data.serverId}</span>
 					</div>
 				</div>
@@ -196,14 +195,11 @@
 			<div class="warning-banner">
 				<span class="warning-icon">⚠️</span>
 				<div class="warning-content">
-					<strong>Bot Not Installed</strong>
-					<p>
-						The bot is not installed in this server. Some features require the bot to be
-						added.
-					</p>
+					<strong>{tr('adash.botNotInstalled')}</strong>
+					<p>{tr('adash.botNotInstalledDesc')}</p>
 				</div>
 				<a href="/api/auth/discord?flow=install" class="btn btn-primary btn-sm"
-					>Add Bot to Server</a
+					>{tr('adash.addBotShort')}</a
 				>
 			</div>
 		{/if}
@@ -212,14 +208,14 @@
 		<section class="quick-links-section">
 			<h2>
 				<span class="section-icon">🔧</span>
-				Server Management
+				{tr('adash.serverManagement')}
 			</h2>
 			<div class="quick-links-grid">
 				<a href="/admin/{data.serverId}/automations" class="quick-link-card">
 					<div class="quick-link-icon">⚡</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Automations</span>
-						<span class="quick-link-desc">Set up automatic actions on events</span>
+						<span class="quick-link-title">{tr('adash.links.automations')}</span>
+						<span class="quick-link-desc">{tr('adash.links.automationsDesc')}</span>
 						{#if dashboard.featureCounts?.automations}
 							{@const fc = dashboard.featureCounts.automations}
 							{@const limit = dashboard.planLimits?.max_automations}
@@ -230,8 +226,10 @@
 								<span class="usage-count"
 									>{fc.active}{limit !== null ? `/${limit}` : ''}</span
 								>
-								active{#if fc.inactive > 0}<span class="usage-inactive">
-										· {fc.inactive} disabled</span
+								{tr('adash.usage.active')}{#if fc.inactive > 0}<span
+										class="usage-inactive"
+									>
+										{tr('adash.usage.disabled', { count: fc.inactive })}</span
 									>{/if}
 							</span>
 						{/if}
@@ -241,8 +239,8 @@
 				<a href="/admin/{data.serverId}/commands" class="quick-link-card">
 					<div class="quick-link-icon">💬</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Slash Commands</span>
-						<span class="quick-link-desc">Create custom slash commands</span>
+						<span class="quick-link-title">{tr('adash.links.commands')}</span>
+						<span class="quick-link-desc">{tr('adash.links.commandsDesc')}</span>
 						{#if dashboard.featureCounts?.commands}
 							{@const fc = dashboard.featureCounts.commands}
 							{@const limit = dashboard.planLimits?.max_commands}
@@ -253,8 +251,10 @@
 								<span class="usage-count"
 									>{fc.active}{limit !== null ? `/${limit}` : ''}</span
 								>
-								active{#if fc.inactive > 0}<span class="usage-inactive">
-										· {fc.inactive} disabled</span
+								{tr('adash.usage.active')}{#if fc.inactive > 0}<span
+										class="usage-inactive"
+									>
+										{tr('adash.usage.disabled', { count: fc.inactive })}</span
 									>{/if}
 							</span>
 						{/if}
@@ -264,22 +264,24 @@
 				<a href="/admin/{data.serverId}/scheduled-server-events" class="quick-link-card">
 					<div class="quick-link-icon">📅</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Scheduled Events</span>
-						<span class="quick-link-desc">Manage server events and activities</span>
+						<span class="quick-link-title">{tr('adash.links.events')}</span>
+						<span class="quick-link-desc">{tr('adash.links.eventsDesc')}</span>
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
 				<a href="/admin/{data.serverId}/integrations" class="quick-link-card">
 					<div class="quick-link-icon">🔌</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Integrations</span>
-						<span class="quick-link-desc">Connect external apps and services</span>
+						<span class="quick-link-title">{tr('adash.links.integrations')}</span>
+						<span class="quick-link-desc">{tr('adash.links.integrationsDesc')}</span>
 						{#if dashboard.featureCounts?.integrations}
 							{@const fc = dashboard.featureCounts.integrations}
 							<span class="quick-link-usage">
 								<span class="usage-count">{fc.active}</span>
-								active{#if fc.inactive > 0}<span class="usage-inactive">
-										· {fc.inactive} available</span
+								{tr('adash.usage.active')}{#if fc.inactive > 0}<span
+										class="usage-inactive"
+									>
+										{tr('adash.usage.available', { count: fc.inactive })}</span
 									>{/if}
 							</span>
 						{/if}
@@ -289,26 +291,24 @@
 				<a href="/admin/{data.serverId}/stats" class="quick-link-card">
 					<div class="quick-link-icon">📈</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Server Stats</span>
-						<span class="quick-link-desc">See growth, events, and voice trends</span>
+						<span class="quick-link-title">{tr('adash.links.stats')}</span>
+						<span class="quick-link-desc">{tr('adash.links.statsDesc')}</span>
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
 				<a href="/admin/{data.serverId}/logs" class="quick-link-card">
 					<div class="quick-link-icon">🧾</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Event Logs</span>
-						<span class="quick-link-desc">Review moderation and automation events</span>
+						<span class="quick-link-title">{tr('adash.links.logs')}</span>
+						<span class="quick-link-desc">{tr('adash.links.logsDesc')}</span>
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
 				<a href="/admin/{data.serverId}/import-export" class="quick-link-card">
 					<div class="quick-link-icon">📦</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">Import & Export</span>
-						<span class="quick-link-desc"
-							>Share or back up automations and commands</span
-						>
+						<span class="quick-link-title">{tr('adash.links.importExport')}</span>
+						<span class="quick-link-desc">{tr('adash.links.importExportDesc')}</span>
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
@@ -325,27 +325,27 @@
 						<img src="/logo.webp" alt="" class="inline-logo" />
 					</div>
 					<div class="quick-link-info">
-						<span class="quick-link-title">AI Assistant</span>
-						<span class="quick-link-desc">Chat with SpaceBot about this server</span>
+						<span class="quick-link-title">{tr('adash.links.ai')}</span>
+						<span class="quick-link-desc">{tr('adash.links.aiDesc')}</span>
 						{#if !data.isSuperAdmin}
-							<span class="quick-link-usage">Superadmin preview only</span>
+							<span class="quick-link-usage">{tr('adash.superadminPreview')}</span>
 						{/if}
 					</div>
 					<span class="quick-link-arrow">→</span>
-					<span class="coming-soon-badge">COMING SOON</span>
+					<span class="coming-soon-badge">{tr('cmd.comingSoon')}</span>
 				</a>
 				{#if data.hasFullAdminAccess}
 					<a href="/admin/{data.serverId}/account" class="quick-link-card">
 						<div class="quick-link-icon">⚙️</div>
 						<div class="quick-link-info">
-							<span class="quick-link-title">Account & Billing</span>
-							<span class="quick-link-desc">Manage plan, usage, and subscription</span
-							>
+							<span class="quick-link-title">{tr('adash.links.account')}</span>
+							<span class="quick-link-desc">{tr('adash.links.accountDesc')}</span>
 							{#if dashboard.planLimits?.plan}
 								<span class="quick-link-usage">
 									<span class="usage-plan-badge plan-{dashboard.planLimits.plan}"
 										>{dashboard.planLimits.plan}</span
-									> plan
+									>
+									{tr('adash.planWord')}
 								</span>
 							{/if}
 						</div>
@@ -354,8 +354,8 @@
 					<a href="/admin/{data.serverId}/settings" class="quick-link-card">
 						<div class="quick-link-icon">🛠️</div>
 						<div class="quick-link-info">
-							<span class="quick-link-title">Server Settings</span>
-							<span class="quick-link-desc">Configure permissions and behavior</span>
+							<span class="quick-link-title">{tr('adash.links.settings')}</span>
+							<span class="quick-link-desc">{tr('adash.links.settingsDesc')}</span>
 						</div>
 						<span class="quick-link-arrow">→</span>
 					</a>
@@ -368,31 +368,31 @@
 				<div class="ai-autopilot-header">
 					<h2>
 						<span class="section-icon">🤖</span>
-						AI Autopilot
+						{tr('adash.aiAutopilot')}
 					</h2>
 					<a href="/account/ai-jobs" class="btn btn-secondary btn-sm"
-						>Open All AI Jobs →</a
+						>{tr('adash.openAllAiJobs')}</a
 					>
 				</div>
 
 				<div class="ai-autopilot-grid">
 					<div class="ai-stat-card">
 						<span class="ai-stat-value">{aiAutopilotSummary.total}</span>
-						<span class="ai-stat-label">Total</span>
+						<span class="ai-stat-label">{tr('adash.total')}</span>
 					</div>
 					<div class="ai-stat-card">
 						<span class="ai-stat-value"
 							>{aiAutopilotSummary.pending + aiAutopilotSummary.running}</span
 						>
-						<span class="ai-stat-label">Active</span>
+						<span class="ai-stat-label">{tr('adash.active')}</span>
 					</div>
 					<div class="ai-stat-card success">
 						<span class="ai-stat-value">{aiAutopilotSummary.completed}</span>
-						<span class="ai-stat-label">Completed</span>
+						<span class="ai-stat-label">{tr('adash.completed')}</span>
 					</div>
 					<div class="ai-stat-card danger">
 						<span class="ai-stat-value">{aiAutopilotSummary.failed_terminal}</span>
-						<span class="ai-stat-label">Failed</span>
+						<span class="ai-stat-label">{tr('adash.failed')}</span>
 					</div>
 				</div>
 
@@ -401,7 +401,7 @@
 					<div class="ai-latest-job">
 						<div class="ai-latest-main">
 							<div class="ai-latest-top">
-								<strong>Latest Job</strong>
+								<strong>{tr('account.autopilot.latestJob')}</strong>
 								<span class="status-badge {latestStatus.cls}"
 									>{latestStatus.label}</span
 								>
@@ -413,10 +413,13 @@
 								{truncateText(aiAutopilotSummary.latest.requestText, 180)}
 							</div>
 							<div class="ai-latest-meta">
-								Attempts {aiAutopilotSummary.latest
-									.attemptCount}/{aiAutopilotSummary.latest.maxAttempts} · Updated {new Date(
-									aiAutopilotSummary.latest.updatedAt
-								).toLocaleString()}
+								{tr('account.autopilot.attempts', {
+									count: aiAutopilotSummary.latest.attemptCount,
+									max: aiAutopilotSummary.latest.maxAttempts,
+									date: new Date(
+										aiAutopilotSummary.latest.updatedAt
+									).toLocaleString(dateLocale),
+								})}
 							</div>
 						</div>
 						<div class="ai-latest-actions">
@@ -424,12 +427,12 @@
 								class="btn btn-outline btn-sm"
 								href={`/api/ai/jobs/${aiAutopilotSummary.latest.id}`}
 								target="_blank"
-								rel="noreferrer">Timeline JSON</a
+								rel="noreferrer">{tr('account.autopilot.timelineJson')}</a
 							>
 						</div>
 					</div>
 				{:else}
-					<p class="ai-empty">No AI jobs recorded for this server yet.</p>
+					<p class="ai-empty">{tr('adash.noAiJobs')}</p>
 				{/if}
 			</section>
 		{/if}
@@ -440,58 +443,66 @@
 				<div class="stats-header">
 					<h2>
 						<span class="section-icon">📈</span>
-						Statistics
+						{tr('adash.statistics')}
 					</h2>
 					<a href="/admin/{data.serverId}/stats" class="btn btn-secondary btn-sm">
-						View All Stats →
+						{tr('adash.viewAllStats')}
 					</a>
 				</div>
 
 				<!-- Charts grid -->
 				<div class="charts-grid">
 					<ChartCard
-						title="Member Growth"
-						subtitle="Last 30 days"
+						title={tr('adash.memberGrowth')}
+						subtitle={tr('adash.last30days')}
 						icon="👥"
 						loading={isDashboardLoading}
 						stats={[
 							{
 								value: dashboard.basicStats?.members?.toLocaleString() ?? '—',
-								label: 'Members',
+								label: tr('adash.members'),
 							},
-							{ value: `+${memberJoins}`, label: 'Joined', color: '#22c55e' },
-							{ value: `-${memberLeaves}`, label: 'Left', color: '#ef4444' },
+							{
+								value: `+${memberJoins}`,
+								label: tr('adash.joined'),
+								color: '#22c55e',
+							},
+							{
+								value: `-${memberLeaves}`,
+								label: tr('adash.left'),
+								color: '#ef4444',
+							},
 							{
 								value:
 									(memberJoins - memberLeaves >= 0 ? '+' : '') +
 									(memberJoins - memberLeaves),
-								label: 'Net',
+								label: tr('adash.net'),
 								color: memberJoins - memberLeaves >= 0 ? '#22c55e' : '#ef4444',
 							},
 						]}
 					>
 						<BarChart
 							data={memberGrowthData}
-							title="Member Growth"
+							title={tr('adash.memberGrowth')}
 							loading={isDashboardLoading}
-							emptyMessage="No member growth data yet"
+							emptyMessage={tr('adash.noMemberData')}
 						/>
 					</ChartCard>
 
 					<ChartCard
-						title="Voice Activity"
-						subtitle="Last 30 days"
+						title={tr('adash.voiceActivity')}
+						subtitle={tr('adash.last30days')}
 						icon="🎙️"
 						loading={isDashboardLoading}
-						stats={[{ value: peakVoiceUsers, label: 'Peak Unique Voice Users' }]}
+						stats={[{ value: peakVoiceUsers, label: tr('adash.peakVoiceUsers') }]}
 					>
 						<AreaChart
 							data={voiceData}
 							color="#22c55e"
 							gradientId="dashVoice"
-							title="Unique Users in Voice"
+							title={tr('adash.uniqueVoiceUsers')}
 							loading={isDashboardLoading}
-							emptyMessage="No voice activity data yet"
+							emptyMessage={tr('adash.noVoiceData')}
 							showPoints={false}
 						/>
 					</ChartCard>
@@ -503,15 +514,17 @@
 				<section class="server-settings-section">
 					<h2>
 						<span class="section-icon">⚙️</span>
-						Server Settings
-						<span class="admin-badge">Admin Only</span>
+						{tr('adash.serverSettings')}
+						<span class="admin-badge">{tr('adash.adminOnly')}</span>
 					</h2>
 					<div class="settings-card">
 						<div class="settings-grid">
 							<div class="setting-item">
 								<div class="setting-info">
-									<span class="setting-label">Logging Channel</span>
-									<span class="setting-desc">Where bot logs are sent</span>
+									<span class="setting-label">{tr('adash.loggingChannel')}</span>
+									<span class="setting-desc"
+										>{tr('adash.loggingChannelDesc')}</span
+									>
 								</div>
 								{#if dashboard.settings?.loggingChannelId}
 									<a
@@ -525,14 +538,14 @@
 											dashboard.settings.loggingChannelId}
 									</a>
 								{:else}
-									<span class="setting-value">Not configured</span>
+									<span class="setting-value">{tr('adash.notConfigured')}</span>
 								{/if}
 							</div>
 						</div>
 						<div class="settings-actions">
 							<a href="/admin/{data.serverId}/settings" class="btn btn-secondary">
 								<span class="btn-icon">⚙️</span>
-								Configure Settings
+								{tr('adash.configureSettings')}
 							</a>
 						</div>
 					</div>

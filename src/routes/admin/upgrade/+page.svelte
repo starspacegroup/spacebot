@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 	const { data } = $props();
 
 	let loading = $state(null); // guild ID currently loading, or null
@@ -32,7 +35,7 @@
 					window.location.href = `/admin/${guild.id}/account`;
 					return;
 				}
-				throw new Error(result.error || 'Checkout failed');
+				throw new Error(result.error || tr('upgrade.checkoutFailed'));
 			}
 
 			// Redirect to Stripe Checkout
@@ -45,17 +48,20 @@
 </script>
 
 <svelte:head>
-	<title>Upgrade to Pro | SpaceBot</title>
+	<title>{tr('upgrade.metaTitle')}</title>
 </svelte:head>
 
 <div class="upgrade-page">
 	<header class="upgrade-header">
-		<div class="upgrade-badge">PRO</div>
-		<h1>Upgrade to Pro</h1>
+		<div class="upgrade-badge">{tr('upgrade.badge')}</div>
+		<h1>{tr('upgrade.title')}</h1>
 		<p class="upgrade-subtitle">
-			Select a server to upgrade to Pro ({data.interval === 'yearly'
-				? '$2.50/mo billed yearly'
-				: '$3/server/mo'})
+			{tr('upgrade.subtitle', {
+				price:
+					data.interval === 'yearly'
+						? tr('upgrade.priceYearly')
+						: tr('upgrade.priceMonthly'),
+			})}
 		</p>
 	</header>
 
@@ -68,7 +74,7 @@
 
 	{#if serversWithBot.length > 0}
 		<section class="server-section">
-			<h2>Your Servers</h2>
+			<h2>{tr('account.servers.heading')}</h2>
 			<div class="servers-grid">
 				{#each serversWithBot as guild}
 					<button
@@ -90,10 +96,11 @@
 						<div class="server-info">
 							<span class="server-name">{guild.name}</span>
 							{#if loading === guild.id}
-								<span class="server-status loading">Redirecting to checkout...</span
+								<span class="server-status loading"
+									>{tr('upgrade.redirecting')}</span
 								>
 							{:else}
-								<span class="server-status">Click to upgrade</span>
+								<span class="server-status">{tr('upgrade.clickToUpgrade')}</span>
 							{/if}
 						</div>
 						<span class="server-arrow">
@@ -111,10 +118,8 @@
 
 	{#if serversWithoutBot.length > 0}
 		<section class="server-section">
-			<h2>Add Bot First</h2>
-			<p class="section-note">
-				These servers don't have SpaceBot yet. Add the bot first, then you can upgrade.
-			</p>
+			<h2>{tr('upgrade.addBotFirst')}</h2>
+			<p class="section-note">{tr('upgrade.addBotFirstNote')}</p>
 			<div class="servers-grid">
 				{#each serversWithoutBot as guild}
 					<a
@@ -137,7 +142,7 @@
 						<div class="server-info">
 							<span class="server-name">{guild.name}</span>
 							<span class="server-status no-bot"
-								>Bot not installed — click to add</span
+								>{tr('upgrade.botNotInstalledClick')}</span
 							>
 						</div>
 						<span class="server-arrow">+</span>
@@ -152,8 +157,8 @@
 			<div class="empty-icon">
 				<img src="/logo.webp" alt="SpaceBot" class="bot-logo-lg" />
 			</div>
-			<h2>No Servers Found</h2>
-			<p>Add SpaceBot to a server first, then come back to upgrade.</p>
+			<h2>{tr('adash.noServersFound')}</h2>
+			<p>{tr('upgrade.noServersBody')}</p>
 			<a
 				href="/api/auth/discord?flow=install&return_to={encodeURIComponent(
 					'/admin/upgrade?interval=' + data.interval
@@ -161,13 +166,13 @@
 				class="btn btn-primary btn-lg"
 			>
 				<span>➕</span>
-				Add Bot to a Server
+				{tr('adash.addBotToServer')}
 			</a>
 		</div>
 	{/if}
 
 	<div class="add-new-section">
-		<p>Don't see your server?</p>
+		<p>{tr('adash.dontSeeServer')}</p>
 		<a
 			href="/api/auth/discord?flow=install&return_to={encodeURIComponent(
 				'/admin/upgrade?interval=' + data.interval
@@ -175,12 +180,12 @@
 			class="btn btn-secondary"
 		>
 			<span><img src="/logo.webp" alt="" class="inline-logo" /></span>
-			Add Bot to Another Server
+			{tr('adash.addBotAnother')}
 		</a>
 	</div>
 
 	<div class="back-link">
-		<a href="/#pricing">← Back to pricing</a>
+		<a href="/#pricing">{tr('upgrade.backToPricing')}</a>
 	</div>
 </div>
 

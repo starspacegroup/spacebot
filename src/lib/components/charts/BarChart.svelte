@@ -1,5 +1,8 @@
 <script lang="ts">
 	import ChartTooltip from './ChartTooltip.svelte';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 
 	/**
 	 * Beautiful, responsive bar chart component
@@ -8,7 +11,7 @@
 	const {
 		data = [],
 		title = '',
-		emptyMessage = 'No data available',
+		emptyMessage = tr('chart.noData'),
 		height = 'auto',
 		showLegend = true,
 		loading = false,
@@ -147,7 +150,7 @@
 			class="bar-chart"
 			preserveAspectRatio="xMidYMid meet"
 			role="img"
-			aria-label={title || 'Bar chart'}
+			aria-label={title || tr('chart.barChart')}
 		>
 			<defs>
 				<!-- Glow filters for each bar color -->

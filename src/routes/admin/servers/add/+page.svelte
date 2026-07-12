@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
 	const { data } = $props();
+	const tr = getTranslator();
 
 	// Build admin URL - use guild-specific if available
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
@@ -20,12 +23,9 @@
 			</svg>
 		</div>
 
-		<h1>Add SpaceBot to Your Server</h1>
+		<h1>{tr('addServer.title')}</h1>
 
-		<p class="description">
-			Invite SpaceBot to your Discord server to enable logging, moderation, and other
-			features.
-		</p>
+		<p class="description">{tr('addServer.description')}</p>
 
 		{#if data.user}
 			{#if data.inviteUrl}
@@ -39,23 +39,18 @@
 							stroke-linejoin="round"
 						/>
 					</svg>
-					Add to Server
+					{tr('addServer.cta')}
 				</a>
 
-				<p class="hint">
-					You'll be redirected to Discord to select which server to add the bot to. You
-					must have <strong>Manage Server</strong> permission in the server.
-				</p>
+				<p class="hint">{@html tr('addServer.hint')}</p>
 			{:else}
 				<div class="alert alert-error">
-					<p>Bot configuration error: Missing Discord Client ID.</p>
-					<p>Please contact the bot administrator.</p>
+					<p>{tr('addServer.errorTitle')}</p>
+					<p>{tr('addServer.errorBody')}</p>
 				</div>
 			{/if}
 		{:else}
-			<p class="login-prompt">
-				Please <a href="/login">log in</a> first to add the bot to your server.
-			</p>
+			<p class="login-prompt">{@html tr('addServer.loginPrompt')}</p>
 		{/if}
 
 		<a href={adminUrl} class="back-link">
@@ -68,7 +63,7 @@
 					stroke-linejoin="round"
 				/>
 			</svg>
-			Back to Admin
+			{tr('addServer.backToAdmin')}
 		</a>
 	</div>
 </div>

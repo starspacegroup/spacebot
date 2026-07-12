@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
 	let { data } = $props();
 	const doc = $derived(data.doc);
+	const tr = getTranslator();
 </script>
 
 <svelte:head>
@@ -12,8 +15,8 @@
 </svelte:head>
 
 <div class="doc-layout">
-	<aside class="doc-nav" aria-label="Documentation">
-		<a class="nav-home" href="/docs/dev">← All docs</a>
+	<aside class="doc-nav" aria-label={tr('docs.dev.navAria')}>
+		<a class="nav-home" href="/docs/dev">{tr('docs.dev.backToIndex')}</a>
 		{#each data.sections as section (section.title)}
 			<div class="nav-group">
 				<span class="nav-group-title">{section.title}</span>
@@ -43,8 +46,8 @@
 	</main>
 
 	{#if doc.headings.length > 1}
-		<nav class="doc-toc" aria-label="On this page">
-			<span class="toc-title">On this page</span>
+		<nav class="doc-toc" aria-label={tr('docs.dev.onThisPage')}>
+			<span class="toc-title">{tr('docs.dev.onThisPage')}</span>
 			<ul>
 				{#each doc.headings as heading (heading.id)}
 					<li class:sub={heading.level >= 3}>

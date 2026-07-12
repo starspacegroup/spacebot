@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { toast } from '$lib/toast.svelte.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getTranslator, getLocale } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
 
 	const { data } = $props();
 
@@ -15,9 +19,9 @@
 		if (checkoutToastShown) return;
 		checkoutToastShown = true;
 		if (checkoutStatus === 'success') {
-			toast.success('Welcome to Pro! Your upgrade is being processed.');
+			toast.success(tr('bill.toast.welcomePro'));
 		} else if (checkoutStatus === 'canceled') {
-			toast.error('Checkout was canceled. No charges were made.');
+			toast.error(tr('bill.toast.checkoutCanceled'));
 		}
 	});
 
@@ -43,14 +47,14 @@
 
 	// Format price
 	function formatPrice(cents) {
-		if (!cents) return 'Starter';
+		if (!cents) return tr('account.starter');
 		return `$${(cents / 100).toFixed(2)}`;
 	}
 
 	// Format date
 	function formatDate(dateStr) {
-		if (!dateStr) return 'N/A';
-		return new Date(dateStr).toLocaleDateString('en-US', {
+		if (!dateStr) return tr('account.na');
+		return new Date(dateStr).toLocaleDateString(dateLocale, {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric',
@@ -88,27 +92,27 @@
 	function getEventLabel(eventType) {
 		switch (eventType) {
 			case 'checkout_completed':
-				return 'Upgrade';
+				return tr('account.event.upgrade');
 			case 'plan_upgrade':
-				return 'Plan Upgrade';
+				return tr('account.event.planUpgrade');
 			case 'plan_downgrade':
-				return 'Downgrade';
+				return tr('account.event.downgrade');
 			case 'admin_edit':
-				return 'Admin Edit';
+				return tr('account.event.adminEdit');
 			case 'payment_success':
-				return 'Payment';
+				return tr('account.event.payment');
 			case 'payment_failed':
-				return 'Payment Failed';
+				return tr('account.event.paymentFailed');
 			case 'subscription_canceled':
-				return 'Canceled';
+				return tr('account.event.canceled');
 			case 'subscription_reactivated':
-				return 'Reactivated';
+				return tr('account.event.reactivated');
 			case 'subscription_renewed':
-				return 'Renewed';
+				return tr('account.event.renewed');
 			case 'plan_reset':
-				return 'Plan Reset';
+				return tr('account.event.planReset');
 			default:
-				return 'Event';
+				return tr('account.event.generic');
 		}
 	}
 
@@ -182,7 +186,7 @@
 			const result = await res.json();
 
 			if (!res.ok) {
-				error = result.error || 'Something went wrong';
+				error = result.error || tr('error.default');
 				return;
 			}
 
@@ -196,14 +200,14 @@
 			if (result.success) {
 				const message =
 					action === 'cancel'
-						? 'Subscription will cancel at the end of the billing period.'
-						: 'Subscription reactivated!';
+						? tr('bill.toast.willCancel')
+						: tr('bill.toast.reactivated');
 				toast[action === 'reactivate' ? 'success' : 'error'](message);
 				// Reload to get fresh data
 				setTimeout(() => window.location.reload(), 1500);
 			}
 		} catch {
-			error = 'Network error. Please try again.';
+			error = tr('runners.toast.netError');
 		} finally {
 			loading = false;
 		}
@@ -211,19 +215,19 @@
 </script>
 
 <svelte:head>
-	<title>Billing - {data.guild?.name || 'Server'} | SpaceBot</title>
+	<title>{tr('bill.metaTitle', { name: data.guild?.name || tr('adash.serverFallback') })}</title>
 </svelte:head>
 
 <div class="billing-page">
 	<header class="page-header">
-		<a href="/admin/{data.serverId}" class="back-link">&#8592; Back to Dashboard</a>
+		<a href="/admin/{data.serverId}" class="back-link">{tr('account.backToDashboard')}</a>
 		<div class="header-content">
 			<h1>
 				<span class="header-icon">💳</span>
-				Billing &amp; Plan
+				{tr('bill.title')}
 			</h1>
 			<p class="header-desc">
-				Manage your subscription for {data.guild?.name || 'this server'}
+				{tr('bill.headerDesc', { name: data.guild?.name || tr('bill.thisServer') })}
 			</p>
 		</div>
 	</header>
@@ -239,14 +243,13 @@
 		<div class="alert alert-warning">
 			<span class="alert-icon">⚠️</span>
 			<div>
-				<strong>Payment past due.</strong> Your last payment failed. Please update your
-				payment method to keep Pro features.
+				{@html tr('bill.pastDue')}
 				<button
 					class="alert-action"
 					onclick={() => billingAction('portal')}
 					disabled={loading}
 				>
-					Update Payment Method
+					{tr('bill.updatePayment')}
 				</button>
 			</div>
 		</div>
@@ -261,54 +264,60 @@
 					class:pro={plan.plan === 'pro'}
 					class:free={plan.plan === 'free'}
 				>
-					{plan.plan === 'pro' ? '⚡ Pro' : '🆓 Free'}
+					{plan.plan === 'pro' ? tr('bill.proBadge') : tr('bill.freeBadge')}
 				</span>
 				{#if isCanceling}
 					<span class="status-tag canceling"
-						>Cancels {formatDate(plan.stripe_current_period_end)}</span
+						>{tr('bill.cancels', {
+							date: formatDate(plan.stripe_current_period_end),
+						})}</span
 					>
 				{:else if isProActive}
-					<span class="status-tag active">Active</span>
+					<span class="status-tag active">{tr('bill.active')}</span>
 				{:else if isPastDue}
-					<span class="status-tag past-due">Past Due</span>
+					<span class="status-tag past-due">{tr('bill.pastDueTag')}</span>
 				{/if}
 			</div>
 
 			{#if isProActive || isCanceling}
 				<div class="plan-details">
 					<div class="detail-row">
-						<span class="detail-label">Price</span>
+						<span class="detail-label">{tr('account.billing.price')}</span>
 						<span class="detail-value"
 							>{formatPrice(plan.price_cents)}{plan.price_cents ===
 							data.planTiers.pro.price_cents_yearly
-								? '/yr'
-								: '/mo'}</span
+								? tr('bill.perYear')
+								: tr('account.perMonth')}</span
 						>
 					</div>
 					{#if data.nextBillingDate}
 						<div class="detail-row">
 							<span class="detail-label"
-								>{isCanceling ? 'Access until' : 'Next billing date'}</span
+								>{isCanceling
+									? tr('bill.accessUntil')
+									: tr('bill.nextBillingDate')}</span
 							>
 							<span class="detail-value">{formatDate(data.nextBillingDate)}</span>
 						</div>
 					{/if}
 					{#if data.nextBillingAmount && !isCanceling}
 						<div class="detail-row">
-							<span class="detail-label">Next charge</span>
+							<span class="detail-label">{tr('bill.nextCharge')}</span>
 							<span class="detail-value"
 								>{formatPrice(data.nextBillingAmount)}{data.billingInterval ===
 								'year'
-									? '/yr'
-									: '/mo'}</span
+									? tr('bill.perYear')
+									: tr('account.perMonth')}</span
 							>
 						</div>
 					{/if}
 					{#if data.billingInterval}
 						<div class="detail-row">
-							<span class="detail-label">Billing cycle</span>
+							<span class="detail-label">{tr('bill.billingCycle')}</span>
 							<span class="detail-value"
-								>{data.billingInterval === 'year' ? 'Yearly' : 'Monthly'}</span
+								>{data.billingInterval === 'year'
+									? tr('home.pricing.yearly')
+									: tr('home.pricing.monthly')}</span
 							>
 						</div>
 					{/if}
@@ -322,14 +331,14 @@
 						onclick={() => billingAction('portal')}
 						disabled={loading}
 					>
-						{loading ? 'Loading...' : 'Manage Payment Method'}
+						{loading ? tr('bill.loading') : tr('bill.managePayment')}
 					</button>
 					<button
 						class="btn btn-danger-outline"
 						onclick={() => billingAction('cancel')}
 						disabled={loading}
 					>
-						{loading ? 'Loading...' : 'Cancel Subscription'}
+						{loading ? tr('bill.loading') : tr('bill.cancelSub')}
 					</button>
 				{:else if isCanceling}
 					<button
@@ -337,14 +346,14 @@
 						onclick={() => billingAction('reactivate')}
 						disabled={loading}
 					>
-						{loading ? 'Loading...' : 'Reactivate Subscription'}
+						{loading ? tr('bill.loading') : tr('bill.reactivateSub')}
 					</button>
 					<button
 						class="btn btn-secondary"
 						onclick={() => billingAction('portal')}
 						disabled={loading}
 					>
-						{loading ? 'Loading...' : 'Billing Portal'}
+						{loading ? tr('bill.loading') : tr('bill.billingPortal')}
 					</button>
 				{:else if isPastDue}
 					<button
@@ -352,7 +361,7 @@
 						onclick={() => billingAction('portal')}
 						disabled={loading}
 					>
-						{loading ? 'Loading...' : 'Fix Payment'}
+						{loading ? tr('bill.loading') : tr('bill.fixPayment')}
 					</button>
 				{/if}
 			</div>
@@ -362,23 +371,25 @@
 	<!-- Plan Comparison -->
 	<section class="plans-section">
 		<div class="plans-header">
-			<h2>Choose Your Plan</h2>
+			<h2>{tr('bill.choosePlan')}</h2>
 			<div class="interval-toggle">
 				<button
 					class="interval-btn"
 					class:active={billingInterval === 'monthly'}
 					onclick={() => (billingInterval = 'monthly')}
 				>
-					Monthly
+					{tr('home.pricing.monthly')}
 				</button>
 				<button
 					class="interval-btn"
 					class:active={billingInterval === 'yearly'}
 					onclick={() => (billingInterval = 'yearly')}
 				>
-					Yearly
+					{tr('home.pricing.yearly')}
 					{#if yearlySavingsPercent > 0}
-						<span class="save-badge">Save {yearlySavingsPercent}%</span>
+						<span class="save-badge"
+							>{tr('bill.savePercent', { percent: yearlySavingsPercent })}</span
+						>
 					{/if}
 				</button>
 			</div>
@@ -388,47 +399,49 @@
 			<!-- Free Plan -->
 			<div class="plan-card" class:current={plan.plan === 'free' && !isCanceling}>
 				{#if plan.plan === 'free' && !isCanceling}
-					<div class="current-label">Current Plan</div>
+					<div class="current-label">{tr('bill.currentPlan')}</div>
 				{/if}
 				<div class="plan-card-header">
-					<h3>Starter</h3>
+					<h3>{tr('account.starter')}</h3>
 					<div class="plan-price">
-						<span class="price-amount">FREE</span>
+						<span class="price-amount">{tr('account.free')}</span>
 					</div>
 				</div>
 				<ul class="plan-features">
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.max_commands} custom commands
+						{tr('bill.customCommands', { count: data.planTiers.free.max_commands })}
 					</li>
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.max_automations} automations
+						{tr('bill.automations', { count: data.planTiers.free.max_automations })}
 					</li>
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.max_api_keys} API keys
+						{tr('bill.apiKeys', { count: data.planTiers.free.max_api_keys })}
 					</li>
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.max_webhooks} webhooks
+						{tr('bill.webhooks', { count: data.planTiers.free.max_webhooks })}
 					</li>
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.log_retention_days}-day log retention
+						{tr('bill.logRetention', { count: data.planTiers.free.log_retention_days })}
 					</li>
 					<li>
 						<span class="feature-icon">✓</span>
-						{data.planTiers.free.stats_retention_days}-day stats retention
+						{tr('bill.statsRetention', {
+							count: data.planTiers.free.stats_retention_days,
+						})}
 					</li>
 				</ul>
 				{#if plan.plan !== 'free' || isCanceling}
 					<div class="plan-card-footer">
 						<span class="plan-note">
 							{#if isCanceling}
-								Reverts to Starter after cancellation
+								{tr('bill.revertsToStarter')}
 							{:else}
-								Included features
+								{tr('bill.includedFeatures')}
 							{/if}
 						</span>
 					</div>
@@ -438,49 +451,53 @@
 			<!-- Pro Plan -->
 			<div class="plan-card pro" class:current={plan.plan === 'pro' && !isCanceling}>
 				{#if plan.plan === 'pro' && !isCanceling}
-					<div class="current-label">Current Plan</div>
+					<div class="current-label">{tr('bill.currentPlan')}</div>
 				{:else}
-					<div class="recommended-label">Recommended</div>
+					<div class="recommended-label">{tr('bill.recommended')}</div>
 				{/if}
 				<div class="plan-card-header">
-					<h3>Pro</h3>
+					<h3>{tr('account.pro')}</h3>
 					{#if billingInterval === 'yearly'}
 						<div class="plan-price">
 							<span class="price-amount">{formatPrice(yearlyPrice)}</span>
-							<span class="price-period">/yr</span>
+							<span class="price-period">{tr('bill.perYear')}</span>
 						</div>
 						<div class="price-equiv">
-							{formatPrice(yearlyMonthlyEquiv)}/mo equivalent
+							{tr('bill.perMonthEquiv', { price: formatPrice(yearlyMonthlyEquiv) })}
 						</div>
 					{:else}
 						<div class="plan-price">
 							<span class="price-amount">{formatPrice(monthlyPrice)}</span>
-							<span class="price-period">/mo</span>
+							<span class="price-period">{tr('account.perMonth')}</span>
 						</div>
 					{/if}
 				</div>
 				<ul class="plan-features">
 					<li>
-						<span class="feature-icon pro">★</span> <strong>Unlimited</strong> commands
-					</li>
-					<li>
-						<span class="feature-icon pro">★</span> <strong>Unlimited</strong> automations
+						<span class="feature-icon pro">★</span>
+						{@html tr('bill.unlimitedCommands')}
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
-						{data.planTiers.pro.max_api_keys} API keys
+						{@html tr('bill.unlimitedAutomations')}
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
-						{data.planTiers.pro.max_webhooks} webhooks
+						{tr('bill.apiKeys', { count: data.planTiers.pro.max_api_keys })}
 					</li>
 					<li>
-						<span class="feature-icon pro">★</span> <strong>Unlimited</strong> log retention
+						<span class="feature-icon pro">★</span>
+						{tr('bill.webhooks', { count: data.planTiers.pro.max_webhooks })}
 					</li>
 					<li>
-						<span class="feature-icon pro">★</span> <strong>1 year</strong> stats retention
+						<span class="feature-icon pro">★</span>
+						{@html tr('bill.unlimitedLogRetention')}
 					</li>
-					<li><span class="feature-icon pro">★</span> Priority support</li>
+					<li>
+						<span class="feature-icon pro">★</span>
+						{@html tr('bill.oneYearStats')}
+					</li>
+					<li><span class="feature-icon pro">★</span> {tr('bill.prioritySupport')}</li>
 				</ul>
 				{#if plan.plan !== 'pro' || isCanceling}
 					<div class="plan-card-footer">
@@ -490,12 +507,10 @@
 								onclick={() => billingAction('checkout')}
 								disabled={loading}
 							>
-								{loading ? 'Redirecting to Stripe...' : 'Upgrade to Pro'}
+								{loading ? tr('bill.redirectingStripe') : tr('bill.upgradeToPro')}
 							</button>
 						{:else}
-							<span class="plan-note"
-								>Payment processing is not configured yet. Contact an admin.</span
-							>
+							<span class="plan-note">{tr('bill.paymentNotConfigured')}</span>
 						{/if}
 					</div>
 				{/if}
@@ -505,14 +520,11 @@
 
 	<!-- Billing History -->
 	<section class="history-section">
-		<h2>Billing History</h2>
+		<h2>{tr('account.billing.historyHeading')}</h2>
 		{#if billingHistory.length === 0}
 			<div class="history-empty">
 				<span class="empty-icon">📋</span>
-				<p>
-					No billing events yet. History will appear here as plan changes and payments
-					occur.
-				</p>
+				<p>{tr('bill.noHistory')}</p>
 			</div>
 		{:else}
 			<div class="history-timeline">
@@ -567,12 +579,16 @@
 											}}
 										/>
 									{/if}
-									<span>by {event.actor_name}</span>
+									<span
+										>{tr('account.billing.byActor', {
+											name: event.actor_name,
+										})}</span
+									>
 								</div>
 							{/if}
 							{#if event.event_type === 'admin_edit' && event.details?.changes?.length}
 								<details class="event-changes">
-									<summary>View changes</summary>
+									<summary>{tr('bill.viewChanges')}</summary>
 									<ul>
 										{#each event.details.changes as change}
 											<li>{change}</li>
@@ -586,7 +602,10 @@
 			</div>
 			{#if data.billingHistoryTotal > billingHistory.length}
 				<p class="history-more">
-					Showing {billingHistory.length} of {data.billingHistoryTotal} events
+					{tr('bill.showingEvents', {
+						shown: billingHistory.length,
+						total: data.billingHistoryTotal,
+					})}
 				</p>
 			{/if}
 		{/if}
@@ -594,44 +613,27 @@
 
 	<!-- FAQ Section -->
 	<section class="faq-section">
-		<h2>Frequently Asked Questions</h2>
+		<h2>{tr('bill.faq')}</h2>
 		<div class="faq-list">
 			<details class="faq-item">
-				<summary>What happens to my data if I downgrade?</summary>
-				<p>
-					Your existing data is kept but new features will be limited by the Free plan's
-					caps. For example, you won't be able to create new commands beyond the free
-					limit, but existing ones will continue to work.
-				</p>
+				<summary>{tr('bill.faq1q')}</summary>
+				<p>{tr('bill.faq1a')}</p>
 			</details>
 			<details class="faq-item">
-				<summary>Can I cancel anytime?</summary>
-				<p>
-					Yes! Whether you choose monthly or yearly billing, there's no lock-in. When you
-					cancel, you keep Pro features until the end of your current billing period.
-				</p>
+				<summary>{tr('bill.faq2q')}</summary>
+				<p>{tr('bill.faq2a')}</p>
 			</details>
 			<details class="faq-item">
-				<summary>Can I switch between monthly and yearly?</summary>
-				<p>
-					Yes! You can switch billing intervals from the Stripe Billing Portal. If you
-					switch from monthly to yearly mid-cycle, Stripe will prorate the difference.
-				</p>
+				<summary>{tr('bill.faq3q')}</summary>
+				<p>{tr('bill.faq3a')}</p>
 			</details>
 			<details class="faq-item">
-				<summary>How does billing work?</summary>
-				<p>
-					Payments are handled securely through Stripe. We never see or store your card
-					details. You'll receive email receipts for each payment.
-				</p>
+				<summary>{tr('bill.faq4q')}</summary>
+				<p>{tr('bill.faq4a')}</p>
 			</details>
 			<details class="faq-item">
-				<summary>What if my payment fails?</summary>
-				<p>
-					Stripe will automatically retry failed payments. You'll receive email
-					notifications and can update your payment method from the Billing Portal. Your
-					Pro features remain active during the retry period.
-				</p>
+				<summary>{tr('bill.faq5q')}</summary>
+				<p>{tr('bill.faq5a')}</p>
 			</details>
 		</div>
 	</section>

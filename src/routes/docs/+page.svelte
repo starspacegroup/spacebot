@@ -1,270 +1,174 @@
+<script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+</script>
+
 <svelte:head>
-	<title>Documentation – SpaceBot</title>
-	<meta
-		name="description"
-		content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more."
-	/>
-	<meta property="og:title" content="Documentation – SpaceBot" />
-	<meta
-		property="og:description"
-		content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more."
-	/>
+	<title>{tr('docs.meta.title')}</title>
+	<meta name="description" content={tr('docs.meta.description')} />
+	<meta property="og:title" content={tr('docs.meta.title')} />
+	<meta property="og:description" content={tr('docs.meta.description')} />
 	<meta property="og:url" content="https://spacebot.starspace.group/docs" />
 	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta name="twitter:title" content="Documentation – SpaceBot" />
-	<meta
-		name="twitter:description"
-		content="SpaceBot documentation — learn how to set up and use custom commands, automations, integrations, the REST API, and more."
-	/>
+	<meta name="twitter:title" content={tr('docs.meta.title')} />
+	<meta name="twitter:description" content={tr('docs.meta.description')} />
 	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
 <div class="docs-page">
 	<header class="docs-header">
-		<h1>Documentation</h1>
-		<p class="docs-subtitle">Everything you need to get the most out of SpaceBot.</p>
+		<h1>{tr('docs.title')}</h1>
+		<p class="docs-subtitle">{tr('docs.subtitle')}</p>
 	</header>
 
 	<a class="dev-docs-callout" href="/docs/dev">
-		<span class="callout-label">Building on SpaceBot?</span>
-		<span class="callout-text"
-			>See the developer docs — architecture, REST API, local runner, and workflows →</span
-		>
+		<span class="callout-label">{tr('docs.devCallout.label')}</span>
+		<span class="callout-text">{tr('docs.devCallout.text')}</span>
 	</a>
 
 	<div class="docs-body">
-		<nav class="docs-toc" aria-label="Table of Contents">
-			<h2 class="toc-title">On this page</h2>
+		<nav class="docs-toc" aria-label={tr('legal.tocAria')}>
+			<h2 class="toc-title">{tr('docs.toc.onThisPage')}</h2>
 			<ol>
-				<li><a href="#getting-started">Getting Started</a></li>
-				<li><a href="#dashboard">Dashboard Overview</a></li>
-				<li><a href="#commands">Slash Commands</a></li>
-				<li><a href="#automations">Automations</a></li>
-				<li><a href="#scheduled-events">Scheduled Events</a></li>
-				<li><a href="#event-logs">Event Logs</a></li>
-				<li><a href="#statistics">Statistics</a></li>
-				<li><a href="#integrations">Integrations</a></li>
-				<li><a href="#api">REST API &amp; API Keys</a></li>
-				<li><a href="#ai-assistant">AI Assistant</a></li>
-				<li><a href="#scheduled-messages">Scheduled Messages</a></li>
-				<li><a href="#button-actions">Button Actions</a></li>
-				<li><a href="#server-settings">Server Settings</a></li>
-				<li><a href="#billing">Plans &amp; Billing</a></li>
+				<li><a href="#getting-started">{tr('docs.section.gettingStarted')}</a></li>
+				<li><a href="#dashboard">{tr('docs.section.dashboard')}</a></li>
+				<li><a href="#commands">{tr('docs.section.commands')}</a></li>
+				<li><a href="#automations">{tr('docs.section.automations')}</a></li>
+				<li><a href="#scheduled-events">{tr('docs.section.scheduledEvents')}</a></li>
+				<li><a href="#event-logs">{tr('docs.section.eventLogs')}</a></li>
+				<li><a href="#statistics">{tr('docs.section.statistics')}</a></li>
+				<li><a href="#integrations">{tr('docs.section.integrations')}</a></li>
+				<li><a href="#api">{tr('docs.section.api')}</a></li>
+				<li><a href="#ai-assistant">{tr('docs.section.ai')}</a></li>
+				<li><a href="#scheduled-messages">{tr('docs.section.scheduledMessages')}</a></li>
+				<li><a href="#button-actions">{tr('docs.section.buttonActions')}</a></li>
+				<li><a href="#server-settings">{tr('docs.section.serverSettings')}</a></li>
+				<li><a href="#billing">{tr('docs.section.billing')}</a></li>
 			</ol>
 		</nav>
 
 		<div class="docs-content">
 			<!-- Getting Started -->
 			<section id="getting-started">
-				<h2>Getting Started</h2>
-				<p>
-					SpaceBot is a Discord bot platform that gives server admins full control over
-					custom commands, event-driven automations, analytics, and more — all through a
-					web dashboard.
-				</p>
+				<h2>{tr('docs.section.gettingStarted')}</h2>
+				<p>{tr('docs.start.intro')}</p>
 				<ol>
-					<li>
-						<strong>Invite the bot</strong> — <a href="/login">Log in with Discord</a> and
-						select a server where you have admin permissions.
-					</li>
-					<li>
-						<strong>Open the dashboard</strong> — Once logged in, pick your server from the
-						dashboard to start configuring.
-					</li>
-					<li>
-						<strong>Explore</strong> — Use the sidebar (or press <kbd>Ctrl</kbd>+<kbd
-							>K</kbd
-						> to open the command palette) to navigate between features.
-					</li>
+					<li>{@html tr('docs.start.item1')}</li>
+					<li>{@html tr('docs.start.item2')}</li>
+					<li>{@html tr('docs.start.item3')}</li>
 				</ol>
 			</section>
 
 			<!-- Dashboard -->
 			<section id="dashboard">
-				<h2>Dashboard Overview</h2>
-				<p>
-					The server dashboard is your home base. It shows a quick summary of recent
-					activity, member counts, and shortcuts to every feature. Select a server from
-					the top-level dashboard to enter its admin panel.
-				</p>
+				<h2>{tr('docs.section.dashboard')}</h2>
+				<p>{tr('docs.dashboard.body')}</p>
 			</section>
 
 			<!-- Slash Commands -->
 			<section id="commands">
-				<h2>Slash Commands</h2>
-				<p>
-					Create custom slash commands your members can use in Discord. Each command can
-					have parameters, permission requirements, and rich responses including embeds.
-				</p>
-				<h3>Key features</h3>
+				<h2>{tr('docs.section.commands')}</h2>
+				<p>{tr('docs.commands.body')}</p>
+				<h3>{tr('docs.commands.keyFeatures')}</h3>
 				<ul>
-					<li>
-						<strong>Parameters</strong> — Add options like strings, numbers, users, channels,
-						roles, and choices.
-					</li>
-					<li>
-						<strong>Permissions</strong> — Restrict commands to specific roles or require
-						the user to be in a voice channel.
-					</li>
-					<li>
-						<strong>Context menus</strong> — Create right-click actions for users and messages.
-					</li>
-					<li>
-						<strong>Actions</strong> — Attach one or more actions to run when the command
-						is invoked (send a message, assign a role, call a webhook, etc.).
-					</li>
+					<li>{@html tr('docs.commands.f1')}</li>
+					<li>{@html tr('docs.commands.f2')}</li>
+					<li>{@html tr('docs.commands.f3')}</li>
+					<li>{@html tr('docs.commands.f4')}</li>
 				</ul>
 			</section>
 
 			<!-- Automations -->
 			<section id="automations">
-				<h2>Automations</h2>
-				<p>
-					Automations let you respond to Discord events automatically. When a trigger
-					event fires and your filters match, SpaceBot runs your configured actions.
-				</p>
-				<h3>How it works</h3>
+				<h2>{tr('docs.section.automations')}</h2>
+				<p>{tr('docs.automations.body')}</p>
+				<h3>{tr('docs.automations.howItWorks')}</h3>
 				<ol>
-					<li>
-						<strong>Trigger</strong> — Choose one or more events (member join, message create,
-						voice state change, reaction add, etc.).
-					</li>
-					<li>
-						<strong>Filters</strong> — Narrow down when the automation fires (specific channel,
-						role, keyword, etc.).
-					</li>
-					<li>
-						<strong>Actions</strong> — Define what happens: send a message, add/remove roles,
-						call a webhook, kick/ban, create a thread, and more.
-					</li>
+					<li>{@html tr('docs.automations.t1')}</li>
+					<li>{@html tr('docs.automations.t2')}</li>
+					<li>{@html tr('docs.automations.t3')}</li>
 				</ol>
-				<p>
-					Automations are evaluated in order. You can enable or disable them individually
-					and share them via import/export.
-				</p>
+				<p>{tr('docs.automations.body2')}</p>
 			</section>
 
 			<!-- Scheduled Events -->
 			<section id="scheduled-events">
-				<h2>Scheduled Events</h2>
-				<p>
-					Manage Discord scheduled events directly from the dashboard. Create, edit, and
-					delete events that appear in your server's event list for members to RSVP.
-				</p>
+				<h2>{tr('docs.section.scheduledEvents')}</h2>
+				<p>{tr('docs.scheduledEvents.body')}</p>
 			</section>
 
 			<!-- Event Logs -->
 			<section id="event-logs">
-				<h2>Event Logs</h2>
-				<p>
-					SpaceBot captures Discord events in real time and stores them in a searchable
-					log. Use the log viewer to filter by event type, channel, user, or time range.
-				</p>
-				<h3>Logged events include</h3>
+				<h2>{tr('docs.section.eventLogs')}</h2>
+				<p>{tr('docs.eventLogs.body')}</p>
+				<h3>{tr('docs.eventLogs.loggedInclude')}</h3>
 				<ul>
-					<li>Member joins, leaves, bans, and unbans</li>
-					<li>Message creates, edits, and deletes</li>
-					<li>Voice channel joins, moves, and disconnects</li>
-					<li>Role and channel updates</li>
-					<li>Reaction adds and removes</li>
-					<li>And many more</li>
+					<li>{tr('docs.eventLogs.l1')}</li>
+					<li>{tr('docs.eventLogs.l2')}</li>
+					<li>{tr('docs.eventLogs.l3')}</li>
+					<li>{tr('docs.eventLogs.l4')}</li>
+					<li>{tr('docs.eventLogs.l5')}</li>
+					<li>{tr('docs.eventLogs.l6')}</li>
 				</ul>
 			</section>
 
 			<!-- Statistics -->
 			<section id="statistics">
-				<h2>Statistics</h2>
-				<p>
-					The statistics page shows time-series charts for member growth, message
-					activity, voice usage, and other key metrics. Data is aggregated hourly and can
-					be viewed over different time ranges.
-				</p>
+				<h2>{tr('docs.section.statistics')}</h2>
+				<p>{tr('docs.statistics.body')}</p>
 			</section>
 
 			<!-- Integrations -->
 			<section id="integrations">
-				<h2>Integrations</h2>
-				<p>
-					Connect external services and plugins to your server. Integrations can add their
-					own slash commands, receive lifecycle events, and interact with SpaceBot via a
-					manifest-based protocol.
-				</p>
-				<h3>For integration developers</h3>
-				<p>
-					If you're building an integration, see the
-					<a href="/docs/dev/integrations">Integration Protocol docs</a>
-					for the full manifest spec, sync API, and webhook format.
-				</p>
+				<h2>{tr('docs.section.integrations')}</h2>
+				<p>{tr('docs.integrations.body')}</p>
+				<h3>{tr('docs.integrations.forDevs')}</h3>
+				<p>{@html tr('docs.integrations.devBody')}</p>
 			</section>
 
 			<!-- REST API -->
 			<section id="api">
-				<h2>REST API &amp; API Keys</h2>
-				<p>
-					SpaceBot exposes a versioned REST API for programmatic access. Generate scoped
-					API keys from the dashboard to authenticate requests.
-				</p>
-				<h3>What you can do</h3>
+				<h2>{tr('docs.section.api')}</h2>
+				<p>{tr('docs.api.body')}</p>
+				<h3>{tr('docs.api.whatYouCanDo')}</h3>
 				<ul>
-					<li>Read and search event logs</li>
-					<li>List, create, update, and delete automations and commands</li>
-					<li>Query server statistics</li>
-					<li>Manage scheduled events and integrations</li>
+					<li>{tr('docs.api.w1')}</li>
+					<li>{tr('docs.api.w2')}</li>
+					<li>{tr('docs.api.w3')}</li>
+					<li>{tr('docs.api.w4')}</li>
 				</ul>
-				<p>
-					API keys are scoped per server and can be revoked at any time from the API Keys
-					page in the dashboard.
-				</p>
+				<p>{tr('docs.api.body2')}</p>
 			</section>
 
 			<!-- AI Assistant -->
 			<section id="ai-assistant">
-				<h2>AI Assistant</h2>
-				<p>
-					DM the bot or use the in-dashboard chat to interact with an AI assistant that
-					understands your server context. It can answer questions about your
-					configuration, help create automations, query stats, send messages, and manage
-					scheduled events — all through natural language.
-				</p>
+				<h2>{tr('docs.section.ai')}</h2>
+				<p>{tr('docs.ai.body')}</p>
 			</section>
 
 			<!-- Scheduled Messages -->
 			<section id="scheduled-messages">
-				<h2>Scheduled Messages</h2>
-				<p>
-					Set up messages to be sent to any channel at a specific date and time, or on a
-					recurring schedule. Useful for announcements, reminders, and recurring updates.
-				</p>
+				<h2>{tr('docs.section.scheduledMessages')}</h2>
+				<p>{tr('docs.scheduledMessages.body')}</p>
 			</section>
 
 			<!-- Button Actions -->
 			<section id="button-actions">
-				<h2>Button Actions</h2>
-				<p>
-					Attach interactive buttons to bot messages. When a user clicks a button,
-					SpaceBot runs the configured action — assign a role, send an ephemeral response,
-					open a link, and more.
-				</p>
+				<h2>{tr('docs.section.buttonActions')}</h2>
+				<p>{tr('docs.buttonActions.body')}</p>
 			</section>
 
 			<!-- Server Settings -->
 			<section id="server-settings">
-				<h2>Server Settings</h2>
-				<p>
-					Configure server-level options like the timezone, log embed colors, and which
-					features are enabled. Changes apply immediately and affect how the bot behaves
-					in your server.
-				</p>
+				<h2>{tr('docs.section.serverSettings')}</h2>
+				<p>{tr('docs.serverSettings.body')}</p>
 			</section>
 
 			<!-- Billing -->
 			<section id="billing">
-				<h2>Plans &amp; Billing</h2>
-				<p>
-					SpaceBot is free for servers with up to 9,000 members. Larger servers can
-					upgrade to a paid plan, managed through the Account &amp; Billing page. Billing
-					is handled securely via Stripe.
-				</p>
+				<h2>{tr('docs.section.billing')}</h2>
+				<p>{tr('docs.billing.body')}</p>
 			</section>
 		</div>
 	</div>

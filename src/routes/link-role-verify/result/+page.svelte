@@ -1,21 +1,31 @@
 <script lang="ts">
-	const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+	const urlParams =
+		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const success = urlParams?.get('success') === 'true';
 	const error = urlParams?.get('error');
 
-	const errorMessages = {
-		'denied': 'You cancelled the authorization. You can try again from Discord.',
-		'no_code': 'Authorization failed - no code received.',
-		'invalid_state': 'Session expired. Please try again from Discord.',
-		'config': 'Server configuration error. Please contact an administrator.',
-		'token_failed': 'Failed to exchange authorization code. Please try again.',
-		'metadata_failed': 'Failed to update your role connection. Please try again.',
-		'unexpected': 'An unexpected error occurred. Please try again.',
-	};
+	const KNOWN_ERRORS = [
+		'denied',
+		'no_code',
+		'invalid_state',
+		'config',
+		'token_failed',
+		'metadata_failed',
+		'unexpected',
+	];
+	const errorText = (code: string | null | undefined): string =>
+		tr(
+			code && KNOWN_ERRORS.includes(code)
+				? `linkRole.errors.${code}`
+				: 'linkRole.errors.unknown'
+		);
 </script>
 
 <svelte:head>
-	<title>SpaceBot - Linked Role Verification</title>
+	<title>{tr('linkRole.metaTitle')}</title>
 </svelte:head>
 
 <div class="container">
@@ -23,29 +33,33 @@
 		{#if success}
 			<div class="icon success-icon">
 				<svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor">
-					<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+					<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
 				</svg>
 			</div>
-			<h1>Linked Role Connected!</h1>
-			<p>Your account has been verified with SpaceBot. You can now close this window and return to Discord.</p>
-			<p class="hint">The linked role should appear on your profile automatically.</p>
+			<h1>{tr('linkRole.success.title')}</h1>
+			<p>{tr('linkRole.success.body')}</p>
+			<p class="hint">{tr('linkRole.success.hint')}</p>
 		{:else if error}
 			<div class="icon error-icon">
 				<svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor">
-					<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+					<path
+						d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"
+					/>
 				</svg>
 			</div>
-			<h1>Verification Failed</h1>
-			<p>{errorMessages[error] || 'An unknown error occurred.'}</p>
-			<p class="hint">Please try linking your role again from Discord's server settings.</p>
+			<h1>{tr('linkRole.failed.title')}</h1>
+			<p>{errorText(error)}</p>
+			<p class="hint">{tr('linkRole.failed.hint')}</p>
 		{:else}
 			<div class="icon">
 				<svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor">
-					<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+					<path
+						d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"
+					/>
 				</svg>
 			</div>
-			<h1>SpaceBot Verification</h1>
-			<p>Redirecting to Discord for authorization...</p>
+			<h1>{tr('linkRole.pending.title')}</h1>
+			<p>{tr('linkRole.pending.body')}</p>
 		{/if}
 	</div>
 </div>

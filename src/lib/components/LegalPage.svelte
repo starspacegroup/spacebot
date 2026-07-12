@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+
 	/** @type {string} */
 	export let title;
 	/** @type {{ id: string, label: string }[]} */
@@ -8,7 +12,7 @@
 	/** @type {{ version: string, date: string, changes: string[] }[]} */
 	export let changelog = [];
 
-	$: currentVersion = versions.find(v => v.current) ?? versions[0];
+	$: currentVersion = versions.find((v) => v.current) ?? versions[0];
 </script>
 
 <svelte:head>
@@ -27,17 +31,19 @@
 		<h1>{title}</h1>
 		<div class="version-meta">
 			{#if currentVersion}
-				<span class="version-badge">Version {currentVersion.version}</span>
+				<span class="version-badge"
+					>{tr('legal.version', { version: currentVersion.version })}</span
+				>
 			{/if}
 			{#if currentVersion}
-				<p class="last-updated">Effective {currentVersion.date}</p>
+				<p class="last-updated">{tr('legal.effective', { date: currentVersion.date })}</p>
 			{/if}
 		</div>
 	</header>
 
 	{#if toc.length > 0}
-		<nav class="toc" aria-label="Table of Contents">
-			<h2 class="toc-title">Table of Contents</h2>
+		<nav class="toc" aria-label={tr('legal.tocAria')}>
+			<h2 class="toc-title">{tr('legal.tocTitle')}</h2>
 			<ol class="toc-list">
 				{#each toc as item}
 					<li>
@@ -54,11 +60,13 @@
 
 	{#if changelog.length > 0}
 		<section class="changelog" id="changelog">
-			<h2>Changelog</h2>
+			<h2>{tr('legal.changelog')}</h2>
 			{#each changelog as entry}
 				<div class="changelog-entry">
 					<div class="changelog-header">
-						<span class="changelog-version">Version {entry.version}</span>
+						<span class="changelog-version"
+							>{tr('legal.version', { version: entry.version })}</span
+						>
 						<span class="changelog-date">{entry.date}</span>
 					</div>
 					<ul>

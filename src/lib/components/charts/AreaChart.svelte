@@ -1,5 +1,8 @@
 <script lang="ts">
 	import ChartTooltip from './ChartTooltip.svelte';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
 
 	/**
 	 * Beautiful, responsive area chart component with optional secondary lines
@@ -11,7 +14,7 @@
 		gradientId = 'areaGradient',
 		unit = '',
 		title = '',
-		emptyMessage = 'No data available',
+		emptyMessage = tr('chart.noData'),
 		showPoints = true,
 		height = 'auto',
 		secondaryLines = [],
@@ -192,7 +195,7 @@
 			class="area-chart"
 			preserveAspectRatio="xMidYMid meet"
 			role="img"
-			aria-label={title || 'Area chart'}
+			aria-label={title || tr('chart.areaChart')}
 		>
 			<defs>
 				<!-- Gradient for area fill -->

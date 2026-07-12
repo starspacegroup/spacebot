@@ -2,7 +2,9 @@
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDateShort } from '$lib/timezone.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const { data, form } = $props();
 
 	let confirmDisableId = $state(null);
@@ -10,11 +12,11 @@
 
 	// Category metadata
 	const CATEGORIES = {
-		gaming: { icon: '🎮', label: 'Gaming' },
-		ai: { icon: '🤖', label: 'AI Providers' },
-		moderation: { icon: '🛡️', label: 'Moderation' },
-		utility: { icon: '🔧', label: 'Utility' },
-		general: { icon: '📦', label: 'General' },
+		gaming: { icon: '🎮', label: tr('integ.cat.gaming') },
+		ai: { icon: '🤖', label: tr('integ.cat.ai') },
+		moderation: { icon: '🛡️', label: tr('integ.cat.moderation') },
+		utility: { icon: '🔧', label: tr('integ.cat.utility') },
+		general: { icon: '📦', label: tr('integ.cat.general') },
 	};
 
 	function getCategoryInfo(cat) {
@@ -44,27 +46,22 @@
 </script>
 
 <svelte:head>
-	<title>Integrations - {data.guild?.name || 'Server'} | SpaceBot</title>
+	<title>{tr('integ.metaTitle', { name: data.guild?.name || tr('adash.serverFallback') })}</title>
 </svelte:head>
 
 <div class="integrations-page">
 	<header class="page-header">
-		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
-		<h1>🔌 Integrations</h1>
-		<p class="page-desc">
-			Enable third-party integrations to extend your server with new commands, features, and
-			connections to external services.
-		</p>
+		<a href="/admin/{data.serverId}" class="back-link">{tr('account.backToDashboard')}</a>
+		<h1>🔌 {tr('integ.title')}</h1>
+		<p class="page-desc">{tr('integ.pageDesc')}</p>
 	</header>
 
 	<!-- Integrations List -->
 	{#if data.integrations.length === 0}
 		<div class="empty-state">
 			<span class="empty-icon">🔌</span>
-			<p>No integrations available</p>
-			<span class="empty-hint"
-				>Check back later — new integrations are being added regularly.</span
-			>
+			<p>{tr('integ.noneAvailable')}</p>
+			<span class="empty-hint">{tr('integ.checkBackLater')}</span>
 		</div>
 	{:else}
 		<div class="integrations-grid">
@@ -81,14 +78,15 @@
 							<div class="card-title-row">
 								<h3 class="card-title">{integration.name}</h3>
 								{#if integration.is_official}
-									<span class="official-badge">Official</span>
+									<span class="official-badge">{tr('integ.official')}</span>
 								{/if}
 							</div>
 							<div class="card-meta">
 								<span class="category-badge">{category.icon} {category.label}</span>
 								{#if integration.author}
 									<span class="meta-item"
-										>by {#if integration.manifest?.author_url}<a
+										>{tr('integ.by')}
+										{#if integration.manifest?.author_url}<a
 												href={integration.manifest.author_url}
 												target="_blank"
 												rel="noopener noreferrer">{integration.author}</a
@@ -100,24 +98,28 @@
 						</div>
 						<div class="card-status">
 							{#if isEnabled}
-								<span class="status-badge status-enabled">Enabled</span>
+								<span class="status-badge status-enabled"
+									>{tr('common.enabled')}</span
+								>
 							{:else}
-								<span class="status-badge status-disabled">Disabled</span>
+								<span class="status-badge status-disabled"
+									>{tr('common.disabled')}</span
+								>
 							{/if}
 							{#if integration.status === 'online'}
 								<span
 									class="connection-badge connection-online"
-									title="Integration is connected and responding">🟢 Online</span
+									title={tr('integ.onlineTitle')}>{tr('integ.online')}</span
 								>
 							{:else if integration.status === 'offline'}
 								<span
 									class="connection-badge connection-offline"
-									title="Integration is not responding">🔴 Offline</span
+									title={tr('integ.offlineTitle')}>{tr('integ.offline')}</span
 								>
 							{:else}
 								<span
 									class="connection-badge connection-unknown"
-									title="Status unknown">⚪ Unknown</span
+									title={tr('integ.unknownTitle')}>{tr('integ.unknown')}</span
 								>
 							{/if}
 						</div>
@@ -129,24 +131,23 @@
 					{#if commandCount > 0}
 						<div class="card-features">
 							<span class="feature-tag"
-								>💬 {commandCount} command{commandCount !== 1 ? 's' : ''}</span
+								>💬 {tr('integ.commandCount', { count: commandCount })}</span
 							>
 						</div>
 					{/if}
 
 					<!-- Expand for details -->
 					<button class="expand-btn" onclick={() => toggleExpand(integration.id)}>
-						{isExpanded ? 'Hide Details ▲' : 'Show Details ▼'}
+						{isExpanded ? tr('integ.hideDetails') : tr('integ.showDetails')}
 					</button>
 
 					{#if isExpanded}
 						<div class="card-details">
 							{#if integration.slug === 'github' && isEnabled}
 								<div class="detail-section">
-									<h4>Setup Instructions</h4>
+									<h4>{tr('integ.setupInstructions')}</h4>
 									<p class="setup-instructions">
-										Add this webhook URL to your GitHub repository settings
-										under <strong>Settings → Webhooks → Add webhook</strong>:
+										{@html tr('integ.githubWebhookInstr')}
 									</p>
 									<div class="copyable-field">
 										<code class="copyable-value"
@@ -158,20 +159,21 @@
 											onclick={(e) => {
 												const url = `${window.location.origin}/api/v1/integrations/github/webhook/${data.serverId}`;
 												navigator.clipboard.writeText(url);
-												(e.target as HTMLElement).textContent = '✓ Copied';
+												(e.target as HTMLElement).textContent =
+													tr('integ.copied');
 												setTimeout(
 													() =>
 														((e.target as HTMLElement).textContent =
-															'Copy'),
+															tr('integ.copy')),
 													2000
 												);
-											}}>Copy</button
+											}}>{tr('integ.copy')}</button
 										>
 									</div>
 
 									{#if integration.guild_config?.webhook_secret}
 										<p class="setup-instructions" style="margin-top: 0.75rem;">
-											Set the <strong>Secret</strong> in GitHub to:
+											{@html tr('integ.setSecret')}
 										</p>
 										<div class="copyable-field">
 											<code class="copyable-value secret"
@@ -186,55 +188,66 @@
 														integration.guild_config.webhook_secret
 													);
 													(e.target as HTMLElement).textContent =
-														'✓ Copied';
+														tr('integ.copied');
 													setTimeout(
 														() =>
 															((e.target as HTMLElement).textContent =
-																'Copy'),
+																tr('integ.copy')),
 														2000
 													);
-												}}>Copy</button
+												}}>{tr('integ.copy')}</button
 											>
 										</div>
 									{/if}
 
 									<p class="setup-instructions" style="margin-top: 0.75rem;">
-										Set <strong>Content type</strong> to
-										<code>application/json</code>. Choose which events to send,
-										or select "Send me everything".
+										{@html tr('integ.setContentType')}
 									</p>
 
 									<div class="github-events-info">
 										<h4 style="margin-top: 1rem;">
-											Available Events for Automations
+											{tr('integ.availableEvents')}
 										</h4>
 										<div class="github-events-list">
-											<span class="github-event-tag">🔀 Push</span>
-											<span class="github-event-tag">🔃 Pull Request</span>
-											<span class="github-event-tag">🐛 Issues</span>
-											<span class="github-event-tag">💬 Issue Comment</span>
-											<span class="github-event-tag">🏷️ Release</span>
-											<span class="github-event-tag">⭐ Star</span>
-											<span class="github-event-tag">🍴 Fork</span>
-											<span class="github-event-tag">⚙️ Workflow Run</span>
-											<span class="github-event-tag">🧩 Workflow Job</span>
+											<span class="github-event-tag"
+												>{tr('integ.evt.push')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.pr')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.issues')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.issueComment')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.release')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.star')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.fork')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.workflowRun')}</span
+											>
+											<span class="github-event-tag"
+												>{tr('integ.evt.workflowJob')}</span
+											>
 										</div>
 									</div>
 								</div>
 							{:else if integration.slug === 'github' && !isEnabled}
 								<div class="detail-section">
-									<p class="setup-instructions">
-										Enable this integration to get a webhook URL and secret for
-										your GitHub repository. Once connected, you can create
-										automations that trigger on GitHub events like pushes, pull
-										requests, issues, and more.
-									</p>
+									<p class="setup-instructions">{tr('integ.githubNotEnabled')}</p>
 								</div>
 							{/if}
 
 							{#if integration.manifest?.commands?.length}
 								<div class="detail-section">
-									<h4>Commands</h4>
+									<h4>{tr('integ.commands')}</h4>
 									<div class="commands-list">
 										{#each integration.manifest.commands as cmd}
 											<div class="command-item">
@@ -258,14 +271,16 @@
 
 							{#if integration.manifest?.config_schema?.length}
 								<div class="detail-section">
-									<h4>Configuration</h4>
+									<h4>{tr('integ.configuration')}</h4>
 									<div class="config-fields">
 										{#each integration.manifest.config_schema as field}
 											<div class="config-field">
 												<span class="config-key">{field.label}</span>
 												<span class="config-type">{field.type}</span>
 												{#if field.required}
-													<span class="config-required">Required</span>
+													<span class="config-required"
+														>{tr('integ.required')}</span
+													>
 												{/if}
 											</div>
 										{/each}
@@ -281,7 +296,7 @@
 										rel="noopener noreferrer"
 										class="homepage-link"
 									>
-										🔗 View Project Homepage →
+										{tr('integ.viewHomepage')}
 									</a>
 								</div>
 							{/if}
@@ -291,8 +306,7 @@
 					<!-- Offline warning for enabled integrations -->
 					{#if isEnabled && integration.status === 'offline'}
 						<div class="offline-warning">
-							⚠️ This integration is currently offline. Its commands are temporarily
-							unavailable and will return automatically when the service reconnects.
+							{tr('integ.offlineWarning')}
 						</div>
 					{/if}
 
@@ -315,17 +329,16 @@
 										name="integrationId"
 										value={integration.id}
 									/>
-									<span class="confirm-text"
-										>Disable this integration? Its commands will be removed.</span
-									>
+									<span class="confirm-text">{tr('integ.confirmDisable')}</span>
 									<div class="confirm-buttons">
 										<button type="submit" class="btn btn-danger btn-small"
-											>Yes, Disable</button
+											>{tr('integ.yesDisable')}</button
 										>
 										<button
 											type="button"
 											class="btn btn-secondary btn-small"
-											onclick={() => (confirmDisableId = null)}>Cancel</button
+											onclick={() => (confirmDisableId = null)}
+											>{tr('common.cancel')}</button
 										>
 									</div>
 								</form>
@@ -334,7 +347,7 @@
 									class="btn btn-warning-outline btn-small"
 									onclick={() => (confirmDisableId = integration.id)}
 								>
-									Disable
+									{tr('integ.disable')}
 								</button>
 							{/if}
 						{:else if integration.status === 'online'}
@@ -349,17 +362,16 @@
 							>
 								<input type="hidden" name="integrationId" value={integration.id} />
 								<button type="submit" class="btn btn-primary">
-									Enable Integration
+									{tr('integ.enableIntegration')}
 								</button>
 							</form>
 						{:else}
 							<div class="unavailable-notice">
 								<span class="unavailable-text">
 									{#if integration.status === 'offline'}
-										🔴 This integration is currently offline and cannot be
-										enabled.
+										{tr('integ.offlineCannotEnable')}
 									{:else}
-										⏳ Waiting for this integration to connect...
+										{tr('integ.waitingConnect')}
 									{/if}
 								</span>
 							</div>
@@ -369,7 +381,9 @@
 					{#if isEnabled && integration.enabled_at}
 						<div class="card-footer">
 							<span class="footer-text">
-								Enabled {formatDateShort(integration.enabled_at, data.timezone)}
+								{tr('integ.enabledDate', {
+									date: formatDateShort(integration.enabled_at, data.timezone),
+								})}
 							</span>
 						</div>
 					{/if}
@@ -833,7 +847,9 @@
 		line-height: 1.5;
 	}
 
-	.setup-instructions code {
+	/* Code snippets are injected via {@html} translations, so the scoped selector
+	   must be :global to reach them. */
+	.setup-instructions :global(code) {
 		font-size: 0.8rem;
 		padding: 0.1rem 0.3rem;
 		background: var(--color-surface);

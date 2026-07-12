@@ -1,6 +1,10 @@
 <script lang="ts">
-	export let title = 'Nothing here yet';
-	export let body = 'Create the first item to get started.';
+	import { getTranslator } from '$lib/i18n.js';
+
+	const tr = getTranslator();
+
+	export let title = tr('ui.emptyState.title');
+	export let body = tr('ui.emptyState.body');
 </script>
 
 <div class="ui-empty">

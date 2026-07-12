@@ -1,13 +1,16 @@
 <script lang="ts">
+	import { getTranslator } from '$lib/i18n.js';
+
 	const { data } = $props();
 	const profile = $derived(data.profile);
+	const tr = getTranslator();
 </script>
 
-<svelte:head><title>{profile.display_name} - SpaceBot Profile</title></svelte:head>
+<svelte:head><title>{tr('profile.metaTitle', { name: profile.display_name })}</title></svelte:head>
 
 <section class="profile-page">
 	<h1>{profile.display_name}</h1>
-	<p>{profile.bio || 'This user has not added a public bio.'}</p>
+	<p>{profile.bio || tr('profile.noBio')}</p>
 	<div class="badges">
 		{#each profile.badges as badge}
 			<span>{badge}</span>
@@ -15,12 +18,12 @@
 	</div>
 	<dl>
 		<div>
-			<dt>Commands used</dt>
-			<dd>{profile.stats.command_count ?? 'Private'}</dd>
+			<dt>{tr('profile.commandsUsed')}</dt>
+			<dd>{profile.stats.command_count ?? tr('profile.private')}</dd>
 		</div>
 		<div>
-			<dt>Voice seconds</dt>
-			<dd>{profile.stats.voice_seconds ?? 'Private'}</dd>
+			<dt>{tr('profile.voiceSeconds')}</dt>
+			<dd>{profile.stats.voice_seconds ?? tr('profile.private')}</dd>
 		</div>
 	</dl>
 </section>
