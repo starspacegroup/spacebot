@@ -4,7 +4,9 @@
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
 	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
+	import { getTranslator } from '$lib/i18n.js';
 
+	const tr = getTranslator();
 	const { data, form } = $props();
 
 	let autoSaveTimer = null;
@@ -222,19 +224,21 @@
 </script>
 
 <svelte:head>
-	<title>Server Settings - {data.guild?.name || 'Server'} | SpaceBot</title>
+	<title
+		>{tr('settings.metaTitle', { name: data.guild?.name || tr('adash.serverFallback') })}</title
+	>
 </svelte:head>
 
 <div class="settings-page">
 	<header class="page-header">
-		<a href="/admin/{data.serverId}" class="back-link">← Back to Dashboard</a>
+		<a href="/admin/{data.serverId}" class="back-link">{tr('account.backToDashboard')}</a>
 		<div class="header-content">
 			<h1>
 				<span class="header-icon">⚙️</span>
-				Server Settings
+				{tr('adash.serverSettings')}
 			</h1>
 			<p class="header-desc">
-				Configure bot settings for {data.guild?.name || 'this server'}
+				{tr('settings.headerDesc', { name: data.guild?.name || tr('bill.thisServer') })}
 			</p>
 		</div>
 	</header>
@@ -253,23 +257,17 @@
 		<section class="settings-section permissions-section">
 			<h2>
 				<span class="section-icon">🔐</span>
-				Dashboard Access Permissions
-				<span class="important-badge">Important</span>
+				{tr('settings.permissionsTitle')}
+				<span class="important-badge">{tr('settings.important')}</span>
 			</h2>
-			<p class="section-desc">
-				Control who can access different features in this web dashboard based on their
-				Discord permissions. Users with <strong>Administrator</strong> permission always have
-				full access.
-			</p>
+			<p class="section-desc">{@html tr('settings.permissionsDesc')}</p>
 
 			<div class="settings-card">
 				<!-- View Dashboard -->
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">📊 View Dashboard</span>
-						<span class="permission-desc"
-							>Access the server dashboard and view basic information</span
-						>
+						<span class="permission-label">📊 {tr('settings.viewDashboard')}</span>
+						<span class="permission-desc">{tr('settings.viewDashboardDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<select
@@ -288,10 +286,8 @@
 				<!-- View Logs -->
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">📜 View Event Logs</span>
-						<span class="permission-desc"
-							>View server activity logs and audit history</span
-						>
+						<span class="permission-label">📜 {tr('settings.viewLogs')}</span>
+						<span class="permission-desc">{tr('settings.viewLogsDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<select
@@ -310,10 +306,8 @@
 				<!-- Manage Automations -->
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">⚡ Manage Automations</span>
-						<span class="permission-desc"
-							>Create, edit, and delete automated actions</span
-						>
+						<span class="permission-label">⚡ {tr('settings.manageAutomations')}</span>
+						<span class="permission-desc">{tr('settings.manageAutomationsDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<select
@@ -332,10 +326,8 @@
 				<!-- Manage Commands -->
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">💬 Manage Commands</span>
-						<span class="permission-desc"
-							>Create and configure custom slash commands</span
-						>
+						<span class="permission-label">💬 {tr('settings.manageCommands')}</span>
+						<span class="permission-desc">{tr('settings.manageCommandsDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<select
@@ -354,26 +346,21 @@
 				<!-- Server Settings - Always Admin -->
 				<div class="permission-row locked">
 					<div class="permission-info">
-						<span class="permission-label">⚙️ Server Settings</span>
-						<span class="permission-desc"
-							>Access this settings page (cannot be changed)</span
-						>
+						<span class="permission-label">⚙️ {tr('adash.serverSettings')}</span>
+						<span class="permission-desc">{tr('settings.serverSettingsPermDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<span class="permission-locked">
 							<span class="lock-icon">🔒</span>
-							Administrator Only
+							{tr('settings.adminOnlyLocked')}
 						</span>
 					</div>
 				</div>
 
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">🤖 Local Runner Assist</span>
-						<span class="permission-desc"
-							>Default is off. Enable this server if local runners are allowed to
-							assist here.</span
-						>
+						<span class="permission-label">🤖 {tr('settings.localRunner')}</span>
+						<span class="permission-desc">{tr('settings.localRunnerDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<label class="runner-option-toggle">
@@ -383,18 +370,19 @@
 								bind:checked={localRunnerEnabled}
 								onchange={autoSave}
 							/>
-							<span>{localRunnerEnabled ? 'Enabled' : 'Disabled'}</span>
+							<span
+								>{localRunnerEnabled
+									? tr('common.enabled')
+									: tr('common.disabled')}</span
+							>
 						</label>
 					</div>
 				</div>
 
 				<div class="permission-row">
 					<div class="permission-info">
-						<span class="permission-label">👥 Allowed User IDs</span>
-						<span class="permission-desc"
-							>Optional. One Discord user ID per line. Leave empty to allow any
-							manager in this server.</span
-						>
+						<span class="permission-label">👥 {tr('settings.allowedUserIds')}</span>
+						<span class="permission-desc">{tr('settings.allowedUserIdsDesc')}</span>
 					</div>
 					<div class="permission-control">
 						<textarea
@@ -413,23 +401,21 @@
 		<section class="settings-section">
 			<h2>
 				<span class="section-icon">📊</span>
-				Logging
+				{tr('settings.logging')}
 			</h2>
 
 			<div class="settings-card">
 				<div class="setting-row">
 					<div class="setting-info">
-						<span class="setting-label">Logging Channel</span>
-						<span class="setting-desc"
-							>Channel where bot activity logs will be sent</span
-						>
+						<span class="setting-label">{tr('adash.loggingChannel')}</span>
+						<span class="setting-desc">{tr('settings.loggingChannelDesc')}</span>
 					</div>
 					<div class="setting-control">
 						<ChannelSelector
 							guildId={data.serverId}
 							bind:value={loggingChannelId}
 							name="loggingChannelId"
-							placeholder="Select a channel..."
+							placeholder={tr('settings.selectChannel')}
 							onchange={autoSave}
 						/>
 					</div>
@@ -439,11 +425,8 @@
 			{#if loggingChannelId}
 				<div class="settings-card log-categories-card">
 					<div class="setting-info">
-						<span class="setting-label">Event Categories</span>
-						<span class="setting-desc"
-							>Choose which types of events to log. Disabled categories will not be
-							recorded.</span
-						>
+						<span class="setting-label">{tr('settings.eventCategories')}</span>
+						<span class="setting-desc">{tr('settings.eventCategoriesDesc')}</span>
 					</div>
 					<div class="category-toggles-grid">
 						{#each Object.entries(EVENT_CATEGORIES) as [key, category]}
@@ -457,7 +440,9 @@
 								<span class="category-toggle-icon">{category.icon}</span>
 								<span class="category-toggle-name">{category.name}</span>
 								<span class="category-toggle-status"
-									>{excludedCategories.includes(key) ? 'Off' : 'On'}</span
+									>{excludedCategories.includes(key)
+										? tr('runners.off')
+										: tr('runners.on')}</span
 								>
 							</button>
 						{/each}
@@ -469,17 +454,15 @@
 				<div class="settings-card embed-colors-card">
 					<div class="embed-colors-header">
 						<div class="setting-info">
-							<span class="setting-label">Embed Colors</span>
-							<span class="setting-desc"
-								>Customize the left sidebar color of log embeds per event category</span
-							>
+							<span class="setting-label">{tr('settings.embedColors')}</span>
+							<span class="setting-desc">{tr('settings.embedColorsDesc')}</span>
 						</div>
 						<button
 							type="button"
 							class="btn btn-sm btn-secondary"
 							onclick={resetAllEmbedColors}
 						>
-							Reset All
+							{tr('settings.resetAll')}
 						</button>
 					</div>
 					<div class="embed-colors-grid">
@@ -514,7 +497,7 @@
 											type="button"
 											class="btn-icon btn-reset-color"
 											onclick={() => resetEmbedColor(key)}
-											title="Reset to default"
+											title={tr('settings.resetToDefault')}
 										>
 											↩
 										</button>
@@ -532,13 +515,15 @@
 		<section class="settings-section">
 			<h2>
 				<span class="section-icon">🎨</span>
-				Custom Branding
+				{tr('settings.customBranding')}
 			</h2>
-			<p class="section-desc">Customize the public presentation for this server.</p>
+			<p class="section-desc">{tr('settings.brandingDesc')}</p>
 
 			<div class="settings-grid">
 				<div class="settings-card">
-					<label for="brandingDisplayName" class="setting-label">Display name</label>
+					<label for="brandingDisplayName" class="setting-label"
+						>{tr('settings.displayName')}</label
+					>
 					<input
 						id="brandingDisplayName"
 						name="brandingDisplayName"
@@ -549,7 +534,9 @@
 					/>
 				</div>
 				<div class="settings-card">
-					<label for="brandingAccentColor" class="setting-label">Accent color</label>
+					<label for="brandingAccentColor" class="setting-label"
+						>{tr('settings.accentColor')}</label
+					>
 					<input
 						id="brandingAccentColor"
 						name="brandingAccentColor"
@@ -560,7 +547,9 @@
 					/>
 				</div>
 				<div class="settings-card">
-					<label for="brandingLogoUrl" class="setting-label">Logo URL</label>
+					<label for="brandingLogoUrl" class="setting-label"
+						>{tr('settings.logoUrl')}</label
+					>
 					<input
 						id="brandingLogoUrl"
 						name="brandingLogoUrl"
@@ -571,7 +560,9 @@
 					/>
 				</div>
 				<div class="settings-card">
-					<label for="brandingBannerUrl" class="setting-label">Banner URL</label>
+					<label for="brandingBannerUrl" class="setting-label"
+						>{tr('settings.bannerUrl')}</label
+					>
 					<input
 						id="brandingBannerUrl"
 						name="brandingBannerUrl"
@@ -583,7 +574,9 @@
 				</div>
 			</div>
 			<div class="settings-card">
-				<label for="brandingTagline" class="setting-label">Public tagline</label>
+				<label for="brandingTagline" class="setting-label"
+					>{tr('settings.publicTagline')}</label
+				>
 				<input
 					id="brandingTagline"
 					name="brandingTagline"
@@ -599,21 +592,20 @@
 		<section class="settings-section">
 			<h2>
 				<span class="section-icon">🌐</span>
-				Timezone
+				{tr('settings.timezone')}
 			</h2>
 
 			<div class="settings-card">
 				<div class="setting-row">
 					<div class="setting-info">
-						<label for="timezone" class="setting-label">Display Timezone</label>
-						<span class="setting-desc"
-							>All dates and times in the dashboard will be displayed in this
-							timezone. Leave on "Browser Default" to use each viewer's local
-							timezone.</span
+						<label for="timezone" class="setting-label"
+							>{tr('settings.displayTimezone')}</label
 						>
+						<span class="setting-desc">{tr('settings.timezoneDesc')}</span>
 						{#if browserTimezone}
 							<span class="setting-hint">
-								🕐 Your browser: <strong>{browserTimezone}</strong>{#if browserTime}
+								🕐 {tr('settings.yourBrowser')}
+								<strong>{browserTimezone}</strong>{#if browserTime}
 									— {browserTime}{/if}
 							</span>
 						{/if}
@@ -626,7 +618,7 @@
 							class="permission-select"
 							onchange={autoSave}
 						>
-							<option value="">🌐 Browser Default</option>
+							<option value="">🌐 {tr('settings.browserDefault')}</option>
 							{#each TIMEZONE_OPTIONS as tz}
 								<option value={tz.value}>{tz.label}</option>
 							{/each}
@@ -641,12 +633,9 @@
 	<section class="settings-section webhooks-section">
 		<h2>
 			<span class="section-icon">🔗</span>
-			Webhook Endpoints
+			{tr('settings.webhookEndpoints')}
 		</h2>
-		<p class="section-desc">
-			Configure webhook URLs that can be called from automations and command actions. These
-			webhooks can send data to external services when triggered.
-		</p>
+		<p class="section-desc">{tr('settings.webhooksDesc')}</p>
 
 		<div class="settings-card">
 			{#if data.webhooks?.length > 0}
@@ -661,7 +650,9 @@
 										>{webhook.method}</span
 									>
 									{#if !webhook.enabled}
-										<span class="webhook-badge disabled">Disabled</span>
+										<span class="webhook-badge disabled"
+											>{tr('common.disabled')}</span
+										>
 									{/if}
 								</div>
 								{#if webhook.description}
@@ -675,7 +666,7 @@
 									class="btn btn-small btn-secondary"
 									onclick={() => openWebhookModal(webhook)}
 								>
-									Edit
+									{tr('common.edit')}
 								</button>
 								{#if deleteConfirmId === webhook.id}
 									<form
@@ -690,14 +681,14 @@
 									>
 										<input type="hidden" name="webhookId" value={webhook.id} />
 										<button type="submit" class="btn btn-small btn-danger">
-											Confirm
+											{tr('settings.confirm')}
 										</button>
 										<button
 											type="button"
 											class="btn btn-small btn-secondary"
 											onclick={() => (deleteConfirmId = null)}
 										>
-											Cancel
+											{tr('common.cancel')}
 										</button>
 									</form>
 								{:else}
@@ -706,7 +697,7 @@
 										class="btn btn-small btn-danger-outline"
 										onclick={() => (deleteConfirmId = webhook.id)}
 									>
-										Delete
+										{tr('common.delete')}
 									</button>
 								{/if}
 							</div>
@@ -716,17 +707,15 @@
 			{:else}
 				<div class="empty-state">
 					<span class="empty-icon">🔗</span>
-					<p>No webhooks configured yet</p>
-					<span class="empty-hint"
-						>Add webhook endpoints to use in automations and commands</span
-					>
+					<p>{tr('settings.noWebhooks')}</p>
+					<span class="empty-hint">{tr('settings.noWebhooksHint')}</span>
 				</div>
 			{/if}
 
 			<div class="webhooks-footer">
 				<button type="button" class="btn btn-secondary" onclick={() => openWebhookModal()}>
 					<span class="btn-icon">➕</span>
-					Add Webhook
+					{tr('settings.addWebhook')}
 				</button>
 			</div>
 		</div>
@@ -746,7 +735,9 @@
 	>
 		<div class="modal" role="presentation" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
-				<h3 id="webhook-modal-title">{editingWebhook ? 'Edit Webhook' : 'Add Webhook'}</h3>
+				<h3 id="webhook-modal-title">
+					{editingWebhook ? tr('settings.editWebhook') : tr('settings.addWebhook')}
+				</h3>
 				<button type="button" class="modal-close" onclick={closeWebhookModal}>×</button>
 			</div>
 
@@ -770,33 +761,35 @@
 
 				<div class="modal-body">
 					<div class="form-group">
-						<label for="webhookName" class="form-label">Name *</label>
+						<label for="webhookName" class="form-label">{tr('apik.name')} *</label>
 						<input
 							type="text"
 							id="webhookName"
 							name="webhookName"
 							bind:value={webhookName}
 							class="form-input"
-							placeholder="e.g., Slack Notification"
+							placeholder={tr('settings.webhookNamePlaceholder')}
 							required
 						/>
-						<span class="form-hint">A unique name to identify this webhook</span>
+						<span class="form-hint">{tr('settings.webhookNameHint')}</span>
 					</div>
 
 					<div class="form-group">
-						<label for="webhookDescription" class="form-label">Description</label>
+						<label for="webhookDescription" class="form-label"
+							>{tr('apik.description')}</label
+						>
 						<input
 							type="text"
 							id="webhookDescription"
 							name="webhookDescription"
 							bind:value={webhookDescription}
 							class="form-input"
-							placeholder="e.g., Send notifications to #alerts channel"
+							placeholder={tr('settings.webhookDescPlaceholder')}
 						/>
 					</div>
 
 					<div class="form-group">
-						<label for="webhookUrl" class="form-label">URL *</label>
+						<label for="webhookUrl" class="form-label">{tr('settings.url')} *</label>
 						<input
 							type="url"
 							id="webhookUrl"
@@ -806,11 +799,13 @@
 							placeholder="https://example.com/webhook"
 							required
 						/>
-						<span class="form-hint">The endpoint URL to call</span>
+						<span class="form-hint">{tr('settings.webhookUrlHint')}</span>
 					</div>
 
 					<div class="form-group">
-						<label for="webhookMethod" class="form-label">HTTP Method</label>
+						<label for="webhookMethod" class="form-label"
+							>{tr('settings.httpMethod')}</label
+						>
 						<select
 							id="webhookMethod"
 							name="webhookMethod"
@@ -824,7 +819,9 @@
 					</div>
 
 					<div class="form-group">
-						<label for="webhookHeaders" class="form-label">Custom Headers</label>
+						<label for="webhookHeaders" class="form-label"
+							>{tr('settings.customHeaders')}</label
+						>
 						<textarea
 							id="webhookHeaders"
 							name="webhookHeaders"
@@ -833,14 +830,12 @@
 							rows="3"
 							placeholder="Authorization: Bearer token&#10;X-Custom-Header: value"
 						></textarea>
-						<span class="form-hint"
-							>One header per line in format: Header-Name: value</span
-						>
+						<span class="form-hint">{tr('settings.headersHint')}</span>
 					</div>
 
 					{#if editingWebhook}
 						<div class="form-group form-group-inline">
-							<span class="form-label">Status</span>
+							<span class="form-label">{tr('settings.status')}</span>
 							<label class="toggle">
 								<input
 									type="checkbox"
@@ -850,7 +845,9 @@
 								<span class="toggle-slider"></span>
 							</label>
 							<span class="toggle-label"
-								>{webhookEnabled ? 'Enabled' : 'Disabled'}</span
+								>{webhookEnabled
+									? tr('common.enabled')
+									: tr('common.disabled')}</span
 							>
 						</div>
 					{/if}
@@ -858,14 +855,16 @@
 
 				<div class="modal-footer">
 					<button type="button" class="btn btn-secondary" onclick={closeWebhookModal}>
-						Cancel
+						{tr('common.cancel')}
 					</button>
 					<button type="submit" class="btn btn-primary" disabled={webhookSaving}>
 						{#if webhookSaving}
 							<span class="spinner"></span>
-							Saving...
+							{tr('runners.saving')}
 						{:else}
-							{editingWebhook ? 'Update Webhook' : 'Create Webhook'}
+							{editingWebhook
+								? tr('settings.updateWebhook')
+								: tr('settings.createWebhook')}
 						{/if}
 					</button>
 				</div>
@@ -877,14 +876,12 @@
 <section class="api-keys-section">
 	<h2>
 		<span class="section-icon">🔑</span>
-		API Keys
+		{tr('apik.title')}
 	</h2>
-	<p class="section-desc">
-		Manage API keys for connecting external apps and MCP clients to your server.
-	</p>
+	<p class="section-desc">{tr('settings.apiKeysDesc')}</p>
 	<a href="/admin/{data.serverId}/api-keys" class="btn btn-secondary">
 		<span class="btn-icon">🔑</span>
-		Manage API Keys
+		{tr('settings.manageApiKeys')}
 	</a>
 </section>
 
@@ -976,7 +973,9 @@
 		line-height: 1.5;
 	}
 
-	.section-desc strong {
+	/* The <strong> lives inside an {@html} translation, so the selector must be
+	   :global to reach it. */
+	.section-desc :global(strong) {
 		color: var(--color-text);
 	}
 

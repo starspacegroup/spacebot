@@ -34,6 +34,7 @@ export const es: Record<string, string> = {
 	'common.cancel': 'Cancelar',
 	'common.save': 'Guardar',
 	'common.delete': 'Eliminar',
+	'common.edit': 'Editar',
 	'common.backHome': 'Volver al inicio',
 
 	// --- Public utility pages ---
@@ -1249,4 +1250,76 @@ export const es: Record<string, string> = {
 	'logs.toastTimeout':
 		'La solicitud agotó el tiempo de espera: el servidor puede estar lento o no disponible',
 	'logs.toastUnknownError': 'Ocurrió un error desconocido',
+
+	// --- Admin: server settings page ---
+	'settings.metaTitle': 'Ajustes del servidor — {name} | SpaceBot',
+	'settings.headerDesc': 'Configura los ajustes del bot para {name}',
+	'settings.permissionsTitle': 'Permisos de acceso al panel',
+	'settings.important': 'Importante',
+	'settings.permissionsDesc':
+		'Controla quién puede acceder a las distintas funciones de este panel web según sus permisos de Discord. Los usuarios con permiso de <strong>Administrador</strong> siempre tienen acceso completo.',
+	'settings.viewDashboard': 'Ver el panel',
+	'settings.viewDashboardDesc': 'Acceder al panel del servidor y ver información básica',
+	'settings.viewLogs': 'Ver registros de eventos',
+	'settings.viewLogsDesc':
+		'Ver los registros de actividad del servidor y el historial de auditoría',
+	'settings.manageAutomations': 'Gestionar automatizaciones',
+	'settings.manageAutomationsDesc': 'Crear, editar y eliminar acciones automatizadas',
+	'settings.manageCommands': 'Gestionar comandos',
+	'settings.manageCommandsDesc': 'Crear y configurar comandos de barra personalizados',
+	'settings.serverSettingsPermDesc': 'Acceder a esta página de ajustes (no se puede cambiar)',
+	'settings.adminOnlyLocked': 'Solo administradores',
+	'settings.localRunner': 'Asistencia de Local Runner',
+	'settings.localRunnerDesc':
+		'Está desactivada por defecto. Actívala en este servidor si se permite que los runners locales asistan aquí.',
+	'settings.allowedUserIds': 'IDs de usuario permitidos',
+	'settings.allowedUserIdsDesc':
+		'Opcional. Un ID de usuario de Discord por línea. Déjalo vacío para permitir a cualquier gestor de este servidor.',
+	'settings.logging': 'Registro',
+	'settings.loggingChannelDesc': 'Canal donde se enviarán los registros de actividad del bot',
+	'settings.selectChannel': 'Selecciona un canal…',
+	'settings.eventCategories': 'Categorías de eventos',
+	'settings.eventCategoriesDesc':
+		'Elige qué tipos de eventos registrar. Las categorías desactivadas no se registrarán.',
+	'settings.embedColors': 'Colores de los embeds',
+	'settings.embedColorsDesc':
+		'Personaliza el color de la barra lateral izquierda de los embeds de registro por categoría de evento',
+	'settings.resetAll': 'Restablecer todo',
+	'settings.resetToDefault': 'Restablecer al valor predeterminado',
+	'settings.customBranding': 'Marca personalizada',
+	'settings.brandingDesc': 'Personaliza la presentación pública de este servidor.',
+	'settings.displayName': 'Nombre para mostrar',
+	'settings.accentColor': 'Color de acento',
+	'settings.logoUrl': 'URL del logotipo',
+	'settings.bannerUrl': 'URL del banner',
+	'settings.publicTagline': 'Eslogan público',
+	'settings.timezone': 'Zona horaria',
+	'settings.displayTimezone': 'Zona horaria de visualización',
+	'settings.timezoneDesc':
+		'Todas las fechas y horas del panel se mostrarán en esta zona horaria. Deja «Predeterminada del navegador» para usar la zona horaria local de cada visitante.',
+	'settings.yourBrowser': 'Tu navegador:',
+	'settings.browserDefault': 'Predeterminada del navegador',
+	'settings.webhookEndpoints': 'Endpoints de webhook',
+	'settings.webhooksDesc':
+		'Configura las URLs de webhook que se pueden llamar desde automatizaciones y acciones de comando. Estos webhooks pueden enviar datos a servicios externos cuando se activan.',
+	'settings.confirm': 'Confirmar',
+	'settings.noWebhooks': 'Todavía no hay webhooks configurados',
+	'settings.noWebhooksHint':
+		'Añade endpoints de webhook para usarlos en automatizaciones y comandos',
+	'settings.addWebhook': 'Añadir webhook',
+	'settings.editWebhook': 'Editar webhook',
+	'settings.webhookNamePlaceholder': 'p. ej., Notificación de Slack',
+	'settings.webhookNameHint': 'Un nombre único para identificar este webhook',
+	'settings.webhookDescPlaceholder': 'p. ej., Enviar notificaciones al canal #alertas',
+	'settings.url': 'URL',
+	'settings.webhookUrlHint': 'La URL del endpoint a la que llamar',
+	'settings.httpMethod': 'Método HTTP',
+	'settings.customHeaders': 'Cabeceras personalizadas',
+	'settings.headersHint': 'Una cabecera por línea con el formato: Nombre-Cabecera: valor',
+	'settings.status': 'Estado',
+	'settings.updateWebhook': 'Actualizar webhook',
+	'settings.createWebhook': 'Crear webhook',
+	'settings.apiKeysDesc':
+		'Gestiona las claves de API para conectar aplicaciones externas y clientes MCP a tu servidor.',
+	'settings.manageApiKeys': 'Gestionar claves de API',
 };
