@@ -42,7 +42,6 @@
 		if (historyPage > totalHistoryPages) historyPage = totalHistoryPages;
 	});
 	const builtInCommands = $derived(data?.builtInCommands ?? []);
-	const integrations = $derived(data?.integrations ?? []);
 	const responseTypes: Record<string, any> = $derived(data?.responseTypes ?? {});
 	let firstLoginDmEnabled = $state(false);
 	let firstLoginDmSaving = $state(false);
@@ -448,100 +447,6 @@
 		} catch (error) {
 			commandError = error.message;
 		}
-	}
-
-	// --- Integration token management ---
-	const generatingToken = $state({});
-	const generatedTokens = $state({});
-	const officialGuildInputs = $state({});
-	let integrationError = $state(null);
-	let integrationSuccess = $state(null);
-
-	async function setOfficialGuild(integration) {
-		integrationError = null;
-		integrationSuccess = null;
-		const raw = officialGuildInputs[integration.id] ?? integration.official_guild_id ?? '';
-		const guildId = String(raw).trim();
-		try {
-			const response = await fetch('/api/integrations/official-guild', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ integrationId: integration.id, guildId: guildId || null }),
-			});
-			const result = await response.json();
-			if (response.ok && result.success) {
-				integrationSuccess = `Official guild ${guildId ? 'set' : 'cleared'} for ${integration.name}`;
-			} else {
-				integrationError = result.error || 'Failed to set official guild';
-			}
-		} catch (error) {
-			integrationError = error.message;
-		}
-	}
-
-	async function generateToken(integration) {
-		generatingToken[integration.id] = true;
-		integrationError = null;
-		integrationSuccess = null;
-
-		try {
-			const response = await fetch('/api/integrations/token', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ integrationId: integration.id, slug: integration.slug }),
-			});
-
-			const result = await response.json();
-
-			if (response.ok) {
-				generatedTokens[integration.id] = result.token;
-				integrationSuccess = `Token generated for ${integration.name}. Copy it now — it won't be shown again.`;
-			} else {
-				integrationError = result.error || 'Failed to generate token';
-			}
-		} catch (error) {
-			integrationError = error.message;
-		} finally {
-			generatingToken[integration.id] = false;
-		}
-	}
-
-	async function revokeToken(integration) {
-		if (
-			!confirm(
-				`Revoke the token for ${integration.name}? The integration will no longer be able to authenticate.`
-			)
-		)
-			return;
-
-		integrationError = null;
-		integrationSuccess = null;
-
-		try {
-			const response = await fetch('/api/integrations/token', {
-				method: 'DELETE',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ integrationId: integration.id }),
-			});
-
-			const result = await response.json();
-
-			if (response.ok) {
-				integrationSuccess = `Token revoked for ${integration.name}`;
-				delete generatedTokens[integration.id];
-				const { invalidateAll } = await import('$app/navigation');
-				await invalidateAll();
-			} else {
-				integrationError = result.error || 'Failed to revoke token';
-			}
-		} catch (error) {
-			integrationError = error.message;
-		}
-	}
-
-	function copyToken(token) {
-		navigator.clipboard.writeText(token);
-		integrationSuccess = 'Token copied to clipboard!';
 	}
 </script>
 
@@ -1246,193 +1151,16 @@
 			<h2 class="section-title">
 				<span class="section-icon">🔌</span>
 				External Integrations
-				<span class="section-subtitle">({integrations.length} token-authenticated)</span>
 			</h2>
-
-			{#if integrationSuccess}
-				<div class="cmd-toast cmd-toast-success">
-					<span>✓</span>
-					{integrationSuccess}
-					<button class="cmd-toast-close" onclick={() => (integrationSuccess = null)}
-						>✕</button
+			<a class="integrations-link-card" href="/admin/superadmin/integrations">
+				<div class="integrations-link-body">
+					<strong>Manage external integrations →</strong>
+					<span
+						>Register services by URL, issue tokens, and set official guilds on the
+						dedicated page.</span
 					>
 				</div>
-			{/if}
-
-			{#if integrationError}
-				<div class="cmd-toast cmd-toast-error">
-					<span>✗</span>
-					{integrationError}
-					<button class="cmd-toast-close" onclick={() => (integrationError = null)}
-						>✕</button
-					>
-				</div>
-			{/if}
-
-			{#if integrations.length === 0}
-				<p class="empty-text">No external integrations registered yet.</p>
-			{:else}
-				<div class="integrations-manage-grid">
-					{#each integrations as integration (integration.id)}
-						<div class="integration-manage-card">
-							<div class="integration-manage-header">
-								<span class="integration-manage-icon"
-									>{integration.icon || '📦'}</span
-								>
-								<div class="integration-manage-info">
-									<h3>{integration.name}</h3>
-									<span class="integration-manage-slug">{integration.slug}</span>
-								</div>
-								<div class="integration-manage-status">
-									{#if integration.status === 'online'}
-										<span class="conn-badge conn-online">🟢 Online</span>
-									{:else if integration.status === 'offline'}
-										<span class="conn-badge conn-offline">🔴 Offline</span>
-									{:else}
-										<span class="conn-badge conn-unknown">⚪ Unknown</span>
-									{/if}
-								</div>
-							</div>
-
-							<div class="integration-manage-details">
-								<div class="detail-row">
-									<span class="detail-label">Version</span>
-									<span class="detail-value">{integration.version || '—'}</span>
-								</div>
-								<div class="detail-row">
-									<span class="detail-label">Category</span>
-									<span class="detail-value">{integration.category}</span>
-								</div>
-								<div class="detail-row">
-									<span class="detail-label">Commands</span>
-									<span class="detail-value"
-										>{integration.manifest?.commands?.length || 0}</span
-									>
-								</div>
-								<div class="detail-row">
-									<span class="detail-label">Last Heartbeat</span>
-									<span class="detail-value"
-										>{integration.last_heartbeat_at
-											? formatDate(integration.last_heartbeat_at)
-											: 'Never'}</span
-									>
-								</div>
-								{#if integration.manifest?.webhooks?.command_handler}
-									<div class="detail-row">
-										<span class="detail-label">Command Handler</span>
-										<span class="detail-value detail-url"
-											>{integration.manifest.webhooks.command_handler}</span
-										>
-									</div>
-								{/if}
-								{#if integration.manifest?.actions?.length}
-									<div class="detail-row">
-										<span class="detail-label">Actions</span>
-										<span class="detail-value"
-											>{integration.manifest.actions.length}</span
-										>
-									</div>
-								{/if}
-								{#if integration.manifest?.events?.length}
-									<div class="detail-row">
-										<span class="detail-label">Events</span>
-										<span class="detail-value"
-											>{integration.manifest.events.length}</span
-										>
-									</div>
-								{/if}
-							</div>
-
-							<!-- Official guild: platform events from this integration route here only -->
-							{#if integration.manifest?.events?.length}
-								<div class="integration-official-guild">
-									<h4>Official Guild</h4>
-									<p class="token-hint">
-										This integration's platform events (e.g. account/content
-										created) fire automations in this server only.
-									</p>
-									<div class="official-guild-row">
-										<input
-											type="text"
-											class="official-guild-input"
-											placeholder="Discord guild ID"
-											value={integration.official_guild_id || ''}
-											oninput={(e) =>
-												(officialGuildInputs[integration.id] =
-													e.currentTarget.value)}
-										/>
-										<button
-											class="btn btn-sm btn-secondary"
-											onclick={() => setOfficialGuild(integration)}
-										>
-											Save
-										</button>
-									</div>
-								</div>
-							{/if}
-
-							<!-- Token Management -->
-							<div class="integration-token-section">
-								<h4>Integration Token</h4>
-								{#if generatedTokens[integration.id]}
-									<div class="token-display">
-										<code class="token-value"
-											>{generatedTokens[integration.id]}</code
-										>
-										<button
-											class="btn btn-sm btn-secondary"
-											onclick={() =>
-												copyToken(generatedTokens[integration.id])}
-										>
-											📋 Copy
-										</button>
-									</div>
-									<p class="token-warning">
-										⚠️ Copy this token now. It won't be shown again after you
-										leave this page.
-									</p>
-								{:else if integration.token}
-									<p class="token-exists">
-										✅ Token is set <span class="token-preview"
-											>({integration.token.substring(0, 15)}...)</span
-										>
-									</p>
-									<div class="token-actions">
-										<button
-											class="btn btn-sm btn-secondary"
-											onclick={() => generateToken(integration)}
-											disabled={generatingToken[integration.id]}
-										>
-											{generatingToken[integration.id]
-												? 'Generating...'
-												: '🔄 Regenerate'}
-										</button>
-										<button
-											class="btn btn-sm btn-danger"
-											onclick={() => revokeToken(integration)}
-										>
-											🗑️ Revoke
-										</button>
-									</div>
-								{:else}
-									<p class="token-missing">
-										No token set — the integration cannot authenticate.
-									</p>
-									<button
-										class="btn btn-sm btn-primary"
-										onclick={() => generateToken(integration)}
-										disabled={generatingToken[integration.id]}
-									>
-										{generatingToken[integration.id]
-											? 'Generating...'
-											: '🔑 Generate Token'}
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			</a>
 		</section>
 
 		<!-- Server List -->
@@ -2674,197 +2402,30 @@
 		margin-bottom: 2rem;
 	}
 
-	.integrations-manage-grid {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 1rem;
-	}
-
-	@media (min-width: 640px) {
-		.integrations-manage-grid {
-			grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-		}
-	}
-
-	.integration-manage-card {
-		background: var(--color-surface);
+	.integrations-link-card {
+		display: block;
 		border: 1px solid var(--color-border);
 		border-radius: 0.75rem;
-		padding: 1.25rem;
+		padding: 1rem 1.25rem;
+		background: var(--color-surface);
+		text-decoration: none;
+		color: inherit;
+		transition: border-color 0.15s;
 	}
 
-	.integration-manage-header {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
+	.integrations-link-card:hover {
+		border-color: var(--color-primary);
 	}
 
-	.integration-manage-icon {
-		font-size: 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.integration-manage-info {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.integration-manage-info h3 {
-		margin: 0;
-		font-size: 1rem;
-		font-weight: 600;
-	}
-
-	.integration-manage-slug {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		font-family: monospace;
-	}
-
-	.integration-manage-status {
-		flex-shrink: 0;
-	}
-
-	.conn-badge {
-		font-size: 0.7rem;
-		font-weight: 500;
-		padding: 0.15rem 0.5rem;
-		border-radius: 9999px;
-	}
-
-	.conn-online {
-		color: #22c55e;
-	}
-	.conn-offline {
-		color: #ef4444;
-	}
-	.conn-unknown {
-		color: var(--color-text-muted);
-	}
-
-	.integration-manage-details {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 0.4rem;
-		margin-bottom: 1rem;
-		padding: 0.75rem;
-		background: var(--color-surface-elevated);
-		border-radius: 0.5rem;
-		font-size: 0.8rem;
-	}
-
-	.detail-row {
+	.integrations-link-body {
 		display: flex;
 		flex-direction: column;
-		gap: 0.1rem;
+		gap: 0.25rem;
 	}
 
-	.detail-row:has(.detail-url) {
-		grid-column: 1 / -1;
-	}
-
-	.detail-label {
-		font-size: 0.65rem;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		font-weight: 600;
-	}
-
-	.detail-value {
-		font-weight: 500;
-	}
-
-	.detail-url {
-		font-family: monospace;
-		font-size: 0.7rem;
-		word-break: break-all;
-		color: var(--color-primary);
-	}
-
-	.integration-token-section,
-	.integration-official-guild {
-		border-top: 1px solid var(--color-border);
-		padding-top: 0.75rem;
-	}
-
-	.integration-token-section h4,
-	.integration-official-guild h4 {
-		margin: 0 0 0.5rem;
-		font-size: 0.8rem;
-		font-weight: 600;
-	}
-
-	.token-hint {
-		margin: 0 0 0.5rem;
-		font-size: 0.75rem;
-		color: var(--color-text-muted, #94a3b8);
-	}
-
-	.official-guild-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.official-guild-input {
-		flex: 1;
-		min-width: 0;
-		padding: 0.4rem 0.6rem;
-		font-family: var(--font-mono, monospace);
+	.integrations-link-body span {
 		font-size: 0.85rem;
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		background: var(--color-bg-subtle, var(--color-bg));
-		color: var(--color-text);
-	}
-
-	.token-display {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.token-value {
-		flex: 1;
-		background: var(--color-surface-elevated);
-		padding: 0.4rem 0.6rem;
-		border-radius: 0.375rem;
-		font-size: 0.7rem;
-		word-break: break-all;
-		border: 1px solid var(--color-border);
-		user-select: all;
-	}
-
-	.token-warning {
-		font-size: 0.75rem;
-		color: var(--color-warning);
-		margin: 0;
-	}
-
-	.token-exists {
-		font-size: 0.8rem;
-		margin: 0 0 0.5rem;
-		color: var(--color-text);
-	}
-
-	.token-preview {
-		font-family: monospace;
-		font-size: 0.7rem;
 		color: var(--color-text-muted);
-	}
-
-	.token-missing {
-		font-size: 0.8rem;
-		margin: 0 0 0.5rem;
-		color: var(--color-text-muted);
-	}
-
-	.token-actions {
-		display: flex;
-		gap: 0.5rem;
 	}
 
 	.btn-danger {

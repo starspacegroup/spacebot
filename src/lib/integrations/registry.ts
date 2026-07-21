@@ -168,6 +168,101 @@ export async function seedBuiltInIntegrations(db) {
 }
 
 /**
+ * Validate an integration manifest's shape and namespacing.
+ *
+ * Actions and events are contributed into SpaceBot's shared systems, so their
+ * keys/types MUST be namespaced with the integration slug (e.g.
+ * "agapeverse.generate_poem") — this prevents an integration from shadowing
+ * built-in types or another integration's keys. Shared by the sync API and the
+ * superadmin register-by-URL flow.
+ *
+ * @param {object} manifest
+ * @returns {{ ok: boolean, error?: string }}
+ */
+export function validateManifest(manifest) {
+	if (!manifest || typeof manifest !== 'object') {
+		return { ok: false, error: 'Manifest must be a JSON object' };
+	}
+	if (!manifest.name || !manifest.slug) {
+		return { ok: false, error: "Manifest must include 'name' and 'slug' fields" };
+	}
+	if (typeof manifest.slug !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(manifest.slug)) {
+		return { ok: false, error: "'slug' must be lowercase letters, numbers, and hyphens" };
+	}
+
+	const prefix = `${manifest.slug}.`;
+
+	if (manifest.commands !== undefined && !Array.isArray(manifest.commands)) {
+		return { ok: false, error: "'commands' must be an array" };
+	}
+	if (manifest.webhooks !== undefined && typeof manifest.webhooks !== 'object') {
+		return { ok: false, error: "'webhooks' must be an object" };
+	}
+
+	if (manifest.actions !== undefined) {
+		if (!Array.isArray(manifest.actions)) {
+			return { ok: false, error: "'actions' must be an array" };
+		}
+		for (const action of manifest.actions) {
+			if (!action?.key || typeof action.key !== 'string') {
+				return { ok: false, error: "Each action must have a string 'key'" };
+			}
+			if (!action.key.startsWith(prefix)) {
+				return {
+					ok: false,
+					error: `Action key '${action.key}' must be namespaced as '${prefix}<name>'`,
+				};
+			}
+		}
+	}
+
+	if (manifest.events !== undefined) {
+		if (!Array.isArray(manifest.events)) {
+			return { ok: false, error: "'events' must be an array" };
+		}
+		for (const evt of manifest.events) {
+			if (!evt?.type || typeof evt.type !== 'string') {
+				return { ok: false, error: "Each event must have a string 'type'" };
+			}
+			if (!evt.type.startsWith(prefix)) {
+				return {
+					ok: false,
+					error: `Event type '${evt.type}' must be namespaced as '${prefix}<name>'`,
+				};
+			}
+		}
+	}
+
+	if (manifest.command_templates !== undefined && !Array.isArray(manifest.command_templates)) {
+		return { ok: false, error: "'command_templates' must be an array" };
+	}
+
+	return { ok: true };
+}
+
+/**
+ * Resolve a service URL entered by a superadmin into a manifest URL. Accepts
+ * either a full manifest URL (…/something.json) or a service origin, in which
+ * case the well-known discovery path is appended.
+ *
+ * @param {string} input
+ * @returns {string|null} the manifest URL, or null if the input isn't a URL
+ */
+export function resolveManifestUrl(input) {
+	let url;
+	try {
+		url = new URL(String(input).trim());
+	} catch {
+		return null;
+	}
+	if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+	if (url.pathname.endsWith('.json')) return url.toString();
+	// Treat the input as a service origin/base: append the discovery path.
+	const base = `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+	return `${base}/spacebot-integration.json`;
+}
+
+/**
  * Fetch a remote integration manifest from a URL.
  * Returns the parsed manifest or null on failure.
  */
