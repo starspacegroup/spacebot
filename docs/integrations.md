@@ -520,6 +520,17 @@ Or return `content` / `embeds` to control the reply directly (used when the admi
 { "content": "📜 **Roses**\nRoses are red…" }
 ```
 
+**Per-invocation visibility.** On a direct `content`/`embeds` response you may also set `ephemeral` to choose whether the reply is private to the invoking user or posted to the whole channel — decided per invocation by your handler:
+
+```json
+{ "embeds": [{ "title": "Ode", "description": "…" }], "ephemeral": false }
+```
+
+SpaceBot honors this generically (no per-integration logic). Because Discord fixes a reply's ephemerality when the command is deferred, the rule is:
+
+- Give the command a **response template** and it keeps its static `ephemeral` setting (your `ephemeral` on the response is not used).
+- Leave the command **without** a response template (so your direct `content`/`embeds` are used) and set the command's `ephemeral: true`. Then a response with `ephemeral: true` (or omitted) stays private, and a response with `ephemeral: false` is **promoted to a public followup** in the channel (the ephemeral reply becomes a short "posted" acknowledgement). This lets one command decide, per run, between a private reply and a public post.
+
 The 8-second timeout and offline handling are the same as the command handler.
 
 **Authenticating the request.** Like the command handler, SpaceBot identifies itself with the `X-SpaceBot-Integration` (your slug) and `X-SpaceBot-Guild` headers — there is **no HMAC signature** on this call. Because the `action_handler` URL is only ever known to SpaceBot (from your synced manifest), treat the URL as a shared secret: verify the `X-SpaceBot-Integration` header matches your slug, and if you want stronger assurance, embed an unguessable token in the handler URL itself (e.g. `…/api/spacebot/action?k=<random>`) and check it. The exact request contract is: `POST`, JSON body with `type: "action"`, `action_key`, `config` (resolved), `guild_id`, `channel_id`, `user` (`{id, username}` or `null`), `integration_slug`.

@@ -179,6 +179,26 @@ describe('executeIntegrationAction', () => {
 		expect(res.response).toEqual({ content: 'A poem for you', embeds: undefined });
 	});
 
+	it('forwards the handler-chosen `ephemeral` flag on the direct response', async () => {
+		(fetch as any).mockResolvedValue({
+			ok: true,
+			json: async () => ({ embeds: [{ title: 'Ode' }], ephemeral: false }),
+		});
+		const res = await executeIntegrationAction({
+			db: fakeDb([agapeverseRow()]),
+			guildId: '123',
+			actionType: 'agapeverse.generate_poem',
+			actionConfig: {},
+			event: { guild_id: '123', options: {} },
+			context: {},
+		});
+		expect(res.response).toEqual({
+			content: undefined,
+			embeds: [{ title: 'Ode' }],
+			ephemeral: false,
+		});
+	});
+
 	it('fails when the action is not from an enabled integration', async () => {
 		const res = await executeIntegrationAction({
 			db: fakeDb([]),

@@ -591,7 +591,9 @@ function commandHasConfiguredResponse(command: any): boolean {
  * Pick the last integration-action direct response (content/embeds) from a set
  * of action results, if any action returned one.
  */
-function pickIntegrationResponse(results: any[]): { content?: string; embeds?: any[] } | null {
+function pickIntegrationResponse(
+	results: any[]
+): { content?: string; embeds?: any[]; ephemeral?: boolean } | null {
 	for (let i = results.length - 1; i >= 0; i--) {
 		const r = results[i];
 		if (
@@ -696,7 +698,8 @@ async function handleCustomCommand(
 
 	// The visible response is built AFTER actions run (see below) so that fields
 	// an integration action returns are available to the template as {action.*}.
-	let integrationResponse: { content?: string; embeds?: any[] } | null = null;
+	let integrationResponse: { content?: string; embeds?: any[]; ephemeral?: boolean } | null =
+		null;
 
 	// For now, execute actions synchronously (defer support to be added)
 	// In the future, if command.defer is true, we should defer and execute async
@@ -796,13 +799,19 @@ async function handleCustomCommand(
 	const responseData = buildCommandResponseData(command, context);
 
 	// If the author didn't configure a response but an integration action
-	// returned its own content/embeds, use that as the reply.
+	// returned its own content/embeds, use that as the reply. A returned
+	// `ephemeral` flag chooses per-invocation whether the reply is private —
+	// honored generically here (this is the immediate, non-deferred path, so we
+	// can set the flag directly).
 	if (integrationResponse && !commandHasConfiguredResponse(command)) {
 		if (integrationResponse.content !== undefined) {
 			responseData.content = integrationResponse.content;
 		}
 		if (Array.isArray(integrationResponse.embeds)) {
 			responseData.embeds = integrationResponse.embeds;
+		}
+		if (typeof integrationResponse.ephemeral === 'boolean') {
+			responseData.flags = integrationResponse.ephemeral ? 64 : undefined;
 		}
 	}
 
@@ -923,6 +932,32 @@ async function handleDeferredCommand(
 		}
 	}
 
+	// Post an additional interaction message. Without the ephemeral flag it is a
+	// normal (public) channel message — used to promote an integration action's
+	// `ephemeral: false` response to the channel when the deferred reply itself
+	// was created ephemerally (ephemerality is fixed at defer time).
+	async function sendFollowup(data: any) {
+		try {
+			const res = await fetch(
+				`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`,
+				{
+					method: 'POST',
+					headers: {
+						Authorization: `Bot ${botToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify(data),
+				}
+			);
+			if (!res.ok) {
+				const errText = await res.text();
+				log.error('[Command] Failed to send followup:', errText);
+			}
+		} catch (err) {
+			log.error('[Command] Error sending followup:', err);
+		}
+	}
+
 	try {
 		// Check voice state if required
 		let voiceState = null;
@@ -991,7 +1026,8 @@ async function handleDeferredCommand(
 
 		// The visible response is built AFTER actions run (below) so an
 		// integration action's returned fields are available as {action.*}.
-		let integrationResponse: { content?: string; embeds?: any[] } | null = null;
+		let integrationResponse: { content?: string; embeds?: any[]; ephemeral?: boolean } | null =
+			null;
 
 		// Execute actions
 		let actionResult: ActionResult = { success: true };
@@ -1125,11 +1161,31 @@ async function handleDeferredCommand(
 		const responseData = buildCommandResponseData(command, context, false);
 
 		if (integrationResponse && !commandHasConfiguredResponse(command)) {
-			if (integrationResponse.content !== undefined) {
-				responseData.content = integrationResponse.content;
-			}
-			if (Array.isArray(integrationResponse.embeds)) {
-				responseData.embeds = integrationResponse.embeds;
+			// Ephemerality is fixed at defer time. If the action asked for a public
+			// reply (`ephemeral: false`) but we deferred ephemerally, we can't
+			// un-hide the deferred message — so post the content/embeds as a public
+			// followup and leave the ephemeral reply as a short ack only the user
+			// sees. This is generic (driven by the action response, not any one
+			// integration), so an integration can decide per invocation.
+			const deferredEphemeral = Boolean(command.ephemeral);
+			const wantsPublic = integrationResponse.ephemeral === false;
+
+			if (wantsPublic && deferredEphemeral) {
+				await sendFollowup({
+					content: integrationResponse.content ?? undefined,
+					embeds: Array.isArray(integrationResponse.embeds)
+						? integrationResponse.embeds
+						: undefined,
+				});
+				responseData.content = '✅ Posted to the channel.';
+				responseData.embeds = undefined;
+			} else {
+				if (integrationResponse.content !== undefined) {
+					responseData.content = integrationResponse.content;
+				}
+				if (Array.isArray(integrationResponse.embeds)) {
+					responseData.embeds = integrationResponse.embeds;
+				}
 			}
 		}
 

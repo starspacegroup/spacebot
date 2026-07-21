@@ -101,7 +101,7 @@ export async function findGuildActionProvider(db, guildId, actionKey) {
  * the returned fields as {action.<field>}, and returns any direct
  * `content`/`embeds` the handler chose to send.
  *
- * @returns {Promise<{success: boolean, result?: object, response?: {content?: string, embeds?: any[]}|null, error?: string}>}
+ * @returns {Promise<{success: boolean, result?: object, response?: {content?: string, embeds?: any[], ephemeral?: boolean}|null, error?: string}>}
  */
 export async function executeIntegrationAction({
 	db,
@@ -192,9 +192,18 @@ export async function executeIntegrationAction({
 		context.action = { ...(context.action || {}), ...result };
 	}
 
+	// A handler can control the reply directly with `content`/`embeds`, and set
+	// `ephemeral` to choose whether the message is private to the invoking user
+	// or posted to the channel. `ephemeral` is honored generically by the
+	// interactions handler (see api/discord/interactions) — no per-integration
+	// logic here.
 	const response =
 		data && (data.content !== undefined || Array.isArray(data.embeds))
-			? { content: data.content, embeds: data.embeds }
+			? {
+					content: data.content,
+					embeds: data.embeds,
+					...(typeof data.ephemeral === 'boolean' ? { ephemeral: data.ephemeral } : {}),
+				}
 			: null;
 
 	return { success: true, result, response };
