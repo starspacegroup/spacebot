@@ -550,11 +550,14 @@ export async function recordHeartbeat(db, integrationId, _metadata = {}) {
 			.prepare(
 				`
         UPDATE integrations
-        SET status = 'online', last_heartbeat_at = ?, updated_at = ?
+        SET status = 'online',
+            last_heartbeat_at = ?,
+            connected_at = COALESCE(connected_at, ?),
+            updated_at = ?
         WHERE id = ?
       `
 			)
-			.bind(now, now, integrationId)
+			.bind(now, now, now, integrationId)
 			.run();
 
 		return { success: true, recorded_at: now };

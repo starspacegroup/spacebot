@@ -108,11 +108,14 @@ export async function load({ cookies, platform, parent, params }) {
 
 	const integrations = db ? await getGuildIntegrations(db, serverId) : [];
 
-	// Only show integrations that have connected at least once (completed handshake).
-	// Integrations in the catalog that never synced are hidden from guild admins.
-	// Also pass through any that the guild has already enabled (edge case: was enabled
-	// before this filter existed).
-	const availableIntegrations = integrations.filter((i) => i.connected_at || i.guild_enabled);
+	// Only show integrations that have connected at least once — either completed
+	// the manifest handshake (connected_at) or are actively reporting in via
+	// heartbeats (last_heartbeat_at). Integrations in the catalog that never
+	// connected are hidden from guild admins. Also pass through any the guild has
+	// already enabled.
+	const availableIntegrations = integrations.filter(
+		(i) => i.connected_at || i.last_heartbeat_at || i.guild_enabled
+	);
 
 	return {
 		serverId,
