@@ -56,7 +56,16 @@
 	// Use data prop for layout data
 	const isLoggedIn = $derived(data?.isLoggedIn ?? false);
 	const user = $derived(data?.user ?? null);
-	const selectedGuildId = $derived(data?.selectedGuildId ?? $page.url.searchParams.get('guild'));
+	// Derive the selected guild from the live route first ($page is always current
+	// after navigation) so the server switcher label tracks the URL even if the
+	// layout's server `load` didn't re-run. Fall back to ?guild= and layout data
+	// (used on non-admin pages that surface the last-viewed server).
+	const selectedGuildId = $derived(
+		$page.params?.serverId ??
+			$page.url.searchParams.get('guild') ??
+			data?.selectedGuildId ??
+			null
+	);
 	const isSuperAdmin = $derived(data?.isSuperAdmin ?? false);
 	const locale = $derived(data?.locale ?? 'en');
 
