@@ -17,6 +17,7 @@ import {
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
+import { getGuildContributedActions } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
 
 interface CommandOptionChoice {
@@ -106,11 +107,14 @@ export async function load({ platform, parent, params, url }) {
 				method: w.method,
 			}));
 
+		// Merge in actions contributed by this guild's enabled integrations.
+		const contributedActions = await getGuildContributedActions(db, guildId);
+
 		return {
 			command,
 			isSuperAdmin: parentData.isSuperAdmin || false,
 			// Meta info for the UI
-			actionTypes: ACTION_TYPES,
+			actionTypes: { ...ACTION_TYPES, ...contributedActions },
 			optionTypes: OPTION_TYPES,
 			commonOptionTypes: COMMON_OPTION_TYPES,
 			responseTypes: RESPONSE_TYPES,

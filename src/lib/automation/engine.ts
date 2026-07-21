@@ -4,6 +4,7 @@
  */
 
 import { getTriggeredAutomations, logAutomationExecution } from '../db/automations.js';
+import { executeIntegrationAction, isIntegrationActionType } from '../integrations/actions.js';
 import { callWebhook, getWebhook } from '../db/webhooks.js';
 import { createScheduledMessage } from '../db/scheduled-messages.js';
 import { log } from '../log.js';
@@ -1615,8 +1616,23 @@ export async function executeAction(automation, event, context, discord, db: any
 				};
 			}
 
-			default:
+			default: {
+				// Integration-contributed actions are namespaced (e.g.
+				// "agapeverse.generate_poem"). Proxy them to the integration's
+				// action handler; the returned fields become {action.*} in the
+				// response template (see executeIntegrationAction).
+				if (isIntegrationActionType(action_type)) {
+					return await executeIntegrationAction({
+						db,
+						guildId: event.guild_id,
+						actionType: action_type,
+						actionConfig: action_config,
+						event,
+						context,
+					});
+				}
 				return { success: false, error: `Unknown action type: ${action_type}` };
+			}
 		}
 	} catch (error) {
 		log.error(`Action execution error (${action_type}):`, error);

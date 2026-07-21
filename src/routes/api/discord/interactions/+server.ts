@@ -543,6 +543,69 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 }
 
 /**
+ * Build the visible response for a custom command from its configured
+ * response_type / templates. Call this AFTER actions run so that fields an
+ * integration action returned are available in the template as {action.*}.
+ */
+function buildCommandResponseData(command: any, context: any, includeFlags = true): ResponseData {
+	const responseData: ResponseData = {};
+
+	if (command.response_type === 'message' && command.response_content) {
+		responseData.content = processTemplate(command.response_content, context);
+	} else if (command.response_type === 'embed' && command.response_embed) {
+		const embed = { ...command.response_embed };
+		if (embed.description) {
+			embed.description = processTemplate(embed.description, context);
+		}
+		if (embed.title) {
+			embed.title = processTemplate(embed.title, context);
+		}
+		responseData.embeds = [embed];
+	} else if (command.response_type === 'action_only') {
+		// No configured response — acknowledge (may be replaced by an
+		// integration action's own content/embeds by the caller).
+		responseData.content = '✅ Command executed';
+	} else {
+		responseData.content = `Command /${command.name} executed`;
+	}
+
+	if (includeFlags && command.ephemeral) {
+		responseData.flags = 64; // EPHEMERAL
+	}
+
+	return responseData;
+}
+
+/**
+ * Whether the command author configured an explicit visible response. When they
+ * didn't, an integration action's own content/embeds may stand in as the reply.
+ */
+function commandHasConfiguredResponse(command: any): boolean {
+	return (
+		(command.response_type === 'message' && !!command.response_content) ||
+		(command.response_type === 'embed' && !!command.response_embed)
+	);
+}
+
+/**
+ * Pick the last integration-action direct response (content/embeds) from a set
+ * of action results, if any action returned one.
+ */
+function pickIntegrationResponse(results: any[]): { content?: string; embeds?: any[] } | null {
+	for (let i = results.length - 1; i >= 0; i--) {
+		const r = results[i];
+		if (
+			r &&
+			r.response &&
+			(r.response.content !== undefined || Array.isArray(r.response.embeds))
+		) {
+			return r.response;
+		}
+	}
+	return null;
+}
+
+/**
  * Handle a custom command from the database
  * @param {Object} command - Command from database
  * @param {Object} interaction - Discord interaction
@@ -631,32 +694,9 @@ async function handleCustomCommand(
 	// Record usage
 	await recordCommandUse(db, command.id);
 
-	// Build response based on configuration
-	const responseData: ResponseData = {};
-
-	if (command.response_type === 'message' && command.response_content) {
-		responseData.content = processTemplate(command.response_content, context);
-	} else if (command.response_type === 'embed' && command.response_embed) {
-		const embed = { ...command.response_embed };
-		if (embed.description) {
-			embed.description = processTemplate(embed.description, context);
-		}
-		if (embed.title) {
-			embed.title = processTemplate(embed.title, context);
-		}
-		responseData.embeds = [embed];
-	} else if (command.response_type === 'action_only') {
-		// No visible response, but we still need to acknowledge
-		responseData.content = '✅ Command executed';
-	} else {
-		// Default fallback
-		responseData.content = `Command /${command.name} executed`;
-	}
-
-	// Set ephemeral flag if configured
-	if (command.ephemeral) {
-		responseData.flags = 64; // EPHEMERAL flag
-	}
+	// The visible response is built AFTER actions run (see below) so that fields
+	// an integration action returns are available to the template as {action.*}.
+	let integrationResponse: { content?: string; embeds?: any[] } | null = null;
 
 	// For now, execute actions synchronously (defer support to be added)
 	// In the future, if command.defer is true, we should defer and execute async
@@ -747,6 +787,22 @@ async function handleCustomCommand(
 					result: results.map((r) => r.result),
 				};
 			}
+
+			integrationResponse = pickIntegrationResponse(results);
+		}
+	}
+
+	// Build the visible response now that actions have populated {action.*}.
+	const responseData = buildCommandResponseData(command, context);
+
+	// If the author didn't configure a response but an integration action
+	// returned its own content/embeds, use that as the reply.
+	if (integrationResponse && !commandHasConfiguredResponse(command)) {
+		if (integrationResponse.content !== undefined) {
+			responseData.content = integrationResponse.content;
+		}
+		if (Array.isArray(integrationResponse.embeds)) {
+			responseData.embeds = integrationResponse.embeds;
 		}
 	}
 
@@ -933,20 +989,9 @@ async function handleDeferredCommand(
 		// Record usage
 		await recordCommandUse(db, command.id);
 
-		// Build response
-		const responseData: ResponseData = {};
-		if (command.response_type === 'message' && command.response_content) {
-			responseData.content = processTemplate(command.response_content, context);
-		} else if (command.response_type === 'embed' && command.response_embed) {
-			const embed = { ...command.response_embed };
-			if (embed.description) embed.description = processTemplate(embed.description, context);
-			if (embed.title) embed.title = processTemplate(embed.title, context);
-			responseData.embeds = [embed];
-		} else if (command.response_type === 'action_only') {
-			responseData.content = '✅ Command executed';
-		} else {
-			responseData.content = `Command /${command.name} executed`;
-		}
+		// The visible response is built AFTER actions run (below) so an
+		// integration action's returned fields are available as {action.*}.
+		let integrationResponse: { content?: string; embeds?: any[] } | null = null;
 
 		// Execute actions
 		let actionResult: ActionResult = { success: true };
@@ -1048,6 +1093,8 @@ async function handleDeferredCommand(
 				};
 			}
 
+			integrationResponse = pickIntegrationResponse(results);
+
 			// A queued purge updates its own reply as it runs; show a starting note
 			// instead of the generic command response and skip the final edit below.
 			// If another action in the command failed, fall through to the normal
@@ -1070,6 +1117,19 @@ async function handleDeferredCommand(
 					execution_time_ms: Date.now() - startTime,
 				});
 				return;
+			}
+		}
+
+		// Build the visible response now that actions have populated {action.*}.
+		// Ephemerality was fixed at defer time, so don't re-apply the flag here.
+		const responseData = buildCommandResponseData(command, context, false);
+
+		if (integrationResponse && !commandHasConfiguredResponse(command)) {
+			if (integrationResponse.content !== undefined) {
+				responseData.content = integrationResponse.content;
+			}
+			if (Array.isArray(integrationResponse.embeds)) {
+				responseData.embeds = integrationResponse.embeds;
 			}
 		}
 

@@ -453,8 +453,31 @@
 	// --- Integration token management ---
 	const generatingToken = $state({});
 	const generatedTokens = $state({});
+	const officialGuildInputs = $state({});
 	let integrationError = $state(null);
 	let integrationSuccess = $state(null);
+
+	async function setOfficialGuild(integration) {
+		integrationError = null;
+		integrationSuccess = null;
+		const raw = officialGuildInputs[integration.id] ?? integration.official_guild_id ?? '';
+		const guildId = String(raw).trim();
+		try {
+			const response = await fetch('/api/integrations/official-guild', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ integrationId: integration.id, guildId: guildId || null }),
+			});
+			const result = await response.json();
+			if (response.ok && result.success) {
+				integrationSuccess = `Official guild ${guildId ? 'set' : 'cleared'} for ${integration.name}`;
+			} else {
+				integrationError = result.error || 'Failed to set official guild';
+			}
+		} catch (error) {
+			integrationError = error.message;
+		}
+	}
 
 	async function generateToken(integration) {
 		generatingToken[integration.id] = true;
@@ -1302,7 +1325,51 @@
 										>
 									</div>
 								{/if}
+								{#if integration.manifest?.actions?.length}
+									<div class="detail-row">
+										<span class="detail-label">Actions</span>
+										<span class="detail-value"
+											>{integration.manifest.actions.length}</span
+										>
+									</div>
+								{/if}
+								{#if integration.manifest?.events?.length}
+									<div class="detail-row">
+										<span class="detail-label">Events</span>
+										<span class="detail-value"
+											>{integration.manifest.events.length}</span
+										>
+									</div>
+								{/if}
 							</div>
+
+							<!-- Official guild: platform events from this integration route here only -->
+							{#if integration.manifest?.events?.length}
+								<div class="integration-official-guild">
+									<h4>Official Guild</h4>
+									<p class="token-hint">
+										This integration's platform events (e.g. account/content
+										created) fire automations in this server only.
+									</p>
+									<div class="official-guild-row">
+										<input
+											type="text"
+											class="official-guild-input"
+											placeholder="Discord guild ID"
+											value={integration.official_guild_id || ''}
+											oninput={(e) =>
+												(officialGuildInputs[integration.id] =
+													e.currentTarget.value)}
+										/>
+										<button
+											class="btn btn-sm btn-secondary"
+											onclick={() => setOfficialGuild(integration)}
+										>
+											Save
+										</button>
+									</div>
+								</div>
+							{/if}
 
 							<!-- Token Management -->
 							<div class="integration-token-section">
@@ -2716,15 +2783,41 @@
 		color: var(--color-primary);
 	}
 
-	.integration-token-section {
+	.integration-token-section,
+	.integration-official-guild {
 		border-top: 1px solid var(--color-border);
 		padding-top: 0.75rem;
 	}
 
-	.integration-token-section h4 {
+	.integration-token-section h4,
+	.integration-official-guild h4 {
 		margin: 0 0 0.5rem;
 		font-size: 0.8rem;
 		font-weight: 600;
+	}
+
+	.token-hint {
+		margin: 0 0 0.5rem;
+		font-size: 0.75rem;
+		color: var(--color-text-muted, #94a3b8);
+	}
+
+	.official-guild-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.official-guild-input {
+		flex: 1;
+		min-width: 0;
+		padding: 0.4rem 0.6rem;
+		font-family: var(--font-mono, monospace);
+		font-size: 0.85rem;
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		background: var(--color-bg-subtle, var(--color-bg));
+		color: var(--color-text);
 	}
 
 	.token-display {

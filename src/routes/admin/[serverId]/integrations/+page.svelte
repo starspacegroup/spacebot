@@ -33,6 +33,32 @@
 		expandedId = expandedId === id ? null : id;
 	}
 
+	// --- Command templates (one-click apply) ---
+	const applyingTemplate = $state({});
+
+	async function applyTemplate(integration, tpl) {
+		const key = `${integration.slug}:${tpl.key}`;
+		if (applyingTemplate[key]) return;
+		applyingTemplate[key] = true;
+		try {
+			const res = await fetch(`/api/commands/${data.serverId}/apply-integration-template`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ slug: integration.slug, template_key: tpl.key }),
+			});
+			const result = await res.json();
+			if (res.ok && result.success) {
+				toast.success(result.message || `Added /${result.name} (disabled).`);
+			} else {
+				toast.error(result.error || 'Failed to add command from template');
+			}
+		} catch (e) {
+			toast.error(e.message);
+		} finally {
+			applyingTemplate[key] = false;
+		}
+	}
+
 	let lastFormResult;
 	$effect(() => {
 		if (form && form !== lastFormResult) {
@@ -263,6 +289,43 @@
 														{/each}
 													</div>
 												{/if}
+											</div>
+										{/each}
+									</div>
+								</div>
+							{/if}
+
+							{#if isEnabled && integration.manifest?.command_templates?.length}
+								<div class="detail-section">
+									<h4>Command Templates</h4>
+									<p class="template-hint">
+										Add a ready-made command to your server with one click, then
+										customize it. Applied commands start disabled — review and
+										enable them.
+									</p>
+									<div class="templates-list">
+										{#each integration.manifest.command_templates as tpl (tpl.key)}
+											<div class="template-item">
+												<div class="template-info">
+													<code>/{tpl.name}</code>
+													<span class="command-desc"
+														>{tpl.summary || tpl.description}</span
+													>
+												</div>
+												<button
+													type="button"
+													class="btn btn-sm btn-primary"
+													disabled={applyingTemplate[
+														`${integration.slug}:${tpl.key}`
+													]}
+													onclick={() => applyTemplate(integration, tpl)}
+												>
+													{applyingTemplate[
+														`${integration.slug}:${tpl.key}`
+													]
+														? 'Adding…'
+														: '➕ Add'}
+												</button>
 											</div>
 										{/each}
 									</div>
@@ -688,6 +751,38 @@
 	.command-desc {
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
+	}
+
+	.template-hint {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		margin: 0 0 0.5rem;
+	}
+
+	.templates-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.template-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.template-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		min-width: 0;
+	}
+
+	.template-info code {
+		font-family: 'JetBrains Mono', 'Fira Code', monospace;
+		font-size: 0.85rem;
+		color: var(--color-primary);
 	}
 
 	.subcommands {

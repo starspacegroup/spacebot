@@ -97,6 +97,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [~] Multi-language support (i18n) — _(wired: cookie/Accept-Language locale resolution, dynamic `<html lang>`, en/es catalog, `LanguageSelector`, public pages translated; full app-wide string translation still pending)_
 - [x] Custom branding per server
 - [x] Plugin/extension system — external integrations framework (`docs/integrations.md`)
+- [x] Integration actions/events/templates — integrations can contribute **actions** into the shared action system (composable commands), declare & push custom **events** into automations (routed to a designated official guild via `official_guild_id`, migration 0056), and ship one-click **command templates** cloned into a guild's own commands. Backend + sync validation + builder merge + dashboard UI (template gallery on the integrations page, official-guild setter in superadmin) + docs, landed 2026-07-21 (AgapeVerse is the driving integration). Contributed `configSchema` normalized (`string`→`text`, select `choices`→`options`); `action_handler` contract documented
 - [x] Scheduled tasks and cron jobs — superadmin workflows on Cloudflare Cron Triggers + Workflows (PM2 tick retired to deploy-poll only)
 - [x] Durable workflow execution — per-run Cloudflare Workflow instances (queue-driven advance loop, approval gates, timed steps, retry/backoff, watchdog)
 - [x] Durable message purge — server-wide delete sweeps (`/spam`-style) offloaded to a `MessagePurgeWorkflow` that pages history one bounded batch at a time via `/api/discord/purge/advance`, escaping the per-request subrequest cap; superadmin-tunable per-run batch cap + optional checkpoint-and-continue (Admin → Superadmin → Message Purge). Inline delete actions unified into one shared paginated implementation (`message-delete.ts`) used by both the edge engine and the gateway (which reads the lookback setting over HTTP), so one lookback setting governs every message-lookback delete (`docs/message-purge.md`)
@@ -127,6 +128,68 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [~] Optimize images and assets — _(audit script `scripts/check-images.ts`; no automated optimization step yet)_
 - [~] Enable HTTP/3 on Cloudflare — _(verify script `scripts/verify-http3.ts` + `docs/http3.md`; actual enablement is a Cloudflare dashboard setting)_
 - [x] Add CDN for static assets — Cloudflare edge
+
+#### Workers/Pages daily-request pressure (account-wide alerts) — 2026-07-10
+
+**SpaceBot is the top request generator on the Cloudflare account** (`David
+Monaghan`, `7170285216…`) and the main driver of the recurring "[Alert] Your
+Workers daily request usage is at 75%" / "daily request limit exceeded" emails.
+The free plan caps **Workers + Pages Functions at 100,000 requests/day**,
+account-wide (shared across every app).
+
+Evidence (Cloudflare analytics, 2026-07-09): `spacebot.starspace.group` served
+**42,555 requests/day** — ~6× the next app (`dashboard` ~11k) and the single
+largest slice of the account's request budget.
+
+**This is NOT a KV problem.** SpaceBot has no `kv_namespaces` binding (D1 + Queues
+only), so it contributes nothing to the separate KV operation limits — the KV
+alerts are Dashboard's. Do not "optimize KV" here; reduce request _count_.
+
+- [ ] Attribute the 42k/day: split bot-interaction traffic (Discord webhooks,
+      unavoidable) from web/SSR page loads and polling that can be cached or
+      collapsed. Add per-route request logging to see the hot paths.
+- [ ] Cache SSR/GET responses at the edge (Cache API / `Cache-Control`) so
+      repeat loads don't re-invoke the Function; move static/JSON to assets.
+- [ ] Audit any client polling (dashboards, live views) — widen intervals or
+      switch to push where possible; each poll is a billable request.
+- [ ] If genuine traffic warrants it, the Workers Paid plan ($5/mo) lifts the
+      100k/day request cap — a real option once the cheap wins are exhausted.
+
+#### Orchestrator "27K errors" are phantom (Workflows metrics artifact) — 2026-07-12
+
+`spacebot-ai-orchestrator` shows a ~35% error rate (~27k `scriptThrewException`
+over 14 days) in Cloudflare's Workers analytics. **These are not real failures.**
+Diagnosed 2026-07-12 via `wrangler tail` + workflow run history:
+
+- Every minute: cron tick `ok` → `CronDispatchWorkflow` `run` RPC invocation
+  reports outcome **`exception`** — with an _empty_ `exceptions[]`, no failed
+  fetch, and the instance ✅ Completed ~2s later. The dispatch endpoint returns
+  200s; retries never fire (`wrangler workflows instances list
+spacebot-cron-dispatch` is all green).
+- The Workflows engine's internal teardown of each `run()` invocation is what
+  the invocation-analytics dataset counts as `scriptThrewException`. At ~1,440
+  cron-dispatch runs/day plus superadmin-run / message-purge / sweep workflow
+  instances, that's ~1,900–2,700/day ≈ the 27k badge. 27.1k ÷ 77.2k requests =
+  the 35.15% shown.
+- **Triage rule:** don't chase the analytics error badge for this worker. Real
+  health = workflow instance status (`wrangler workflows instances list …`) and
+  `console.error` lines in `wrangler tail`, not the invocation outcome counter.
+
+One genuine (small) issue mixed in: CPU p99 is ~**11.4ms** against the free
+tier's **10ms** cap, so a thin slice of invocations may be genuinely killed at
+the limit. (Analytics `cpuTimeP50/P99` are in **microseconds** — 11,386µs =
+11.4ms. The Dashboard app's Cloudflare widget mislabels this as `11386.0ms`;
+that display bug is tracked in Dashboard's `planning/` docs, not here.)
+
+- [ ] If phantom errors need to go away (alerting hygiene), options are limited:
+      Cloudflare would need to fix the Workflows accounting. A wider dispatch
+      cron (e.g. `*/2 * * * *`) halves both the phantom errors and the ~3.2k
+      req/day the dispatch chain consumes — the dispatch endpoint dedupes
+      per-template-per-minute, so only adopt if superadmin workflow templates
+      can tolerate up-to-2-min tick granularity.
+- [ ] Workers Paid ($5/mo) raises the CPU cap 10ms → 30s, eliminating the real
+      CPU-limit slice (same upgrade already motivated by the account-wide
+      request/KV pressure above).
 
 ## Community Features
 

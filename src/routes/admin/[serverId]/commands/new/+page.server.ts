@@ -13,6 +13,7 @@ import {
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
+import { getGuildContributedActions } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
 
@@ -53,9 +54,13 @@ export async function load({ platform, parent, params }) {
 			method: w.method,
 		}));
 
+	// Merge in actions contributed by this guild's enabled integrations so they
+	// appear alongside the built-in action types in the builder.
+	const contributedActions = db ? await getGuildContributedActions(db, guildId) : {};
+
 	return {
 		// Meta info for the UI
-		actionTypes: ACTION_TYPES,
+		actionTypes: { ...ACTION_TYPES, ...contributedActions },
 		optionTypes: OPTION_TYPES,
 		commonOptionTypes: COMMON_OPTION_TYPES,
 		responseTypes: RESPONSE_TYPES,

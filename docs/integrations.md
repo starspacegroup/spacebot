@@ -449,6 +449,170 @@ The `config_schema` lets guild admins configure your integration from the SpaceB
 
 ---
 
+## Integration Actions
+
+Beyond whole slash commands, an integration can contribute **actions** into SpaceBot's shared action system — the same one that powers the custom-command builder and automations. Server admins then compose their _own_ commands (custom name, options, response formatting) that call your action, or use it as an automation step.
+
+Declare actions in your manifest. Each action `key` **must** be namespaced with your slug (e.g. `agapeverse.generate_poem`):
+
+```json
+{
+	"actions": [
+		{
+			"key": "agapeverse.generate_poem",
+			"name": "Generate Poem",
+			"description": "Generate a poem from a theme",
+			"icon": "📜",
+			"configSchema": {
+				"theme": {
+					"type": "text",
+					"label": "Theme",
+					"supportsOptionRef": true,
+					"required": true
+				},
+				"style": {
+					"type": "select",
+					"label": "Style",
+					"choices": ["haiku", "sonnet", "free"]
+				}
+			},
+			"returns": ["poem", "title"]
+		}
+	],
+	"webhooks": {
+		"action_handler": "https://your-app.example.com/api/spacebot/action"
+	}
+}
+```
+
+`configSchema` uses the same field types as built-in actions (`text`, `select`, `boolean`, `channel`, `user_source`, `number_source`, …). For convenience, SpaceBot also accepts the common aliases `type: "string"` (treated as `text`) and, on a `select`, `choices: [...]` (treated as `options: [...]`), so you can write whichever reads naturally. Options may be plain strings or `{ "value": …, "label": … }` objects.
+
+**When the action runs**, SpaceBot POSTs to `webhooks.action_handler`:
+
+```http
+POST https://your-app.example.com/api/spacebot/action
+Content-Type: application/json
+X-SpaceBot-Integration: agapeverse
+X-SpaceBot-Guild: 123456789012345678
+```
+
+```json
+{
+	"type": "action",
+	"action_key": "agapeverse.generate_poem",
+	"config": { "theme": "the sea", "style": "free" },
+	"guild_id": "123456789012345678",
+	"channel_id": "345678901234567890",
+	"user": { "id": "234567890123456789", "username": "player1" },
+	"integration_slug": "agapeverse"
+}
+```
+
+**Your response** — return the fields you promised in `returns`; they become `{action.<field>}` in the admin's response template:
+
+```json
+{ "result": { "poem": "Roses are red…", "title": "Roses" } }
+```
+
+Or return `content` / `embeds` to control the reply directly (used when the admin didn't author a response template):
+
+```json
+{ "content": "📜 **Roses**\nRoses are red…" }
+```
+
+The 8-second timeout and offline handling are the same as the command handler.
+
+**Authenticating the request.** Like the command handler, SpaceBot identifies itself with the `X-SpaceBot-Integration` (your slug) and `X-SpaceBot-Guild` headers — there is **no HMAC signature** on this call. Because the `action_handler` URL is only ever known to SpaceBot (from your synced manifest), treat the URL as a shared secret: verify the `X-SpaceBot-Integration` header matches your slug, and if you want stronger assurance, embed an unguessable token in the handler URL itself (e.g. `…/api/spacebot/action?k=<random>`) and check it. The exact request contract is: `POST`, JSON body with `type: "action"`, `action_key`, `config` (resolved), `guild_id`, `channel_id`, `user` (`{id, username}` or `null`), `integration_slug`.
+
+---
+
+## Integration Events
+
+An integration can declare **event types** and push them into SpaceBot's automation engine, so a server admin can build automations triggered by activity on your platform (a poem published, a new account created, …).
+
+Declare events in your manifest. Each `type` **must** be namespaced with your slug:
+
+```json
+{
+	"events": [
+		{
+			"type": "agapeverse.poem_created",
+			"label": "Poem created",
+			"description": "A new poem was published on AgapeVerse",
+			"icon": "📜",
+			"category": "agapeverse",
+			"fields": ["title", "author", "url"]
+		}
+	]
+}
+```
+
+Platform-wide events route to the integration's **official guild** only — a SpaceBot superadmin designates that guild when registering your integration. Push events to:
+
+```http
+POST /api/v1/integrations/events
+Authorization: Bearer sbi_your-slug_yourtoken123...
+Content-Type: application/json
+
+{
+	"type": "agapeverse.poem_created",
+	"details": { "title": "Roses", "author": "player1", "url": "https://agapeverse.app/p/roses" },
+	"summary": "player1 published \"Roses\""
+}
+```
+
+- The `type` must be namespaced and **declared in your manifest** (undeclared types are rejected).
+- SpaceBot routes the event to your official guild and runs any automations whose trigger matches the type.
+- `details.*` fields are available to automation action templates.
+
+**Response:**
+
+```json
+{
+	"success": true,
+	"event_type": "agapeverse.poem_created",
+	"guild_id": "…",
+	"automations_triggered": 2
+}
+```
+
+---
+
+## Command Templates
+
+Ship ready-made commands a server owner can **apply with one click**, then modify. SpaceBot _clones_ the template into the guild's own commands (created disabled, with server-specific references cleared) — there's no live link back, so the owner edits it like any other command.
+
+Declare templates in your manifest. Each is a full command definition (built on one of your actions):
+
+```json
+{
+	"command_templates": [
+		{
+			"key": "agapeverse.verse",
+			"name": "verse",
+			"summary": "Generate a poem from a theme",
+			"description": "Generate a poem",
+			"options": [
+				{
+					"name": "theme",
+					"type": 3,
+					"description": "What to write about",
+					"required": true
+				}
+			],
+			"action_type": "agapeverse.generate_poem",
+			"action_config": { "theme": "option:theme", "style": "free" },
+			"response_type": "embed",
+			"response_embed": { "title": "{action.title}", "description": "{action.poem}" }
+		}
+	]
+}
+```
+
+Bind a command option into the action config with the string form `"option:<name>"`. There is no webhook for templates — they are pure manifest data; SpaceBot's dashboard renders them and handles the clone.
+
+---
+
 ## Example: Minimal Integration
 
 Here's the simplest possible integration — a single command with no subcommands:
