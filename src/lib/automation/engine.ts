@@ -290,6 +290,14 @@ export function matchesFilters(
 		[key: string]: any;
 	} = {}
 ) {
+	// Loop guard: SpaceBot's own messages are logged as MESSAGE_CREATE like anyone
+	// else's, so an automation that posts into a channel it also watches would
+	// retrigger itself forever. Own-bot events are skipped unless the automation
+	// explicitly opts in via the `own_bot_messages` filter.
+	if (event?.details?.isOwnBot === true && filters?.own_bot_messages !== 'include') {
+		return false;
+	}
+
 	if (!filters || Object.keys(filters).length === 0) {
 		return true;
 	}
@@ -807,9 +815,18 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: true, result: { sent: true, ephemeral: true } };
 				}
 
-				const channelId = action_config.channel_id;
+				// "trigger" sends back to whatever channel fired the event/command.
+				const channelSource = action_config.channel_source || 'configured';
+				const channelId =
+					channelSource === 'trigger' ? event.channel_id : action_config.channel_id;
 				if (!channelId || !content) {
-					return { success: false, error: 'Missing channel or content' };
+					return {
+						success: false,
+						error:
+							channelSource === 'trigger' && !channelId
+								? 'No trigger channel available for this event'
+								: 'Missing channel or content',
+					};
 				}
 
 				// Schedule for later if configured

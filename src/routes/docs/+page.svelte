@@ -90,6 +90,7 @@
 					<li>{@html tr('docs.automations.t3')}</li>
 				</ol>
 				<p>{tr('docs.automations.body2')}</p>
+				<p>{@html tr('docs.automations.ownBot')}</p>
 			</section>
 
 			<!-- Scheduled Events -->

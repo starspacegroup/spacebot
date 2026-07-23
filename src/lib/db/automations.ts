@@ -201,10 +201,20 @@ export const ACTION_TYPES = {
 				default: false,
 				label: 'Ephemeral (only visible to the user)',
 			},
+			channel_source: {
+				type: 'select',
+				default: 'configured',
+				label: 'Send To',
+				hideWhen: 'ephemeral',
+				options: [
+					{ value: 'configured', label: 'Specific Channel' },
+					{ value: 'trigger', label: 'Command/Trigger Channel' },
+				],
+			},
 			channel_id: {
 				type: 'channel',
-				required: true,
-				label: 'Channel',
+				required: false,
+				label: 'Channel (when using Specific Channel)',
 				hideWhen: 'ephemeral',
 			},
 			content: {
@@ -705,6 +715,17 @@ export const FILTER_TYPES = {
 		label: 'Content Matches Regex',
 		description: 'Message content matches pattern',
 		applicableEvents: ['MESSAGE_CREATE', 'MESSAGE_UPDATE'],
+	},
+	own_bot_messages: {
+		type: 'select',
+		label: "SpaceBot's Own Messages",
+		description: "Whether SpaceBot's own messages can trigger this automation",
+		options: [
+			{ value: 'skip', label: "🛡️ Skip SpaceBot's own messages (recommended)" },
+			{ value: 'include', label: "⚠️ Include SpaceBot's own messages (loop risk)" },
+		],
+		default: 'skip',
+		applicableEvents: ['MESSAGE_'],
 	},
 	bot_filter: {
 		type: 'select',

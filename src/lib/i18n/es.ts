@@ -290,6 +290,8 @@ export const es: Record<string, string> = {
 		'<strong>Acciones</strong> — Define lo que ocurre: enviar un mensaje, añadir o quitar roles, llamar a un webhook, expulsar/banear, crear un hilo y más.',
 	'docs.automations.body2':
 		'Las automatizaciones se evalúan en orden. Puedes activarlas o desactivarlas individualmente y compartirlas mediante importación/exportación.',
+	'docs.automations.ownBot':
+		'SpaceBot ignora sus propios mensajes de forma predeterminada, así que una automatización que publica en un canal que también vigila no puede volver a dispararse a sí misma. Cambia el filtro «Mensajes del propio SpaceBot» a <em>Incluir</em> solo si necesitas reaccionar a las publicaciones del bot, y asegúrate de que la automatización no pueda responderse a sí misma.',
 	'docs.scheduledEvents.body':
 		'Gestiona los eventos programados de Discord directamente desde el panel. Crea, edita y elimina eventos que aparecen en la lista de eventos de tu servidor para que los miembros confirmen asistencia.',
 	'docs.eventLogs.body':

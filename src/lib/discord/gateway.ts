@@ -1853,15 +1853,21 @@ async function executeAutomationAction(automation, event) {
 				return { sent: true, ephemeral: true };
 			}
 
-			const channelId = action_config.channel_id;
+			// "trigger" sends back to whatever channel fired the event/command.
+			const channelSource = action_config.channel_source || 'configured';
+			const channelId =
+				channelSource === 'trigger' ? event.channel_id : action_config.channel_id;
 
 			log.debug(`[SEND_MESSAGE] channelId: ${channelId}, content: ${content}`);
 			log.debug(`[SEND_MESSAGE] action_config:`, JSON.stringify(action_config));
 
-			if (!channelId || !content)
+			if (!channelId || !content) {
+				if (channelSource === 'trigger' && !channelId)
+					throw new Error('No trigger channel available for this event');
 				throw new Error(
 					`Missing channel or content - channelId: ${channelId}, content: ${content}`
 				);
+			}
 
 			// Schedule for later if configured
 			if (action_config.send_later && action_config.send_later_delay) {

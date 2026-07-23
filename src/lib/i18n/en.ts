@@ -288,6 +288,8 @@ export const en: Record<string, string> = {
 		'<strong>Actions</strong> — Define what happens: send a message, add/remove roles, call a webhook, kick/ban, create a thread, and more.',
 	'docs.automations.body2':
 		'Automations are evaluated in order. You can enable or disable them individually and share them via import/export.',
+	'docs.automations.ownBot':
+		'SpaceBot ignores its own messages by default, so an automation that posts into a channel it also watches cannot retrigger itself. Set the “SpaceBot’s Own Messages” filter to <em>Include</em> only if you need to react to the bot’s own posts — and make sure the automation cannot answer itself.',
 	'docs.scheduledEvents.body':
 		'Manage Discord scheduled events directly from the dashboard. Create, edit, and delete events that appear in your server’s event list for members to RSVP.',
 	'docs.eventLogs.body':
