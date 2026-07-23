@@ -1,21 +1,95 @@
 /**
  * Server Theme Module
- * 
+ *
  * Extracts the dominant hue from a Discord guild's icon and sets CSS --hue,
  * which drives the entire monochrome palette (backgrounds, text, borders,
  * accents) in both light and dark themes.
- * 
+ *
  * All color derivation happens in CSS via hsl(var(--hue), …). This module
  * only needs to set a single custom property.
  */
 
-import { browser } from "$app/environment";
+import { browser } from '$app/environment';
 
 /** @type {string|null} Current guild ID whose theme is applied */
 let _currentGuildId = null;
 
-/** @type {Map<string, number>} Cache of extracted hues per guild */
+/**
+ * Cache of extracted hues per guild, persisted to localStorage.
+ *
+ * Extraction costs a CDN fetch + canvas decode + pixel scan per guild, so
+ * without persistence every full page load re-did the work for every guild the
+ * user administers (93 of them for some accounts). The icon hash is stored
+ * alongside the hue so a guild that changes its icon re-extracts instead of
+ * showing a stale colour.
+ *
+ * @type {Map<string, {icon: string, hue: number}>}
+ */
 const hueCache = new Map();
+
+const HUE_STORAGE_KEY = 'spacebot:guild-hues:v1';
+
+/** How many uncached guilds we speculatively preload. The rest resolve on
+ *  demand (and are then cached forever), so this only affects how instant the
+ *  *first* switch to a rarely-visited server feels. */
+const PRELOAD_LIMIT = 12;
+
+let _hydrated = false;
+
+/** Load persisted hues into the in-memory map once per session. */
+function hydrateHueCache() {
+	if (_hydrated || !browser) return;
+	_hydrated = true;
+	try {
+		const raw = localStorage.getItem(HUE_STORAGE_KEY);
+		if (!raw) return;
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== 'object') return;
+		for (const [guildId, entry] of Object.entries(parsed)) {
+			if (
+				entry &&
+				typeof (entry as any).hue === 'number' &&
+				typeof (entry as any).icon === 'string'
+			) {
+				hueCache.set(guildId, entry as any);
+			}
+		}
+	} catch {
+		// Corrupt/unavailable storage is non-fatal — we just re-extract.
+	}
+}
+
+function persistHueCache() {
+	if (!browser) return;
+	try {
+		localStorage.setItem(HUE_STORAGE_KEY, JSON.stringify(Object.fromEntries(hueCache)));
+	} catch {
+		// Quota or privacy mode — the in-memory cache still works for this session.
+	}
+}
+
+/** Cached hue for this guild, but only if it was extracted from this icon. */
+function readCachedHue(guildId, iconHash) {
+	hydrateHueCache();
+	const entry = hueCache.get(guildId);
+	if (entry && entry.icon === iconHash) return entry.hue;
+	return undefined;
+}
+
+function writeCachedHue(guildId, iconHash, hue) {
+	hueCache.set(guildId, { icon: iconHash, hue });
+	persistHueCache();
+}
+
+/** Run work when the browser is idle so icon decoding never competes with
+ *  rendering or input. Falls back to a timeout where rIC is unavailable. */
+function onIdle(fn) {
+	if (typeof requestIdleCallback === 'function') {
+		requestIdleCallback(fn, { timeout: 2000 });
+	} else {
+		setTimeout(fn, 150);
+	}
+}
 
 // Reactive version counter so Svelte components can react to changes
 let _version = $state(0);
@@ -24,14 +98,14 @@ let _version = $state(0);
  * Reactive server theme state.
  */
 export const serverTheme = {
-  get guildId() {
-    void _version;
-    return _currentGuildId;
-  },
-  get applied() {
-    void _version;
-    return _currentGuildId !== null;
-  }
+	get guildId() {
+		void _version;
+		return _currentGuildId;
+	},
+	get applied() {
+		void _version;
+		return _currentGuildId !== null;
+	},
 };
 
 /**
@@ -42,37 +116,37 @@ export const serverTheme = {
  * @returns {{h: number, s: number, l: number}}
  */
 function rgbToHsl(r, g, b) {
-  r /= 255;
-  g /= 255;
-  b /= 255;
+	r /= 255;
+	g /= 255;
+	b /= 255;
 
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+	let h = 0;
+	let s = 0;
+	const l = (max + min) / 2;
 
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r:
-        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-        break;
-      case g:
-        h = ((b - r) / d + 2) / 6;
-        break;
-      case b:
-        h = ((r - g) / d + 4) / 6;
-        break;
-    }
-  }
+	if (max !== min) {
+		const d = max - min;
+		s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+		switch (max) {
+			case r:
+				h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+				break;
+			case g:
+				h = ((b - r) / d + 2) / 6;
+				break;
+			case b:
+				h = ((r - g) / d + 4) / 6;
+				break;
+		}
+	}
 
-  return {
-    h: Math.round(h * 360),
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
+	return {
+		h: Math.round(h * 360),
+		s: Math.round(s * 100),
+		l: Math.round(l * 100),
+	};
 }
 
 /**
@@ -83,16 +157,18 @@ function rgbToHsl(r, g, b) {
  * @returns {number} Relative luminance (0-1)
  */
 function getRelativeLuminance(h, s, l) {
-  s /= 100;
-  l /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n) => {
-    const k = (n + h / 30) % 12;
-    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-  };
-  const r = f(0), g = f(8), b = f(4);
-  const toLinear = (c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+	s /= 100;
+	l /= 100;
+	const a = s * Math.min(l, 1 - l);
+	const f = (n) => {
+		const k = (n + h / 30) % 12;
+		return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+	};
+	const r = f(0),
+		g = f(8),
+		b = f(4);
+	const toLinear = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+	return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
 }
 
 /**
@@ -101,90 +177,92 @@ function getRelativeLuminance(h, s, l) {
  * @returns {Promise<number|null>} Hue (0-360) or null on failure
  */
 async function extractDominantHue(imageUrl) {
-  if (!browser) return null;
+	if (!browser) return null;
 
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+	return new Promise((resolve) => {
+		const img = new Image();
+		img.crossOrigin = 'anonymous';
 
-    const timeout = setTimeout(() => {
-      console.warn("[ServerTheme] Icon load timed out after 8s");
-      resolve(null);
-    }, 8000);
+		const timeout = setTimeout(() => {
+			console.warn('[ServerTheme] Icon load timed out after 8s');
+			resolve(null);
+		}, 8000);
 
-    img.onload = () => {
-      clearTimeout(timeout);
-      try {
-        const size = 64;
-        const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, size, size);
+		img.onload = () => {
+			clearTimeout(timeout);
+			try {
+				const size = 64;
+				const canvas = document.createElement('canvas');
+				canvas.width = size;
+				canvas.height = size;
+				const ctx = canvas.getContext('2d');
+				ctx.drawImage(img, 0, 0, size, size);
 
-        const imageData = ctx.getImageData(0, 0, size, size);
-        const pixels = imageData.data;
+				const imageData = ctx.getImageData(0, 0, size, size);
+				const pixels = imageData.data;
 
-        /** @type {Map<number, {h: number, s: number, l: number, weight: number, count: number}>} */
-        const buckets = new Map();
+				/** @type {Map<number, {h: number, s: number, l: number, weight: number, count: number}>} */
+				const buckets = new Map();
 
-        for (let i = 0; i < pixels.length; i += 4) {
-          const r = pixels[i];
-          const g = pixels[i + 1];
-          const b = pixels[i + 2];
-          const a = pixels[i + 3];
+				for (let i = 0; i < pixels.length; i += 4) {
+					const r = pixels[i];
+					const g = pixels[i + 1];
+					const b = pixels[i + 2];
+					const a = pixels[i + 3];
 
-          if (a < 100) continue;
+					if (a < 100) continue;
 
-          const hsl = rgbToHsl(r, g, b);
+					const hsl = rgbToHsl(r, g, b);
 
-          // Skip near-black, near-white, or very grey pixels
-          if (hsl.l < 8 || hsl.l > 92 || hsl.s < 10) continue;
+					// Skip near-black, near-white, or very grey pixels
+					if (hsl.l < 8 || hsl.l > 92 || hsl.s < 10) continue;
 
-          // Bucket by hue (15° intervals)
-          const bucketKey = Math.round(hsl.h / 15) * 15;
+					// Bucket by hue (15° intervals)
+					const bucketKey = Math.round(hsl.h / 15) * 15;
 
-          const lightnessBoost = 1 - Math.abs(hsl.l - 50) / 50;
-          const weight = (hsl.s / 100) * (0.3 + 0.7 * lightnessBoost);
+					const lightnessBoost = 1 - Math.abs(hsl.l - 50) / 50;
+					const weight = (hsl.s / 100) * (0.3 + 0.7 * lightnessBoost);
 
-          const existing = buckets.get(bucketKey);
-          if (existing) {
-            existing.h = (existing.h * existing.count + hsl.h) / (existing.count + 1);
-            existing.s = (existing.s * existing.count + hsl.s) / (existing.count + 1);
-            existing.l = (existing.l * existing.count + hsl.l) / (existing.count + 1);
-            existing.weight += weight;
-            existing.count++;
-          } else {
-            buckets.set(bucketKey, { h: hsl.h, s: hsl.s, l: hsl.l, weight, count: 1 });
-          }
-        }
+					const existing = buckets.get(bucketKey);
+					if (existing) {
+						existing.h = (existing.h * existing.count + hsl.h) / (existing.count + 1);
+						existing.s = (existing.s * existing.count + hsl.s) / (existing.count + 1);
+						existing.l = (existing.l * existing.count + hsl.l) / (existing.count + 1);
+						existing.weight += weight;
+						existing.count++;
+					} else {
+						buckets.set(bucketKey, { h: hsl.h, s: hsl.s, l: hsl.l, weight, count: 1 });
+					}
+				}
 
-        if (buckets.size === 0) {
-          console.warn("[ServerTheme] No colour buckets — icon may be grey/dark/light");
-          resolve(null);
-          return;
-        }
+				if (buckets.size === 0) {
+					console.warn('[ServerTheme] No colour buckets — icon may be grey/dark/light');
+					resolve(null);
+					return;
+				}
 
-        const sorted = [...buckets.values()].sort((a, b) => b.weight - a.weight);
-        const best = sorted[0];
-        const hue = Math.round(best.h) % 360;
+				const sorted = [...buckets.values()].sort((a, b) => b.weight - a.weight);
+				const best = sorted[0];
+				const hue = Math.round(best.h) % 360;
 
-        console.log(`[ServerTheme] Dominant hue: ${hue}° (s=${Math.round(best.s)}% l=${Math.round(best.l)}% from ${best.count} pixels)`);
-        resolve(hue);
-      } catch (err) {
-        console.error("[ServerTheme] Canvas extraction failed:", err);
-        resolve(null);
-      }
-    };
+				console.log(
+					`[ServerTheme] Dominant hue: ${hue}° (s=${Math.round(best.s)}% l=${Math.round(best.l)}% from ${best.count} pixels)`
+				);
+				resolve(hue);
+			} catch (err) {
+				console.error('[ServerTheme] Canvas extraction failed:', err);
+				resolve(null);
+			}
+		};
 
-    img.onerror = () => {
-      clearTimeout(timeout);
-      console.error("[ServerTheme] Failed to load icon image");
-      resolve(null);
-    };
+		img.onerror = () => {
+			clearTimeout(timeout);
+			console.error('[ServerTheme] Failed to load icon image');
+			resolve(null);
+		};
 
-    img.src = imageUrl;
-  });
+		img.src = imageUrl;
+	});
 }
 
 /**
@@ -193,51 +271,55 @@ async function extractDominantHue(imageUrl) {
  * @param {number} hue - Hue angle (0-360)
  */
 function applyHue(hue) {
-  if (!browser) return;
+	if (!browser) return;
 
-  const root = document.documentElement;
-  root.style.setProperty("--hue", String(hue));
+	const root = document.documentElement;
+	root.style.setProperty('--hue', String(hue));
 
-  // --- Compute safe button lightness for white-text contrast ---
-  // WCAG AA requires contrast >= 4.5:1 with white (luminance = 1.0).
-  // Contrast = 1.05 / (L + 0.05) >= 4.5  →  L <= 0.183
-  // Binary-search for the highest lightness that satisfies this.
-  const SAT = 85;
-  let lo = 20, hi = 55;
-  while (hi - lo > 0.5) {
-    const mid = (lo + hi) / 2;
-    if (getRelativeLuminance(hue, SAT, mid) <= 0.183) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  const safeLightness = Math.floor(lo);
-  const safeHoverLightness = Math.max(safeLightness - 6, 18);
+	// --- Compute safe button lightness for white-text contrast ---
+	// WCAG AA requires contrast >= 4.5:1 with white (luminance = 1.0).
+	// Contrast = 1.05 / (L + 0.05) >= 4.5  →  L <= 0.183
+	// Binary-search for the highest lightness that satisfies this.
+	const SAT = 85;
+	let lo = 20,
+		hi = 55;
+	while (hi - lo > 0.5) {
+		const mid = (lo + hi) / 2;
+		if (getRelativeLuminance(hue, SAT, mid) <= 0.183) {
+			lo = mid;
+		} else {
+			hi = mid;
+		}
+	}
+	const safeLightness = Math.floor(lo);
+	const safeHoverLightness = Math.max(safeLightness - 6, 18);
 
-  root.style.setProperty("--color-primary-button", `hsl(${hue}, ${SAT}%, ${safeLightness}%)`);
-  root.style.setProperty("--color-primary-button-hover", `hsl(${hue}, ${SAT + 2}%, ${safeHoverLightness}%)`);
-  // Button text is always white since background is now guaranteed dark enough
-  root.style.removeProperty("--color-primary-button-text");
+	root.style.setProperty('--color-primary-button', `hsl(${hue}, ${SAT}%, ${safeLightness}%)`);
+	root.style.setProperty(
+		'--color-primary-button-hover',
+		`hsl(${hue}, ${SAT + 2}%, ${safeHoverLightness}%)`
+	);
+	// Button text is always white since background is now guaranteed dark enough
+	root.style.removeProperty('--color-primary-button-text');
 
-  console.log(`[ServerTheme] Applied --hue: ${hue} (safe btn lightness: ${safeLightness}%)`);
+	console.log(`[ServerTheme] Applied --hue: ${hue} (safe btn lightness: ${safeLightness}%)`);
 }
 
 /**
  * Remove all server theme overrides, restoring the default palette.
  */
 function clearHue() {
-  if (!browser) return;
+	if (!browser) return;
 
-  const root = document.documentElement;
-  root.style.removeProperty("--hue");
-  root.style.removeProperty("--color-primary-button");
-  root.style.removeProperty("--color-primary-button-hover");
-  root.style.removeProperty("--color-primary-button-text");
+	const root = document.documentElement;
+	root.style.removeProperty('--hue');
+	root.style.removeProperty('--color-primary-button');
+	root.style.removeProperty('--color-primary-button-hover');
+	root.style.removeProperty('--color-primary-button-text');
 
-  // Remove legacy injected <style> from the old implementation
-  const legacyStyle = document.getElementById("server-theme-style");
-  if (legacyStyle) legacyStyle.remove();
+	// Remove legacy injected <style> from the old implementation
+	const legacyStyle = document.getElementById('server-theme-style');
+	if (legacyStyle) legacyStyle.remove();
 }
 
 /**
@@ -248,83 +330,101 @@ function clearHue() {
  * @param {string|null} iconHash - The guild's icon hash (null = no icon)
  */
 export async function applyServerTheme(guildId, iconHash) {
-  if (!browser) return;
+	if (!browser) return;
 
-  // Already applied for this guild
-  if (_currentGuildId === guildId) return;
+	// Already applied for this guild
+	if (_currentGuildId === guildId) return;
 
-  console.log(`[ServerTheme] Applying theme for guild ${guildId}, icon: ${iconHash}`);
+	console.log(`[ServerTheme] Applying theme for guild ${guildId}, icon: ${iconHash}`);
 
-  if (!iconHash) {
-    console.log("[ServerTheme] No icon hash — clearing theme");
-    clearServerTheme();
-    return;
-  }
+	if (!iconHash) {
+		console.log('[ServerTheme] No icon hash — clearing theme');
+		clearServerTheme();
+		return;
+	}
 
-  // Check cache
-  const cached = hueCache.get(guildId);
-  if (cached !== undefined) {
-    console.log(`[ServerTheme] Using cached hue: ${cached}°`);
-    _currentGuildId = guildId;
-    applyHue(cached);
-    _version++;
-    return;
-  }
+	// Check cache (persisted across reloads; keyed on the icon so a changed
+	// server icon re-extracts instead of showing a stale colour)
+	const cached = readCachedHue(guildId, iconHash);
+	if (cached !== undefined) {
+		console.log(`[ServerTheme] Using cached hue: ${cached}°`);
+		_currentGuildId = guildId;
+		applyHue(cached);
+		_version++;
+		return;
+	}
 
-  // Build icon URL
-  const ext = iconHash.startsWith("a_") ? "gif" : "png";
-  const iconUrl = `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=64`;
-  console.log(`[ServerTheme] Extracting hue from: ${iconUrl}`);
+	// Build icon URL
+	const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+	const iconUrl = `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=64`;
+	console.log(`[ServerTheme] Extracting hue from: ${iconUrl}`);
 
-  const hue = await extractDominantHue(iconUrl);
-  if (hue !== null) {
-    hueCache.set(guildId, hue);
-    _currentGuildId = guildId;
-    applyHue(hue);
-    _version++;
-  } else {
-    console.warn("[ServerTheme] Could not extract hue from icon");
-  }
+	const hue = await extractDominantHue(iconUrl);
+	if (hue !== null) {
+		writeCachedHue(guildId, iconHash, hue);
+		_currentGuildId = guildId;
+		applyHue(hue);
+		_version++;
+	} else {
+		console.warn('[ServerTheme] Could not extract hue from icon');
+	}
 }
 
 /**
  * Clear the server theme and restore the default palette.
  */
 export function clearServerTheme() {
-  if (!browser) return;
-  if (_currentGuildId === null) return;
+	if (!browser) return;
+	if (_currentGuildId === null) return;
 
-  console.log("[ServerTheme] Clearing server theme, restoring defaults");
-  _currentGuildId = null;
-  clearHue();
-  _version++;
+	console.log('[ServerTheme] Clearing server theme, restoring defaults');
+	_currentGuildId = null;
+	clearHue();
+	_version++;
 }
 
 /**
- * Pre-extract and cache hues for a list of guilds in the background.
- * Called once on layout mount so that switching between servers is instant.
+ * Pre-extract and cache hues for a list of guilds in the background, so
+ * switching between servers is instant.
+ *
+ * Deliberately bounded: each guild costs a CDN fetch + canvas decode + pixel
+ * scan, and an account can administer a hundred servers. We warm at most
+ * PRELOAD_LIMIT of them, one at a time, during idle time. Everything else is
+ * extracted on demand by applyServerTheme the first time you open that server
+ * — and because the cache is persisted, that cost is paid once, not per load.
  *
  * @param {Array<{id: string, icon: string|null}>} guilds
  */
 export function preloadGuildHues(guilds) {
-  if (!browser) return;
+	if (!browser) return;
+	hydrateHueCache();
 
-  const toLoad = guilds.filter(g => g.icon && !hueCache.has(g.id));
-  if (toLoad.length === 0) return;
+	const missing = guilds.filter((g) => g.icon && readCachedHue(g.id, g.icon) === undefined);
+	const toLoad = missing.slice(0, PRELOAD_LIMIT);
+	if (toLoad.length === 0) return;
 
-  console.log(`[ServerTheme] Preloading hues for ${toLoad.length} guild(s)`);
+	const deferred = missing.length - toLoad.length;
+	console.log(
+		`[ServerTheme] Preloading hues for ${toLoad.length} guild(s)` +
+			(deferred > 0 ? ` (${deferred} deferred to first visit)` : '')
+	);
 
-  // Stagger loads slightly so we don't fire 20 image requests at once
-  toLoad.forEach((guild, i) => {
-    setTimeout(async () => {
-      if (hueCache.has(guild.id)) return; // another call may have filled it
-      const ext = guild.icon.startsWith("a_") ? "gif" : "png";
-      const url = `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${ext}?size=64`;
-      const hue = await extractDominantHue(url);
-      if (hue !== null) {
-        hueCache.set(guild.id, hue);
-        console.log(`[ServerTheme] Preloaded guild ${guild.id} → hue ${hue}°`);
-      }
-    }, i * 150); // 150ms apart
-  });
+	// One at a time, during idle time — never a burst of requests or a queue of
+	// timers competing with rendering and input.
+	let index = 0;
+	const loadNext = async () => {
+		const guild = toLoad[index++];
+		if (!guild) return;
+
+		if (readCachedHue(guild.id, guild.icon) === undefined) {
+			const ext = guild.icon.startsWith('a_') ? 'gif' : 'png';
+			const url = `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.${ext}?size=64`;
+			const hue = await extractDominantHue(url);
+			if (hue !== null) writeCachedHue(guild.id, guild.icon, hue);
+		}
+
+		if (index < toLoad.length) onIdle(loadNext);
+	};
+
+	onIdle(loadNext);
 }
