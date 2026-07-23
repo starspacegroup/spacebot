@@ -233,11 +233,81 @@ export function validateManifest(manifest) {
 		}
 	}
 
-	if (manifest.command_templates !== undefined && !Array.isArray(manifest.command_templates)) {
-		return { ok: false, error: "'command_templates' must be an array" };
+	if (manifest.command_templates !== undefined) {
+		if (!Array.isArray(manifest.command_templates)) {
+			return { ok: false, error: "'command_templates' must be an array" };
+		}
+		for (const tmpl of manifest.command_templates) {
+			const ref = templateEphemeralOptionRef(tmpl);
+			if (ref) {
+				const optionNames = new Set(
+					(Array.isArray(tmpl?.options) ? tmpl.options : [])
+						.map((o) => o?.name)
+						.filter(Boolean)
+				);
+				if (!optionNames.has(ref)) {
+					return {
+						ok: false,
+						error: `Command template '${tmpl?.key || tmpl?.name || '?'}' ties its ephemeral visibility to option '${ref}', which it does not declare`,
+					};
+				}
+			}
+		}
 	}
 
 	return { ok: true };
+}
+
+/**
+ * Extract the bare option name a command template's ephemeral setting refers to,
+ * or null if it uses a static boolean / declares no ref. Strips an optional
+ * leading '!' (negation), an optional 'option:' prefix, and any '=value' match
+ * suffix (the choice-equality form, e.g. "visibility=private").
+ *
+ * @param {object} template
+ * @returns {string|null}
+ */
+export function templateEphemeralOptionRef(template) {
+	let raw = null;
+	if (typeof template?.ephemeral_option === 'string' && template.ephemeral_option.trim()) {
+		raw = template.ephemeral_option;
+	} else if (typeof template?.ephemeral === 'string' && template.ephemeral.trim()) {
+		// A string in `ephemeral` is shorthand for an option ref.
+		raw = template.ephemeral;
+	}
+	if (!raw) return null;
+
+	let name = raw.trim();
+	if (name.startsWith('!')) name = name.slice(1).trim();
+	if (name.startsWith('option:')) name = name.slice(7).trim();
+	const eq = name.indexOf('=');
+	if (eq !== -1) name = name.slice(0, eq).trim();
+	return name || null;
+}
+
+/**
+ * Normalize a command template's ephemeral declaration into the two command
+ * fields SpaceBot stores. A template may use:
+ *   - ephemeral: true|false        (static boolean)
+ *   - ephemeral: "option:private"  (string shorthand → option ref)
+ *   - ephemeral: "!public"         (negated ref)
+ *   - ephemeral_option: "private"  (+ optional ephemeral boolean as the
+ *                                    fallback default when the option is omitted)
+ *
+ * @param {object} template
+ * @returns {{ ephemeral: boolean, ephemeral_option: string|null }}
+ */
+export function normalizeTemplateEphemeral(template) {
+	const ephemeral = typeof template?.ephemeral === 'boolean' ? template.ephemeral : false;
+
+	let ephemeralOption = null;
+	if (typeof template?.ephemeral_option === 'string' && template.ephemeral_option.trim()) {
+		ephemeralOption = template.ephemeral_option.trim();
+	} else if (typeof template?.ephemeral === 'string' && template.ephemeral.trim()) {
+		ephemeralOption = template.ephemeral.trim();
+	}
+
+	return { ephemeral, ephemeral_option: ephemeralOption };
 }
 
 /**

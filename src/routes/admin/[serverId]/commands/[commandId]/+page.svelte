@@ -496,6 +496,36 @@
 		return sources;
 	});
 
+	// Options the response visibility can be tied to. Boolean options (type 5)
+	// yield "when on" / "unless on"; choice options (Text/Integer choice) yield a
+	// per-choice "when <opt> is <choice>". Value format matches
+	// resolveEphemeralFlag: "<name>" / "!<name>" / "<name>=<choiceValue>".
+	const ephemeralOptionChoices = $derived(() => {
+		const choices = [];
+		for (const opt of options) {
+			if (!opt.name) continue;
+			const optName = opt.name.toLowerCase().replace(/\s+/g, '_');
+			if (opt.type === 5) {
+				choices.push({ value: optName, label: `🔒 Private when "${opt.name}" is on` });
+				choices.push({
+					value: `!${optName}`,
+					label: `🌐 Private unless "${opt.name}" is on`,
+				});
+			} else if (isChoiceType(opt.type) && Array.isArray(opt.choices)) {
+				for (const choice of opt.choices) {
+					const cval = String(choice?.value ?? '').trim();
+					if (!cval) continue;
+					const clabel = choice?.name || cval;
+					choices.push({
+						value: `${optName}=${cval}`,
+						label: `🔒 Private when "${opt.name}" is "${clabel}"`,
+					});
+				}
+			}
+		}
+		return choices;
+	});
+
 	// Helper to check if a number_source field is using an option reference
 	function isOptionReference(value) {
 		return typeof value === 'string' && value.startsWith('option:');
@@ -617,6 +647,27 @@
 						/>
 						<span>🔒 Ephemeral (Private Response)</span>
 					</label>
+					{#if ephemeralOptionChoices().length > 0}
+						<label class="ephemeral-bind-label" for="ephemeral_option">
+							Or decide per use from an option:
+						</label>
+						<select id="ephemeral_option" name="ephemeral_option">
+							<option value="" selected={!command.ephemeral_option}
+								>— Always use the checkbox —</option
+							>
+							{#each ephemeralOptionChoices() as choice}
+								<option
+									value={choice.value}
+									selected={command.ephemeral_option === choice.value}
+									>{choice.label}</option
+								>
+							{/each}
+						</select>
+						<p class="field-hint">
+							When set, the checkbox above is the fallback for when the option is
+							omitted. Boolean and choice options appear here.
+						</p>
+					{/if}
 				</div>
 
 				<div class="form-group">
@@ -1674,6 +1725,14 @@
 	.field-hint {
 		margin: 0.375rem 0 0;
 		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.ephemeral-bind-label {
+		display: block;
+		margin: 0.625rem 0 0.25rem;
+		font-size: 0.8rem;
+		font-weight: 600;
 		color: var(--text-muted);
 	}
 

@@ -92,6 +92,7 @@ export const actions = {
 		const name = formData.get('name');
 		const description = formData.get('description');
 		const ephemeral = formData.get('ephemeral') === 'true';
+		const ephemeralOption = (formData.get('ephemeral_option') as string) || null;
 		const defer = formData.get('defer') === 'true';
 		const contextMenuUser = formData.get('context_menu_user') === 'true';
 		const requireVoice = formData.get('require_voice') === 'true';
@@ -261,6 +262,7 @@ export const actions = {
 				enabled: enabledByDefault,
 				options: options.length > 0 ? options : [],
 				ephemeral,
+				ephemeral_option: ephemeralOption,
 				defer,
 				action_type: actionType,
 				action_config: actionConfig,

@@ -296,12 +296,18 @@
 								</div>
 								<div class="config-item">
 									<span class="config-icon"
-										>{command.ephemeral ? '👁️' : '📢'}</span
+										>{command.ephemeral_option
+											? '⚙️'
+											: command.ephemeral
+												? '👁️'
+												: '📢'}</span
 									>
 									<span class="config-label"
-										>{command.ephemeral
-											? tr('commands.private')
-											: tr('commands.public')}</span
+										>{command.ephemeral_option
+											? tr('commands.perOption')
+											: command.ephemeral
+												? tr('commands.private')
+												: tr('commands.public')}</span
 									>
 								</div>
 							</div>
@@ -435,12 +441,18 @@
 								</div>
 								<div class="config-item">
 									<span class="config-icon"
-										>{command.ephemeral ? '👁️' : '📢'}</span
+										>{command.ephemeral_option
+											? '⚙️'
+											: command.ephemeral
+												? '👁️'
+												: '📢'}</span
 									>
 									<span class="config-label"
-										>{command.ephemeral
-											? tr('commands.private')
-											: tr('commands.public')}</span
+										>{command.ephemeral_option
+											? tr('commands.perOption')
+											: command.ephemeral
+												? tr('commands.private')
+												: tr('commands.public')}</span
 									>
 								</div>
 							</div>

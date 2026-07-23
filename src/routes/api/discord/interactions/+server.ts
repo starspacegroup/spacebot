@@ -5,6 +5,7 @@ import {
 	getCommandByName,
 	logCommandExecution,
 	recordCommandUse,
+	resolveEphemeralFlag,
 } from '$lib/db/commands.js';
 import {
 	executeAction,
@@ -324,6 +325,14 @@ export async function POST({ request, platform: rawPlatform }) {
 						},
 					});
 				}
+
+				// Resolve per-invocation ephemerality NOW — before the defer
+				// decision below, because Discord fixes a deferred reply's
+				// visibility at defer time and it cannot be changed afterward.
+				// Collapse the command to a plain boolean so every downstream
+				// read (defer flag, response builder, failure path) is consistent.
+				customCommand.ephemeral = resolveEphemeralFlag(customCommand, body);
+				customCommand.ephemeral_option = null;
 
 				// Check if command has actions that need deferring
 				const hasActions =

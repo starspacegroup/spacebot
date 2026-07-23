@@ -1351,6 +1351,7 @@ export const es: Record<string, string> = {
 	'commands.optionsLabel': 'Opciones:',
 	'commands.private': 'Privado',
 	'commands.public': 'Público',
+	'commands.perOption': 'Según opción',
 	'commands.timesUsed': 'Veces usado',
 	'commands.lastUsed': 'Último uso',
 	'commands.confirmDelete': '¿Eliminar este comando?',

@@ -622,6 +622,53 @@ Declare templates in your manifest. Each is a full command definition (built on 
 
 Bind a command option into the action config with the string form `"option:<name>"`. There is no webhook for templates — they are pure manifest data; SpaceBot's dashboard renders them and handles the clone.
 
+### Option-driven visibility (ephemeral)
+
+A template's `ephemeral` is normally a static boolean. It can instead be tied to one of the command's own options — a **boolean option** (private when it's on) or a **choice option** (private when a particular choice is selected) — so the invoking user chooses per run whether the reply is private. Unlike the handler-return approach above (§ "Per-invocation visibility"), this is declared entirely in the manifest, needs no `action_handler`, is resolved **before** the defer decision (so it works with `defer: true`), and coexists with a `response_type`/`response_embed` template.
+
+Authoring forms:
+
+```jsonc
+// Boolean option, shorthand: a string in `ephemeral` names the option. Private
+// iff that option is truthy; public when the option is omitted.
+{
+  "name": "verse",
+  "options": [{ "name": "private", "type": 5, "description": "Keep it to yourself" }],
+  "ephemeral": "option:private"          // or just "private"; "!public" negates
+}
+
+// Boolean option, explicit: keep a boolean fallback for when the option is omitted.
+{
+  "name": "verse",
+  "options": [{ "name": "public", "type": 5, "description": "Post it for everyone" }],
+  "ephemeral": true,                      // default private when `public` is absent
+  "ephemeral_option": "!public"           // public option ON → not ephemeral
+}
+
+// Choice option: private when the selected value matches. Use "<name>=<value>";
+// list several with commas; a leading "!" inverts.
+{
+  "name": "verse",
+  "options": [
+    { "name": "visibility", "type": 3, "description": "Who sees it",
+      "choices": [
+        { "name": "Public",  "value": "public" },
+        { "name": "Private", "value": "private" }
+      ] }
+  ],
+  "ephemeral": "visibility=private"       // or "visibility=private,dm"; "!tier=free" inverts
+}
+```
+
+Rules:
+
+- The referenced option **must be declared** on the same template, or sync **rejects** the manifest.
+- **Boolean form** (`<name>`): ephemeral iff the option is truthy. **Choice/equality form** (`<name>=<value>[,<value>…]`): ephemeral iff the selected value is one of the listed choices (case-insensitive; integer choice values compared as strings).
+- A leading `!` negates either form; an `option:` prefix is optional.
+- If the user omits the option, the static `ephemeral` boolean is the fallback default.
+
+The dashboard's command builder exposes the same binding, so an owner can add or change it on the cloned command afterward.
+
 ---
 
 ## Example: Minimal Integration

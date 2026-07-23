@@ -38,6 +38,7 @@ interface CommandUpdates {
 	name?: string;
 	description?: FormDataEntryValue;
 	ephemeral?: boolean;
+	ephemeral_option?: string | null;
 	defer?: boolean;
 	context_menu_user?: boolean;
 	require_voice?: boolean;
@@ -187,6 +188,7 @@ export const actions = {
 		const name = formData.get('name');
 		const description = formData.get('description');
 		const ephemeral = formData.get('ephemeral') === 'true';
+		const ephemeralOption = (formData.get('ephemeral_option') as string) || null;
 		const defer = formData.get('defer') === 'true';
 		const contextMenuUser = formData.get('context_menu_user') === 'true';
 		const requireVoice = formData.get('require_voice') === 'true';
@@ -203,6 +205,7 @@ export const actions = {
 		}
 		if (description !== null) updates.description = description;
 		updates.ephemeral = ephemeral;
+		updates.ephemeral_option = ephemeralOption;
 		updates.defer = defer;
 		updates.context_menu_user = contextMenuUser;
 		updates.require_voice = requireVoice;
