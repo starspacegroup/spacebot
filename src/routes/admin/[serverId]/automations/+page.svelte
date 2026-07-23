@@ -87,17 +87,32 @@
 		return null;
 	});
 
-	// Show a toast for redirect success params, then clear them to prevent re-triggering
+	// Show a toast for redirect success params, then clear them to prevent re-triggering.
+	//
+	// `handledSuccessUrl` is a plain variable (NOT $state) on purpose: this effect
+	// reads page.url (via successMessage) and writes it (via goto). goto is async,
+	// so without a guard the effect re-enters while `?created=true` is still on the
+	// URL, fires goto again, and recurses until Svelte aborts with
+	// effect_update_depth_exceeded — which hangs/crashes the tab. Keying the guard
+	// on href means a genuinely new redirect still toasts.
+	let handledSuccessUrl = '';
 	$effect(() => {
+		const href = page.url.href;
 		const msg = successMessage();
-		if (msg) {
-			toast.success(msg);
-			const url = new URL(page.url);
-			url.searchParams.delete('created');
-			url.searchParams.delete('updated');
-			url.searchParams.delete('deleted');
-			goto(url.pathname, { replaceState: true, keepFocus: true, noScroll: true });
-		}
+		if (!msg || handledSuccessUrl === href) return;
+
+		handledSuccessUrl = href;
+		toast.success(msg);
+		const url = new URL(page.url);
+		url.searchParams.delete('created');
+		url.searchParams.delete('updated');
+		url.searchParams.delete('deleted');
+		// Keep any other params (pagination/filters) instead of dropping them.
+		goto(url.pathname + url.search, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true,
+		});
 	});
 
 	// Fire a toast once per new form action result
