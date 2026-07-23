@@ -589,6 +589,84 @@ Content-Type: application/json
 
 ---
 
+## Template Variables
+
+An integration can contribute **per-user template variables** — placeholders admins insert from the message editor's `{} Variable` picker anywhere a message template is composed (command responses, automation messages, embeds). SpaceBot resolves them at send time by asking your service.
+
+Declare variables in your manifest, plus a `variables_handler` webhook. Each `key` **must** be namespaced with your slug:
+
+```json
+{
+	"variables": [
+		{
+			"key": "agapeverse.account_url",
+			"label": "Account link",
+			"description": "Link to the user's AgapeVerse account page",
+			"scope": "user"
+		},
+		{
+			"key": "agapeverse.display_name",
+			"label": "Display name",
+			"scope": "user"
+		},
+		{
+			"key": "agapeverse.member_count",
+			"label": "Member count",
+			"description": "Total AgapeVerse members",
+			"scope": "global"
+		}
+	],
+	"webhooks": {
+		"variables_handler": "https://agapeverse.app/api/spacebot/variables"
+	}
+}
+```
+
+- `scope: "user"` (the default) — the value is specific to the Discord user the message concerns; SpaceBot sends their Discord user ID and your handler maps it to an account (e.g. via your Discord OAuth link).
+- `scope: "global"` — the value doesn't depend on a user (site-wide stats, status, …).
+
+In guilds where your integration is enabled, declared variables appear in the picker as their own group (grouped by your slug), and admins use them like built-ins: `Welcome {user.mention} — manage your account at {agapeverse.manage_url}`.
+
+### Resolution — the `variables_handler` webhook
+
+When a message referencing your variables is about to send, SpaceBot makes **one batched call** per invocation:
+
+```http
+POST https://agapeverse.app/api/spacebot/variables
+Content-Type: application/json
+X-SpaceBot-Integration: agapeverse
+X-SpaceBot-Guild: 123456789
+
+{
+	"type": "variables",
+	"integration_slug": "agapeverse",
+	"guild_id": "123456789",
+	"discord_user_id": "987654321",
+	"keys": ["agapeverse.account_url", "agapeverse.display_name"]
+}
+```
+
+**Your response:**
+
+```json
+{
+	"values": {
+		"agapeverse.account_url": "https://agapeverse.app/account/123",
+		"agapeverse.display_name": "StarPoet"
+	}
+}
+```
+
+Rules and behavior:
+
+- **Only declared keys are ever requested** — the manifest is the consent surface. Return only what the user's privacy settings allow; omit keys you can't or won't resolve.
+- **Timeout is 2 seconds.** A slow or failed handler never blocks the send — unresolved keys render as empty strings (never as a literal `{agapeverse.x}` in chat).
+- `discord_user_id` is `null` for global-only requests. User-scoped variables resolve to `''` when there's no user in context or no linked account.
+- Values are **cached ~2 minutes** per (integration, guild, user) to absorb automation bursts.
+- SpaceBot stores nothing beyond that short-lived cache.
+
+---
+
 ## Command Templates
 
 Ship ready-made commands a server owner can **apply with one click**, then modify. SpaceBot _clones_ the template into the guild's own commands (created disabled, with server-specific references cleared) — there's no live link back, so the owner edits it like any other command.

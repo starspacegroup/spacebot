@@ -439,6 +439,38 @@ export async function getGuildContributedEvents(db, guildId) {
 }
 
 /**
+ * Build the template-variable entries a guild's enabled integrations declare,
+ * as a flat `{ key: description }` map matching the shape of
+ * COMMAND_TEMPLATE_VARIABLES / TEMPLATE_VARIABLES — merge it into either and
+ * the message editor's `{} Variable` picker groups the keys by their slug
+ * prefix automatically.
+ *
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function getGuildContributedVariables(db, guildId) {
+	if (!db || !guildId) return {};
+
+	const enabled = await getEnabledGuildIntegrations(db, guildId);
+	const variables = {};
+
+	for (const integration of enabled) {
+		const manifest = integration.manifest || integration.manifest_json;
+		const declared = Array.isArray(manifest?.variables) ? manifest.variables : [];
+		for (const variable of declared) {
+			if (!variable?.key || typeof variable.key !== 'string') continue;
+			const label = variable.label || '';
+			const description = variable.description || '';
+			variables[variable.key] =
+				label && description && label !== description
+					? `${label} — ${description}`
+					: description || label || variable.key;
+		}
+	}
+
+	return variables;
+}
+
+/**
  * Look up the integration that owns `official_guild_id`. Platform-wide events
  * (e.g. AgapeVerse poem/account created) route to this guild only.
  */

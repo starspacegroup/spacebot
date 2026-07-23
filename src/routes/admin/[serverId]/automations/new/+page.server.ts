@@ -9,7 +9,11 @@ import {
 } from '$lib/db/automations.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
 import { EVENT_CATEGORIES, EVENT_TYPES, getGuildGitHubRepositories, log } from '$lib/db/logger.js';
-import { getGuildContributedActions, getGuildContributedEvents } from '$lib/db/integrations.js';
+import {
+	getGuildContributedActions,
+	getGuildContributedEvents,
+	getGuildContributedVariables,
+} from '$lib/db/integrations.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -44,6 +48,7 @@ export async function load({ platform, parent, params }) {
 	// integrations so they appear alongside the built-in ones in the builder.
 	const contributedActions = db ? await getGuildContributedActions(db, guildId) : {};
 	const contributedEvents = db ? await getGuildContributedEvents(db, guildId) : {};
+	const contributedVariables = db ? await getGuildContributedVariables(db, guildId) : {};
 
 	return {
 		// Meta info for the UI
@@ -51,7 +56,7 @@ export async function load({ platform, parent, params }) {
 		filterTypes: FILTER_TYPES,
 		eventTypes: { ...EVENT_TYPES, ...contributedEvents },
 		eventCategories: EVENT_CATEGORIES,
-		templateVariables: TEMPLATE_VARIABLES,
+		templateVariables: { ...TEMPLATE_VARIABLES, ...contributedVariables },
 		userSources: AUTOMATION_USER_SOURCES,
 		webhooks: enabledWebhooks,
 		githubRepositories,

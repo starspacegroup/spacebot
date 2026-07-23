@@ -5,6 +5,10 @@
 
 import { getTriggeredAutomations, logAutomationExecution } from '../db/automations.js';
 import { executeIntegrationAction, isIntegrationActionType } from '../integrations/actions.js';
+import {
+	augmentContextWithIntegrationVariables,
+	collectTemplateText,
+} from '../integrations/variables.js';
 import { callWebhook, getWebhook } from '../db/webhooks.js';
 import { createScheduledMessage } from '../db/scheduled-messages.js';
 import { log } from '../log.js';
@@ -697,6 +701,24 @@ export function buildContext(event, guildInfo: Record<string, any> = {}) {
  */
 export async function executeAction(automation, event, context, discord, db: any = null) {
 	const { action_type, action_config } = automation;
+
+	// Resolve integration-contributed template variables referenced by this
+	// action's config (e.g. {agapeverse.account_url}) into the context before
+	// any template processing. One batched handler call per integration,
+	// cached, idempotent, and always non-blocking: failures merge as ''.
+	if (db && event?.guild_id && context) {
+		try {
+			await augmentContextWithIntegrationVariables({
+				db,
+				guildId: event.guild_id,
+				userId: context?.user?.id || event.actor_id || event.target_id || null,
+				text: collectTemplateText(action_config),
+				context,
+			});
+		} catch (err) {
+			log.warn(`[Automation] Integration variable resolution failed: ${err?.message || err}`);
+		}
+	}
 
 	try {
 		switch (action_type) {

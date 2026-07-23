@@ -14,6 +14,10 @@ import {
 	resolveNumberValue,
 } from '$lib/automation/engine.js';
 import {
+	augmentContextWithIntegrationVariables,
+	collectTemplateText,
+} from '$lib/integrations/variables.js';
+import {
 	canOffloadPurge,
 	enqueueMessagePurge,
 	type PurgeMeta,
@@ -701,6 +705,28 @@ async function handleCustomCommand(
 	context.widget_signing_secret = getEnv(platform, 'DISCORD_PUBLIC_KEY');
 	context.widget_origin =
 		getEnv(platform, 'APP_URL') ?? getEnv(platform, 'API_BASE') ?? 'http://localhost:4269';
+
+	// Resolve integration-contributed template variables referenced anywhere in
+	// this command's templates (response content/embed AND action configs) in
+	// one batched pass, before actions run. executeAction augments too, but a
+	// command with no actions still needs {agapeverse.*} in its response to
+	// resolve — and the idempotent skip makes the second pass free.
+	try {
+		await augmentContextWithIntegrationVariables({
+			db,
+			guildId: interaction.guild_id,
+			userId: context?.user?.id || null,
+			text: collectTemplateText(
+				command.response_content,
+				command.response_embed,
+				command.actions,
+				command.action_config
+			),
+			context,
+		});
+	} catch (err) {
+		log.warn(`[Interactions] Integration variable resolution failed: ${err?.message || err}`);
+	}
 
 	// Record usage
 	await recordCommandUse(db, command.id);

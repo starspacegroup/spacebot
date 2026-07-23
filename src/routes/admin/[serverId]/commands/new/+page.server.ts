@@ -13,7 +13,7 @@ import {
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
-import { getGuildContributedActions } from '$lib/db/integrations.js';
+import { getGuildContributedActions, getGuildContributedVariables } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
 
@@ -57,6 +57,8 @@ export async function load({ platform, parent, params }) {
 	// Merge in actions contributed by this guild's enabled integrations so they
 	// appear alongside the built-in action types in the builder.
 	const contributedActions = db ? await getGuildContributedActions(db, guildId) : {};
+	// ...and their template variables, grouped in the editor's {} Variable picker.
+	const contributedVariables = db ? await getGuildContributedVariables(db, guildId) : {};
 
 	return {
 		// Meta info for the UI
@@ -64,7 +66,7 @@ export async function load({ platform, parent, params }) {
 		optionTypes: OPTION_TYPES,
 		commonOptionTypes: COMMON_OPTION_TYPES,
 		responseTypes: RESPONSE_TYPES,
-		templateVariables: COMMAND_TEMPLATE_VARIABLES,
+		templateVariables: { ...COMMAND_TEMPLATE_VARIABLES, ...contributedVariables },
 		userSources: COMMAND_USER_SOURCES,
 		permissionFlags: PERMISSION_FLAGS,
 		permissionPresets: PERMISSION_PRESETS,

@@ -233,6 +233,33 @@ export function validateManifest(manifest) {
 		}
 	}
 
+	if (manifest.variables !== undefined) {
+		if (!Array.isArray(manifest.variables)) {
+			return { ok: false, error: "'variables' must be an array" };
+		}
+		for (const variable of manifest.variables) {
+			if (!variable?.key || typeof variable.key !== 'string') {
+				return { ok: false, error: "Each variable must have a string 'key'" };
+			}
+			if (!variable.key.startsWith(prefix)) {
+				return {
+					ok: false,
+					error: `Variable key '${variable.key}' must be namespaced as '${prefix}<name>'`,
+				};
+			}
+			if (
+				variable.scope !== undefined &&
+				variable.scope !== 'user' &&
+				variable.scope !== 'global'
+			) {
+				return {
+					ok: false,
+					error: `Variable '${variable.key}' has invalid scope '${variable.scope}' (use 'user' or 'global')`,
+				};
+			}
+		}
+	}
+
 	if (manifest.command_templates !== undefined) {
 		if (!Array.isArray(manifest.command_templates)) {
 			return { ok: false, error: "'command_templates' must be an array" };

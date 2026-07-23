@@ -17,7 +17,7 @@ import {
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
-import { getGuildContributedActions } from '$lib/db/integrations.js';
+import { getGuildContributedActions, getGuildContributedVariables } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
 
 interface CommandOptionChoice {
@@ -110,6 +110,7 @@ export async function load({ platform, parent, params, url }) {
 
 		// Merge in actions contributed by this guild's enabled integrations.
 		const contributedActions = await getGuildContributedActions(db, guildId);
+		const contributedVariables = await getGuildContributedVariables(db, guildId);
 
 		return {
 			command,
@@ -119,7 +120,7 @@ export async function load({ platform, parent, params, url }) {
 			optionTypes: OPTION_TYPES,
 			commonOptionTypes: COMMON_OPTION_TYPES,
 			responseTypes: RESPONSE_TYPES,
-			templateVariables: COMMAND_TEMPLATE_VARIABLES,
+			templateVariables: { ...COMMAND_TEMPLATE_VARIABLES, ...contributedVariables },
 			userSources: COMMAND_USER_SOURCES,
 			permissionFlags: PERMISSION_FLAGS,
 			permissionPresets: PERMISSION_PRESETS,
