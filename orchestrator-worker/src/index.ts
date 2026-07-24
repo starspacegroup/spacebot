@@ -157,7 +157,17 @@ const handler: ExportedHandler<Env, QueueMessage> = {
 				}
 
 				if (type === 'ai_watchdog_sweep') {
-					await runWatchdogSweep(env);
+					// Ack even on failure: the sweep is periodic and idempotent, so a
+					// failed one is superseded by the next tick — retrying it only
+					// burns extra queue operations (2026-07-24 Queues-limit incident).
+					try {
+						await runWatchdogSweep(env);
+					} catch (error) {
+						console.error(
+							'[AI Orchestrator] Watchdog sweep failed (not retried):',
+							error instanceof Error ? error.message : error
+						);
+					}
 					message.ack();
 					continue;
 				}
@@ -210,7 +220,7 @@ const handler: ExportedHandler<Env, QueueMessage> = {
 			return;
 		}
 
-		if (event.cron === '*/5 * * * *') {
+		if (event.cron === '*/15 * * * *') {
 			try {
 				await env.AI_AUTOPILOT_QUEUE.send({ type: 'ai_watchdog_sweep' });
 			} catch (error) {

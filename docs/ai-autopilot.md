@@ -18,6 +18,13 @@ This document describes the initial implementation for durable DM AI execution w
     - `POST /api/ai/jobs/execute`
 - Watchdog sweep endpoint:
     - `POST /api/ai/jobs/sweep`
+    - Cron `*/15 * * * *` (was `*/5` — stretched 2026-07-24 after the sweep burned
+      the Queues free tier's 10,000 daily operations). Requeue policy: each requeue
+      pushes the job's `next_retry_at` out exponentially (5→10→20… min, capped at a
+      day) so a stuck job isn't re-enqueued every sweep, and after
+      `MAX_WATCHDOG_REQUEUES` (8) requeues without progress the job is
+      `failed_terminal` (`job.requeue_capped` event) instead of looping forever.
+      Failed sweep messages are acked, not retried — the next tick supersedes them.
 - Timeline lookup endpoint:
     - `GET /api/ai/jobs/:jobId`
     - `:jobId` can be numeric DB id or `correlation_id`

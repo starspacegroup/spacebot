@@ -158,6 +158,20 @@ alerts are Dashboard's. Do not "optimize KV" here; reduce request _count_.
 - [ ] If genuine traffic warrants it, the Workers Paid plan ($5/mo) lifts the
       100k/day request cap — a real option once the cheap wins are exhausted.
 
+#### Queues daily-operations limit burned by watchdog requeue loop — FIXED 2026-07-24
+
+Cloudflare Queues free tier = **10,000 operations/day**; the account hit 100% on
+2026-07-23 (75%→90%→100% alerts through the afternoon). Cause: the `*/5` watchdog
+sweep re-enqueued every due pending AI job with **no backoff and no cap** —
+`getDuePendingAIJobs` returns any pending job whose `next_retry_at` is due, and the
+sweep never advanced it, so one stuck job cost ~860 ops/day (288 sweeps × 3 ops).
+Fix (same day): sweep requeues now defer `next_retry_at` exponentially
+(5→10→20…min, ≤1 day), jobs hit `failed_terminal` after 8 requeues without
+progress (`job.requeue_capped`), failed enqueues also defer (a capped queue isn't
+hammered at reset), sweep cron stretched to `*/15`, and failed sweep messages are
+acked, not retried. Steady state ≈ 400 ops/day. Taxonomy: footgun #5 (resource
+trap — retries hiding a dead dependency).
+
 #### Orchestrator "27K errors" are phantom (Workflows metrics artifact) — 2026-07-12
 
 `spacebot-ai-orchestrator` shows a ~35% error rate (~27k `scriptThrewException`

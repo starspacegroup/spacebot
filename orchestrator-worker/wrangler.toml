@@ -50,10 +50,12 @@ class_name = "MessagePurgeWorkflow"
 
 # Native Cloudflare Cron Triggers — provisioned automatically on `wrangler
 # deploy`, no Cloudflare dashboard interaction required. "* * * * *" drives
-# the superadmin workflows dispatch; "*/5 * * * *" drives the AI autopilot
-# watchdog sweep.
+# the superadmin workflows dispatch; "*/15 * * * *" drives the AI autopilot
+# watchdog sweep (was */5 — stretched 2026-07-24 after the sweep burned the
+# Queues free tier's 10k daily operations; it is a safety net, not the primary
+# execution path, so 15-minute latency on stale-job recovery is fine).
 [triggers]
-crons = ["* * * * *", "*/5 * * * *"]
+crons = ["* * * * *", "*/15 * * * *"]
 
 [vars]
 # Base URL for the Pages app API (local or production)
