@@ -7,6 +7,7 @@
 import { ApplicationCommandType } from 'discord-api-types/v10';
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from './automations.js';
 import { log } from '../log.js';
+import { coerceOptionBoolean, parseEphemeralOptionConditions } from '../command-ephemeral.js';
 
 // Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
 export const BUILT_IN_GUILD_ID = '__built_in__';
@@ -1512,78 +1513,29 @@ export function toDiscordCommand(command) {
 	return commands.length === 1 ? baseCommand : commands;
 }
 
-/**
- * Coerce a Discord option value into a boolean. BOOLEAN options (type 5)
- * already arrive as real booleans; string/number options are accepted
- * leniently so a "yes"/"1"/"on" toggle works too. Anything unset is false.
- * @param {*} value
- * @returns {boolean}
- */
-export function coerceOptionBoolean(value) {
-	if (value === undefined || value === null) return false;
-	if (typeof value === 'boolean') return value;
-	if (typeof value === 'number') return value !== 0;
-	if (typeof value === 'string') {
-		const v = value.trim().toLowerCase();
-		return v === 'true' || v === 'yes' || v === '1' || v === 'on';
-	}
-	return false;
-}
-
-/**
- * Parse an `ephemeral_option` ref into its parts. Ref grammar:
- *   [!] [option:] <name> [ = <value>[,<value>…] ]
- *
- *   - "private"                     → boolean option, ephemeral iff truthy
- *   - "!public"                     → negated boolean (a "make it public" toggle)
- *   - "visibility=private"          → choice/text option, ephemeral iff value is "private"
- *   - "visibility=private,secret"   → ephemeral iff value is one of the listed choices
- *   - "!tier=free"                  → negated equality
- * The `option:` prefix is optional. Split on the FIRST `=` only (Discord option
- * names cannot contain '='); match values are comma-separated.
- *
- * @param {string} ref
- * @returns {{ name: string, negate: boolean, values: string[]|null }|null}
- */
-export function parseEphemeralOptionRef(ref) {
-	if (!ref || typeof ref !== 'string') return null;
-
-	let rest = ref.trim();
-	let negate = false;
-	if (rest.startsWith('!')) {
-		negate = true;
-		rest = rest.slice(1).trim();
-	}
-	if (rest.startsWith('option:')) rest = rest.slice(7).trim();
-	if (!rest) return null;
-
-	const eq = rest.indexOf('=');
-	if (eq === -1) {
-		return { name: rest, negate, values: null };
-	}
-
-	const name = rest.slice(0, eq).trim();
-	if (!name) return null;
-	const values = rest
-		.slice(eq + 1)
-		.split(',')
-		.map((v) => v.trim().toLowerCase())
-		.filter((v) => v.length > 0);
-	return { name, negate, values };
-}
+export {
+	coerceOptionBoolean,
+	parseEphemeralOptionRef,
+	parseEphemeralOptionConditions,
+	formatEphemeralOptionRef,
+	EPHEMERAL_CONDITION_SEPARATOR,
+} from '../command-ephemeral.js';
 
 /**
  * Resolve a command's effective ephemerality for a single invocation.
  *
  * A command carries a static `ephemeral` boolean and an optional
- * `ephemeral_option` ref (see {@link parseEphemeralOptionRef} for the grammar).
- * When the ref is set it names one of the command's own options and decides
- * visibility per-invocation — either by that option's truthiness (boolean
+ * `ephemeral_option` ref — one or more `;`-separated conditions, each naming
+ * one of the command's own options (see `src/lib/command-ephemeral.ts` for the
+ * grammar). Each condition decides on that option's truthiness (boolean
  * options) or by matching its selected value against one or more choices
- * (choice/text options, the `name=value` form). A leading `!` negates.
+ * (choice/text options, the `name=value` form); a leading `!` negates that
+ * condition. The reply is ephemeral when **any** condition matches.
  *
- * If the referenced option is omitted by the user, the static `ephemeral`
- * boolean is the fallback default. With no ref, the boolean alone decides.
+ * Conditions whose option the user omitted are skipped — an optional arg nobody
+ * supplied should neither force nor block privacy. If every condition is
+ * skipped, the static `ephemeral` boolean is the fallback default. With no ref,
+ * the boolean alone decides.
  *
  * Idempotent: passing an already-resolved command (no ref) returns its boolean.
  *
@@ -1593,22 +1545,28 @@ export function parseEphemeralOptionRef(ref) {
  */
 export function resolveEphemeralFlag(command, interaction) {
 	const fallback = !!command?.ephemeral;
-	const parsed = parseEphemeralOptionRef(command?.ephemeral_option);
-	if (!parsed) return fallback;
+	const conditions = parseEphemeralOptionConditions(command?.ephemeral_option);
+	if (!conditions.length) return fallback;
 
-	const opt = interaction?.data?.options?.find((o) => o.name === parsed.name);
-	// Option omitted (optional arg the user didn't supply) → use the default.
-	if (!opt || opt.value === undefined) return fallback;
+	let evaluated = 0;
+	for (const cond of conditions) {
+		const opt = interaction?.data?.options?.find((o) => o.name === cond.name);
+		// Option omitted (optional arg the user didn't supply) → skip this condition.
+		if (!opt || opt.value === undefined) continue;
+		evaluated++;
 
-	let match;
-	if (parsed.values === null) {
-		// Boolean form: truthiness of the option value.
-		match = coerceOptionBoolean(opt.value);
-	} else {
-		// Equality form: the selected value is one of the listed choices.
-		match = parsed.values.includes(String(opt.value).trim().toLowerCase());
+		const match =
+			cond.values === null
+				? // Boolean form: truthiness of the option value.
+					coerceOptionBoolean(opt.value)
+				: // Equality form: the selected value is one of the listed choices.
+					cond.values.includes(String(opt.value).trim().toLowerCase());
+
+		if (cond.negate ? !match : match) return true;
 	}
-	return parsed.negate ? !match : match;
+
+	// Every referenced option was omitted → the static default decides.
+	return evaluated === 0 ? fallback : false;
 }
 
 /**

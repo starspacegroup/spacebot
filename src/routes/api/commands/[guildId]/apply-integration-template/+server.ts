@@ -19,7 +19,7 @@ import {
 	getIntegrationActions,
 	getIntegrationCommandTemplates,
 	normalizeTemplateEphemeral,
-	templateEphemeralOptionRef,
+	templateEphemeralOptionRefs,
 } from '$lib/integrations/registry.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { verifyGuildAdmin } from '$lib/discord/guilds.js';
@@ -94,23 +94,25 @@ export async function POST({ params, request, cookies, platform }) {
 		return json({ error: `Template uses an unknown action: ${actionType}` }, { status: 400 });
 	}
 
-	// If the template ties visibility to an option, that option must be declared
-	// (defence-in-depth — sync validation already enforces this, but a template
-	// could predate that check).
-	const ephemeralRef = templateEphemeralOptionRef(template);
-	if (ephemeralRef) {
+	// If the template ties visibility to options, every one of them must be
+	// declared (defence-in-depth — sync validation already enforces this, but a
+	// template could predate that check).
+	const ephemeralRefs = templateEphemeralOptionRefs(template);
+	if (ephemeralRefs.length) {
 		const optionNames = new Set(
 			(Array.isArray(template.options) ? template.options : [])
 				.map((o: any) => o?.name)
 				.filter(Boolean)
 		);
-		if (!optionNames.has(ephemeralRef)) {
-			return json(
-				{
-					error: `Template ties ephemeral visibility to option '${ephemeralRef}', which it does not declare`,
-				},
-				{ status: 400 }
-			);
+		for (const ephemeralRef of ephemeralRefs) {
+			if (!optionNames.has(ephemeralRef)) {
+				return json(
+					{
+						error: `Template ties ephemeral visibility to option '${ephemeralRef}', which it does not declare`,
+					},
+					{ status: 400 }
+				);
+			}
 		}
 	}
 	const { ephemeral: templateEphemeral, ephemeral_option: templateEphemeralOption } =

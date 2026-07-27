@@ -702,7 +702,7 @@ Bind a command option into the action config with the string form `"option:<name
 
 ### Option-driven visibility (ephemeral)
 
-A template's `ephemeral` is normally a static boolean. It can instead be tied to one of the command's own options — a **boolean option** (private when it's on) or a **choice option** (private when a particular choice is selected) — so the invoking user chooses per run whether the reply is private. Unlike the handler-return approach above (§ "Per-invocation visibility"), this is declared entirely in the manifest, needs no `action_handler`, is resolved **before** the defer decision (so it works with `defer: true`), and coexists with a `response_type`/`response_embed` template.
+A template's `ephemeral` is normally a static boolean. It can instead be tied to the command's own options — a **boolean option** (private when it's on) or a **choice option** (private when one of the selected choices matches) — so the invoking user chooses per run whether the reply is private. Several conditions can be combined with `;`, and the reply is private when **any** of them matches. Unlike the handler-return approach above (§ "Per-invocation visibility"), this is declared entirely in the manifest, needs no `action_handler`, is resolved **before** the defer decision (so it works with `defer: true`), and coexists with a `response_type`/`response_embed` template.
 
 Authoring forms:
 
@@ -736,16 +736,41 @@ Authoring forms:
   ],
   "ephemeral": "visibility=private"       // or "visibility=private,dm"; "!tier=free" inverts
 }
+
+// Several options at once: conditions are separated by ";" and OR'd — private
+// when `publicity` is draft/community, OR when the `anonymous` toggle is on.
+{
+  "name": "verse",
+  "options": [
+    { "name": "publicity", "type": 3, "description": "Who sees it",
+      "choices": [
+        { "name": "Draft — only me",  "value": "draft" },
+        { "name": "Community",        "value": "community" },
+        { "name": "Listed",           "value": "listed" }
+      ] },
+    { "name": "anonymous", "type": 5, "description": "Hide my name" }
+  ],
+  "ephemeral": "publicity=draft,community;anonymous"
+}
+```
+
+Grammar:
+
+```
+ref       := condition (';' condition)*
+condition := ['!'] ['option:'] <name> ['=' <value> (',' <value>)*]
 ```
 
 Rules:
 
-- The referenced option **must be declared** on the same template, or sync **rejects** the manifest.
+- Every referenced option **must be declared** on the same template, or sync **rejects** the manifest.
 - **Boolean form** (`<name>`): ephemeral iff the option is truthy. **Choice/equality form** (`<name>=<value>[,<value>…]`): ephemeral iff the selected value is one of the listed choices (case-insensitive; integer choice values compared as strings).
-- A leading `!` negates either form; an `option:` prefix is optional.
-- If the user omits the option, the static `ephemeral` boolean is the fallback default.
+- A leading `!` negates a single condition; an `option:` prefix is optional.
+- Multiple conditions are **OR'd** — any match makes the reply private. There is no AND form.
+- A condition whose option the user omitted is **skipped**, so it neither forces nor blocks privacy. If every referenced option is omitted, the static `ephemeral` boolean is the fallback default.
+- `!`, `option:`, `=`, `,` and `;` are structural, so an option name or choice value containing `=`, `,` or `;` cannot be referenced.
 
-The dashboard's command builder exposes the same binding, so an owner can add or change it on the cloned command afterward.
+The dashboard's command builder exposes the same binding — one row per condition, with checkboxes for a choice option's values — so an owner can add or change it on the cloned command afterward.
 
 ---
 

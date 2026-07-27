@@ -3,11 +3,14 @@ import {
 	resolveEphemeralFlag,
 	coerceOptionBoolean,
 	parseEphemeralOptionRef,
+	parseEphemeralOptionConditions,
+	formatEphemeralOptionRef,
 } from '../lib/db/commands.js';
 import {
 	validateManifest,
 	normalizeTemplateEphemeral,
 	templateEphemeralOptionRef,
+	templateEphemeralOptionRefs,
 } from '../lib/integrations/registry.js';
 
 /** A slash-command interaction carrying the given option name/value. */
@@ -153,6 +156,95 @@ describe('resolveEphemeralFlag', () => {
 		const cmd = { ephemeral: true, ephemeral_option: 'visibility=private' };
 		expect(resolveEphemeralFlag(cmd, interactionWith([]))).toBe(true);
 	});
+
+	// Multiple conditions (';'-separated) across different options — OR'd.
+	it('is private when ANY condition matches', () => {
+		const cmd = {
+			ephemeral: false,
+			ephemeral_option: 'publicity=draft,community;anonymous',
+		};
+		// First condition matches, second present-but-false.
+		expect(
+			resolveEphemeralFlag(
+				cmd,
+				interactionWith([
+					{ name: 'publicity', value: 'draft' },
+					{ name: 'anonymous', value: false },
+				])
+			)
+		).toBe(true);
+		// Second condition matches, first present-but-not-listed.
+		expect(
+			resolveEphemeralFlag(
+				cmd,
+				interactionWith([
+					{ name: 'publicity', value: 'listed' },
+					{ name: 'anonymous', value: true },
+				])
+			)
+		).toBe(true);
+		// Neither matches.
+		expect(
+			resolveEphemeralFlag(
+				cmd,
+				interactionWith([
+					{ name: 'publicity', value: 'listed' },
+					{ name: 'anonymous', value: false },
+				])
+			)
+		).toBe(false);
+	});
+
+	it('mixes negated and plain conditions', () => {
+		const cmd = { ephemeral: false, ephemeral_option: '!public;tier=free' };
+		// public off → private
+		expect(resolveEphemeralFlag(cmd, interactionWith([{ name: 'public', value: false }]))).toBe(
+			true
+		);
+		// public on, but tier is free → still private (OR)
+		expect(
+			resolveEphemeralFlag(
+				cmd,
+				interactionWith([
+					{ name: 'public', value: true },
+					{ name: 'tier', value: 'free' },
+				])
+			)
+		).toBe(true);
+		// public on and tier pro → public
+		expect(
+			resolveEphemeralFlag(
+				cmd,
+				interactionWith([
+					{ name: 'public', value: true },
+					{ name: 'tier', value: 'pro' },
+				])
+			)
+		).toBe(false);
+	});
+
+	it('skips conditions whose option was omitted, keeping the others live', () => {
+		const cmd = { ephemeral: true, ephemeral_option: 'publicity=draft;anonymous' };
+		// Only `anonymous` supplied and it is off → an evaluated condition decided: public.
+		expect(
+			resolveEphemeralFlag(cmd, interactionWith([{ name: 'anonymous', value: false }]))
+		).toBe(false);
+		// Only `publicity` supplied and it matches → private.
+		expect(
+			resolveEphemeralFlag(cmd, interactionWith([{ name: 'publicity', value: 'draft' }]))
+		).toBe(true);
+	});
+
+	it('falls back to the static default only when EVERY option is omitted', () => {
+		const cmd = { ephemeral: true, ephemeral_option: 'publicity=draft;anonymous' };
+		expect(resolveEphemeralFlag(cmd, interactionWith([]))).toBe(true);
+		expect(
+			resolveEphemeralFlag(
+				{ ...cmd, ephemeral: false },
+				interactionWith([{ name: 'unrelated', value: 'x' }])
+			)
+		).toBe(false);
+	});
 });
 
 describe('parseEphemeralOptionRef', () => {
@@ -185,6 +277,52 @@ describe('parseEphemeralOptionRef', () => {
 		expect(parseEphemeralOptionRef(null)).toBe(null);
 		expect(parseEphemeralOptionRef('=orphan')).toBe(null);
 	});
+	it('returns the first condition of a multi-condition ref', () => {
+		expect(parseEphemeralOptionRef('publicity=draft;anonymous')).toEqual({
+			name: 'publicity',
+			negate: false,
+			values: ['draft'],
+		});
+	});
+});
+
+describe('parseEphemeralOptionConditions', () => {
+	it('splits on ";" and parses each condition', () => {
+		expect(parseEphemeralOptionConditions('publicity=draft,community;!public')).toEqual([
+			{ name: 'publicity', negate: false, values: ['draft', 'community'] },
+			{ name: 'public', negate: true, values: null },
+		]);
+	});
+	it('drops unparseable conditions and returns [] for nothing usable', () => {
+		expect(parseEphemeralOptionConditions('private;;=orphan')).toEqual([
+			{ name: 'private', negate: false, values: null },
+		]);
+		expect(parseEphemeralOptionConditions('')).toEqual([]);
+		expect(parseEphemeralOptionConditions(null)).toEqual([]);
+	});
+});
+
+describe('formatEphemeralOptionRef', () => {
+	it('round-trips a multi-condition ref', () => {
+		const ref = 'publicity=draft,community;!public';
+		expect(formatEphemeralOptionRef(parseEphemeralOptionConditions(ref))).toBe(ref);
+	});
+	it('drops incomplete rows (no name, or equality form with no values)', () => {
+		expect(
+			formatEphemeralOptionRef([
+				{ name: '', negate: false, values: null },
+				{ name: 'publicity', negate: false, values: [] },
+				{ name: 'private', negate: false, values: null },
+			])
+		).toBe('private');
+	});
+	it('returns null when nothing usable remains', () => {
+		expect(formatEphemeralOptionRef([{ name: 'publicity', negate: false, values: [] }])).toBe(
+			null
+		);
+		expect(formatEphemeralOptionRef([])).toBe(null);
+		expect(formatEphemeralOptionRef(null)).toBe(null);
+	});
 });
 
 describe('templateEphemeralOptionRef', () => {
@@ -206,6 +344,19 @@ describe('templateEphemeralOptionRef', () => {
 	});
 	it('prefers the explicit ephemeral_option field', () => {
 		expect(templateEphemeralOptionRef({ ephemeral: 'a', ephemeral_option: 'b' })).toBe('b');
+	});
+});
+
+describe('templateEphemeralOptionRefs', () => {
+	it('returns every option a multi-condition ref names', () => {
+		expect(
+			templateEphemeralOptionRefs({
+				ephemeral_option: 'publicity=draft,community;!anonymous',
+			})
+		).toEqual(['publicity', 'anonymous']);
+	});
+	it('is empty for a static boolean', () => {
+		expect(templateEphemeralOptionRefs({ ephemeral: true })).toEqual([]);
 	});
 });
 

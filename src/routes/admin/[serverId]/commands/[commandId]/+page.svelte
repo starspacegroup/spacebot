@@ -6,6 +6,10 @@
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { log } from '$lib/log.js';
+	import {
+		parseEphemeralOptionConditions,
+		formatEphemeralOptionRef,
+	} from '$lib/command-ephemeral.js';
 
 	let { data, form } = $props();
 
@@ -496,35 +500,78 @@
 		return sources;
 	});
 
-	// Options the response visibility can be tied to. Boolean options (type 5)
-	// yield "when on" / "unless on"; choice options (Text/Integer choice) yield a
-	// per-choice "when <opt> is <choice>". Value format matches
-	// resolveEphemeralFlag: "<name>" / "!<name>" / "<name>=<choiceValue>".
-	const ephemeralOptionChoices = $derived(() => {
-		const choices = [];
+	// Options the response visibility can be tied to: boolean options (type 5,
+	// matched on truthiness) and choice options (matched against selected
+	// choices). Each becomes a candidate for an ephemeral condition row.
+	const ephemeralBindableOptions = $derived(() => {
+		const bindable = [];
 		for (const opt of options) {
 			if (!opt.name) continue;
 			const optName = opt.name.toLowerCase().replace(/\s+/g, '_');
 			if (opt.type === 5) {
-				choices.push({ value: optName, label: `🔒 Private when "${opt.name}" is on` });
-				choices.push({
-					value: `!${optName}`,
-					label: `🌐 Private unless "${opt.name}" is on`,
-				});
+				bindable.push({ name: optName, label: opt.name, isChoice: false, choices: [] });
 			} else if (isChoiceType(opt.type) && Array.isArray(opt.choices)) {
-				for (const choice of opt.choices) {
-					const cval = String(choice?.value ?? '').trim();
-					if (!cval) continue;
-					const clabel = choice?.name || cval;
-					choices.push({
-						value: `${optName}=${cval}`,
-						label: `🔒 Private when "${opt.name}" is "${clabel}"`,
-					});
+				const choices = opt.choices
+					.map((c) => ({
+						value: String(c?.value ?? '').trim(),
+						label: c?.name || String(c?.value ?? '').trim(),
+					}))
+					.filter((c) => c.value);
+				if (choices.length) {
+					bindable.push({ name: optName, label: opt.name, isChoice: true, choices });
 				}
 			}
 		}
-		return choices;
+		return bindable;
 	});
+
+	// Conditions driving per-invocation visibility. The reply is private when ANY
+	// of them matches; an empty list means "always use the checkbox". Serialized
+	// into the `ephemeral_option` ref on submit (see $lib/command-ephemeral).
+	// svelte-ignore state_referenced_locally
+	const ephemeralConditions = $state(
+		parseEphemeralOptionConditions(data.command?.ephemeral_option).map((cond) => ({
+			name: cond.name,
+			negate: cond.negate,
+			values: cond.values ?? null,
+		}))
+	);
+
+	const ephemeralOptionValue = $derived(formatEphemeralOptionRef(ephemeralConditions) ?? '');
+
+	function bindableOptionFor(name) {
+		return ephemeralBindableOptions().find((o) => o.name === name) || null;
+	}
+
+	function addEphemeralCondition() {
+		const first = ephemeralBindableOptions()[0];
+		if (!first) return;
+		ephemeralConditions.push({
+			name: first.name,
+			negate: false,
+			values: first.isChoice ? [] : null,
+		});
+	}
+
+	function removeEphemeralCondition(index) {
+		ephemeralConditions.splice(index, 1);
+	}
+
+	// Switching which option a row targets swaps it between the boolean form
+	// (values === null) and the choice form (values === []).
+	function setEphemeralConditionOption(index, name) {
+		const opt = bindableOptionFor(name);
+		ephemeralConditions[index].name = name;
+		ephemeralConditions[index].values = opt?.isChoice ? [] : null;
+	}
+
+	function toggleEphemeralConditionValue(index, value) {
+		const values = ephemeralConditions[index].values || [];
+		const at = values.indexOf(value);
+		if (at === -1) values.push(value);
+		else values.splice(at, 1);
+		ephemeralConditions[index].values = values;
+	}
 
 	// Helper to check if a number_source field is using an option reference
 	function isOptionReference(value) {
@@ -647,25 +694,97 @@
 						/>
 						<span>🔒 Ephemeral (Private Response)</span>
 					</label>
-					{#if ephemeralOptionChoices().length > 0}
-						<label class="ephemeral-bind-label" for="ephemeral_option">
-							Or decide per use from an option:
-						</label>
-						<select id="ephemeral_option" name="ephemeral_option">
-							<option value="" selected={!command.ephemeral_option}
-								>— Always use the checkbox —</option
-							>
-							{#each ephemeralOptionChoices() as choice}
-								<option
-									value={choice.value}
-									selected={command.ephemeral_option === choice.value}
-									>{choice.label}</option
-								>
+					{#if ephemeralBindableOptions().length > 0}
+						<span class="ephemeral-bind-label">
+							{ephemeralConditions.length
+								? '🔒 Private when ANY of these match:'
+								: 'Or decide per use from your options:'}
+						</span>
+						<input
+							type="hidden"
+							name="ephemeral_option"
+							value={ephemeralOptionValue()}
+						/>
+						<div class="ephemeral-conditions">
+							{#each ephemeralConditions as condition, i}
+								{@const bound = bindableOptionFor(condition.name)}
+								<div class="ephemeral-condition">
+									<div class="ephemeral-condition-head">
+										<select
+											aria-label="Option"
+											value={condition.name}
+											onchange={(e) =>
+												setEphemeralConditionOption(
+													i,
+													e.currentTarget.value
+												)}
+										>
+											{#each ephemeralBindableOptions() as opt}
+												<option value={opt.name}>{opt.label}</option>
+											{/each}
+										</select>
+										<select aria-label="Match" bind:value={condition.negate}>
+											<option value={false}>is</option>
+											<option value={true}>is NOT</option>
+										</select>
+										<button
+											type="button"
+											class="ephemeral-condition-remove"
+											title="Remove this condition"
+											aria-label="Remove this condition"
+											onclick={() => removeEphemeralCondition(i)}>✕</button
+										>
+									</div>
+									{#if bound?.isChoice}
+										<div class="ephemeral-condition-values">
+											{#each bound.choices as choice}
+												<label class="checkbox-label">
+													<input
+														type="checkbox"
+														checked={(condition.values || []).includes(
+															choice.value.toLowerCase()
+														)}
+														onchange={() =>
+															toggleEphemeralConditionValue(
+																i,
+																choice.value.toLowerCase()
+															)}
+													/>
+													<span>{choice.label}</span>
+												</label>
+											{/each}
+										</div>
+										{#if !(condition.values || []).length}
+											<p class="field-hint ephemeral-condition-warn">
+												Pick at least one value — this condition is ignored
+												while empty.
+											</p>
+										{/if}
+									{:else}
+										<p class="field-hint">
+											Private when this on/off option is {condition.negate
+												? 'off'
+												: 'on'}.
+										</p>
+									{/if}
+								</div>
 							{/each}
-						</select>
+						</div>
+						<button
+							type="button"
+							class="ephemeral-add-condition"
+							onclick={addEphemeralCondition}
+						>
+							+ Add condition
+						</button>
 						<p class="field-hint">
-							When set, the checkbox above is the fallback for when the option is
-							omitted. Boolean and choice options appear here.
+							{#if ephemeralConditions.length}
+								The checkbox above is the fallback for when the user omits every
+								option named here.
+							{:else}
+								Tie visibility to your own boolean or choice options so the user
+								decides per use. Boolean and choice options appear here.
+							{/if}
 						</p>
 					{/if}
 				</div>
@@ -1734,6 +1853,78 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		color: var(--text-muted);
+	}
+
+	.ephemeral-conditions {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.ephemeral-condition {
+		padding: 0.5rem;
+		background: var(--bg-primary, #202225);
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 8px;
+	}
+
+	.ephemeral-condition-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.ephemeral-condition-head select {
+		flex: 1 1 auto;
+		padding: 0.5rem;
+	}
+
+	.ephemeral-condition-head select[aria-label='Match'] {
+		flex: 0 0 auto;
+		width: auto;
+	}
+
+	.ephemeral-condition-remove {
+		flex: 0 0 auto;
+		padding: 0.25rem 0.5rem;
+		background: transparent;
+		border: 1px solid var(--border-color, #40444b);
+		border-radius: 6px;
+		color: var(--text-muted);
+		cursor: pointer;
+		line-height: 1;
+	}
+
+	.ephemeral-condition-remove:hover {
+		border-color: var(--color-danger, #ed4245);
+		color: var(--color-danger, #ed4245);
+	}
+
+	.ephemeral-condition-values {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 1rem;
+		margin-top: 0.5rem;
+	}
+
+	.ephemeral-condition-warn {
+		color: var(--color-warning, #faa61a);
+	}
+
+	.ephemeral-add-condition {
+		margin-top: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		background: transparent;
+		border: 1px dashed var(--border-color, #40444b);
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+
+	.ephemeral-add-condition:hover {
+		border-color: var(--accent-color, #5865f2);
+		color: var(--text-primary, #fff);
 	}
 
 	.field-hint a {

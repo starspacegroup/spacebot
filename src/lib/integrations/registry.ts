@@ -11,6 +11,7 @@
 
 import { log } from '../log.js';
 import { upsertIntegration } from '../db/integrations.js';
+import { parseEphemeralOptionConditions } from '../command-ephemeral.js';
 
 // ---------------------------------------------------------------------------
 // Manifest schema (what an integration declares)
@@ -265,18 +266,20 @@ export function validateManifest(manifest) {
 			return { ok: false, error: "'command_templates' must be an array" };
 		}
 		for (const tmpl of manifest.command_templates) {
-			const ref = templateEphemeralOptionRef(tmpl);
-			if (ref) {
+			const refs = templateEphemeralOptionRefs(tmpl);
+			if (refs.length) {
 				const optionNames = new Set(
 					(Array.isArray(tmpl?.options) ? tmpl.options : [])
 						.map((o) => o?.name)
 						.filter(Boolean)
 				);
-				if (!optionNames.has(ref)) {
-					return {
-						ok: false,
-						error: `Command template '${tmpl?.key || tmpl?.name || '?'}' ties its ephemeral visibility to option '${ref}', which it does not declare`,
-					};
+				for (const ref of refs) {
+					if (!optionNames.has(ref)) {
+						return {
+							ok: false,
+							error: `Command template '${tmpl?.key || tmpl?.name || '?'}' ties its ephemeral visibility to option '${ref}', which it does not declare`,
+						};
+					}
 				}
 			}
 		}
@@ -286,30 +289,48 @@ export function validateManifest(manifest) {
 }
 
 /**
- * Extract the bare option name a command template's ephemeral setting refers to,
- * or null if it uses a static boolean / declares no ref. Strips an optional
- * leading '!' (negation), an optional 'option:' prefix, and any '=value' match
- * suffix (the choice-equality form, e.g. "visibility=private").
+ * The raw ephemeral ref a command template declares, or null for a static
+ * boolean / no declaration. A string in `ephemeral` is shorthand for a ref.
+ *
+ * @param {object} template
+ * @returns {string|null}
+ */
+function templateEphemeralRawRef(template) {
+	if (typeof template?.ephemeral_option === 'string' && template.ephemeral_option.trim()) {
+		return template.ephemeral_option;
+	}
+	if (typeof template?.ephemeral === 'string' && template.ephemeral.trim()) {
+		return template.ephemeral;
+	}
+	return null;
+}
+
+/**
+ * Extract every bare option name a command template's ephemeral setting refers
+ * to — one per `;`-separated condition — with negation, the 'option:' prefix
+ * and any '=value' match suffix stripped. Empty for a static boolean.
+ *
+ * @param {object} template
+ * @returns {string[]}
+ */
+export function templateEphemeralOptionRefs(template) {
+	const raw = templateEphemeralRawRef(template);
+	if (!raw) return [];
+	return parseEphemeralOptionConditions(raw)
+		.map((cond) => cond.name)
+		.filter(Boolean);
+}
+
+/**
+ * The first option name a command template's ephemeral setting refers to, or
+ * null if it uses a static boolean / declares no ref. Use
+ * {@link templateEphemeralOptionRefs} to see every referenced option.
  *
  * @param {object} template
  * @returns {string|null}
  */
 export function templateEphemeralOptionRef(template) {
-	let raw = null;
-	if (typeof template?.ephemeral_option === 'string' && template.ephemeral_option.trim()) {
-		raw = template.ephemeral_option;
-	} else if (typeof template?.ephemeral === 'string' && template.ephemeral.trim()) {
-		// A string in `ephemeral` is shorthand for an option ref.
-		raw = template.ephemeral;
-	}
-	if (!raw) return null;
-
-	let name = raw.trim();
-	if (name.startsWith('!')) name = name.slice(1).trim();
-	if (name.startsWith('option:')) name = name.slice(7).trim();
-	const eq = name.indexOf('=');
-	if (eq !== -1) name = name.slice(0, eq).trim();
-	return name || null;
+	return templateEphemeralOptionRefs(template)[0] ?? null;
 }
 
 /**
