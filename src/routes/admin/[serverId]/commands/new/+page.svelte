@@ -593,11 +593,7 @@
 								? '🔒 Private when ANY of these match:'
 								: 'Or decide per use from your options:'}
 						</span>
-						<input
-							type="hidden"
-							name="ephemeral_option"
-							value={ephemeralOptionValue()}
-						/>
+						<input type="hidden" name="ephemeral_option" value={ephemeralOptionValue} />
 						<div class="ephemeral-conditions">
 							{#each ephemeralConditions as condition, i}
 								{@const bound = bindableOptionFor(condition.name)}
