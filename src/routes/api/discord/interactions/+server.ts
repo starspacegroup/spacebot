@@ -1618,7 +1618,7 @@ async function handleStatsCommand(
 		]);
 
 		const timezone = guildMeta?.timezone || null;
-		await runStatsAggregation(db, guildId).catch((err) => {
+		await runStatsAggregation(db, guildId, { repair: false }).catch((err) => {
 			log.warn(`[Stats] Aggregation failed for ${guildId}:`, err);
 		});
 

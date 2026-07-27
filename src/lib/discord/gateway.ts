@@ -50,7 +50,10 @@ const ORIGINAL_CONSOLE = {
 	debug: console.debug.bind(console),
 };
 
-const GATEWAY_LOG_CONFIG_SYNC_MS = 5_000;
+// Doubles as the gateway's liveness heartbeat, so this is a 24/7 request loop
+// against D1-backed config. 15s keeps toggling log capture from the superadmin
+// UI feeling immediate without hammering the database three times a minute.
+const GATEWAY_LOG_CONFIG_SYNC_MS = 15_000;
 const GATEWAY_LOG_FLUSH_MS = 1_500;
 const GATEWAY_LOG_BATCH_SIZE = 50;
 const GATEWAY_LOG_MAX_QUEUE = 500;
@@ -1434,7 +1437,17 @@ function broadcastGuildLiveVoiceSnapshot(guild, reason) {
 	});
 }
 
+// Guilds whose last successfully-posted snapshot had nobody in voice. The
+// server side of a snapshot is a read of every open voice_sessions row plus a
+// live_voice_states rewrite, so posting "still empty" once a minute for every
+// quiet guild was one of the largest D1 rows-read sources on the account.
+// Once a guild is known-empty on both sides there is nothing left to
+// reconcile, so the minute poll can skip it until voice activity resumes.
+const voiceSessionKnownEmptyGuilds = new Set();
+
 async function postVoiceSessionSnapshot(guild, reason) {
+	const activeSessions = getActiveVoiceSessionsForGuild(guild);
+
 	const response = await fetch(`${API_BASE}/api/voice/reconcile`, {
 		method: 'POST',
 		headers: {
@@ -1444,15 +1457,22 @@ async function postVoiceSessionSnapshot(guild, reason) {
 		body: JSON.stringify({
 			guild_id: guild.id,
 			reason,
-			active_sessions: getActiveVoiceSessionsForGuild(guild),
+			active_sessions: activeSessions,
 		}),
 	});
 
 	if (!response.ok) {
+		// Leave the known-empty state alone on failure so the next poll retries.
 		const errorText = await response.text();
 		throw new Error(
 			`Voice reconciliation failed for guild ${guild.id}: ${response.status} ${errorText}`
 		);
+	}
+
+	if (activeSessions.length === 0) {
+		voiceSessionKnownEmptyGuilds.add(guild.id);
+	} else {
+		voiceSessionKnownEmptyGuilds.delete(guild.id);
 	}
 
 	return response.json();
@@ -1475,8 +1495,12 @@ async function syncGuildLiveVoiceSnapshot(guild, reason) {
 	}
 }
 
-async function reconcileVoiceSessionsViaAPI(client, reason, options: { force?: boolean } = {}) {
-	const { force = false } = options;
+async function reconcileVoiceSessionsViaAPI(
+	client,
+	reason,
+	options: { force?: boolean; skipKnownEmpty?: boolean } = {}
+) {
+	const { force = false, skipKnownEmpty = false } = options;
 	const now = Date.now();
 	if (voiceSessionReconcileInFlight) {
 		return;
@@ -1492,11 +1516,23 @@ async function reconcileVoiceSessionsViaAPI(client, reason, options: { force?: b
 
 	try {
 		let guildsProcessed = 0;
+		let guildsSkipped = 0;
 		let closedSessions = 0;
 		let createdSessions = 0;
 		let duplicateSessionsClosed = 0;
 
 		for (const guild of client.guilds.cache.values()) {
+			// Nothing in voice now and nothing left open server-side: the POST
+			// would read every open session row only to change nothing.
+			if (
+				skipKnownEmpty &&
+				voiceSessionKnownEmptyGuilds.has(guild.id) &&
+				getActiveVoiceSessionsForGuild(guild).length === 0
+			) {
+				guildsSkipped++;
+				continue;
+			}
+
 			const result = await postVoiceSessionSnapshot(guild, reason);
 			broadcastGuildLiveVoiceSnapshot(guild, reason);
 			guildsProcessed++;
@@ -1511,7 +1547,7 @@ async function reconcileVoiceSessionsViaAPI(client, reason, options: { force?: b
 			);
 		} else {
 			log.debug(
-				`[VoiceSessions] Reconciled ${guildsProcessed} guilds after ${reason} with no changes`
+				`[VoiceSessions] Reconciled ${guildsProcessed} guilds after ${reason} with no changes (${guildsSkipped} idle guilds skipped)`
 			);
 		}
 	} catch (error) {
@@ -1534,7 +1570,10 @@ function startVoiceSessionPolling(client) {
 	}
 
 	voiceSessionPollTimer = setInterval(() => {
-		void reconcileVoiceSessionsViaAPI(client, 'minute_poll', { force: true });
+		void reconcileVoiceSessionsViaAPI(client, 'minute_poll', {
+			force: true,
+			skipKnownEmpty: true,
+		});
 	}, VOICE_SESSION_POLL_INTERVAL_MS);
 
 	log.info(
@@ -4185,7 +4224,8 @@ let benchmarkStallStartedAt = null;
 let benchmarkRecoveryInFlight = false;
 let currentBenchmarkIntervalMs = 60_000;
 
-const BENCHMARK_CONFIG_SYNC_MS = 30_000;
+const BENCHMARK_CONFIG_SYNC_MIN_MS = 300_000;
+const BENCHMARK_CONFIG_SYNC_MAX_MS = 1_800_000;
 const BENCHMARK_STALL_GRACE_MS = 180_000;
 const BENCHMARK_RECOVERY_COOLDOWN_MS = 120_000;
 const GATEWAY_SHARD_STATUS_LABELS = [
@@ -4495,9 +4535,22 @@ function startBenchmarkReporting(client) {
 		}
 	}
 
-	benchmarkConfigPoll = setInterval(() => {
-		void syncBenchmarkInterval();
-	}, BENCHMARK_CONFIG_SYNC_MS);
+	// The benchmark POST response already carries the current interval, so this
+	// poll only exists to notice a config change sooner than the next report.
+	// At the default 60s report cadence a 30s poll was pure duplication; pace it
+	// off the live interval instead and clamp it to a sane range.
+	function scheduleBenchmarkConfigSync() {
+		const delay = Math.min(
+			Math.max(currentBenchmarkIntervalMs, BENCHMARK_CONFIG_SYNC_MIN_MS),
+			BENCHMARK_CONFIG_SYNC_MAX_MS
+		);
+
+		benchmarkConfigPoll = setTimeout(() => {
+			void syncBenchmarkInterval().finally(scheduleBenchmarkConfigSync);
+		}, delay);
+	}
+
+	scheduleBenchmarkConfigSync();
 
 	// Delay the first report by 45s so the first heartbeat cycle (~41s)
 	// can complete and client.ws.ping has a real value instead of -1.

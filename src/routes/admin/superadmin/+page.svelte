@@ -208,7 +208,13 @@
 	}
 
 	onMount(() => {
+		// A backgrounded tab left open all day was polling this dashboard every
+		// 15s forever; each refresh is a fan-out of queries nobody is looking at.
+		const isVisible = () => document.visibilityState === 'visible';
+
 		const intervalId = window.setInterval(() => {
+			if (!isVisible()) return;
+
 			const hasRunningHistory = cronJobHistory.some((entry) => entry.status === 'running');
 			const hasRunningRequest = Object.values(runningJobs).some(Boolean);
 
@@ -218,8 +224,15 @@
 		}, 3000);
 
 		const backgroundIntervalId = window.setInterval(() => {
+			if (!isVisible()) return;
 			void refreshCronData();
 		}, 15000);
+
+		// Catch up immediately when the tab comes back to the foreground.
+		const onVisibilityChange = () => {
+			if (isVisible()) void refreshCronData();
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
 
 		if (cronJobHistory.some((entry) => entry.status === 'running')) {
 			void refreshCronData();
@@ -228,6 +241,7 @@
 		return () => {
 			window.clearInterval(intervalId);
 			window.clearInterval(backgroundIntervalId);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		};
 	});
 

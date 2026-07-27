@@ -400,14 +400,25 @@
 		// never implemented — it 404'd and reconnected every 3s forever).
 		// Plain polling against the existing /api/gateway/logs JSON endpoint
 		// is all that's needed for a low-frequency admin log viewer.
+		// Each refresh reads a page of gateway_logs plus the status keys, so don't
+		// keep doing it into a backgrounded tab nobody is watching.
+		const isVisible = () => document.visibilityState === 'visible';
+
 		const gatewayLogsIntervalId = window.setInterval(() => {
+			if (!isVisible()) return;
 			void refreshGatewayLogs({ silent: true });
 		}, 5000);
+
+		const onVisibilityChange = () => {
+			if (isVisible()) void refreshGatewayLogs({ silent: true });
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
 
 		void refreshGatewayLogs();
 
 		return () => {
 			window.clearInterval(gatewayLogsIntervalId);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		};
 	});
 </script>

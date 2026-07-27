@@ -59,6 +59,14 @@ class FakeDb {
 	}
 
 	execute(sql: string, args: any[], mode: string): any {
+		if (sql.includes('SELECT key, value FROM global_settings')) {
+			return {
+				results: args
+					.filter((key) => this.globalSettings.has(key))
+					.map((key) => ({ key, value: this.globalSettings.get(key) })),
+			};
+		}
+
 		if (sql.includes('SELECT value FROM global_settings')) {
 			return { value: this.globalSettings.get(args[0]) };
 		}
@@ -82,10 +90,12 @@ class FakeDb {
 		}
 
 		if (sql.includes('DELETE FROM gateway_logs')) {
+			// Mirrors the production watermark trim:
+			// DELETE ... WHERE id <= (SELECT MAX(id) FROM gateway_logs) - ?
 			const maxRows = args[0];
+			const maxId = this.logs.reduce((highest, entry) => Math.max(highest, entry.id), 0);
 			this.logs = this.logs
-				.sort((left, right) => right.id - left.id)
-				.slice(0, maxRows)
+				.filter((entry) => entry.id > maxId - maxRows)
 				.sort((left, right) => left.id - right.id);
 			return { success: true };
 		}
@@ -103,9 +113,7 @@ class FakeDb {
 		if (sql.includes('FROM gateway_logs') && sql.includes('ORDER BY id DESC')) {
 			const [limit] = args;
 			return {
-				results: [...this.logs]
-					.sort((left, right) => right.id - left.id)
-					.slice(0, limit),
+				results: [...this.logs].sort((left, right) => right.id - left.id).slice(0, limit),
 			};
 		}
 
@@ -157,10 +165,12 @@ describe('gateway logs API', () => {
 		const db = new FakeDb();
 		db.globalSettings.set(UPDATE_REQUIRED_KEY, '2026.05.27.2');
 
-		const response = await handleGatewayLogsApi(createEvent({
-			headers: { Authorization: 'Bot bot-token' },
-			db,
-		}));
+		const response = await handleGatewayLogsApi(
+			createEvent({
+				headers: { Authorization: 'Bot bot-token' },
+				db,
+			})
+		);
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
@@ -175,20 +185,22 @@ describe('gateway logs API', () => {
 	it('stores gateway self-update attempt records via bot PUT', async () => {
 		const db = new FakeDb();
 
-		const response = await handleGatewayLogsApi(createEvent({
-			method: 'PUT',
-			headers: {
-				Authorization: 'Bot bot-token',
-				'Content-Type': 'application/json',
-			},
-			body: {
-				type: 'gateway_update_attempt',
-				targetVersion: '2026.05.27.9',
-				gatewayVersion: '2026.05.27.1',
-				status: 'started',
-			},
-			db,
-		}));
+		const response = await handleGatewayLogsApi(
+			createEvent({
+				method: 'PUT',
+				headers: {
+					Authorization: 'Bot bot-token',
+					'Content-Type': 'application/json',
+				},
+				body: {
+					type: 'gateway_update_attempt',
+					targetVersion: '2026.05.27.9',
+					gatewayVersion: '2026.05.27.1',
+					status: 'started',
+				},
+				db,
+			})
+		);
 
 		expect(response.status).toBe(200);
 		const body = await response.json();
@@ -205,32 +217,40 @@ describe('gateway logs API', () => {
 		const db = new FakeDb();
 		db.globalSettings.set(CAPTURE_KEY, 'true');
 
-		const postResponse = await handleGatewayLogsApi(createEvent({
-			method: 'POST',
-			headers: {
-				Authorization: 'Bot bot-token',
-				'Content-Type': 'application/json',
-			},
-			body: {
-				entries: [
-					{
-						level: 'info',
-						message: 'Gateway capture test entry',
-						source: 'gateway',
-						logged_at: '2026-04-04T20:00:00.000Z',
-					},
-				],
-			},
-			db,
-		}));
+		const postResponse = await handleGatewayLogsApi(
+			createEvent({
+				method: 'POST',
+				headers: {
+					Authorization: 'Bot bot-token',
+					'Content-Type': 'application/json',
+				},
+				body: {
+					entries: [
+						{
+							level: 'info',
+							message: 'Gateway capture test entry',
+							source: 'gateway',
+							logged_at: '2026-04-04T20:00:00.000Z',
+						},
+					],
+				},
+				db,
+			})
+		);
 
 		expect(postResponse.status).toBe(200);
-		expect(await postResponse.json()).toMatchObject({ success: true, stored: 1, enabled: true });
+		expect(await postResponse.json()).toMatchObject({
+			success: true,
+			stored: 1,
+			enabled: true,
+		});
 
-		const getResponse = await handleGatewayLogsApi(createEvent({
-			userId: 'super-1',
-			db,
-		}));
+		const getResponse = await handleGatewayLogsApi(
+			createEvent({
+				userId: 'super-1',
+				db,
+			})
+		);
 		const getBody = await getResponse.json();
 
 		expect(getResponse.status).toBe(200);

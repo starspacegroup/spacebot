@@ -172,6 +172,45 @@ hammered at reset), sweep cron stretched to `*/15`, and failed sweep messages ar
 acked, not retried. Steady state ≈ 400 ops/day. Taxonomy: footgun #5 (resource
 trap — retries hiding a dead dependency).
 
+#### D1 rows-read blowout from polling loops and a per-flush table scan — FIXED 2026-07-27
+
+D1 free tier = **5M rows read/day**; `spacebot-logs` was running **17M–75M/day**
+(readQueries only ~150–220k/day, i.e. ~100–400 rows read _per query_ — the tell that
+a few queries were scanning tables). Five causes, all measured from
+`d1QueriesAdaptiveGroups` over 2026-07-25→27:
+
+| Query                                                                 | rows read / 3d | per call | Cause                                                                                                                                              |
+| --------------------------------------------------------------------- | -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DELETE FROM gateway_logs WHERE id NOT IN (SELECT … LIMIT ?)`         | 15.1M          | 4,009    | ran after **every** log flush; the anti-join scanned the whole table plus a 2,000-row subquery                                                     |
+| `SELECT DISTINCT guild_id FROM event_logs WHERE created_at >= …`      | 11.5M          | 75,460   | full scan of the largest table to produce ~9 guild ids                                                                                             |
+| `SELECT … FROM voice_sessions WHERE guild_id = ? AND left_at IS NULL` | 5.3M           | 165      | gateway posted a voice snapshot for **every** guild every 60s, even with nobody in voice                                                           |
+| two `voice_sessions` aggregation counts                               | 9.0M           | ~820     | hourly cron ran with `repair: true`, re-walking a **7-day / ~168-period** window every hour                                                        |
+| `SELECT value FROM global_settings WHERE key = ?`                     | 262k calls     | 1        | gateway polled every 5s and fanned 6 keys into 6 queries, plus a heartbeat **write** every poll (53.5k writes/3d — the most-written row in the DB) |
+
+Fixes:
+
+- [x] `gateway_logs` trim is now an id-watermark range delete
+      (`WHERE id <= (SELECT MAX(id) …) - ?`) — two rowid seeks instead of two full
+      scans. ~4,009 → ~4 rows read per flush.
+- [x] `getGuildsWithLogs` uses a recursive **loose index scan** over
+      `idx_event_logs_guild_created` + a per-guild `EXISTS` — O(guilds), not
+      O(events). Verified against SQLite: identical results, 300k-row table 22.5ms → 0.14ms.
+      The three duplicated copies (`scheduled.ts`, `api/stats/aggregate`, `cron-jobs.ts`)
+      now share one implementation; a fourth inline copy in `runRebuildStats` too.
+- [x] Voice minute-poll skips guilds that are empty now **and** were empty at the last
+      successful post (`voiceSessionKnownEmptyGuilds`). Real voice changes still post
+      immediately via `VOICE_STATE_UPDATE`; `client_ready` / `shard_resume` still do a
+      full pass.
+- [x] Hourly aggregation is **incremental** (`repair: false`); the 7-day/14-day repair
+      sweep moved to `runDailyStatsRepair`, invoked once a day from `runDailyRefresh`.
+      The live paths (slash commands, widgets) stopped repairing too.
+- [x] `getGlobalSettings(db, keys)` reads all six keys in one query; gateway config poll
+      5s → 15s; heartbeat row written at most every 30s (connected window 20s → 90s).
+- [x] Superadmin dashboard + gateway log viewer stop polling while the tab is hidden.
+
+Taxonomy: footgun #5 again (resource trap), plus "a repair window that was meant to be
+occasional wired onto the recurring path".
+
 #### Orchestrator "27K errors" are phantom (Workflows metrics artifact) — 2026-07-12
 
 `spacebot-ai-orchestrator` shows a ~35% error rate (~27k `scriptThrewException`
