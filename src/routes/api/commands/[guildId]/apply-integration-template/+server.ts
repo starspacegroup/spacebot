@@ -164,6 +164,10 @@ export async function POST({ params, request, cookies, platform }) {
 			default_member_permissions:
 				template.permission || template.default_member_permissions || null,
 			created_by: userId,
+			// Provenance, not a live link — the copy is independent, but the
+			// integrations page uses this to show what you already applied.
+			source_integration_slug: slug,
+			source_template_key: templateKey,
 		});
 
 		if (!result.success) {
@@ -185,6 +189,11 @@ export async function POST({ params, request, cookies, platform }) {
 				success: true,
 				id: result.id,
 				name,
+				// Applied commands always start disabled; returned explicitly so the
+				// client can render the new entry without re-reading it.
+				enabled: false,
+				template_key: templateKey,
+				slug,
 				needs_configuration: needsConfig,
 				message: `Added /${name} (disabled). Review and enable it when ready.`,
 			},

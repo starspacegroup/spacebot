@@ -700,6 +700,8 @@ Declare templates in your manifest. Each is a full command definition (built on 
 
 Bind a command option into the action config with the string form `"option:<name>"`. There is no webhook for templates — they are pure manifest data; SpaceBot's dashboard renders them and handles the clone.
 
+Each clone records the template it came from (`commands.source_integration_slug` / `source_template_key`, migration `0058`). That's **provenance, not a live link** — editing the command still never touches the template, and applying again makes another independent copy under a suffixed name. The dashboard uses it for two things: the success toast links straight to the command it just created, and every template lists the commands already applied from it (with their enabled/disabled state) so an owner can see what they've added instead of guessing. Commands created any other way — hand-made, imported, seeded — leave both columns `NULL`.
+
 ### Option-driven visibility (ephemeral)
 
 A template's `ephemeral` is normally a static boolean. It can instead be tied to the command's own options — a **boolean option** (private when it's on) or a **choice option** (private when one of the selected choices matches) — so the invoking user chooses per run whether the reply is private. Several conditions can be combined with `;`, and the reply is private when **any** of them matches. Unlike the handler-return approach above (§ "Per-invocation visibility"), this is declared entirely in the manifest, needs no `action_handler`, is resolved **before** the defer decision (so it works with `defer: true`), and coexists with a `response_type`/`response_embed` template.

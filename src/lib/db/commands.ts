@@ -331,8 +331,9 @@ export async function createCommand(db, command) {
         response_type, response_content, response_embed,
         default_member_permissions, dm_permission,
         context_menu_user, context_menu_message, require_voice,
-        created_by
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_by,
+        source_integration_slug, source_template_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 			)
 			.bind(
@@ -354,7 +355,9 @@ export async function createCommand(db, command) {
 				command.context_menu_user ? 1 : 0,
 				command.context_menu_message ? 1 : 0,
 				command.require_voice ? 1 : 0,
-				command.created_by || null
+				command.created_by || null,
+				command.source_integration_slug || null,
+				command.source_template_key || null
 			)
 			.run();
 
@@ -728,6 +731,51 @@ export async function getGuildCommands(
 	} catch (error) {
 		log.error('Failed to get guild commands:', error);
 		return [];
+	}
+}
+
+/**
+ * Every command in a guild that was applied from an integration command
+ * template, keyed by `"<slug>:<template_key>"`.
+ *
+ * Provenance only — the command is an independent copy, so this answers "have I
+ * already added this one?" and nothing more. Deliberately a narrow projection
+ * (not `SELECT *`): the integrations page only needs enough to render a link.
+ *
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<Record<string, Array<{id: number, name: string, enabled: boolean}>>>}
+ */
+export async function getTemplateAppliedCommands(db, guildId) {
+	if (!db || !guildId) return {};
+
+	try {
+		const { results } = await db
+			.prepare(
+				`SELECT id, name, enabled, source_integration_slug, source_template_key
+         FROM commands
+         WHERE guild_id = ?
+           AND source_integration_slug IS NOT NULL
+           AND source_template_key IS NOT NULL
+         ORDER BY name ASC`
+			)
+			.bind(guildId)
+			.all();
+
+		/** @type {Record<string, Array<{id: number, name: string, enabled: boolean}>>} */
+		const byTemplate = {};
+		for (const row of results || []) {
+			const key = `${row.source_integration_slug}:${row.source_template_key}`;
+			(byTemplate[key] ||= []).push({
+				id: row.id,
+				name: row.name,
+				enabled: Boolean(row.enabled),
+			});
+		}
+		return byTemplate;
+	} catch (error) {
+		log.error('Failed to get template-applied commands:', error);
+		return {};
 	}
 }
 

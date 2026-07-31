@@ -1044,6 +1044,11 @@ export const es: Record<string, string> = {
 	'integ.commands': 'Comandos',
 	'integ.configuration': 'Configuración',
 	'integ.required': 'Obligatorio',
+	'integ.tpl.openCommand': 'Abrir comando →',
+	'integ.tpl.addedFromThis': 'Creados desde esta:',
+	'integ.tpl.addAnother': '➕ Añadir otro',
+	'integ.tpl.enabled': 'Activado',
+	'integ.tpl.disabled': 'Desactivado',
 	'integ.viewHomepage': '🔗 Ver la página del proyecto →',
 	'integ.offlineWarning':
 		'⚠️ Esta integración está desconectada actualmente. Sus comandos no están disponibles temporalmente y volverán automáticamente cuando el servicio se reconecte.',

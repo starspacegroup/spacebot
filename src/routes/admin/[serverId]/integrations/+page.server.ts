@@ -10,6 +10,7 @@ import {
 import { seedBuiltInIntegrations } from '$lib/integrations/registry.js';
 import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
+import { getTemplateAppliedCommands } from '$lib/db/commands.js';
 import { generateWebhookSecret } from '$lib/integrations/github.js';
 
 /**
@@ -117,10 +118,16 @@ export async function load({ cookies, platform, parent, params }) {
 		(i) => i.connected_at || i.last_heartbeat_at || i.guild_enabled
 	);
 
+	// Commands this guild already applied from a template, keyed "<slug>:<key>",
+	// so each template can show what it has produced instead of leaving the admin
+	// to remember whether they'd clicked Add before.
+	const templateCommands = db ? await getTemplateAppliedCommands(db, serverId) : {};
+
 	return {
 		serverId,
 		guild,
 		integrations: availableIntegrations,
+		templateCommands,
 		hasFullAdminAccess,
 	};
 }

@@ -1025,6 +1025,11 @@ export const en: Record<string, string> = {
 	'integ.commands': 'Commands',
 	'integ.configuration': 'Configuration',
 	'integ.required': 'Required',
+	'integ.tpl.openCommand': 'Open command →',
+	'integ.tpl.addedFromThis': 'Added from this:',
+	'integ.tpl.addAnother': '➕ Add another',
+	'integ.tpl.enabled': 'Enabled',
+	'integ.tpl.disabled': 'Disabled',
 	'integ.viewHomepage': '🔗 View Project Homepage →',
 	'integ.offlineWarning':
 		'⚠️ This integration is currently offline. Its commands are temporarily unavailable and will return automatically when the service reconnects.',

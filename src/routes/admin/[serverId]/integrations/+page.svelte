@@ -36,8 +36,30 @@
 	// --- Command templates (one-click apply) ---
 	const applyingTemplate = $state({});
 
+	function templateKey(slug, key) {
+		return `${slug}:${key}`;
+	}
+
+	function commandHref(id) {
+		return `/admin/${data.serverId}/commands/${id}`;
+	}
+
+	// Commands already applied from each template, seeded from the server load and
+	// extended in place as you apply more — appending beats invalidateAll(), which
+	// would re-run the whole route tree (including the root layout's Discord
+	// guild-list fetch) to learn one row we already have in hand.
+	let appliedCommands = $state({ ...(data.templateCommands || {}) });
+
+	$effect(() => {
+		appliedCommands = { ...(data.templateCommands || {}) };
+	});
+
+	function appliedFor(slug, key) {
+		return appliedCommands[templateKey(slug, key)] || [];
+	}
+
 	async function applyTemplate(integration, tpl) {
-		const key = `${integration.slug}:${tpl.key}`;
+		const key = templateKey(integration.slug, tpl.key);
 		if (applyingTemplate[key]) return;
 		applyingTemplate[key] = true;
 		try {
@@ -48,7 +70,19 @@
 			});
 			const result = await res.json();
 			if (res.ok && result.success) {
-				toast.success(result.message || `Added /${result.name} (disabled).`);
+				appliedCommands = {
+					...appliedCommands,
+					[key]: [
+						...(appliedCommands[key] || []),
+						{ id: result.id, name: result.name, enabled: false },
+					],
+				};
+				toast.success(result.message || `Added /${result.name} (disabled).`, {
+					link: {
+						href: commandHref(result.id),
+						label: tr('integ.tpl.openCommand'),
+					},
+				});
 			} else {
 				toast.error(result.error || 'Failed to add command from template');
 			}
@@ -305,27 +339,59 @@
 									</p>
 									<div class="templates-list">
 										{#each integration.manifest.command_templates as tpl (tpl.key)}
+											{@const applied = appliedFor(integration.slug, tpl.key)}
 											<div class="template-item">
-												<div class="template-info">
-													<code>/{tpl.name}</code>
-													<span class="command-desc"
-														>{tpl.summary || tpl.description}</span
+												<div class="template-row">
+													<div class="template-info">
+														<code>/{tpl.name}</code>
+														<span class="command-desc"
+															>{tpl.summary || tpl.description}</span
+														>
+													</div>
+													<button
+														type="button"
+														class="btn btn-sm btn-primary"
+														disabled={applyingTemplate[
+															`${integration.slug}:${tpl.key}`
+														]}
+														onclick={() =>
+															applyTemplate(integration, tpl)}
 													>
+														{applyingTemplate[
+															`${integration.slug}:${tpl.key}`
+														]
+															? 'Adding…'
+															: applied.length
+																? tr('integ.tpl.addAnother')
+																: '➕ Add'}
+													</button>
 												</div>
-												<button
-													type="button"
-													class="btn btn-sm btn-primary"
-													disabled={applyingTemplate[
-														`${integration.slug}:${tpl.key}`
-													]}
-													onclick={() => applyTemplate(integration, tpl)}
-												>
-													{applyingTemplate[
-														`${integration.slug}:${tpl.key}`
-													]
-														? 'Adding…'
-														: '➕ Add'}
-												</button>
+												{#if applied.length}
+													<div class="template-applied">
+														<span class="applied-label"
+															>{tr('integ.tpl.addedFromThis')}</span
+														>
+														{#each applied as cmd (cmd.id)}
+															<a
+																class="applied-command"
+																class:applied-disabled={!cmd.enabled}
+																href={commandHref(cmd.id)}
+																title={cmd.enabled
+																	? tr('integ.tpl.enabled')
+																	: tr('integ.tpl.disabled')}
+															>
+																/{cmd.name}
+																{#if !cmd.enabled}
+																	<span class="applied-badge"
+																		>{tr(
+																			'integ.tpl.disabled'
+																		)}</span
+																	>
+																{/if}
+															</a>
+														{/each}
+													</div>
+												{/if}
 											</div>
 										{/each}
 									</div>
@@ -767,9 +833,62 @@
 
 	.template-item {
 		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.template-row {
+		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
+	}
+
+	/* What this template has already produced in this server. Indented under the
+	   template it came from so the relationship reads without a label doing all
+	   the work. */
+	.template-applied {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		padding-left: 0.75rem;
+		border-left: 2px solid var(--color-border);
+		font-size: 0.8rem;
+	}
+
+	.applied-label {
+		color: var(--color-text-muted);
+	}
+
+	.applied-command {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.1rem 0.45rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm, 4px);
+		font-family: 'JetBrains Mono', 'Fira Code', monospace;
+		color: var(--color-primary);
+		text-decoration: none;
+	}
+
+	.applied-command:hover,
+	.applied-command:focus-visible {
+		border-color: var(--color-primary);
+		background: var(--color-surface-hover);
+	}
+
+	.applied-disabled {
+		color: var(--color-text-secondary);
+	}
+
+	.applied-badge {
+		font-family: inherit;
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
 	}
 
 	.template-info {

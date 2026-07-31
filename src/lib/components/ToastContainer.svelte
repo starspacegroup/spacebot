@@ -24,7 +24,16 @@
 				animate:flip={{ duration: 200 }}
 			>
 				<span class="toast-icon" aria-hidden="true">{icons[item.type]}</span>
-				<span class="toast-message">{item.message}</span>
+				<span class="toast-message">
+					{item.message}
+					{#if item.link}
+						<a
+							class="toast-link"
+							href={item.link.href}
+							onclick={() => toast.dismiss(item.id)}>{item.link.label}</a
+						>
+					{/if}
+				</span>
 				<button
 					class="toast-close"
 					onclick={() => toast.dismiss(item.id)}
@@ -86,6 +95,23 @@
 	.toast-message {
 		flex: 1;
 		line-height: 1.35;
+	}
+
+	/* Inherits the toast's text colour rather than the link accent: success and
+	   error toasts have saturated backgrounds that the accent disappears into. */
+	.toast-link {
+		display: inline-block;
+		margin-left: 0.4rem;
+		color: inherit;
+		font-weight: 600;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		white-space: nowrap;
+	}
+
+	.toast-link:hover,
+	.toast-link:focus-visible {
+		opacity: 0.8;
 	}
 
 	.toast-close {
