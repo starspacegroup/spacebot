@@ -116,6 +116,12 @@ Discord OAuth2 sets cookies (`discord_user_id`, etc.); admin access is gated on 
 permissions, with `ADMIN_USER_IDS` granting global superadmin. In dev only, `DEV_AUTH_BYPASS=true` enables
 `/dev-login?role=user|admin|superadmin` (handled in `hooks.server.ts`) — these routes 404 in production builds.
 
+A session has two halves with different clocks: the identity cookies (ours, slid forward on every
+page navigation) and Discord's access token (7 days). `src/lib/server/discord-session.ts` keeps them
+in step — page navigations refresh the token, and a session that can't be refreshed is **cleared**,
+never left half-authenticated. Don't add code paths that treat a missing access token as a soft
+failure: that produced a dashboard of plausible zeros for anyone whose token lapsed.
+
 ## Further docs
 
 `README.md` (features/setup), `DEPLOYMENT.md` (Cloudflare Pages deploy + secrets), `ROADMAP.md`, and the

@@ -12,7 +12,8 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Add Cloudflare KV or D1 storage for user sessions — cookie sessions + D1 user store
 - [x] Complete admin authorization logic (check ADMIN_USER_IDS)
 - [x] Add logout functionality — `/api/auth/logout`
-- [x] Implement session expiration and refresh — configurable sliding session TTL _(note: OAuth access-token refresh not implemented)_
+- [x] Implement session expiration and refresh — configurable sliding session TTL + OAuth
+      access-token refresh (`src/lib/server/discord-session.ts`)
 
 ### Discord Bot Features
 
@@ -291,6 +292,15 @@ that display bug is tracked in Dashboard's `planning/` docs, not here.)
       `callRunnerAssistant` to the same cloud MCP tools (`list_guilds`, `get_event_logs`, etc.) DMs
       use (`src/routes/api/runner/guilds/+server.ts`, `scripts/local-runner/spacebot-assistant.ts`,
       `scripts/local-runner/tui.tsx`)
+- [x] Discord session refresh — the sliding identity cookies used to outlive Discord's 7-day access
+      token, leaving users permanently "logged in" with no token: the dashboard rendered "Unknown
+      Server" with an all-zero stats shell and `/api/admin/[serverId]/dashboard-stats` answered 401,
+      with nothing prompting a re-login. Page navigations now spend the stored refresh token, and a
+      session that can't be refreshed is cleared (bounced to `/login?error=session_expired` on
+      `/admin` and `/account`, rendered signed-out elsewhere). The dashboard also falls back to
+      `guild_metadata` for a guild's name/icon and surfaces a 401 as an explicit
+      session-expired banner instead of a convincing all-zero dashboard
+      (`src/lib/server/discord-session.ts`, `src/hooks.server.ts`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration

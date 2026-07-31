@@ -68,6 +68,9 @@ beautiful admin dashboard.
 - **Discord OAuth2** — Secure login with Discord credentials
 - **Sliding Session TTL** — Configurable cookie lifetime via
   `SESSION_TTL_SECONDS`
+- **Token Refresh** — Page navigations renew the Discord access token from the
+  stored refresh token; a session that can't be renewed is cleared rather than
+  left half-authenticated
 - **Admin Access Control** — Only server admins can manage their servers
 - **Request Signature Verification** — All Discord interactions are
   cryptographically verified

@@ -211,6 +211,7 @@ export const es: Record<string, string> = {
 	'login.errors.config': 'Error de configuración del servidor. Contacta con soporte.',
 	'login.errors.auth_failed': 'La autenticación falló. Inténtalo de nuevo.',
 	'login.errors.access_denied': 'Rechazaste la solicitud de autorización.',
+	'login.errors.session_expired': 'Tu sesión de Discord caducó. Inicia sesión de nuevo.',
 	'login.errors.generic': 'Ocurrió un error. Inténtalo de nuevo.',
 
 	// --- Error page ---
@@ -913,6 +914,10 @@ export const es: Record<string, string> = {
 	'adash.botNotInstalledDesc':
 		'El bot no está instalado en este servidor. Algunas funciones requieren que se añada el bot.',
 	'adash.addBotShort': 'Añadir el bot al servidor',
+	'adash.sessionExpired': 'Sesión de Discord caducada',
+	'adash.sessionExpiredDesc':
+		'Tu sesión de Discord ha caducado, así que no se pudieron cargar los datos en vivo del servidor. Las cifras de abajo son valores de marcador, no reales.',
+	'adash.signInAgain': 'Iniciar sesión de nuevo',
 	'adash.serverManagement': 'Gestión del servidor',
 	'adash.links.automations': 'Automatizaciones',
 	'adash.links.automationsDesc': 'Configura acciones automáticas en eventos',

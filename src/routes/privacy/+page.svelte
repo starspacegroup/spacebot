@@ -187,11 +187,16 @@
 					<strong>discord_access_token</strong> &mdash; Tu token de acceso OAuth2 (usado para
 					comunicarnos con la API de Discord en tu nombre)
 				</li>
+				<li>
+					<strong>discord_refresh_token</strong> &mdash; Tu token de actualización OAuth2 (usado
+					para renovar el token de acceso anterior y que no se cierre tu sesión cada semana)
+				</li>
 			</ul>
 			<p>
-				Estas cookies caducan a los 7 días y son esenciales para que el Servicio funcione.
-				No usamos cookies de rastreo, cookies publicitarias ni cookies de analítica de
-				terceros.
+				Las cookies de sesión duran 7 días y se prorrogan mientras sigas usando el Servicio;
+				la cookie del token de actualización dura 30 días. Todas son esenciales para que el
+				Servicio funcione. No usamos cookies de rastreo, cookies publicitarias ni cookies de
+				analítica de terceros.
 			</p>
 
 			<h3>3.7 Claves de API</h3>
@@ -654,10 +659,16 @@
 					<strong>discord_access_token</strong> &mdash; Your OAuth2 access token (used to communicate
 					with Discord's API on your behalf)
 				</li>
+				<li>
+					<strong>discord_refresh_token</strong> &mdash; Your OAuth2 refresh token (used to
+					renew the access token above so you are not signed out every week)
+				</li>
 			</ul>
 			<p>
-				These cookies expire after 7 days and are essential for the Service to function. We
-				do not use tracking cookies, advertising cookies, or third-party analytics cookies.
+				The session cookies last 7 days and are extended while you keep using the Service;
+				the refresh token cookie lasts 30 days. All of them are essential for the Service to
+				function. We do not use tracking cookies, advertising cookies, or third-party
+				analytics cookies.
 			</p>
 
 			<h3>3.7 API Keys</h3>

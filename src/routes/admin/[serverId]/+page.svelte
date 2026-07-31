@@ -19,6 +19,10 @@
 	let liveStats = $state(null);
 	let statsServerId = $state(null);
 	let statsLoading = $state(false);
+	// A 401 here means the Discord session died while this page was open. The
+	// shell defaults below would otherwise render a convincing all-zero dashboard,
+	// so say what actually happened instead.
+	let statsSessionExpired = $state(false);
 
 	$effect(() => {
 		const serverId = data.serverId;
@@ -27,6 +31,9 @@
 		statsLoading = true;
 		fetch(`/api/admin/${serverId}/dashboard-stats`)
 			.then((res) => {
+				if (res.status === 401) {
+					statsSessionExpired = true;
+				}
 				if (!res.ok) throw new Error(`dashboard-stats request failed: ${res.status}`);
 				return res.json();
 			})
@@ -43,6 +50,10 @@
 				statsLoading = false;
 			});
 	});
+
+	const reauthUrl = $derived(
+		`/api/auth/discord?return_to=${encodeURIComponent(`/admin/${data.serverId}`)}`
+	);
 
 	// Merges the client-fetched stats (once loaded for the current server) over
 	// the shell/cached defaults from the page load.
@@ -190,6 +201,17 @@
 				</div>
 			</div>
 		</header>
+
+		{#if statsSessionExpired}
+			<div class="warning-banner">
+				<span class="warning-icon">🔑</span>
+				<div class="warning-content">
+					<strong>{tr('adash.sessionExpired')}</strong>
+					<p>{tr('adash.sessionExpiredDesc')}</p>
+				</div>
+				<a href={reauthUrl} class="btn btn-primary btn-sm">{tr('adash.signInAgain')}</a>
+			</div>
+		{/if}
 
 		{#if !data.botInGuild}
 			<div class="warning-banner">

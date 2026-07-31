@@ -210,6 +210,7 @@ export const en: Record<string, string> = {
 	'login.errors.config': 'Server configuration error. Please contact support.',
 	'login.errors.auth_failed': 'Authentication failed. Please try again.',
 	'login.errors.access_denied': 'You denied the authorization request.',
+	'login.errors.session_expired': 'Your Discord session expired. Please sign in again.',
 	'login.errors.generic': 'An error occurred. Please try again.',
 
 	// --- Error page ---
@@ -895,6 +896,10 @@ export const en: Record<string, string> = {
 	'adash.botNotInstalledDesc':
 		'The bot is not installed in this server. Some features require the bot to be added.',
 	'adash.addBotShort': 'Add Bot to Server',
+	'adash.sessionExpired': 'Discord Session Expired',
+	'adash.sessionExpiredDesc':
+		'Your Discord sign-in has lapsed, so live server data could not be loaded. The figures below are placeholders, not real values.',
+	'adash.signInAgain': 'Sign In Again',
 	'adash.serverManagement': 'Server Management',
 	'adash.links.automations': 'Automations',
 	'adash.links.automationsDesc': 'Set up automatic actions on events',

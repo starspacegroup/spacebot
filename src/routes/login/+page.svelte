@@ -12,7 +12,14 @@
 		typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
 	const error = urlParams?.get('error');
 
-	const KNOWN_ERRORS = ['no_code', 'invalid_state', 'config', 'auth_failed', 'access_denied'];
+	const KNOWN_ERRORS = [
+		'no_code',
+		'invalid_state',
+		'config',
+		'auth_failed',
+		'access_denied',
+		'session_expired',
+	];
 	const errorText = (code: string | null | undefined): string =>
 		tr(code && KNOWN_ERRORS.includes(code) ? `login.errors.${code}` : 'login.errors.generic');
 </script>

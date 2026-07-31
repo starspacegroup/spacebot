@@ -6,6 +6,13 @@ import { trackUserActivity } from '$lib/db/user-activity.js';
 import { handleGatewayLogsApi } from '$lib/server/gateway-logs-api.js';
 import { applySecurityHeaders } from '$lib/server/security-headers.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
+import {
+	clearDiscordSession,
+	requiresDiscordSession,
+	resolveDiscordSession,
+	sessionClearCookieHeaders,
+	shouldCheckDiscordSession,
+} from '$lib/server/discord-session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import { finishSpan, startSpan } from '$lib/server/telemetry.js';
 import { resolveLocale } from '$lib/i18n.js';
@@ -237,7 +244,8 @@ function setDevAuthCookies(cookies, platform, role = 'superadmin') {
 /**
  * Cookies that make up a Discord session/profile and should slide forward while
  * a user is active. Access/refresh tokens are intentionally excluded — their
- * lifetime is governed by Discord, not our session window.
+ * lifetime is governed by Discord, not our session window. `enforceSessionLifecycle`
+ * keeps the two in step by refreshing the access token when it lapses.
  */
 const SLIDING_SESSION_COOKIES = [
 	'discord_user',
@@ -300,6 +308,73 @@ function applySlidingSession(event) {
 			event.cookies.set(name, value, cookieOptions);
 		}
 	}
+}
+
+/**
+ * Keep the Discord access token in step with the sliding identity session.
+ *
+ * The identity cookies slide forward on every navigation; the access token
+ * expires on Discord's 7-day schedule. Without this, the two drift apart and a
+ * user ends up permanently "logged in" with no token — the dashboard renders
+ * "Unknown Server" with zeroed stats and the stats API answers 401, with
+ * nothing anywhere prompting a re-login.
+ *
+ * On an authenticated page navigation with no access token we spend the stored
+ * refresh token. If that fails the session is genuinely over, so we clear it —
+ * and on the pages that actually need Discord data (/admin, /account) bounce to
+ * /login rather than serve a half-authenticated page. Elsewhere the cleared
+ * session is enough: public pages just render logged-out instead of yanking a
+ * reader off the docs.
+ *
+ * Gated to non-dev so it never touches the dev-auth-bypass cookies, whose mock
+ * access token has no refresh token behind it.
+ *
+ * @returns {Promise<Response|null>} A redirect to /login when the session is
+ *   over, or null to continue the request
+ */
+async function enforceSessionLifecycle(event) {
+	if (dev) return null;
+
+	const pathname = event.url.pathname;
+	const shouldCheck = shouldCheckDiscordSession({
+		method: event.request.method,
+		pathname,
+		accept: event.request.headers.get('accept') || '',
+		hasIdentityCookie: Boolean(event.cookies.get('discord_user_id')),
+	});
+	if (!shouldCheck) return null;
+
+	const secure = isSecureRequest(event);
+	const state = await resolveDiscordSession({
+		cookies: event.cookies,
+		getEnvValue: (name) => getEnv(name, event.platform),
+		secure,
+	});
+
+	if (state !== 'expired') return null;
+
+	log.debug('[Session] Discord session expired and could not be refreshed; clearing');
+
+	// Public pages: drop the dead session and carry on rendering as a signed-out
+	// visitor. resolve() still runs, so these deletions are serialized normally.
+	if (!requiresDiscordSession(pathname)) {
+		clearDiscordSession(event.cookies);
+		return null;
+	}
+
+	// Built by hand rather than thrown as a redirect: SvelteKit only serializes
+	// its cookie jar during resolve(), so cookies.delete() on a short-circuited
+	// request would be dropped — leaving the dead session in place and every
+	// later navigation bouncing back here.
+	const returnTo = event.url.pathname + event.url.search;
+	const headers = new Headers({
+		location: `/login?error=session_expired&return_to=${encodeURIComponent(returnTo)}`,
+		'cache-control': 'no-store',
+	});
+	for (const cookie of sessionClearCookieHeaders(secure)) {
+		headers.append('set-cookie', cookie);
+	}
+	return new Response(null, { status: 302, headers });
 }
 
 /** @type {import('@sveltejs/kit').Handle} */
@@ -423,8 +498,17 @@ async function appHandle({ event, resolve }) {
 			return applySecurityHeaders(response);
 		}
 
-		// Sliding session expiration on authenticated page navigations. Must run
-		// before resolve() so the refreshed cookies are serialized into the response.
+		// Session lifecycle on authenticated page navigations. Both must run before
+		// resolve() so the refreshed cookies are serialized into the response.
+		// Token first: it can end the request with a redirect to /login, and it can
+		// hand this request's loaders a freshly refreshed access token.
+		const sessionRedirect = await enforceSessionLifecycle(event);
+		if (sessionRedirect) {
+			await trackAuthenticatedRequestActivity(event, sessionRedirect.status);
+			finishSpan(requestSpan, platform);
+			return applySecurityHeaders(sessionRedirect);
+		}
+
 		applySlidingSession(event);
 
 		// i18n: set <html lang> from the resolved locale (cookie → Accept-Language
