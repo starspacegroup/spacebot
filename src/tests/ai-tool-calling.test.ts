@@ -166,3 +166,65 @@ describe('action tool classification', () => {
 		expect(actionWasAttempted(undefined as any)).toBe(false);
 	});
 });
+
+describe('request payload budget', () => {
+	/**
+	 * Rough token estimate. Precision does not matter; catching a doubling does.
+	 */
+	const tokens = (s: string) => Math.round(s.length / 4);
+
+	const CONTEXT = {
+		managedGuilds: [
+			{ id: '111111111111111111', name: '*Space', isOwner: true },
+			{ id: '222222222222222222', name: 'Gaming Hub', isAdmin: true },
+		],
+		mcpEnabled: true,
+		isSuperAdmin: true,
+		selectedGuildId: '111111111111111111',
+		selectedGuildName: '*Space',
+		runnerInventory: null,
+	};
+
+	it('does not send the tool catalogue twice', async () => {
+		// The regression: native tools were added as JSON Schema while the prose
+		// catalogue stayed in the system prompt, so every request carried the
+		// full 38-tool catalogue in both forms. Input roughly doubled and the
+		// model stopped seeing the guild list — "The text does not specify which
+		// servers Davis has".
+		const { buildSystemPrompt } = await import('../lib/ai/chat.js');
+		const prompt = buildSystemPrompt({ ...CONTEXT, nativeToolsEnabled: true });
+
+		// A per-tool prose section is the fingerprint of the duplicate catalogue.
+		expect(prompt).not.toContain('### get_event_logs');
+		expect(prompt).not.toContain('### preview_scheduled_event');
+	});
+
+	it('keeps total input well inside the model context window', async () => {
+		const { buildSystemPrompt } = await import('../lib/ai/chat.js');
+		const prompt = buildSystemPrompt({ ...CONTEXT, nativeToolsEnabled: true });
+		const toolsJson = JSON.stringify(buildFunctionTools(MCP_TOOLS as any));
+
+		const total = tokens(prompt) + tokens(toolsJson);
+		// llama-3.3-70b on Workers AI is a 24k window; 1.5k is reserved for
+		// output and conversation history has to fit too. 14k leaves real
+		// headroom — the broken build sat at ~19.3k before history.
+		expect(total).toBeLessThan(14000);
+	});
+
+	it('still carries the things the model actually needs', async () => {
+		const { buildSystemPrompt } = await import('../lib/ai/chat.js');
+		const prompt = buildSystemPrompt({ ...CONTEXT, nativeToolsEnabled: true });
+		// Trimming must not cost the guild list or the preview-first workflow.
+		expect(prompt).toContain('111111111111111111');
+		expect(prompt).toContain('"*Space"');
+		expect(prompt).toContain('SCHEDULED EVENT WORKFLOW');
+		expect(prompt).toMatch(/NAMES ARE LITERAL/);
+	});
+
+	it('keeps the prose catalogue for the fallback path that has no native tools', async () => {
+		// Ollama never receives a tools array, so it still needs the prose.
+		const { buildSystemPrompt } = await import('../lib/ai/chat.js');
+		const prompt = buildSystemPrompt({ ...CONTEXT, nativeToolsEnabled: false });
+		expect(prompt).toContain('### get_event_logs');
+	});
+});

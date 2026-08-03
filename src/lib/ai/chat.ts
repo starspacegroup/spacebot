@@ -456,6 +456,8 @@ interface SystemPromptContext {
 	selectedGuildId?: string | null;
 	selectedGuildName?: string | null;
 	runnerInventory?: { ok: boolean; error?: string; runners: any[] } | null;
+	/** True when tools are sent as a native `tools` array, so the prose catalogue is redundant. */
+	nativeToolsEnabled?: boolean;
 	[key: string]: any;
 }
 
@@ -619,7 +621,11 @@ export function buildSystemPrompt(context: SystemPromptContext = {}) {
 	// Add MCP tools if enabled, or explain the limitation
 	if (context.mcpEnabled) {
 		prompt += '\n\n## Available Tools\n';
-		prompt += formatToolsForPrompt();
+		// When tools go out natively as JSON Schema, the prose catalogue is pure
+		// duplication — it doubled the input to ~19k tokens and crowded the guild
+		// list out of the model's attention ("The text does not specify which
+		// servers Davis has"). Workflow guidance is kept; per-tool schemas are not.
+		prompt += formatToolsForPrompt(!context.nativeToolsEnabled);
 	} else {
 		prompt += '\n\n## ⚠️ LIMITED DATA ACCESS ⚠️\n';
 		prompt += 'Live database tools are NOT available on this path. You cannot look up:\n';
@@ -1173,6 +1179,9 @@ export async function generateChatResponse(options, env) {
 		selectedGuildId,
 		selectedGuildName,
 		runnerInventory,
+		// Tools go out natively below, so the prose catalogue would be a
+		// second copy of the same 38 definitions.
+		nativeToolsEnabled: mcpEnabled,
 	});
 
 	// Build initial messages

@@ -3814,7 +3814,7 @@ export const MCP_TOOLS = [
 /**
  * Format tool definitions for the AI system prompt
  */
-export function formatToolsForPrompt() {
+export function formatToolsForPrompt(includeCatalogue = true) {
 	let prompt =
 		'You have access to database tools. You MUST use these tools to get any server-specific data.\n\n';
 	prompt +=
@@ -3860,6 +3860,13 @@ export function formatToolsForPrompt() {
 	prompt += `- With options: name="say", description="Bot says something", options=[{name: "message", description: "What to say", type: 3, required: true}], response_content="{option.message}"\n`;
 	prompt += `- Ephemeral: name="secret", description="Secret info", ephemeral=true, response_content="Only you see this"\n`;
 	prompt += `- Admin only: name="kick", description="Kick a user", default_member_permissions="2", action_type="KICK_MEMBER"\n\n`;
+
+	// The per-tool listing below duplicates what native function calling already
+	// sends as JSON Schema — ~8.9k tokens of prose against ~8.5k tokens of
+	// schema, i.e. the whole catalogue twice on every request. Callers that send
+	// a native `tools` array pass includeCatalogue=false; only the prompt-based
+	// fallback (Ollama) still needs it.
+	if (!includeCatalogue) return prompt;
 
 	for (const tool of MCP_TOOLS) {
 		prompt += `### ${tool.name}\n${tool.description}\n`;
