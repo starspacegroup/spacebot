@@ -29,6 +29,46 @@ Settings auto-save. If the publish switch is on while the headline or invite is 
 the client holds the save and shows what's outstanding — the server rejects the same
 combination, so the two agree.
 
+### Draft it with AI
+
+**Draft with AI** (`POST /api/admin/[serverId]/listing/suggest`) writes a first pass at the
+headline, description, category and tags from the guild's own data — name, Discord
+description, member count, features and channel names, which are the strongest signal for
+what a server is actually for.
+
+Two properties matter here:
+
+- **It cannot publish.** The endpoint never writes `listed`; only the settings form does.
+- **It does not save.** The draft fills the form and shows a review bar with **Keep
+  draft** / **Discard**, and Discard restores a snapshot taken before the fill. On an
+  already-published server, auto-saving would put machine-written copy live before anyone
+  read it, so the admin decides explicitly.
+
+Model output is clamped by `parseListingDraft` to exactly the limits a human submission
+gets — length caps, a category from `LISTING_CATEGORIES`, tags through the shared
+`parseTags` — so the model has no more latitude than someone typing. Asking for JSON in
+one shot is not reliable (observed live: a small local model returned prose on its second
+call), so a failed parse retries once with a blunter instruction before giving up.
+
+Requests are capped per guild (10 per 10 minutes) via `consumeQuota`, independent of the
+global `RATE_LIMIT_ENABLED` flag, because completions cost money.
+
+### Generate invite
+
+**Generate invite** (`POST /api/admin/[serverId]/listing/invite`) has the bot produce a
+permanent invite, so the Join button can't be broken by an admin pasting a 7-day link. It
+prefers what already exists before creating anything:
+
+1. the guild's **vanity URL**, if it has one — permanent, branded, and costs no API call;
+2. an **existing permanent invite** (`max_age` and `max_uses` both 0), preferring one the
+   bot made, so clicking twice doesn't litter the server's invite list;
+3. otherwise it **creates** one with `max_age: 0, max_uses: 0`, walking channels in a
+   sensible order — rules channel, then system channel, then plain text by position.
+
+Rather than computing permission overwrites, creation attempts each candidate and moves on
+when a channel refuses; Discord is the authority. Failures are translated into something an
+admin can act on ("check that the bot is still a member") instead of a bare `401`.
+
 ## What visitors see
 
 The card and detail pages combine admin-authored copy with Discord-sourced identity
@@ -152,6 +192,9 @@ so "recently listed" ordering doesn't reshuffle every time an admin fixes a typo
 | Path                                           | Role                                                        |
 | ---------------------------------------------- | ----------------------------------------------------------- |
 | `src/lib/db/server-listings.ts`                | Validation, CRUD, public queries, public projection, health |
+| `src/lib/ai/listing-draft.ts`                  | AI draft prompt, JSON parsing, retry                        |
+| `src/lib/discord/invites.ts`                   | Permanent-invite resolution (vanity → existing → create)    |
+| `src/routes/api/admin/[serverId]/listing/*`    | Draft + invite endpoints (full-admin gated, quota'd)        |
 | `src/lib/server-listing-display.ts`            | Shared presentation helpers (initials, hue, counts)         |
 | `src/routes/admin/superadmin/+page.*`          | Operator health panel                                       |
 | `src/routes/servers/+page.*`                   | Browse page (search/filter/sort/paginate)                   |

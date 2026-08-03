@@ -142,6 +142,96 @@
 		autoSave();
 	}
 
+	// --- AI drafting -------------------------------------------------------
+	// The draft is applied to the form but deliberately NOT saved. This copy is
+	// public-facing, and on an already-published server an auto-save would put
+	// machine-written text live before anyone read it — so the admin keeps or
+	// discards it explicitly.
+	let draftLoading = $state(false);
+	let draftPending = $state(false);
+	let draftBackup: Record<string, any> | null = null;
+
+	async function draftWithAI() {
+		if (draftLoading) return;
+		draftLoading = true;
+		try {
+			const res = await fetch(`/api/admin/${data.serverId}/listing/suggest`, {
+				method: 'POST',
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				toast.error(body?.error || tr('listing.aiFailed'));
+				return;
+			}
+
+			// Snapshot first so Discard is a real undo, not an approximation.
+			draftBackup = {
+				headline: listingHeadline,
+				description: listingDescription,
+				category: listingCategory,
+				tags: listingTags,
+			};
+			listingHeadline = body.draft?.headline || listingHeadline;
+			listingDescription = body.draft?.description || listingDescription;
+			listingCategory = body.draft?.category || listingCategory;
+			if (Array.isArray(body.draft?.tags) && body.draft.tags.length) {
+				listingTags = body.draft.tags.join(', ');
+			}
+			draftPending = true;
+			toast.success(tr('listing.aiFilled'));
+		} catch {
+			toast.error(tr('listing.aiFailed'));
+		} finally {
+			draftLoading = false;
+		}
+	}
+
+	function keepDraft() {
+		draftPending = false;
+		draftBackup = null;
+		autoSaveListing();
+	}
+
+	function discardDraft() {
+		if (draftBackup) {
+			listingHeadline = draftBackup.headline;
+			listingDescription = draftBackup.description;
+			listingCategory = draftBackup.category;
+			listingTags = draftBackup.tags;
+		}
+		draftPending = false;
+		draftBackup = null;
+	}
+
+	// --- Bot-generated invite ----------------------------------------------
+	let inviteLoading = $state(false);
+
+	async function generateInvite() {
+		if (inviteLoading) return;
+		inviteLoading = true;
+		try {
+			const res = await fetch(`/api/admin/${data.serverId}/listing/invite`, {
+				method: 'POST',
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok || !body?.invite_url) {
+				toast.error(body?.error || tr('listing.inviteFailed'));
+				return;
+			}
+			listingInviteUrl = body.invite_url;
+			// Unlike the AI copy, this is a fact about the server rather than a
+			// piece of writing to review, so it saves like any other field edit.
+			autoSaveListing();
+			toast.success(
+				body.source === 'created' ? tr('listing.inviteCreated') : tr('listing.inviteFound')
+			);
+		} catch {
+			toast.error(tr('listing.inviteFailed'));
+		} finally {
+			inviteLoading = false;
+		}
+	}
+
 	// Browser timezone detection
 	let browserTimezone = $state('');
 	let browserTime = $state('');
@@ -705,6 +795,40 @@
 				{/if}
 			</div>
 
+			<div class="settings-card listing-assist-card">
+				<div class="setting-info">
+					<span class="setting-label">{tr('listing.aiTitle')}</span>
+					<span class="setting-desc">{tr('listing.aiDesc')}</span>
+				</div>
+				<button
+					type="button"
+					class="btn btn-secondary btn-sm listing-assist-btn"
+					onclick={draftWithAI}
+					disabled={draftLoading}
+				>
+					{draftLoading ? tr('listing.aiWorking') : `✨ ${tr('listing.aiButton')}`}
+				</button>
+			</div>
+
+			{#if draftPending}
+				<div class="listing-notice listing-notice-info listing-draft-bar">
+					<div>
+						<strong>{tr('listing.aiPendingTitle')}</strong>
+						<span>{tr('listing.aiPendingDesc')}</span>
+					</div>
+					<div class="listing-draft-actions">
+						<button type="button" class="btn btn-primary btn-sm" onclick={keepDraft}
+							>{tr('listing.aiKeep')}</button
+						>
+						<button
+							type="button"
+							class="btn btn-secondary btn-sm"
+							onclick={discardDraft}>{tr('listing.aiDiscard')}</button
+						>
+					</div>
+				</div>
+			{/if}
+
 			<div class="settings-card">
 				<label for="listingHeadline" class="setting-label">{tr('listing.headline')}</label>
 				<span class="setting-desc">{tr('listing.headlineDesc')}</span>
@@ -770,15 +894,25 @@
 			<div class="settings-card">
 				<label for="listingInviteUrl" class="setting-label">{tr('listing.invite')}</label>
 				<span class="setting-desc">{tr('listing.inviteDesc')}</span>
-				<input
-					id="listingInviteUrl"
-					name="listingInviteUrl"
-					class="form-input"
-					class:input-error={Boolean(form?.listingErrors?.invite_url)}
-					bind:value={listingInviteUrl}
-					placeholder="https://discord.gg/your-invite"
-					onchange={autoSaveListing}
-				/>
+				<div class="listing-invite-row">
+					<input
+						id="listingInviteUrl"
+						name="listingInviteUrl"
+						class="form-input"
+						class:input-error={Boolean(form?.listingErrors?.invite_url)}
+						bind:value={listingInviteUrl}
+						placeholder="https://discord.gg/your-invite"
+						onchange={autoSaveListing}
+					/>
+					<button
+						type="button"
+						class="btn btn-secondary btn-sm listing-assist-btn"
+						onclick={generateInvite}
+						disabled={inviteLoading}
+					>
+						{inviteLoading ? tr('listing.inviteWorking') : tr('listing.inviteButton')}
+					</button>
+				</div>
 				{#if form?.listingErrors?.invite_url}
 					<span class="listing-error">{form.listingErrors.invite_url}</span>
 				{/if}
@@ -2098,5 +2232,55 @@
 
 	.input-error {
 		border-color: var(--color-danger);
+	}
+
+	.listing-assist-card {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.listing-assist-btn {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+
+	.listing-assist-btn:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+
+	.listing-draft-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.listing-draft-actions {
+		display: flex;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+
+	.listing-invite-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.listing-invite-row .form-input {
+		flex: 1;
+		min-width: 0;
+	}
+
+	@media (max-width: 560px) {
+		.listing-invite-row {
+			flex-direction: column;
+			align-items: stretch;
+		}
 	}
 </style>

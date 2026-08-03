@@ -36,7 +36,7 @@ export function isOllamaSelected(env) {
  * @param {{ system: string, messages: Array<{role: string, content: string}>, model: string, baseUrl: string }} opts
  * @returns {Promise<string>}
  */
-async function callOllamaChat({ system, messages, model, baseUrl }) {
+export async function callOllamaChat({ system, messages, model, baseUrl }) {
 	const url = `${baseUrl.replace(/\/$/, '')}/api/chat`;
 	const body = {
 		model,
@@ -872,7 +872,7 @@ function extractUsageMetrics(payload) {
 /**
  * Call the AI API, trying each model in order until one succeeds.
  */
-async function callAI(messages, env) {
+export async function callAI(messages, env) {
 	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
 	const apiToken = env.CLOUDFLARE_AI_TOKEN;
 	const gatewayId = env.CLOUDFLARE_AI_GATEWAY_ID;

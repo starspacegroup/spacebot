@@ -32,6 +32,55 @@ export function rateLimitIdentity(event: any): string {
 	);
 }
 
+/**
+ * Consume one unit of a named quota, independent of the global limiter.
+ *
+ * `checkRateLimit` below is opt-in (`RATE_LIMIT_ENABLED`) and generous (120/min)
+ * because it guards ordinary reads. Expensive side-effectful endpoints — an AI
+ * completion, creating a Discord invite — need a tight ceiling that applies
+ * whether or not the global flag is on, so they call this directly.
+ *
+ * Returns the remaining allowance, or `null` when the caller is over budget.
+ * Fails open on a DB error: a broken limiter must not break the feature.
+ */
+export async function consumeQuota(
+	db: any,
+	group: string,
+	identity: string,
+	{ max, windowSeconds }: { max: number; windowSeconds: number }
+): Promise<{ remaining: number; resetAt: number } | null> {
+	if (!db) return { remaining: max, resetAt: 0 };
+
+	const now = Math.floor(Date.now() / 1000);
+	const windowStart = now - (now % windowSeconds);
+	const expiresAt = windowStart + windowSeconds;
+	const key = `${group}:${identity}:${windowStart}`;
+
+	try {
+		await db.prepare('DELETE FROM api_rate_limits WHERE expires_at < ?').bind(now).run();
+		await db
+			.prepare(
+				`INSERT INTO api_rate_limits (key, route_group, window_start, request_count, expires_at, updated_at)
+				 VALUES (?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+				 ON CONFLICT(key) DO UPDATE SET
+				 request_count = request_count + 1,
+				 updated_at = CURRENT_TIMESTAMP`
+			)
+			.bind(key, group, windowStart, expiresAt)
+			.run();
+
+		const current = await db
+			.prepare('SELECT request_count FROM api_rate_limits WHERE key = ?')
+			.bind(key)
+			.first();
+		const used = Number(current?.request_count || 0);
+		if (used > max) return null;
+		return { remaining: Math.max(0, max - used), resetAt: expiresAt };
+	} catch {
+		return { remaining: max, resetAt: expiresAt };
+	}
+}
+
 export async function checkRateLimit(event: any): Promise<Response | null> {
 	if (!getEnvBoolean('RATE_LIMIT_ENABLED', event.platform, false)) return null;
 	if (!event.url.pathname.startsWith('/api/')) return null;
