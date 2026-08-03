@@ -3,12 +3,9 @@
  * Handles storing and retrieving event logs from D1
  */
 
-import { log } from "../log.js";
-import { enrichRowsWithActorAvatars } from "./avatar-enrichment.js";
-import {
-  DISCORD_EVENT_CATEGORIES,
-  DISCORD_EVENT_TYPES,
-} from "../discord/event-metadata.js";
+import { log } from '../log.js';
+import { enrichRowsWithActorAvatars } from './avatar-enrichment.js';
+import { DISCORD_EVENT_CATEGORIES, DISCORD_EVENT_TYPES } from '../discord/event-metadata.js';
 
 // Re-export the unified log utility for other modules
 export { log };
@@ -38,41 +35,46 @@ export { log };
  * @returns {Promise<{success: boolean, error?: string}>} - Result with success status and optional error
  */
 export async function logEvent(db, event) {
-  if (!db) {
-    log.warn("Database not available, skipping event log");
-    return { success: false, error: "Database not available" };
-  }
+	if (!db) {
+		log.warn('Database not available, skipping event log');
+		return { success: false, error: 'Database not available' };
+	}
 
-  try {
-    await db.prepare(`
+	try {
+		await db
+			.prepare(
+				`
 			INSERT INTO event_logs (
 				guild_id, event_type, event_category,
 				actor_id, actor_name, actor_is_bot, actor_avatar, actor_discriminator,
 				target_id, target_name, target_avatar,
 				channel_id, channel_name, details
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`).bind(
-      event.guild_id,
-      event.event_type,
-      event.event_category,
-      event.actor_id || null,
-      event.actor_name || null,
-      event.actor_is_bot ? 1 : 0,
-      event.actor_avatar || null,
-      event.actor_discriminator || '0',
-      event.target_id || null,
-      event.target_name || null,
-      event.target_avatar || null,
-      event.channel_id || null,
-      event.channel_name || null,
-      event.details ? JSON.stringify(event.details) : null,
-    ).run();
+		`
+			)
+			.bind(
+				event.guild_id,
+				event.event_type,
+				event.event_category,
+				event.actor_id || null,
+				event.actor_name || null,
+				event.actor_is_bot ? 1 : 0,
+				event.actor_avatar || null,
+				event.actor_discriminator || '0',
+				event.target_id || null,
+				event.target_name || null,
+				event.target_avatar || null,
+				event.channel_id || null,
+				event.channel_name || null,
+				event.details ? JSON.stringify(event.details) : null
+			)
+			.run();
 
-    return { success: true };
-  } catch (error) {
-    log.error("Failed to log event:", error);
-    return { success: false, error: error.message || String(error) };
-  }
+		return { success: true };
+	} catch (error) {
+		log.error('Failed to log event:', error);
+		return { success: false, error: error.message || String(error) };
+	}
 }
 
 /**
@@ -89,104 +91,122 @@ export async function logEvent(db, event) {
  * @param {string} [options.endDate] - Filter by end date
  * @param {string} [options.search] - Search in actor/target names
  * @param {string} [options.sortOrder] - Sort order: 'asc' or 'desc' (default: 'desc')
- * @returns {Promise<{logs: Array, total: number}>}
+ * @param {boolean} [options.includeTotal] - Run the COUNT(*) for pagination (default: true).
+ *   `COUNT(*) ... WHERE guild_id = ?` reads every event row for the guild, and event_logs is
+ *   the largest table in the database. Pass false on polling refreshes, where the total is
+ *   already on screen and barely moves, so the poll costs only the indexed LIMIT query.
+ * @returns {Promise<{logs: Array, total: number|null}>}
  */
 export async function getLogs(db, guildId, options: Record<string, any> = {}) {
-  if (!db) {
-    return { logs: [], total: 0 };
-  }
+	if (!db) {
+		return { logs: [], total: 0 };
+	}
 
-  const {
-    limit = 50,
-    offset = 0,
-    category,
-    eventType,
-    actorId,
-    startDate,
-    endDate,
-    search,
-    sortOrder = "desc",
-  } = options;
+	const {
+		limit = 50,
+		offset = 0,
+		includeTotal = true,
+		category,
+		eventType,
+		actorId,
+		startDate,
+		endDate,
+		search,
+		sortOrder = 'desc',
+	} = options;
 
-  let whereClause = "WHERE guild_id = ?";
-  const params = [guildId];
+	let whereClause = 'WHERE guild_id = ?';
+	const params = [guildId];
 
-  if (category) {
-    whereClause += " AND event_category = ?";
-    params.push(category);
-  }
+	if (category) {
+		whereClause += ' AND event_category = ?';
+		params.push(category);
+	}
 
-  if (eventType) {
-    whereClause += " AND event_type = ?";
-    params.push(eventType);
-  }
+	if (eventType) {
+		whereClause += ' AND event_type = ?';
+		params.push(eventType);
+	}
 
-  if (actorId) {
-    whereClause += " AND actor_id = ?";
-    params.push(actorId);
-  }
+	if (actorId) {
+		whereClause += ' AND actor_id = ?';
+		params.push(actorId);
+	}
 
-  if (startDate) {
-    whereClause += " AND created_at >= ?";
-    params.push(startDate);
-  }
+	if (startDate) {
+		whereClause += ' AND created_at >= ?';
+		params.push(startDate);
+	}
 
-  if (endDate) {
-    whereClause += " AND created_at <= ?";
-    params.push(endDate);
-  }
+	if (endDate) {
+		whereClause += ' AND created_at <= ?';
+		params.push(endDate);
+	}
 
-  if (search) {
-    whereClause +=
-      " AND (actor_name LIKE ? OR target_name LIKE ? OR channel_name LIKE ?)";
-    const searchPattern = `%${search}%`;
-    params.push(searchPattern, searchPattern, searchPattern);
-  }
+	if (search) {
+		whereClause += ' AND (actor_name LIKE ? OR target_name LIKE ? OR channel_name LIKE ?)';
+		const searchPattern = `%${search}%`;
+		params.push(searchPattern, searchPattern, searchPattern);
+	}
 
-  // Validate sortOrder to prevent SQL injection
-  const orderDirection = sortOrder === "asc" ? "ASC" : "DESC";
+	// Validate sortOrder to prevent SQL injection
+	const orderDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
 
-  try {
-    // Get total count
-    const countResult = await db.prepare(`
+	try {
+		// Get total count (skipped on polling refreshes — see includeTotal)
+		const countResult = includeTotal
+			? await db
+					.prepare(
+						`
 			SELECT COUNT(*) as total FROM event_logs ${whereClause}
-		`).bind(...params).first();
+		`
+					)
+					.bind(...params)
+					.first()
+			: null;
 
-    // Get paginated logs
-    const logsResult = await db.prepare(`
+		// Get paginated logs
+		const logsResult = await db
+			.prepare(
+				`
 			SELECT * FROM event_logs 
 			${whereClause}
 			ORDER BY created_at ${orderDirection}
 			LIMIT ? OFFSET ?
-		`).bind(...params, limit, offset).all();
+		`
+			)
+			.bind(...params, limit, offset)
+			.all();
 
-    const parsedLogs = (logsResult.results || []).map((log) => ({
-        ...log,
-        details: log.details ? JSON.parse(log.details) : null,
-      }));
+		const parsedLogs = (logsResult.results || []).map((log) => ({
+			...log,
+			details: log.details ? JSON.parse(log.details) : null,
+		}));
 
-    const actorEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, parsedLogs, {
-      idField: "actor_id",
-      avatarField: "actor_avatar",
-      nameField: "actor_name",
-      discriminatorField: "actor_discriminator",
-    });
+		const actorEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, parsedLogs, {
+			idField: 'actor_id',
+			avatarField: 'actor_avatar',
+			nameField: 'actor_name',
+			discriminatorField: 'actor_discriminator',
+		});
 
-    const fullyEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, actorEnrichedLogs, {
-      idField: "target_id",
-      avatarField: "target_avatar",
-      nameField: "target_name",
-      discriminatorField: null,
-    });
+		const fullyEnrichedLogs = await enrichRowsWithActorAvatars(db, guildId, actorEnrichedLogs, {
+			idField: 'target_id',
+			avatarField: 'target_avatar',
+			nameField: 'target_name',
+			discriminatorField: null,
+		});
 
-    return {
-      logs: fullyEnrichedLogs,
-      total: countResult?.total || 0,
-    };
-  } catch (error) {
-    log.error("Failed to fetch logs:", error);
-    return { logs: [], total: 0 };
-  }
+		return {
+			logs: fullyEnrichedLogs,
+			// null (not 0) when the count was skipped, so callers can tell "not asked"
+			// from "genuinely empty" and keep the total they already have on screen.
+			total: includeTotal ? countResult?.total || 0 : null,
+		};
+	} catch (error) {
+		log.error('Failed to fetch logs:', error);
+		return { logs: [], total: 0 };
+	}
 }
 
 /**
@@ -199,11 +219,15 @@ export async function getLogs(db, guildId, options: Record<string, any> = {}) {
  * @returns {Promise<string[]>}
  */
 export async function getGuildGitHubRepositories(db, guildId, limit = 200) {
-  if (!db || !guildId) return [];
+	if (!db || !guildId) return [];
 
-  try {
-    const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(500, Math.floor(limit))) : 200;
-    const { results } = await db.prepare(`
+	try {
+		const safeLimit = Number.isFinite(limit)
+			? Math.max(1, Math.min(500, Math.floor(limit)))
+			: 200;
+		const { results } = await db
+			.prepare(
+				`
       SELECT DISTINCT TRIM(json_extract(details, '$.repo')) AS repo
       FROM event_logs
       WHERE guild_id = ?
@@ -213,15 +237,18 @@ export async function getGuildGitHubRepositories(db, guildId, limit = 200) {
         AND TRIM(json_extract(details, '$.repo')) != ''
       ORDER BY LOWER(repo) ASC
       LIMIT ?
-    `).bind(guildId, safeLimit).all();
+    `
+			)
+			.bind(guildId, safeLimit)
+			.all();
 
-    return (results || [])
-      .map((row) => row.repo)
-      .filter((repo) => typeof repo === 'string' && repo.length > 0);
-  } catch (error) {
-    log.error('Failed to fetch GitHub repositories for guild:', error);
-    return [];
-  }
+		return (results || [])
+			.map((row) => row.repo)
+			.filter((repo) => typeof repo === 'string' && repo.length > 0);
+	} catch (error) {
+		log.error('Failed to fetch GitHub repositories for guild:', error);
+		return [];
+	}
 }
 
 /**
@@ -231,26 +258,38 @@ export async function getGuildGitHubRepositories(db, guildId, limit = 200) {
  * @returns {Promise<Object>} - Statistics object
  */
 export async function getLogStats(db, guildId) {
-  if (!db) {
-    return { totalEvents: 0, byCategory: {}, recentActivity: [] };
-  }
+	if (!db) {
+		return { totalEvents: 0, byCategory: {}, recentActivity: [] };
+	}
 
-  try {
-    // Total events
-    const totalResult = await db.prepare(`
+	try {
+		// Total events
+		const totalResult = await db
+			.prepare(
+				`
 			SELECT COUNT(*) as total FROM event_logs WHERE guild_id = ?
-		`).bind(guildId).first();
+		`
+			)
+			.bind(guildId)
+			.first();
 
-    // Events by category
-    const categoryResult = await db.prepare(`
+		// Events by category
+		const categoryResult = await db
+			.prepare(
+				`
 			SELECT event_category, COUNT(*) as count 
 			FROM event_logs 
 			WHERE guild_id = ?
 			GROUP BY event_category
-		`).bind(guildId).all();
+		`
+			)
+			.bind(guildId)
+			.all();
 
-    // Events in last 24 hours by hour
-    const recentResult = await db.prepare(`
+		// Events in last 24 hours by hour
+		const recentResult = await db
+			.prepare(
+				`
 			SELECT 
 				strftime('%Y-%m-%d %H:00', created_at) as hour,
 				COUNT(*) as count
@@ -258,35 +297,43 @@ export async function getLogStats(db, guildId) {
 			WHERE guild_id = ? AND created_at >= datetime('now', '-24 hours')
 			GROUP BY strftime('%Y-%m-%d %H:00', created_at)
 			ORDER BY hour DESC
-		`).bind(guildId).all();
+		`
+			)
+			.bind(guildId)
+			.all();
 
-    // Top event types
-    const topEventsResult = await db.prepare(`
+		// Top event types
+		const topEventsResult = await db
+			.prepare(
+				`
 			SELECT event_type, COUNT(*) as count 
 			FROM event_logs 
 			WHERE guild_id = ?
 			GROUP BY event_type
 			ORDER BY count DESC
 			LIMIT 10
-		`).bind(guildId).all();
+		`
+			)
+			.bind(guildId)
+			.all();
 
-    return {
-      totalEvents: totalResult?.total || 0,
-      byCategory: Object.fromEntries(
-        (categoryResult.results || []).map((r) => [r.event_category, r.count]),
-      ),
-      recentActivity: recentResult.results || [],
-      topEvents: topEventsResult.results || [],
-    };
-  } catch (error) {
-    log.error("Failed to fetch log stats:", error);
-    return {
-      totalEvents: 0,
-      byCategory: {},
-      recentActivity: [],
-      topEvents: [],
-    };
-  }
+		return {
+			totalEvents: totalResult?.total || 0,
+			byCategory: Object.fromEntries(
+				(categoryResult.results || []).map((r) => [r.event_category, r.count])
+			),
+			recentActivity: recentResult.results || [],
+			topEvents: topEventsResult.results || [],
+		};
+	} catch (error) {
+		log.error('Failed to fetch log stats:', error);
+		return {
+			totalEvents: 0,
+			byCategory: {},
+			recentActivity: [],
+			topEvents: [],
+		};
+	}
 }
 
 /**
@@ -296,29 +343,34 @@ export async function getLogStats(db, guildId) {
  * @returns {Promise<Object|null>}
  */
 export async function getGuildSettings(db, guildId) {
-  if (!db) return null;
+	if (!db) return null;
 
-  try {
-    const result = await db.prepare(`
+	try {
+		const result = await db
+			.prepare(
+				`
 			SELECT * FROM guild_settings WHERE guild_id = ?
-		`).bind(guildId).first();
+		`
+			)
+			.bind(guildId)
+			.first();
 
-    if (result) {
-      return {
-        ...result,
-        excluded_channels: result.excluded_channels
-          ? JSON.parse(result.excluded_channels)
-          : [],
-        excluded_categories: result.excluded_categories
-          ? JSON.parse(result.excluded_categories)
-          : [],
-      };
-    }
-    return null;
-  } catch (error) {
-    log.error("Failed to get guild settings:", error);
-    return null;
-  }
+		if (result) {
+			return {
+				...result,
+				excluded_channels: result.excluded_channels
+					? JSON.parse(result.excluded_channels)
+					: [],
+				excluded_categories: result.excluded_categories
+					? JSON.parse(result.excluded_categories)
+					: [],
+			};
+		}
+		return null;
+	} catch (error) {
+		log.error('Failed to get guild settings:', error);
+		return null;
+	}
 }
 
 /**
@@ -329,10 +381,12 @@ export async function getGuildSettings(db, guildId) {
  * @returns {Promise<boolean>}
  */
 export async function updateGuildSettings(db, guildId, settings) {
-  if (!db) return false;
+	if (!db) return false;
 
-  try {
-    await db.prepare(`
+	try {
+		await db
+			.prepare(
+				`
 			INSERT INTO guild_settings (guild_id, logging_enabled, log_channel_id, excluded_channels, excluded_categories)
 			VALUES (?, ?, ?, ?, ?)
 			ON CONFLICT(guild_id) DO UPDATE SET
@@ -341,23 +395,22 @@ export async function updateGuildSettings(db, guildId, settings) {
 				excluded_channels = excluded.excluded_channels,
 				excluded_categories = excluded.excluded_categories,
 				updated_at = CURRENT_TIMESTAMP
-		`).bind(
-      guildId,
-      settings.logging_enabled ?? 1,
-      settings.log_channel_id || null,
-      settings.excluded_channels
-        ? JSON.stringify(settings.excluded_channels)
-        : null,
-      settings.excluded_categories
-        ? JSON.stringify(settings.excluded_categories)
-        : null,
-    ).run();
+		`
+			)
+			.bind(
+				guildId,
+				settings.logging_enabled ?? 1,
+				settings.log_channel_id || null,
+				settings.excluded_channels ? JSON.stringify(settings.excluded_channels) : null,
+				settings.excluded_categories ? JSON.stringify(settings.excluded_categories) : null
+			)
+			.run();
 
-    return true;
-  } catch (error) {
-    log.error("Failed to update guild settings:", error);
-    return false;
-  }
+		return true;
+	} catch (error) {
+		log.error('Failed to update guild settings:', error);
+		return false;
+	}
 }
 
 /**
@@ -368,28 +421,33 @@ export async function updateGuildSettings(db, guildId, settings) {
  * @returns {Promise<Object|null>} - Log entry or null if not found
  */
 export async function getLogById(db, logId, guildId) {
-  if (!db) {
-    return null;
-  }
+	if (!db) {
+		return null;
+	}
 
-  try {
-    const result = await db.prepare(`
+	try {
+		const result = await db
+			.prepare(
+				`
 			SELECT * FROM event_logs 
 			WHERE id = ? AND guild_id = ?
-		`).bind(logId, guildId).first();
+		`
+			)
+			.bind(logId, guildId)
+			.first();
 
-    if (!result) {
-      return null;
-    }
+		if (!result) {
+			return null;
+		}
 
-    return {
-      ...result,
-      details: result.details ? JSON.parse(result.details) : null,
-    };
-  } catch (error) {
-    log.error("Failed to fetch log by ID:", error);
-    return null;
-  }
+		return {
+			...result,
+			details: result.details ? JSON.parse(result.details) : null,
+		};
+	} catch (error) {
+		log.error('Failed to fetch log by ID:', error);
+		return null;
+	}
 }
 
 /**
@@ -399,19 +457,24 @@ export async function getLogById(db, logId, guildId) {
  * @returns {Promise<number>} - Number of deleted rows
  */
 export async function pruneOldLogs(db, daysToKeep = 30) {
-  if (!db) return 0;
+	if (!db) return 0;
 
-  try {
-    const result = await db.prepare(`
+	try {
+		const result = await db
+			.prepare(
+				`
 			DELETE FROM event_logs 
 			WHERE created_at < datetime('now', '-' || ? || ' days')
-		`).bind(daysToKeep).run();
+		`
+			)
+			.bind(daysToKeep)
+			.run();
 
-    return result.meta?.changes || 0;
-  } catch (error) {
-    log.error("Failed to prune old logs:", error);
-    return 0;
-  }
+		return result.meta?.changes || 0;
+	} catch (error) {
+		log.error('Failed to prune old logs:', error);
+		return 0;
+	}
 }
 
 export const EVENT_CATEGORIES = DISCORD_EVENT_CATEGORIES;

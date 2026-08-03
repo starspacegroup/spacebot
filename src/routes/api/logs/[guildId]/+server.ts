@@ -74,6 +74,12 @@ export async function GET({ params, url, cookies, platform }) {
   const endDate = url.searchParams.get("endDate");
   const search = url.searchParams.get("search");
   const includeStats = url.searchParams.get("stats") === "true";
+  // Both of these are opt-OUT-able because they are the expensive half of this
+  // endpoint: the stats block and the pagination COUNT each scan every event row
+  // for the guild, while the log list itself is served from
+  // idx_event_logs_guild_created. The logs page polls every 10s, so its refresh
+  // asks for neither and costs one indexed read instead of four table scans.
+  const includeTotal = url.searchParams.get("count") !== "false";
   const sortOrder = url.searchParams.get("sortOrder") || "desc";
 
   const db = (platform as any)?.env?.DB;
@@ -107,15 +113,22 @@ export async function GET({ params, url, cookies, platform }) {
       endDate,
       search,
       sortOrder,
+      includeTotal,
     });
 
     const response: Record<string, any> = {
       logs,
-      total,
       limit,
       offset,
-      hasMore: offset + logs.length < total,
     };
+
+    // Omit rather than send a misleading zero when the count was skipped.
+    if (total !== null && total !== undefined) {
+      response.total = total;
+      response.hasMore = offset + logs.length < total;
+    } else {
+      response.hasMore = logs.length >= limit;
+    }
 
     // Include stats if requested
     if (includeStats) {

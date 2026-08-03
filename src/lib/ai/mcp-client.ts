@@ -7,6 +7,7 @@
  */
 
 import { log } from '../log.js';
+import { DISTINCT_GUILD_IDS_SQL } from '../db/distinct-guilds.js';
 
 // Dynamic import for SQLite (only loaded when needed, not available on Workers)
 // Uses bun:sqlite when running under Bun, falls back to better-sqlite3 for Node.js
@@ -245,11 +246,21 @@ export class MCPClient {
 	}
 
 	/**
-	 * List all guild IDs that have data in SpaceBot
+	 * List all guild IDs that have data in SpaceBot.
+	 *
+	 * `SELECT DISTINCT guild_id FROM event_logs` walks every row of the largest
+	 * table in the database to produce a handful of ids — the same query the
+	 * 2026-07-27 D1 rows-read fix replaced in `cron-jobs.getGuildsWithLogs`, which
+	 * missed this copy. The recursive "loose index scan" below hops between
+	 * distinct guild_ids using idx_event_logs_guild_created, one seek per guild,
+	 * so cost is O(guilds) rather than O(events).
+	 *
+	 * The other three tables hold at most a few rows per guild, so a plain
+	 * DISTINCT on them is already cheap and left alone.
 	 */
 	async listGuilds() {
 		const [logsResult, automationsResult, commandsResult, settingsResult] = await Promise.all([
-			this.executeD1Query('SELECT DISTINCT guild_id FROM event_logs'),
+			this.executeD1Query(DISTINCT_GUILD_IDS_SQL),
 			this.executeD1Query('SELECT DISTINCT guild_id FROM automations'),
 			this.executeD1Query('SELECT DISTINCT guild_id FROM commands'),
 			this.executeD1Query('SELECT DISTINCT guild_id FROM guild_settings'),

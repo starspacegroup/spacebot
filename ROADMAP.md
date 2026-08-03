@@ -212,6 +212,45 @@ Fixes:
 Taxonomy: footgun #5 again (resource trap), plus "a repair window that was meant to be
 occasional wired onto the recurring path".
 
+#### D1 rows-read, second round: the logs page — FIXED 2026-08-03
+
+The 07-27 sweep fixed the timer-driven offenders but missed the largest _continuous_
+one, because it only bites while a human has a tab open.
+
+`admin/[serverId]/logs` polls every 10s with **no visibility guard**, and every poll sent
+`stats=true`. With no filters selected the where clause is just `WHERE guild_id = ?`, so
+each poll ran **four unbounded scans of `event_logs`**: the pagination `COUNT(*)`, plus
+`getLogStats`'s total, by-category and by-event-type aggregates. Only the 24h bucket query
+was index-bounded. At ~20k events for one guild that is the whole 5M/day budget in about
+ten minutes, from a single backgrounded tab.
+
+- [x] `getLogs` gained `includeTotal`, returning `total: null` rather than a misleading
+      `0`, so callers can tell "not asked" from "empty"; the API exposes `?count=false`.
+- [x] The page's auto-refresh asks for neither stats nor count — a poll is now one indexed
+      `LIMIT` read instead of four table scans. `if (result.stats)` already guarded the
+      client assignment; `total` needed the same guard.
+- [x] Visibility guards + foreground catch-up on the logs, stats and vc-activity pages,
+      matching what the superadmin page already had.
+- [x] `mcp-client.listGuilds()` still ran the naive `SELECT DISTINCT guild_id FROM
+  event_logs` that 07-27 replaced in `cron-jobs.getGuildsWithLogs`: the fix had been
+      applied to one of two copies. Both now build from `src/lib/db/distinct-guilds.ts`.
+- [x] **Raw `event_logs` retention** (2026-08-03) — `pruneOldLogs()` had no caller, so the
+      table grew without bound and every scan over it got slower forever. Replaced with
+      `pruneAggregatedEventLogs` in the daily refresh, on two rules: never delete ahead of
+      a guild's **daily**-aggregate watermark (daily is the artifact that survives, since
+      hourly is pruned at 30d and daily is built from it — a guild with no daily aggregate
+      is skipped entirely), and never let the prune become the next blowout (batched,
+      index-served deletes with a per-run budget). The budget is sized against D1's
+      **write** cap rather than its read cap — `event_logs` has 7 indexes, so ~8 row-writes
+      per deletion; 5,000/night ≈ 40k writes against a ~100k/day allowance. A backlog
+      drains over successive nights instead of tripping the cap and taking live logging
+      down with it. Long-term history is unaffected: daily aggregates are kept forever at
+      ~365 rows/guild/year. Docs: `docs/data-retention.md`.
+
+Taxonomy: the same footgun as 07-27 (a resource trap on a recurring path), plus a new
+one — **a fix applied to one of two copies of the same query**, which is why the SQL now
+lives in a single module.
+
 #### Orchestrator "27K errors" are phantom (Workflows metrics artifact) — 2026-07-12
 
 `spacebot-ai-orchestrator` shows a ~35% error rate (~27k `scriptThrewException`

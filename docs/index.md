@@ -29,6 +29,7 @@ database — see the architecture overview below.
 
 ## Operations
 
+- [Data retention](data-retention.md) — what is kept forever, what is pruned, and why
 - [Observability](observability.md) — structured logging and telemetry
 - [Alerting](alerts.md) — alert routing for critical issues
 - [Grafana dashboards](grafana/README.md) — dashboard assets

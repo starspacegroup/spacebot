@@ -41,7 +41,10 @@ const SECTIONS: Array<{ title: string; slugs: string[] }> = [
 		title: 'Features & subsystems',
 		slugs: ['ai-autopilot', 'local-runner-v2', 'superadmin-workflows', 'server-browser'],
 	},
-	{ title: 'Operations', slugs: ['observability', 'alerts', 'http3', 'assets'] },
+	{
+		title: 'Operations',
+		slugs: ['observability', 'data-retention', 'alerts', 'http3', 'assets'],
+	},
 	{ title: 'Guides', slugs: ['tutorials'] },
 ];
 

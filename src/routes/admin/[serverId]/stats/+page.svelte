@@ -204,14 +204,27 @@
 			});
 		}
 
+		// Don't poll a backgrounded tab — nobody is looking at the result and each
+		// refresh is a real query against D1.
+		const isVisible = () =>
+			typeof document === 'undefined' || document.visibilityState === 'visible';
+
 		refreshLiveVoiceSnapshot({ silent: true });
 
 		const intervalId = setInterval(() => {
+			if (!isVisible()) return;
 			refreshLiveVoiceSnapshot({ silent: true });
 		}, LIVE_VOICE_POLL_MS);
 
+		// Catch up as soon as the tab is foregrounded again.
+		const onVisibilityChange = () => {
+			if (isVisible()) refreshLiveVoiceSnapshot({ silent: true });
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
+
 		return () => {
 			clearInterval(intervalId);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 			stream?.close();
 		};
 	});

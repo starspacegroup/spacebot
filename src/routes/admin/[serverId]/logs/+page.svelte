@@ -39,8 +39,16 @@
 	// Auto-refresh
 	let autoRefresh = $state(true);
 	let refreshInterval = $state(null);
+	let visibilityHandler = null;
 	
-	async function fetchLogs(append = false) {
+	/**
+	 * `lightweight` drops the two expensive parts of the response — the stats
+	 * block and the pagination COUNT — which each scan every event row for this
+	 * guild. The 10s auto-refresh uses it: the numbers it would fetch are already
+	 * on screen and barely move, so paying four table scans per poll for them was
+	 * the single largest source of D1 rows-read in the app.
+	 */
+	async function fetchLogs(append = false, { lightweight = false } = {}) {
 		if (!append) {
 			loading = true;
 		}
@@ -49,10 +57,11 @@
 			const params = new URLSearchParams({
 				limit: limit.toString(),
 				offset: offset.toString(),
-				stats: (!append).toString(),
+				stats: (!append && !lightweight).toString(),
 				sortOrder: sortOrder
 			});
 			
+			if (lightweight) params.set('count', 'false');
 			if (selectedCategory) params.set('category', selectedCategory);
 			if (selectedEventType) params.set('eventType', selectedEventType);
 			if (searchQuery) params.set('search', searchQuery);
@@ -96,7 +105,11 @@
 				}
 			}
 			
-			total = result.total || 0;
+			// Absent means "not asked for" (lightweight refresh) — keep what we have
+			// rather than blanking the pagination readout.
+			if (result.total !== undefined && result.total !== null) {
+				total = result.total;
+			}
 			error = null;
 		} catch (e) {
 			log.error('[Logs] Fetch error:', e);
@@ -201,17 +214,31 @@
 	}
 	
 	function startAutoRefresh() {
+		// A backgrounded tab must not keep polling: this endpoint reads the biggest
+		// table in the database, and nobody is looking at the result.
+		const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+
 		refreshInterval = setInterval(() => {
-			if (!loading) {
-				fetchLogs();
+			if (!loading && isVisible()) {
+				fetchLogs(false, { lightweight: true });
 			}
 		}, 10000); // Refresh every 10 seconds
+
+		// Catch up as soon as the tab comes back to the foreground.
+		visibilityHandler = () => {
+			if (isVisible() && !loading) fetchLogs(false, { lightweight: true });
+		};
+		document.addEventListener('visibilitychange', visibilityHandler);
 	}
 	
 	function stopAutoRefresh() {
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
 			refreshInterval = null;
+		}
+		if (visibilityHandler) {
+			document.removeEventListener('visibilitychange', visibilityHandler);
+			visibilityHandler = null;
 		}
 	}
 	

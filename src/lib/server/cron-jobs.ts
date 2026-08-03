@@ -16,6 +16,9 @@ import {
 import { refreshGuildCache } from '$lib/db/guild-cache.js';
 import { upsertGuildMetadata } from '$lib/db/guild-metadata.js';
 import { log } from '$lib/log.js';
+import { GUILDS_WITH_RECENT_LOGS_SQL } from '$lib/db/distinct-guilds.js';
+import { pruneAggregatedEventLogs } from '$lib/db/event-log-retention.js';
+import { getEnvNumber } from '$lib/env.js';
 
 /**
  * Get all guilds that have event logs in the last 7 days.
@@ -34,28 +37,7 @@ export async function getGuildsWithLogs(db, since = '-7 days') {
 	if (!db) return [];
 
 	try {
-		const result = await db
-			.prepare(
-				`
-      WITH RECURSIVE distinct_guild(guild_id) AS (
-        SELECT MIN(guild_id) FROM event_logs
-        UNION ALL
-        SELECT (SELECT MIN(guild_id) FROM event_logs WHERE guild_id > d.guild_id)
-        FROM distinct_guild d
-        WHERE d.guild_id IS NOT NULL
-      )
-      SELECT guild_id
-      FROM distinct_guild
-      WHERE guild_id IS NOT NULL
-        AND EXISTS (
-          SELECT 1 FROM event_logs e
-          WHERE e.guild_id = distinct_guild.guild_id
-            AND e.created_at >= datetime('now', ?)
-        )
-    `
-			)
-			.bind(since)
-			.all();
+		const result = await db.prepare(GUILDS_WITH_RECENT_LOGS_SQL).bind(since).all();
 
 		return result.results?.map((r) => r.guild_id) || [];
 	} catch (error) {
@@ -221,6 +203,7 @@ export async function runDailyRefresh(db, botToken) {
 		prunedStats?: any;
 		cleanup?: any;
 		statsRepair?: any;
+		eventLogRetention?: any;
 		metadata?: { processed: number; failed: number };
 	} = {
 		stats: {
@@ -322,6 +305,14 @@ export async function runDailyRefresh(db, botToken) {
 	// Cleanup old data
 	results.prunedStats = await pruneOldStats(db);
 	results.cleanup = await cleanupOldData(db);
+
+	// Raw event rows, once they are both past the retention window and preserved
+	// in a daily aggregate. Bounded per run so a large backlog drains over
+	// several nights rather than spending a day's D1 budget in one pass.
+	results.eventLogRetention = await pruneAggregatedEventLogs(db, {
+		retentionDays: getEnvNumber('EVENT_LOG_RETENTION_DAYS', null, 90),
+		maxRowsPerRun: getEnvNumber('EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN', null, 5000),
+	});
 	results.metadata = metadataResults;
 
 	log.info(
