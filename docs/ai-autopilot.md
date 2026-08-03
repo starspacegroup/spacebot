@@ -92,3 +92,53 @@ The policy hook is in `src/lib/ai/retry-policy.ts`.
 - This is a production-focused foundation, not the final Workflow graph.
 - Existing local-runner DM/screenshot path is preserved and still executes first.
 - Workflow-native branching/checkpointing can now be layered onto this durable contract.
+
+## Tool calling
+
+Tools are sent to the model **natively** (a `tools` array on the Workers AI
+request) and read back from `tool_calls`. `MCP_TOOLS` entries describe their
+parameters in prose, so `src/lib/ai/tool-calling.ts` converts them to JSON
+Schema at call time; an unparseable spec degrades to an optional string rather
+than being dropped, because a missing parameter is a tool the model cannot call
+correctly.
+
+The older prose protocol — describe the tools in the system prompt, then
+regex-scan the reply for a ```tool JSON blob — is still the fallback, because the
+Ollama dev path never receives a `tools` array.
+
+### Why this changed
+
+Prompt-only tool calling fails in a specific and damaging way. Asked to "publish
+that on the *Space server", the model produced a fully formatted event
+description — name, location, date, time — and called nothing. `parseToolCalls`
+returned `[]`, the loop broke, and the prose was returned verbatim. For a
+question that is merely unhelpful; for an **action** the reply reads exactly like
+success while nothing happened.
+
+### The guard
+
+Native calling makes that far less likely, not impossible, so it is backed by a
+check that runs after the tool loop:
+
+1. Did the user ask for something to be **done**? (`detectActionIntent` —
+   deliberately conservative, and read-style openers like "what events did you
+   create" are excluded, since a false positive tells a user something failed
+   when nothing needed to happen.)
+2. Did any **action** tool actually run? (`create_*`, `preview_*`, `confirm_*`,
+   `send_*`, … — a lookup such as `get_voice_and_stage_channels` does not count.)
+
+If the answer is yes then no, the turn is retried once with an explicit
+instruction to call a tool. If it still refuses, the original prose is
+**discarded** and the user is told plainly that nothing was created. The reply
+must never describe work that did not happen.
+
+Callers can detect this via `actionNotPerformed: true` on the response.
+
+### Preview → confirm
+
+`preview_*` tools return `requiresConfirmation` and `confirmationTool`. Both
+fields existed for a long time with **no consumer**, so a preview was
+indistinguishable from a completed action. Now the formatted tool results tell
+the model in plain terms that nothing has been created and which `confirm_*`
+tool to call once the user agrees, and `generateChatResponse` returns
+`pendingConfirmation` so the caller can surface it.

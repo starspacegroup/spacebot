@@ -7,6 +7,12 @@
 
 import { log } from '../log.js';
 import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from './mcp-client.js';
+import {
+	actionWasAttempted,
+	buildFunctionTools,
+	detectActionIntent,
+	normalizeNativeToolCalls,
+} from './tool-calling.js';
 
 // Default model - Llama 3.3 70B is smarter and better at reasoning
 // Other options:
@@ -765,11 +771,42 @@ function summarizeCommand(cmd) {
 /**
  * Format tool results for the AI to process
  */
+/**
+ * Surface a preview that is waiting on the user.
+ *
+ * `executeTool` has always set `requiresConfirmation`/`confirmationTool` on
+ * preview results, and until now nothing read either field — so the
+ * preview→confirm handshake had no consumer and a preview was indistinguishable
+ * from a completed action. Callers get this back on the response so they can
+ * render "nothing created yet" honestly.
+ */
+function pendingConfirmationFrom(results) {
+	for (const entry of results || []) {
+		if (entry?.result?.requiresConfirmation) {
+			return {
+				tool: entry.tool,
+				confirmationTool: entry.result.confirmationTool || null,
+				preview: entry.result.data ?? null,
+			};
+		}
+	}
+	return null;
+}
+
 function formatToolResults(results) {
 	let formatted = 'Tool Results:\n\n';
 
 	for (const { tool, args, result } of results) {
 		formatted += `### ${tool}\n`;
+		if (result?.requiresConfirmation) {
+			// Without this the model reads a preview as a completed action and
+			// tells the user their event exists.
+			formatted +=
+				`**PREVIEW ONLY — NOTHING HAS BEEN CREATED YET.** Show these details to ` +
+				`the user and ask them to confirm. Only once they agree, call ` +
+				`\`${result.confirmationTool || 'the matching confirm_* tool'}\` with the ` +
+				`same details to actually create it.\n`;
+		}
 		if (args && Object.keys(args).length > 0) {
 			formatted += `Arguments: ${JSON.stringify(args)}\n`;
 		}
@@ -872,7 +909,24 @@ function extractUsageMetrics(payload) {
 /**
  * Call the AI API, trying each model in order until one succeeds.
  */
+/**
+ * Single-shot completion returning just the assistant text.
+ *
+ * Thin wrapper over `callAIRaw` so callers that only want prose (the listing
+ * drafter) are unaffected by native tool calling.
+ */
 export async function callAI(messages, env) {
+	return (await callAIRaw(messages, env)).text;
+}
+
+/**
+ * Call the AI API, trying each model in order until one succeeds.
+ *
+ * Returns both the text and any NATIVE tool calls. Passing `tools` is what
+ * makes the model actually invoke functions instead of describing them — see
+ * tool-calling.ts for why that matters.
+ */
+export async function callAIRaw(messages, env, { tools = null }: { tools?: any } = {}) {
 	const accountId = env.CLOUDFLARE_ACCOUNT_ID;
 	const apiToken = env.CLOUDFLARE_AI_TOKEN;
 	const gatewayId = env.CLOUDFLARE_AI_GATEWAY_ID;
@@ -903,6 +957,9 @@ export async function callAI(messages, env) {
 					messages,
 					max_tokens: 1500,
 					temperature: 0.2, // Low temperature to reduce hallucination/creativity
+					// Only sent when the caller supplies them; a bare completion
+					// (e.g. the listing drafter) must not advertise tools.
+					...(tools && tools.length ? { tools } : {}),
 				}),
 			});
 
@@ -923,6 +980,9 @@ export async function callAI(messages, env) {
 				responseText = data.response;
 			} else if (typeof data === 'string') {
 				responseText = data;
+			} else if (data.result?.tool_calls || data.tool_calls) {
+				// A tool-call-only reply carries no prose; that is not an error.
+				responseText = '';
 			} else {
 				lastError = new Error('Unexpected response format from AI service');
 				continue;
@@ -933,9 +993,16 @@ export async function callAI(messages, env) {
 				? `input_tokens=${usageMetrics.inputTokens ?? 'n/a'} output_tokens=${usageMetrics.outputTokens ?? 'n/a'} total_tokens=${usageMetrics.totalTokens ?? 'n/a'}`
 				: 'input_tokens=n/a output_tokens=n/a total_tokens=n/a';
 
-			console.info(`[AI] Completion provider=${provider} model=${model} ${usageSummary}`);
+			const nativeToolCalls = normalizeNativeToolCalls(
+				data.result?.tool_calls ?? data.tool_calls
+			);
 
-			return responseText;
+			console.info(
+				`[AI] Completion provider=${provider} model=${model} ${usageSummary}` +
+					(nativeToolCalls.length ? ` native_tool_calls=${nativeToolCalls.length}` : '')
+			);
+
+			return { text: responseText, toolCalls: nativeToolCalls };
 		} catch (err) {
 			log.error(`[AI] Request failed for model ${model}: ${err.message}`);
 			lastError = err;
@@ -1094,10 +1161,17 @@ export async function generateChatResponse(options, env) {
 
 	try {
 		// First AI call
-		let aiResponse = await callAI(messages, env);
+		// Advertise the tools natively. The prompt still describes them (for the
+		// Ollama path and as reinforcement), but this is what actually makes the
+		// model emit a call rather than a paragraph about calling one.
+		const nativeTools = mcpEnabled ? buildFunctionTools(MCP_TOOLS) : null;
+
+		let completion = await callAIRaw(messages, env, { tools: nativeTools });
+		let aiResponse = completion.text;
 		console.log('[AI] Full initial response:', aiResponse);
 
 		const toolsUsed = [];
+		let lastPendingConfirmation = null;
 		const MAX_TOOL_ITERATIONS = Math.max(
 			1,
 			Math.min(20, Math.trunc(Number(maxToolIterations) || 5))
@@ -1106,8 +1180,10 @@ export async function generateChatResponse(options, env) {
 
 		// Tool call loop - keep processing until AI stops making tool calls or we hit the limit
 		while (iteration < MAX_TOOL_ITERATIONS) {
-			// Check if AI wants to use tools
-			const toolCalls = parseToolCalls(aiResponse);
+			// Native calls win; the prose parser remains the fallback for models
+			// that were never sent a `tools` array (Ollama) or that ignore it.
+			const nativeCalls = completion.toolCalls || [];
+			const toolCalls = nativeCalls.length > 0 ? nativeCalls : parseToolCalls(aiResponse);
 			console.log(
 				`[AI] Iteration ${iteration + 1}: Parsed ${toolCalls.length} tool call(s)`,
 				toolCalls.map((t) => t.tool)
@@ -1124,19 +1200,25 @@ export async function generateChatResponse(options, env) {
 			const results = await executeToolCalls(toolCalls, env, userId);
 			console.log('[AI] Tool results:', JSON.stringify(results, null, 2));
 			toolsUsed.push(...toolCalls.map((t) => t.tool));
+			lastPendingConfirmation = pendingConfirmationFrom(results) || lastPendingConfirmation;
 
 			// Add the tool results to the conversation
 			const toolResultsText = formatToolResults(results);
 
-			// Add assistant response and tool results
-			messages.push({ role: 'assistant', content: aiResponse });
+			// A native tool-call turn can carry no prose at all; an empty assistant
+			// message confuses the next turn, so describe what was called instead.
+			messages.push({
+				role: 'assistant',
+				content: aiResponse || `(called: ${toolCalls.map((t) => t.tool).join(', ')})`,
+			});
 			messages.push({
 				role: 'user',
 				content: `Here are the results from the tools you requested:\n\n${toolResultsText}\n\nBased on these results, either use more tools if needed, or provide a helpful response to the user.`,
 			});
 
 			// Get next response (may contain more tool calls or final answer)
-			aiResponse = await callAI(messages, env);
+			completion = await callAIRaw(messages, env, { tools: nativeTools });
+			aiResponse = completion.text;
 			log.debug(
 				`[AI] Response after iteration ${iteration + 1}:`,
 				aiResponse.substring(0, 200)
@@ -1162,12 +1244,78 @@ export async function generateChatResponse(options, env) {
 			.replace(/\n{3,}/g, '\n\n') // Collapse multiple newlines
 			.trim();
 
+		// The user asked for something to be DONE, and no action tool ran. The
+		// model has written a reply that reads like it succeeded — that is the
+		// failure the screenshot in the 2026-08-03 report captured: a fully
+		// formatted event description, and no event. Retry once with an explicit
+		// instruction, and if it still refuses to act, say so rather than letting
+		// the prose stand as a false confirmation.
+		if (mcpEnabled && detectActionIntent(message) && !actionWasAttempted(toolsUsed)) {
+			log.warn(
+				`[AI] Action intent detected but no action tool ran (tools used: ${
+					toolsUsed.join(', ') || 'none'
+				}). Retrying with an explicit instruction.`
+			);
+
+			messages.push({ role: 'assistant', content: aiResponse || '(no reply)' });
+			messages.push({
+				role: 'user',
+				content:
+					'You did not actually perform that action — you only described it. ' +
+					'Do not reply with prose. Call the appropriate tool now to carry out ' +
+					'the request. If you genuinely cannot (missing information, or no tool ' +
+					'exists for it), say exactly what is missing instead of describing a ' +
+					'result.',
+			});
+
+			const retry = await callAIRaw(messages, env, { tools: nativeTools });
+			const retryCalls =
+				retry.toolCalls?.length > 0 ? retry.toolCalls : parseToolCalls(retry.text || '');
+
+			if (retryCalls.length > 0) {
+				const retryResults = await executeToolCalls(retryCalls, env, userId);
+				toolsUsed.push(...retryCalls.map((t) => t.tool));
+				messages.push({
+					role: 'assistant',
+					content: retry.text || `(called: ${retryCalls.map((t) => t.tool).join(', ')})`,
+				});
+				messages.push({
+					role: 'user',
+					content: `Here are the results:\n\n${formatToolResults(
+						retryResults
+					)}\n\nSummarize what you did for the user.`,
+				});
+				const summary = await callAIRaw(messages, env, { tools: nativeTools });
+				return {
+					success: true,
+					response:
+						summary.text?.trim() || 'Done — the requested action was carried out.',
+					toolsUsed,
+					pendingConfirmation: pendingConfirmationFrom(retryResults),
+				};
+			}
+
+			// Still nothing. Never hand back the original prose here: it describes
+			// work that did not happen.
+			return {
+				success: true,
+				actionNotPerformed: true,
+				response:
+					"I wasn't able to actually do that — nothing has been created or changed. " +
+					'Could you give me the details directly (for example: the server, the ' +
+					'event name, and the date and time)? I want to be clear that my previous ' +
+					'message described the request rather than completing it.',
+				toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+			};
+		}
+
 		return {
 			success: true,
 			response:
 				cleanResponse ||
 				'I processed your request but have no additional information to share.',
 			toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+			pendingConfirmation: lastPendingConfirmation,
 		};
 	} catch (error) {
 		log.error('[AI] Request failed:', error.message);
