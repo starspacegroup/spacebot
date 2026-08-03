@@ -253,6 +253,23 @@ that display bug is tracked in Dashboard's `planning/` docs, not here.)
 - [x] Public bot invite page
 - [x] Server leaderboards
 - [x] User profiles and badges
+- [x] **Public server browser** (2026-08-02) — an opt-in directory of communities running
+      SpaceBot at `/servers`. Admins publish from **Server settings → Public server
+      browser**; the switch is **off by default** and nothing is listed until they turn it
+      on and supply a headline + Discord invite. Browse page does search / category filter
+      / sort / pagination as a plain GET form (works without JS), plus a per-server detail
+      page at `/servers/[guildId]`. A guild is only visible when `listed = 1` AND
+      `review_status = 'approved'` AND `guild_metadata.fetched_at` is within 7 days
+      (`LISTING_FRESHNESS_DAYS`); all three are enforced in SQL in
+      `src/lib/db/server-listings.ts`, and an unlisted guild 404s rather than confirming it
+      uses SpaceBot. The freshness window, not row existence, is what enforces "the bot is
+      still in this server" — nothing deletes `guild_metadata` rows (`runDailyRefresh`
+      only upserts for guilds from `getBotGuilds()`), so a plain inner join would have kept
+      a server that removed SpaceBot listed forever with a live invite. 7 days against a
+      daily refresh tolerates a week of cron/Discord failures before delisting anyone. Invite URLs are allowlisted to `discord.gg` / `discord.com/invite` so
+      the directory can't become an open redirector; member counts are gated behind a
+      per-server disclosure toggle. Migration 0057→**0059** (`guild_listings`), 19 new
+      tests, 390 green. Docs: `docs/server-browser.md`.
 - [~] Bot voting and reviews — _(in-app `/vote` page; external listing-site voting/reviews not integrated)_
 - [~] Discord server for support — _(in-app `/support` page added; the support Discord server itself is external)_
 

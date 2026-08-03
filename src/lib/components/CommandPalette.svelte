@@ -52,6 +52,16 @@
 			keywords: ['landing', 'index', 'start', 'home', 'inicio'],
 		});
 
+		commands.push({
+			id: 'nav-server-browser',
+			label: tr('nav.browseServers'),
+			description: tr('browse.subtitle'),
+			icon: '🪐',
+			group: tr('cmd.group.navigation'),
+			action: () => goto('/servers'),
+			keywords: ['browse', 'directory', 'discover', 'public', 'servers', 'explorar'],
+		});
+
 		if (isLoggedIn) {
 			commands.push({
 				id: 'nav-dashboard',

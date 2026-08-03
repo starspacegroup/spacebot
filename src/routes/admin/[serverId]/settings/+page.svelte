@@ -104,6 +104,44 @@
 	// svelte-ignore state_referenced_locally
 	let brandingTagline = $state(data.branding?.public_tagline || '');
 
+	// Public server browser listing. Publishing is opt-in — `listed` is false
+	// until an admin ticks the box, and the server treats a missing checkbox as
+	// unlisted, so nothing here can publish a server by accident.
+	// svelte-ignore state_referenced_locally
+	let listingPublished = $state(Boolean(data.listing?.listed));
+	// svelte-ignore state_referenced_locally
+	let listingHeadline = $state(data.listing?.headline || '');
+	// svelte-ignore state_referenced_locally
+	let listingDescription = $state(data.listing?.description || '');
+	// svelte-ignore state_referenced_locally
+	let listingCategory = $state(data.listing?.category || 'community');
+	// svelte-ignore state_referenced_locally
+	let listingTags = $state((data.listing?.tags || []).join(', '));
+	// svelte-ignore state_referenced_locally
+	let listingInviteUrl = $state(data.listing?.invite_url || '');
+	// svelte-ignore state_referenced_locally
+	let listingShowMemberCount = $state(data.listing?.show_member_count !== false);
+	// svelte-ignore state_referenced_locally
+	let listingNsfw = $state(Boolean(data.listing?.nsfw));
+
+	/** What still has to be filled in before this server can go public. */
+	const listingBlockers = $derived(
+		[
+			listingHeadline.trim() ? null : tr('listing.blockerHeadline'),
+			listingInviteUrl.trim() ? null : tr('listing.blockerInvite'),
+		].filter(Boolean)
+	);
+
+	/**
+	 * Auto-save the listing, but don't fire a doomed request: while the publish
+	 * box is ticked and required copy is missing the server would reject the
+	 * whole settings save, so hold off and let the inline hint do the talking.
+	 */
+	function autoSaveListing() {
+		if (listingPublished && listingBlockers.length > 0) return;
+		autoSave();
+	}
+
 	// Browser timezone detection
 	let browserTimezone = $state('');
 	let browserTime = $state('');
@@ -211,6 +249,14 @@
 		brandingLogoUrl = data.branding?.logo_url || '';
 		brandingBannerUrl = data.branding?.banner_url || '';
 		brandingTagline = data.branding?.public_tagline || '';
+		listingPublished = Boolean(data.listing?.listed);
+		listingHeadline = data.listing?.headline || '';
+		listingDescription = data.listing?.description || '';
+		listingCategory = data.listing?.category || 'community';
+		listingTags = (data.listing?.tags || []).join(', ');
+		listingInviteUrl = data.listing?.invite_url || '';
+		listingShowMemberCount = data.listing?.show_member_count !== false;
+		listingNsfw = Boolean(data.listing?.nsfw);
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
 		manageAutomationsPerm =
@@ -585,6 +631,192 @@
 					maxlength="180"
 					onchange={autoSave}
 				/>
+			</div>
+		</section>
+
+		<!-- Public server browser listing -->
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">🪐</span>
+				{tr('listing.sectionTitle')}
+			</h2>
+			<p class="section-desc">{tr('listing.sectionDesc')}</p>
+
+			{#if data.listing?.review_status === 'rejected'}
+				<div class="listing-notice listing-notice-warn">
+					<strong>{tr('listing.removedTitle')}</strong>
+					<span>{data.listing.review_note || tr('listing.removedDesc')} </span>
+				</div>
+			{/if}
+
+			<div class="settings-card">
+				<div class="setting-row">
+					<div class="setting-info">
+						<label for="listingPublished" class="setting-label"
+							>{tr('listing.publishLabel')}</label
+						>
+						<span class="setting-desc">{tr('listing.publishDesc')}</span>
+					</div>
+					<div class="setting-control">
+						<label class="listing-switch">
+							<input
+								id="listingPublished"
+								name="listingPublished"
+								type="checkbox"
+								bind:checked={listingPublished}
+								onchange={autoSaveListing}
+							/>
+							<span class="listing-switch-track"></span>
+							<span class="listing-switch-text"
+								>{listingPublished
+									? tr('listing.statePublished')
+									: tr('listing.stateUnlisted')}</span
+							>
+						</label>
+					</div>
+				</div>
+
+				{#if listingPublished && listingBlockers.length > 0}
+					<div class="listing-notice listing-notice-info">
+						<strong>{tr('listing.blockersTitle')}</strong>
+						<ul>
+							{#each listingBlockers as blocker}
+								<li>{blocker}</li>
+							{/each}
+						</ul>
+					</div>
+				{:else if listingPublished && data.listingVisible}
+					<p class="listing-live">
+						{tr('listing.liveHint')}
+						<a href="/servers/{data.serverId}">{tr('listing.viewPublicPage')}</a>
+					</p>
+				{:else if listingPublished && data.listing?.review_status !== 'rejected'}
+					<!-- Opted in, not taken down, but still not showing: the guild's
+					     metadata has gone stale, which means SpaceBot is no longer in
+					     the server. Say so rather than claiming it's live. -->
+					<div class="listing-notice listing-notice-warn">
+						<strong>{tr('listing.notVisibleTitle')}</strong>
+						<span
+							>{tr('listing.notVisibleDesc', {
+								days: data.listingFreshnessDays ?? 7,
+							})}</span
+						>
+					</div>
+				{/if}
+			</div>
+
+			<div class="settings-card">
+				<label for="listingHeadline" class="setting-label">{tr('listing.headline')}</label>
+				<span class="setting-desc">{tr('listing.headlineDesc')}</span>
+				<input
+					id="listingHeadline"
+					name="listingHeadline"
+					class="form-input"
+					bind:value={listingHeadline}
+					maxlength="120"
+					placeholder={tr('listing.headlinePlaceholder')}
+					onchange={autoSaveListing}
+				/>
+			</div>
+
+			<div class="settings-card">
+				<label for="listingDescription" class="setting-label"
+					>{tr('listing.description')}</label
+				>
+				<span class="setting-desc">{tr('listing.descriptionDesc')}</span>
+				<textarea
+					id="listingDescription"
+					name="listingDescription"
+					class="form-input listing-textarea"
+					bind:value={listingDescription}
+					maxlength="1000"
+					rows="4"
+					placeholder={tr('listing.descriptionPlaceholder')}
+					onchange={autoSaveListing}></textarea>
+				<span class="listing-counter">{listingDescription.length}/1000</span>
+			</div>
+
+			<div class="settings-grid">
+				<div class="settings-card">
+					<label for="listingCategory" class="setting-label"
+						>{tr('listing.category')}</label
+					>
+					<select
+						id="listingCategory"
+						name="listingCategory"
+						class="permission-select"
+						bind:value={listingCategory}
+						onchange={autoSaveListing}
+					>
+						{#each data.listingCategories || [] as cat}
+							<option value={cat.value}>{cat.label}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="settings-card">
+					<label for="listingTags" class="setting-label">{tr('listing.tags')}</label>
+					<input
+						id="listingTags"
+						name="listingTags"
+						class="form-input"
+						bind:value={listingTags}
+						placeholder={tr('listing.tagsPlaceholder')}
+						onchange={autoSaveListing}
+					/>
+					<span class="setting-desc">{tr('listing.tagsDesc')}</span>
+				</div>
+			</div>
+
+			<div class="settings-card">
+				<label for="listingInviteUrl" class="setting-label">{tr('listing.invite')}</label>
+				<span class="setting-desc">{tr('listing.inviteDesc')}</span>
+				<input
+					id="listingInviteUrl"
+					name="listingInviteUrl"
+					class="form-input"
+					class:input-error={Boolean(form?.listingErrors?.invite_url)}
+					bind:value={listingInviteUrl}
+					placeholder="https://discord.gg/your-invite"
+					onchange={autoSaveListing}
+				/>
+				{#if form?.listingErrors?.invite_url}
+					<span class="listing-error">{form.listingErrors.invite_url}</span>
+				{/if}
+			</div>
+
+			<div class="settings-card">
+				<div class="setting-row">
+					<div class="setting-info">
+						<label for="listingShowMemberCount" class="setting-label"
+							>{tr('listing.showMembers')}</label
+						>
+						<span class="setting-desc">{tr('listing.showMembersDesc')}</span>
+					</div>
+					<div class="setting-control">
+						<input
+							id="listingShowMemberCount"
+							name="listingShowMemberCount"
+							type="checkbox"
+							bind:checked={listingShowMemberCount}
+							onchange={autoSaveListing}
+						/>
+					</div>
+				</div>
+				<div class="setting-row">
+					<div class="setting-info">
+						<label for="listingNsfw" class="setting-label">{tr('listing.nsfw')}</label>
+						<span class="setting-desc">{tr('listing.nsfwDesc')}</span>
+					</div>
+					<div class="setting-control">
+						<input
+							id="listingNsfw"
+							name="listingNsfw"
+							type="checkbox"
+							bind:checked={listingNsfw}
+							onchange={autoSaveListing}
+						/>
+					</div>
+				</div>
 			</div>
 		</section>
 
@@ -1735,5 +1967,136 @@
 	.btn-sm {
 		font-size: 0.75rem;
 		padding: 0.35rem 0.625rem;
+	}
+
+	/* Public server browser listing */
+	.listing-switch {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.listing-switch input {
+		position: absolute;
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.listing-switch-track {
+		position: relative;
+		width: 2.75rem;
+		height: 1.5rem;
+		border-radius: var(--radius-full);
+		background: var(--color-border);
+		transition: background var(--transition-fast);
+		flex-shrink: 0;
+	}
+
+	.listing-switch-track::after {
+		content: '';
+		position: absolute;
+		top: 0.1875rem;
+		left: 0.1875rem;
+		width: 1.125rem;
+		height: 1.125rem;
+		border-radius: 50%;
+		background: var(--color-surface);
+		box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+		transition: transform var(--transition-fast);
+	}
+
+	.listing-switch input:checked + .listing-switch-track {
+		background: var(--color-primary);
+	}
+
+	.listing-switch input:checked + .listing-switch-track::after {
+		transform: translateX(1.25rem);
+	}
+
+	.listing-switch input:focus-visible + .listing-switch-track {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+
+	.listing-switch-text {
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--color-text-secondary);
+	}
+
+	.listing-notice {
+		margin-top: 0.875rem;
+		padding: 0.75rem 0.875rem;
+		border-radius: var(--radius-md);
+		font-size: 0.8rem;
+		line-height: 1.5;
+		border: 1px solid var(--color-border);
+	}
+
+	.listing-notice strong {
+		display: block;
+		margin-bottom: 0.25rem;
+		color: var(--color-text);
+	}
+
+	.listing-notice ul {
+		margin: 0;
+		padding-left: 1.1rem;
+		color: var(--color-text-secondary);
+	}
+
+	.listing-notice-info {
+		background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+		border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+	}
+
+	.listing-notice-warn {
+		background: color-mix(in srgb, var(--color-danger) 8%, transparent);
+		border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
+	}
+
+	.listing-live {
+		margin: 0.875rem 0 0;
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+	}
+
+	.listing-live a {
+		color: var(--color-primary);
+		text-decoration: none;
+	}
+
+	.listing-live a:hover {
+		text-decoration: underline;
+	}
+
+	.listing-textarea {
+		resize: vertical;
+		min-height: 5.5rem;
+		font-family: inherit;
+		line-height: 1.5;
+	}
+
+	.listing-counter {
+		display: block;
+		margin-top: 0.375rem;
+		text-align: right;
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.listing-error {
+		display: block;
+		margin-top: 0.375rem;
+		font-size: 0.75rem;
+		color: var(--color-danger);
+	}
+
+	.input-error {
+		border-color: var(--color-danger);
 	}
 </style>

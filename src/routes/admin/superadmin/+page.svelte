@@ -589,6 +589,48 @@
 			</div>
 		</section>
 
+		<!-- Public Server Browser -->
+		<section class="stats-section">
+			<h2 class="section-title">
+				<span class="section-icon">🪐</span>
+				Public Server Browser
+			</h2>
+			<div class="stats-grid stats-grid-small">
+				<div class="stat-card-mini">
+					<span class="stat-label">Opted In</span>
+					<span class="stat-value">{formatNumber(data.listingHealth?.optedIn ?? 0)}</span>
+				</div>
+				<div class="stat-card-mini">
+					<span class="stat-label">Visible at /servers</span>
+					<span class="stat-value">{formatNumber(data.listingHealth?.visible ?? 0)}</span>
+				</div>
+				<div class="stat-card-mini">
+					<span class="stat-label">Hidden — Stale</span>
+					<span class="stat-value"
+						>{formatNumber(data.listingHealth?.hiddenByStaleness ?? 0)}</span
+					>
+				</div>
+				<div class="stat-card-mini">
+					<span class="stat-label">Taken Down</span>
+					<span class="stat-value"
+						>{formatNumber(data.listingHealth?.takenDown ?? 0)}</span
+					>
+				</div>
+			</div>
+			{#if data.listingHealth?.refreshStale}
+				<!-- Listings are gated on guild_metadata freshness, so if the daily
+				     refresh stops running every listing ages out and the browser
+				     empties with no error anywhere. Say it loudly here. -->
+				<p class="listing-health-warn">
+					⚠️ Guild metadata has not been refreshed in over {data.listingFreshnessDays ??
+						7}
+					days{#if data.listingHealth?.lastRefresh}&nbsp;(last: {data.listingHealth
+							.lastRefresh}){/if} — the public server browser will empty out until the daily
+					refresh runs again.
+				</p>
+			{/if}
+		</section>
+
 		<section class="stats-section superadmin-settings-section">
 			<div class="superadmin-settings-header">
 				<h2 class="section-title">
@@ -1766,6 +1808,17 @@
 
 	.stat-card-mini .stat-value {
 		font-size: 1.25rem;
+	}
+
+	.listing-health-warn {
+		margin: 0.875rem 0 0;
+		padding: 0.75rem 0.875rem;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-warning);
+		background: var(--color-warning-soft);
+		color: var(--color-text);
+		font-size: 0.82rem;
+		line-height: 1.5;
 	}
 
 	/* Servers Section */

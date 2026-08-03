@@ -16,6 +16,7 @@ import { listIntegrations } from '$lib/db/integrations.js';
 import { usesIntegrationTokenAuth } from '$lib/integrations/registry.js';
 import { getFirstLoginDmEnabled } from '$lib/server/superadmin-notifications.js';
 import { getMessagePurgeSettings } from '$lib/server/message-purge-settings.js';
+import { LISTING_FRESHNESS_DAYS, getListingHealth } from '$lib/db/server-listings.js';
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
 
@@ -390,8 +391,14 @@ export async function load({ cookies, platform }) {
 	);
 	const externalIntegrations = integrations.filter(usesIntegrationTokenAuth);
 
+	// Public server browser health. Listings are gated on metadata freshness, so
+	// a dead refresh cron empties the directory silently — surface it here.
+	const listingHealth = await getListingHealth(db);
+
 	return {
 		isSuperAdmin: true,
+		listingHealth,
+		listingFreshnessDays: LISTING_FRESHNESS_DAYS,
 		botApp: botAppInfo
 			? {
 					id: botAppInfo.id,

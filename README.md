@@ -47,6 +47,8 @@ beautiful admin dashboard.
 - **Automation Builder** — Visual interface to create event → action automations
 - **Command Builder** — Design custom slash commands with the automation action
   system
+- **Public Server Browser** — An opt-in directory at `/servers` where admins can publish
+  their community (off by default; see [Server Browser](docs/server-browser.md))
 - **Dark/Light Theme** — Beautiful UI with theme toggle support
 - **Operational UX** — Global toasts, skeleton loading states, route-level error
   handling, and reduced-motion-aware transitions
@@ -465,6 +467,7 @@ Developer documentation is served on the main site at
 Highlights: [Architecture](docs/architecture.md) · [API](docs/api.md) ·
 [Integrations](docs/integrations.md) · [AI Autopilot](docs/ai-autopilot.md) ·
 [Local Runner v2](docs/local-runner-v2.md) · [Superadmin Workflows](docs/superadmin-workflows.md) ·
+[Server Browser](docs/server-browser.md) ·
 [Observability](docs/observability.md) · [Tutorials](docs/tutorials.md).
 
 ## 🔒 Security

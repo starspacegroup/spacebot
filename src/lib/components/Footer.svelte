@@ -13,6 +13,7 @@
 			></span
 		>
 		<nav class="footer-links">
+			<a href="/servers">{tr('nav.browseServers')}</a>
 			<a href="/terms">{tr('footer.terms')}</a>
 			<a href="/privacy">{tr('footer.privacy')}</a>
 			<a

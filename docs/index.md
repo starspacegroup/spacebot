@@ -25,6 +25,7 @@ database — see the architecture overview below.
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
+- [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
 
 ## Operations
 

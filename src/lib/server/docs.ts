@@ -39,7 +39,7 @@ const SECTIONS: Array<{ title: string; slugs: string[] }> = [
 	{ title: 'Start here', slugs: ['architecture', 'api', 'integrations'] },
 	{
 		title: 'Features & subsystems',
-		slugs: ['ai-autopilot', 'local-runner-v2', 'superadmin-workflows'],
+		slugs: ['ai-autopilot', 'local-runner-v2', 'superadmin-workflows', 'server-browser'],
 	},
 	{ title: 'Operations', slugs: ['observability', 'alerts', 'http3', 'assets'] },
 	{ title: 'Guides', slugs: ['tutorials'] },
