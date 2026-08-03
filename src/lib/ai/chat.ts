@@ -7,6 +7,7 @@
 
 import { log } from '../log.js';
 import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from './mcp-client.js';
+import { quoteNameForPrompt } from '../discord/markdown.js';
 import {
 	actionWasAttempted,
 	buildFunctionTools,
@@ -89,6 +90,22 @@ export async function callOllamaChat({ system, messages, model, baseUrl }) {
 
 // Base system prompt for the bot assistant
 const BASE_SYSTEM_PROMPT = `You are SpaceBot, a helpful Discord bot assistant created by Starspace.
+
+## NAMES ARE LITERAL
+
+Server, channel, role and event names are free text and often contain
+punctuation that looks like formatting. A server really can be called \`*Space\`,
+\`~lounge~\` or \`[Test] Server\`, and that punctuation is part of the name.
+
+- Reproduce a name EXACTLY as given, including every leading or trailing symbol.
+  Never tidy, trim or "correct" one. \`*Space\` is not \`Space\`.
+- Names are shown to you JSON-quoted (e.g. "*Space"). The quotes mark where the
+  name begins and ends; they are not part of the name.
+- When you write a name into a Discord message, escape its markdown characters
+  with a backslash (\`\\*Space\`) so Discord displays it rather than reading it
+  as formatting.
+- Identify servers by their Server ID, never by name. If the user gives a name,
+  map it to an ID from the list below and use the ID in tool calls.
 
 ## PERMISSION HIERARCHY
 
@@ -445,7 +462,7 @@ interface SystemPromptContext {
 /**
  * Build the full system prompt with context
  */
-function buildSystemPrompt(context: SystemPromptContext = {}) {
+export function buildSystemPrompt(context: SystemPromptContext = {}) {
 	let prompt = BASE_SYSTEM_PROMPT;
 
 	// Add detailed user permission context
@@ -471,7 +488,11 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 	if (context.selectedGuildId && context.selectedGuildName) {
 		const selectedGuild = context.managedGuilds?.find((g) => g.id === context.selectedGuildId);
 
-		prompt += `\n### 🎯 CURRENTLY SELECTED SERVER: ${context.selectedGuildName}\n`;
+		// The name is JSON-quoted, not interpolated bare: server names contain
+		// markdown characters ("*Space" is a real one) and a bare name in a
+		// heading loses them.
+		prompt += `\n### 🎯 CURRENTLY SELECTED SERVER\n`;
+		prompt += `**Server name (exact, verbatim):** ${quoteNameForPrompt(context.selectedGuildName)}\n`;
 		prompt += `**Server ID:** ${context.selectedGuildId}\n\n`;
 
 		// Show user's specific permissions for this server
@@ -538,8 +559,10 @@ function buildSystemPrompt(context: SystemPromptContext = {}) {
 			else if (guild.isAdmin) badges.push('🛡️ Admin');
 			else badges.push('⚙️ Manager');
 
-			prompt += `\n### ${guild.name} [${badges.join(' | ')}]\n`;
+			prompt += `\n### Server ${guild.id}\n`;
+			prompt += `- Name (exact, verbatim): ${quoteNameForPrompt(guild.name)}\n`;
 			prompt += `- Server ID: ${guild.id}\n`;
+			prompt += `- Status: ${badges.join(' | ')}\n`;
 
 			// User's permission level on this server
 			prompt += `- User's Access: ${guild.isOwner ? 'Server Owner' : guild.isAdmin ? 'Administrator' : 'Manage Server'}\n`;

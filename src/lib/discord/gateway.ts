@@ -10,6 +10,7 @@
 
 import 'dotenv/config';
 import { loadSecrets } from '../secrets.js';
+import { escapeDiscordMarkdown, findGuildMatches } from './markdown.js';
 await loadSecrets();
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -725,7 +726,7 @@ function parseServerSelection(message, managedGuilds) {
 	for (const pattern of patterns) {
 		const match = message.match(pattern);
 		if (match) {
-			serverNameQuery = match[1].trim().toLowerCase();
+			serverNameQuery = match[1].trim();
 			break;
 		}
 	}
@@ -734,22 +735,25 @@ function parseServerSelection(message, managedGuilds) {
 		return { matched: false };
 	}
 
-	// Try to match against user's managed guilds
-	// First try exact match, then partial match
-	let matchedGuild = managedGuilds.find((g) => g.name.toLowerCase() === serverNameQuery);
+	// Tiered matching (id → exact → punctuation-insensitive → contains) so a
+	// name like "*Space" resolves whether or not the user typed the asterisk.
+	// The previous `.find()` returned the FIRST partial hit, which silently
+	// picked one of "Space Station"/"Space Camp" by array order — switching the
+	// user to a server they did not ask for, with no indication anything was
+	// ambiguous.
+	const candidates = findGuildMatches(managedGuilds, serverNameQuery);
 
-	if (!matchedGuild) {
-		// Try partial match
-		matchedGuild = managedGuilds.find((g) => g.name.toLowerCase().includes(serverNameQuery));
+	if (candidates.length === 1) {
+		return { matched: true, guildId: candidates[0].id, guildName: candidates[0].name };
 	}
 
-	if (!matchedGuild) {
-		// Try matching by ID
-		matchedGuild = managedGuilds.find((g) => g.id === serverNameQuery);
-	}
-
-	if (matchedGuild) {
-		return { matched: true, guildId: matchedGuild.id, guildName: matchedGuild.name };
+	if (candidates.length > 1) {
+		return {
+			matched: true,
+			ambiguous: true,
+			query: serverNameQuery,
+			candidates: candidates.map((g) => ({ id: g.id, name: g.name })),
+		};
 	}
 
 	// Server selection was attempted but no match found
@@ -921,7 +925,9 @@ function formatServerList(guilds, selectedGuildId) {
 		const isSelected = guild.id === selectedGuildId;
 		const marker = isSelected ? '✅ ' : '• ';
 		const selectedText = isSelected ? ' *(currently selected)*' : '';
-		response += `${marker}**${guild.name}**${selectedText}\n`;
+		// Escaped: a name like "*Space" inside ** ** turns into ***Space** and
+		// Discord renders it as mangled emphasis instead of the actual name.
+		response += `${marker}**${escapeDiscordMarkdown(guild.name)}**${selectedText}\n`;
 		response += `   Members: ${guild.memberCount || '?'} | Channels: ${guild.channelCount || '?'}\n`;
 	}
 
@@ -1101,11 +1107,28 @@ async function handleDirectMessage(message, client) {
 			return;
 		}
 
+		if (serverSelection.ambiguous) {
+			// Several servers match. Ask rather than silently picking one.
+			const options = serverSelection.candidates
+				.map((g) => `• **${escapeDiscordMarkdown(g.name)}**`)
+				.join('\n');
+			const response =
+				`"${escapeDiscordMarkdown(serverSelection.query)}" matches more than one ` +
+				`server:\n\n${options}\n\nWhich did you mean? You can give the full name or the server ID.`;
+			await message
+				.reply({ content: response })
+				.catch((err) =>
+					log.error('[DM] Failed to send ambiguous server prompt:', err.message)
+				);
+			return;
+		}
+
 		if (serverSelection.notFound) {
 			// Server selection attempted but no match
 			const response =
-				`❌ I couldn't find a server matching "${serverSelection.query}".\n\n` +
-				formatServerList(managedGuilds, session.selectedGuildId);
+				`❌ I couldn't find a server matching "${escapeDiscordMarkdown(
+					serverSelection.query
+				)}".\n\n` + formatServerList(managedGuilds, session.selectedGuildId);
 			await message
 				.reply({ content: response })
 				.catch((err) => log.error('[DM] Failed to send server not found:', err.message));
@@ -1115,7 +1138,7 @@ async function handleDirectMessage(message, client) {
 		if (serverSelection.guildId) {
 			// Successfully matched a server
 			setUserSelectedGuild(userId, serverSelection.guildId, serverSelection.guildName);
-			const response = `✅ Switched to **${serverSelection.guildName}**. I'll now answer questions about this server.\n\nWhat would you like to know?`;
+			const response = `✅ Switched to **${escapeDiscordMarkdown(serverSelection.guildName)}**. I'll now answer questions about this server.\n\nWhat would you like to know?`;
 			await message
 				.reply({ content: response })
 				.catch((err) =>
