@@ -1,19 +1,10 @@
 import { json } from '@sveltejs/kit';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import {
 	archiveSuperadminWorkflowTemplate,
 	getSuperadminWorkflowTemplate,
 	updateSuperadminWorkflowTemplate,
 } from '$lib/db/superadmin-workflows.js';
-
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-	const adminUserIds = (platform as any)?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-	return adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean)
-		.includes(userId);
-}
 
 export async function GET({ cookies, platform, params }) {
 	const userId = cookies.get('discord_user_id');

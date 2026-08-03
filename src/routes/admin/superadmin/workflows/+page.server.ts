@@ -5,16 +5,7 @@ import {
 } from '$lib/db/superadmin-workflows.js';
 import { OPERATION_TEMPLATES } from '$lib/server/superadmin-workflow-presets.js';
 import { listWorkflowOperations } from '$lib/server/superadmin-workflow-operations.js';
-
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-	return adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean)
-		.includes(userId);
-}
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 export async function load({ cookies, platform }) {
 	const userId = cookies.get('discord_user_id');

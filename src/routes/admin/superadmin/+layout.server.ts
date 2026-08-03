@@ -1,16 +1,11 @@
-import { redirect } from "@sveltejs/kit";
-
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
-	return adminUserIds.split(",").map((id) => id.trim()).filter(Boolean).includes(userId);
-}
+import { redirect } from '@sveltejs/kit';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** @type {import('./$types').LayoutServerLoad} */
 export async function load({ cookies, platform }) {
-	const userId = cookies.get("discord_user_id");
+	const userId = cookies.get('discord_user_id');
 	if (!checkIsSuperAdmin(userId, platform)) {
-		throw redirect(302, "/admin");
+		throw redirect(302, '/admin');
 	}
 
 	return {

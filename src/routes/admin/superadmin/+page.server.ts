@@ -17,6 +17,7 @@ import { usesIntegrationTokenAuth } from '$lib/integrations/registry.js';
 import { getFirstLoginDmEnabled } from '$lib/server/superadmin-notifications.js';
 import { getMessagePurgeSettings } from '$lib/server/message-purge-settings.js';
 import { LISTING_FRESHNESS_DAYS, getListingHealth } from '$lib/db/server-listings.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 60;
 
@@ -146,22 +147,6 @@ async function getCronJobData(db) {
 		log.error('[Superadmin] Failed to get cron job data:', error);
 		return { history: [], lastRuns: {} };
 	}
-}
-
-/**
- * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
- */
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-
-	const superAdminIdList = adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean);
-
-	return superAdminIdList.includes(userId);
 }
 
 /**

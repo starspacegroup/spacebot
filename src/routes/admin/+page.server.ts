@@ -1,21 +1,7 @@
-import { commands, registerCommands } from "$lib/discord/commands.js";
-import { fail, redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
-
-/**
- * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
- */
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS ||
-		process.env.ADMIN_USER_IDS || "";
-
-	const superAdminIdList = adminUserIds.split(",").map((id) => id.trim())
-		.filter(Boolean);
-
-	return superAdminIdList.includes(userId);
-}
+import { commands, registerCommands } from '$lib/discord/commands.js';
+import { fail, redirect } from '@sveltejs/kit';
+import { log } from '$lib/db/logger.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, parent }) {
@@ -23,9 +9,9 @@ export async function load({ cookies, platform, parent }) {
 	const parentData = await parent();
 
 	// Check if user is logged in via cookie
-	const userId = cookies.get("discord_user_id");
-	const username = cookies.get("discord_username");
-	const avatar = cookies.get("discord_avatar");
+	const userId = cookies.get('discord_user_id');
+	const username = cookies.get('discord_username');
+	const avatar = cookies.get('discord_avatar');
 
 	if (!userId) {
 		return {
@@ -48,7 +34,7 @@ export async function load({ cookies, platform, parent }) {
 	// Redirect to default server if user has access to at least one server
 	// This is the primary redirect logic - layout redirect is a fallback
 	if (parentData.selectedGuildId && guildsWithBot.length > 0) {
-		log.debug("[Admin Page] Redirecting to default server:", parentData.selectedGuildId);
+		log.debug('[Admin Page] Redirecting to default server:', parentData.selectedGuildId);
 		throw redirect(302, `/admin/${parentData.selectedGuildId}`);
 	}
 
@@ -57,7 +43,7 @@ export async function load({ cookies, platform, parent }) {
 		isSuperAdmin,
 		user: {
 			id: userId,
-			username: username || "Unknown",
+			username: username || 'Unknown',
 			avatar,
 		},
 		// Note: adminGuilds come from the layout
@@ -71,27 +57,24 @@ export const actions = {
 	 */
 	refreshCommands: async ({ cookies, platform }) => {
 		// Verify superadmin access
-		const userId = cookies.get("discord_user_id");
+		const userId = cookies.get('discord_user_id');
 		if (!checkIsSuperAdmin(userId, platform)) {
 			return fail(403, {
 				success: false,
-				message: "Access denied. Superadmin privileges required.",
-				action: "refreshCommands",
+				message: 'Access denied. Superadmin privileges required.',
+				action: 'refreshCommands',
 			});
 		}
 
-		const clientId = (platform as any)?.env?.DISCORD_CLIENT_ID ||
-			process.env.DISCORD_CLIENT_ID;
-		const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
-			process.env.DISCORD_BOT_TOKEN;
-		const guildId = (platform as any)?.env?.DISCORD_GUILD_ID ||
-			process.env.DISCORD_GUILD_ID;
+		const clientId = (platform as any)?.env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
+		const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+		const guildId = (platform as any)?.env?.DISCORD_GUILD_ID || process.env.DISCORD_GUILD_ID;
 
 		if (!clientId || !botToken) {
 			return fail(400, {
 				success: false,
-				message: "Missing DISCORD_CLIENT_ID or DISCORD_BOT_TOKEN",
-				action: "refreshCommands",
+				message: 'Missing DISCORD_CLIENT_ID or DISCORD_BOT_TOKEN',
+				action: 'refreshCommands',
 			});
 		}
 
@@ -102,14 +85,14 @@ export const actions = {
 				message: guildId
 					? `Successfully registered ${commands.length} commands to guild!`
 					: `Successfully registered ${commands.length} global commands! (May take up to 1 hour to propagate)`,
-				action: "refreshCommands",
+				action: 'refreshCommands',
 			};
 		} catch (error) {
-			log.error("Failed to register commands:", error);
+			log.error('Failed to register commands:', error);
 			return fail(500, {
 				success: false,
 				message: `Failed to register commands: ${error.message}`,
-				action: "refreshCommands",
+				action: 'refreshCommands',
 			});
 		}
 	},
@@ -119,20 +102,20 @@ export const actions = {
 	 */
 	clearCache: async ({ cookies, platform }) => {
 		// Verify superadmin access
-		const userId = cookies.get("discord_user_id");
+		const userId = cookies.get('discord_user_id');
 		if (!checkIsSuperAdmin(userId, platform)) {
 			return fail(403, {
 				success: false,
-				message: "Access denied. Superadmin privileges required.",
-				action: "clearCache",
+				message: 'Access denied. Superadmin privileges required.',
+				action: 'clearCache',
 			});
 		}
 
 		// In a real implementation, this would clear any KV or cache storage
 		return {
 			success: true,
-			message: "Cache cleared successfully!",
-			action: "clearCache",
+			message: 'Cache cleared successfully!',
+			action: 'clearCache',
 		};
 	},
 
@@ -141,12 +124,12 @@ export const actions = {
 	 */
 	restartBot: async ({ cookies, platform }) => {
 		// Verify superadmin access
-		const userId = cookies.get("discord_user_id");
+		const userId = cookies.get('discord_user_id');
 		if (!checkIsSuperAdmin(userId, platform)) {
 			return fail(403, {
 				success: false,
-				message: "Access denied. Superadmin privileges required.",
-				action: "restartBot",
+				message: 'Access denied. Superadmin privileges required.',
+				action: 'restartBot',
 			});
 		}
 
@@ -154,9 +137,8 @@ export const actions = {
 		// we can't truly "restart" - but we can reset internal state
 		return {
 			success: true,
-			message:
-				"Bot state has been reset. Note: This is an HTTP-based interaction endpoint.",
-			action: "restartBot",
+			message: 'Bot state has been reset. Note: This is an HTTP-based interaction endpoint.',
+			action: 'restartBot',
 		};
 	},
 
@@ -164,15 +146,15 @@ export const actions = {
 	 * Logout action
 	 */
 	logout: async ({ cookies }) => {
-		cookies.delete("discord_user_id", { path: "/" });
-		cookies.delete("discord_username", { path: "/" });
-		cookies.delete("discord_avatar", { path: "/" });
-		cookies.delete("discord_access_token", { path: "/" });
+		cookies.delete('discord_user_id', { path: '/' });
+		cookies.delete('discord_username', { path: '/' });
+		cookies.delete('discord_avatar', { path: '/' });
+		cookies.delete('discord_access_token', { path: '/' });
 
 		return {
 			success: true,
-			message: "Logged out successfully",
-			action: "logout",
+			message: 'Logged out successfully',
+			action: 'logout',
 		};
 	},
 };

@@ -19,6 +19,7 @@ import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
 import { getGuildContributedActions, getGuildContributedVariables } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 interface CommandOptionChoice {
 	name: string;
@@ -151,13 +152,7 @@ export const actions = {
 		}
 
 		const userId = cookies.get('discord_user_id');
-		const adminUserIds =
-			(platform as any)?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-		const superAdminIdList = adminUserIds
-			.split(',')
-			.map((id) => id.trim())
-			.filter(Boolean);
-		const isSuperAdmin = superAdminIdList.includes(userId);
+		const isSuperAdmin = checkIsSuperAdmin(userId, platform);
 
 		// Built-in commands support per-guild permission overrides for server admins.
 		// Full built-in command editing remains superadmin-only.

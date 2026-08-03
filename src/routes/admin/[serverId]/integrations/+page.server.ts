@@ -12,24 +12,7 @@ import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { getTemplateAppliedCommands } from '$lib/db/commands.js';
 import { generateWebhookSecret } from '$lib/integrations/github.js';
-
-/**
- * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
- */
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-
-	const adminUserIds =
-		platform?.env?.ADMIN_USER_IDS ||
-		(typeof process !== 'undefined' ? process.env?.ADMIN_USER_IDS : '') ||
-		'';
-
-	const superAdminIdList = adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean);
-	return superAdminIdList.includes(userId);
-}
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /**
  * Fire a lifecycle webhook (on_enable / on_disable) for an integration.

@@ -1,19 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { listIntegrations } from '$lib/db/integrations.js';
 import { seedBuiltInIntegrations, usesIntegrationTokenAuth } from '$lib/integrations/registry.js';
-
-function checkIsSuperAdmin(userId: string | undefined, platform: any): boolean {
-	if (!userId) return false;
-	const adminUserIds =
-		(platform as any)?.env?.ADMIN_USER_IDS ||
-		(typeof process !== 'undefined' ? process.env?.ADMIN_USER_IDS : '') ||
-		'';
-	return adminUserIds
-		.split(',')
-		.map((id: string) => id.trim())
-		.filter(Boolean)
-		.includes(userId);
-}
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform }) {

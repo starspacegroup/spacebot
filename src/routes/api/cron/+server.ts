@@ -18,24 +18,9 @@ import { processScheduledMessages } from '$lib/db/scheduled-messages.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 30;
-
-/**
- * Check if user is a superadmin
- */
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-
-	const superAdminIdList = adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean);
-
-	return superAdminIdList.includes(userId);
-}
 
 /**
  * Check if the request has a valid cron secret or internal API key

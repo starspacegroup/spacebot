@@ -5,6 +5,7 @@ import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { normalizeLocalRunnerAssistPolicy } from '$lib/db/settings.js';
 import { getGuildMetadata } from '$lib/db/guild-metadata.js';
 import { getDashboardCacheEntry } from '$lib/server/dashboard-stats.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 // Track server start time for uptime calculation
 const SERVER_START_TIME = Date.now();
@@ -25,22 +26,6 @@ function formatUptime(ms) {
 		return `${hours}h ${minutes % 60}m`;
 	}
 	return `${minutes}m ${seconds % 60}s`;
-}
-
-/**
- * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
- */
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-
-	const superAdminIdList = adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean);
-
-	return superAdminIdList.includes(userId);
 }
 
 /** @type {import('./$types').PageServerLoad} */

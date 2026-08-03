@@ -1,7 +1,8 @@
-import { redirect } from "@sveltejs/kit";
-import { log } from "$lib/db/logger.js";
-import { getAllGuildMetadata } from "$lib/db/guild-metadata.js";
-import { getAllServerPlans, PLAN_TIERS } from "$lib/db/server-plans.js";
+import { redirect } from '@sveltejs/kit';
+import { log } from '$lib/db/logger.js';
+import { getAllGuildMetadata } from '$lib/db/guild-metadata.js';
+import { getAllServerPlans, PLAN_TIERS } from '$lib/db/server-plans.js';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 interface DiscordApiGuild {
 	id: string;
@@ -14,24 +15,23 @@ interface DiscordApiGuild {
 	[key: string]: any;
 }
 
-function checkIsSuperAdmin(userId: string | undefined, platform: any): boolean {
-	if (!userId) return false;
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || "";
-	return adminUserIds.split(",").map((id: string) => id.trim()).filter(Boolean).includes(userId);
-}
-
 /**
  * Get all guilds the bot is currently in from the Discord API.
  */
-async function getBotGuilds(botToken: string | undefined): Promise<{ guilds: DiscordApiGuild[]; available: boolean }> {
+async function getBotGuilds(
+	botToken: string | undefined
+): Promise<{ guilds: DiscordApiGuild[]; available: boolean }> {
 	if (!botToken) {
 		return { guilds: [], available: false };
 	}
 
 	try {
-		const response = await fetch("https://discord.com/api/v10/users/@me/guilds?with_counts=true", {
-			headers: { Authorization: `Bot ${botToken}` },
-		});
+		const response = await fetch(
+			'https://discord.com/api/v10/users/@me/guilds?with_counts=true',
+			{
+				headers: { Authorization: `Bot ${botToken}` },
+			}
+		);
 
 		if (!response.ok) {
 			log.warn(`[Superadmin Servers] Failed to fetch bot guilds: ${response.status}`);
@@ -41,7 +41,7 @@ async function getBotGuilds(botToken: string | undefined): Promise<{ guilds: Dis
 		const guilds = (await response.json()) as DiscordApiGuild[];
 		return { guilds, available: true };
 	} catch (error) {
-		log.error("[Superadmin Servers] Failed to fetch bot guilds:", error);
+		log.error('[Superadmin Servers] Failed to fetch bot guilds:', error);
 		return { guilds: [], available: false };
 	}
 }
@@ -55,33 +55,51 @@ async function getGuildUsageCounts(db: any): Promise<Map<string, any>> {
 
 	try {
 		const [cmdRows, autoRows] = await Promise.all([
-			db.prepare(`
+			db
+				.prepare(
+					`
 				SELECT guild_id,
 				       COUNT(*) as total,
 				       SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as active
 				FROM commands
 				GROUP BY guild_id
-			`).all(),
-			db.prepare(`
+			`
+				)
+				.all(),
+			db
+				.prepare(
+					`
 				SELECT guild_id,
 				       COUNT(*) as total,
 				       SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) as active
 				FROM automations
 				GROUP BY guild_id
-			`).all(),
+			`
+				)
+				.all(),
 		]);
 
 		const usageMap = new Map();
 
 		for (const row of cmdRows?.results || []) {
-			const entry = usageMap.get(row.guild_id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
+			const entry = usageMap.get(row.guild_id) || {
+				commands_total: 0,
+				commands_active: 0,
+				automations_total: 0,
+				automations_active: 0,
+			};
 			entry.commands_total = row.total;
 			entry.commands_active = row.active;
 			usageMap.set(row.guild_id, entry);
 		}
 
 		for (const row of autoRows?.results || []) {
-			const entry = usageMap.get(row.guild_id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
+			const entry = usageMap.get(row.guild_id) || {
+				commands_total: 0,
+				commands_active: 0,
+				automations_total: 0,
+				automations_active: 0,
+			};
 			entry.automations_total = row.total;
 			entry.automations_active = row.active;
 			usageMap.set(row.guild_id, entry);
@@ -89,16 +107,16 @@ async function getGuildUsageCounts(db: any): Promise<Map<string, any>> {
 
 		return usageMap;
 	} catch (error) {
-		log.error("[Superadmin Servers] Failed to get usage counts:", error);
+		log.error('[Superadmin Servers] Failed to get usage counts:', error);
 		return new Map();
 	}
 }
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform }) {
-	const userId = cookies.get("discord_user_id");
+	const userId = cookies.get('discord_user_id');
 	if (!checkIsSuperAdmin(userId, platform)) {
-		throw redirect(302, "/admin");
+		throw redirect(302, '/admin');
 	}
 
 	const env = (platform as any)?.env;
@@ -108,7 +126,7 @@ export async function load({ cookies, platform }) {
 	// Dev-bypass sessions use a fake access token and have no real bot — skip
 	// the Discord round-trip entirely instead of letting it fail with 401.
 	// Stored guild_metadata (merged in below) covers seeded dev guilds fine.
-	const isDevMockToken = cookies.get("discord_access_token") === "dev_mock_token";
+	const isDevMockToken = cookies.get('discord_access_token') === 'dev_mock_token';
 
 	const [botGuildsResult, allMetadata, allPlans, usageMap] = await Promise.all([
 		isDevMockToken ? Promise.resolve({ guilds: [], available: false }) : getBotGuilds(botToken),
@@ -130,19 +148,25 @@ export async function load({ cookies, platform }) {
 	for (const apiGuild of botGuilds) {
 		seenGuildIds.add(apiGuild.id);
 		const meta = metadataMap.get(apiGuild.id);
-		const usage = usageMap.get(apiGuild.id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
+		const usage = usageMap.get(apiGuild.id) || {
+			commands_total: 0,
+			commands_active: 0,
+			automations_total: 0,
+			automations_active: 0,
+		};
 		servers.push({
 			guild_id: apiGuild.id,
 			name: meta?.name || apiGuild.name,
 			icon: meta?.icon ?? apiGuild.icon,
 			owner_id: meta?.owner_id || (apiGuild.owner ? apiGuild.owner_id : null),
-			approximate_member_count: meta?.approximate_member_count || apiGuild.approximate_member_count || 0,
+			approximate_member_count:
+				meta?.approximate_member_count || apiGuild.approximate_member_count || 0,
 			premium_tier: meta?.premium_tier ?? 0,
 			premium_subscription_count: meta?.premium_subscription_count ?? 0,
 			features: meta?.features || apiGuild.features || [],
 			fetched_at: meta?.fetched_at || null,
 			plan: planMap.get(apiGuild.id) || null,
-			bot_presence: "in",
+			bot_presence: 'in',
 			usage,
 		});
 	}
@@ -150,7 +174,12 @@ export async function load({ cookies, platform }) {
 	// Also include any metadata-only guilds not in the API response (e.g. bot was removed)
 	for (const guild of allMetadata) {
 		if (seenGuildIds.has(guild.guild_id)) continue;
-		const usage = usageMap.get(guild.guild_id) || { commands_total: 0, commands_active: 0, automations_total: 0, automations_active: 0 };
+		const usage = usageMap.get(guild.guild_id) || {
+			commands_total: 0,
+			commands_active: 0,
+			automations_total: 0,
+			automations_active: 0,
+		};
 		servers.push({
 			guild_id: guild.guild_id,
 			name: guild.name,
@@ -162,7 +191,7 @@ export async function load({ cookies, platform }) {
 			features: guild.features,
 			fetched_at: guild.fetched_at,
 			plan: planMap.get(guild.guild_id) || null,
-			bot_presence: botPresenceReliable ? "not_in" : "unknown",
+			bot_presence: botPresenceReliable ? 'not_in' : 'unknown',
 			usage,
 		});
 	}

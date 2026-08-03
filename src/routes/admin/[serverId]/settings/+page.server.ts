@@ -23,22 +23,7 @@ import {
 	validateListing,
 } from '$lib/db/server-listings.js';
 import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
-
-/**
- * Check if user is a superadmin (defined in ADMIN_USER_IDS env var)
- */
-function checkIsSuperAdmin(userId: string | undefined, platform: any) {
-	if (!userId) return false;
-
-	const adminUserIds = platform?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-
-	const superAdminIdList = adminUserIds
-		.split(',')
-		.map((id) => id.trim())
-		.filter(Boolean);
-
-	return superAdminIdList.includes(userId);
-}
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /**
  * Verify the user may mutate this guild's settings from a form action.

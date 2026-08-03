@@ -1,20 +1,11 @@
 import { json } from '@sveltejs/kit';
+import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import {
 	getMessagePurgeSettings,
 	setMessagePurgeSettings,
 	MIN_MAX_BATCHES,
 	MAX_MAX_BATCHES,
 } from '$lib/server/message-purge-settings.js';
-
-function checkIsSuperAdmin(userId, platform) {
-	if (!userId) return false;
-	const adminUserIds = (platform as any)?.env?.ADMIN_USER_IDS || process.env.ADMIN_USER_IDS || '';
-	return adminUserIds
-		.split(',')
-		.map((id: string) => id.trim())
-		.filter(Boolean)
-		.includes(userId);
-}
 
 export async function GET({ cookies, platform }) {
 	const userId = cookies.get('discord_user_id');
