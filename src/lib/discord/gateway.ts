@@ -4625,6 +4625,27 @@ function gracefulShutdown(signal) {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
+// An unhandled rejection or uncaught exception already terminates this process;
+// what was missing was any record of WHY. PM2 would restart the gateway (up to
+// max_restarts) and the operator saw a bounce with no cause. These handlers do
+// not change that outcome — they log first, then exit non-zero exactly as
+// before, so PM2's restart policy still applies.
+process.on('unhandledRejection', (reason: any) => {
+	log.error(
+		'💥 Unhandled promise rejection — gateway is exiting:',
+		reason?.stack || reason?.message || reason
+	);
+	process.exit(1);
+});
+
+process.on('uncaughtException', (error: any) => {
+	log.error(
+		'💥 Uncaught exception — gateway is exiting:',
+		error?.stack || error?.message || error
+	);
+	process.exit(1);
+});
+
 /**
  * Lightweight HTTP server that proxies POST /deploy to the internal
  * deploy-webhook listener on port 9090, and forwards all other requests

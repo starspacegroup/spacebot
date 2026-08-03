@@ -1,12 +1,26 @@
 /**
- * Cloudflare Worker scheduled handler
+ * Cloudflare Worker scheduled handler.
  *
- * This file defines scheduled event handlers (cron triggers)
- * for Cloudflare Workers/Pages.
+ * ⚠️ NOT WIRED UP. Nothing imports this module, and it cannot run as written:
+ * Cloudflare **Pages does not support cron triggers** (see the note in
+ * `wrangler.toml`), so the `scheduled()` export below is never invoked by the
+ * deployed app. The schedules named here are aspirational, not configured.
  *
- * Cron schedules defined in wrangler.toml:
- * - "0 * * * *" = Every hour (stats aggregation)  
- * - "0 0 * * *" = Daily at midnight (stats refresh from Discord + cleanup)
+ * How scheduling actually works today:
+ * - `orchestrator-worker/` is a real Worker and owns the only live Cron
+ *   Triggers: a one-minute dispatch tick plus a fifteen-minute autopilot
+ *   watchdog. (Their cron expressions are in `orchestrator-worker/wrangler.toml`
+ *   — not written out here, because a literal cron string would close this
+ *   block comment.)
+ * - The hourly/daily jobs this file describes are exposed as
+ *   `POST /api/cron` (`job=hourly_aggregation` / `job=daily_refresh`) and must
+ *   be invoked by an external scheduler or a superadmin workflow. **Nothing in
+ *   this repository calls them** — confirm that something does before relying
+ *   on anything downstream of the daily refresh (guild metadata freshness,
+ *   which gates the public server browser, and `event_logs` retention).
+ *
+ * Kept because it is the natural starting point if SpaceBot ever moves off
+ * Pages onto a Worker, where `[triggers]` would make it live again.
  */
 
 import { getGuildsWithLogs } from './server/cron-jobs.js';

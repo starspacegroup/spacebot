@@ -27,7 +27,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 ### Database & Persistence
 
 - [x] Set up Cloudflare D1 database — `wrangler.toml`
-- [x] Create schema for server settings, user data, bot statistics, command usage logs — 52 migrations
+- [x] Create schema for server settings, user data, bot statistics, command usage logs — 59 migrations
 - [x] Implement data migration scripts — `scripts/migrate.ts`
 
 ## Priority: Medium
@@ -77,7 +77,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 
 ### Testing
 
-- [x] Set up Vitest for unit tests — 94 tests across 28 files
+- [x] Set up Vitest for unit tests — 507 tests across 66 files
 - [x] Add Playwright for e2e tests — smoke scaffold + `bun run test:e2e`
 - [x] Create test coverage reports — `bun run test:coverage` (v8)
 - [x] Add CI/CD testing pipeline — GitHub Actions test workflow
@@ -232,7 +232,7 @@ ten minutes, from a single backgrounded tab.
 - [x] Visibility guards + foreground catch-up on the logs, stats and vc-activity pages,
       matching what the superadmin page already had.
 - [x] `mcp-client.listGuilds()` still ran the naive `SELECT DISTINCT guild_id FROM
-  event_logs` that 07-27 replaced in `cron-jobs.getGuildsWithLogs`: the fix had been
+event_logs` that 07-27 replaced in `cron-jobs.getGuildsWithLogs`: the fix had been
       applied to one of two copies. Both now build from `src/lib/db/distinct-guilds.ts`.
 - [x] **Raw `event_logs` retention** (2026-08-03) — `pruneOldLogs()` had no caller, so the
       table grew without bound and every scan over it got slower forever. Replaced with

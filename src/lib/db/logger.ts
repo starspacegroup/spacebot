@@ -450,32 +450,5 @@ export async function getLogById(db, logId, guildId) {
 	}
 }
 
-/**
- * Delete old logs (retention policy)
- * @param {D1Database} db - D1 database binding
- * @param {number} daysToKeep - Number of days to retain logs
- * @returns {Promise<number>} - Number of deleted rows
- */
-export async function pruneOldLogs(db, daysToKeep = 30) {
-	if (!db) return 0;
-
-	try {
-		const result = await db
-			.prepare(
-				`
-			DELETE FROM event_logs 
-			WHERE created_at < datetime('now', '-' || ? || ' days')
-		`
-			)
-			.bind(daysToKeep)
-			.run();
-
-		return result.meta?.changes || 0;
-	} catch (error) {
-		log.error('Failed to prune old logs:', error);
-		return 0;
-	}
-}
-
 export const EVENT_CATEGORIES = DISCORD_EVENT_CATEGORIES;
 export const EVENT_TYPES = DISCORD_EVENT_TYPES;

@@ -327,7 +327,11 @@ export const actions = {
 		}
 
 		try {
-			await saveGuildSettings(db, serverId, {
+			// saveGuildSettings and saveGuildListing catch their own errors and
+			// report them in the return value rather than throwing, so discarding
+			// the result meant a failed write still answered "Settings updated
+			// successfully!". saveGuildBranding throws, so the outer catch covers it.
+			const savedSettings = await saveGuildSettings(db, serverId, {
 				logging_enabled: !!loggingChannelId, // Enable logging if a channel is set
 				log_channel_id: loggingChannelId || null,
 				log_embed_colors: logEmbedColors,
@@ -345,8 +349,30 @@ export const actions = {
 					},
 				},
 			});
+			if (savedSettings && savedSettings.success === false) {
+				log.error(
+					`[Settings] Failed to save settings for server ${serverId}: ${savedSettings.error}`
+				);
+				return fail(500, { success: false, message: 'Failed to save settings' });
+			}
+
 			await saveGuildBranding(db, serverId, brandingValidation.value, userId);
-			await saveGuildListing(db, serverId, listingValidation.value, userId);
+
+			const savedListing = await saveGuildListing(
+				db,
+				serverId,
+				listingValidation.value,
+				userId
+			);
+			if (savedListing && savedListing.success === false) {
+				log.error(
+					`[Settings] Failed to save server browser listing for ${serverId}: ${savedListing.error}`
+				);
+				return fail(500, {
+					success: false,
+					message: 'Settings saved, but the server browser listing could not be updated.',
+				});
+			}
 
 			return {
 				success: true,

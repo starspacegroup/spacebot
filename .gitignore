@@ -6,7 +6,7 @@ node_modules
 .netlify
 /package-lock.json
 .wrangler
-/.svelte-kit
+.svelte-kit
 /build
 
 # OS
