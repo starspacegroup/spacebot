@@ -77,7 +77,35 @@ raise the env var then.
 | `EVENT_LOG_RETENTION_DAYS`             | `90`    | How far back the log viewer can go. |
 | `EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN` | `5000`  | Per-night deletion ceiling.         |
 
-Retention only runs as part of the daily refresh, so it inherits that job's
-scheduling — see the deployment note in
-[Server Browser](server-browser.md#visibility-rules) about confirming the daily
-refresh actually runs.
+Retention runs inside the `cleanupOldData` workflow operation, which is the `cleanup` step
+of the seeded `daily-server-intelligence-refresh` preset (`0 0 * * *`). That preset is
+topped up automatically by the dispatcher and driven by `orchestrator-worker`'s Cron
+Trigger, so no manual scheduling is required.
+
+It was added to that operation rather than as a new preset node on purpose: the seeder
+only inserts **missing** slugs, so a change to the preset definition would not reach an
+already-seeded production template without an operator using _Reset to built-in
+definition_. Extending the operation that the existing node already calls means retention
+starts on the next nightly tick with no operator action.
+
+`runDailyRefresh` also calls event-log retention, for the legacy `POST /api/cron`
+(`job=daily_refresh`) path. Nothing in this repo invokes that endpoint, but if it is ever
+wired up both paths would prune on the same day — harmless, since each is separately
+budgeted.
+
+### The shared write budget
+
+All four retention deletes run in that one nightly job, so they share a single allowance
+rather than each having its own. Sized in isolation they summed to ~88k row-writes —
+roughly 88% of D1's ~100k/day cap, leaving almost nothing for live logging:
+
+| Delete                      | Rows/run | Indexes | ~Row-writes |
+| --------------------------- | -------- | ------- | ----------- |
+| `event_logs`                | 2,500    | 7       | 20,000      |
+| `voice_sessions`            | 1,500    | 4       | 7,500       |
+| `aggregated_stats` (hourly) | 1,500    | 4       | 7,500       |
+| `server_stats`              | 1,500    | 5       | 9,000       |
+| **Total**                   |          |         | **~44,000** |
+
+That leaves over half the day's writes for live event logging. Backlogs drain over
+successive nights, which is the intended trade-off.

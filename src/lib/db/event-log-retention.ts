@@ -41,8 +41,13 @@ export const DEFAULT_BATCH_SIZE = 2000;
  * Sized against D1's **write** cap, not its read cap — that is the binding
  * constraint here. The free tier allows ~100k rows written/day, and `event_logs`
  * carries **seven** indexes, so each deleted row costs roughly 8 row-writes once
- * index maintenance is counted. 5,000 deletions is therefore ~40k writes,
- * comfortably under half the daily allowance with room left for normal logging.
+ * index maintenance is counted.
+ *
+ * Crucially this is one of FOUR retention deletes in the same nightly job
+ * (event_logs, voice_sessions, hourly aggregated_stats, server_stats). Sized in
+ * isolation they summed to ~88k row-writes — ~88% of the daily allowance,
+ * leaving almost nothing for live logging. They now share one budget totalling
+ * ~44k, of which this is the largest slice: 2,500 x ~8 = 20k.
  *
  * The trade-off is deliberate: a large backlog drains over weeks rather than in
  * one pass. That is the correct direction — a retention job that trips the write
@@ -50,7 +55,7 @@ export const DEFAULT_BATCH_SIZE = 2000;
  * `EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN` on Workers Paid, where the cap is far
  * higher.
  */
-export const DEFAULT_MAX_ROWS_PER_RUN = 5000;
+export const DEFAULT_MAX_ROWS_PER_RUN = 2500;
 
 export interface PruneResult {
 	deleted: number;

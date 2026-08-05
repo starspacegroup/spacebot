@@ -12,12 +12,15 @@
  *   watchdog. (Their cron expressions are in `orchestrator-worker/wrangler.toml`
  *   — not written out here, because a literal cron string would close this
  *   block comment.)
- * - The hourly/daily jobs this file describes are exposed as
- *   `POST /api/cron` (`job=hourly_aggregation` / `job=daily_refresh`) and must
- *   be invoked by an external scheduler or a superadmin workflow. **Nothing in
- *   this repository calls them** — confirm that something does before relying
- *   on anything downstream of the daily refresh (guild metadata freshness,
- *   which gates the public server browser, and `event_logs` retention).
+ * - The hourly/daily work this file describes **does** run in production, via
+ *   the seeded superadmin workflow presets `hourly-server-activity-rollup` and
+ *   `daily-server-intelligence-refresh` (`src/lib/server/superadmin-workflow-presets.ts`).
+ *   The dispatcher tops up any missing preset by slug on every tick, so they
+ *   need no manual setup.
+ * - The same jobs are additionally exposed as `POST /api/cron`
+ *   (`job=hourly_aggregation` / `job=daily_refresh`). Nothing in this repository
+ *   calls that endpoint — it is a superadmin manual trigger, not the scheduled
+ *   path — so do not read its lack of callers as "the daily jobs never run".
  *
  * Kept because it is the natural starting point if SpaceBot ever moves off
  * Pages onto a Worker, where `[triggers]` would make it live again.

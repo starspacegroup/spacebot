@@ -119,11 +119,14 @@ actually-visible counts, how many are hidden by staleness vs. taken down, and ra
 warning when the whole fleet's metadata has gone stale. A widening gap between "Opted In"
 and "Visible at /servers" means check the refresh job before you look at the listings.
 
-> ⚠️ **Deployment prerequisite.** Cloudflare Pages cannot run cron triggers
-> (`wrangler.toml` says so), and `src/lib/scheduled.ts` is unreferenced — nothing in this
-> repo invokes `POST /api/cron` with `job=daily_refresh`. The refresh therefore runs only
-> if an external scheduler or a superadmin workflow is configured to call it. Confirm that
-> before relying on the browser, or every listing will age out within a week of launch.
+> **How freshness is maintained.** `guild_metadata.fetched_at` is stamped by the
+> `daily-server-intelligence-refresh` workflow preset, which runs at `0 0 * * *`. That
+> preset is seeded automatically — the dispatcher tops up any missing built-in by slug on
+> every tick — and the tick itself comes from `orchestrator-worker`'s Cron Trigger. So
+> freshness does not depend on any manual setup. (`POST /api/cron` also exposes these jobs
+> and nothing in this repo calls it, but that endpoint is a superadmin manual trigger, not
+> the scheduled path.) Check **Superadmin → Public Server Browser** if listings ever go
+> stale.
 
 ### What is _not_ re-checked
 
