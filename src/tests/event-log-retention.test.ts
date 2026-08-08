@@ -5,7 +5,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createSqliteD1 } from './helpers/sqlite-d1.js';
-import { pruneAggregatedEventLogs, resolveGuildCutoff } from '../lib/db/event-log-retention.js';
+import {
+	DEFAULT_EVENT_LOG_RETENTION_DAYS,
+	DEFAULT_MAX_ROWS_PER_RUN,
+	pruneAggregatedEventLogs,
+	resolveEventLogRetentionEnv,
+	resolveGuildCutoff,
+} from '../lib/db/event-log-retention.js';
 
 const SCHEMA = `
 	CREATE TABLE event_logs (
@@ -164,6 +170,48 @@ describe('event_logs retention cost control', () => {
 		db.close();
 	});
 
+	it('shares the budget across guilds so one backlog cannot starve the rest', async () => {
+		// Guilds arrive in ascending guild_id order, and that order is stable. If
+		// the first guild could spend the whole budget, G2 would never be pruned
+		// on any night — the exact unbounded growth this job exists to stop.
+		const db = createSqliteD1(SCHEMA);
+		addEvents(db, G1, 100, 200); // lowest guild_id, huge backlog
+		addDailyAggregate(db, G1, 1);
+		addEvents(db, G2, 10, 200);
+		addDailyAggregate(db, G2, 1);
+
+		const result = await pruneAggregatedEventLogs(db, {
+			retentionDays: 90,
+			batchSize: 20,
+			maxRowsPerRun: 20,
+		});
+
+		expect(result.deleted).toBe(20);
+		expect(await countEvents(db, G2)).toBeLessThan(10);
+		db.close();
+	});
+
+	it('still spends leftover budget on the guilds that need it', async () => {
+		// Fair-share must not cost throughput: G2 only has 2 deletable rows, so
+		// the remainder of the budget has to fall through to G1.
+		const db = createSqliteD1(SCHEMA);
+		addEvents(db, G1, 100, 200);
+		addDailyAggregate(db, G1, 1);
+		addEvents(db, G2, 2, 200);
+		addDailyAggregate(db, G2, 1);
+
+		const result = await pruneAggregatedEventLogs(db, {
+			retentionDays: 90,
+			batchSize: 10,
+			maxRowsPerRun: 40,
+		});
+
+		expect(result.deleted).toBe(40);
+		expect(await countEvents(db, G2)).toBe(0);
+		expect(await countEvents(db, G1)).toBe(62);
+		db.close();
+	});
+
 	it('never exceeds the budget even with a batch size larger than it', async () => {
 		const db = createSqliteD1(SCHEMA);
 		addEvents(db, G1, 100, 200);
@@ -241,5 +289,43 @@ describe('resolveGuildCutoff', () => {
 		// Retention older than watermark → retention wins.
 		expect(await resolveGuildCutoff(db, G1, '2025-06-01 00:00:00')).toBe('2025-06-01 00:00:00');
 		db.close();
+	});
+});
+
+describe('resolveEventLogRetentionEnv', () => {
+	const platform = (env: Record<string, string>) => ({ env });
+
+	it('honours an explicit 0 as the kill switch', () => {
+		// getEnvNumber would silently turn this back into the default budget, so
+		// the one lever an operator reaches for mid-incident has to survive here.
+		expect(
+			resolveEventLogRetentionEnv(platform({ EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN: '0' }))
+				.maxRowsPerRun
+		).toBe(0);
+	});
+
+	it('falls back to the defaults when unset, empty or garbage', () => {
+		for (const env of [
+			{},
+			{ EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN: '' },
+			{ EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN: 'lots' },
+		]) {
+			expect(resolveEventLogRetentionEnv(platform(env)).maxRowsPerRun).toBe(
+				DEFAULT_MAX_ROWS_PER_RUN
+			);
+		}
+		expect(resolveEventLogRetentionEnv(platform({})).retentionDays).toBe(
+			DEFAULT_EVENT_LOG_RETENTION_DAYS
+		);
+	});
+
+	it('reads overrides from the platform bindings', () => {
+		const resolved = resolveEventLogRetentionEnv(
+			platform({
+				EVENT_LOG_RETENTION_DAYS: '30',
+				EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN: '50000',
+			})
+		);
+		expect(resolved).toEqual({ retentionDays: 30, maxRowsPerRun: 50000 });
 	});
 });

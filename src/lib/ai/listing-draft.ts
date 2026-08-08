@@ -32,6 +32,18 @@ export interface ListingDraftContext {
 	existingDescription?: string | null;
 }
 
+/**
+ * What both the parser and the generator hand back: a draft on success, a
+ * reason on failure. Declared once and used as the generator's explicit return
+ * type — without it TypeScript infers a union of the parse result and the bare
+ * error object, and callers can't reach `draft` on the union at all.
+ */
+export interface ListingDraftResult {
+	ok: boolean;
+	draft?: { headline: string; description: string; category: string; tags: string[] };
+	error?: string;
+}
+
 /** Channel names are the strongest signal about what a server is actually for. */
 const MAX_CHANNELS_IN_PROMPT = 25;
 
@@ -129,11 +141,7 @@ export function extractJsonObject(text: string): Record<string, any> | null {
  * goes into the same form and through the same `validateListing` on save, so
  * the model gets no more latitude than a person typing.
  */
-export function parseListingDraft(text: string): {
-	ok: boolean;
-	draft?: { headline: string; description: string; category: string; tags: string[] };
-	error?: string;
-} {
+export function parseListingDraft(text: string): ListingDraftResult {
 	const parsed = extractJsonObject(text);
 	if (!parsed) return { ok: false, error: 'The AI response could not be read as JSON.' };
 
@@ -174,7 +182,7 @@ export async function generateListingDraft(
 	context: ListingDraftContext,
 	env: any,
 	{ attempts = 2 }: { attempts?: number } = {}
-) {
+): Promise<ListingDraftResult> {
 	const { system, user } = buildListingPrompt(context);
 	let lastError = 'The AI service did not respond.';
 

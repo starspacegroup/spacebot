@@ -27,6 +27,7 @@
  */
 
 import { DISTINCT_GUILD_IDS_SQL } from './distinct-guilds.js';
+import { getEnv } from '../env.js';
 import { log } from '../log.js';
 
 /** How long raw events stay queryable in the log viewer. Aggregates are unaffected. */
@@ -62,6 +63,41 @@ export interface PruneResult {
 	guildsProcessed: number;
 	guildsSkipped: number;
 	budgetExhausted: boolean;
+}
+
+/**
+ * Resolve this job's env overrides, for every caller that schedules it.
+ *
+ * Deliberately **not** `getEnvNumber`: that helper treats any non-positive value
+ * as "unset", which would silently turn `EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN=0`
+ * — the kill switch `pruneAggregatedEventLogs` explicitly implements, and the
+ * one thing an operator reaches for mid-incident — back into the default budget.
+ * Zero has to survive the parse. An unset or empty value still means "default",
+ * since `Number('')` is 0 and would otherwise disable retention by accident.
+ *
+ * Shared rather than repeated per call site so the default can never again drift
+ * between the paths that run this (see the hardcoded 5000 that outlived the drop
+ * to 2,500).
+ */
+export function resolveEventLogRetentionEnv(platform: any = null): {
+	retentionDays: number;
+	maxRowsPerRun: number;
+} {
+	const read = (name: string) => {
+		const raw = getEnv(name, platform);
+		if (raw === undefined || raw === null || String(raw).trim() === '') return Number.NaN;
+		return Number(raw);
+	};
+
+	const days = read('EVENT_LOG_RETENTION_DAYS');
+	const rows = read('EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN');
+
+	return {
+		retentionDays:
+			Number.isFinite(days) && days > 0 ? Math.floor(days) : DEFAULT_EVENT_LOG_RETENTION_DAYS,
+		maxRowsPerRun:
+			Number.isFinite(rows) && rows >= 0 ? Math.floor(rows) : DEFAULT_MAX_ROWS_PER_RUN,
+	};
 }
 
 /**
@@ -132,47 +168,77 @@ export async function pruneAggregatedEventLogs(
 		// O(guilds), not O(events) — see distinct-guilds.ts.
 		const guildRows = (await db.prepare(DISTINCT_GUILD_IDS_SQL).all()).results || [];
 
-		for (const { guild_id: guildId } of guildRows) {
-			if (result.deleted >= budget) {
-				result.budgetExhausted = true;
-				break;
-			}
+		// Guilds arrive in ascending guild_id order, and that order is stable from
+		// night to night. Spending the whole budget on whoever comes first would
+		// mean the lowest-id guild with a real backlog is the ONLY guild ever
+		// pruned — every other guild's event_logs would keep growing forever,
+		// which is the exact failure this job exists to stop. So the run is two
+		// sweeps: everyone gets a fair share first, then whatever is left over is
+		// offered to the guilds that could still use it.
+		const cutoffs = new Map<string, string>();
+		const drained = new Set<string>();
 
-			const cutoff = await resolveGuildCutoff(db, guildId, retentionCutoff);
-			if (!cutoff) {
-				// No daily aggregate yet: its history is not preserved anywhere else.
-				result.guildsSkipped++;
-				continue;
-			}
-			result.guildsProcessed++;
-
-			// Batched so no single statement is a large scan, and so the run stops
-			// cleanly on the budget rather than mid-table.
-			for (;;) {
-				const remaining = budget - result.deleted;
-				if (remaining <= 0) {
+		const sweep = async (perGuildCap: number) => {
+			for (const { guild_id: guildId } of guildRows) {
+				if (result.deleted >= budget) {
 					result.budgetExhausted = true;
-					break;
+					return;
+				}
+				if (drained.has(guildId)) continue;
+
+				let cutoff = cutoffs.get(guildId);
+				if (cutoff === undefined) {
+					const resolved = await resolveGuildCutoff(db, guildId, retentionCutoff);
+					if (!resolved) {
+						// No daily aggregate yet: its history is not preserved anywhere else.
+						result.guildsSkipped++;
+						drained.add(guildId);
+						continue;
+					}
+					cutoff = resolved;
+					cutoffs.set(guildId, cutoff);
+					result.guildsProcessed++;
 				}
 
-				const deleteResult = await db
-					.prepare(
-						`DELETE FROM event_logs
-						 WHERE id IN (
-							 SELECT id FROM event_logs
-							 WHERE guild_id = ? AND created_at < ?
-							 ORDER BY id
-							 LIMIT ?
-						 )`
-					)
-					.bind(guildId, cutoff, Math.min(size, remaining))
-					.run();
+				// Batched so no single statement is a large scan, and so the run stops
+				// cleanly on the budget rather than mid-table.
+				let deletedHere = 0;
+				for (;;) {
+					const remaining = Math.min(budget - result.deleted, perGuildCap - deletedHere);
+					if (remaining <= 0) {
+						if (result.deleted >= budget) result.budgetExhausted = true;
+						break;
+					}
 
-				const removed = Number(deleteResult?.meta?.changes || 0);
-				result.deleted += removed;
-				if (removed === 0) break;
+					const deleteResult = await db
+						.prepare(
+							`DELETE FROM event_logs
+							 WHERE id IN (
+								 SELECT id FROM event_logs
+								 WHERE guild_id = ? AND created_at < ?
+								 ORDER BY id
+								 LIMIT ?
+							 )`
+						)
+						.bind(guildId, cutoff, Math.min(size, remaining))
+						.run();
+
+					const removed = Number(deleteResult?.meta?.changes || 0);
+					result.deleted += removed;
+					deletedHere += removed;
+					if (removed === 0) {
+						// Nothing left past this guild's cutoff — don't revisit it.
+						drained.add(guildId);
+						break;
+					}
+				}
 			}
-		}
+		};
+
+		await sweep(Math.max(1, Math.ceil(budget / Math.max(1, guildRows.length))));
+		// Leftovers: with one guild, or when most guilds are already clean, this
+		// keeps throughput identical to an unshared budget.
+		if (result.deleted < budget) await sweep(budget);
 
 		if (result.deleted > 0 || result.guildsSkipped > 0) {
 			log.info(

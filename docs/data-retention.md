@@ -52,30 +52,33 @@ partly caused by a retention query that scanned its table twice per flush. So:
 - The subselect is served by `idx_event_logs_guild_created` — verified with
   `EXPLAIN QUERY PLAN` in the tests, which assert no bare `SCAN event_logs`.
 - A hard per-run row budget (`EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN`, default
-  **5,000**) means a large backlog drains over successive nights instead of in
+  **2,500**) means a large backlog drains over successive nights instead of in
   one pass.
+- That budget is shared fairly across guilds: each guild gets `budget / guilds`
+  before any guild gets seconds, so one busy server cannot starve the rest.
 
-### Why the budget is 5,000 and not larger
+### Why the budget is 2,500 and not larger
 
 It is sized against D1's **write** cap, which is the binding constraint — not the
 read cap everything else in this codebase has had to worry about. The free tier
 allows ~100k rows written/day, and `event_logs` carries **seven** indexes, so one
-deleted row costs roughly 8 row-writes once index maintenance is counted. 5,000
-deletions ≈ 40k writes: under half the daily allowance, leaving room for live
-logging.
+deleted row costs roughly 8 row-writes once index maintenance is counted. 2,500
+deletions ≈ 20k writes — and this is only one of four retention deletes sharing
+the same nightly allowance (see the table below), which together come to ~44k.
 
-The trade-off is deliberate. A backlog of 240k rows takes ~48 nightly runs to
-clear (simulated end-to-end: 261k rows → 21k, aggregates intact). A retention job
+The trade-off is deliberate. A backlog of 240k rows takes ~96 nightly runs to
+clear at 2,500/night (the original end-to-end simulation drained 261k rows → 21k
+with aggregates intact in half that, at the old 5,000 budget). A retention job
 that tripped the write cap would take live event logging down with it, which is
 strictly worse than draining slowly. On Workers Paid the cap is far higher —
 raise the env var then.
 
 ## Configuration
 
-| Env var                                | Default | Effect                              |
-| -------------------------------------- | ------- | ----------------------------------- |
-| `EVENT_LOG_RETENTION_DAYS`             | `90`    | How far back the log viewer can go. |
-| `EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN` | `5000`  | Per-night deletion ceiling.         |
+| Env var                                | Default | Effect                                                    |
+| -------------------------------------- | ------- | --------------------------------------------------------- |
+| `EVENT_LOG_RETENTION_DAYS`             | `90`    | How far back the log viewer can go.                       |
+| `EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN` | `2500`  | Per-night deletion ceiling. `0` skips retention entirely. |
 
 Retention runs inside the `cleanupOldData` workflow operation, which is the `cleanup` step
 of the seeded `daily-server-intelligence-refresh` preset (`0 0 * * *`). That preset is
