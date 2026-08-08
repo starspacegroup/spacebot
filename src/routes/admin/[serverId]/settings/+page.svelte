@@ -9,6 +9,15 @@
 	const tr = getTranslator();
 	const { data, form } = $props();
 
+	function getListingInviteError(result: unknown): string | undefined {
+		if (!result || typeof result !== 'object' || !('listingErrors' in result)) return;
+		const errors = result.listingErrors;
+		if (!errors || typeof errors !== 'object' || !('invite_url' in errors)) return;
+		return typeof errors.invite_url === 'string' ? errors.invite_url : undefined;
+	}
+
+	const listingInviteError = $derived(getListingInviteError(form));
+
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
 
@@ -899,7 +908,7 @@
 						id="listingInviteUrl"
 						name="listingInviteUrl"
 						class="form-input"
-						class:input-error={Boolean(form?.listingErrors?.invite_url)}
+						class:input-error={Boolean(listingInviteError)}
 						bind:value={listingInviteUrl}
 						placeholder="https://discord.gg/your-invite"
 						onchange={autoSaveListing}
@@ -913,8 +922,8 @@
 						{inviteLoading ? tr('listing.inviteWorking') : tr('listing.inviteButton')}
 					</button>
 				</div>
-				{#if form?.listingErrors?.invite_url}
-					<span class="listing-error">{form.listingErrors.invite_url}</span>
+				{#if listingInviteError}
+					<span class="listing-error">{listingInviteError}</span>
 				{/if}
 			</div>
 
