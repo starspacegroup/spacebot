@@ -6,6 +6,7 @@
 
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
+import { getTimezoneOffsetSQL } from '../timezone.js';
 
 /** Per-run delete ceilings, sized against D1's ~100k/day row-write cap.
  *  These run in the SAME nightly job as event_logs and server_stats retention,
@@ -14,7 +15,6 @@ import { deleteInBatches } from './bounded-delete.js';
  *  retention deletes that is ~44k, leaving over half the day for live logging. */
 const VOICE_SESSION_DELETE_BUDGET = 1500;
 const HOURLY_AGGREGATE_DELETE_BUDGET = 1500;
-import { getTimezoneOffsetSQL } from '../timezone.js';
 
 const HOURLY_REPAIR_DAYS = 7;
 const DAILY_REPAIR_DAYS = 14;

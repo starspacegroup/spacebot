@@ -30,8 +30,10 @@ import {
 	verifyAggregateIntegrity,
 } from '$lib/server/cron-jobs.js';
 import { cleanupOldData } from '$lib/db/stats-aggregation.js';
-import { DEFAULT_MAX_ROWS_PER_RUN, pruneAggregatedEventLogs } from '$lib/db/event-log-retention.js';
-import { getEnvNumber } from '$lib/env.js';
+import {
+	pruneAggregatedEventLogs,
+	resolveEventLogRetentionEnv,
+} from '$lib/db/event-log-retention.js';
 import { pruneOldStats } from '$lib/db/server-stats.js';
 import { processScheduledMessages, getPendingMessages } from '$lib/db/scheduled-messages.js';
 import { sweepAllTimedOutRunnerJobs, createRunnerJob } from '$lib/db/local-runners.js';
@@ -301,14 +303,10 @@ const OPERATIONS = {
 			// running "Reset to built-in definition". Extending the operation that
 			// the existing `cleanup` node already calls means event-log retention
 			// starts running on the next nightly tick with no operator action.
-			eventLogRetention: await pruneAggregatedEventLogs(ctx.db, {
-				retentionDays: getEnvNumber('EVENT_LOG_RETENTION_DAYS', ctx.platform, 90),
-				maxRowsPerRun: getEnvNumber(
-					'EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN',
-					ctx.platform,
-					DEFAULT_MAX_ROWS_PER_RUN
-				),
-			}),
+			eventLogRetention: await pruneAggregatedEventLogs(
+				ctx.db,
+				resolveEventLogRetentionEnv(ctx.platform)
+			),
 		}),
 	},
 	deleteAggregatedStats: {

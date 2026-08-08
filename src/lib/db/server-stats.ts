@@ -5,13 +5,13 @@
 
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
+import { getTimezoneOffsetSQL } from '../timezone.js';
+
+const DEFAULT_STATS_REFRESH_MINUTES = 30;
 
 /** Per-run ceiling. Shares the nightly write allowance with the other three
  *  retention deletes: 1,500 rows x ~6 writes (5 indexes + the row) = ~9k. */
 const SERVER_STATS_DELETE_BUDGET = 1500;
-import { getTimezoneOffsetSQL } from '../timezone.js';
-
-const DEFAULT_STATS_REFRESH_MINUTES = 30;
 
 function parseRecordedAt(recordedAt) {
 	if (!recordedAt || typeof recordedAt !== 'string') {

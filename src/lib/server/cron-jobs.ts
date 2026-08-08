@@ -17,8 +17,10 @@ import { refreshGuildCache } from '$lib/db/guild-cache.js';
 import { upsertGuildMetadata } from '$lib/db/guild-metadata.js';
 import { log } from '$lib/log.js';
 import { GUILDS_WITH_RECENT_LOGS_SQL } from '$lib/db/distinct-guilds.js';
-import { pruneAggregatedEventLogs } from '$lib/db/event-log-retention.js';
-import { getEnvNumber } from '$lib/env.js';
+import {
+	pruneAggregatedEventLogs,
+	resolveEventLogRetentionEnv,
+} from '$lib/db/event-log-retention.js';
 
 /**
  * Get all guilds that have event logs in the last 7 days.
@@ -309,10 +311,10 @@ export async function runDailyRefresh(db, botToken) {
 	// Raw event rows, once they are both past the retention window and preserved
 	// in a daily aggregate. Bounded per run so a large backlog drains over
 	// several nights rather than spending a day's D1 budget in one pass.
-	results.eventLogRetention = await pruneAggregatedEventLogs(db, {
-		retentionDays: getEnvNumber('EVENT_LOG_RETENTION_DAYS', null, 90),
-		maxRowsPerRun: getEnvNumber('EVENT_LOG_RETENTION_MAX_ROWS_PER_RUN', null, 5000),
-	});
+	// Options come from the shared resolver so this path can't drift from the
+	// nightly workflow path — a hardcoded 5000 here outlived the drop to 2,500
+	// and quietly blew the shared write allowance this job is sized against.
+	results.eventLogRetention = await pruneAggregatedEventLogs(db, resolveEventLogRetentionEnv());
 	results.metadata = metadataResults;
 
 	log.info(
