@@ -9,6 +9,15 @@
 	const tr = getTranslator();
 	const { data, form } = $props();
 
+	// Per-field listing errors come back from the `updateSettings` fail(400)
+	// branch. SvelteKit's generated `ActionData` unions every action result on
+	// this page and the per-action failure payloads don't survive that union
+	// (`keyof` it collapses to `string`), so the key has to be named here to be
+	// readable. Shape matches `validateListing().errors` in +page.server.ts.
+	const listingErrors = $derived(
+		(form as { listingErrors?: Record<string, string> } | null)?.listingErrors
+	);
+
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
 
@@ -899,7 +908,7 @@
 						id="listingInviteUrl"
 						name="listingInviteUrl"
 						class="form-input"
-						class:input-error={Boolean(form?.listingErrors?.invite_url)}
+						class:input-error={Boolean(listingErrors?.invite_url)}
 						bind:value={listingInviteUrl}
 						placeholder="https://discord.gg/your-invite"
 						onchange={autoSaveListing}
@@ -913,8 +922,8 @@
 						{inviteLoading ? tr('listing.inviteWorking') : tr('listing.inviteButton')}
 					</button>
 				</div>
-				{#if form?.listingErrors?.invite_url}
-					<span class="listing-error">{form.listingErrors.invite_url}</span>
+				{#if listingErrors?.invite_url}
+					<span class="listing-error">{listingErrors.invite_url}</span>
 				{/if}
 			</div>
 
