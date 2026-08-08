@@ -2,7 +2,7 @@
 	import { scheduleFromCron, scheduleLabel } from './workflow-ui.js';
 	import { parseCanvasJson } from '$lib/superadmin-workflow-graph.js';
 
-	let {
+	const {
 		templates = [],
 		selectedId = null,
 		runningId = null,

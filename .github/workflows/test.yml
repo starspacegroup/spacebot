@@ -35,9 +35,6 @@ jobs:
               run: bun run typecheck
 
             - name: Lint
-              # Non-blocking while the lint baseline is established on the
-              # mid-migration codebase. Flip to blocking once clean.
-              continue-on-error: true
               run: bun run lint
 
             - name: Unit tests

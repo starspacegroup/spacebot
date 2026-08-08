@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { toast } from '$lib/toast.svelte.js';
 	import { getTranslator, getLocale } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
@@ -467,7 +468,7 @@
 			</select>
 		</div>
 
-		<p class="muted form-hint">{@html tr('aiwf.modelChainHint')}</p>
+		<p class="muted form-hint"><TrustedHtml html={tr('aiwf.modelChainHint')} /></p>
 
 		<div class="capability-row">
 			<label

@@ -2,6 +2,7 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { getTranslator, getLocale } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
@@ -243,7 +244,7 @@
 		<div class="alert alert-warning">
 			<span class="alert-icon">⚠️</span>
 			<div>
-				{@html tr('bill.pastDue')}
+				<TrustedHtml html={tr('bill.pastDue')} />
 				<button
 					class="alert-action"
 					onclick={() => billingAction('portal')}
@@ -475,11 +476,11 @@
 				<ul class="plan-features">
 					<li>
 						<span class="feature-icon pro">★</span>
-						{@html tr('bill.unlimitedCommands')}
+						<TrustedHtml html={tr('bill.unlimitedCommands')} />
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
-						{@html tr('bill.unlimitedAutomations')}
+						<TrustedHtml html={tr('bill.unlimitedAutomations')} />
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
@@ -491,11 +492,11 @@
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
-						{@html tr('bill.unlimitedLogRetention')}
+						<TrustedHtml html={tr('bill.unlimitedLogRetention')} />
 					</li>
 					<li>
 						<span class="feature-icon pro">★</span>
-						{@html tr('bill.oneYearStats')}
+						<TrustedHtml html={tr('bill.oneYearStats')} />
 					</li>
 					<li><span class="feature-icon pro">★</span> {tr('bill.prioritySupport')}</li>
 				</ul>

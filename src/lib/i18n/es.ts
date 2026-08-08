@@ -545,8 +545,7 @@ export const es: Record<string, string> = {
 		'Cambia entre modo claro y oscuro, o sigue la preferencia de tu sistema.',
 	'account.settings.connectedAccount': 'Cuenta conectada',
 	'account.settings.discord': 'Discord',
-	'account.settings.loggedInAs':
-		'Sesión iniciada como <strong>@{username}</strong> vía Discord OAuth.',
+	'account.settings.loggedInAs': 'Sesión iniciada como @{username} vía Discord OAuth.',
 	'account.settings.connected': 'Conectado',
 	'account.settings.session': 'Sesión',
 	'account.settings.logOut': 'Cerrar sesión',

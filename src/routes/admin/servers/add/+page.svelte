@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const { data } = $props();
 	const tr = getTranslator();
@@ -42,7 +43,7 @@
 					{tr('addServer.cta')}
 				</a>
 
-				<p class="hint">{@html tr('addServer.hint')}</p>
+				<p class="hint"><TrustedHtml html={tr('addServer.hint')} /></p>
 			{:else}
 				<div class="alert alert-error">
 					<p>{tr('addServer.errorTitle')}</p>
@@ -50,7 +51,7 @@
 				</div>
 			{/if}
 		{:else}
-			<p class="login-prompt">{@html tr('addServer.loginPrompt')}</p>
+			<p class="login-prompt"><TrustedHtml html={tr('addServer.loginPrompt')} /></p>
 		{/if}
 
 		<a href={adminUrl} class="back-link">

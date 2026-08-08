@@ -5,6 +5,7 @@
 	import { EVENT_CATEGORIES } from '$lib/db/logger.js';
 	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	const { data, form } = $props();
@@ -405,7 +406,7 @@
 				{tr('settings.permissionsTitle')}
 				<span class="important-badge">{tr('settings.important')}</span>
 			</h2>
-			<p class="section-desc">{@html tr('settings.permissionsDesc')}</p>
+			<p class="section-desc"><TrustedHtml html={tr('settings.permissionsDesc')} /></p>
 
 			<div class="settings-card">
 				<!-- View Dashboard -->
@@ -1348,8 +1349,7 @@
 		line-height: 1.5;
 	}
 
-	/* The <strong> lives inside an {@html} translation, so the selector must be
-	   :global to reach it. */
+	/* The <strong> comes from TrustedHtml, so the scoped selector must be :global. */
 	.section-desc :global(strong) {
 		color: var(--color-text);
 	}

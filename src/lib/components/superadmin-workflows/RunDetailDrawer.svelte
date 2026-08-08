@@ -2,12 +2,12 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDuration, isTerminalRunStatus, statusBadgeClass } from './workflow-ui.js';
 
-	let { runId, templateName = '', onclose, onchanged } = $props();
+	const { runId, templateName = '', onclose, onchanged } = $props();
 
 	let run = $state(null);
 	let loading = $state(true);
 	let acting = $state(false);
-	let expandedSteps = $state<Record<string, boolean>>({});
+	const expandedSteps = $state<Record<string, boolean>>({});
 
 	async function load() {
 		try {

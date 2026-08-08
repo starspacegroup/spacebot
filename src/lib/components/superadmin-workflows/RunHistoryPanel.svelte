@@ -3,7 +3,7 @@
 
 	const PAGE_SIZE = 25;
 
-	let { runs = [], templates = [], onopenrun } = $props();
+	const { runs = [], templates = [], onopenrun } = $props();
 
 	let page = $state(0);
 	let pageRuns = $state(runs);
