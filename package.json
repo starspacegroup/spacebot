@@ -33,6 +33,7 @@
 		"runner:install": "bun run runner:build && install -Dm755 dist/spacebot-runner \"$HOME/.local/bin/spacebot-runner\" && echo \"Installed: $HOME/.local/bin/spacebot-runner\"",
 		"runner:bridge:readme": "cat local-runner-vscode-bridge/README.md",
 		"db:create": "wrangler d1 create spacebot-logs",
+		"db:query": "bun scripts/d1-query.ts",
 		"db:migrate": "bun scripts/migrate.ts",
 		"db:migrate:smart": "bun scripts/migrate-if-needed.ts",
 		"db:migrate:local": "bun scripts/migrate.ts --local",
