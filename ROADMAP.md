@@ -357,6 +357,34 @@ that display bug is tracked in Dashboard's `planning/` docs, not here.)
       `guild_metadata` for a guild's name/icon and surfaces a 401 as an explicit
       session-expired banner instead of a convincing all-zero dashboard
       (`src/lib/server/discord-session.ts`, `src/hooks.server.ts`)
+- [x] The DM assistant knows what time it is, and whose clock (2026-08-14) — nothing in the system
+      prompt said what "now" was or which timezone anyone kept, so "create an event called X on
+      September 11th at 9:11PM" made the model invent a year from its training data and write the
+      local wall clock into a `Z` timestamp (9:11 PM landed at 2:11 PM for a user in Arizona).
+      Every turn now carries the current instant, today's local date, **both** the user's own IANA
+      zone and the guild's with their live offsets, and a worked local→UTC conversion. Times are
+      read on the **server's** clock when it has one, falling back to the user's own, then to
+      asking. Previews render in that zone (they used to say "UTC" on Workers no matter what) and
+      the multi-event text parser reads listed times as local instead of building dates in the
+      runtime's zone. **The bot never writes a formatted date again:** every event payload ships
+      `startTimeDiscord` / `startTimeRelative` / `endTimeDiscord` as Discord `<t:unix:F>` markup,
+      which renders on each reader's own clock, and the prompt forbids formatting one by hand.
+      Every event message also ends by offering to change the time, name or anything else — true
+      after creation too, backed by the new `update_scheduled_event` tool (PATCHes only supplied
+      fields; carries the end time along when only the start moves). The user's zone is persisted to
+      `users.preferences_json.timezone` (no migration): the dashboard reports the browser's
+      detected zone once per change, and the new `update_user_timezone` tool lets someone just tell
+      the bot "I'm in Arizona" — pinned to the session user like the runner tools, and it creates
+      the `users` row if that DM user has never signed in, so the answer actually survives. When
+      **neither** zone is known the scheduled-event tools (`EVENT_TIME_TOOLS`) refuse to run and
+      the bot asks rather than assuming UTC — enforced in `executeTool` rather than the prompt,
+      and resolved at call time so "I'm in Arizona, now make me an event" works in a single turn.
+      Reads aren't gated. Stored zones
+      must be `Region/City` or `UTC`; the fixed-offset IANA aliases (`EST`, `MST`, `EST5EDT`) are
+      rejected because they don't track DST. Also pins event names as verbatim — the model had been
+      shortening "Ammoura.me Launch/Listening Party" to "Ammoura.me Launch Party"
+      (`src/lib/ai/time-context.ts`, `src/lib/ai/chat.ts`, `src/lib/ai/mcp-client.ts`,
+      `src/routes/api/account/preferences/+server.ts`)
 - [x] Superadmin workflow engine + cron dispatch
 - [x] Standalone MCP server
 - [x] Full JavaScript → TypeScript migration

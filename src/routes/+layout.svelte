@@ -23,11 +23,26 @@
 
 	// Detect the user's browser timezone and store it in a cookie so
 	// server-side code (SQL date grouping, etc.) can use the viewer's timezone.
+	//
+	// The cookie only helps requests that carry it. A Discord DM carries no
+	// cookie, so the same zone is also persisted to the account when it changes —
+	// that is what lets the DM assistant read "9:11PM" on the user's own clock.
+	// Guarded on the cookie, so this is one write per browser per zone change,
+	// not one per page load.
 	$effect(() => {
 		try {
 			const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 			if (tz && document.cookie.indexOf('user_timezone=' + tz) === -1) {
 				document.cookie = `user_timezone=${encodeURIComponent(tz)};path=/;max-age=${60 * 60 * 24 * 365};samesite=lax`;
+				if (data?.user) {
+					fetch('/api/account/preferences', {
+						method: 'PATCH',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify({ timezone: tz }),
+					}).catch(() => {
+						// Best effort — the cookie still covers dashboard rendering.
+					});
+				}
 			}
 		} catch {
 			// Intl API not available — cookie won't be set; server falls back to UTC

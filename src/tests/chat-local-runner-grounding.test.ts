@@ -6,6 +6,10 @@ vi.mock('../lib/ai/mcp-client.js', () => ({
 	getMCPClient: () => ({
 		isConfigured: () => true,
 		executeTool: executeToolMock,
+		// Resolved once per turn to build the time context; these tests don't
+		// care about zones, so answer "not set" and let it fall back to UTC.
+		getUserTimezone: async () => null,
+		getGuildTimezone: async () => null,
 	}),
 	formatToolsForPrompt: () => '',
 	MCP_TOOLS: [],

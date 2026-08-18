@@ -9,11 +9,13 @@ import { log } from '../log.js';
 import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from './mcp-client.js';
 import { quoteNameForPrompt } from '../discord/markdown.js';
 import {
+	actionUnavailableMessage,
 	actionWasAttempted,
 	buildFunctionTools,
 	detectActionIntent,
 	normalizeNativeToolCalls,
 } from './tool-calling.js';
+import { buildTimeContext, formatTimeContextForPrompt } from './time-context.js';
 
 // Default model - Llama 3.3 70B is smarter and better at reasoning
 // Other options:
@@ -106,6 +108,12 @@ punctuation that looks like formatting. A server really can be called \`*Space\`
   as formatting.
 - Identify servers by their Server ID, never by name. If the user gives a name,
   map it to an ID from the list below and use the ID in tool calls.
+- A name the user gives you to CREATE something with — an event, a command, an
+  automation — is passed through character for character. Do not shorten it,
+  drop a word, re-punctuate it, "fix" its spelling or make it tidier.
+  \`Ammoura.me Launch/Listening Party\` is NOT \`Ammoura.me Launch Party\`.
+  If you are about to write a name that differs from what the user typed, you
+  are wrong — copy theirs.
 
 ## PERMISSION HIERARCHY
 
@@ -458,6 +466,12 @@ interface SystemPromptContext {
 	runnerInventory?: { ok: boolean; error?: string; runners: any[] } | null;
 	/** True when tools are sent as a native `tools` array, so the prose catalogue is redundant. */
 	nativeToolsEnabled?: boolean;
+	/** The DM user's own IANA timezone — the clock they are actually speaking on. */
+	userTimezone?: string | null;
+	/** The selected guild's IANA timezone, used when the user's is unknown. */
+	guildTimezone?: string | null;
+	/** Overrides `new Date()` — tests pin "now" rather than racing it. */
+	now?: Date;
 	[key: string]: any;
 }
 
@@ -466,6 +480,16 @@ interface SystemPromptContext {
  */
 export function buildSystemPrompt(context: SystemPromptContext = {}) {
 	let prompt = BASE_SYSTEM_PROMPT;
+
+	// Without this the model has no idea what "now" is: asked for an event "on
+	// September 11th at 9:11PM" it invents a year from its training data and
+	// writes the local wall clock straight into a `Z` timestamp.
+	prompt += formatTimeContextForPrompt(
+		buildTimeContext(
+			{ userTimezone: context.userTimezone, guildTimezone: context.guildTimezone },
+			context.now
+		)
+	);
 
 	// Add detailed user permission context
 	prompt += `\n\n## 🔐 CURRENT USER PERMISSIONS\n`;
@@ -707,7 +731,7 @@ function parseToolCalls(response) {
 /**
  * Execute tool calls and return results
  */
-async function executeToolCalls(toolCalls, env, userId = null) {
+async function executeToolCalls(toolCalls, env, userId = null, session: any = {}) {
 	const mcpClient = getMCPClient(env);
 
 	if (!mcpClient.isConfigured()) {
@@ -722,10 +746,11 @@ async function executeToolCalls(toolCalls, env, userId = null) {
 		];
 	}
 
-	// Local-runner tools operate on the DM user's own machines. The user id
+	// These act on the DM user's own machines or their own account. The user id
 	// MUST come from the authenticated session, never from model-supplied args,
-	// or a crafted tool call could target another account's runners.
-	const LOCAL_RUNNER_TOOLS = new Set([
+	// or a crafted tool call could target another account's runners or rewrite
+	// somebody else's preferences.
+	const SESSION_USER_TOOLS = new Set([
 		'list_local_runners',
 		'get_local_runner_activity',
 		'start_local_runner_task',
@@ -735,6 +760,7 @@ async function executeToolCalls(toolCalls, env, userId = null) {
 		'discover_vscode_instances',
 		'open_vscode_workspace',
 		'send_vscode_copilot_message',
+		'update_user_timezone',
 	]);
 
 	const results = [];
@@ -742,14 +768,22 @@ async function executeToolCalls(toolCalls, env, userId = null) {
 	for (const call of toolCalls) {
 		log.info(`[AI] Executing tool: ${call.tool}`);
 
-		const forceSessionUser = userId && LOCAL_RUNNER_TOOLS.has(call.tool);
+		const forceSessionUser = userId && SESSION_USER_TOOLS.has(call.tool);
 
 		// Inject environment variables for tools that need them (e.g., image generation)
 		const argsWithEnv = {
 			...call.args,
 			_env: env, // Internal parameter for Cloudflare AI access
-			// Runner tools are pinned to the session user; other tools fall back
-			// to the session user only when the model didn't attribute one.
+			// Internal: both clocks as of the start of this turn. The event tools
+			// re-resolve from these (see `resolveEventTimeZone`) and refuse to run
+			// when neither is known, rather than silently assuming UTC.
+			_userTimezone: session.userTimezone ?? null,
+			_guildTimezone: session.guildTimezone ?? null,
+			// Internal: needed to create a `users` row for a DM-only user, so a
+			// timezone they just told us actually survives the conversation.
+			_userName: session.userName ?? null,
+			// Account-scoped tools are pinned to the session user; other tools fall
+			// back to the session user only when the model didn't attribute one.
 			userId: forceSessionUser ? userId : call.args.userId || userId,
 		};
 
@@ -827,6 +861,16 @@ function formatToolResults(results) {
 
 	for (const { tool, args, result } of results) {
 		formatted += `### ${tool}\n`;
+		if (result?.needsTimezone) {
+			// A plain `success: false` reads as a transient error and the model
+			// retries it. Spell out that the only way forward is to ask.
+			formatted +=
+				`**BLOCKED — NOTHING WAS CREATED, AND RETRYING WILL FAIL THE SAME WAY.** ` +
+				`The timezone is unknown, so a local time cannot be turned into a real ` +
+				`instant. Reply to the user asking which timezone they are in — say plainly ` +
+				`that you need it to schedule at the right time and that you will only ask ` +
+				`once. Do not guess, do not use UTC, and do not claim the event exists.\n`;
+		}
 		if (result?.requiresConfirmation) {
 			// Without this the model reads a preview as a completed action and
 			// tells the user their event exists.
@@ -1090,6 +1134,22 @@ export async function generateChatResponse(options, env) {
 	const mcpEnabled = mcpClient.isConfigured();
 	const runnerInventory = mcpEnabled && userId ? await fetchRunnerInventory(env, userId) : null;
 
+	// "September 11th at 9:11PM" is only a real instant once you know the zone,
+	// and the zone that matters is the speaker's. Fetch both: the user's own
+	// (their account preference) and the server's (its setting). The prompt
+	// prefers the user's, falls back to the server's, and says which it used.
+	const [userTimezone, guildTimezone] = mcpEnabled
+		? await Promise.all([
+				userId ? mcpClient.getUserTimezone(userId) : null,
+				selectedGuildId ? mcpClient.getGuildTimezone(selectedGuildId) : null,
+			])
+		: [null, null];
+
+	// Handed to every tool call: what the *user* said is read on the user's clock,
+	// with the server's zone as the stand-in for when we don't know theirs — and
+	// neither known means the event tools stop and ask instead of guessing.
+	const sessionContext = { userTimezone, guildTimezone, userName };
+
 	// Local Ollama path (opt-in via AI_PROVIDER=ollama). No MCP tool-calling —
 	// local models don't use the Workers-AI tool format — so this is a plain
 	// chat completion grounded with the runner inventory fetched above.
@@ -1104,6 +1164,8 @@ export async function generateChatResponse(options, env) {
 			selectedGuildId,
 			selectedGuildName,
 			runnerInventory,
+			userTimezone,
+			guildTimezone,
 		});
 		const ollamaMessages = [
 			...history.slice(-10).map((msg) => ({ role: msg.role, content: msg.content })),
@@ -1116,6 +1178,19 @@ export async function generateChatResponse(options, env) {
 				model,
 				baseUrl,
 			});
+			// This path has no tools by construction, so a request to *do*
+			// something can only ever be described, never carried out. Say so
+			// rather than letting a local model narrate an imaginary result.
+			if (detectActionIntent(message)) {
+				log.warn(
+					'[AI] Action requested on the Ollama path, which has no tools — refusing honestly.'
+				);
+				return {
+					success: true,
+					actionNotPerformed: true,
+					response: actionUnavailableMessage({ configHint: isSuperAdmin }),
+				};
+			}
 			return { success: true, response: text };
 		} catch (error) {
 			log.error('[AI] Ollama request failed:', error.message);
@@ -1179,6 +1254,8 @@ export async function generateChatResponse(options, env) {
 		selectedGuildId,
 		selectedGuildName,
 		runnerInventory,
+		userTimezone,
+		guildTimezone,
 		// Tools go out natively below, so the prose catalogue would be a
 		// second copy of the same 38 definitions.
 		nativeToolsEnabled: mcpEnabled,
@@ -1229,7 +1306,7 @@ export async function generateChatResponse(options, env) {
 			console.log(`[AI] Processing ${toolCalls.length} tool call(s)`);
 
 			// Execute the tools
-			const results = await executeToolCalls(toolCalls, env, userId);
+			const results = await executeToolCalls(toolCalls, env, userId, sessionContext);
 			console.log('[AI] Tool results:', JSON.stringify(results, null, 2));
 			toolsUsed.push(...toolCalls.map((t) => t.tool));
 			lastPendingConfirmation = pendingConfirmationFrom(results) || lastPendingConfirmation;
@@ -1282,7 +1359,23 @@ export async function generateChatResponse(options, env) {
 		// formatted event description, and no event. Retry once with an explicit
 		// instruction, and if it still refuses to act, say so rather than letting
 		// the prose stand as a false confirmation.
-		if (mcpEnabled && detectActionIntent(message) && !actionWasAttempted(toolsUsed)) {
+		if (detectActionIntent(message) && !actionWasAttempted(toolsUsed)) {
+			// No tools at all. Retrying is pointless — there is nothing to retry
+			// with — so go straight to saying so. This branch used to be skipped
+			// entirely (the whole guard was gated on `mcpEnabled`), which is how a
+			// "create an event" request came back as the request itself, echoed.
+			if (!mcpEnabled) {
+				log.error(
+					'[AI] Action requested but MCP is not configured — the bot has no tools. ' +
+						'Check CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN on the gateway.'
+				);
+				return {
+					success: true,
+					actionNotPerformed: true,
+					response: actionUnavailableMessage({ configHint: isSuperAdmin }),
+				};
+			}
+
 			log.warn(
 				`[AI] Action intent detected but no action tool ran (tools used: ${
 					toolsUsed.join(', ') || 'none'
@@ -1305,7 +1398,12 @@ export async function generateChatResponse(options, env) {
 				retry.toolCalls?.length > 0 ? retry.toolCalls : parseToolCalls(retry.text || '');
 
 			if (retryCalls.length > 0) {
-				const retryResults = await executeToolCalls(retryCalls, env, userId);
+				const retryResults = await executeToolCalls(
+					retryCalls,
+					env,
+					userId,
+					sessionContext
+				);
 				toolsUsed.push(...retryCalls.map((t) => t.tool));
 				messages.push({
 					role: 'assistant',

@@ -8,6 +8,13 @@
 
 import { log } from '../log.js';
 import { DISTINCT_GUILD_IDS_SQL } from '../db/distinct-guilds.js';
+import {
+	discordTimestamp,
+	formatInTimeZone,
+	isStorableTimeZone,
+	localWallClockToUTC,
+	resolveTimeZone,
+} from './time-context.js';
 
 // Dynamic import for SQLite (only loaded when needed, not available on Workers)
 // Uses bun:sqlite when running under Bun, falls back to better-sqlite3 for Node.js
@@ -36,6 +43,24 @@ export interface MCPClientOptions {
 	d1Database?: any;
 	[key: string]: any;
 }
+
+/**
+ * Tools that convert a human-spoken time into a stored instant, and therefore
+ * cannot run until we know whose clock was being read.
+ *
+ * `get_scheduled_events` is not here on purpose: reading events back is fine in
+ * any zone, and blocking it would make the bot unable to answer "what's on this
+ * week" for a user who never set one.
+ */
+export const EVENT_TIME_TOOLS = new Set([
+	'create_scheduled_event',
+	'create_multiple_scheduled_events',
+	'preview_scheduled_event',
+	'preview_multiple_scheduled_events',
+	'confirm_scheduled_event',
+	'confirm_multiple_scheduled_events',
+	'update_scheduled_event',
+]);
 
 export class MCPClient {
 	accountId?: string;
@@ -1324,12 +1349,136 @@ export class MCPClient {
 			excluded_categories: settings.excluded_categories
 				? JSON.parse(settings.excluded_categories)
 				: [],
+			timezone: settings.timezone || null,
 			permission_settings: settings.permission_settings
 				? JSON.parse(settings.permission_settings)
 				: DEFAULT_SETTINGS.permission_settings,
 			created_at: settings.created_at,
 			updated_at: settings.updated_at,
 		};
+	}
+
+	/**
+	 * The guild's IANA timezone, or null when unset.
+	 *
+	 * Narrow on purpose: this runs on every DM turn that has a server selected,
+	 * and `SELECT *` on guild_settings would spend the row-read budget pulling
+	 * JSON blobs nobody reads. Never throws — a chat turn must not die because
+	 * a settings lookup did; the caller falls back to UTC.
+	 */
+	async getGuildTimezone(guildId) {
+		if (!guildId) return null;
+		try {
+			const result = await this.executeD1Query(
+				'SELECT timezone FROM guild_settings WHERE guild_id = ?',
+				[guildId]
+			);
+			return result?.results?.[0]?.timezone || null;
+		} catch (error) {
+			log.warn(`[MCP] Timezone lookup failed for guild ${guildId}: ${error.message}`);
+			return null;
+		}
+	}
+
+	/**
+	 * The DM user's own IANA timezone, or null when they've never set one.
+	 *
+	 * Lives in `users.preferences_json` (the same account-level blob the runner UI
+	 * preferences use), written either by the dashboard when a browser reports its
+	 * zone or by `update_user_timezone` when the user just tells the bot. Never
+	 * throws — an unknown zone means "fall back to the guild's", not a dead turn.
+	 */
+	async getUserTimezone(userId) {
+		if (!userId) return null;
+		try {
+			const result = await this.executeD1Query(
+				'SELECT preferences_json FROM users WHERE id = ?',
+				[userId]
+			);
+			const preferences = parseJsonField(result?.results?.[0]?.preferences_json);
+			const timezone = preferences?.timezone;
+			return typeof timezone === 'string' && timezone.trim() ? timezone.trim() : null;
+		} catch (error) {
+			log.warn(`[MCP] User timezone lookup failed for ${userId}: ${error.message}`);
+			return null;
+		}
+	}
+
+	/**
+	 * Remember the user's timezone so the next conversation already knows it.
+	 *
+	 * Shallow-merges into `preferences_json` rather than overwriting: that column
+	 * also holds the runner UI preferences, and clobbering them to store a zone
+	 * would be a silent data loss.
+	 */
+	async setUserTimezone(userId, timezone, userName = null) {
+		if (!userId) {
+			return { success: false, error: 'No user to save a timezone for' };
+		}
+
+		const requested = String(timezone || '').trim();
+		if (!isStorableTimeZone(requested)) {
+			return {
+				success: false,
+				error:
+					`"${requested}" is not a storable timezone. Give a Region/City IANA name — ` +
+					`America/Phoenix, America/New_York, Europe/London, Asia/Tokyo. An abbreviation ` +
+					`like "EST" is rejected on purpose: it does not track daylight saving, so it ` +
+					`would be an hour wrong for half the year. Map what the user said to the ` +
+					`nearest Region/City and try again.`,
+			};
+		}
+
+		try {
+			const existing = await this.executeD1Query(
+				'SELECT preferences_json FROM users WHERE id = ?',
+				[userId]
+			);
+			const current = existing?.results?.length
+				? parseJsonField(existing.results[0].preferences_json) || {}
+				: {};
+			const merged = { ...current, timezone: requested };
+
+			// Only OAuth logins create the `users` row, so a DM-only user has none.
+			// Asking them for their timezone and then failing to keep it would make
+			// the bot ask again every single time — so create the row. `username`
+			// is NOT NULL; the DM path supplies one, and a placeholder beats
+			// refusing to remember.
+			await this.executeD1Query(
+				`INSERT INTO users (id, username, preferences_json, created_at, updated_at)
+                 VALUES (?, ?, ?, datetime('now'), datetime('now'))
+                 ON CONFLICT(id) DO UPDATE SET
+                   preferences_json = excluded.preferences_json,
+                   updated_at = datetime('now')`,
+				[userId, String(userName || '').trim() || 'Discord user', JSON.stringify(merged)]
+			);
+
+			log.info(`[MCP] Saved timezone ${requested} for user ${userId}`);
+			return { success: true, timezone: requested };
+		} catch (error) {
+			log.error(`[MCP] Failed to save timezone for ${userId}: ${error.message}`);
+			return { success: false, error: error.message || String(error) };
+		}
+	}
+
+	/**
+	 * Which clock an event's times should be read on, resolved at call time.
+	 *
+	 * Deliberately not the turn-start snapshot. A user can say "I'm in Arizona,
+	 * now make me an event for 9pm Friday" in one breath: the
+	 * `update_user_timezone` that satisfies the first half has to count for the
+	 * second, or the gate below would block a request the user just answered.
+	 * The re-read only happens when the snapshot wasn't already the user's own.
+	 */
+	async resolveEventTimeZone(args: any = {}) {
+		// The server's zone is the assumption when it has one — no lookup needed.
+		if (args._guildTimezone) return { timeZone: args._guildTimezone, source: 'guild' };
+
+		const userZone =
+			args._userTimezone || (args.userId ? await this.getUserTimezone(args.userId) : null);
+		if (userZone) return { timeZone: userZone, source: 'user' };
+
+		return { timeZone: null, source: 'unknown' };
 	}
 
 	/**
@@ -1759,8 +1908,11 @@ export class MCPClient {
 	 * Handles formats like:
 	 * - "Men's Olympic Ice Hockey Preliminary: USA vs Denmark\nFeb 14, 2026 · 9:10–11:30 PM"
 	 * - "Event Name, Feb 14 2026 9:10 PM - 11:30 PM"
+	 *
+	 * Times in the text are wall-clock readings in `timezone` (the server's
+	 * configured zone), not UTC.
 	 */
-	parseEventFromText(text) {
+	parseEventFromText(text, timezone = null) {
 		// Try to extract event name and time from the text
 		// Common patterns:
 		// 1. Name on first line, date/time on second line (separated by \n)
@@ -1912,14 +2064,30 @@ export class MCPClient {
 			}
 		}
 
-		// Create Date objects
-		const startDate = new Date(year, month, day, startHour, startMinute, 0);
-		const endDate = new Date(year, month, day, endHour, endMinute, 0);
+		// The times in this text are wall-clock readings in the server's zone.
+		// `new Date(y, m, d, h, …)` would have read them in the *runtime's* zone —
+		// UTC on Workers — so "9:10 PM" became 21:10Z and every event landed hours
+		// off for anyone outside UTC.
+		const timeZone = resolveTimeZone(timezone);
+		const startDate = localWallClockToUTC(
+			{ year, month: month + 1, day, hour: startHour, minute: startMinute, second: 0 },
+			timeZone
+		);
 
-		// If end time is before start time, assume it's the next day
-		if (endDate <= startDate) {
-			endDate.setDate(endDate.getDate() + 1);
-		}
+		// An end at or before the start crossed midnight. Roll the wall-clock date
+		// rather than adding 24h to the instant, so a DST change doesn't shift it.
+		const endsNextDay = endHour * 60 + endMinute <= startHour * 60 + startMinute;
+		const endDate = localWallClockToUTC(
+			{
+				year,
+				month: month + 1,
+				day: day + (endsNextDay ? 1 : 0),
+				hour: endHour,
+				minute: endMinute,
+				second: 0,
+			},
+			timeZone
+		);
 
 		return {
 			name,
@@ -1932,13 +2100,13 @@ export class MCPClient {
 	/**
 	 * Parse multiple events from text, separated by blank lines
 	 */
-	parseEventsFromText(text) {
+	parseEventsFromText(text, timezone = null) {
 		// Split by double newlines or look for patterns
 		const eventBlocks = text.split(/\n\s*\n/).filter((block) => block.trim());
 		const events = [];
 
 		for (const block of eventBlocks) {
-			const event = this.parseEventFromText(block);
+			const event = this.parseEventFromText(block, timezone);
 			if (event) {
 				events.push(event);
 			}
@@ -2109,8 +2277,109 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 			description: createdEvent.description,
 			scheduledStartTime: createdEvent.scheduled_start_time,
 			scheduledEndTime: createdEvent.scheduled_end_time,
+			startTimeDiscord: discordTimestamp(createdEvent.scheduled_start_time, 'F'),
+			startTimeRelative: discordTimestamp(createdEvent.scheduled_start_time, 'R'),
+			endTimeDiscord: discordTimestamp(createdEvent.scheduled_end_time, 'F'),
 			entityType: createdEvent.entity_type,
 			status: createdEvent.status,
+			eventLink: `https://discord.com/events/${guildId}/${createdEvent.id}`,
+		};
+	}
+
+	/**
+	 * Change an event that already exists.
+	 *
+	 * The bot promises, every time it shows an event, that the user can change it
+	 * by saying so — including after it is created. That promise needs a tool
+	 * behind it, or the bot is telling people to go and edit it in Discord
+	 * themselves while claiming otherwise.
+	 *
+	 * Only the fields actually supplied are sent: a PATCH carrying every field
+	 * would silently reset the ones the caller left undefined.
+	 */
+	async updateScheduledEvent(guildId, eventId, changes: any = {}) {
+		if (!this.discordBotToken) {
+			throw new Error('Discord bot token not configured - cannot update events');
+		}
+		if (!eventId) {
+			throw new Error(
+				'No event id — call get_scheduled_events first to find the event to change'
+			);
+		}
+
+		const payload: Record<string, any> = {};
+		if (changes.name !== undefined) payload.name = changes.name;
+		if (changes.description !== undefined) payload.description = changes.description;
+		if (changes.scheduledStartTime !== undefined) {
+			payload.scheduled_start_time = changes.scheduledStartTime;
+		}
+		if (changes.scheduledEndTime !== undefined) {
+			payload.scheduled_end_time = changes.scheduledEndTime;
+		}
+		if (changes.entityType !== undefined) payload.entity_type = changes.entityType;
+		if (changes.channelId !== undefined) payload.channel_id = changes.channelId;
+		if (changes.location !== undefined) {
+			payload.entity_metadata = { location: changes.location };
+		}
+
+		if (!Object.keys(payload).length) {
+			throw new Error('Nothing to change — supply at least one field to update');
+		}
+
+		// Moving an event's start past its end is rejected by Discord with an
+		// opaque error, so carry the end forward by the same shift when the caller
+		// changed only the start.
+		if (payload.scheduled_start_time && !payload.scheduled_end_time) {
+			const existing = await this.getScheduledEvents(guildId);
+			const current = existing.find((e: any) => String(e.id) === String(eventId));
+			if (current?.scheduledEndTime) {
+				const oldStart = new Date(current.scheduledStartTime).getTime();
+				const oldEnd = new Date(current.scheduledEndTime).getTime();
+				const newStart = new Date(payload.scheduled_start_time).getTime();
+				if (Number.isFinite(oldStart) && Number.isFinite(oldEnd) && oldEnd > oldStart) {
+					payload.scheduled_end_time = new Date(
+						newStart + (oldEnd - oldStart)
+					).toISOString();
+				}
+			}
+		}
+
+		log.info(`[MCP] Updating scheduled event ${eventId} in guild ${guildId}`);
+
+		const response = await fetch(
+			`https://discord.com/api/v10/guilds/${guildId}/scheduled-events/${eventId}`,
+			{
+				method: 'PATCH',
+				headers: {
+					Authorization: `Bot ${this.discordBotToken}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(payload),
+			}
+		);
+
+		if (!response.ok) {
+			const errorData = await response.json().catch(() => ({}));
+			const errorMsg = (errorData as any).message || `HTTP ${response.status}`;
+			log.error(`[MCP] Failed to update event ${eventId}: ${errorMsg}`, errorData);
+			throw new Error(`Failed to update event: ${errorMsg}`);
+		}
+
+		const updated: any = await response.json();
+		return {
+			id: updated.id,
+			name: updated.name,
+			description: updated.description,
+			scheduledStartTime: updated.scheduled_start_time,
+			scheduledEndTime: updated.scheduled_end_time,
+			startTimeDiscord: discordTimestamp(updated.scheduled_start_time, 'F'),
+			startTimeRelative: discordTimestamp(updated.scheduled_start_time, 'R'),
+			endTimeDiscord: discordTimestamp(updated.scheduled_end_time, 'F'),
+			entityType: updated.entity_type,
+			status: updated.status,
+			location: updated.entity_metadata?.location,
+			eventLink: `https://discord.com/events/${guildId}/${updated.id}`,
+			changed: Object.keys(payload),
 		};
 	}
 
@@ -2132,9 +2401,10 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 		entityType = null,
 		channelId = null,
 		generateImages = false,
-		env: any = {}
+		env: any = {},
+		timezone = null
 	) {
-		const parsedEvents = this.parseEventsFromText(eventsText);
+		const parsedEvents = this.parseEventsFromText(eventsText, timezone);
 
 		if (parsedEvents.length === 0) {
 			return {
@@ -2212,9 +2482,10 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 	 * Returns the parsed event data for user confirmation
 	 * @param {string} guildId - The guild ID
 	 * @param {Object} eventData - Event data to preview
+	 * @param {string|null} [timezone] - IANA zone the preview times are shown in
 	 * @returns {Object} - Preview of the event
 	 */
-	previewScheduledEvent(guildId, eventData) {
+	previewScheduledEvent(guildId, eventData, timezone = null) {
 		const entityTypeNames = {
 			1: 'Stage Channel Event',
 			2: 'Voice Channel Event',
@@ -2253,36 +2524,26 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 			errors.push('Location is required for External Events');
 		}
 
-		// Parse and format dates for display
+		// Parse and format dates for display.
+		//
+		// This is the whole point of the preview: the user reads it back to catch
+		// a bad conversion. Rendered in the runtime's default zone it always said
+		// "UTC" (Workers has no local zone), so an event the user meant for 9:11 PM
+		// their time previewed as 9:11 PM UTC and looked correct.
+		const displayZone = resolveTimeZone(timezone);
 		let startTimeFormatted = 'Invalid date';
 		let endTimeFormatted = null;
 
 		try {
 			const startDate = new Date(eventData.scheduledStartTime);
 			if (!isNaN(startDate.getTime())) {
-				startTimeFormatted = startDate.toLocaleString('en-US', {
-					weekday: 'long',
-					year: 'numeric',
-					month: 'long',
-					day: 'numeric',
-					hour: 'numeric',
-					minute: '2-digit',
-					timeZoneName: 'short',
-				});
+				startTimeFormatted = formatInTimeZone(startDate, displayZone);
 			}
 
 			if (eventData.scheduledEndTime) {
 				const endDate = new Date(eventData.scheduledEndTime);
 				if (!isNaN(endDate.getTime())) {
-					endTimeFormatted = endDate.toLocaleString('en-US', {
-						weekday: 'long',
-						year: 'numeric',
-						month: 'long',
-						day: 'numeric',
-						hour: 'numeric',
-						minute: '2-digit',
-						timeZoneName: 'short',
-					});
+					endTimeFormatted = formatInTimeZone(endDate, displayZone);
 				}
 			}
 		} catch {
@@ -2299,8 +2560,14 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 				entityType,
 				startTime: startTimeFormatted,
 				startTimeISO: eventData.scheduledStartTime,
+				// Paste-ready markup. The bot must never format a time itself —
+				// these render on each reader's own clock, whichever zone we read
+				// the request in.
+				startTimeDiscord: discordTimestamp(eventData.scheduledStartTime, 'F'),
+				startTimeRelative: discordTimestamp(eventData.scheduledStartTime, 'R'),
 				endTime: endTimeFormatted,
 				endTimeISO: eventData.scheduledEndTime,
+				endTimeDiscord: discordTimestamp(eventData.scheduledEndTime, 'F'),
 				location: entityType === 3 ? eventData.location || '(no location)' : null,
 				channelId: entityType === 1 || entityType === 2 ? eventData.channelId : null,
 				generateImage: eventData.generateImage || false,
@@ -2318,6 +2585,7 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 	 * @param {number} [entityType] - Event type (1=Stage, 2=Voice, 3=External)
 	 * @param {string} [channelId] - Channel ID for voice/stage events
 	 * @param {boolean} [generateImages] - Whether to generate AI images
+	 * @param {string|null} [timezone] - IANA zone the listed times are read and shown in
 	 * @returns {Object} - Preview of all events
 	 */
 	previewMultipleScheduledEvents(
@@ -2326,9 +2594,10 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 		location = null,
 		entityType = null,
 		channelId = null,
-		generateImages = false
+		generateImages = false,
+		timezone = null
 	) {
-		const parsedEvents = this.parseEventsFromText(eventsText);
+		const parsedEvents = this.parseEventsFromText(eventsText, timezone);
 
 		if (parsedEvents.length === 0) {
 			return {
@@ -2359,6 +2628,7 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 			}
 		}
 
+		const displayZone = resolveTimeZone(timezone);
 		const previews = [];
 		const errors = [];
 
@@ -2385,23 +2655,13 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 			try {
 				const startDate = new Date(event.scheduledStartTime);
 				if (!isNaN(startDate.getTime())) {
-					startTimeFormatted = startDate.toLocaleString('en-US', {
-						weekday: 'short',
-						month: 'short',
-						day: 'numeric',
-						year: 'numeric',
-						hour: 'numeric',
-						minute: '2-digit',
-					});
+					startTimeFormatted = formatInTimeZone(startDate, displayZone, 'short');
 				}
 
 				if (event.scheduledEndTime) {
 					const endDate = new Date(event.scheduledEndTime);
 					if (!isNaN(endDate.getTime())) {
-						endTimeFormatted = endDate.toLocaleString('en-US', {
-							hour: 'numeric',
-							minute: '2-digit',
-						});
+						endTimeFormatted = formatInTimeZone(endDate, displayZone, 'time');
 					}
 				}
 			} catch {
@@ -2412,8 +2672,11 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 				name: event.name,
 				startTime: startTimeFormatted,
 				startTimeISO: event.scheduledStartTime,
+				startTimeDiscord: discordTimestamp(event.scheduledStartTime, 'F'),
+				startTimeRelative: discordTimestamp(event.scheduledStartTime, 'R'),
 				endTime: endTimeFormatted,
 				endTimeISO: event.scheduledEndTime,
+				endTimeDiscord: discordTimestamp(event.scheduledEndTime, 'F'),
 				eventType: entityTypeNames[eventEntityType],
 				entityType: eventEntityType,
 				location: eventEntityType === 3 ? eventLocation : null,
@@ -2472,6 +2735,9 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 			description: event.description,
 			scheduledStartTime: event.scheduled_start_time,
 			scheduledEndTime: event.scheduled_end_time,
+			startTimeDiscord: discordTimestamp(event.scheduled_start_time, 'F'),
+			startTimeRelative: discordTimestamp(event.scheduled_start_time, 'R'),
+			endTimeDiscord: discordTimestamp(event.scheduled_end_time, 'F'),
 			entityType: event.entity_type,
 			status: event.status,
 			userCount: event.user_count,
@@ -2782,6 +3048,35 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 		log.debug(`[MCP] Executing tool: ${toolName}`, args);
 
 		try {
+			// Anything that turns "9:11PM" into a stored instant needs to know
+			// whose clock that was. When nobody has ever said — no zone on the
+			// user, none on the server — the honest move is to ask, not to quietly
+			// pick UTC and schedule the thing seven hours early. Enforced here
+			// rather than in the prompt because a model told to "ask if unsure"
+			// will confidently not be unsure.
+			if (EVENT_TIME_TOOLS.has(toolName)) {
+				const resolved = await this.resolveEventTimeZone(args);
+				if (resolved.source === 'unknown') {
+					return {
+						success: false,
+						needsTimezone: true,
+						error:
+							'I do not know which timezone this time is in. Neither this user nor ' +
+							'this server has one set, so a local time like "9:11PM" cannot be ' +
+							'turned into a real instant. Do NOT call this tool again and do NOT ' +
+							'guess a zone or use UTC. Ask the user which timezone they are in, ' +
+							'then call `update_user_timezone` with the matching Region/City IANA ' +
+							'name, then retry this call. Once saved it is remembered, so you will ' +
+							'only ever have to ask once.',
+					};
+				}
+				args = {
+					...args,
+					_resolvedTimeZone: resolved.timeZone,
+					_resolvedTimeZoneSource: resolved.source,
+				};
+			}
+
 			switch (toolName) {
 				case 'list_guilds':
 					return { success: true, data: await this.listGuilds() };
@@ -3072,6 +3367,33 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 						),
 					};
 
+				case 'update_user_timezone': {
+					// `userId` is pinned to the session in executeToolCalls, so the
+					// model cannot rewrite somebody else's preferences.
+					const saved: any = await this.setUserTimezone(
+						args.userId,
+						args.timezone,
+						args._userName
+					);
+					return saved.success
+						? { success: true, data: saved }
+						: { success: false, error: saved.error };
+				}
+
+				case 'update_scheduled_event':
+					return {
+						success: true,
+						data: await this.updateScheduledEvent(args.guildId, args.eventId, {
+							name: args.name,
+							description: args.description,
+							scheduledStartTime: args.scheduledStartTime,
+							scheduledEndTime: args.scheduledEndTime,
+							entityType: args.entityType,
+							channelId: args.channelId,
+							location: args.location,
+						}),
+					};
+
 				case 'get_scheduled_events':
 					return {
 						success: true,
@@ -3112,23 +3434,28 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 							args.entityType,
 							args.channelId,
 							args.generateImages,
-							args._env // Internal: passed from chat.js
+							args._env, // Internal: passed from chat.js
+							args._resolvedTimeZone // Resolved by the gate above
 						),
 					};
 
 				case 'preview_scheduled_event':
 					return {
 						success: true,
-						data: this.previewScheduledEvent(args.guildId, {
-							name: args.name,
-							description: args.description,
-							scheduledStartTime: args.scheduledStartTime,
-							scheduledEndTime: args.scheduledEndTime,
-							entityType: args.entityType || 3,
-							location: args.location,
-							channelId: args.channelId,
-							generateImage: args.generateImage,
-						}),
+						data: this.previewScheduledEvent(
+							args.guildId,
+							{
+								name: args.name,
+								description: args.description,
+								scheduledStartTime: args.scheduledStartTime,
+								scheduledEndTime: args.scheduledEndTime,
+								entityType: args.entityType || 3,
+								location: args.location,
+								channelId: args.channelId,
+								generateImage: args.generateImage,
+							},
+							args._resolvedTimeZone // Resolved by the gate above
+						),
 						// Flag to indicate this needs user confirmation
 						requiresConfirmation: true,
 						confirmationTool: 'confirm_scheduled_event',
@@ -3143,7 +3470,8 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 							args.location,
 							args.entityType,
 							args.channelId,
-							args.generateImages
+							args.generateImages,
+							args._resolvedTimeZone // Resolved by the gate above
 						),
 						// Flag to indicate this needs user confirmation
 						requiresConfirmation: true,
@@ -3184,7 +3512,8 @@ No text or words in the image. High quality, 16:9 aspect ratio.`;
 							args.entityType,
 							args.channelId,
 							args.generateImages,
-							args._env
+							args._env,
+							args._resolvedTimeZone
 						),
 					};
 
@@ -3603,6 +3932,15 @@ export const MCP_TOOLS = [
 		},
 	},
 	{
+		name: 'update_user_timezone',
+		description:
+			'Remember the user\'s own timezone. Call this whenever they tell you where they are or what timezone they keep ("I\'m in Arizona", "my timezone is EST", "I\'m on UK time") — translate what they said into an IANA name yourself. From then on every conversation interprets their times in that zone, so do not ask them again once it is set.',
+		parameters: {
+			timezone:
+				"string (required) - IANA timezone name, e.g. 'America/Phoenix', 'America/New_York', 'Europe/London', 'Asia/Tokyo'. Not an abbreviation and not a city on its own.",
+		},
+	},
+	{
 		name: 'get_scheduled_events',
 		description:
 			"Get scheduled events for a Discord server. Returns events with their names, times, locations, RSVP counts, and shareable EVENT LINKS. Use nameFilter to search for specific events (e.g., 'hockey' to find all hockey events). The eventLink property contains a shareable Discord URL for each event.",
@@ -3615,15 +3953,33 @@ export const MCP_TOOLS = [
 		},
 	},
 	{
+		name: 'update_scheduled_event',
+		description:
+			'Change an event that already exists — its time, date, name, description or location. Use this whenever the user wants an existing event altered ("move it to 8pm", "call it X instead", "actually make it Friday"), including immediately after you just created it. Call get_scheduled_events first to find the event\'s id. Only pass the fields that are changing; anything you omit is left alone. Never create a second event to "fix" the first, and never tell the user to edit it themselves in Discord.',
+		parameters: {
+			guildId: 'string (required) - The Discord server ID',
+			eventId: 'string (required) - The id of the event to change, from get_scheduled_events',
+			name: 'string (optional) - New name, exactly as the user wrote it',
+			scheduledStartTime:
+				'string (optional) - New start, as ISO 8601 in UTC ending in Z. If you move the start and give no new end, the end shifts by the same amount automatically.',
+			scheduledEndTime: 'string (optional) - New end, as ISO 8601 in UTC ending in Z',
+			description: 'string (optional) - New description',
+			location: 'string (optional) - New location, for external events',
+			channelId: 'string (optional) - New voice/stage channel id',
+			entityType: 'number (optional) - New event type: 1=Stage, 2=Voice, 3=External',
+		},
+	},
+	{
 		name: 'create_scheduled_event',
 		description:
 			'Create a single scheduled event in a Discord server. There are 3 event types: (1) Stage events happen in a stage channel, (2) Voice events happen in a voice channel, (3) External events happen at a location/URL outside Discord. For Stage/Voice events, you MUST provide a channelId - use get_voice_and_stage_channels first to find available channels. Can optionally generate an AI image for the event banner.',
 		parameters: {
 			guildId: 'string (required) - The Discord server ID',
-			name: 'string (required) - The name of the event',
+			name: "string (required) - The event's name, exactly as the user wrote it. Copy their string character for character; do not shorten, re-punctuate or tidy it.",
 			scheduledStartTime:
-				"string (required) - ISO 8601 date/time when the event starts (e.g., '2026-02-14T21:10:00.000Z')",
-			scheduledEndTime: 'string (optional) - ISO 8601 date/time when the event ends',
+				'string (required) - When the event starts, as ISO 8601 in UTC ending in Z. The user speaks in the server timezone given under CURRENT DATE AND TIME — convert to UTC first, and take the year from today rather than guessing one.',
+			scheduledEndTime:
+				'string (optional) - When the event ends, as ISO 8601 in UTC ending in Z',
 			description: 'string (optional) - Description of the event',
 			entityType:
 				'number (required) - Event type: 1=Stage (in stage channel), 2=Voice (in voice channel), 3=External (location/URL)',
@@ -3660,10 +4016,11 @@ export const MCP_TOOLS = [
 			'**ALWAYS USE THIS FIRST** before creating a scheduled event. Shows the user what event will be created and asks for confirmation. Returns a preview of the event with parsed dates and validation errors if any. The user must confirm before the event is actually created.',
 		parameters: {
 			guildId: 'string (required) - The Discord server ID',
-			name: 'string (required) - The name of the event',
+			name: "string (required) - The event's name, exactly as the user wrote it. Copy their string character for character; do not shorten, re-punctuate or tidy it.",
 			scheduledStartTime:
-				"string (required) - ISO 8601 date/time when the event starts (e.g., '2026-02-14T21:10:00.000Z')",
-			scheduledEndTime: 'string (optional) - ISO 8601 date/time when the event ends',
+				'string (required) - When the event starts, as ISO 8601 in UTC ending in Z. The user speaks in the server timezone given under CURRENT DATE AND TIME — convert to UTC first, and take the year from today rather than guessing one.',
+			scheduledEndTime:
+				'string (optional) - When the event ends, as ISO 8601 in UTC ending in Z',
 			description: 'string (optional) - Description of the event',
 			entityType: 'number (required) - Event type: 1=Stage, 2=Voice, 3=External',
 			channelId:
@@ -3696,9 +4053,11 @@ export const MCP_TOOLS = [
 			'Create a scheduled event AFTER the user has reviewed and confirmed the preview. Only use this after showing the preview and receiving user confirmation.',
 		parameters: {
 			guildId: 'string (required) - The Discord server ID',
-			name: 'string (required) - The name of the event',
-			scheduledStartTime: 'string (required) - ISO 8601 date/time when the event starts',
-			scheduledEndTime: 'string (optional) - ISO 8601 date/time when the event ends',
+			name: "string (required) - The event's name, exactly as the user wrote it. Copy their string character for character; do not shorten, re-punctuate or tidy it.",
+			scheduledStartTime:
+				'string (required) - When the event starts, as ISO 8601 in UTC ending in Z (copy startTimeISO back from the preview)',
+			scheduledEndTime:
+				'string (optional) - When the event ends, as ISO 8601 in UTC ending in Z (copy endTimeISO back from the preview)',
 			description: 'string (optional) - Description of the event',
 			entityType: 'number (required) - Event type: 1=Stage, 2=Voice, 3=External',
 			channelId:
@@ -3828,8 +4187,12 @@ export function formatToolsForPrompt(includeCatalogue = true) {
 	prompt += `3. **Show the preview:** Display the parsed event details clearly to the user (names, dates, times, location).\n`;
 	prompt += `4. **Ask for confirmation:** Ask "Does this look correct? Say 'yes' or 'confirm' to create these events, or tell me what to change."\n`;
 	prompt += `5. **Wait for user response:** Do NOT create events until the user explicitly confirms.\n`;
-	prompt += `6. **Create after confirmation:** Only after user says "yes", "confirm", "looks good", etc., use \`confirm_scheduled_event\` or \`confirm_multiple_scheduled_events\`.\n\n`;
+	prompt += `6. **Create after confirmation:** Only after user says "yes", "confirm", "looks good", etc., use \`confirm_scheduled_event\` or \`confirm_multiple_scheduled_events\`. Pass the SAME values the preview returned — copy \`startTimeISO\`/\`endTimeISO\` back verbatim rather than re-deriving them.\n\n`;
 	prompt += `**NEVER use create_scheduled_event or create_multiple_scheduled_events directly.** Always preview first!\n\n`;
+	prompt += `**The event name is the user's, not yours.** Use their exact string — every word, every slash and dot. Do not shorten "Launch/Listening Party" to "Launch Party".\n`;
+	prompt += `**Times are UTC on the wire.** The user speaks in the timezone given under CURRENT DATE AND TIME; \`scheduledStartTime\` and \`scheduledEndTime\` must be the converted UTC instant, ending in \`Z\`.\n`;
+	prompt += `**Times are Discord markup on the way out.** Show every date with the \`startTimeDiscord\` / \`startTimeRelative\` values the tools return — never a date you formatted yourself.\n`;
+	prompt += `**Changes are always allowed.** Close every event message by saying they can change the time, name or anything else just by asking — that stays true after it is created. When they ask, use \`update_scheduled_event\` on the existing event rather than making a new one.\n\n`;
 
 	// Add automation creation workflow
 	prompt += `## ⚠️ AUTOMATION CREATION WORKFLOW - PREVIEW FIRST!\n\n`;
@@ -3954,8 +4317,12 @@ You: "To create the events, I first need to get the ID of the Gaming Voice chann
 
 User: "Create an event called Game Night on Feb 20 at 7pm at Discord"
 You: \`\`\`tool
-{"tool": "preview_scheduled_event", "args": {"guildId": "123", "name": "Game Night", "scheduledStartTime": "2026-02-20T19:00:00.000Z", "entityType": 3, "location": "Discord"}}
+{"tool": "preview_scheduled_event", "args": {"guildId": "123", "name": "Game Night", "scheduledStartTime": "<7:00 PM on Feb 20, converted from the server's timezone to UTC>", "entityType": 3, "location": "Discord"}}
 \`\`\`
+
+The year comes from CURRENT DATE AND TIME (the next Feb 20 on or after today), and
+7pm is a LOCAL time — convert it before writing the \`Z\` timestamp. Never copy a
+timestamp out of this example.
 
 ## EXAMPLE: Send Event Links to a Channel (CORRECT)
 

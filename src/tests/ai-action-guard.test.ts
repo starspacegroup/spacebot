@@ -48,6 +48,34 @@ function stubBackends(scripted: any[]) {
 			return reply;
 		}
 		// D1 query API — enough for a tool to "succeed".
+		//
+		// The timezone lookup is answered with a real zone: the scheduled-event
+		// tools refuse to run when nobody's zone is known (see
+		// `EVENT_TIME_TOOLS`), and these tests are about the action guard and the
+		// preview handshake, not about that gate.
+		const query = init?.body ? JSON.parse(init.body) : {};
+		if (String(query.sql || '').includes('preferences_json FROM users')) {
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({
+					success: true,
+					result: [
+						{
+							results: [
+								{
+									preferences_json: JSON.stringify({
+										timezone: 'America/Phoenix',
+									}),
+								},
+							],
+							success: true,
+						},
+					],
+				}),
+				text: async () => '',
+			};
+		}
 		return {
 			ok: true,
 			status: 200,
@@ -71,7 +99,10 @@ Time: 9:11 PM`;
 describe('native tool calling', () => {
 	it('sends the tools array so the model can actually call functions', async () => {
 		const { aiRequests } = stubBackends([aiReply({ text: 'hello' })]);
-		await generateChatResponse({ message: 'hey there', userName: 'David' }, ENV);
+		await generateChatResponse(
+			{ message: 'hey there', userName: 'David', userId: 'user-1' },
+			ENV
+		);
 
 		expect(aiRequests[0].tools).toBeInstanceOf(Array);
 		const names = aiRequests[0].tools.map((t: any) => t.function.name);
@@ -107,7 +138,10 @@ describe('an action must never silently no-op', () => {
 			aiReply({ text: NARRATED }),
 		]);
 
-		const result: any = await generateChatResponse({ message: ASK, userName: 'David' }, ENV);
+		const result: any = await generateChatResponse(
+			{ message: ASK, userName: 'David', userId: 'user-1' },
+			ENV
+		);
 
 		expect(result.actionNotPerformed).toBe(true);
 		// The critical property: the confident description is NOT handed back.
@@ -132,7 +166,10 @@ describe('an action must never silently no-op', () => {
 			aiReply({ text: 'Here is the preview — confirm and I will create it.' }),
 		]);
 
-		const result: any = await generateChatResponse({ message: ASK, userName: 'David' }, ENV);
+		const result: any = await generateChatResponse(
+			{ message: ASK, userName: 'David', userId: 'user-1' },
+			ENV
+		);
 
 		expect(result.actionNotPerformed).toBeUndefined();
 		expect(result.toolsUsed).toContain('preview_scheduled_event');
@@ -166,7 +203,10 @@ describe('an action must never silently no-op', () => {
 			aiReply({ text: NARRATED }),
 		]);
 
-		const result: any = await generateChatResponse({ message: ASK, userName: 'David' }, ENV);
+		const result: any = await generateChatResponse(
+			{ message: ASK, userName: 'David', userId: 'user-1' },
+			ENV
+		);
 
 		expect(result.actionNotPerformed).toBe(true);
 		expect(aiCallCount()).toBeGreaterThanOrEqual(3);
@@ -187,7 +227,10 @@ describe('preview/confirm handshake', () => {
 			aiReply({ text: 'Does this look right?' }),
 		]);
 
-		const result: any = await generateChatResponse({ message: ASK, userName: 'David' }, ENV);
+		const result: any = await generateChatResponse(
+			{ message: ASK, userName: 'David', userId: 'user-1' },
+			ENV
+		);
 
 		expect(result.pendingConfirmation).toBeTruthy();
 		expect(result.pendingConfirmation.confirmationTool).toBe('confirm_scheduled_event');
@@ -197,5 +240,203 @@ describe('preview/confirm handshake', () => {
 		expect(toolResultsTurn).toMatch(/PREVIEW ONLY/);
 		expect(toolResultsTurn).toMatch(/NOTHING HAS BEEN CREATED/i);
 		expect(toolResultsTurn).toContain('confirm_scheduled_event');
+	});
+});
+
+describe('asking for a timezone instead of guessing one', () => {
+	/** Like `stubBackends`, but nobody anywhere has a timezone set. */
+	function stubWithNoTimezone(scripted: any[]) {
+		const aiRequests: any[] = [];
+		let index = 0;
+		globalThis.fetch = (async (url: any, init: any) => {
+			const href = String(url);
+			if (href.includes('/ai/run/') || href.includes('gateway.ai.cloudflare.com')) {
+				aiRequests.push(JSON.parse(init.body));
+				const reply = scripted[Math.min(index, scripted.length - 1)];
+				index++;
+				return reply;
+			}
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({ success: true, result: [{ results: [], success: true }] }),
+				text: async () => '',
+			};
+		}) as any;
+		return { aiRequests };
+	}
+
+	it('refuses the preview and tells the model to ask, not to assume UTC', async () => {
+		const { aiRequests } = stubWithNoTimezone([
+			aiReply({
+				toolCalls: [
+					{
+						name: 'preview_scheduled_event',
+						arguments: {
+							guildId: '1',
+							name: 'Ammoura.me Launch/Listening Party',
+							scheduledStartTime: '2026-09-11T21:11:00.000Z',
+							entityType: 3,
+							location: 'Discord',
+						},
+					},
+				],
+			}),
+			aiReply({ text: 'Which timezone are you in?' }),
+		]);
+
+		const result: any = await generateChatResponse(
+			{ message: ASK, userName: 'David', userId: 'user-1' },
+			ENV
+		);
+
+		// Nothing was created, and nothing is pending confirmation either.
+		expect(result.pendingConfirmation).toBeFalsy();
+
+		const toolResultsTurn = aiRequests[1].messages.at(-1).content;
+		expect(toolResultsTurn).toMatch(/BLOCKED/);
+		expect(toolResultsTurn).toMatch(/RETRYING WILL FAIL THE SAME WAY/i);
+		expect(toolResultsTurn).toMatch(/asking which timezone/i);
+		expect(toolResultsTurn).toMatch(/do not guess, do not use utc/i);
+	});
+
+	it('carries the whole ask → save → schedule loop inside one turn', async () => {
+		// The user answers in the same breath: "I'm in Arizona, now make the
+		// event". The save has to count for the create that follows it.
+		const saved: string[] = [];
+		let index = 0;
+		const scripted = [
+			aiReply({
+				toolCalls: [
+					{
+						name: 'update_user_timezone',
+						arguments: { timezone: 'America/Phoenix' },
+					},
+				],
+			}),
+			aiReply({
+				toolCalls: [
+					{
+						name: 'preview_scheduled_event',
+						arguments: {
+							guildId: '1',
+							name: 'Ammoura.me Launch/Listening Party',
+							scheduledStartTime: '2026-09-12T04:11:00.000Z',
+							entityType: 3,
+							location: 'Discord',
+						},
+					},
+				],
+			}),
+			aiReply({ text: 'Saved your timezone. Does this look right?' }),
+		];
+
+		globalThis.fetch = (async (url: any, init: any) => {
+			const href = String(url);
+			if (href.includes('/ai/run/') || href.includes('gateway.ai.cloudflare.com')) {
+				return scripted[Math.min(index++, scripted.length - 1)];
+			}
+			const query = init?.body ? JSON.parse(init.body) : {};
+			const sql = String(query.sql || '');
+			if (sql.includes('INSERT INTO users')) {
+				saved.push(query.params[2]);
+			}
+			// Reads the zone back only after it has been written — exactly the
+			// mid-turn ordering the gate has to cope with.
+			if (sql.includes('preferences_json FROM users') && saved.length) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({
+						success: true,
+						result: [{ results: [{ preferences_json: saved.at(-1) }], success: true }],
+					}),
+					text: async () => '',
+				};
+			}
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({ success: true, result: [{ results: [], success: true }] }),
+				text: async () => '',
+			};
+		}) as any;
+
+		const result: any = await generateChatResponse(
+			{
+				message:
+					"I'm in Arizona — create an event called Launch on September 11th at 9:11PM",
+				userName: 'David',
+				userId: 'user-1',
+			},
+			ENV
+		);
+
+		expect(JSON.parse(saved[0])).toMatchObject({ timezone: 'America/Phoenix' });
+		expect(result.toolsUsed).toContain('update_user_timezone');
+		// The preview ran rather than being blocked by the stale turn-start snapshot.
+		expect(result.pendingConfirmation?.confirmationTool).toBe('confirm_scheduled_event');
+		expect(result.pendingConfirmation.preview.preview.startTime).toContain('MST');
+	});
+});
+
+describe('when the bot has no tools at all', () => {
+	// The 2026-08-18 report: "in the starspace server create an event called
+	// Ammoura.me Launch/Listening Party on September 11th at 9:11PM" came back as
+	// "Sure, here's the text you requested:" followed by the request itself. MCP
+	// was unconfigured, and the honesty guard was gated behind MCP being
+	// configured — so the one mode where the bot cannot act was also the one mode
+	// where it never checked whether it had claimed to.
+	const NO_MCP_ENV = { CLOUDFLARE_ACCOUNT_ID: 'acct', CLOUDFLARE_AI_TOKEN: 'ai-token' };
+	const ECHO =
+		"Sure, here's the text you requested:\n\nIn the starspace server, create an event called Ammoura.me Launch/Listening Party on September 11th at 9:11PM.";
+	const CREATE =
+		'in the starspace server create an event called Ammoura.me Launch/Listening Party on September 11th at 9:11PM';
+
+	it('never hands back the model echoing the request', async () => {
+		stubBackends([aiReply({ text: ECHO })]);
+
+		const result: any = await generateChatResponse(
+			{ message: CREATE, userName: 'David', userId: 'user-1' },
+			NO_MCP_ENV
+		);
+
+		expect(result.actionNotPerformed).toBe(true);
+		expect(result.response).not.toContain("here's the text");
+		expect(result.response).toMatch(/nothing has been created or changed/i);
+		expect(result.response).toContain('spacebot.starspace.group');
+	});
+
+	it('tells an operator why, and an ordinary user only what', async () => {
+		stubBackends([aiReply({ text: ECHO })]);
+		const admin: any = await generateChatResponse(
+			{ message: CREATE, userName: 'David', userId: 'user-1', isSuperAdmin: true },
+			NO_MCP_ENV
+		);
+		expect(admin.response).toContain('CLOUDFLARE_API_TOKEN');
+
+		stubBackends([aiReply({ text: ECHO })]);
+		const user: any = await generateChatResponse(
+			{ message: CREATE, userName: 'Someone', userId: 'user-2' },
+			NO_MCP_ENV
+		);
+		expect(user.response).not.toContain('CLOUDFLARE_API_TOKEN');
+	});
+
+	it('still answers an ordinary question normally', async () => {
+		// Only requests to *do* something are intercepted; conversation is fine.
+		stubBackends([aiReply({ text: 'There are 42 members.' })]);
+
+		const result: any = await generateChatResponse(
+			{
+				message: 'how many members are in the starspace server?',
+				userName: 'David',
+				userId: 'user-1',
+			},
+			NO_MCP_ENV
+		);
+
+		expect(result.actionNotPerformed).toBeUndefined();
+		expect(result.response).toBe('There are 42 members.');
 	});
 });

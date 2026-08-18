@@ -142,3 +142,39 @@ export function detectActionIntent(message: string): boolean {
 export function actionWasAttempted(toolsUsed: string[]): boolean {
 	return (toolsUsed || []).some(isActionTool);
 }
+
+/**
+ * What the bot says when it was asked to DO something and has no tools at all.
+ *
+ * The action guard used to be gated behind `mcpEnabled`, so in exactly the mode
+ * where the bot is least able to act it was also least honest: with no tools
+ * wired up it fell straight through to raw model prose. That is the 2026-08-18
+ * report — "in the starspace server create an event called ..." answered with
+ * "Sure, here's the text you requested:" and the request parroted back. Being
+ * unable to act is fine. Sounding like you acted is not, and neither is
+ * answering a request to do something as though it were a request for text.
+ *
+ * `configHint` is for operators (superadmins); ordinary users get the plain
+ * version and a link, not an environment variable name.
+ */
+export function actionUnavailableMessage({
+	dashboardUrl = 'https://spacebot.starspace.group',
+	configHint = false,
+} = {}): string {
+	let message =
+		"I can't do that right now — nothing has been created or changed. " +
+		'My live tools (the ones that read your server and create events, ' +
+		'automations and commands) are not connected on this deployment, so all ' +
+		'I can do at the moment is talk.\n\n' +
+		`You can still do it yourself from the dashboard: ${dashboardUrl}`;
+
+	if (configHint) {
+		message +=
+			'\n\n_Heads up, since you administer this bot: this means ' +
+			'`CLOUDFLARE_ACCOUNT_ID` or `CLOUDFLARE_API_TOKEN` is missing from the ' +
+			"gateway's environment. Check the gateway logs for " +
+			'`[MCP] Client not configured`._';
+	}
+
+	return message;
+}
