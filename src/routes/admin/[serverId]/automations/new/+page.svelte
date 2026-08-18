@@ -426,8 +426,16 @@
 		selectedEventTypes = selectedEventTypes.filter((e) => e !== eventType);
 	}
 
-	// Check if SLASH_COMMAND_USE is selected (for special bot command filter UI)
-	const hasSlashCommandTrigger = $derived(selectedEventTypes.includes('SLASH_COMMAND_USE'));
+	// Show the bot-command filter UI for BOTH slash-command triggers. The filters
+	// themselves (target bot, command name, result, embed text) already declare
+	// `applicableEvents: ['SLASH_COMMAND_USE', 'SLASH_COMMAND_RESPONSE']` and the
+	// engine reads them the same way for either, but this gate only checked USE —
+	// so an automation built on RESPONSE, which is the one the event picker
+	// recommends for detecting success, rendered no filter UI at all and could
+	// only be saved unfiltered.
+	const hasSlashCommandTrigger = $derived(
+		selectedEventTypes.some((t) => t === 'SLASH_COMMAND_USE' || t === 'SLASH_COMMAND_RESPONSE')
+	);
 
 	// Check if only voice events are selected (to filter channel selectors to voice channels)
 	const onlyVoiceEvents = $derived(
@@ -700,7 +708,7 @@
 				</div>
 
 				{#if showFilters}
-					<!-- Bot Command Filter (shown when SLASH_COMMAND_USE is selected) -->
+					<!-- Bot Command Filter (shown for either slash-command trigger) -->
 					{#if hasSlashCommandTrigger}
 						<div class="bot-command-filter-section">
 							<h4>🤖 Bot Command Filter</h4>
