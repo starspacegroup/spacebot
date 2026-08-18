@@ -896,14 +896,20 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: false, error: 'Channel not found' };
 				}
 
-				if (action_config.embed) {
-					const embedColor = resolveEmbedColor(action_config, context);
-					const thumbnailUrl = action_config.embed_thumbnail_url
+				const embedColor = action_config.embed
+					? resolveEmbedColor(action_config, context)
+					: null;
+				const thumbnailUrl =
+					action_config.embed && action_config.embed_thumbnail_url
 						? processTemplate(action_config.embed_thumbnail_url, context)
 						: null;
-					const imageUrl = action_config.embed_image_url
+				const imageUrl =
+					action_config.embed && action_config.embed_image_url
 						? processTemplate(action_config.embed_image_url, context)
 						: null;
+
+				let payload: any = content;
+				if (action_config.embed) {
 					const embed: Record<string, any> = {
 						description: content,
 						color: embedColor,
@@ -911,9 +917,52 @@ export async function executeAction(automation, event, context, discord, db: any
 					};
 					if (thumbnailUrl) embed.thumbnail = { url: thumbnailUrl };
 					if (imageUrl) embed.image = { url: imageUrl };
-					await channel.send({ embeds: [embed] });
-				} else {
-					await channel.send(content);
+					payload = { embeds: [embed] };
+				}
+
+				try {
+					await channel.send(payload);
+				} catch (error: any) {
+					// The REST client already waited out whatever Discord asked for,
+					// up to its in-request budget. Past that we are not allowed to
+					// keep sleeping — this runs inside a webhook request — but the
+					// message must not evaporate, which is what used to happen when a
+					// burst of integration events outran the channel's limit. Hand it
+					// to the scheduled-message queue the cron already drains every
+					// minute.
+					if (!error?.rateLimited || !db) throw error;
+
+					const deferred = await createScheduledMessage(db, {
+						guild_id: event.guild_id,
+						channel_id: channelId,
+						target_user_id: null,
+						action_type: 'SEND_MESSAGE',
+						message_payload: {
+							content,
+							embed: !!action_config.embed,
+							embed_color: embedColor,
+							...(thumbnailUrl ? { embed_thumbnail_url: thumbnailUrl } : {}),
+							...(imageUrl ? { embed_image_url: imageUrl } : {}),
+						},
+						delay: '1m',
+						created_by: event.actor_id,
+						source_automation_id: automation.id,
+					});
+
+					if (!deferred.success) throw error;
+
+					log.warn(
+						`[Automation] Rate limited sending to ${channelId}; queued for ${deferred.send_at}`
+					);
+					return {
+						success: true,
+						result: {
+							sent: false,
+							deferred: true,
+							reason: 'rate_limited',
+							send_at: deferred.send_at,
+						},
+					};
 				}
 
 				return { success: true, result: { sent: true } };
