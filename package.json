@@ -42,6 +42,7 @@
 		"gateway:latency:history": "bun scripts/gateway-latency.ts --history",
 		"db:push": "bun scripts/push-data.ts --confirm",
 		"db:push:dry": "bun scripts/push-data.ts",
+		"secrets:status": "bun scripts/secrets-status.ts",
 		"secrets:setup": "bun scripts/setup-secrets.ts --confirm",
 		"secrets:setup:dry": "bun scripts/setup-secrets.ts",
 		"test": "vitest run",

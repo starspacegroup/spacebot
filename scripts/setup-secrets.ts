@@ -18,6 +18,7 @@
 
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
+import { isPlaceholderSecret } from '../src/lib/secrets.js';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -107,10 +108,21 @@ const toCreate = [];
 const toUpdate = [];
 const skipped = [];
 
+const placeholders = [];
+
 for (const name of MANAGED_SECRETS) {
 	const value = envVars[name];
 	if (!value) {
 		skipped.push(name);
+		continue;
+	}
+	// Refuse to publish junk. `.env` starts life as a copy of `.env.example`, so
+	// unfilled placeholders are the normal state of a dev machine — and pushing
+	// one here would overwrite a WORKING production secret with `your_api_token`
+	// and take the bot down on the next restart. Silently skipping would be
+	// nearly as bad, because the run would report success.
+	if (isPlaceholderSecret(value)) {
+		placeholders.push(name);
 		continue;
 	}
 	if (secretExists(name)) {
@@ -122,6 +134,18 @@ for (const name of MANAGED_SECRETS) {
 
 if (skipped.length) {
 	console.log(`⏭️  Skipped (not in .env): ${skipped.join(', ')}\n`);
+}
+
+if (placeholders.length) {
+	console.error(`\n🔴 Refusing to run — these are still placeholders in .env:\n`);
+	for (const name of placeholders) console.error(`   • ${name}`);
+	console.error(
+		`\n   Pushing them would replace real production values with dummy ones.\n` +
+			`   Fill them in, or remove the lines entirely so they are skipped.\n` +
+			`   To set a single secret without putting it in .env at all:\n\n` +
+			`     printf %s "<value>" | gcloud secrets versions add NAME --data-file=-\n`
+	);
+	process.exit(1);
 }
 
 if (toCreate.length) {
