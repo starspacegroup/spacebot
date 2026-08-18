@@ -22,6 +22,7 @@ import {
 	Client,
 	Events,
 	GatewayIntentBits,
+	GuildMemberFlags,
 	MessageType,
 	Partials,
 	PermissionFlagsBits,
@@ -2566,7 +2567,54 @@ function getMemberAvatarForLog(member) {
 function setupEventHandlers(client, logFn) {
 	// ===== MEMBER EVENTS =====
 
+	/**
+	 * Members we believe are still waiting at the door, and members we have already
+	 * welcomed.
+	 *
+	 * In memory on purpose: this is a hint that repairs a blind spot, not a source
+	 * of truth. The cost of losing it on restart is that one acceptance may go
+	 * unnoticed if `oldMember` is also partial at that moment — the same failure we
+	 * had unconditionally before. The cost of a stale entry is bounded by the prune
+	 * below.
+	 */
+	const pendingMembers = new Set<string>();
+	const rulesAccepted = new Set<string>();
+	const MAX_TRACKED_MEMBERS = 5000;
+
+	/** Bounded so a long-running gateway cannot grow these without limit. */
+	function pruneMemberTracking() {
+		for (const set of [pendingMembers, rulesAccepted]) {
+			while (set.size > MAX_TRACKED_MEMBERS) {
+				set.delete(set.values().next().value as string);
+			}
+		}
+	}
+
+	/**
+	 * Whether Discord considers this member to have finished Onboarding.
+	 *
+	 * Defensive: `flags` is absent on a partial member, and reading it off one must
+	 * report "we don't know" as false rather than throwing inside an event handler.
+	 */
+	function hasCompletedOnboarding(member: any): boolean {
+		try {
+			return Boolean(member?.flags?.has?.(GuildMemberFlags.CompletedOnboarding));
+		} catch {
+			return false;
+		}
+	}
+
+	/** Remember who is mid-screening, so a later partial `oldMember` isn't fatal. */
+	function trackPendingMember(member: any) {
+		if (member?.pending === true) {
+			pendingMembers.add(`${member.guild.id}:${member.user.id}`);
+			pruneMemberTracking();
+		}
+	}
+
 	client.on(Events.GuildMemberAdd, async (member) => {
+		trackPendingMember(member);
+
 		const userInfo = getUserLogInfo(member.user);
 		await logFn({
 			guild_id: member.guild.id,
@@ -2586,6 +2634,10 @@ function setupEventHandlers(client, logFn) {
 	});
 
 	client.on(Events.GuildMemberRemove, async (member) => {
+		const key = `${member.guild.id}:${member.user.id}`;
+		pendingMembers.delete(key);
+		rulesAccepted.delete(key);
+
 		const userInfo = getUserLogInfo(member.user);
 		await logFn({
 			guild_id: member.guild.id,
@@ -2605,10 +2657,42 @@ function setupEventHandlers(client, logFn) {
 
 	client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
 		const changes: Record<string, any> = {};
+		const memberKey = `${newMember.guild.id}:${newMember.user.id}`;
 
-		// Check if member accepted server rules (membership screening)
-		if (oldMember.pending === true && newMember.pending === false) {
+		// "Did this member just get through the door?"
+		//
+		// Harder than it looks, for two reasons.
+		//
+		// 1. `oldMember` is often a PARTIAL. discord.js only has a previous state
+		//    if the member was cached, which they are not after a restart or a
+		//    shard reconnect until something touches them. On a partial,
+		//    `pending` is null — so `oldMember.pending === true` is false and a
+		//    genuine acceptance is invisible. Hence `pendingMembers`, which we
+		//    maintain ourselves from joins and from the cache at startup.
+		//
+		// 2. There are TWO doors. Membership Screening flips `pending`, but
+		//    Discord's newer Onboarding flow flips the COMPLETED_ONBOARDING flag
+		//    instead — and a member can finish onboarding while `pending` stays
+		//    true forever. That is not hypothetical: it is why a member showed
+		//    "Agreed to Rules ✓" in Discord's own Mod View while the bot saw
+		//    nothing at all and the welcome message never fired.
+		const wasPending = oldMember.pending === true || pendingMembers.has(memberKey);
+		const screeningPassed = wasPending && newMember.pending === false;
+
+		const completedOnboardingNow =
+			hasCompletedOnboarding(newMember) && !hasCompletedOnboarding(oldMember);
+
+		if ((screeningPassed || completedOnboardingNow) && !rulesAccepted.has(memberKey)) {
+			// Both doors report as `rules_accepted` so existing automations keep
+			// working untouched; `via` records which one actually opened.
 			changes.rules_accepted = true;
+			changes.rules_accepted_via = screeningPassed ? 'membership_screening' : 'onboarding';
+
+			// Either signal can arrive, then the other — without this the member
+			// gets welcomed twice.
+			rulesAccepted.add(memberKey);
+			pendingMembers.delete(memberKey);
+			pruneMemberTracking();
 		}
 
 		if (oldMember.nickname !== newMember.nickname) {
@@ -4173,6 +4257,20 @@ function setupEventHandlers(client, logFn) {
 	client.on(Events.ClientReady, async (c) => {
 		log.info(`✅ Discord Gateway Bot is online as ${c.user.tag}`);
 		log.info(`📊 Watching ${c.guilds.cache.size} guilds`);
+
+		// Re-seed the "still at the door" set from whatever is already cached.
+		// Cache-only and allocation-free of API calls on purpose: this is a hint,
+		// and a restart should not silently cost us the next acceptance.
+		let seeded = 0;
+		for (const guild of c.guilds.cache.values()) {
+			for (const member of guild.members.cache.values()) {
+				if (member.pending === true) {
+					pendingMembers.add(`${guild.id}:${member.user.id}`);
+					seeded++;
+				}
+			}
+		}
+		if (seeded > 0) log.info(`👋 Tracking ${seeded} member(s) still completing screening`);
 
 		// Set bot avatar to the app logo if not already set
 		try {
