@@ -1404,6 +1404,48 @@ async function logEventViaAPI(event) {
 	await processEventAutomations(event);
 }
 
+/**
+ * What a member is doing, as opposed to what their microphone is doing.
+ *
+ * Discord surfaces embedded Activities — Watch Together, Poker Night and the
+ * rest — through presence rather than through voice state, so none of it was
+ * visible on a page built entirely from `voiceStates`. A channel could have
+ * four people watching a video together and the page would show four sets of
+ * mute badges and nothing else.
+ *
+ * Custom status (type 4) is dropped: it is a user's status text, not something
+ * happening in the channel. Everything else is passed through with its type, so
+ * the UI can distinguish "Playing" from "Listening" rather than guessing.
+ *
+ * A caveat worth keeping in mind when reading the result: presence does not
+ * cleanly separate an embedded Activity from an ordinary game. Both arrive as
+ * type 0 with an `applicationId`. We report what Discord told us and let the
+ * reader judge, rather than inventing a distinction the API does not make.
+ */
+function getMemberActivities(member) {
+	try {
+		const activities = member?.presence?.activities;
+		if (!Array.isArray(activities) || activities.length === 0) return [];
+
+		return activities
+			.filter((activity) => activity && activity.type !== 4)
+			.map((activity) => ({
+				name: activity.name || null,
+				type: typeof activity.type === 'number' ? activity.type : null,
+				details: activity.details || null,
+				state: activity.state || null,
+				application_id: activity.applicationId || null,
+				started_at: activity.createdTimestamp
+					? new Date(activity.createdTimestamp).toISOString()
+					: null,
+			}))
+			.filter((activity) => activity.name);
+	} catch {
+		// Presence is optional and best-effort — never break the snapshot for it.
+		return [];
+	}
+}
+
 function getActiveVoiceSessionsForGuild(guild) {
 	const activeSessions = [];
 	const seenUserIds = new Set();
@@ -1438,6 +1480,7 @@ function getActiveVoiceSessionsForGuild(guild) {
 			streaming: Boolean(voiceState.streaming),
 			self_video: Boolean(voiceState.selfVideo),
 			suppress: Boolean(voiceState.suppress),
+			activities: getMemberActivities(member),
 		});
 	}
 

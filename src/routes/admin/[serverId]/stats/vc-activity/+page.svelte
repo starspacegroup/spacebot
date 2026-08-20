@@ -108,6 +108,7 @@
 			totalChannels: Number(snapshot?.totalChannels || 0),
 			activeCameras: Number(snapshot?.activeCameras || 0),
 			activeStreams: Number(snapshot?.activeStreams || 0),
+			membersInActivities: Number(snapshot?.membersInActivities || 0),
 			updatedAt: snapshot?.updatedAt || null,
 		};
 	}
@@ -485,6 +486,12 @@
 				>
 				<span class="live-voice-summary-label">Screensharing</span>
 			</div>
+			<div class="live-voice-summary-card">
+				<span class="live-voice-summary-value"
+					>{formatNumber(liveVoiceSnapshot.membersInActivities)}</span
+				>
+				<span class="live-voice-summary-label">In an Activity</span>
+			</div>
 		</div>
 
 		{#if liveVoiceSnapshot.channels.length > 0}
@@ -545,6 +552,35 @@
 												</span>
 											{/each}
 										</div>
+
+										{#if member.activities?.length}
+											<div class="live-voice-activity-row">
+												{#each member.activities as activity}
+													<span
+														class="live-voice-activity"
+														title={[activity.details, activity.state]
+															.filter(Boolean)
+															.join(' — ') || activity.name}
+													>
+														<span class="live-voice-activity-dot"
+														></span>
+														{#if activity.label}
+															<span class="live-voice-activity-verb"
+																>{activity.label}</span
+															>
+														{/if}
+														<span class="live-voice-activity-name"
+															>{activity.name}</span
+														>
+														{#if activity.details}
+															<span class="live-voice-activity-detail"
+																>{activity.details}</span
+															>
+														{/if}
+													</span>
+												{/each}
+											</div>
+										{/if}
 									</div>
 								</div>
 							{/each}
@@ -1005,6 +1041,51 @@
 	.live-voice-member-handle {
 		font-size: 0.85rem;
 		color: var(--color-text-muted);
+	}
+
+	.live-voice-activity-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+		margin-top: 0.45rem;
+	}
+
+	.live-voice-activity {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.2rem 0.55rem;
+		border-radius: 999px;
+		font-size: 0.78rem;
+		line-height: 1.5;
+		color: var(--text-primary, #f4f4f5);
+		background: color-mix(in srgb, var(--accent, #5865f2) 16%, transparent);
+		border: 1px solid color-mix(in srgb, var(--accent, #5865f2) 38%, transparent);
+	}
+
+	.live-voice-activity-dot {
+		width: 0.42rem;
+		height: 0.42rem;
+		border-radius: 50%;
+		background: var(--accent, #5865f2);
+		flex: none;
+	}
+
+	.live-voice-activity-verb {
+		opacity: 0.72;
+	}
+
+	.live-voice-activity-name {
+		font-weight: 600;
+	}
+
+	.live-voice-activity-detail {
+		opacity: 0.72;
+		/* Long game/track titles must not stretch the member row. */
+		max-width: 18rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.live-voice-badge-row {
