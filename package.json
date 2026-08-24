@@ -55,7 +55,7 @@
 		"audit:deps": "bun scripts/audit-deps.ts",
 		"verify:http3": "bun scripts/verify-http3.ts",
 		"images:check": "bun scripts/check-images.ts",
-		"lint": "eslint .",
+		"lint": "eslint . --max-warnings 0",
 		"lint:fix": "eslint . --fix",
 		"format": "prettier --write .",
 		"format:check": "prettier --check ."

@@ -49,7 +49,6 @@ function makeEvent(platform) {
 		cookies: { get: () => undefined },
 		platform,
 		fetch: globalThis.fetch,
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	} as any;
 }
 

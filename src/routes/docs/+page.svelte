@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 </script>
@@ -54,9 +55,9 @@
 				<h2>{tr('docs.section.gettingStarted')}</h2>
 				<p>{tr('docs.start.intro')}</p>
 				<ol>
-					<li>{@html tr('docs.start.item1')}</li>
-					<li>{@html tr('docs.start.item2')}</li>
-					<li>{@html tr('docs.start.item3')}</li>
+					<li><TrustedHtml html={tr('docs.start.item1')} /></li>
+					<li><TrustedHtml html={tr('docs.start.item2')} /></li>
+					<li><TrustedHtml html={tr('docs.start.item3')} /></li>
 				</ol>
 			</section>
 
@@ -72,10 +73,10 @@
 				<p>{tr('docs.commands.body')}</p>
 				<h3>{tr('docs.commands.keyFeatures')}</h3>
 				<ul>
-					<li>{@html tr('docs.commands.f1')}</li>
-					<li>{@html tr('docs.commands.f2')}</li>
-					<li>{@html tr('docs.commands.f3')}</li>
-					<li>{@html tr('docs.commands.f4')}</li>
+					<li><TrustedHtml html={tr('docs.commands.f1')} /></li>
+					<li><TrustedHtml html={tr('docs.commands.f2')} /></li>
+					<li><TrustedHtml html={tr('docs.commands.f3')} /></li>
+					<li><TrustedHtml html={tr('docs.commands.f4')} /></li>
 				</ul>
 			</section>
 
@@ -85,12 +86,12 @@
 				<p>{tr('docs.automations.body')}</p>
 				<h3>{tr('docs.automations.howItWorks')}</h3>
 				<ol>
-					<li>{@html tr('docs.automations.t1')}</li>
-					<li>{@html tr('docs.automations.t2')}</li>
-					<li>{@html tr('docs.automations.t3')}</li>
+					<li><TrustedHtml html={tr('docs.automations.t1')} /></li>
+					<li><TrustedHtml html={tr('docs.automations.t2')} /></li>
+					<li><TrustedHtml html={tr('docs.automations.t3')} /></li>
 				</ol>
 				<p>{tr('docs.automations.body2')}</p>
-				<p>{@html tr('docs.automations.ownBot')}</p>
+				<p><TrustedHtml html={tr('docs.automations.ownBot')} /></p>
 			</section>
 
 			<!-- Scheduled Events -->
@@ -125,7 +126,7 @@
 				<h2>{tr('docs.section.integrations')}</h2>
 				<p>{tr('docs.integrations.body')}</p>
 				<h3>{tr('docs.integrations.forDevs')}</h3>
-				<p>{@html tr('docs.integrations.devBody')}</p>
+				<p><TrustedHtml html={tr('docs.integrations.devBody')} /></p>
 			</section>
 
 			<!-- REST API -->

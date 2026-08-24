@@ -256,7 +256,6 @@ export async function advanceSuperadminWorkflowRun({
 		});
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const nodesById = new Map<string, any>(nodes.map((node) => [String(node.id), node]));
 	const runInput = asObject(run.input_json);
 

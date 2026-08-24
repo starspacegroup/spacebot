@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
-	let { data } = $props();
+	const { data } = $props();
 	const doc = $derived(data.doc);
 	const tr = getTranslator();
 </script>
@@ -40,8 +41,7 @@
 	<main class="doc-main">
 		<article class="doc-article">
 			<h1>{doc.title}</h1>
-			<!-- Trusted content: compiled from our own repo docs at build time. -->
-			{@html doc.html}
+			<TrustedHtml html={doc.html} />
 		</article>
 	</main>
 

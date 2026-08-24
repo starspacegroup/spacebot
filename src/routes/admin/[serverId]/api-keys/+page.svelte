@@ -3,6 +3,7 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	let { data, form } = $props();
@@ -301,7 +302,7 @@
 		<h2><span class="section-icon">📖</span> {tr('apik.apiUsage')}</h2>
 		<div class="docs-card">
 			<h3>{tr('apik.authentication')}</h3>
-			<p>{@html tr('apik.authDesc')}</p>
+			<p><TrustedHtml html={tr('apik.authDesc')} /></p>
 			<pre><code>Authorization: Bearer sb_live_your_key_here</code></pre>
 
 			<h3>{tr('apik.availableEndpoints')}</h3>

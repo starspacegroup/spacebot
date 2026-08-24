@@ -2,7 +2,7 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { versionDiffSummary } from './workflow-ui.js';
 
-	let { templateId, publishedVersion, onreverted } = $props();
+	const { templateId, publishedVersion, onreverted } = $props();
 
 	let versions = $state([]);
 	let loading = $state(true);

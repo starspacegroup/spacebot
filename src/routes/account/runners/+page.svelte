@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import { toast } from '$lib/toast.svelte.js';
 	import { getTranslator, getLocale } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	const dateLocale = getLocale() === 'es' ? 'es-ES' : 'en-US';
@@ -797,7 +798,7 @@
 						{newRawTokenCopied ? tr('runners.copied') : tr('runners.copy')}
 					</button>
 				</div>
-				<p class="token-reveal-hint">{@html tr('runners.tokenHint')}</p>
+				<p class="token-reveal-hint"><TrustedHtml html={tr('runners.tokenHint')} /></p>
 				<button class="btn btn-sm btn-ghost" onclick={() => (newRawToken = null)}
 					>{tr('runners.dismiss')}</button
 				>
@@ -808,7 +809,7 @@
 		{#if runnerTokens.length === 0}
 			<div class="empty-state">
 				<span class="empty-icon">🖥️</span>
-				{@html tr('runners.emptyNoRunners')}
+				<TrustedHtml html={tr('runners.emptyNoRunners')} />
 			</div>
 		{:else if visibleRunnerTokens().length === 0}
 			<div class="empty-state">

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
-	let { data } = $props();
+	const { data } = $props();
 	const tr = getTranslator();
 </script>
 
@@ -17,7 +18,7 @@
 	<header class="dev-hero">
 		<a class="back-link" href="/docs">{tr('docs.dev.backToUser')}</a>
 		<h1>{tr('docs.dev.title')}</h1>
-		<p class="hero-sub">{@html tr('docs.dev.heroSub')}</p>
+		<p class="hero-sub"><TrustedHtml html={tr('docs.dev.heroSub')} /></p>
 	</header>
 
 	{#each data.sections as section (section.title)}

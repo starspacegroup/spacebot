@@ -3,6 +3,7 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDateShort } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
+	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
 
 	const tr = getTranslator();
 	const { data, form } = $props();
@@ -207,7 +208,7 @@
 								<div class="detail-section">
 									<h4>{tr('integ.setupInstructions')}</h4>
 									<p class="setup-instructions">
-										{@html tr('integ.githubWebhookInstr')}
+										<TrustedHtml html={tr('integ.githubWebhookInstr')} />
 									</p>
 									<div class="copyable-field">
 										<code class="copyable-value"
@@ -233,7 +234,7 @@
 
 									{#if integration.guild_config?.webhook_secret}
 										<p class="setup-instructions" style="margin-top: 0.75rem;">
-											{@html tr('integ.setSecret')}
+											<TrustedHtml html={tr('integ.setSecret')} />
 										</p>
 										<div class="copyable-field">
 											<code class="copyable-value secret"
@@ -261,7 +262,7 @@
 									{/if}
 
 									<p class="setup-instructions" style="margin-top: 0.75rem;">
-										{@html tr('integ.setContentType')}
+										<TrustedHtml html={tr('integ.setContentType')} />
 									</p>
 
 									<div class="github-events-info">
@@ -1061,8 +1062,7 @@
 		line-height: 1.5;
 	}
 
-	/* Code snippets are injected via {@html} translations, so the scoped selector
-	   must be :global to reach them. */
+	/* Code snippets come from TrustedHtml, so the scoped selector must be :global. */
 	.setup-instructions :global(code) {
 		font-size: 0.8rem;
 		padding: 0.1rem 0.3rem;

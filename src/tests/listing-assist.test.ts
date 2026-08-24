@@ -232,7 +232,10 @@ describe('generateListingDraft retry', () => {
 		try {
 			const result = await generateListingDraft({ name: 'X' }, ollamaEnv());
 			expect(result.ok).toBe(true);
-			expect(result.draft!.headline).toBe('Hi');
+			if (!result.ok || !result.draft) {
+				throw new Error(`Expected a generated listing draft, got: ${result.error}`);
+			}
+			expect(result.draft.headline).toBe('Hi');
 			expect(stub.seen).toHaveLength(2);
 			expect(stub.seen[0]).not.toContain(JSON_RETRY_NUDGE);
 			expect(stub.seen[1]).toContain(JSON_RETRY_NUDGE);

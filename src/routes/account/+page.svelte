@@ -829,11 +829,9 @@
 			<div class="setting-item">
 				<div class="setting-info">
 					<span class="setting-label">{tr('account.settings.discord')}</span>
-					<span class="setting-desc"
-						>{@html tr('account.settings.loggedInAs', {
-							username: user.username,
-						})}</span
-					>
+					<span class="setting-desc">
+						{tr('account.settings.loggedInAs', { username: user.username })}
+					</span>
 				</div>
 				<div class="setting-control">
 					<span class="connected-badge">{tr('account.settings.connected')}</span>
