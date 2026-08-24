@@ -4763,29 +4763,40 @@ function gracefulShutdown(signal) {
 	process.exit(0);
 }
 
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+// This file is the PM2 entrypoint AND the module tests import for
+// createClient / setupEventHandlers. Importing it must not start a bot, bind a
+// port, or install fatal process handlers. Under vitest it did all three, and
+// the handlers below then tore the worker down: startBot() finds no
+// DISCORD_BOT_TOKEN and calls process.exit(1), vitest's patched exit throws,
+// the rejection hits the unhandledRejection handler, which exits again — the
+// run failed as "Worker exited unexpectedly" with no test to blame it on.
+const IS_ENTRYPOINT = !process.env.VITEST;
 
-// An unhandled rejection or uncaught exception already terminates this process;
-// what was missing was any record of WHY. PM2 would restart the gateway (up to
-// max_restarts) and the operator saw a bounce with no cause. These handlers do
-// not change that outcome — they log first, then exit non-zero exactly as
-// before, so PM2's restart policy still applies.
-process.on('unhandledRejection', (reason: any) => {
-	log.error(
-		'💥 Unhandled promise rejection — gateway is exiting:',
-		reason?.stack || reason?.message || reason
-	);
-	process.exit(1);
-});
+if (IS_ENTRYPOINT) {
+	process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+	process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-process.on('uncaughtException', (error: any) => {
-	log.error(
-		'💥 Uncaught exception — gateway is exiting:',
-		error?.stack || error?.message || error
-	);
-	process.exit(1);
-});
+	// An unhandled rejection or uncaught exception already terminates this
+	// process; what was missing was any record of WHY. PM2 would restart the
+	// gateway (up to max_restarts) and the operator saw a bounce with no cause.
+	// These handlers do not change that outcome — they log first, then exit
+	// non-zero exactly as before, so PM2's restart policy still applies.
+	process.on('unhandledRejection', (reason: any) => {
+		log.error(
+			'💥 Unhandled promise rejection — gateway is exiting:',
+			reason?.stack || reason?.message || reason
+		);
+		process.exit(1);
+	});
+
+	process.on('uncaughtException', (error: any) => {
+		log.error(
+			'💥 Uncaught exception — gateway is exiting:',
+			error?.stack || error?.message || error
+		);
+		process.exit(1);
+	});
+}
 
 /**
  * Lightweight HTTP server that proxies POST /deploy to the internal
@@ -4936,8 +4947,10 @@ function startHttpProxy() {
 	});
 }
 
-// Start the bot if this file is run directly
-startBot();
-startHttpProxy();
+// Start the bot when this file is the gateway process, never on import.
+if (IS_ENTRYPOINT) {
+	startBot();
+	startHttpProxy();
+}
 
 export { createClient, setupEventHandlers };
