@@ -28,6 +28,26 @@ const dbName = 'spacebot-logs';
 const locationFlag = isLocal ? '--local' : '--remote';
 const maxD1Retries = isLocal ? 1 : 3;
 
+// Cloudflare Pages applies ONE build command to every environment, so a preview
+// build for any branch runs this script too — and --remote points at the same
+// production database id that production migrates. A preview build of an open
+// PR was therefore trying to apply that branch's unmerged migrations to the
+// live database. It only ever failed because the preview environment's API
+// token lacks D1 write access, which is luck, not a guard.
+//
+// Migrate from the production branch only. Preview builds skip straight to the
+// build step, which is all a preview needs.
+const productionBranch = process.env.PAGES_PRODUCTION_BRANCH || 'main';
+const pagesBranch = process.env.CF_PAGES_BRANCH;
+
+if (!isLocal && pagesBranch && pagesBranch !== productionBranch) {
+	console.log(
+		`⏭️  Preview build on "${pagesBranch}" — skipping remote migrations ` +
+			`(only "${productionBranch}" migrates ${dbName}).`
+	);
+	process.exit(0);
+}
+
 function sleepMs(ms) {
 	if (ms <= 0) return;
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
