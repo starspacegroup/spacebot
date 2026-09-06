@@ -96,6 +96,9 @@ export function buildLiveVoiceSnapshot(members = [], updatedAtOverride = null) {
 			streaming: getMemberBoolean(row, 'streaming', 'streaming'),
 			selfVideo: getMemberBoolean(row, 'selfVideo', 'self_video'),
 			suppress: getMemberBoolean(row, 'suppress', 'suppress'),
+			// Lets a consumer count people rather than occupants — a music bot
+			// parked in a channel is not company.
+			isBot: getMemberBoolean(row, 'isBot', 'is_bot'),
 			// What they are doing, from presence — Watch Together and friends live
 			// here, not in voice state.
 			activities: normalizeActivities(getMemberValue(row, 'activities', 'activities')),
@@ -326,6 +329,7 @@ export async function getLiveVoiceChannels(db, guildId) {
         streaming,
         self_video,
         suppress,
+        is_bot,
         updated_at
       FROM live_voice_states
       WHERE guild_id = ?
