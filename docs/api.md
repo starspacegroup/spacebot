@@ -37,3 +37,120 @@ Errors return JSON with a top-level `error` string. Rate-limited requests return
 ## Integrations
 
 Discord signed interactions at `/api/discord/interactions` are signature-verified and exempt from app rate limits. Runner WebSocket upgrade paths are also exempt.
+
+## Connect: one-click authorization
+
+A site can get an API key without anyone minting and pasting one. SpaceBot acts
+as the authorization server: the site sends a server admin to a consent screen,
+they approve scopes for one of their servers, and the site exchanges a one-time
+code for a key over a server-to-server call.
+
+**The key never travels through a browser.** What comes back through the
+redirect is a code, which is worthless without the client secret.
+
+### 1. Register the application
+
+Superadmin → **Connect Apps**. You provide a client id, a display name (this is
+what admins see and approve), the exact redirect URIs the app may receive a code
+at, and the scopes it may ever request. The client secret is shown once and
+stored only as a SHA-256 hash.
+
+`redirect_uris` is matched **exactly**, not by prefix or host. That allowlist is
+the whole defence against this flow being used to harvest keys — an
+unregistered redirect URI is refused on the consent page and never redirected
+to.
+
+### 2. Send the admin to the consent screen
+
+```
+GET https://spacebot.starspace.group/connect
+  ?client_id=<your client id>
+  &redirect_uri=<one of your registered URIs>
+  &scope=voice:read%20stats:read
+  &state=<random, held in an httpOnly cookie on your side>
+```
+
+`state` is required. Generate it per attempt, store it where only your server
+can read it, and refuse a callback that does not match — without it, a link
+someone else crafted can complete a connection to a SpaceBot you did not choose.
+
+The admin picks which of their servers to grant, and may untick scopes. The
+request can never exceed the registration, and the approval can never exceed the
+request.
+
+On approval SpaceBot redirects to `redirect_uri?code=…&state=…`. The code is
+single-use and lives for 120 seconds.
+
+### 3. Exchange the code for a key
+
+```http
+POST /api/v1/connect/exchange
+Content-Type: application/json
+
+{
+  "client_id": "starspace-website",
+  "client_secret": "sbcs_…",
+  "code": "sbc_…",
+  "redirect_uri": "https://starspace.group/admin/spacebot/callback"
+}
+```
+
+```json
+{
+	"api_key": "sb_live_…",
+	"guild_id": "123456789012345678",
+	"scopes": ["voice:read", "stats:read"]
+}
+```
+
+`redirect_uri` must be the one the code was issued against. Every rejection
+returns the same message, so probing cannot distinguish an unknown client from a
+wrong secret from a spent code.
+
+The key is created **at this step**, not at approval — an approval nobody
+redeems leaves no credential behind. It is an ordinary API key from then on, and
+is revoked from that server's **API keys** page.
+
+## `GET /api/v1/voice`
+
+Who is in voice right now, from the same live snapshot the dashboard panel
+draws.
+
+Requires `voice:read`.
+
+| Parameter      |                                                            |
+| -------------- | ---------------------------------------------------------- |
+| `channel`      | Filter to one channel, by id or by name (case-insensitive) |
+| `include_bots` | `true` to include bots, which are excluded by default      |
+
+A `channel` that matches nothing returns an empty `channels` array rather than a
+404: to a caller drawing a panel, "nobody is in there" and "no such channel" are
+the same answer, and a 404 would make a quiet evening look like a broken
+integration.
+
+```json
+{
+	"guild_id": "123456789012345678",
+	"channels": [
+		{
+			"channelId": "987654321098765432",
+			"channelName": "Ten Forward",
+			"memberCount": 3,
+			"members": [
+				{
+					"userId": "…",
+					"displayName": "…",
+					"avatarUrl": "…",
+					"selfMute": false,
+					"streaming": true,
+					"selfVideo": false,
+					"isBot": false
+				}
+			]
+		}
+	],
+	"totalChannels": 1,
+	"totalUsers": 3,
+	"updatedAt": "2026-09-06T03:18:30.000Z"
+}
+```

@@ -32,6 +32,10 @@
 			<span class="nav-icon">🤖</span>
 			AI Models
 		</a>
+		<a href="/admin/superadmin/connect" class="nav-link">
+			<span class="nav-icon">🔗</span>
+			Connect Apps
+		</a>
 	</nav>
 	{@render children()}
 </div>
