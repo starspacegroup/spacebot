@@ -189,16 +189,28 @@ export async function createManagedRoom({
 	return { success: true, channel, channelId: channel.id, name: channelName, expiresAt };
 }
 
-/** Resolve the room a verb should act on, and say why not when it cannot. */
+/**
+ * Resolve the room a verb should act on.
+ *
+ * Running a verb from inside the room is the obvious case, but people also run
+ * `/room lock` from wherever they happen to be typing — so a caller who owns no
+ * room *at this channel* falls back to their own most recent room rather than
+ * being told they have none.
+ */
 async function resolveRoomForVerb(db, { guildId, actorId, channelId, isModerator }) {
-	if (isModerator && channelId) {
-		const room = await getManagedChannel(db, channelId);
-		if (room && String(room.guild_id) === String(guildId)) {
-			return { room, asModerator: String(room.owner_user_id) !== String(actorId) };
+	if (channelId) {
+		const here = await getOwnedManagedChannel(db, guildId, actorId, channelId);
+		if (here) return { room: here, asModerator: false };
+
+		if (isModerator) {
+			const room = await getManagedChannel(db, channelId);
+			if (room && String(room.guild_id) === String(guildId)) {
+				return { room, asModerator: String(room.owner_user_id) !== String(actorId) };
+			}
 		}
 	}
 
-	const owned = await getOwnedManagedChannel(db, guildId, actorId, channelId);
+	const owned = await getOwnedManagedChannel(db, guildId, actorId, null);
 	if (owned) return { room: owned, asModerator: false };
 
 	return { room: null, asModerator: false };
@@ -257,9 +269,9 @@ export async function runRoomVerb({
 			case 'unlock':
 				return await verbLock({ db, discord, room, preset, guildId, lock: false, reason });
 			case 'limit':
-				return await verbLimit({ db, discord, room, options, reason });
+				return await verbLimit({ discord, room, options, reason });
 			case 'transfer':
-				return await verbTransfer({ db, discord, room, preset, options, actorId, reason });
+				return await verbTransfer({ db, discord, room, preset, options, reason });
 			case 'extend':
 				return await verbExtend({ db, room, preset });
 			case 'delete':
@@ -399,7 +411,7 @@ async function verbLock({
 	};
 }
 
-async function verbLimit({ db, discord, room, options, reason }): Promise<RoomOperationResult> {
+async function verbLimit({ discord, room, options, reason }): Promise<RoomOperationResult> {
 	if (Number(room.channel_type) !== CHANNEL_TYPE_VOICE) {
 		return { success: false, error: 'User limits only apply to voice rooms.' };
 	}
@@ -408,7 +420,6 @@ async function verbLimit({ db, discord, room, options, reason }): Promise<RoomOp
 	if (limit === null) return { success: false, error: 'Give a number from 0 to 99.' };
 
 	await discord.channels.edit(room.channel_id, { user_limit: limit }, reason);
-	void db;
 
 	return {
 		success: true,
@@ -424,7 +435,6 @@ async function verbTransfer({
 	room,
 	preset,
 	options,
-	actorId,
 	reason,
 }): Promise<RoomOperationResult> {
 	const newOwnerId = options.user ? String(options.user) : null;
@@ -449,7 +459,6 @@ async function verbTransfer({
 		owner_user_id: newOwnerId,
 		owner_user_name: null,
 	});
-	void actorId;
 
 	return { success: true, response: { content: `👑 <@${newOwnerId}> owns this room now.` } };
 }

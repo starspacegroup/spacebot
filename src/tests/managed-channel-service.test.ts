@@ -10,7 +10,7 @@ const dbMock = vi.hoisted(() => ({
 		id: 1,
 	})),
 	getManagedChannel: vi.fn(async () => null),
-	getOwnedManagedChannel: vi.fn(async () => null),
+	getOwnedManagedChannel: vi.fn(async (..._args: any[]): Promise<any> => null),
 	getChannelPreset: vi.fn(async () => null),
 	updateManagedChannel: vi.fn(async (..._args: any[]) => ({ success: true })),
 	closeManagedChannel: vi.fn(async () => ({ success: true, closed: 1 })),
@@ -521,5 +521,64 @@ describe('room verbs', () => {
 			verb: 'explode',
 		});
 		expect(result.success).toBe(false);
+	});
+});
+
+describe('resolving which room a verb acts on', () => {
+	it("falls back to the caller's own room when they run a verb elsewhere", async () => {
+		// `/room lock` typed in #general: no room of theirs at that channel…
+		dbMock.getOwnedManagedChannel.mockImplementation(async (..._args: any[]) =>
+			_args[3] ? null : room()
+		);
+		const discord = fakeDiscord();
+
+		const result = await runRoomVerb({
+			db,
+			discord,
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'lock',
+			channelId: 'general',
+		});
+
+		// …so it acts on the room they actually own.
+		expect(result.success).toBe(true);
+		expect(discord.permissionCalls[0].channelId).toBe('c1');
+	});
+
+	it('prefers the room the caller is standing in', async () => {
+		dbMock.getOwnedManagedChannel.mockImplementation(async (..._args: any[]) =>
+			_args[3] === 'c2' ? room({ channel_id: 'c2' }) : room()
+		);
+		const discord = fakeDiscord();
+
+		await runRoomVerb({
+			db,
+			discord,
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'lock',
+			channelId: 'c2',
+		});
+
+		expect(discord.permissionCalls[0].channelId).toBe('c2');
+	});
+
+	it("does not hand a moderator someone else's room when they own one themselves", async () => {
+		dbMock.getOwnedManagedChannel.mockImplementation(async () => room({ channel_id: 'mine' }));
+		dbMock.getManagedChannel.mockResolvedValue(room({ owner_user_id: 'someone-else' }));
+		const discord = fakeDiscord();
+
+		await runRoomVerb({
+			db,
+			discord,
+			guildId: 'g1',
+			actorId: 'mod',
+			verb: 'lock',
+			channelId: 'mine',
+			isModerator: true,
+		});
+
+		expect(discord.permissionCalls[0].channelId).toBe('mine');
 	});
 });

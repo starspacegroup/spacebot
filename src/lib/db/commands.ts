@@ -670,10 +670,10 @@ export async function getCommandByName(db, name, guildId) {
 		if (result) return parseCommand(result);
 
 		// Fall back to built-in commands
-		const builtIn = await db
+		const builtIn: any = await db
 			.prepare(
 				`
-      SELECT c.*
+      SELECT c.*, o.default_member_permissions AS override_member_permissions
       FROM commands c
       LEFT JOIN built_in_command_overrides o
         ON o.command_id = c.id AND o.guild_id = ?
@@ -685,7 +685,18 @@ export async function getCommandByName(db, name, guildId) {
 			.bind(guildId, name.toLowerCase())
 			.first();
 
-		if (builtIn) return parseCommand(builtIn);
+		if (builtIn) {
+			const parsed = parseCommand(builtIn);
+			// A guild that tightened a built-in command's permissions expects that
+			// to be enforced at dispatch, not only in Discord's own UI.
+			if (
+				builtIn.override_member_permissions !== null &&
+				builtIn.override_member_permissions !== undefined
+			) {
+				parsed.default_member_permissions = builtIn.override_member_permissions;
+			}
+			return parsed;
+		}
 
 		return null;
 	} catch (error) {

@@ -1635,10 +1635,9 @@ export async function executeAction(automation, event, context, discord, db: any
 					ownerName: context?.user?.name || event.actor_name || null,
 					ownerRoleIds: event.member_role_ids || [],
 					name: requested || patterned,
-					userLimit:
-						action_config.user_limit === undefined || action_config.user_limit === ''
-							? undefined
-							: resolveNumberValue(action_config.user_limit, event),
+					// A null here means the option was not supplied, which must fall
+					// through to the preset default rather than becoming "unlimited".
+					userLimit: resolveNumberValue(action_config.user_limit, event) ?? undefined,
 					botId: event.application_id || null,
 					reason: `Room created by ${context?.user?.name || event.actor_id}`,
 				});
