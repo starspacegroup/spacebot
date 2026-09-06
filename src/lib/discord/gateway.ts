@@ -1480,6 +1480,7 @@ function getActiveVoiceSessionsForGuild(guild) {
 			streaming: Boolean(voiceState.streaming),
 			self_video: Boolean(voiceState.selfVideo),
 			suppress: Boolean(voiceState.suppress),
+			is_bot: Boolean(user?.bot),
 			activities: getMemberActivities(member),
 		});
 	}

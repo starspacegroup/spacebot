@@ -59,6 +59,10 @@ interface ResponseData {
 /** Minimal action-executor event object assembled from an interaction. */
 interface ActionEvent {
 	guild_id: any;
+	/** Role ids of the invoking member, for preset-level role gating. */
+	member_role_ids?: string[];
+	/** The invoking member's permission bitfield, as Discord sends it. */
+	member_permissions?: string | null;
 	channel_id: any;
 	actor_id: any;
 	actor_name: any;
@@ -756,6 +760,10 @@ async function handleCustomCommand(
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {}, // Store all option values by name
+			// Preset-level role gating is enforced in our own code: Discord's
+			// per-command role permissions cannot be set with a bot token.
+			member_role_ids: interaction.member?.roles || [],
+			member_permissions: interaction.member?.permissions ?? null,
 			application_id: interaction.application_id,
 			interaction_token: interaction.token,
 			_bot_token: getEnv(platform, 'DISCORD_BOT_TOKEN'),
@@ -1066,6 +1074,8 @@ async function handleDeferredCommand(
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {},
+			member_role_ids: interaction.member?.roles || [],
+			member_permissions: interaction.member?.permissions ?? null,
 			application_id: applicationId,
 			interaction_token: interactionToken,
 			_bot_token: botToken,
