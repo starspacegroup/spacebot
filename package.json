@@ -61,7 +61,7 @@
 		"format:check": "prettier --check ."
 	},
 	"devDependencies": {
-		"@cloudflare/vite-plugin": "^1.42.3",
+		"@cloudflare/vite-plugin": "^1.54.0",
 		"@eslint/js": "^10",
 		"@playwright/test": "^1.61.1",
 		"@sentry/sveltekit": "^10.63.0",
