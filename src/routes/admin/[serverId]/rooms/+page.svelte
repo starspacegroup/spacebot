@@ -3,7 +3,7 @@
 	import { onMount } from 'svelte';
 	import { toast } from '$lib/toast.svelte.js';
 
-	let { data, form } = $props();
+	const { data, form } = $props();
 
 	let editing = $state(null);
 	let channels = $state([]);
