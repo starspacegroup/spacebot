@@ -151,6 +151,7 @@ interface RawMemberState {
 	streaming?: unknown;
 	self_video?: unknown;
 	suppress?: unknown;
+	is_bot?: unknown;
 }
 
 function normalizeMemberState(member: RawMemberState = {}) {
@@ -169,6 +170,9 @@ function normalizeMemberState(member: RawMemberState = {}) {
 		streaming: member.streaming ? 1 : 0,
 		self_video: member.self_video ? 1 : 0,
 		suppress: member.suppress ? 1 : 0,
+		// Occupancy consumers (managed-channel reaping, occupancy triggers) need
+		// to count humans; a bot parked in a channel is not company.
+		is_bot: member.is_bot ? 1 : 0,
 	};
 }
 
@@ -237,9 +241,10 @@ export async function replaceLiveVoiceSnapshot(db, guildId, members = []) {
           streaming,
           self_video,
           suppress,
+          is_bot,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(guild_id, user_id)
         DO UPDATE SET
           user_name = excluded.user_name,
@@ -254,6 +259,7 @@ export async function replaceLiveVoiceSnapshot(db, guildId, members = []) {
           streaming = excluded.streaming,
           self_video = excluded.self_video,
           suppress = excluded.suppress,
+          is_bot = excluded.is_bot,
           updated_at = datetime('now')
       `
 				)
@@ -271,7 +277,8 @@ export async function replaceLiveVoiceSnapshot(db, guildId, members = []) {
 					member.server_deaf,
 					member.streaming,
 					member.self_video,
-					member.suppress
+					member.suppress,
+					member.is_bot
 				)
 				.run();
 		}

@@ -6,6 +6,7 @@
 
 import { ApplicationCommandType } from 'discord-api-types/v10';
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from './automations.js';
+import { applyInteractionOptionsToContext } from '../discord/interaction-options.js';
 import { log } from '../log.js';
 import { coerceOptionBoolean, parseEphemeralOptionConditions } from '../command-ephemeral.js';
 
@@ -669,10 +670,10 @@ export async function getCommandByName(db, name, guildId) {
 		if (result) return parseCommand(result);
 
 		// Fall back to built-in commands
-		const builtIn = await db
+		const builtIn: any = await db
 			.prepare(
 				`
-      SELECT c.*
+      SELECT c.*, o.default_member_permissions AS override_member_permissions
       FROM commands c
       LEFT JOIN built_in_command_overrides o
         ON o.command_id = c.id AND o.guild_id = ?
@@ -684,7 +685,18 @@ export async function getCommandByName(db, name, guildId) {
 			.bind(guildId, name.toLowerCase())
 			.first();
 
-		if (builtIn) return parseCommand(builtIn);
+		if (builtIn) {
+			const parsed = parseCommand(builtIn);
+			// A guild that tightened a built-in command's permissions expects that
+			// to be enforced at dispatch, not only in Discord's own UI.
+			if (
+				builtIn.override_member_permissions !== null &&
+				builtIn.override_member_permissions !== undefined
+			) {
+				parsed.default_member_permissions = builtIn.override_member_permissions;
+			}
+			return parsed;
+		}
 
 		return null;
 	} catch (error) {
@@ -1492,6 +1504,42 @@ export const COMMAND_TYPES = {
 };
 
 /**
+ * Convert one stored option to Discord API format.
+ *
+ * Subcommands and subcommand groups nest their own `options`, so this recurses
+ * rather than mapping one level — a subcommand registered without its children
+ * reaches Discord as an argument-less verb.
+ */
+function toDiscordOption(opt) {
+	const mapped: Record<string, any> = {
+		name: opt.name,
+		description: opt.description || 'No description',
+		type: opt.type,
+		choices: opt.choices || undefined,
+	};
+
+	const isContainer =
+		opt.type === OPTION_TYPES.SUB_COMMAND.value ||
+		opt.type === OPTION_TYPES.SUB_COMMAND_GROUP.value;
+
+	if (isContainer) {
+		// Discord rejects `required` on a subcommand or group.
+		if (Array.isArray(opt.options) && opt.options.length > 0) {
+			mapped.options = opt.options.map(toDiscordOption);
+		}
+	} else {
+		mapped.required = opt.required || false;
+		if (Array.isArray(opt.channel_types) && opt.channel_types.length > 0) {
+			mapped.channel_types = opt.channel_types;
+		}
+		if (opt.min_value !== undefined && opt.min_value !== null) mapped.min_value = opt.min_value;
+		if (opt.max_value !== undefined && opt.max_value !== null) mapped.max_value = opt.max_value;
+	}
+
+	return mapped;
+}
+
+/**
  * Convert command to Discord API format for registration.
  * Returns an array of commands when context-menu variants are enabled
  * (slash + optional USER context menu + optional MESSAGE context menu).
@@ -1514,13 +1562,7 @@ export function toDiscordCommand(command) {
 	};
 
 	if (command.options && command.options.length > 0) {
-		baseCommand.options = command.options.map((opt) => ({
-			name: opt.name,
-			description: opt.description || 'No description',
-			type: opt.type,
-			required: opt.required || false,
-			choices: opt.choices || undefined,
-		}));
+		baseCommand.options = command.options.map(toDiscordOption);
 	}
 
 	// Add permission restrictions if set
@@ -1709,24 +1751,10 @@ export function buildCommandContext(
 		context.option.message_content = resolvedMessage?.content || '';
 	}
 
-	// Add option values to context
-	if (interaction.data?.options) {
-		for (const opt of interaction.data.options) {
-			context.option[opt.name] = opt.value;
-
-			// For user/role/channel options, also add mention format
-			if (opt.type === 6) {
-				// USER
-				context.option[`${opt.name}_mention`] = `<@${opt.value}>`;
-			} else if (opt.type === 7) {
-				// CHANNEL
-				context.option[`${opt.name}_mention`] = `<#${opt.value}>`;
-			} else if (opt.type === 8) {
-				// ROLE
-				context.option[`${opt.name}_mention`] = `<@&${opt.value}>`;
-			}
-		}
-	}
+	// Add option values to context. Subcommand and group wrappers are walked
+	// through to the leaf options, and the invoked subcommand is exposed as
+	// {subcommand.name} / {subcommand.path}.
+	applyInteractionOptionsToContext(context, interaction.data);
 
 	return context;
 }

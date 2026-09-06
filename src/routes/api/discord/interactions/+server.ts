@@ -25,6 +25,7 @@ import {
 import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
+import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -58,6 +59,10 @@ interface ResponseData {
 /** Minimal action-executor event object assembled from an interaction. */
 interface ActionEvent {
 	guild_id: any;
+	/** Role ids of the invoking member, for preset-level role gating. */
+	member_role_ids?: string[];
+	/** The invoking member's permission bitfield, as Discord sends it. */
+	member_permissions?: string | null;
 	channel_id: any;
 	actor_id: any;
 	actor_name: any;
@@ -755,6 +760,10 @@ async function handleCustomCommand(
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {}, // Store all option values by name
+			// Preset-level role gating is enforced in our own code: Discord's
+			// per-command role permissions cannot be set with a bot token.
+			member_role_ids: interaction.member?.roles || [],
+			member_permissions: interaction.member?.permissions ?? null,
 			application_id: interaction.application_id,
 			interaction_token: interaction.token,
 			_bot_token: getEnv(platform, 'DISCORD_BOT_TOKEN'),
@@ -770,19 +779,11 @@ async function handleCustomCommand(
 		// context-menu commands reuse the slash-command action pipeline.
 		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
-		// Add option values to event for action processing
-		if (interaction.data?.options) {
-			for (const opt of interaction.data.options) {
-				// Store all options by name for target_user resolution
-				event.options[opt.name] = opt.value;
-
-				// Legacy: Map first user option to target_id for backwards compatibility
-				if (opt.type === 6 && !event.target_id) {
-					// USER
-					event.target_id = opt.value;
-				}
-			}
-		}
+		// Add option values to event for action processing. Walks subcommand /
+		// group wrappers down to the leaf options and records which subcommand
+		// was invoked, so `/room create` and `/room lock` can carry different
+		// actions on one command.
+		applyInteractionOptionsToEvent(event, interaction.data);
 
 		// For actions that need Discord client, we'll use REST API
 		// This is a simplified version - full discord.js client would be needed for complex actions
@@ -1073,6 +1074,8 @@ async function handleDeferredCommand(
 			actor_id: context.user.id,
 			actor_name: context.user.name,
 			options: {},
+			member_role_ids: interaction.member?.roles || [],
+			member_permissions: interaction.member?.permissions ?? null,
 			application_id: applicationId,
 			interaction_token: interactionToken,
 			_bot_token: botToken,
@@ -1086,14 +1089,7 @@ async function handleDeferredCommand(
 		// Resolve user/message context-menu targets into the action event.
 		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
-		if (interaction.data?.options) {
-			for (const opt of interaction.data.options) {
-				event.options[opt.name] = opt.value;
-				if (opt.type === 6 && !event.target_id) {
-					event.target_id = opt.value;
-				}
-			}
-		}
+		applyInteractionOptionsToEvent(event, interaction.data);
 
 		const discord = createRESTClient(platform);
 

@@ -21,6 +21,10 @@ import {
 	deleteMessagesByUser,
 	deleteMentionedMessages,
 } from './message-delete.js';
+import { createManagedRoom, runRoomVerb } from './managed-channels.js';
+import { getChannelPreset, getDefaultChannelPreset } from '../db/managed-channels.js';
+import { normalizeRoomName } from '../discord/managed-channel-policy.js';
+import { PermissionFlagsBits } from 'discord-api-types/v10';
 
 /**
  * Global ceiling on how many messages any delete action pages through in one
@@ -185,6 +189,24 @@ export function processTemplate(template, context) {
 		}
 		return match;
 	});
+}
+
+/**
+ * Whether a member's permission bitfield carries Manage Channels (or is an
+ * administrator), which is what lets them act on a room they do not own.
+ */
+function memberHasChannelManagement(permissions) {
+	if (permissions === null || permissions === undefined || permissions === '') return false;
+	let bits;
+	try {
+		bits = BigInt(String(permissions));
+	} catch {
+		return false;
+	}
+	if ((bits & PermissionFlagsBits.Administrator) === PermissionFlagsBits.Administrator) {
+		return true;
+	}
+	return (bits & PermissionFlagsBits.ManageChannels) === PermissionFlagsBits.ManageChannels;
 }
 
 /**
@@ -1574,6 +1596,102 @@ export async function executeAction(automation, event, context, discord, db: any
 				});
 
 				return { success: true, result: { threadId: thread.id } };
+			}
+
+			case 'CREATE_MANAGED_CHANNEL': {
+				if (!db) {
+					return { success: false, error: 'Database not available' };
+				}
+
+				const guildId = event.guild_id;
+				const preset = action_config.preset_id
+					? await getChannelPreset(db, guildId, action_config.preset_id)
+					: await getDefaultChannelPreset(db, guildId);
+
+				if (!preset) {
+					return {
+						success: false,
+						error: 'No room preset is set up on this server yet.',
+					};
+				}
+
+				// An explicit name wins; a blank one falls back to the preset's
+				// pattern, so `/room create` with no name still gets a real name.
+				const requested = normalizeRoomName(
+					processTemplate(action_config.name || '', context),
+					''
+				);
+				const patterned = normalizeRoomName(
+					processTemplate(preset.name_pattern, context),
+					''
+				);
+
+				const result = await createManagedRoom({
+					db,
+					discord,
+					guildId,
+					preset,
+					ownerId: event.actor_id,
+					ownerName: context?.user?.name || event.actor_name || null,
+					ownerRoleIds: event.member_role_ids || [],
+					name: requested || patterned,
+					// A null here means the option was not supplied, which must fall
+					// through to the preset default rather than becoming "unlimited".
+					userLimit: resolveNumberValue(action_config.user_limit, event) ?? undefined,
+					botId: event.application_id || null,
+					reason: `Room created by ${context?.user?.name || event.actor_id}`,
+				});
+
+				if (!result.success) {
+					return { success: false, error: result.error };
+				}
+
+				return {
+					success: true,
+					result: { channelId: result.channelId, name: result.name },
+					response: {
+						content: `🚪 Your room is ready: <#${result.channelId}>`,
+					},
+				};
+			}
+
+			case 'MANAGE_MANAGED_CHANNEL': {
+				if (!db) {
+					return { success: false, error: 'Database not available' };
+				}
+
+				// The verb can come from the action config or, for a single
+				// `/room` command with one action per verb, from the invoked
+				// subcommand itself.
+				const verb = String(action_config.verb || event.subcommand || '').toLowerCase();
+
+				if (!verb) {
+					return { success: false, error: 'No room verb configured' };
+				}
+
+				const allowModerators = action_config.allow_moderators !== false;
+				const permissions = event.member_permissions;
+				const isModerator = allowModerators && memberHasChannelManagement(permissions);
+
+				const result = await runRoomVerb({
+					db,
+					discord,
+					guildId: event.guild_id,
+					actorId: event.actor_id,
+					verb,
+					// Acting from inside the room is the common case; owners can
+					// also run the verb from anywhere and hit their own room.
+					channelId: event.channel_id,
+					options: event.options || {},
+					isModerator,
+					reason: `Room ${verb} by ${context?.user?.name || event.actor_id}`,
+				});
+
+				if (!result.success) {
+					return { success: false, error: result.error };
+				}
+
+				return { success: true, result: { verb }, response: result.response };
 			}
 
 			case 'ADD_REACTION': {

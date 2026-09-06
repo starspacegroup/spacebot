@@ -159,12 +159,70 @@ async function discordFetch(botToken, path, options: Record<string, any> = {}) {
 	}
 }
 
+/** Permission overwrite target types. */
+export const OVERWRITE_TYPE_ROLE = 0;
+export const OVERWRITE_TYPE_MEMBER = 1;
+
+/**
+ * Channel permission overwrite operations for one channel id.
+ *
+ * Discord's overwrite endpoint is a full replace, not a merge: whatever `allow`
+ * and `deny` are sent become the overwrite. Callers that want to change one bit
+ * must read the current overwrite and send the whole pair back.
+ *
+ * A bot can only grant permissions it holds itself; granting more comes back as
+ * 403 Missing Permissions.
+ */
+function buildPermissionOverwrites(token, channelId) {
+	return {
+		/**
+		 * Create or replace one overwrite.
+		 * @param {string} overwriteId Role or member id.
+		 * @param {{allow?: string|bigint, deny?: string|bigint, type?: number}} perms
+		 */
+		async set(
+			overwriteId,
+			{ allow = '0', deny = '0', type = OVERWRITE_TYPE_MEMBER } = {},
+			reason?
+		) {
+			return discordFetch(token, `/channels/${channelId}/permissions/${overwriteId}`, {
+				method: 'PUT',
+				body: { allow: String(allow), deny: String(deny), type },
+				reason,
+			});
+		},
+		/** Remove one overwrite entirely. */
+		async delete(overwriteId, reason?) {
+			return discordFetch(token, `/channels/${channelId}/permissions/${overwriteId}`, {
+				method: 'DELETE',
+				reason,
+			});
+		},
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Channel wrapper  — returned by discord.channels.fetch(id)
 // ---------------------------------------------------------------------------
 function wrapChannel(token, data) {
 	return {
 		...data,
+		/** PATCH the channel (name, user_limit, topic, parent_id, …). */
+		async edit(patch, reason) {
+			return discordFetch(token, `/channels/${data.id}`, {
+				method: 'PATCH',
+				body: patch,
+				reason,
+			});
+		},
+		/** Delete the channel. Returns the deleted channel object. */
+		async delete(reason) {
+			return discordFetch(token, `/channels/${data.id}`, {
+				method: 'DELETE',
+				reason,
+			});
+		},
+		permissionOverwrites: buildPermissionOverwrites(token, data.id),
 		async send(payload) {
 			const body = typeof payload === 'string' ? { content: payload } : payload;
 
@@ -321,6 +379,24 @@ function wrapMember(token, guildId, data) {
 					reason,
 				});
 			},
+			/**
+			 * Move the member into a voice channel, or disconnect them when
+			 * `channelId` is null. Requires MOVE_MEMBERS.
+			 */
+			async setChannel(channelId, reason) {
+				return discordFetch(token, `/guilds/${guildId}/members/${userId}`, {
+					method: 'PATCH',
+					body: { channel_id: channelId ?? null },
+					reason,
+				});
+			},
+			async disconnect(reason) {
+				return discordFetch(token, `/guilds/${guildId}/members/${userId}`, {
+					method: 'PATCH',
+					body: { channel_id: null },
+					reason,
+				});
+			},
 		},
 	};
 }
@@ -334,6 +410,29 @@ export function createDiscordRestClient(botToken) {
 			async fetch(channelId) {
 				const data = await discordFetch(botToken, `/channels/${channelId}`);
 				return wrapChannel(botToken, data);
+			},
+			/**
+			 * Edit a channel by id, without the GET that `fetch().edit()` costs.
+			 */
+			async edit(channelId, patch, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}`, {
+					method: 'PATCH',
+					body: patch,
+					reason,
+				});
+			},
+			/**
+			 * Delete a channel by id. Callers reaping a channel that may already
+			 * be gone should treat a 404 (`error.status === 404`) as success.
+			 */
+			async delete(channelId, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}`, {
+					method: 'DELETE',
+					reason,
+				});
+			},
+			permissions(channelId) {
+				return buildPermissionOverwrites(botToken, channelId);
 			},
 		},
 		guilds: {
@@ -365,10 +464,43 @@ export function createDiscordRestClient(botToken) {
 							const chs = await discordFetch(botToken, `/guilds/${guildId}/channels`);
 							return new Map(chs.map((c) => [c.id, wrapChannel(botToken, c)]));
 						},
-						async create({ name, type, parent, topic }) {
+						/**
+						 * Create a guild channel.
+						 *
+						 * `permissionOverwrites` is the array Discord expects
+						 * ({ id, type, allow, deny }); passing it at creation is
+						 * what makes a private room private from the first frame
+						 * instead of briefly visible to @everyone.
+						 */
+						async create({
+							name,
+							type,
+							parent,
+							topic,
+							permissionOverwrites,
+							userLimit,
+							rateLimitPerUser,
+							position,
+							bitrate,
+							nsfw,
+							reason,
+						}: Record<string, any>) {
+							const body: Record<string, any> = { name, type };
+							if (parent !== undefined) body.parent_id = parent;
+							if (topic !== undefined) body.topic = topic;
+							if (permissionOverwrites !== undefined)
+								body.permission_overwrites = permissionOverwrites;
+							if (userLimit !== undefined) body.user_limit = userLimit;
+							if (rateLimitPerUser !== undefined)
+								body.rate_limit_per_user = rateLimitPerUser;
+							if (position !== undefined) body.position = position;
+							if (bitrate !== undefined) body.bitrate = bitrate;
+							if (nsfw !== undefined) body.nsfw = nsfw;
+
 							return discordFetch(botToken, `/guilds/${guildId}/channels`, {
 								method: 'POST',
-								body: { name, type, parent_id: parent, topic },
+								body,
+								reason,
 							});
 						},
 					},

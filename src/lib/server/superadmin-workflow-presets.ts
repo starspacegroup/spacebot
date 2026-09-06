@@ -174,6 +174,53 @@ export const OPERATION_TEMPLATES = [
 		},
 	},
 	{
+		name: 'Minute Member Room Reap',
+		slug: 'minute-member-room-reap',
+		description:
+			'Closes member-owned rooms that hit their deadline or sat empty past their idle window.',
+		category: 'operations',
+		execution_backend: 'cloudflare_workflows',
+		legacy_job_name: 'reap_managed_channels',
+		schedule_type: 'cron',
+		cron_expression: '* * * * *',
+		canvas_json: {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Minute Trigger',
+					position: { x: 0, y: 0 },
+					data: { schedule: '* * * * *', source: 'gateway-cron' },
+				},
+				{
+					id: 'scan',
+					type: 'task',
+					title: 'Scan Open Rooms',
+					position: { x: 0, y: 140 },
+					data: {
+						operation: 'listRoomsForReaping',
+						queue_key: 'ops.rooms.scan',
+						notes: 'No open rooms means no further work this tick.',
+					},
+				},
+				{
+					id: 'reap',
+					type: 'task',
+					title: 'Delete Expired Rooms',
+					position: { x: 0, y: 280 },
+					data: {
+						operation: 'reapManagedChannels',
+						queue_key: 'ops.rooms.reap',
+					},
+				},
+			],
+			edges: [
+				{ id: 'e1', source: 'start', target: 'scan', label: 'start' },
+				{ id: 'e2', source: 'scan', target: 'reap', label: 'rooms_found' },
+			],
+		},
+	},
+	{
 		name: 'Workers AI Catalog Sync',
 		slug: 'workers-ai-catalog-sync',
 		description:

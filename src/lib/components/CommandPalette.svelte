@@ -126,6 +126,13 @@
 				keywords: ['analytics', 'charts', 'metrics', 'data', 'graphs', 'estadísticas'],
 			},
 			{
+				label: tr('cmd.rooms.label'),
+				icon: '🚪',
+				path: '/rooms',
+				desc: tr('cmd.rooms.desc'),
+				keywords: ['rooms', 'voice', 'temporary', 'lobby', 'presets', 'salas'],
+			},
+			{
 				label: tr('cmd.apiKeys.label'),
 				icon: '🔑',
 				path: '/api-keys',

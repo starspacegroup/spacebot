@@ -15,6 +15,7 @@ import {
 	runRebuildStats,
 } from '$lib/server/cron-jobs.js';
 import { processScheduledMessages } from '$lib/db/scheduled-messages.js';
+import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -79,6 +80,14 @@ function getCronJobDefinitions() {
 			name: 'send_scheduled_messages',
 			displayName: 'Send Scheduled Messages',
 			description: 'Processes and sends messages that were scheduled for later delivery.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'reap_managed_channels',
+			displayName: 'Reap Member Rooms',
+			description:
+				'Deletes member-owned rooms that have expired or sat empty past their idle window.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -468,6 +477,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await processScheduledMessages(db, botToken);
+		} else if (jobName === 'reap_managed_channels') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await reapManagedChannels(db, botToken);
 		} else if (jobName === 'sync_workers_ai_models') {
 			const synced = await syncWorkersAICatalog(db, platform);
 			result = {

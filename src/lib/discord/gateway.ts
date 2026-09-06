@@ -1480,6 +1480,7 @@ function getActiveVoiceSessionsForGuild(guild) {
 			streaming: Boolean(voiceState.streaming),
 			self_video: Boolean(voiceState.selfVideo),
 			suppress: Boolean(voiceState.suppress),
+			is_bot: Boolean(user?.bot),
 			activities: getMemberActivities(member),
 		});
 	}
@@ -1543,6 +1544,103 @@ async function postVoiceSessionSnapshot(guild, reason) {
 	}
 
 	return response.json();
+}
+
+/**
+ * Ask the app to create a room for a member who joined a join-to-create lobby.
+ *
+ * The gateway has no database, so the decision (is this channel a lobby? may
+ * this member create? are they under the cap?) and the creation itself both
+ * happen server-side; the gateway only moves the member into what comes back.
+ */
+async function createLobbyRoom(guild, member, lobbyChannelId) {
+	const response = await fetch(`${API_BASE}/api/rooms/${guild.id}/lobby`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json',
+			Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+		},
+		body: JSON.stringify({
+			lobby_channel_id: lobbyChannelId,
+			user_id: member?.id || member?.user?.id,
+			user_name: member?.user?.username || null,
+			display_name: member?.displayName || member?.user?.username || null,
+			role_ids: member?.roles?.cache?.map((role) => role.id) || [],
+			bot_id: guild.client?.user?.id || null,
+		}),
+	});
+
+	if (!response.ok) {
+		throw new Error(`Lobby room create failed: ${response.status}`);
+	}
+	return response.json();
+}
+
+/**
+ * Lobby channel ids per guild, as last reported by the app.
+ *
+ * This runs on every voice join in every guild, so the default has to be free:
+ * once a guild is known to have no lobbies (the overwhelming majority), joins
+ * there cost nothing until the entry ages out.
+ */
+const guildLobbyCache = new Map();
+const LOBBY_CACHE_MS = 5 * 60_000;
+
+function rememberLobbyChannels(guildId, channelIds) {
+	if (!Array.isArray(channelIds)) return;
+	guildLobbyCache.set(guildId, {
+		ids: new Set(channelIds.map(String)),
+		fetchedAt: Date.now(),
+	});
+}
+
+/**
+ * Handle a voice join that might be a join-to-create lobby.
+ *
+ * A member the bot moves into a fresh room arrives as a voice *move*, not a
+ * join, so a created room can never bounce back through here as a lobby.
+ */
+async function handleLobbyJoin(guild, member, channelId) {
+	const cached = guildLobbyCache.get(guild.id);
+	if (
+		cached &&
+		Date.now() - cached.fetchedAt < LOBBY_CACHE_MS &&
+		!cached.ids.has(String(channelId))
+	) {
+		return;
+	}
+
+	try {
+		const result = await createLobbyRoom(guild, member, channelId);
+		rememberLobbyChannels(guild.id, result?.lobby_channel_ids);
+		if (!result?.created || !result.channel_id) return;
+
+		// Moving them is the whole point of a lobby — if the move fails the room
+		// still exists and they can walk into it themselves.
+		try {
+			await member.voice.setChannel(result.channel_id, 'Moved into their new room');
+		} catch (error) {
+			log.warn(`[Rooms] Could not move member into new room: ${error.message}`);
+		}
+	} catch (error) {
+		log.warn(`[Rooms] Lobby handling failed for guild ${guild.id}: ${error.message}`);
+	}
+}
+
+/** Tell the app a channel is gone so a room's ownership row can be closed. */
+async function reportChannelDeleted(guildId, channelId) {
+	try {
+		await fetch(`${API_BASE}/api/rooms/${guildId}/channel-deleted`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+			},
+			body: JSON.stringify({ channel_id: channelId }),
+		});
+	} catch (error) {
+		log.warn(`[Rooms] Could not report deleted channel ${channelId}: ${error.message}`);
+	}
 }
 
 async function syncGuildLiveVoiceSnapshot(guild, reason) {
@@ -3278,6 +3376,10 @@ function setupEventHandlers(client, logFn) {
 				},
 			});
 			scheduleLiveVoiceSync();
+			// A join-to-create lobby turns this join into a new room.
+			if (member) {
+				void handleLobbyJoin(guild, member, newState.channel.id);
+			}
 			return; // Don't check for state changes on initial join
 		}
 
@@ -3577,6 +3679,10 @@ function setupEventHandlers(client, logFn) {
 
 	client.on(Events.ChannelDelete, async (channel) => {
 		if (!channel.guild) return;
+
+		// A member-owned room deleted by hand must not stay `active`, or it
+		// counts against its owner's cap and the reaper keeps retrying it.
+		void reportChannelDeleted(channel.guild.id, channel.id);
 
 		await logFn({
 			guild_id: channel.guild.id,

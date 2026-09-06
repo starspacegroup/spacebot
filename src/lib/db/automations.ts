@@ -547,6 +547,65 @@ export const ACTION_TYPES = {
 			},
 		},
 	},
+	CREATE_MANAGED_CHANNEL: {
+		name: 'Create Member Room',
+		description: 'Create a member-owned channel from a room preset',
+		icon: '🚪',
+		configSchema: {
+			preset_id: {
+				type: 'number',
+				required: false,
+				label: 'Room preset',
+				description:
+					'ID of the preset to build from (Server Settings → Rooms). Leave empty to use the first enabled preset.',
+			},
+			name: {
+				type: 'text',
+				required: false,
+				label: 'Room name',
+				description: "Overrides the preset's name pattern. Supports variables.",
+				supportsVariables: true,
+			},
+			user_limit: {
+				type: 'number_source',
+				required: false,
+				label: 'Voice user limit',
+				description: '0–99. Leave empty to use the preset default.',
+				supportsOptionRef: true,
+			},
+		},
+	},
+	MANAGE_MANAGED_CHANNEL: {
+		name: 'Manage Member Room',
+		description: "Run a verb against the caller's own room",
+		icon: '🛠️',
+		configSchema: {
+			verb: {
+				type: 'select',
+				required: true,
+				label: 'Verb',
+				options: [
+					'rename',
+					'invite',
+					'kick',
+					'lock',
+					'unlock',
+					'limit',
+					'transfer',
+					'extend',
+					'delete',
+				],
+				default: 'delete',
+			},
+			allow_moderators: {
+				type: 'boolean',
+				default: true,
+				label: 'Let channel moderators act on any room',
+				description:
+					'Members with Manage Channels can run this verb on rooms they do not own.',
+			},
+		},
+	},
 	ADD_REACTION: {
 		name: 'Add Reaction',
 		description: 'Add a reaction emoji to the triggering message',

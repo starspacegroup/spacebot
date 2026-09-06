@@ -23,11 +23,17 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Create button and select menu interactions — `src/lib/db/button-actions.ts`
 - [x] Add modal (form) interactions — automation action system
 - [x] Implement command permission controls — server-side command permission enforcement
+- [x] Member-owned rooms (#45) — `/room` (a built-in subcommand family) and join-to-create
+      lobbies let members make their own text or voice channels from an admin-defined preset,
+      manage only their own, and have them close on a fixed TTL or an idle window
+      (`docs/managed-channels.md`)
+- [x] Subcommand options — the interaction handler now walks subcommand and group wrappers
+      down to the leaf options, and registration sends their children to Discord
 
 ### Database & Persistence
 
 - [x] Set up Cloudflare D1 database — `wrangler.toml`
-- [x] Create schema for server settings, user data, bot statistics, command usage logs — 59 migrations
+- [x] Create schema for server settings, user data, bot statistics, command usage logs — 61 migrations
 - [x] Implement data migration scripts — `scripts/migrate.ts`
 
 ## Priority: Medium
