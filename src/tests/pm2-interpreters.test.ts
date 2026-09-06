@@ -35,6 +35,32 @@ describe('PM2 ecosystem interpreters', () => {
 		]);
 	});
 
+	/**
+	 * PM2's Bun fork container `require()`s the entry file, and Bun refuses to
+	 * require() a module with top-level await:
+	 *
+	 *   TypeError: require() async module "..." is unsupported.
+	 *
+	 * The process then crash-loops before printing a single line of its own, so
+	 * the symptom is a restart counter and an empty log. Wrap startup in a
+	 * `main()` and call it at the bottom, the way scripts/cron.ts does.
+	 */
+	it('has no top-level await in any entry point', async () => {
+		const { readFile } = await import('node:fs/promises');
+
+		for (const app of apps) {
+			if (typeof app.script !== 'string' || !app.script.endsWith('.ts')) continue;
+
+			const source = await readFile(new URL(`../../${app.script}`, import.meta.url), 'utf8');
+			const offending = source
+				.split('\n')
+				// Top level means column zero: anything indented is inside something.
+				.filter((line) => /^(await |(const|let|var)\s+[^=]+=\s*await )/.test(line));
+
+			expect({ app: app.name, offending }).toEqual({ app: app.name, offending: [] });
+		}
+	});
+
 	it('does not pass Node-only flags that current Node has removed', () => {
 		for (const app of apps) {
 			expect(String(app.args ?? '')).not.toContain('--experimental-specifier-resolution');
