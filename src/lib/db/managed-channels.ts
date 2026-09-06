@@ -128,6 +128,29 @@ export async function getChannelPresetByLobby(db, guildId, lobbyChannelId) {
 	}
 }
 
+/**
+ * Every enabled lobby channel id in a guild.
+ *
+ * The gateway caches this so an ordinary voice join in a guild with no lobbies
+ * costs nothing — otherwise every join in every guild would hit the app.
+ */
+export async function listLobbyChannelIds(db, guildId) {
+	if (!db || !guildId) return [];
+	try {
+		const result = await db
+			.prepare(
+				`SELECT lobby_channel_id FROM channel_presets
+         WHERE guild_id = ? AND enabled = 1 AND lobby_channel_id IS NOT NULL`
+			)
+			.bind(guildId)
+			.all();
+		return (result.results || []).map((row) => String(row.lobby_channel_id));
+	} catch (error) {
+		log.error('[ManagedChannels] Failed to list lobby channels:', error);
+		return [];
+	}
+}
+
 /** The preset a `/room` command falls back to when none is named. */
 export async function getDefaultChannelPreset(db, guildId) {
 	if (!db || !guildId) return null;
