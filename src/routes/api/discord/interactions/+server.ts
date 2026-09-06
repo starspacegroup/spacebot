@@ -25,6 +25,7 @@ import {
 import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
+import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -770,19 +771,11 @@ async function handleCustomCommand(
 		// context-menu commands reuse the slash-command action pipeline.
 		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
-		// Add option values to event for action processing
-		if (interaction.data?.options) {
-			for (const opt of interaction.data.options) {
-				// Store all options by name for target_user resolution
-				event.options[opt.name] = opt.value;
-
-				// Legacy: Map first user option to target_id for backwards compatibility
-				if (opt.type === 6 && !event.target_id) {
-					// USER
-					event.target_id = opt.value;
-				}
-			}
-		}
+		// Add option values to event for action processing. Walks subcommand /
+		// group wrappers down to the leaf options and records which subcommand
+		// was invoked, so `/room create` and `/room lock` can carry different
+		// actions on one command.
+		applyInteractionOptionsToEvent(event, interaction.data);
 
 		// For actions that need Discord client, we'll use REST API
 		// This is a simplified version - full discord.js client would be needed for complex actions
@@ -1086,14 +1079,7 @@ async function handleDeferredCommand(
 		// Resolve user/message context-menu targets into the action event.
 		applyContextMenuTargetToEvent(event, interaction.data, interaction.channel_id);
 
-		if (interaction.data?.options) {
-			for (const opt of interaction.data.options) {
-				event.options[opt.name] = opt.value;
-				if (opt.type === 6 && !event.target_id) {
-					event.target_id = opt.value;
-				}
-			}
-		}
+		applyInteractionOptionsToEvent(event, interaction.data);
 
 		const discord = createRESTClient(platform);
 
