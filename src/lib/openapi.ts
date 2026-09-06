@@ -33,6 +33,29 @@ export const openApiDocument = {
 				},
 			},
 		},
+		'/stats/members': {
+			get: {
+				summary: 'Member count over time, one point per bucket',
+				parameters: [
+					{
+						name: 'period',
+						in: 'query',
+						description: '24h, <N>d (e.g. 7d, 30d, 90d), 1y or all. Default 30d.',
+						schema: { type: 'string' },
+					},
+					{
+						name: 'granularity',
+						in: 'query',
+						description: 'auto, hourly, daily or weekly. Default auto.',
+						schema: { type: 'string' },
+					},
+				],
+				responses: {
+					'200': { description: 'Member history series' },
+					'400': { description: 'Invalid period or granularity' },
+				},
+			},
+		},
 		'/settings': {
 			get: {
 				summary: 'Read guild settings',

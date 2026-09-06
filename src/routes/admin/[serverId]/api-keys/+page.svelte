@@ -329,6 +329,11 @@
 				</div>
 				<div class="endpoint">
 					<span class="endpoint-method get">GET</span>
+					<code>/api/v1/stats/members</code>
+					<span class="endpoint-scope">stats:read</span>
+				</div>
+				<div class="endpoint">
+					<span class="endpoint-method get">GET</span>
 					<code>/api/v1/settings</code>
 					<span class="endpoint-scope">settings:read</span>
 				</div>
