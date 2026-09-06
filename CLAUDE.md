@@ -125,4 +125,5 @@ failure: that produced a dashboard of plausible zeros for anyone whose token lap
 ## Further docs
 
 `README.md` (features/setup), `DEPLOYMENT.md` (Cloudflare Pages deploy + secrets), `ROADMAP.md`, and the
-`docs/` folder (`ai-autopilot.md`, `local-runner-v2.md`, `superadmin-workflows.md`, `integrations.md`).
+`docs/` folder (`ai-autopilot.md`, `local-runner-v2.md`, `superadmin-workflows.md`, `integrations.md`,
+`managed-channels.md`).

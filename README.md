@@ -29,6 +29,9 @@ beautiful admin dashboard.
   connection
 - **Interactions Endpoint** — HTTP-based slash command handling via Cloudflare
   Workers
+- **Member Rooms** — Members create and run their own text or voice channels with
+  `/room` or a join-to-create lobby; a server preset decides who may make one, what
+  the creator can do to it, and when it closes itself
 - **Context Menu Commands** — Message context menu registration and routing with
   server-side permission enforcement
 - **AI Chat for Managers** — Server managers can DM the bot for AI-powered
