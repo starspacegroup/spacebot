@@ -131,21 +131,28 @@ export async function load({ cookies, platform, url }) {
 		discriminator: cookies.get('discord_discriminator') || '0',
 	};
 
-	// Fetch guilds for admin pages and pages that need guild data (e.g. /account)
-	const isAdminPage = url.pathname.startsWith('/admin') || url.pathname.startsWith('/account');
+	// Fetch guilds for the pages that actually need them.
+	//
+	// /connect is in this list because its consent screen asks which server to
+	// grant — without guilds it renders "you don't administer any server" to
+	// everybody, which is what it did before this line included it.
+	const needsGuilds =
+		url.pathname.startsWith('/admin') ||
+		url.pathname.startsWith('/account') ||
+		url.pathname.startsWith('/connect');
 	let adminGuilds = [];
 	let selectedGuildId = null;
 
 	// Always read the last viewed guild from cookie for non-admin pages
 	// This allows links like "Go to Dashboard" to go directly to the right server
 	const lastViewedGuildId = cookies.get('last_viewed_guild');
-	if (!isAdminPage && lastViewedGuildId) {
+	if (!needsGuilds && lastViewedGuildId) {
 		selectedGuildId = lastViewedGuildId;
 	}
 
-	log.debug('[Layout] isAdminPage:', isAdminPage, 'pathname:', url.pathname);
+	log.debug('[Layout] needsGuilds:', needsGuilds, 'pathname:', url.pathname);
 
-	if (isAdminPage) {
+	if (needsGuilds) {
 		// Check if we're using dev auth bypass with a mock guild
 		const devGuildId = getEnv('DISCORD_GUILD_ID', platform);
 		const isDevMockToken = cookies.get('discord_access_token') === 'dev_mock_token';
