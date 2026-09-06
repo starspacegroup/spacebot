@@ -103,7 +103,14 @@ module.exports = {
 		{
 			name: 'spacebot-deploy',
 			script: 'scripts/deploy-webhook.ts',
-			interpreter: 'node',
+			// bun, not node: these scripts are TypeScript and import siblings with
+			// TS-style `.js` specifiers. Node's type stripping runs the file but
+			// does not rewrite `.js` -> `.ts`, so every import of `../src/lib/*.js`
+			// dies with ERR_MODULE_NOT_FOUND — and PM2's fork container survives it,
+			// leaving a process that reports `online` while doing nothing at all.
+			// That is how the deploy poller sat dead for weeks while the box drifted
+			// 24 commits behind main.
+			interpreter: 'bun',
 			env: {
 				NODE_ENV: 'production',
 			},
@@ -126,8 +133,11 @@ module.exports = {
 			// worker's Cloudflare Cron Trigger (see orchestrator-worker/).
 			name: 'spacebot-cron',
 			script: 'scripts/cron.ts',
-			interpreter: 'node',
-			args: '--experimental-specifier-resolution=node',
+			// See the note on spacebot-deploy. The old
+			// `--experimental-specifier-resolution=node` arg was the attempted fix
+			// for the same import problem; that flag no longer exists in current
+			// Node, so it silently did nothing.
+			interpreter: 'bun',
 			env: {
 				NODE_ENV: 'production',
 				API_BASE: apiBase,
