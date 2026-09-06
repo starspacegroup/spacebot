@@ -50,10 +50,24 @@ redirect is a code, which is worthless without the client secret.
 
 ### 1. Register the application
 
-Superadmin → **Connect Apps**. You provide a client id, a display name (this is
-what admins see and approve), the exact redirect URIs the app may receive a code
-at, and the scopes it may ever request. The client secret is shown once and
-stored only as a SHA-256 hash.
+One command, which prints the environment lines to paste:
+
+```bash
+bun run connect:register -- \
+  --client-id starspace-website \
+  --name "*Space" \
+  --redirect-uri https://starspace.group/admin/spacebot/callback \
+  --scope voice:read --scope stats:read
+```
+
+Add `--local` to register against the local D1 instead of production. There is
+also Superadmin → **Connect Apps** for the same thing in the browser, plus
+enabling, disabling and deleting.
+
+Either way you provide a client id, a display name (this is what admins see and
+approve), the exact redirect URIs the app may receive a code at, and the scopes
+it may ever request. The client secret is shown once and stored only as a
+SHA-256 hash.
 
 `redirect_uris` is matched **exactly**, not by prefix or host. That allowlist is
 the whole defence against this flow being used to harvest keys — an
