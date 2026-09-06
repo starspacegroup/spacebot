@@ -5,11 +5,14 @@ const db = vi.hoisted(() => ({}) as any);
 const dbMock = vi.hoisted(() => ({
 	countActiveRoomsForUser: vi.fn(async () => 0),
 	countActiveRoomsForGuild: vi.fn(async () => 0),
-	recordManagedChannel: vi.fn(async () => ({ success: true, id: 1 })),
+	recordManagedChannel: vi.fn(async (): Promise<Record<string, any>> => ({
+		success: true,
+		id: 1,
+	})),
 	getManagedChannel: vi.fn(async () => null),
 	getOwnedManagedChannel: vi.fn(async () => null),
 	getChannelPreset: vi.fn(async () => null),
-	updateManagedChannel: vi.fn(async () => ({ success: true })),
+	updateManagedChannel: vi.fn(async (..._args: any[]) => ({ success: true })),
 	closeManagedChannel: vi.fn(async () => ({ success: true, closed: 1 })),
 }));
 
@@ -461,7 +464,7 @@ describe('room verbs', () => {
 		});
 
 		expect(result.success).toBe(true);
-		const update = dbMock.updateManagedChannel.mock.calls.at(-1)?.[2];
+		const update: any = (dbMock.updateManagedChannel.mock.calls.at(-1) as any[])?.[2];
 		expect(update.extensions_used).toBe(1);
 		expect(new Date(update.expires_at).getTime()).toBeGreaterThan(new Date(future).getTime());
 	});
