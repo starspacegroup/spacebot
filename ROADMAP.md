@@ -29,6 +29,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       (`docs/managed-channels.md`)
 - [x] Subcommand options — the interaction handler now walks subcommand and group wrappers
       down to the leaf options, and registration sends their children to Discord
+- [x] Room shape — a preset can give its rooms their own category (made and rolled over by
+      the bot at Discord's 50-child cap), a public/private default and a voice mode
+      (open, push-to-talk, or listen-only with `/room unmute` to hand out the mic). The
+      member picks at create time where the preset allows it (`docs/managed-channels.md`)
 
 ### Database & Persistence
 

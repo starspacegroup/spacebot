@@ -19,7 +19,12 @@ own room.
 **`/room`** is a built-in command family. A guild enables it like any other
 built-in command; per-guild enable/disable and the Discord permission gate come
 from `built_in_command_overrides`. Its subcommands are `create`, `rename`,
-`invite`, `kick`, `lock`, `unlock`, `limit`, `transfer`, `extend` and `delete`.
+`invite`, `kick`, `mute`, `unmute`, `lock`, `unlock`, `limit`, `transfer`,
+`extend` and `delete`.
+
+`create` also takes `visibility` and `voice`. Both are optional: an omitted one
+falls through to the preset default, and the preset decides whether the member's
+choice counts at all.
 
 **A join-to-create lobby** needs no command. Set `lobby_channel_id` on a preset
 and joining that voice channel makes the member a room and moves them into it.
@@ -35,19 +40,22 @@ Presets live in `channel_presets` and are edited under **Server → Member
 Rooms**. One guild can have several. The preset is read at run time, not frozen
 at creation, so changing it governs rooms that already exist.
 
-| Field                                            | What it does                                           |
-| ------------------------------------------------ | ------------------------------------------------------ |
-| `channel_type`                                   | `2` for voice, `0` for text                            |
-| `parent_id`                                      | Category the room is created under                     |
-| `name_pattern`                                   | Supports template variables, e.g. `{user.name}'s room` |
-| `lobby_channel_id`                               | Join-to-create trigger channel (voice only)            |
-| `allow_role_ids` / `deny_role_ids`               | Who may create a room                                  |
-| `lifetime_mode`                                  | `idle`, `fixed` or `manual`                            |
-| `ttl_minutes` / `idle_minutes` / `grace_minutes` | The clocks                                             |
-| `extend_minutes` / `max_extensions`              | What `/room extend` buys                               |
-| `max_per_user` / `max_per_guild` / `max_renames` | Caps                                                   |
-| `owner_can`                                      | Verbs delegated to the creator                         |
-| `owner_allow` / `everyone_deny`                  | Permission overwrites applied at creation              |
+| Field                                            | What it does                                            |
+| ------------------------------------------------ | ------------------------------------------------------- |
+| `channel_type`                                   | `2` for voice, `0` for text                             |
+| `category_mode`                                  | `own` (the bot keeps its own) or `existing`             |
+| `category_name` / `parent_id`                    | What to call its category, or which one to use          |
+| `default_visibility` / `allow_visibility_choice` | `public` or `private`, and whether members may pick     |
+| `default_voice_mode` / `allow_voice_mode_choice` | `open`, `ptt` or `listen`, and whether members may pick |
+| `name_pattern`                                   | Supports template variables, e.g. `{user.name}'s room`  |
+| `lobby_channel_id`                               | Join-to-create trigger channel (voice only)             |
+| `allow_role_ids` / `deny_role_ids`               | Who may create a room                                   |
+| `lifetime_mode`                                  | `idle`, `fixed` or `manual`                             |
+| `ttl_minutes` / `idle_minutes` / `grace_minutes` | The clocks                                              |
+| `extend_minutes` / `max_extensions`              | What `/room extend` buys                                |
+| `max_per_user` / `max_per_guild` / `max_renames` | Caps                                                    |
+| `owner_can`                                      | Verbs delegated to the creator                          |
+| `owner_allow` / `everyone_deny`                  | Permission overwrites applied at creation               |
 
 ### Why it is not called a template
 
@@ -55,6 +63,57 @@ at creation, so changing it governs rooms that already exist.
 which is cloned into a guild with no live link — editing the template never
 touches the command. A preset is the opposite: it is a live policy the verbs and
 the reaper read every time. Two words, two meanings, deliberately kept apart.
+
+## Where rooms go
+
+`category_mode` decides. On **`existing`** the room is created under the
+category the admin picked in `parent_id`, or at the top level if they picked
+none.
+
+On **`own`** the bot keeps its own categories for that preset. It creates one
+named after `category_name` (or the preset) the first time a room is needed,
+reuses it, and makes another — `Rooms 2`, `Rooms 3` — once the first is at
+Discord's 50-children cap. The ids it has made are appended to
+`managed_category_ids`, which is deliberately **not** writable from the
+dashboard: room creation trusts that list for the overflow rollover, and a
+hand-supplied id would let the dashboard fill somebody else's category to the
+cap. A category deleted by hand is skipped rather than resurrected.
+
+Resolving the category is best-effort. If listing or creating fails, the room is
+still created without one — the member asked for a room, not for filing.
+
+## Visibility and voice mode
+
+Both are decided at creation and written into the permission overwrites, so a
+private room is never briefly visible to `@everyone` and a listen-only room
+never has a moment where anyone can talk.
+
+**Visibility** owns `VIEW_CHANNEL` and `CONNECT` on the `@everyone` overwrite.
+`everyone_deny` stays as the admin's own baseline of extra denies on top.
+A public room has to _undo_ an inherited deny, not merely decline to add one.
+
+**Voice mode** applies to voice rooms only:
+
+- **`open`** — Discord's normal behaviour.
+- **`ptt`** — denies `USE_VAD`, so Discord requires push-to-talk. This applies
+  to the owner too: it is a property of the room, not a privilege.
+- **`listen`** — denies `SPEAK` for everyone but the owner, who hands out the
+  microphone with `/room unmute`.
+
+`listen` is how "everyone arrives muted" is done. It is a permission overwrite
+rather than a real server mute, which means it survives a bot restart, cannot be
+shrugged off by the member, needs no gateway state machine, and never collides
+with a moderator's own server mute of that person elsewhere in the guild.
+
+`/room mute` and `/room unmute` read the member's existing overwrite and change
+only the `SPEAK` bit. An overwrite is written with `PUT`, which replaces the
+pair outright, so muting somebody the owner had already invited must not
+quietly revoke their `VIEW_CHANNEL` as well.
+
+`/room lock` and `/room unlock` are the same axis as visibility: locking makes
+the room private, and unlocking returns it to the preset's own default rather
+than to public — so a preset that only ever makes private rooms cannot be
+talked into exposing one.
 
 ## Who may create a room
 
@@ -136,13 +195,13 @@ rather than at the next scan.
 
 ## Where the code is
 
-| Piece                   | File                                                                              |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| Policy (pure decisions) | `src/lib/discord/managed-channel-policy.ts`                                       |
-| Room operations         | `src/lib/automation/managed-channels.ts`                                          |
-| Tables                  | `src/lib/db/managed-channels.ts`, `migrations/0060_managed_channels.sql`          |
-| `/room` command         | `migrations/0061_room_built_in_command.sql`                                       |
-| Action types            | `CREATE_MANAGED_CHANNEL`, `MANAGE_MANAGED_CHANNEL` in `src/lib/db/automations.ts` |
-| Reaper                  | `src/lib/server/managed-channel-reaper.ts`                                        |
-| Lobby + reconciliation  | `src/routes/api/rooms/[guildId]/`, `src/lib/discord/gateway.ts`                   |
-| Dashboard               | `src/routes/admin/[serverId]/rooms/`                                              |
+| Piece                   | File                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Policy (pure decisions) | `src/lib/discord/managed-channel-policy.ts`                                                                                    |
+| Room operations         | `src/lib/automation/managed-channels.ts`                                                                                       |
+| Tables                  | `src/lib/db/managed-channels.ts`, `migrations/0060_managed_channels.sql`, `migrations/0064_room_visibility_voice_category.sql` |
+| `/room` command         | `migrations/0061_room_built_in_command.sql`, `migrations/0065_room_command_shape_options.sql`                                  |
+| Action types            | `CREATE_MANAGED_CHANNEL`, `MANAGE_MANAGED_CHANNEL` in `src/lib/db/automations.ts`                                              |
+| Reaper                  | `src/lib/server/managed-channel-reaper.ts`                                                                                     |
+| Lobby + reconciliation  | `src/routes/api/rooms/[guildId]/`, `src/lib/discord/gateway.ts`                                                                |
+| Dashboard               | `src/routes/admin/[serverId]/rooms/`                                                                                           |

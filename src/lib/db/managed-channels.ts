@@ -20,6 +20,7 @@ const JSON_COLUMNS = [
 	'owner_can',
 	'owner_allow',
 	'everyone_deny',
+	'managed_category_ids',
 ];
 
 function parseJsonColumn(value, fallback = []) {
@@ -41,6 +42,10 @@ export function parseChannelPreset(row) {
 		preset[column] = parseJsonColumn(row[column]);
 	}
 	preset.enabled = row.enabled === 1 || row.enabled === true;
+	preset.allow_visibility_choice =
+		row.allow_visibility_choice === 1 || row.allow_visibility_choice === true;
+	preset.allow_voice_mode_choice =
+		row.allow_voice_mode_choice === 1 || row.allow_voice_mode_choice === true;
 	return preset;
 }
 
@@ -66,13 +71,23 @@ const PRESET_WRITABLE_FIELDS = [
 	'owner_can',
 	'owner_allow',
 	'everyone_deny',
+	'category_mode',
+	'category_name',
+	'default_visibility',
+	'allow_visibility_choice',
+	'default_voice_mode',
+	'allow_voice_mode_choice',
 ];
+
+/** Preset columns stored as 0/1. `managed_category_ids` is deliberately not
+ * writable from the dashboard — the bot owns that list. */
+const BOOLEAN_COLUMNS = ['enabled', 'allow_visibility_choice', 'allow_voice_mode_choice'];
 
 function serializePresetValue(field, value) {
 	if (JSON_COLUMNS.includes(field)) {
 		return JSON.stringify(Array.isArray(value) ? value : []);
 	}
-	if (field === 'enabled') return value ? 1 : 0;
+	if (BOOLEAN_COLUMNS.includes(field)) return value ? 1 : 0;
 	return value ?? null;
 }
 
@@ -220,6 +235,48 @@ export async function updateChannelPreset(
 	}
 }
 
+/**
+ * Remember a category the bot made for this preset's rooms.
+ *
+ * `managed_category_ids` is not in {@link PRESET_WRITABLE_FIELDS}: the
+ * dashboard must not be able to hand the bot a category id it did not create,
+ * because room creation trusts this list for the overflow rollover and would
+ * happily fill somebody else's category to Discord's cap.
+ *
+ * The read-modify-write races if two members create the first room of a preset
+ * at the same moment, which costs one redundant empty category and nothing
+ * else — the loser's id is appended by the next write, and both categories get
+ * used. That is cheaper than serialising every room creation.
+ */
+export async function appendManagedCategory(db, guildId, presetId, categoryId) {
+	if (!db || !guildId || !presetId || !categoryId) return { success: false };
+	try {
+		const row = await db
+			.prepare(
+				`SELECT managed_category_ids FROM channel_presets WHERE id = ? AND guild_id = ?`
+			)
+			.bind(presetId, guildId)
+			.first();
+		if (!row) return { success: false, error: 'Preset not found' };
+
+		const current = parseJsonColumn(row.managed_category_ids).map(String);
+		if (current.includes(String(categoryId))) return { success: true, ids: current };
+
+		const next = [...current, String(categoryId)];
+		await db
+			.prepare(
+				`UPDATE channel_presets SET managed_category_ids = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND guild_id = ?`
+			)
+			.bind(JSON.stringify(next), presetId, guildId)
+			.run();
+		return { success: true, ids: next };
+	} catch (error) {
+		log.error('[ManagedChannels] Failed to record managed category:', error);
+		return { success: false, error: error.message };
+	}
+}
+
 export async function deleteChannelPreset(db, guildId, presetId) {
 	if (!db || !guildId || !presetId) return { success: false, error: 'Missing identifiers' };
 	try {
@@ -245,8 +302,9 @@ export async function recordManagedChannel(db, room: Record<string, any>) {
 			.prepare(
 				`INSERT INTO managed_channels (
            guild_id, channel_id, preset_id, owner_user_id, owner_user_name,
-           channel_name, channel_type, expires_at, last_occupied_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+           channel_name, channel_type, expires_at, visibility, voice_mode,
+           last_occupied_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 			)
 			.bind(
 				String(room.guild_id),
@@ -256,7 +314,9 @@ export async function recordManagedChannel(db, room: Record<string, any>) {
 				room.owner_user_name ?? null,
 				room.channel_name ?? null,
 				room.channel_type ?? CHANNEL_TYPE_VOICE,
-				room.expires_at ?? null
+				room.expires_at ?? null,
+				room.visibility ?? 'private',
+				room.voice_mode ?? 'open'
 			)
 			.run();
 		return { success: true, id: result.meta?.last_row_id };
@@ -507,6 +567,8 @@ export async function updateManagedChannel(db, channelId, updates: Record<string
 		'expires_at',
 		'renames_used',
 		'extensions_used',
+		'visibility',
+		'voice_mode',
 	];
 	const fields = allowed.filter((field) => updates[field] !== undefined);
 	if (fields.length === 0) return { success: true };

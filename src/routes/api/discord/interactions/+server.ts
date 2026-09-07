@@ -1769,6 +1769,11 @@ function createRESTClient(platform: PlatformLike | undefined) {
 				const voiceTypes = [2, 13];
 
 				return {
+					// Spread first: dropping everything but id/name/type is what
+					// left this client unable to read permission_overwrites or
+					// parent_id, and callers written against the shared REST
+					// client silently saw undefined.
+					...channel,
 					id: channel.id,
 					name: channel.name,
 					type: channel.type,
@@ -1897,6 +1902,7 @@ function createRESTClient(platform: PlatformLike | undefined) {
 							const map = createCollection();
 							for (const c of channels) {
 								map.set(c.id, {
+									...c,
 									id: c.id,
 									name: c.name,
 									type: c.type,

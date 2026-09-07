@@ -1638,6 +1638,13 @@ export async function executeAction(automation, event, context, discord, db: any
 					// A null here means the option was not supplied, which must fall
 					// through to the preset default rather than becoming "unlimited".
 					userLimit: resolveNumberValue(action_config.user_limit, event) ?? undefined,
+					// Same rule for the two shape options: absent means "the
+					// preset decides", and the preset also decides whether the
+					// member was allowed to have an opinion at all.
+					visibility:
+						processTemplate(action_config.visibility || '', context) || undefined,
+					voiceMode:
+						processTemplate(action_config.voice_mode || '', context) || undefined,
 					botId: event.application_id || null,
 					reason: `Room created by ${context?.user?.name || event.actor_id}`,
 				});
@@ -1646,11 +1653,26 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: false, error: result.error };
 				}
 
+				const notes: string[] = [];
+				if (result.visibility === 'public') notes.push('anyone can join');
+				if (result.visibility === 'private') notes.push('private');
+				if (result.voiceMode === 'ptt') notes.push('push-to-talk');
+				if (result.voiceMode === 'listen') {
+					notes.push('listen-only — `/room unmute` hands out the mic');
+				}
+
 				return {
 					success: true,
-					result: { channelId: result.channelId, name: result.name },
+					result: {
+						channelId: result.channelId,
+						name: result.name,
+						visibility: result.visibility,
+						voiceMode: result.voiceMode,
+					},
 					response: {
-						content: `🚪 Your room is ready: <#${result.channelId}>`,
+						content: notes.length
+							? `🚪 Your room is ready: <#${result.channelId}> (${notes.join(', ')})`
+							: `🚪 Your room is ready: <#${result.channelId}>`,
 					},
 				};
 			}

@@ -8,13 +8,17 @@ import {
 	updateChannelPreset,
 } from '$lib/db/managed-channels.js';
 import {
+	CATEGORY_MODES,
 	CHANNEL_TYPE_TEXT,
 	CHANNEL_TYPE_VOICE,
 	LIFETIME_MODES,
 	PERMISSION_FLAGS,
 	ROOM_VERBS,
+	ROOM_VISIBILITIES,
+	ROOM_VOICE_MODES,
 	sanitizeOwnerPermissions,
 } from '$lib/discord/managed-channel-policy.js';
+import { syncGuildCommands } from '$lib/discord/commands.js';
 import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
@@ -61,6 +65,9 @@ export async function load({ cookies, platform, parent, params }) {
 		verbs: ROOM_VERBS,
 		permissions: GRANTABLE_PERMISSIONS,
 		lifetimeModes: LIFETIME_MODES,
+		categoryModes: CATEGORY_MODES,
+		visibilities: ROOM_VISIBILITIES,
+		voiceModes: ROOM_VOICE_MODES,
 		channelTypes: { text: CHANNEL_TYPE_TEXT, voice: CHANNEL_TYPE_VOICE },
 	};
 }
@@ -80,7 +87,13 @@ function readPresetForm(formData: FormData) {
 		name: String(formData.get('name') || '').trim(),
 		enabled: formData.get('enabled') === 'on',
 		channel_type: number('channel_type', CHANNEL_TYPE_VOICE),
+		category_mode: String(formData.get('category_mode') || 'existing'),
+		category_name: String(formData.get('category_name') || '').trim() || null,
 		parent_id: String(formData.get('parent_id') || '').trim() || null,
+		default_visibility: String(formData.get('default_visibility') || 'private'),
+		allow_visibility_choice: formData.get('allow_visibility_choice') === 'on',
+		default_voice_mode: String(formData.get('default_voice_mode') || 'open'),
+		allow_voice_mode_choice: formData.get('allow_voice_mode_choice') === 'on',
 		name_pattern: String(formData.get('name_pattern') || '').trim() || "{user.name}'s room",
 		default_user_limit: number('default_user_limit'),
 		lobby_channel_id: String(formData.get('lobby_channel_id') || '').trim() || null,
@@ -112,6 +125,15 @@ function validatePreset(preset: ReturnType<typeof readPresetForm>) {
 	if (preset.channel_type === CHANNEL_TYPE_TEXT && preset.lobby_channel_id) {
 		return 'A join-to-create lobby only makes sense for voice rooms.';
 	}
+	if (!CATEGORY_MODES.includes(preset.category_mode as any)) {
+		return 'Pick how the category is chosen.';
+	}
+	if (!ROOM_VISIBILITIES.includes(preset.default_visibility as any)) {
+		return 'Rooms are public or private.';
+	}
+	if (!ROOM_VOICE_MODES.includes(preset.default_voice_mode as any)) {
+		return 'Pick a voice mode.';
+	}
 	return null;
 }
 
@@ -138,6 +160,10 @@ export const actions = {
 		}
 
 		log.info(`[Rooms] Preset created for ${params.serverId}: ${preset.name}`);
+		// Rooms are delivered through /room, and a guild's command set is only
+		// pushed to Discord on a command write. Without this, a guild that set up
+		// its first preset had the feature configured and the command missing.
+		await syncGuildCommands(db, params.serverId, (platform as any)?.env);
 		return { success: true, message: `Saved “${preset.name}”.` };
 	},
 
@@ -163,6 +189,10 @@ export const actions = {
 				: result.error;
 			return fail(400, { success: false, message });
 		}
+
+		// Also the cheapest way to pick up a change to /room's own shape, which
+		// arrives by migration and otherwise waits for the next command write.
+		await syncGuildCommands(db, params.serverId, (platform as any)?.env);
 
 		return { success: true, message: `Saved “${preset.name}”.` };
 	},

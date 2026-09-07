@@ -19,6 +19,7 @@ import {
 
 const VIEW_CHANNEL = 1n << 10n;
 const CONNECT = 1n << 20n;
+const MANAGE_CHANNELS = 1n << 4n;
 
 function preset(overrides: Record<string, any> = {}) {
 	return {
@@ -108,12 +109,31 @@ describe('buildRoomOverwrites', () => {
 			preset({ owner_allow: ['VIEW_CHANNEL', 'MANAGE_CHANNELS'] }),
 			targets
 		);
-		expect(overwrites[1].allow).toBe(String(VIEW_CHANNEL));
+		const allow = BigInt(String(overwrites[1].allow));
+		expect(allow & MANAGE_CHANNELS).toBe(0n);
+		expect(allow & VIEW_CHANNEL).toBe(VIEW_CHANNEL);
+		// A private room still has to let its own owner in, whatever the preset
+		// listed, or the first thing it does is lock them out.
+		expect(allow & CONNECT).toBe(CONNECT);
 	});
 
 	it('skips the @everyone overwrite when nothing is denied', () => {
-		const overwrites = buildRoomOverwrites(preset({ everyone_deny: [] }), targets);
+		const overwrites = buildRoomOverwrites(
+			preset({ everyone_deny: [], default_visibility: 'public' }),
+			targets
+		);
 		expect(overwrites.map((o) => o.id)).toEqual(['owner1', 'bot1']);
+	});
+
+	it('keeps the @everyone overwrite for a private room with no extra denies', () => {
+		const overwrites = buildRoomOverwrites(
+			preset({ everyone_deny: [], default_visibility: 'private' }),
+			targets
+		);
+		expect(overwrites[0]).toMatchObject({
+			id: 'guild1',
+			deny: String(VIEW_CHANNEL | CONNECT),
+		});
 	});
 });
 

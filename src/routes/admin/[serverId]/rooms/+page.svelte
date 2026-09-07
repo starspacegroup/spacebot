@@ -19,7 +19,13 @@
 			name: '',
 			enabled: true,
 			channel_type: data.channelTypes.voice,
+			category_mode: 'own',
+			category_name: '',
 			parent_id: '',
+			default_visibility: 'private',
+			allow_visibility_choice: true,
+			default_voice_mode: 'open',
+			allow_voice_mode_choice: true,
 			name_pattern: "{user.name}'s room",
 			default_user_limit: '',
 			lobby_channel_id: '',
@@ -34,7 +40,17 @@
 			max_per_user: 1,
 			max_per_guild: 25,
 			max_renames: 2,
-			owner_can: ['rename', 'invite', 'kick', 'lock', 'limit', 'extend', 'delete'],
+			owner_can: [
+				'rename',
+				'invite',
+				'kick',
+				'mute',
+				'unmute',
+				'lock',
+				'limit',
+				'extend',
+				'delete',
+			],
 			owner_allow: ['VIEW_CHANNEL', 'CONNECT'],
 			everyone_deny: ['VIEW_CHANNEL', 'CONNECT'],
 		};
@@ -48,6 +64,8 @@
 		editing = {
 			...blankPreset(),
 			...preset,
+			category_mode: preset.category_mode || 'existing',
+			category_name: preset.category_name || '',
 			parent_id: preset.parent_id || '',
 			lobby_channel_id: preset.lobby_channel_id || '',
 			default_user_limit: preset.default_user_limit ?? '',
@@ -97,7 +115,8 @@
 		<h1>🚪 Member Rooms</h1>
 		<p class="page-desc">
 			Let members make their own channels with <code>/room create</code>, or by joining a
-			lobby. A preset decides who may make one, what they can do to it, and when it closes.
+			lobby. A preset decides who may make one, whether it is public or private, how talking
+			works in it, what they can do to it, and when it closes.
 		</p>
 	</header>
 
@@ -125,6 +144,14 @@
 								{preset.channel_type === data.channelTypes.voice ? 'Voice' : 'Text'}
 							</span>
 							<span class="badge">{preset.lifetime_mode}</span>
+							<span class="badge">{preset.default_visibility || 'private'}</span>
+							{#if preset.channel_type === data.channelTypes.voice && preset.default_voice_mode && preset.default_voice_mode !== 'open'}
+								<span class="badge"
+									>{preset.default_voice_mode === 'ptt'
+										? 'push to talk'
+										: 'listen only'}</span
+								>
+							{/if}
 							{#if !preset.enabled}<span class="badge badge-off">Disabled</span>{/if}
 						</div>
 
@@ -133,6 +160,11 @@
 							· {roomsFor(preset.id)} open · max {preset.max_per_user} per member
 							{#if preset.lobby_channel_id}
 								· lobby: {channelName(preset.lobby_channel_id)}
+							{/if}
+							{#if preset.category_mode === 'own'}
+								· own category
+							{:else if preset.parent_id}
+								· under {channelName(preset.parent_id)}
 							{/if}
 						</p>
 
@@ -194,14 +226,39 @@
 					</label>
 
 					<label class="field">
-						<span>Category</span>
-						<select name="parent_id" bind:value={editing.parent_id}>
-							<option value="">(none)</option>
-							{#each categories as category (category.id)}
-								<option value={category.id}>{category.name}</option>
-							{/each}
+						<span>Where rooms go</span>
+						<select name="category_mode" bind:value={editing.category_mode}>
+							<option value="own">Its own category, made by SpaceBot</option>
+							<option value="existing">A category you already have</option>
 						</select>
+						<small>
+							{editing.category_mode === 'own'
+								? 'SpaceBot makes the category on first use and adds another once Discord’s 50-channel cap is hit.'
+								: 'Rooms are created under the category you pick below.'}
+						</small>
 					</label>
+
+					{#if editing.category_mode === 'own'}
+						<label class="field">
+							<span>Category name</span>
+							<input
+								name="category_name"
+								bind:value={editing.category_name}
+								placeholder={editing.name || 'Rooms'}
+							/>
+							<small>Blank uses the preset’s own name.</small>
+						</label>
+					{:else}
+						<label class="field">
+							<span>Category</span>
+							<select name="parent_id" bind:value={editing.parent_id}>
+								<option value="">(none)</option>
+								{#each categories as category (category.id)}
+									<option value={category.id}>{category.name}</option>
+								{/each}
+							</select>
+						</label>
+					{/if}
 
 					<label class="field">
 						<span>Name pattern</span>
@@ -221,6 +278,71 @@
 							>Joining this channel makes a room and moves the member into it.</small
 						>
 					</label>
+
+					<fieldset class="subsection">
+						<legend>What a new room is like</legend>
+						<p class="hint">
+							The default applies to every room. Tick the box to let the member
+							creating one choose something else with <code>/room create</code>. A
+							join-to-create lobby has nobody to ask, so it always takes the default.
+						</p>
+
+						<label class="field">
+							<span>Visibility</span>
+							<select
+								name="default_visibility"
+								bind:value={editing.default_visibility}
+							>
+								<option value="private"
+									>Private — only people the owner invites</option
+								>
+								<option value="public">Public — anyone can see and join</option>
+							</select>
+						</label>
+
+						<label class="check">
+							<input
+								type="checkbox"
+								name="allow_visibility_choice"
+								bind:checked={editing.allow_visibility_choice}
+							/>
+							<span>Let the member choose</span>
+						</label>
+
+						{#if editing.channel_type === data.channelTypes.voice}
+							<label class="field">
+								<span>Voice mode</span>
+								<select
+									name="default_voice_mode"
+									bind:value={editing.default_voice_mode}
+								>
+									<option value="open">Open mic</option>
+									<option value="ptt"
+										>Push to talk — everyone, owner included</option
+									>
+									<option value="listen"
+										>Listen only — the owner hands out the mic</option
+									>
+								</select>
+								<small>
+									{editing.default_voice_mode === 'ptt'
+										? 'Denies Use Voice Activity, so Discord requires push-to-talk.'
+										: editing.default_voice_mode === 'listen'
+											? 'Everyone arrives unable to speak. The owner grants the mic per person with /room unmute.'
+											: 'Discord’s normal behaviour.'}
+								</small>
+							</label>
+
+							<label class="check">
+								<input
+									type="checkbox"
+									name="allow_voice_mode_choice"
+									bind:checked={editing.allow_voice_mode_choice}
+								/>
+								<span>Let the member choose</span>
+							</label>
+						{/if}
+					</fieldset>
 
 					<label class="field">
 						<span>Default user limit</span>
@@ -657,6 +779,19 @@
 		margin-bottom: 1rem;
 	}
 
+	/* Sits inside the field grid, so it spans every column rather than
+	   squeezing its own selects into one 220px track. */
+	.subsection {
+		grid-column: 1 / -1;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		padding: 0.75rem 1rem 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.subsection legend,
 	.checks legend {
 		font-size: 0.85rem;
 		color: var(--color-text);

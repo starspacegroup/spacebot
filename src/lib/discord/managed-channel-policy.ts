@@ -12,6 +12,7 @@ import { PermissionFlagsBits } from 'discord-api-types/v10';
 /** Discord channel types this feature creates. */
 export const CHANNEL_TYPE_TEXT = 0;
 export const CHANNEL_TYPE_VOICE = 2;
+export const CHANNEL_TYPE_CATEGORY = 4;
 
 /** Verbs a room owner can be granted over their own room. */
 export const ROOM_VERBS = [
@@ -23,12 +24,51 @@ export const ROOM_VERBS = [
 	'transfer',
 	'extend',
 	'delete',
+	'mute',
+	'unmute',
 ] as const;
 
 export type RoomVerb = (typeof ROOM_VERBS)[number];
 
 /** Lifetime modes a preset can use. */
 export const LIFETIME_MODES = ['fixed', 'idle', 'manual'] as const;
+
+/**
+ * Whether @everyone may see and join the room.
+ *
+ * A private room is invisible to everyone but its owner and whoever the owner
+ * invites; a public one behaves like any ordinary channel and the owner still
+ * holds every other verb.
+ */
+export const ROOM_VISIBILITIES = ['public', 'private'] as const;
+export type RoomVisibility = (typeof ROOM_VISIBILITIES)[number];
+
+/**
+ * How speech works in a voice room.
+ *
+ * - `open`   — Discord's default: anybody who can connect can talk.
+ * - `ptt`    — denies USE_VAD, so Discord requires push-to-talk. This one
+ *              applies to the owner too: it is a property of the room, not a
+ *              privilege, and an owner talking open-mic in a PTT room is the
+ *              noise the mode exists to stop.
+ * - `listen` — denies SPEAK, so only the owner talks until they hand somebody
+ *              the mic with `/room unmute`. This is how "everyone arrives
+ *              muted" is done: a permission overwrite rather than a real
+ *              server-mute, so it survives a bot restart, cannot be undone by
+ *              somebody unmuting themselves, and never fights a moderator's
+ *              own mute of that member elsewhere in the server.
+ *
+ * Text rooms ignore all of this.
+ */
+export const ROOM_VOICE_MODES = ['open', 'ptt', 'listen'] as const;
+export type RoomVoiceMode = (typeof ROOM_VOICE_MODES)[number];
+
+/** How a preset decides which category its rooms are created under. */
+export const CATEGORY_MODES = ['existing', 'own'] as const;
+export type CategoryMode = (typeof CATEGORY_MODES)[number];
+
+/** Discord's hard cap on channels in one category. */
+export const MAX_CATEGORY_CHILDREN = 50;
 
 /**
  * Permission flags a preset may reference by name.
@@ -91,6 +131,34 @@ export function permissionNamesToBits(names: unknown): string {
 	return String(bits);
 }
 
+/**
+ * Flip one named permission in an existing overwrite pair.
+ *
+ * A permission overwrite is written with PUT, which replaces the whole pair, so
+ * a verb that changes one flag has to carry the rest of the member's overwrite
+ * with it. Muting somebody the owner had already invited must not quietly take
+ * their VIEW_CHANNEL away again.
+ *
+ * @param grant true to allow, false to deny, null to clear the flag entirely.
+ */
+export function withPermissionFlag(
+	current: { allow?: unknown; deny?: unknown },
+	name: string,
+	grant: boolean | null
+): { allow: string; deny: string } {
+	const flag = PERMISSION_FLAGS[String(name).toUpperCase()];
+	let allow = BigInt(String(current?.allow ?? '0') || '0');
+	let deny = BigInt(String(current?.deny ?? '0') || '0');
+	if (!flag) return { allow: String(allow), deny: String(deny) };
+
+	allow &= ~flag;
+	deny &= ~flag;
+	if (grant === true) allow |= flag;
+	if (grant === false) deny |= flag;
+
+	return { allow: String(allow), deny: String(deny) };
+}
+
 /** Drop permissions a room owner must never receive. See {@link OWNER_FORBIDDEN_PERMISSIONS}. */
 export function sanitizeOwnerPermissions(names: unknown): string[] {
 	if (!Array.isArray(names)) return [];
@@ -108,15 +176,138 @@ export interface OverwriteTargets {
 }
 
 /**
+ * Resolve the visibility a new room gets.
+ *
+ * The member's choice only counts when the preset allows one; an unrecognised
+ * value falls back to the preset default rather than failing the creation,
+ * because the alternative is a member losing a room to a typo.
+ */
+export function resolveVisibility(preset: any, requested?: unknown): RoomVisibility {
+	const fallback = ROOM_VISIBILITIES.includes(preset?.default_visibility)
+		? (preset.default_visibility as RoomVisibility)
+		: 'private';
+
+	if (requested === null || requested === undefined || requested === '') return fallback;
+	if (!presetAllowsVisibilityChoice(preset)) return fallback;
+
+	const wanted = String(requested).toLowerCase();
+	return ROOM_VISIBILITIES.includes(wanted as RoomVisibility)
+		? (wanted as RoomVisibility)
+		: fallback;
+}
+
+/** Resolve the voice mode a new room gets. See {@link resolveVisibility}. */
+export function resolveVoiceMode(preset: any, requested?: unknown): RoomVoiceMode {
+	const fallback = ROOM_VOICE_MODES.includes(preset?.default_voice_mode)
+		? (preset.default_voice_mode as RoomVoiceMode)
+		: 'open';
+
+	if (requested === null || requested === undefined || requested === '') return fallback;
+	if (!presetAllowsVoiceModeChoice(preset)) return fallback;
+
+	const wanted = String(requested).toLowerCase();
+	return ROOM_VOICE_MODES.includes(wanted as RoomVoiceMode)
+		? (wanted as RoomVoiceMode)
+		: fallback;
+}
+
+/** Whether the preset lets the creating member pick the visibility. */
+export function presetAllowsVisibilityChoice(preset: any): boolean {
+	return preset?.allow_visibility_choice !== 0 && preset?.allow_visibility_choice !== false;
+}
+
+/** Whether the preset lets the creating member pick the voice mode. */
+export function presetAllowsVoiceModeChoice(preset: any): boolean {
+	return preset?.allow_voice_mode_choice !== 0 && preset?.allow_voice_mode_choice !== false;
+}
+
+/**
+ * The permissions @everyone loses in a room, as names.
+ *
+ * `everyone_deny` on the preset is the admin's own baseline. Visibility owns
+ * VIEW_CHANNEL and CONNECT on top of it — a public room has to *undo* an
+ * inherited deny, not merely decline to add one — and the voice mode adds the
+ * one flag that implements it.
+ */
+export function everyoneDenyFor(
+	preset: any,
+	visibility: RoomVisibility,
+	voiceMode: RoomVoiceMode
+): string[] {
+	const base: unknown[] = Array.isArray(preset?.everyone_deny) ? preset.everyone_deny : [];
+	const deny = new Set<string>(base.map((name) => String(name).toUpperCase()));
+
+	if (visibility === 'private') {
+		deny.add('VIEW_CHANNEL');
+		deny.add('CONNECT');
+	} else {
+		deny.delete('VIEW_CHANNEL');
+		deny.delete('CONNECT');
+	}
+
+	if (Number(preset?.channel_type ?? CHANNEL_TYPE_VOICE) === CHANNEL_TYPE_VOICE) {
+		if (voiceMode === 'ptt') deny.add('USE_VAD');
+		if (voiceMode === 'listen') deny.add('SPEAK');
+	}
+
+	return [...deny];
+}
+
+/**
+ * The permissions the room owner is granted, as names.
+ *
+ * The owner has to be exempted from anything the room's own mode would
+ * otherwise apply to them, or the first thing a listen-only room does is
+ * silence the person who made it. PTT is the deliberate exception: it applies
+ * to everybody, owner included.
+ */
+export function ownerAllowFor(
+	preset: any,
+	visibility: RoomVisibility,
+	voiceMode: RoomVoiceMode
+): string[] {
+	const allow = new Set(sanitizeOwnerPermissions(preset?.owner_allow));
+
+	if (visibility === 'private') {
+		allow.add('VIEW_CHANNEL');
+		allow.add('CONNECT');
+	}
+	if (
+		voiceMode === 'listen' &&
+		Number(preset?.channel_type ?? CHANNEL_TYPE_VOICE) === CHANNEL_TYPE_VOICE
+	) {
+		allow.add('SPEAK');
+	}
+
+	return [...allow];
+}
+
+export interface OverwriteTargets {
+	ownerId: string;
+	/** The @everyone role id, which equals the guild id. */
+	everyoneRoleId: string;
+	/** The bot's own user id, so it keeps access to a hidden room. */
+	botId?: string | null;
+}
+
+export interface RoomShape {
+	visibility?: RoomVisibility;
+	voiceMode?: RoomVoiceMode;
+}
+
+/**
  * Build the `permission_overwrites` array for a new room.
  *
  * Applied at creation rather than patched afterwards, so a private room is
- * never briefly visible to @everyone.
+ * never briefly visible to @everyone and a listen-only room never has a moment
+ * where anyone can talk.
  */
-export function buildRoomOverwrites(preset: any, targets: OverwriteTargets) {
+export function buildRoomOverwrites(preset: any, targets: OverwriteTargets, shape: RoomShape = {}) {
+	const visibility = shape.visibility || resolveVisibility(preset);
+	const voiceMode = shape.voiceMode || resolveVoiceMode(preset);
 	const overwrites: Array<Record<string, string | number>> = [];
 
-	const everyoneDeny = permissionNamesToBits(preset?.everyone_deny);
+	const everyoneDeny = permissionNamesToBits(everyoneDenyFor(preset, visibility, voiceMode));
 	if (everyoneDeny !== '0') {
 		overwrites.push({
 			id: targets.everyoneRoleId,
@@ -126,11 +317,10 @@ export function buildRoomOverwrites(preset: any, targets: OverwriteTargets) {
 		});
 	}
 
-	const ownerAllow = permissionNamesToBits(sanitizeOwnerPermissions(preset?.owner_allow));
 	overwrites.push({
 		id: targets.ownerId,
 		type: OVERWRITE_TYPE_MEMBER,
-		allow: ownerAllow,
+		allow: permissionNamesToBits(ownerAllowFor(preset, visibility, voiceMode)),
 		deny: '0',
 	});
 

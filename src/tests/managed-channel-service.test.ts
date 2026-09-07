@@ -14,6 +14,7 @@ const dbMock = vi.hoisted(() => ({
 	getChannelPreset: vi.fn(async () => null),
 	updateManagedChannel: vi.fn(async (..._args: any[]) => ({ success: true })),
 	closeManagedChannel: vi.fn(async () => ({ success: true, closed: 1 })),
+	appendManagedCategory: vi.fn(async (..._args: any[]) => ({ success: true })),
 }));
 
 vi.mock('../lib/db/managed-channels.js', () => dbMock);
@@ -72,6 +73,12 @@ function fakeDiscord(overrides: Record<string, any> = {}) {
 	const deletes: string[] = [];
 	const disconnects: string[] = [];
 
+	// Every channel in the fake guild, so category counting has something to
+	// count. Tests override it to build a full category.
+	const guildChannels: any[] = overrides.guildChannels || [];
+	// The overwrites a mute/unmute verb has to preserve.
+	const existingOverwrites: any[] = overrides.existingOverwrites || [];
+
 	const discord: any = {
 		created,
 		permissionCalls,
@@ -81,9 +88,12 @@ function fakeDiscord(overrides: Record<string, any> = {}) {
 		guilds: {
 			fetch: async () => ({
 				channels: {
+					fetch: async () => new Map(guildChannels.map((c) => [c.id, c])),
 					create: async (payload) => {
 						created.push(payload);
-						return { id: 'new-channel', name: payload.name };
+						const id = payload.type === 4 ? `cat-${created.length}` : 'new-channel';
+						guildChannels.push({ id, name: payload.name, type: payload.type });
+						return { id, name: payload.name };
 					},
 				},
 				members: {
@@ -99,6 +109,10 @@ function fakeDiscord(overrides: Record<string, any> = {}) {
 			}),
 		},
 		channels: {
+			fetch: async (channelId) => ({
+				id: channelId,
+				permission_overwrites: existingOverwrites,
+			}),
 			edit: async (channelId, patch) => {
 				edits.push({ channelId, patch });
 			},
@@ -114,6 +128,8 @@ function fakeDiscord(overrides: Record<string, any> = {}) {
 		},
 		...overrides,
 	};
+	delete discord.guildChannels;
+	delete discord.existingOverwrites;
 	return discord;
 }
 
@@ -125,6 +141,290 @@ beforeEach(() => {
 	dbMock.getManagedChannel.mockResolvedValue(null);
 	dbMock.getOwnedManagedChannel.mockResolvedValue(null);
 	dbMock.getChannelPreset.mockResolvedValue(preset());
+});
+
+describe('room mute verbs', () => {
+	const SPEAK = 1n << 21n;
+	const VIEW = 1n << 10n;
+	const CONNECT_BIT = 1n << 20n;
+
+	function mutePreset() {
+		return preset({ owner_can: ['mute', 'unmute'] });
+	}
+
+	it('mutes somebody without revoking the invite that let them in', async () => {
+		dbMock.getOwnedManagedChannel.mockResolvedValue(room());
+		dbMock.getChannelPreset.mockResolvedValue(mutePreset());
+
+		const discord = fakeDiscord({
+			existingOverwrites: [
+				{ id: 'guest1', type: 1, allow: String(VIEW | CONNECT_BIT), deny: '0' },
+			],
+		});
+
+		const result = await runRoomVerb({
+			db,
+			discord,
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'mute',
+			channelId: 'c1',
+			options: { user: 'guest1' },
+		});
+
+		expect(result.success).toBe(true);
+		const call = discord.permissionCalls.at(-1);
+		expect(call.overwriteId).toBe('guest1');
+		expect(BigInt(call.perms.deny) & SPEAK).toBe(SPEAK);
+		// The invite survives.
+		expect(BigInt(call.perms.allow) & VIEW).toBe(VIEW);
+		expect(BigInt(call.perms.allow) & CONNECT_BIT).toBe(CONNECT_BIT);
+	});
+
+	it('hands the mic back on unmute', async () => {
+		dbMock.getOwnedManagedChannel.mockResolvedValue(room());
+		dbMock.getChannelPreset.mockResolvedValue(mutePreset());
+
+		const discord = fakeDiscord({
+			existingOverwrites: [{ id: 'guest1', type: 1, allow: '0', deny: String(SPEAK) }],
+		});
+
+		await runRoomVerb({
+			db,
+			discord,
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'unmute',
+			channelId: 'c1',
+			options: { user: 'guest1' },
+		});
+
+		const call = discord.permissionCalls.at(-1);
+		expect(BigInt(call.perms.allow) & SPEAK).toBe(SPEAK);
+		expect(BigInt(call.perms.deny) & SPEAK).toBe(0n);
+	});
+
+	it('refuses to mute the room owner', async () => {
+		dbMock.getOwnedManagedChannel.mockResolvedValue(room());
+		dbMock.getChannelPreset.mockResolvedValue(mutePreset());
+
+		const result = await runRoomVerb({
+			db,
+			discord: fakeDiscord(),
+			guildId: 'g1',
+			actorId: 'mod1',
+			verb: 'mute',
+			channelId: 'c1',
+			options: { user: 'owner1' },
+			isModerator: true,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/owner/i);
+	});
+
+	it('refuses to mute in a text room', async () => {
+		dbMock.getOwnedManagedChannel.mockResolvedValue(room({ channel_type: 0 }));
+		dbMock.getChannelPreset.mockResolvedValue(mutePreset());
+
+		const result = await runRoomVerb({
+			db,
+			discord: fakeDiscord(),
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'mute',
+			channelId: 'c1',
+			options: { user: 'guest1' },
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/voice rooms/i);
+	});
+
+	it('respects a preset that does not delegate muting', async () => {
+		dbMock.getOwnedManagedChannel.mockResolvedValue(room());
+		dbMock.getChannelPreset.mockResolvedValue(preset({ owner_can: ['rename'] }));
+
+		const result = await runRoomVerb({
+			db,
+			discord: fakeDiscord(),
+			guildId: 'g1',
+			actorId: 'owner1',
+			verb: 'mute',
+			channelId: 'c1',
+			options: { user: 'guest1' },
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/doesn't allow/i);
+	});
+});
+
+describe('createManagedRoom categories', () => {
+	const own = (extra: Record<string, any> = {}) =>
+		preset({ category_mode: 'own', parent_id: null, name: 'Study Rooms', ...extra });
+
+	it('makes its own category on the first room and remembers it', async () => {
+		const discord = fakeDiscord();
+		const result = await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: own(),
+			ownerId: 'owner1',
+			name: 'Study',
+		});
+
+		expect(result.success).toBe(true);
+		const category = discord.created.find((c) => c.type === 4);
+		expect(category?.name).toBe('Study Rooms');
+		expect(dbMock.appendManagedCategory).toHaveBeenCalledWith(db, 'g1', 7, 'cat-1');
+
+		const channel = discord.created.find((c) => c.type !== 4);
+		expect(channel.parent).toBe('cat-1');
+	});
+
+	it('reuses a category that still has room', async () => {
+		const discord = fakeDiscord({
+			guildChannels: [
+				{ id: 'catA', name: 'Study Rooms', type: 4 },
+				{ id: 'r1', type: 2, parent_id: 'catA' },
+			],
+		});
+
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: own({ managed_category_ids: ['catA'] }),
+			ownerId: 'owner1',
+		});
+
+		expect(discord.created.some((c) => c.type === 4)).toBe(false);
+		expect(discord.created[0].parent).toBe('catA');
+	});
+
+	it('rolls over to a new category once Discord’s 50-child cap is reached', async () => {
+		const full = Array.from({ length: 50 }, (_, i) => ({
+			id: `r${i}`,
+			type: 2,
+			parent_id: 'catA',
+		}));
+		const discord = fakeDiscord({
+			guildChannels: [{ id: 'catA', name: 'Study Rooms', type: 4 }, ...full],
+		});
+
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: own({ managed_category_ids: ['catA'] }),
+			ownerId: 'owner1',
+		});
+
+		const category = discord.created.find((c) => c.type === 4);
+		expect(category?.name).toBe('Study Rooms 2');
+		expect(discord.created.find((c) => c.type !== 4).parent).toBe('cat-1');
+	});
+
+	it('skips a remembered category somebody deleted by hand', async () => {
+		const discord = fakeDiscord({ guildChannels: [] });
+
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: own({ managed_category_ids: ['gone'] }),
+			ownerId: 'owner1',
+		});
+
+		expect(discord.created.find((c) => c.type === 4)).toBeDefined();
+		expect(discord.created.find((c) => c.type !== 4).parent).toBe('cat-1');
+	});
+
+	it('still gives the member a room when the category cannot be made', async () => {
+		const discord = fakeDiscord();
+		discord.guilds.fetch = async () => {
+			throw new Error('Missing Permissions');
+		};
+		// The room create itself goes through the same guild handle, so give it
+		// one that only fails while resolving the category.
+		let calls = 0;
+		discord.guilds.fetch = async () => {
+			calls += 1;
+			if (calls === 1) throw new Error('Missing Permissions');
+			return {
+				channels: {
+					fetch: async () => new Map(),
+					create: async (payload) => {
+						discord.created.push(payload);
+						return { id: 'new-channel', name: payload.name };
+					},
+				},
+			};
+		};
+
+		const result = await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: own(),
+			ownerId: 'owner1',
+		});
+
+		expect(result.success).toBe(true);
+		expect(discord.created[0].parent).toBeUndefined();
+	});
+
+	it('leaves an "existing" preset pointing at the category the admin picked', async () => {
+		const discord = fakeDiscord();
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: preset(),
+			ownerId: 'owner1',
+		});
+
+		expect(discord.created).toHaveLength(1);
+		expect(discord.created[0].parent).toBe('cat1');
+	});
+});
+
+describe('createManagedRoom shape', () => {
+	it('records what the room was actually created as', async () => {
+		const discord = fakeDiscord();
+		const result = await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: preset(),
+			ownerId: 'owner1',
+			visibility: 'public',
+			voiceMode: 'listen',
+		});
+
+		expect(result.visibility).toBe('public');
+		expect(result.voiceMode).toBe('listen');
+		expect(dbMock.recordManagedChannel).toHaveBeenCalledWith(
+			db,
+			expect.objectContaining({ visibility: 'public', voice_mode: 'listen' })
+		);
+	});
+
+	it('ignores the member choice when the preset refuses it', async () => {
+		const discord = fakeDiscord();
+		const result = await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: preset({ allow_visibility_choice: false, default_visibility: 'private' }),
+			ownerId: 'owner1',
+			visibility: 'public',
+		});
+
+		expect(result.visibility).toBe('private');
+	});
 });
 
 describe('createManagedRoom', () => {
@@ -423,7 +723,11 @@ describe('room verbs', () => {
 			overwriteId: 'g1',
 			perms: { deny: String(VIEW_CHANNEL | CONNECT), type: 0 },
 		});
-		expect(dbMock.updateManagedChannel).toHaveBeenCalledWith(db, 'c1', { locked: 1 });
+		// Locking *is* going private, so the room's stored shape moves with it.
+		expect(dbMock.updateManagedChannel).toHaveBeenCalledWith(db, 'c1', {
+			locked: 1,
+			visibility: 'private',
+		});
 	});
 
 	it("clamps a user limit into Discord's range", async () => {

@@ -573,6 +573,22 @@ export const ACTION_TYPES = {
 				description: '0–99. Leave empty to use the preset default.',
 				supportsOptionRef: true,
 			},
+			visibility: {
+				type: 'text',
+				required: false,
+				label: 'Visibility',
+				description:
+					'public or private. Leave empty to use the preset default. The preset can refuse the choice.',
+				supportsVariables: true,
+			},
+			voice_mode: {
+				type: 'text',
+				required: false,
+				label: 'Voice mode',
+				description:
+					'open, ptt or listen. Leave empty to use the preset default. The preset can refuse the choice.',
+				supportsVariables: true,
+			},
 		},
 	},
 	MANAGE_MANAGED_CHANNEL: {
@@ -591,6 +607,8 @@ export const ACTION_TYPES = {
 					'lock',
 					'unlock',
 					'limit',
+					'mute',
+					'unmute',
 					'transfer',
 					'extend',
 					'delete',

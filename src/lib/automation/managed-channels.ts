@@ -12,6 +12,7 @@
 
 import { log } from '../log.js';
 import {
+	appendManagedCategory,
 	closeManagedChannel,
 	countActiveRoomsForGuild,
 	countActiveRoomsForUser,
@@ -22,16 +23,22 @@ import {
 	updateManagedChannel,
 } from '../db/managed-channels.js';
 import {
+	CHANNEL_TYPE_CATEGORY,
 	CHANNEL_TYPE_VOICE,
+	MAX_CATEGORY_CHILDREN,
 	buildRoomOverwrites,
 	canExtend,
 	clampUserLimit,
+	everyoneDenyFor,
 	initialExpiresAt,
 	memberMayCreate,
 	normalizeRoomName,
 	ownerMayUseVerb,
 	parseDbTime,
 	permissionNamesToBits,
+	resolveVisibility,
+	resolveVoiceMode,
+	withPermissionFlag,
 	OVERWRITE_TYPE_MEMBER,
 	OVERWRITE_TYPE_ROLE,
 } from '../discord/managed-channel-policy.js';
@@ -45,6 +52,8 @@ export interface RoomOperationResult {
 	channelId?: string;
 	name?: string;
 	expiresAt?: string | null;
+	visibility?: string;
+	voiceMode?: string;
 }
 
 /** Permissions an invited member needs, by channel kind. */
@@ -69,6 +78,74 @@ function describeDiscordError(error, fallback) {
 	return error?.message || fallback;
 }
 
+/** Every channel in the guild, from whichever client the caller was given. */
+async function listGuildChannels(discord, guildId) {
+	const guild = await discord.guilds.fetch(guildId);
+	const channels = await guild.channels.fetch();
+	return channels ? [...channels.values()] : [];
+}
+
+/** The category label for the nth category a preset has needed. */
+function categoryLabel(preset, ordinal: number) {
+	const base = normalizeRoomName(preset?.category_name || preset?.name, 'Rooms');
+	return ordinal <= 1 ? base : normalizeRoomName(`${base} ${ordinal}`, base);
+}
+
+/**
+ * Decide which category a new room is created under.
+ *
+ * On `existing` the admin picked one by hand and it is used as-is. On `own` the
+ * bot keeps its own categories: it reuses the first one that still has room,
+ * and makes another when they are all full or have been deleted by hand.
+ * Discord caps a category at {@link MAX_CATEGORY_CHILDREN} children, and a
+ * create against a full category fails outright, so the count is not optional.
+ *
+ * A failure here degrades to no category rather than losing the room — the
+ * member asked for a room, not for filing.
+ */
+async function resolveRoomParent({ db, discord, guildId, preset, reason }) {
+	if (String(preset?.category_mode || 'existing') !== 'own') {
+		return preset?.parent_id || undefined;
+	}
+
+	const known = Array.isArray(preset?.managed_category_ids)
+		? preset.managed_category_ids.map(String)
+		: [];
+
+	try {
+		const channels = await listGuildChannels(discord, guildId);
+		const present = new Set(channels.map((c) => String(c.id)));
+
+		const children = new Map<string, number>();
+		for (const channel of channels) {
+			const parent = channel?.parent_id ?? channel?.parentId ?? null;
+			if (!parent) continue;
+			const key = String(parent);
+			children.set(key, (children.get(key) || 0) + 1);
+		}
+
+		for (const categoryId of known) {
+			// A category somebody deleted by hand is skipped, not resurrected.
+			if (!present.has(categoryId)) continue;
+			if ((children.get(categoryId) || 0) < MAX_CATEGORY_CHILDREN) return categoryId;
+		}
+
+		const guild = await discord.guilds.fetch(guildId);
+		const category = await guild.channels.create({
+			name: categoryLabel(preset, known.length + 1),
+			type: CHANNEL_TYPE_CATEGORY,
+			reason,
+		});
+
+		await appendManagedCategory(db, guildId, preset.id, category.id);
+		return category.id;
+	} catch (error) {
+		log.warn('[ManagedChannels] Could not resolve a room category:', error?.message);
+		// Fall back to whatever the preset names, then to the top level.
+		return preset?.parent_id || undefined;
+	}
+}
+
 /**
  * Create a room from a preset.
  *
@@ -86,6 +163,8 @@ export async function createManagedRoom({
 	ownerRoleIds = [],
 	name = null,
 	userLimit = undefined,
+	visibility: requestedVisibility = undefined,
+	voiceMode: requestedVoiceMode = undefined,
 	botId = null,
 	reason = 'Self-service room',
 }: Record<string, any>): Promise<RoomOperationResult> {
@@ -131,12 +210,24 @@ export async function createManagedRoom({
 	}
 
 	const channelName = normalizeRoomName(name, `${ownerName || 'member'}'s room`);
-	const overwrites = buildRoomOverwrites(preset, {
-		ownerId,
-		// @everyone's role id is the guild id.
-		everyoneRoleId: guildId,
-		botId,
-	});
+
+	// A member's pick only counts where the preset allows one; the join-to-create
+	// lobby passes neither and always lands on the preset default.
+	const visibility = resolveVisibility(preset, requestedVisibility);
+	const voiceMode = resolveVoiceMode(preset, requestedVoiceMode);
+
+	const overwrites = buildRoomOverwrites(
+		preset,
+		{
+			ownerId,
+			// @everyone's role id is the guild id.
+			everyoneRoleId: guildId,
+			botId,
+		},
+		{ visibility, voiceMode }
+	);
+
+	const parentId = await resolveRoomParent({ db, discord, guildId, preset, reason });
 
 	const limit =
 		userLimit === undefined
@@ -149,7 +240,7 @@ export async function createManagedRoom({
 		channel = await guild.channels.create({
 			name: channelName,
 			type: Number(preset.channel_type ?? CHANNEL_TYPE_VOICE),
-			parent: preset.parent_id || undefined,
+			parent: parentId,
 			permissionOverwrites: overwrites,
 			userLimit:
 				Number(preset.channel_type ?? CHANNEL_TYPE_VOICE) === CHANNEL_TYPE_VOICE &&
@@ -173,6 +264,8 @@ export async function createManagedRoom({
 		channel_name: channelName,
 		channel_type: Number(preset.channel_type ?? CHANNEL_TYPE_VOICE),
 		expires_at: expiresAt,
+		visibility,
+		voice_mode: voiceMode,
 	});
 
 	if (!recorded.success) {
@@ -186,7 +279,15 @@ export async function createManagedRoom({
 		return { success: false, error: 'Could not record the room. Nothing was created.' };
 	}
 
-	return { success: true, channel, channelId: channel.id, name: channelName, expiresAt };
+	return {
+		success: true,
+		channel,
+		channelId: channel.id,
+		name: channelName,
+		expiresAt,
+		visibility,
+		voiceMode,
+	};
 }
 
 /**
@@ -270,6 +371,17 @@ export async function runRoomVerb({
 				return await verbLock({ db, discord, room, preset, guildId, lock: false, reason });
 			case 'limit':
 				return await verbLimit({ discord, room, options, reason });
+			case 'mute':
+				return await verbMute({
+					discord,
+					room,
+					actorId,
+					options,
+					grant: false,
+					reason,
+				});
+			case 'unmute':
+				return await verbMute({ discord, room, actorId, options, grant: true, reason });
 			case 'transfer':
 				return await verbTransfer({ db, discord, room, preset, options, reason });
 			case 'extend':
@@ -385,9 +497,11 @@ async function verbLock({
 	lock,
 	reason,
 }): Promise<RoomOperationResult> {
-	const baseDeny = Array.isArray(preset?.everyone_deny) ? [...preset.everyone_deny] : [];
-	const lockDeny = accessPermissions(room.channel_type);
-	const deny = lock ? [...new Set([...baseDeny, ...lockDeny])] : baseDeny;
+	// Locking *is* going private. Unlocking returns to the preset's own default
+	// rather than to 'public', so a preset that only ever makes private rooms
+	// cannot be talked into exposing one.
+	const visibility = lock ? 'private' : resolveVisibility(preset);
+	const deny = everyoneDenyFor(preset, visibility, room.voice_mode || 'open');
 
 	await discord.channels.permissions(room.channel_id).set(
 		String(guildId),
@@ -399,14 +513,82 @@ async function verbLock({
 		reason
 	);
 
-	await updateManagedChannel(db, room.channel_id, { locked: lock ? 1 : 0 });
+	await updateManagedChannel(db, room.channel_id, { locked: lock ? 1 : 0, visibility });
 
 	return {
 		success: true,
 		response: {
 			content: lock
 				? '🔒 Locked. Only people you invite can get in.'
-				: '🔓 Unlocked, back to the preset default.',
+				: visibility === 'public'
+					? '🔓 Unlocked. Anyone can see and join it now.'
+					: '🔓 Unlocked, back to the preset default.',
+		},
+	};
+}
+
+/**
+ * Read a member's existing overwrite on the room.
+ *
+ * An overwrite is written with PUT, which replaces the pair outright, so a verb
+ * that changes one flag has to send the rest back untouched — otherwise muting
+ * somebody would also revoke the invite that let them in.
+ */
+async function currentOverwrite(discord, channelId, targetId) {
+	const channel = await discord.channels.fetch(channelId);
+	const overwrites = channel?.permission_overwrites || channel?.permissionOverwrites || [];
+	const list = Array.isArray(overwrites) ? overwrites : [];
+	const found = list.find((entry) => String(entry?.id) === String(targetId));
+	return { allow: found?.allow ?? '0', deny: found?.deny ?? '0' };
+}
+
+/**
+ * Take somebody's microphone away, or give it back.
+ *
+ * This is the per-member half of the room's voice mode: a `listen` room starts
+ * with nobody but the owner able to talk, and `/room unmute` is how the owner
+ * hands out the mic. It works in an `open` room too, as a way to quiet one
+ * person without a moderator.
+ *
+ * Done with a permission overwrite rather than a real server mute, so it
+ * survives a restart, cannot be shrugged off by the member, and never collides
+ * with a moderator's own server mute of that person elsewhere.
+ */
+async function verbMute({
+	discord,
+	room,
+	actorId,
+	options,
+	grant,
+	reason,
+}): Promise<RoomOperationResult> {
+	if (Number(room.channel_type) !== CHANNEL_TYPE_VOICE) {
+		return { success: false, error: 'Muting only applies to voice rooms.' };
+	}
+
+	const userId = options.user ? String(options.user) : null;
+	if (!userId)
+		return { success: false, error: grant ? 'Say who to unmute.' : 'Say who to mute.' };
+	if (!grant && userId === String(room.owner_user_id)) {
+		return { success: false, error: "You can't mute the room's owner." };
+	}
+	if (!grant && userId === String(actorId)) {
+		return { success: false, error: "You can't mute yourself." };
+	}
+
+	const existing = await currentOverwrite(discord, room.channel_id, userId);
+	const next = withPermissionFlag(existing, 'SPEAK', grant);
+
+	await discord.channels
+		.permissions(room.channel_id)
+		.set(userId, { ...next, type: OVERWRITE_TYPE_MEMBER }, reason);
+
+	return {
+		success: true,
+		response: {
+			content: grant
+				? `🎙️ <@${userId}> can speak now.`
+				: `🔇 <@${userId}> is muted in your room.`,
 		},
 	};
 }
