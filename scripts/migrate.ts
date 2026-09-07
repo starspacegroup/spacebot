@@ -18,6 +18,11 @@ import { execFileSync, execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import {
+	isAlreadyAppliedError,
+	isTransientD1Error,
+	shouldFallbackToCommandExecution,
+} from './lib/d1-errors.js';
 import { commandArg, hasExecutableSql, splitSqlStatements } from './lib/sql-statements.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,37 +61,6 @@ function sleepMs(ms) {
 
 function extractErrorOutput(error) {
 	return error?.stderr?.toString() || error?.stdout?.toString() || error?.message || '';
-}
-
-function isTransientD1Error(output) {
-	const normalized = output.toLowerCase();
-	return (
-		normalized.includes('upstream service unavailable') ||
-		normalized.includes('[code: 7009]') ||
-		normalized.includes('internal error') ||
-		normalized.includes('timed out') ||
-		normalized.includes('econnreset') ||
-		normalized.includes('etimedout') ||
-		normalized.includes('too many requests') ||
-		normalized.includes(' code: 429')
-	);
-}
-
-function isAlreadyAppliedError(output) {
-	const normalized = output.toLowerCase();
-	return (
-		normalized.includes('already exists') ||
-		normalized.includes('duplicate') ||
-		normalized.includes('duplicate column name') ||
-		normalized.includes('no such column')
-	);
-}
-
-function shouldFallbackToCommandExecution(output) {
-	const normalized = output.toLowerCase();
-	return (
-		normalized.includes('d1_reset_do') || normalized.includes('reset before execute completed')
-	);
 }
 
 function parseMarkerValue(output, markerPrefix) {
@@ -138,7 +112,22 @@ function executeSqlFileViaCommand(filePath) {
 	const statements = splitSqlStatements(sql);
 	for (const statement of statements) {
 		if (!hasExecutableSql(statement)) continue;
-		d1CliExecute([commandArg(statement)]);
+
+		try {
+			d1CliExecute([commandArg(statement)]);
+		} catch (error) {
+			// The whole-file path treats "already exists" / "no such column" as a
+			// migration that has nothing left to do and moves on. This path has to
+			// agree, or a re-run fails the build on work that is already done —
+			// which is how a production deploy died on 0033_drop_welcome_messages.
+			//
+			// Skipping the one statement rather than the whole file matters too:
+			// 0033 drops three columns, so aborting on the first would leave the
+			// other two behind and the file recorded as applied.
+			const output = extractErrorOutput(error);
+			if (!isAlreadyAppliedError(output)) throw error;
+			console.log('     ⏭️  Statement already applied; continuing');
+		}
 	}
 }
 
@@ -358,8 +347,22 @@ for (const file of migrationFiles) {
 				successCount++;
 			} catch (fallbackError) {
 				const fallbackOutput = extractErrorOutput(fallbackError);
-				console.error(`     ❌ Error: ${fallbackOutput || fallbackError.message}\n`);
-				errorCount++;
+
+				// Same rule as the primary path above: already-applied is a skip,
+				// not a build failure.
+				if (isAlreadyAppliedError(fallbackOutput)) {
+					try {
+						d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
+						appliedMigrations.add(file);
+					} catch {
+						// Non-fatal
+					}
+					console.log(`     ⏭️  Already applied (skipped)\n`);
+					skippedCount++;
+				} else {
+					console.error(`     ❌ Error: ${fallbackOutput || fallbackError.message}\n`);
+					errorCount++;
+				}
 			}
 		} else {
 			console.error(`     ❌ Error: ${errorOutput || error.message}\n`);
