@@ -365,6 +365,18 @@ When a new commit is detected, the server automatically:
 5. `bun run db:migrate` (if migration files changed)
 6. `pm2 restart ecosystem.config.cjs --update-env`
 
+The revision that reached step 6 is recorded in `.deploy-state.json`. The poller
+compares the remote against that marker as well as against the checkout, so a
+deploy that updates the checkout and then fails — a broken `db:migrate`, say —
+is retried on the next poll instead of leaving the box running code it no longer
+has. Without it, the checkout and the remote match, the poller sees nothing to
+do, and only some future commit can rescue the box; that is how the gateway once
+ran for hours without a channel sync that had already been merged.
+
+A box that has never written the marker is not treated as stranded, so upgrading
+to this does not restart anything on its own. The first successful deploy after
+the upgrade writes it.
+
 **Setup (one-time):**
 
 1. Set `DEPLOY_WEBHOOK_SECRET` in your environment (e.g., in `.env` or PM2 env config):

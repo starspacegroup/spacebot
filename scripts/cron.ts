@@ -31,13 +31,16 @@ function checkForRemoteDeploy() {
 			}
 
 			console.log(
-				`[Deploy] New commit detected: ${plan.localHead.slice(0, 7)} -> ${plan.remoteHead.slice(0, 7)}`
+				plan.stranded
+					? `[Deploy] Stranded deploy detected: ${plan.remoteHead.slice(0, 7)} is checked out but was never restarted`
+					: `[Deploy] New commit detected: ${plan.localHead.slice(0, 7)} -> ${plan.remoteHead.slice(0, 7)}`
 			);
 			deploy(plan.changedFiles, {
-				trigger: 'cron-poll',
+				trigger: plan.stranded ? 'cron-poll-resume' : 'cron-poll',
 				branch: plan.branch,
 				remote: plan.remote,
 				remoteHead: plan.remoteHead,
+				stranded: plan.stranded,
 			});
 		} catch (err) {
 			console.error('[Deploy] Auto-deploy check failed:', err.message);

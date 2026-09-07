@@ -1,11 +1,63 @@
 import { execSync } from 'child_process';
-import { closeSync, openSync, statSync, unlinkSync } from 'fs';
+import {
+	closeSync,
+	existsSync,
+	openSync,
+	readFileSync,
+	statSync,
+	unlinkSync,
+	writeFileSync,
+} from 'fs';
 import { join } from 'path';
 
 const MAIN_BRANCH = 'main';
 const REMOTE_NAME = 'origin';
 const DEPLOY_LOCK_PATH = join(process.cwd(), '.deploy.lock');
 const STALE_LOCK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * The last revision that made it all the way to the restart.
+ *
+ * The poller used to ask only whether the checkout matched the remote, which
+ * says nothing about whether the running processes were ever replaced. A deploy
+ * that fast-forwards and then dies — a failing `db:migrate` was how it happened
+ * — leaves the two equal and the old processes alive, so the next poll sees
+ * nothing to do and the box sits on new code it is not running. That is how the
+ * gateway ran for hours without the channel sync that had already been merged.
+ *
+ * Recording what was deployed, rather than what was fetched, makes that state
+ * retryable: the checkout is already right, so the retry skips the merge and
+ * picks up from the step that failed.
+ */
+const DEPLOY_STATE_PATH = join(process.cwd(), '.deploy-state.json');
+
+function readDeployedHead() {
+	try {
+		if (!existsSync(DEPLOY_STATE_PATH)) return null;
+		const parsed = JSON.parse(readFileSync(DEPLOY_STATE_PATH, 'utf8'));
+		return typeof parsed?.deployedHead === 'string' ? parsed.deployedHead : null;
+	} catch {
+		// An unreadable marker is the same as not having one.
+		return null;
+	}
+}
+
+/** Written immediately before the restart, for the same reason the lock is
+ *  released there: `pm2 restart` kills this process before anything after it
+ *  runs. It records intent to restart, which is the last thing this process can
+ *  honestly claim. */
+function writeDeployedHead(head) {
+	if (!head) return;
+	try {
+		writeFileSync(
+			DEPLOY_STATE_PATH,
+			JSON.stringify({ deployedHead: head, at: new Date().toISOString() })
+		);
+	} catch (err) {
+		// Not fatal: the worst case is the old behaviour, one missed retry.
+		console.warn(`  ⚠️  Could not record deployed revision: ${err.message}`);
+	}
+}
 
 function _runInDir(cmd, cwd) {
 	console.log(`  → (${cwd}) ${cmd}`);
@@ -81,22 +133,31 @@ export function deploy(changedFiles, options = {}) {
 		const remote = options.remote || REMOTE_NAME;
 		const trigger = options.trigger || 'manual';
 		const remoteHead = options.remoteHead;
+		const stranded = options.stranded === true;
 		const start = Date.now();
 
 		console.log(`\n🚀 [${new Date().toISOString()}] Deploying (${trigger})...`);
 
 		try {
-			if (remoteHead) {
+			// A resumed deploy is already sitting on the revision it is deploying,
+			// so there is nothing to validate and nothing to merge.
+			if (stranded) {
 				console.log(
-					`  🔎 Validating remote revision ${remoteHead.slice(0, 7)} before updating live checkout...`
+					`  ↩️  Resuming a deploy that reached the checkout but never restarted (${(remoteHead || '').slice(0, 7)})`
 				);
-				validateRemoteRevision(remoteHead);
-			}
-
-			if (remoteHead) {
-				run(`git merge --ff-only ${remoteHead}`);
 			} else {
-				run(`git pull --ff-only ${remote} ${branch}`);
+				if (remoteHead) {
+					console.log(
+						`  🔎 Validating remote revision ${remoteHead.slice(0, 7)} before updating live checkout...`
+					);
+					validateRemoteRevision(remoteHead);
+				}
+
+				if (remoteHead) {
+					run(`git merge --ff-only ${remoteHead}`);
+				} else {
+					run(`git pull --ff-only ${remote} ${branch}`);
+				}
 			}
 
 			const needsInstall = changedFiles.some(
@@ -117,8 +178,10 @@ export function deploy(changedFiles, options = {}) {
 				console.log('  ⏭️  No migration file changes — skipping db:migrate');
 			}
 
-			// Remove the deploy lock BEFORE pm2 restart, because pm2 restart
-			// kills this process (SIGTERM) before the finally block can run.
+			// Both of these happen BEFORE pm2 restart, because pm2 restart kills
+			// this process (SIGTERM) before anything after it runs.
+			writeDeployedHead(remoteHead || execRead('git rev-parse HEAD'));
+
 			try {
 				unlinkSync(DEPLOY_LOCK_PATH);
 			} catch {
@@ -136,6 +199,33 @@ export function deploy(changedFiles, options = {}) {
 	});
 }
 
+/**
+ * Whether there is anything to deploy, and what to compare against.
+ *
+ * Three states matter:
+ *
+ * - The checkout is behind the remote. An ordinary deploy, measured from the
+ *   checkout.
+ * - The checkout matches the remote but the marker does not. A previous deploy
+ *   updated the checkout and then died before restarting anything, so the box
+ *   is running code it no longer has. Resume it, measured from the last
+ *   revision that actually ran, so install and migrate still see every change
+ *   this box has not acted on.
+ * - Everything agrees, or there is no marker at all. Nothing to do. A missing
+ *   marker is deliberately not treated as stranded: a box that has never
+ *   written one is not evidence of a failed deploy, and guessing otherwise
+ *   would restart every box once on upgrade.
+ */
+export function decideDeployAction(localHead, remoteHead, deployedHead) {
+	if (localHead !== remoteHead) {
+		return { stranded: false, since: localHead };
+	}
+	if (deployedHead && deployedHead !== remoteHead) {
+		return { stranded: true, since: deployedHead };
+	}
+	return null;
+}
+
 export function getRemoteDeployPlan(options = {}) {
 	const branch = options.branch || MAIN_BRANCH;
 	const remote = options.remote || REMOTE_NAME;
@@ -145,12 +235,15 @@ export function getRemoteDeployPlan(options = {}) {
 
 	const localHead = execRead('git rev-parse HEAD');
 	const remoteHead = execRead(`git rev-parse ${remoteRef}`);
+	const deployedHead = readDeployedHead();
 
-	if (localHead === remoteHead) {
+	const action = decideDeployAction(localHead, remoteHead, deployedHead);
+	if (!action) {
 		return null;
 	}
 
-	const changedOutput = execRead(`git diff --name-only ${localHead}..${remoteRef}`);
+	const { stranded, since } = action;
+	const changedOutput = execRead(`git diff --name-only ${since}..${remoteRef}`);
 	const changedFiles = changedOutput ? changedOutput.split(/\r?\n/).filter(Boolean) : [];
 
 	return {
@@ -159,5 +252,6 @@ export function getRemoteDeployPlan(options = {}) {
 		localHead,
 		remoteHead,
 		changedFiles,
+		stranded,
 	};
 }

@@ -48,3 +48,7 @@ playwright/.cache/
 
 # Claude Code local worktrees/state
 .claude/
+
+# Deploy runner state (per-box, never committed)
+.deploy.lock
+.deploy-state.json
