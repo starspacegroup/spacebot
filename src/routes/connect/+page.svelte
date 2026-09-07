@@ -1,7 +1,16 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
 
 	const { data, form } = $props();
+
+	// `action="?/approve"` on its own REPLACES the query string, which is where
+	// client_id, redirect_uri, scope and state live — and the approve action
+	// deliberately re-resolves those from the URL rather than trusting form
+	// fields. Posting to a bare `?/approve` therefore threw all of it away and
+	// every approval failed with "This link is missing its client_id or
+	// redirect_uri". Carry the search string through with it.
+	const approveAction = $derived(`${page.url.search}&/approve`);
 
 	let selectedGuild = $state(data.guilds?.[0]?.id ?? '');
 	let approvedScopes = $state((data.scopes ?? []).map((s) => s.scope));
@@ -54,7 +63,7 @@
 				</p>
 				<a class="btn btn-secondary" href="/admin">Go to your servers</a>
 			{:else}
-				<form method="POST" action="?/approve" use:enhance>
+				<form method="POST" action={approveAction} use:enhance>
 					<label class="field">
 						<span>Server</span>
 						<select name="guildId" bind:value={selectedGuild} required>
