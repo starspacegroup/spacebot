@@ -32,6 +32,7 @@ import {
 	isTransientD1Error,
 	shouldFallbackToCommandExecution,
 } from './lib/d1-errors.js';
+import { columnValues, parseD1Rows } from './lib/d1-json.js';
 import {
 	hasExecutableSql,
 	splitSqlStatements,
@@ -76,48 +77,18 @@ function extractErrorOutput(error) {
 	return error?.stderr?.toString() || error?.stdout?.toString() || error?.message || '';
 }
 
-function parseMarkerValue(output, markerPrefix) {
-	const escapedPrefix = markerPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const match = output.match(new RegExp(`${escapedPrefix}([^\n\r"'|\\s]*)`));
-	return match ? match[1] : null;
-}
-
-function parseMigrationNamesFromOutput(output) {
-	const names = new Set();
-
-	const jsonMatches = output.matchAll(/"name":\s*"([^"]+)"/g);
-	for (const match of jsonMatches) {
-		names.add(match[1]);
-	}
-
-	const singleQuotedMatches = output.matchAll(/'name':\s*'([^']+)'/g);
-	for (const match of singleQuotedMatches) {
-		names.add(match[1]);
-	}
-
-	const filenameMatches = output.matchAll(/\b\d{4}_[a-z0-9_-]+\.sql\b/gi);
-	for (const match of filenameMatches) {
-		names.add(match[0]);
-	}
-
-	return names;
-}
-
-function parseAppliedMigrations(output, migrationFiles) {
-	const applied = new Set();
-
-	for (const name of parseMigrationNamesFromOutput(output)) {
-		applied.add(name);
-	}
-
-	// Final fallback: detect known migration filenames directly in output.
-	for (const file of migrationFiles) {
-		if (output.includes(file)) {
-			applied.add(file);
-		}
-	}
-
-	return applied;
+/**
+ * Run a query and return its rows.
+ *
+ * `--json` gives Wrangler's result set with none of the banner around it, so
+ * this parses JSON instead of scraping names out of console output with a
+ * regex. The old scraper could not tell an empty table from an unreadable one,
+ * and both produced "no migrations are applied" in silence.
+ *
+ * Throws on anything it cannot read, so the caller decides what that means.
+ */
+function d1Query(sql) {
+	return parseD1Rows(d1Execute(sql, ['--json']));
 }
 
 /**
@@ -243,8 +214,6 @@ if (migrationFiles.length === 0) {
 	process.exit(0);
 }
 
-const latestLocalMigration = migrationFiles[migrationFiles.length - 1];
-
 function d1CliExecute(args) {
 	let lastError;
 	for (let attempt = 1; attempt <= maxD1Retries; attempt++) {
@@ -276,12 +245,12 @@ function d1CliExecute(args) {
 /**
  * Execute a SQL command string against D1 and return stdout
  */
-function d1Execute(sql) {
+function d1Execute(sql, extraArgs: string[] = []) {
 	const tempSqlPath = scratchPath(`exec-${process.pid}-${Date.now()}.sql`);
 
 	writeFileSync(tempSqlPath, `${sql.trim()}\n`, 'utf8');
 	try {
-		return d1CliExecute(['--file', tempSqlPath]);
+		return d1CliExecute(['--file', tempSqlPath, ...extraArgs]);
 	} finally {
 		try {
 			unlinkSync(tempSqlPath);
@@ -296,36 +265,39 @@ d1Execute(
 	"CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
 );
 
-// Smart no-op path: skip migration loop entirely when DB is already at latest.
+/**
+ * Which migrations the database already has recorded.
+ *
+ * A failure here is not fatal — the migrations themselves are written to be
+ * re-runnable, and the loop treats "already exists" / "duplicate column" as a
+ * skip. But it is not free either: every file gets handed to Wrangler again,
+ * which is minutes of build time and a much wider blast radius than a skip.
+ *
+ * So it is reported. The old code swallowed the error and left an empty set,
+ * which is indistinguishable from a genuinely empty table — a production build
+ * re-applied 37 migrations that way and said nothing about why.
+ */
+let appliedMigrations = new Set<string>();
+let trackingReadable = false;
+
 try {
-	const latestOutput = d1Execute(
-		"SELECT '__MIGLATEST__' || COALESCE(MAX(name), '') AS marker FROM _migrations"
+	appliedMigrations = new Set(columnValues(d1Query('SELECT name FROM _migrations'), 'name'));
+	trackingReadable = true;
+} catch (error) {
+	console.warn(
+		`⚠️  Could not read the _migrations tracking table: ${extractErrorOutput(error).trim()}`
 	);
-	const countOutput = d1Execute("SELECT '__MIGCOUNT__' || COUNT(*) AS marker FROM _migrations");
-
-	const latestAppliedMigration = parseMarkerValue(latestOutput, '__MIGLATEST__') || '';
-	const appliedCountRaw = parseMarkerValue(countOutput, '__MIGCOUNT__');
-	const appliedCount = Number.parseInt(appliedCountRaw || '0', 10);
-
-	if (
-		latestAppliedMigration === latestLocalMigration &&
-		Number.isFinite(appliedCount) &&
-		appliedCount >= migrationFiles.length
-	) {
-		console.log(`\n✅ No new migrations to apply (${migrationFiles.length} tracked).`);
-		process.exit(0);
-	}
-} catch {
-	// If preflight metadata queries fail, continue with normal migration flow.
+	console.warn(
+		'   Every migration will be re-attempted. That is safe but slow, and it means\n' +
+			'   nothing has been recorded as applied — check the D1 binding and token.\n'
+	);
 }
 
-// Get the set of already-applied migrations
-let appliedMigrations = new Set();
-try {
-	const output = d1Execute('SELECT name FROM _migrations');
-	appliedMigrations = parseAppliedMigrations(output, migrationFiles);
-} catch {
-	// Table may be empty or output parsing failed — treat as no applied migrations
+// Nothing to do: the tracking table already names every file on disk.
+if (trackingReadable && migrationFiles.every((file) => appliedMigrations.has(file))) {
+	console.log(`\n✅ No new migrations to apply (${appliedMigrations.size} tracked).`);
+	cleanupScratchDir();
+	process.exit(0);
 }
 
 console.log(`Found ${migrationFiles.length} migration file(s):\n`);
@@ -333,14 +305,17 @@ console.log(`Found ${migrationFiles.length} migration file(s):\n`);
 let successCount = 0;
 let skippedCount = 0;
 let errorCount = 0;
+/** Files this run either applied or found already present. */
+const settledMigrations: string[] = [];
 
 for (const file of migrationFiles) {
 	console.log(`  📄 ${file}`);
 
 	// Skip if already applied
 	if (appliedMigrations.has(file)) {
-		console.log(`     ⏭️  Already applied (skipped)\n`);
+		console.log(`     ⏭️  Already recorded (skipped)\n`);
 		skippedCount++;
+		settledMigrations.push(file);
 		continue;
 	}
 
@@ -367,6 +342,7 @@ for (const file of migrationFiles) {
 
 		console.log(`     ✅ Success\n`);
 		successCount++;
+		settledMigrations.push(file);
 	} catch (error) {
 		const errorOutput = extractErrorOutput(error);
 
@@ -378,8 +354,9 @@ for (const file of migrationFiles) {
 			} catch {
 				// Non-fatal
 			}
-			console.log(`     ⏭️  Already applied (skipped)\n`);
+			console.log(`     ⏭️  Already in the database, recording it (skipped)\n`);
 			skippedCount++;
+			settledMigrations.push(file);
 		} else if (!isLocal && shouldFallbackToCommandExecution(errorOutput)) {
 			try {
 				console.log(
@@ -405,6 +382,7 @@ for (const file of migrationFiles) {
 
 				console.log(`     ✅ Success (fallback)\n`);
 				successCount++;
+				settledMigrations.push(file);
 			} catch (fallbackError) {
 				const fallbackOutput = extractErrorOutput(fallbackError);
 
@@ -417,8 +395,9 @@ for (const file of migrationFiles) {
 					} catch {
 						// Non-fatal
 					}
-					console.log(`     ⏭️  Already applied (skipped)\n`);
+					console.log(`     ⏭️  Already in the database, recording it (skipped)\n`);
 					skippedCount++;
+					settledMigrations.push(file);
 				} else {
 					console.error(`     ❌ Error: ${fallbackOutput || fallbackError.message}\n`);
 					errorCount++;
@@ -430,6 +409,49 @@ for (const file of migrationFiles) {
 		}
 	}
 }
+
+/**
+ * Record everything this run settled, in one write, and check it stuck.
+ *
+ * The per-file inserts above are the primary path. This is the backstop, and
+ * it is the part that makes a broken tracking table *visible*: if the count
+ * that comes back does not cover what we just applied, the next build will
+ * re-run everything again, and that is worth a line in the log rather than
+ * four silent minutes.
+ */
+function reconcileTracking(settled: string[]) {
+	if (settled.length === 0) return;
+
+	try {
+		const values = settled.map((file) => `('${file.replace(/'/g, "''")}')`).join(', ');
+		d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ${values}`);
+	} catch (error) {
+		console.warn(
+			`\n⚠️  Could not record this run in _migrations: ${extractErrorOutput(error).trim()}`
+		);
+		return;
+	}
+
+	try {
+		const rows = d1Query('SELECT COUNT(*) AS n FROM _migrations');
+		const tracked = Number(rows[0]?.n ?? 0);
+		if (tracked >= settled.length) {
+			console.log(`\n🗂️  Tracking table holds ${tracked} migration(s).`);
+			return;
+		}
+		console.warn(
+			`\n⚠️  Tracking table holds ${tracked} migration(s) but ${settled.length} are applied.\n` +
+				'   The next build will re-run the difference. Writes to _migrations are\n' +
+				'   not sticking — check the D1 binding and the build token.'
+		);
+	} catch (error) {
+		console.warn(
+			`\n⚠️  Could not verify the tracking table: ${extractErrorOutput(error).trim()}`
+		);
+	}
+}
+
+reconcileTracking(settledMigrations);
 
 cleanupScratchDir();
 
