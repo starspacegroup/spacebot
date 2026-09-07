@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { InteractionResponseType, InteractionType, verifyKey } from 'discord-interactions';
 import {
 	buildCommandContext,
+	getBuiltInCommands,
 	getCommandByName,
 	logCommandExecution,
 	recordCommandUse,
@@ -26,6 +27,8 @@ import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
+import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
+import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
@@ -268,27 +271,16 @@ export async function POST({ request, platform: rawPlatform }) {
 		const { data } = body;
 		const guildId = body.guild_id;
 
-		// DM slash commands do not include guild_id. Provide a built-in /help response there.
-		if (!guildId && data.name === 'help') {
+		// `/help` answers "what can I run here?", so it is built per member from
+		// the guild's real command set rather than from a stored embed. Always
+		// ephemeral: it is a private answer to a private question, and a member
+		// asking what a bot does should not have to put that in the channel.
+		if (data.name === 'help') {
 			return json({
 				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
 				data: {
-					embeds: [
-						{
-							title: '🚀 SpaceBot Help',
-							description:
-								'Welcome to SpaceBot! Use /ping to check if the bot is online, /info for bot details, and /help for this message. Custom commands are configured by your server admin.',
-							color: 0x57f287,
-							fields: [
-								{
-									name: '🔗 Links',
-									value: '[GitHub](https://github.com/starspacegroup/spacebot)',
-									inline: false,
-								},
-							],
-							footer: { text: 'Use /command to run a command' },
-						},
-					],
+					embeds: [await buildHelpResponse(db, guildId, body)],
+					flags: 64, // EPHEMERAL
 				},
 			});
 		}
@@ -1708,6 +1700,49 @@ async function handleStatsCommand(
 		await editOriginal({
 			content: `❌ Failed to generate stats chart: ${err.message || 'Unknown error'}`,
 		});
+	}
+}
+
+/**
+ * Build the embed `/help` replies with.
+ *
+ * In a guild this is the guild's own command set, filtered to what the calling
+ * member may actually run. In a DM there is no guild and no member, so it falls
+ * back to the built-ins that work there.
+ *
+ * A failure still answers. Somebody typing `/help` is already looking for a way
+ * in, and "something went wrong" is a worse dead end than a short list.
+ */
+async function buildHelpResponse(db, guildId, body) {
+	const guildName = body?.guild?.name || null;
+
+	if (!db) {
+		return {
+			title: 'Commands',
+			description: 'The command list is unavailable right now. Try again in a moment.',
+			color: 0x5865f2,
+		};
+	}
+
+	try {
+		if (!guildId) {
+			// A DM has no member and no guild commands — only the built-ins
+			// Discord will deliver there.
+			const builtIn = (await getBuiltInCommands(db)).filter(
+				(cmd) => cmd.dm_permission === 1 || cmd.dm_permission === true
+			);
+			return buildHelpEmbed(buildHelpEntries({ builtIn }, null), null);
+		}
+
+		const commands = await collectGuildCommands(db, guildId);
+		return buildHelpEmbed(buildHelpEntries(commands, body?.member?.permissions), guildName);
+	} catch (error) {
+		log.error('[Help] Could not build the command list:', error);
+		return {
+			title: guildName ? `Commands in ${guildName}` : 'Commands',
+			description: 'The command list could not be loaded right now. Try again in a moment.',
+			color: 0x5865f2,
+		};
 	}
 }
 

@@ -5,12 +5,16 @@
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatChartDate, formatDate as tzFormatDate, parseUTCDate } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
+	import { ALWAYS_ENABLED_BUILT_INS } from '$lib/db/commands.js';
 
 	const tr = getTranslator();
 	let { data, form } = $props();
 
 	let showLogs = $state(false);
 	let processingId = $state(null);
+	// Built-ins a server cannot turn off. The server refuses the write too; this
+	// is so the dashboard does not offer a toggle that springs back.
+	const alwaysEnabled = ALWAYS_ENABLED_BUILT_INS;
 	let expandedLogId = $state(null);
 
 	function toggleLogExpand(logId) {
@@ -399,38 +403,55 @@
 							</div>
 							<div class="builtin-header-actions">
 								<span class="builtin-badge">{tr('commands.builtinBadge')}</span>
-								<form
-									method="POST"
-									action="?/toggle"
-									use:enhance={() => {
-										processingId = command.id;
-										return async ({ result }) => {
-											processingId = null;
-											if (result.type === 'success') {
-												await invalidateAll();
-											} else if (result.type === 'failure') {
-												form = result.data as any;
-											}
-										};
-									}}
-								>
-									<input type="hidden" name="id" value={command.id} />
-									<input type="hidden" name="guild_id" value={selectedGuildId} />
-									<input type="hidden" name="is_built_in" value="true" />
-									<input type="hidden" name="enabled" value={!command.enabled} />
-									<button
-										type="submit"
-										class="toggle-btn {command.enabled ? 'enabled' : ''}"
-										title={command.enabled
-											? tr('commands.disableForServer')
-											: tr('commands.enableForServer')}
-										disabled={processingId === command.id}
+								{#if alwaysEnabled.includes(command.name)}
+									<span
+										class="builtin-badge always-on"
+										title="Every server keeps this one — it is how members find out what the bot can do."
 									>
-										<span class="toggle-track">
-											<span class="toggle-thumb"></span>
-										</span>
-									</button>
-								</form>
+										Always on
+									</span>
+								{:else}
+									<form
+										method="POST"
+										action="?/toggle"
+										use:enhance={() => {
+											processingId = command.id;
+											return async ({ result }) => {
+												processingId = null;
+												if (result.type === 'success') {
+													await invalidateAll();
+												} else if (result.type === 'failure') {
+													form = result.data as any;
+												}
+											};
+										}}
+									>
+										<input type="hidden" name="id" value={command.id} />
+										<input
+											type="hidden"
+											name="guild_id"
+											value={selectedGuildId}
+										/>
+										<input type="hidden" name="is_built_in" value="true" />
+										<input
+											type="hidden"
+											name="enabled"
+											value={!command.enabled}
+										/>
+										<button
+											type="submit"
+											class="toggle-btn {command.enabled ? 'enabled' : ''}"
+											title={command.enabled
+												? tr('commands.disableForServer')
+												: tr('commands.enableForServer')}
+											disabled={processingId === command.id}
+										>
+											<span class="toggle-track">
+												<span class="toggle-thumb"></span>
+											</span>
+										</button>
+									</form>
+								{/if}
 							</div>
 						</div>
 						<div class="command-body">
@@ -625,6 +646,11 @@
 	.command-card.builtin {
 		border-color: var(--accent-color, #5865f2);
 		border-style: dashed;
+	}
+
+	.builtin-badge.always-on {
+		background: var(--color-success-bg, rgba(87, 242, 135, 0.12));
+		color: var(--color-success, #57f287);
 	}
 
 	.builtin-badge {

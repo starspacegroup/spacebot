@@ -31,7 +31,7 @@ export const commands = [
 	},
 	{
 		name: 'help',
-		description: 'Get help with bot commands',
+		description: 'List the commands you can use here',
 		type: 1, // CHAT_INPUT
 		dm_permission: true,
 	},
@@ -114,6 +114,38 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 }
 
 /**
+ * Every command a guild has, from all three sources.
+ *
+ * `syncGuildCommands` registers exactly this set with Discord and `/help`
+ * lists exactly this set back to a member, so they read it from one place. The
+ * alternative — each assembling its own — is how a command comes to exist in
+ * Discord and not in the help, or the other way round.
+ *
+ * Integration commands are included whatever the integration's status, which
+ * matches registration: a command stays available while its integration is
+ * briefly offline, and the interaction handler explains itself if it cannot
+ * run.
+ */
+export async function collectGuildCommands(db, guildId) {
+	await ensureBuiltInCommands(db);
+
+	const builtIn = (await getBuiltInCommandsForGuild(db, guildId)).filter((cmd) => cmd.enabled);
+	const custom = await getGuildCommands(db, guildId, { enabledOnly: true });
+
+	const integration = [];
+	try {
+		for (const enabled of await getEnabledGuildIntegrations(db, guildId)) {
+			integration.push(...getIntegrationCommands(enabled));
+		}
+	} catch (error) {
+		// A broken integration must not take the command list with it.
+		log.warn('collectGuildCommands: Failed to load integration commands:', error);
+	}
+
+	return { builtIn, custom, integration };
+}
+
+/**
  * Sync all guild commands to Discord.
  * Performs a bulk PUT of built-in + enabled custom commands, then updates DB registration state.
  * Call this after any command CRUD operation so users never need to manually sync.
@@ -138,18 +170,13 @@ export async function syncGuildCommands(db, guildId, env) {
 	}
 
 	try {
-		// Ensure built-in commands exist in the database
-		await ensureBuiltInCommands(db);
+		const {
+			builtIn: builtInCommands,
+			custom: customCommands,
+			integration: integrationCommands,
+		} = await collectGuildCommands(db, guildId);
 
-		// Get built-in commands from DB with per-guild overrides applied.
-		const builtInCommands = await getBuiltInCommandsForGuild(db, guildId);
-		const builtInDiscord = builtInCommands
-			.filter((cmd) => cmd.enabled)
-			.map((cmd) => toDiscordCommand(cmd))
-			.flat();
-
-		// Get all enabled custom commands
-		const customCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
+		const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
 
 		// Convert to Discord format, tracking DB IDs
 		const discordCommands = [];
@@ -164,29 +191,10 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
-		// Gather commands from enabled integrations
-		// Register commands regardless of status so they remain available in Discord
-		// even if the integration is temporarily offline. The interaction handler
-		// will show an appropriate message if the integration cannot handle the command.
-		const integrationCommands = [];
-		try {
-			const enabledIntegrations = await getEnabledGuildIntegrations(db, guildId);
-			for (const integration of enabledIntegrations) {
-				const cmds = getIntegrationCommands(integration);
-				if (cmds.length > 0) {
-					log.debug(
-						`syncGuildCommands: Adding ${cmds.length} command(s) from ${integration.slug} (status: ${integration.status || 'unknown'})`
-					);
-				}
-				integrationCommands.push(...cmds);
-			}
-			if (integrationCommands.length > 0) {
-				log.info(
-					`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`
-				);
-			}
-		} catch (err) {
-			log.warn('syncGuildCommands: Failed to load integration commands:', err);
+		if (integrationCommands.length > 0) {
+			log.info(
+				`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`
+			);
 		}
 
 		// Combine built-in (from DB), custom, and integration commands

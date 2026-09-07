@@ -29,6 +29,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       (`docs/managed-channels.md`)
 - [x] Subcommand options — the interaction handler now walks subcommand and group wrappers
       down to the leaf options, and registration sends their children to Discord
+- [x] `/help` lists what you can actually run — built per member from the server's real
+      command set, filtered by their own permissions, ephemeral. Every server keeps it: it
+      cannot be disabled, and joining a server now registers its commands rather than
+      waiting for an admin to save one (`docs/help-command.md`)
 - [x] Room shape — a preset can give its rooms their own category (made and rolled over by
       the bot at Discord's 50-child cap), a public/private default and a voice mode
       (open, push-to-talk, or listen-only with `/room unmute` to hand out the mic). The

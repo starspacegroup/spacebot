@@ -2829,6 +2829,45 @@ function setupEventHandlers(client, logFn) {
 		}
 	}
 
+	/**
+	 * Register a guild's commands the moment SpaceBot joins it.
+	 *
+	 * A server's command set only ever reached Discord on a command write, so a
+	 * freshly invited bot had no commands until an admin saved one — including
+	 * `/help`, which is the first thing anybody types.
+	 *
+	 * GuildCreate also fires for every guild while the gateway is starting up,
+	 * which is not a join and must not trigger a full sync per guild. Those all
+	 * arrive before the client is ready, so that is the line.
+	 */
+	client.on(Events.GuildCreate, async (guild) => {
+		if (!client.isReady()) return;
+
+		try {
+			const response = await fetch(`${API_BASE}/api/guilds/${guild.id}/sync-commands`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+				},
+			});
+
+			if (!response.ok) {
+				log.warn(
+					`[Commands] Could not register commands for new guild ${guild.id}: ${response.status}`
+				);
+				return;
+			}
+
+			const result = await response.json();
+			log.info(
+				`[Commands] Joined ${guild.name} — registered ${result?.registered} command(s)`
+			);
+		} catch (error) {
+			log.warn(`[Commands] Join sync failed for guild ${guild.id}: ${error.message}`);
+		}
+	});
+
 	client.on(Events.GuildMemberAdd, async (member) => {
 		trackPendingMember(member);
 

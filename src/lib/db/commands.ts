@@ -1043,13 +1043,28 @@ export async function getBuiltInCommand(db, id) {
 	}
 }
 
+/**
+ * Built-in commands a guild may not turn off.
+ *
+ * `/help` is how a member finds out what this bot does in this server. A guild
+ * that disabled it left its members with a bot and no way to ask it anything,
+ * so the override is accepted and then ignored for these.
+ */
+export const ALWAYS_ENABLED_BUILT_INS = ['help'];
+
+/** Whether this built-in ignores a guild's attempt to disable it. */
+export function isAlwaysEnabledBuiltIn(command) {
+	return ALWAYS_ENABLED_BUILT_INS.includes(String(command?.name || '').toLowerCase());
+}
+
 function applyBuiltInOverride(command, override) {
 	if (!override) return command;
 
 	return {
 		...command,
-		enabled:
-			override.enabled === null || override.enabled === undefined
+		enabled: isAlwaysEnabledBuiltIn(command)
+			? true
+			: override.enabled === null || override.enabled === undefined
 				? command.enabled
 				: !!override.enabled,
 		default_member_permissions:
@@ -1119,6 +1134,15 @@ export async function setBuiltInCommandOverride(
 		const command = await getBuiltInCommand(db, commandId);
 		if (!command) {
 			return { success: false, error: 'Built-in command not found' };
+		}
+
+		// Refuse at the write rather than silently ignoring it at the read, so
+		// the dashboard can say why instead of showing a toggle that springs back.
+		if (isAlwaysEnabledBuiltIn(command) && updates.enabled === false) {
+			return {
+				success: false,
+				error: `/${command.name} is always available and cannot be turned off.`,
+			};
 		}
 
 		const current = await db
@@ -1357,7 +1381,7 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
 	},
 	{
 		name: 'help',
-		description: 'Get help with bot commands',
+		description: 'List the commands you can use here',
 		dm_permission: true,
 		response_type: 'embed',
 		response_content: null,
