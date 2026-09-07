@@ -359,13 +359,21 @@ The production server now polls `origin/main` from the existing `spacebot-cron` 
 When a new commit is detected, the server automatically:
 
 1. `git fetch origin main`
-2. Validates the remote revision in a temporary git worktree with `bun install --frozen-lockfile` and `bun run build`
-3. Fast-forwards the live checkout only if validation succeeds
-4. `bun install --frozen-lockfile` (if `package.json` or `bun.lock` changed)
-5. `bun run db:migrate` (if migration files changed)
-6. `pm2 restart ecosystem.config.cjs --update-env`
+2. Fast-forwards the live checkout to the remote revision
+3. `bun install --frozen-lockfile` (if `package.json` or `bun.lock` changed)
+4. `bun run db:migrate` (if migration files changed)
+5. `pm2 restart ecosystem.config.cjs --update-env`
 
-The revision that reached step 6 is recorded in `.deploy-state.json`. The poller
+There used to be a step between 1 and 2 that built the remote revision in a
+temporary worktree first. It was removed in May 2026 — but only the function,
+not the call, so from then until September every deploy carrying a remote
+revision threw `ReferenceError: validateRemoteRevision is not defined` before
+reaching the merge. A box in that state cannot pull the fix for it, because
+pulling is the broken part. If a server has been silently stuck, update it once
+by hand (`git pull --ff-only origin main && pm2 restart ecosystem.config.cjs
+--update-env`) and the poller takes over again from the next commit.
+
+The revision that reached step 5 is recorded in `.deploy-state.json`. The poller
 compares the remote against that marker as well as against the checkout, so a
 deploy that updates the checkout and then fails — a broken `db:migrate`, say —
 is retried on the next poll instead of leaving the box running code it no longer
