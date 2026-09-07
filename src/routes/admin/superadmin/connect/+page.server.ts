@@ -13,6 +13,7 @@ import { API_KEY_SCOPES } from '$lib/db/api-keys.js';
 import {
 	createConnectClient,
 	deleteConnectClient,
+	updateConnectClient,
 	listConnectClients,
 	setConnectClientEnabled,
 } from '$lib/db/connect-clients.js';
@@ -61,6 +62,27 @@ export const actions = {
 			// Shown once, then gone. Only its hash is kept.
 			client_secret: result.client_secret,
 		};
+	},
+
+	/**
+	 * Widen or narrow an existing client without rotating its secret.
+	 *
+	 * Delete-and-recreate was the only way to do this, and it mints a new secret
+	 * — so adding one scope to a live integration meant editing its environment
+	 * and redeploying it. Nobody does that; they leave the scope off instead.
+	 */
+	updateScopes: async ({ request, platform }) => {
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { message: 'Database not available' });
+
+		const formData = await request.formData();
+		const result = await updateConnectClient(db, formData.get('client_id'), {
+			scopes: formData.getAll('allowed_scopes').map(String),
+		});
+		if (!result.success) return fail(400, { message: result.error });
+
+		log.info(`[Connect] Updated scopes for ${formData.get('client_id')}`);
+		return { success: true, message: 'Scopes updated. The client keeps its secret.' };
 	},
 
 	toggle: async ({ request, platform }) => {

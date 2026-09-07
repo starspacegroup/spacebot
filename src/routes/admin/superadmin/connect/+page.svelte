@@ -114,9 +114,31 @@
 					{#if client.description}
 						<p class="muted small">{client.description}</p>
 					{/if}
-					<p class="muted small">
-						Scopes: {client.allowed_scopes.join(', ') || 'none'}
-					</p>
+					<details class="scope-edit">
+						<summary class="muted small">
+							Scopes: {client.allowed_scopes.join(', ') || 'none'}
+						</summary>
+						<form method="POST" action="?/updateScopes" use:enhance>
+							<input type="hidden" name="client_id" value={client.client_id} />
+							<div class="scope-grid">
+								{#each Object.entries(data.availableScopes) as [scope, label] (scope)}
+									<label class="scope">
+										<input
+											type="checkbox"
+											name="allowed_scopes"
+											value={scope}
+											checked={client.allowed_scopes.includes(scope)}
+										/>
+										<span><code>{scope}</code> <small>{label}</small></span>
+									</label>
+								{/each}
+							</div>
+							<button class="btn btn-small" type="submit">Save scopes</button>
+							<p class="muted small">
+								The client keeps its secret. No redeploy needed.
+							</p>
+						</form>
+					</details>
 					<ul class="uris">
 						{#each client.redirect_uris as uri (uri)}
 							<li><code>{uri}</code></li>
@@ -249,6 +271,14 @@
 	.field small {
 		font-size: 0.75rem;
 		opacity: 0.85;
+	}
+
+	.scope-edit summary {
+		cursor: pointer;
+	}
+
+	.scope-edit form {
+		margin-top: 0.75rem;
 	}
 
 	.scopes {

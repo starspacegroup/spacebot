@@ -245,6 +245,77 @@ export async function createConnectClient(db, data: Record<string, any>) {
 	}
 }
 
+/**
+ * Widen or narrow what a registered client may ask for, without touching its
+ * secret.
+ *
+ * The alternative was delete-and-recreate, which mints a new secret and so
+ * means editing the client's environment and redeploying it — an absurd price
+ * for "this site now also reads the channel list". Redirect URIs are updatable
+ * for the same reason; they are the security boundary of this flow, so they are
+ * validated here exactly as they are at creation.
+ *
+ * Only the fields passed are touched. Scopes and URIs are REPLACED, not merged:
+ * a caller that means to add one sends the whole list, and removing a scope has
+ * to be as easy as adding one.
+ */
+export async function updateConnectClient(
+	db,
+	clientId,
+	updates: { scopes?: string[]; redirectUris?: string[]; name?: string } = {}
+) {
+	if (!db || !clientId) return { success: false, error: 'Missing client' };
+
+	const existing = await getConnectClient(db, clientId);
+	if (!existing) return { success: false, error: `No client called "${clientId}"` };
+
+	const sets: string[] = [];
+	const values: unknown[] = [];
+
+	if (updates.scopes) {
+		const check = validateScopes(updates.scopes);
+		if (!check.valid) return { success: false, error: check.error };
+		if (updates.scopes.length === 0) {
+			return { success: false, error: 'A client with no scopes can never be used' };
+		}
+		sets.push('allowed_scopes = ?');
+		values.push(JSON.stringify([...new Set(updates.scopes)]));
+	}
+
+	if (updates.redirectUris) {
+		for (const uri of updates.redirectUris) {
+			const check = validateRedirectUri(uri);
+			if (!check.valid) return { success: false, error: check.error };
+		}
+		if (updates.redirectUris.length === 0) {
+			return { success: false, error: 'A client with no redirect URI can never be used' };
+		}
+		sets.push('redirect_uris = ?');
+		values.push(JSON.stringify([...new Set(updates.redirectUris)]));
+	}
+
+	if (updates.name) {
+		sets.push('name = ?');
+		values.push(String(updates.name));
+	}
+
+	if (sets.length === 0) return { success: false, error: 'Nothing to update' };
+
+	try {
+		await db
+			.prepare(
+				`UPDATE connect_clients SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+         WHERE client_id = ?`
+			)
+			.bind(...values, String(clientId))
+			.run();
+		return { success: true };
+	} catch (error) {
+		log.error('[Connect] Failed to update client:', error);
+		return { success: false, error: error.message };
+	}
+}
+
 export async function deleteConnectClient(db, clientId) {
 	if (!db || !clientId) return { success: false, error: 'Missing client' };
 	try {

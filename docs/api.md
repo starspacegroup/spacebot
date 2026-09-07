@@ -78,6 +78,20 @@ the whole defence against this flow being used to harvest keys — an
 unregistered redirect URI is refused on the consent page and never redirected
 to.
 
+### Changing what a client may request
+
+Scopes and redirect URIs are editable under Superadmin → **Connect Apps**,
+without rotating the client secret. Open a client, tick the scopes, save.
+
+This matters because the alternative is delete-and-recreate, which mints a new
+secret — so adding one scope to a live integration would mean editing its
+environment and redeploying it. A site that grows a feature needing
+`channels:read` should not have to be redeployed to ask for it.
+
+Requesting a scope the client is not registered for is refused on the consent
+page, before the admin is even asked to sign in, and the page names the scope.
+Widen the registration first, then the site can request it.
+
 ### 2. Send the admin to the consent screen
 
 ```
