@@ -202,6 +202,63 @@ function buildPermissionOverwrites(token, channelId) {
 }
 
 // ---------------------------------------------------------------------------
+// Guild channel list/create — returned as `guild.channels`
+// ---------------------------------------------------------------------------
+/**
+ * The `channels` surface of a guild: list what is there, and create a new one.
+ *
+ * Exported because the interactions endpoint builds its own discord.js-shaped
+ * client and needs the same channel creation path — `/room create` failed with
+ * "channels.create is not a function" while that client only had `fetch`.
+ */
+export function buildGuildChannels(token, guildId) {
+	return {
+		async fetch() {
+			const chs = await discordFetch(token, `/guilds/${guildId}/channels`);
+			return new Map(chs.map((c) => [c.id, wrapChannel(token, c)]));
+		},
+		/**
+		 * Create a guild channel.
+		 *
+		 * `permissionOverwrites` is the array Discord expects
+		 * ({ id, type, allow, deny }); passing it at creation is what makes a
+		 * private room private from the first frame instead of briefly visible
+		 * to @everyone.
+		 */
+		async create({
+			name,
+			type,
+			parent,
+			topic,
+			permissionOverwrites,
+			userLimit,
+			rateLimitPerUser,
+			position,
+			bitrate,
+			nsfw,
+			reason,
+		}: Record<string, any>) {
+			const body: Record<string, any> = { name, type };
+			if (parent !== undefined) body.parent_id = parent;
+			if (topic !== undefined) body.topic = topic;
+			if (permissionOverwrites !== undefined)
+				body.permission_overwrites = permissionOverwrites;
+			if (userLimit !== undefined) body.user_limit = userLimit;
+			if (rateLimitPerUser !== undefined) body.rate_limit_per_user = rateLimitPerUser;
+			if (position !== undefined) body.position = position;
+			if (bitrate !== undefined) body.bitrate = bitrate;
+			if (nsfw !== undefined) body.nsfw = nsfw;
+
+			return discordFetch(token, `/guilds/${guildId}/channels`, {
+				method: 'POST',
+				body,
+				reason,
+			});
+		},
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Channel wrapper  — returned by discord.channels.fetch(id)
 // ---------------------------------------------------------------------------
 function wrapChannel(token, data) {
@@ -459,51 +516,7 @@ export function createDiscordRestClient(botToken) {
 							});
 						},
 					},
-					channels: {
-						async fetch() {
-							const chs = await discordFetch(botToken, `/guilds/${guildId}/channels`);
-							return new Map(chs.map((c) => [c.id, wrapChannel(botToken, c)]));
-						},
-						/**
-						 * Create a guild channel.
-						 *
-						 * `permissionOverwrites` is the array Discord expects
-						 * ({ id, type, allow, deny }); passing it at creation is
-						 * what makes a private room private from the first frame
-						 * instead of briefly visible to @everyone.
-						 */
-						async create({
-							name,
-							type,
-							parent,
-							topic,
-							permissionOverwrites,
-							userLimit,
-							rateLimitPerUser,
-							position,
-							bitrate,
-							nsfw,
-							reason,
-						}: Record<string, any>) {
-							const body: Record<string, any> = { name, type };
-							if (parent !== undefined) body.parent_id = parent;
-							if (topic !== undefined) body.topic = topic;
-							if (permissionOverwrites !== undefined)
-								body.permission_overwrites = permissionOverwrites;
-							if (userLimit !== undefined) body.user_limit = userLimit;
-							if (rateLimitPerUser !== undefined)
-								body.rate_limit_per_user = rateLimitPerUser;
-							if (position !== undefined) body.position = position;
-							if (bitrate !== undefined) body.bitrate = bitrate;
-							if (nsfw !== undefined) body.nsfw = nsfw;
-
-							return discordFetch(botToken, `/guilds/${guildId}/channels`, {
-								method: 'POST',
-								body,
-								reason,
-							});
-						},
-					},
+					channels: buildGuildChannels(botToken, guildId),
 				};
 			},
 		},

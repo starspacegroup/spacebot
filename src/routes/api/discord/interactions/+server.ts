@@ -26,6 +26,7 @@ import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
+import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -1728,6 +1729,11 @@ function createRESTClient(platform: PlatformLike | undefined) {
 		'Content-Type': 'application/json',
 	};
 
+	// The channel management surface (create/edit/delete/overwrites) is not
+	// re-implemented here — it is delegated to the shared REST client, which the
+	// lobby and reaper paths already use. `/room` actions call through this.
+	const rest = createDiscordRestClient(token);
+
 	// Simple Collection-like Map that supports discord.js .filter() chaining
 	function createCollection(entries?: Iterable<readonly [any, any]>) {
 		const map = new Map<any, any>(entries) as Map<any, any> & {
@@ -1746,6 +1752,9 @@ function createRESTClient(platform: PlatformLike | undefined) {
 	// Create a minimal mock of discord.js client structure
 	return {
 		channels: {
+			edit: rest.channels.edit,
+			delete: rest.channels.delete,
+			permissions: rest.channels.permissions,
 			async fetch(channelId) {
 				const response = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
 					headers,
@@ -1872,6 +1881,10 @@ function createRESTClient(platform: PlatformLike | undefined) {
 					id: guild.id,
 					name: guild.name,
 					channels: {
+						// `fetch` below returns the lightweight shape the other
+						// actions expect (isTextBased/isVoiceBased), so only
+						// `create` comes from the shared client.
+						create: buildGuildChannels(token, guildId).create,
 						async fetch() {
 							const res = await fetch(
 								`https://discord.com/api/v10/guilds/${guildId}/channels`,
