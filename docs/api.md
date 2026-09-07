@@ -29,7 +29,11 @@ Errors return JSON with a top-level `error` string. Rate-limited requests return
   fallback. Retention keeps 90 days of snapshots, so longer periods return what
   remains.
 - `GET /api/v1/settings` requires `settings:read`.
-- `GET /api/v1/commands` requires `commands:read`.
+- `GET /api/v1/channels?type=text` requires `channels:read`. The public channel
+  directory — see below.
+- `GET /api/v1/commands?built_in=only|exclude` requires `commands:read`. Both
+  SpaceBot's built-in commands and the ones the guild defined, built-ins first,
+  each marked with `is_built_in`. `limit`/`offset` page across the two together.
 - `GET /api/v1/automations` requires `automations:read`.
 - `GET /api/v1/integrations/status` reads integration status.
 - `GET /api/stats/:guildId/export?format=json|csv` exports admin-authenticated report data.
@@ -124,6 +128,63 @@ wrong secret from a spent code.
 The key is created **at this step**, not at approval — an approval nobody
 redeems leaves no credential behind. It is an ordinary API key from then on, and
 is revoked from that server's **API keys** page.
+
+## `GET /api/v1/channels`
+
+The server's public channel directory: what a visitor would see in the sidebar
+without joining anything — name, type, category, Discord's own ordering, and the
+channel's topic where one is set.
+
+Requires `channels:read`.
+
+| Parameter |                                                                   |
+| --------- | ----------------------------------------------------------------- |
+| `type`    | One of `text`, `voice`, `announcement`, `stage`, `forum`, `media` |
+
+**This response is safe to publish verbatim**, which is the point of it: a
+community site can render "what the channels are for" without anyone keeping a
+second copy by hand. Two filters run before anything is stored, each where its
+data is:
+
+- The gateway sends only channels the `@everyone` role can view. A private staff
+  channel is not filtered out of this response — it was never written.
+- `/api/channels/sync` drops rooms members created with `/room`. Those are public
+  in Discord's eyes but are not part of the directory, and listing them would
+  publish who is sitting in what.
+
+The directory is replaced wholesale on every sync — on gateway start-up, on any
+channel create, update or delete, and on any role permission change, because
+editing `@everyone` can hide a dozen channels at once and emits no channel event
+for any of them. `synced_at` is when that last happened; a caller that has not
+seen it move for a long time is looking at a gateway that is down.
+
+Categories group the response and are never listed as channels of their own.
+
+```json
+{
+	"guild_id": "123456789012345678",
+	"synced_at": "2026-09-07 12:00:00",
+	"count": 2,
+	"categories": [
+		{
+			"category": "Lobby",
+			"category_id": "111111111111111111",
+			"channels": [
+				{
+					"id": "222222222222222222",
+					"name": "general",
+					"type": "text",
+					"topic": "Say hello",
+					"category": "Lobby",
+					"category_id": "111111111111111111",
+					"position": 0
+				}
+			]
+		}
+	],
+	"channels": ["… the same channels, flat …"]
+}
+```
 
 ## `GET /api/v1/voice`
 

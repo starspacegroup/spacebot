@@ -1643,6 +1643,82 @@ async function reportChannelDeleted(guildId, channelId) {
 	}
 }
 
+/**
+ * Send the guild's PUBLIC channel directory to the app, which stores it.
+ *
+ * Public means the `@everyone` role can view the channel. That check happens
+ * here, where the permission overwrites are, and not at the API: a staff
+ * channel that is never sent cannot be leaked later by an endpoint that
+ * forgets a filter. Rooms SpaceBot made for members are dropped on the other
+ * side, where the `managed_channels` table is.
+ *
+ * A full list every time. Discord gives no reliable "channel became private"
+ * event — a role edit can hide a dozen channels at once with no CHANNEL_UPDATE
+ * for any of them — so the directory is replaced wholesale rather than patched,
+ * and anything that stopped being public simply stops arriving.
+ */
+const channelSyncTimers = new Map();
+
+/** Coalesce a burst of channel events into one directory sync per guild. */
+function scheduleGuildChannelSync(guild, reason, delayMs = 3000) {
+	if (!guild) return;
+	clearTimeout(channelSyncTimers.get(guild.id));
+	channelSyncTimers.set(
+		guild.id,
+		setTimeout(() => {
+			channelSyncTimers.delete(guild.id);
+			void syncGuildChannels(guild, reason);
+		}, delayMs)
+	);
+}
+
+async function syncGuildChannels(guild, reason) {
+	if (!guild) return;
+
+	try {
+		const everyone = guild.roles?.everyone;
+		if (!everyone) return;
+
+		const channels = [];
+		for (const channel of guild.channels.cache.values()) {
+			if (!channel?.id || !channel?.name) continue;
+
+			// permissionsFor returns null for a channel the client cannot resolve;
+			// treat that as not public rather than assuming the permissive case.
+			const permissions = channel.permissionsFor?.(everyone);
+			if (!permissions?.has(PermissionFlagsBits.ViewChannel)) continue;
+
+			const parent = channel.parent || null;
+			channels.push({
+				channel_id: channel.id,
+				name: channel.name,
+				type: channel.type,
+				topic: typeof channel.topic === 'string' ? channel.topic : null,
+				parent_id: parent?.id ?? null,
+				parent_name: parent?.name ?? null,
+				position: typeof channel.rawPosition === 'number' ? channel.rawPosition : 0,
+			});
+		}
+
+		const response = await fetch(`${API_BASE}/api/channels/sync`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+			},
+			body: JSON.stringify({ guild_id: guild.id, reason, channels }),
+		});
+
+		if (!response.ok) {
+			throw new Error(`${response.status} ${await response.text()}`);
+		}
+	} catch (error) {
+		// A failed directory sync leaves the last good one in place. It is a
+		// read-only convenience for other surfaces, never something the bot needs.
+		log.warn(`[Channels] Sync failed for guild ${guild.id} after ${reason}: ${error.message}`);
+	}
+}
+
 async function syncGuildLiveVoiceSnapshot(guild, reason) {
 	if (!guild) {
 		return;
@@ -3675,6 +3751,8 @@ function setupEventHandlers(client, logFn) {
 				parentId: channel.parentId,
 			},
 		});
+
+		scheduleGuildChannelSync(channel.guild, 'channel_create');
 	});
 
 	client.on(Events.ChannelDelete, async (channel) => {
@@ -3694,6 +3772,8 @@ function setupEventHandlers(client, logFn) {
 				type: channel.type,
 			},
 		});
+
+		scheduleGuildChannelSync(channel.guild, 'channel_delete');
 	});
 
 	client.on(Events.ChannelUpdate, async (oldChannel, newChannel) => {
@@ -3714,6 +3794,10 @@ function setupEventHandlers(client, logFn) {
 				details: changes,
 			});
 		}
+
+		// Unconditional, unlike the log above: a topic edit or a permission
+		// change alters the directory without changing the name.
+		scheduleGuildChannelSync(newChannel.guild, 'channel_update');
 	});
 
 	// ===== ROLE EVENTS =====
@@ -3744,6 +3828,13 @@ function setupEventHandlers(client, logFn) {
 	});
 
 	client.on(Events.GuildRoleUpdate, async (oldRole, newRole) => {
+		// Editing @everyone's permissions can hide or reveal a dozen channels at
+		// once and emits no channel event for any of them, so the directory is
+		// resynced on any role change rather than trusted to stay current.
+		if (oldRole.permissions?.bitfield !== newRole.permissions?.bitfield) {
+			scheduleGuildChannelSync(newRole.guild, 'role_permissions_update');
+		}
+
 		const changes: Record<string, any> = {};
 		if (oldRole.name !== newRole.name) {
 			changes.name = { old: oldRole.name, new: newRole.name };
@@ -4406,6 +4497,15 @@ function setupEventHandlers(client, logFn) {
 	client.on(Events.ClientReady, async (c) => {
 		log.info(`✅ Discord Gateway Bot is online as ${c.user.tag}`);
 		log.info(`📊 Watching ${c.guilds.cache.size} guilds`);
+
+		// The directory is a full snapshot, so a restart repairs anything missed
+		// while the gateway was down. Staggered so a bot in many guilds does not
+		// post them all in the same tick.
+		let channelSyncDelay = 0;
+		for (const guild of c.guilds.cache.values()) {
+			scheduleGuildChannelSync(guild, 'client_ready', channelSyncDelay);
+			channelSyncDelay += 250;
+		}
 
 		// Re-seed the "still at the door" set from whatever is already cached.
 		// Cache-only and allocation-free of API calls on purpose: this is a hint,
