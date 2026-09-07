@@ -102,15 +102,35 @@ export function hasExecutableSql(statement) {
 }
 
 /**
- * Build the `--command` argv entry for a statement.
+ * Strip the comment lines a statement carries in front of its SQL.
  *
- * `--command <value>` is not safe here: a migration statement usually carries
- * its leading comment, so the value starts with `--`, and Wrangler's argument
- * parser reads that as more flags rather than as the value. The build then
- * dies with "Missing required option --command or --file" — which is exactly
- * how a production deploy failed on 0005_command_permissions.sql. The
- * `--command=<value>` form has no such ambiguity.
+ * `splitSqlStatements` keeps a statement's leading comments attached, which is
+ * good for error messages and fatal on a command line: the value then starts
+ * with `--`, and Wrangler's argument parser has read that as more flags rather
+ * than as the value. It failed two different ways in two different builds —
+ * "Missing required option --command or --file", and then "Unknown arguments:"
+ * followed by the words of the comment.
+ *
+ * Statements now go to Wrangler in a file, so nothing depends on this any more.
+ * It stays because a statement is easier to read in a log without its preamble.
  */
-export function commandArg(statement) {
-	return `--command=${statement}`;
+export function stripLeadingComments(statement) {
+	let rest = String(statement ?? '');
+
+	// Loop: a statement can carry several comments, and a block comment can be
+	// followed by a line comment.
+	for (;;) {
+		const trimmed = rest.replace(/^\s+/, '');
+		if (trimmed.startsWith('--')) {
+			const newline = trimmed.indexOf('\n');
+			rest = newline === -1 ? '' : trimmed.slice(newline + 1);
+			continue;
+		}
+		if (trimmed.startsWith('/*')) {
+			const end = trimmed.indexOf('*/');
+			rest = end === -1 ? '' : trimmed.slice(end + 2);
+			continue;
+		}
+		return trimmed;
+	}
 }

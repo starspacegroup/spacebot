@@ -1,18 +1,31 @@
 /**
- * A production deploy failed on 0005_command_permissions.sql with "Missing
- * required option --command or --file". The migration was fine. The runner's
- * statement-by-statement fallback passed `--command <statement>`, and almost
- * every migration statement carries its leading `--` comment, so Wrangler's
- * argument parser read the value as more flags and found no value at all.
+ * Two production deploys have died in the migration runner's
+ * statement-by-statement fallback, both on the same root cause: the statement
+ * was passed to Wrangler on the command line, and almost every migration
+ * statement carries its leading `--` comment.
+ *
+ * First it was `--command <statement>`, which Wrangler read as more flags and
+ * rejected with "Missing required option --command or --file". The `=` form
+ * fixed that locally and failed anyway on the Pages build image, this time as
+ * "Unknown arguments: Migration:, Support, multiple, trigger, events, per,
+ * automation" — the words of 0004's own comment, parsed as positionals.
+ *
+ * Statements now go to Wrangler in a file, so no argument parser sees SQL at
+ * all. These tests hold the line at the boundary: nothing handed to the CLI may
+ * begin with a dash.
  *
  * The fallback only runs when a file import trips over a transient D1 error,
- * which is why this sat latent for months and then broke a deploy.
+ * which is why this sat latent for months at a time.
  */
 import { readFileSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
-import { commandArg, hasExecutableSql, splitSqlStatements } from '../../scripts/lib/sql-statements';
+import {
+	hasExecutableSql,
+	splitSqlStatements,
+	stripLeadingComments,
+} from '../../scripts/lib/sql-statements';
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), '../../migrations');
 
@@ -21,16 +34,36 @@ function executableStatements(sql: string) {
 	return splitSqlStatements(sql).filter(hasExecutableSql);
 }
 
-describe('commandArg', () => {
-	it('uses the = form, so a value starting with -- is not read as flags', () => {
+describe('stripLeadingComments', () => {
+	it('removes the comment a statement leads with', () => {
 		const statement = '-- Add permission controls\nALTER TABLE commands ADD COLUMN x TEXT';
 
-		expect(commandArg(statement)).toBe(`--command=${statement}`);
-		expect(commandArg(statement).startsWith('--command=')).toBe(true);
+		expect(stripLeadingComments(statement)).toBe('ALTER TABLE commands ADD COLUMN x TEXT');
 	});
 
-	it('keeps the statement intact', () => {
-		expect(commandArg('SELECT 1')).toBe('--command=SELECT 1');
+	it('removes several stacked comments', () => {
+		const statement = '-- one\n-- two\n\n-- three\nSELECT 1';
+
+		expect(stripLeadingComments(statement)).toBe('SELECT 1');
+	});
+
+	it('removes a leading block comment', () => {
+		expect(stripLeadingComments('/* note\n   more */\nSELECT 1')).toBe('SELECT 1');
+	});
+
+	it('keeps a comment that comes after the SQL starts', () => {
+		const statement = 'SELECT 1 -- trailing note';
+
+		expect(stripLeadingComments(statement)).toBe('SELECT 1 -- trailing note');
+	});
+
+	it('leaves a statement with no comment alone', () => {
+		expect(stripLeadingComments('SELECT 1')).toBe('SELECT 1');
+	});
+
+	it('returns empty for a comment with nothing after it', () => {
+		expect(stripLeadingComments('-- just a note')).toBe('');
+		expect(stripLeadingComments('/* unterminated')).toBe('');
 	});
 });
 
@@ -69,28 +102,29 @@ describe('every migration survives the statement-by-statement fallback', () => {
 		expect(migrationFiles.length).toBeGreaterThan(0);
 	});
 
-	it.each(migrationFiles)('%s produces only parseable --command args', (file) => {
+	it.each(migrationFiles)('%s never hands the CLI something dash-leading', (file) => {
 		const sql = readFileSync(join(migrationsDir, file), 'utf8');
 
 		for (const statement of executableStatements(sql)) {
-			const arg = commandArg(statement);
+			const written = stripLeadingComments(statement);
 
-			// The bug in one line: an argv entry that is exactly "--command"
-			// leaves the statement to be parsed as flags.
-			expect(arg).not.toBe('--command');
-			expect(arg.startsWith('--command=')).toBe(true);
-			expect(arg.slice('--command='.length)).toBe(statement);
+			// The bug in one line: SQL that starts with a dash gets read as a flag.
+			expect(written.startsWith('-')).toBe(false);
+			expect(written.length).toBeGreaterThan(0);
 		}
 	});
 
-	it('0005_command_permissions.sql is the case that broke production', () => {
-		const sql = readFileSync(join(migrationsDir, '0005_command_permissions.sql'), 'utf8');
-		const statements = executableStatements(sql);
+	it.each(['0004_multi_trigger_automations.sql', '0005_command_permissions.sql'])(
+		'%s is a case that broke production',
+		(file) => {
+			const sql = readFileSync(join(migrationsDir, file), 'utf8');
+			const statements = executableStatements(sql);
 
-		// Every statement in this file leads with a comment — the shape that the
-		// old `--command <value>` form could not pass through.
-		expect(statements.length).toBeGreaterThan(0);
-		expect(statements.every((s) => s.trimStart().startsWith('--'))).toBe(true);
-		expect(statements.every((s) => commandArg(s).startsWith('--command='))).toBe(true);
-	});
+			// Every statement in these files leads with a comment — the shape
+			// neither command-line form could carry.
+			expect(statements.length).toBeGreaterThan(0);
+			expect(statements.every((s) => s.trimStart().startsWith('--'))).toBe(true);
+			expect(statements.every((s) => !stripLeadingComments(s).startsWith('-'))).toBe(true);
+		}
+	);
 });

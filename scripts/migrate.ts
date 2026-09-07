@@ -15,7 +15,16 @@ try {
 	// No .env loader available; continue with existing process environment.
 }
 import { execFileSync, execSync } from 'child_process';
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs';
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	unlinkSync,
+	writeFileSync,
+} from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -23,7 +32,11 @@ import {
 	isTransientD1Error,
 	shouldFallbackToCommandExecution,
 } from './lib/d1-errors.js';
-import { commandArg, hasExecutableSql, splitSqlStatements } from './lib/sql-statements.js';
+import {
+	hasExecutableSql,
+	splitSqlStatements,
+	stripLeadingComments,
+} from './lib/sql-statements.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const migrationsDir = join(__dirname, '..', 'migrations');
@@ -107,14 +120,55 @@ function parseAppliedMigrations(output, migrationFiles) {
 	return applied;
 }
 
-function executeSqlFileViaCommand(filePath) {
+/**
+ * A scratch directory for the SQL this script hands to Wrangler.
+ *
+ * Deliberately not `migrations/`: the runner picks up every `*.sql` in there,
+ * so a temp file left behind by a crashed run would be applied as a migration
+ * on the next build. Created lazily, because most runs never need it.
+ */
+let scratchDir: string | null = null;
+
+function scratchPath(name) {
+	if (!scratchDir) scratchDir = mkdtempSync(join(tmpdir(), 'spacebot-d1-'));
+	return join(scratchDir, name);
+}
+
+function cleanupScratchDir() {
+	if (!scratchDir) return;
+	try {
+		rmSync(scratchDir, { recursive: true, force: true });
+	} catch {
+		// Best-effort; the OS reclaims it either way.
+	}
+	scratchDir = null;
+}
+
+/**
+ * Apply a migration one statement at a time.
+ *
+ * Each statement goes to Wrangler in a **file**, never as `--command`. A
+ * statement usually carries its leading comment, so the value would start with
+ * `--`, and Wrangler's argument parser has mis-read that in two different
+ * builds — first as a missing value, then as a run of unknown positional
+ * arguments (`Unknown arguments: Migration:, Support, multiple, ...`, which
+ * failed a production deploy on 0004). A file has no such ambiguity, and it is
+ * the same mechanism the whole-file path already uses.
+ */
+function executeSqlFileStatementwise(filePath) {
 	const sql = readFileSync(filePath, 'utf8');
 	const statements = splitSqlStatements(sql);
+	let index = 0;
+
 	for (const statement of statements) {
 		if (!hasExecutableSql(statement)) continue;
+		index += 1;
+
+		const statementPath = scratchPath(`statement-${process.pid}-${index}.sql`);
+		writeFileSync(statementPath, `${stripLeadingComments(statement)}\n`, 'utf8');
 
 		try {
-			d1CliExecute([commandArg(statement)]);
+			d1CliExecute(['--file', statementPath]);
 		} catch (error) {
 			// The whole-file path treats "already exists" / "no such column" as a
 			// migration that has nothing left to do and moves on. This path has to
@@ -127,6 +181,12 @@ function executeSqlFileViaCommand(filePath) {
 			const output = extractErrorOutput(error);
 			if (!isAlreadyAppliedError(output)) throw error;
 			console.log('     ⏭️  Statement already applied; continuing');
+		} finally {
+			try {
+				unlinkSync(statementPath);
+			} catch {
+				// Best-effort cleanup.
+			}
 		}
 	}
 }
@@ -217,7 +277,7 @@ function d1CliExecute(args) {
  * Execute a SQL command string against D1 and return stdout
  */
 function d1Execute(sql) {
-	const tempSqlPath = join(migrationsDir, `.__tmp_d1_${process.pid}_${Date.now()}.sql`);
+	const tempSqlPath = scratchPath(`exec-${process.pid}-${Date.now()}.sql`);
 
 	writeFileSync(tempSqlPath, `${sql.trim()}\n`, 'utf8');
 	try {
@@ -325,7 +385,7 @@ for (const file of migrationFiles) {
 				console.log(
 					'     ⚠️  Wrangler file import failed; retrying migration with statement-by-statement execution...'
 				);
-				executeSqlFileViaCommand(filePath);
+				executeSqlFileStatementwise(filePath);
 
 				try {
 					d1Execute(`INSERT OR IGNORE INTO _migrations (name) VALUES ('${file}')`);
@@ -370,6 +430,8 @@ for (const file of migrationFiles) {
 		}
 	}
 }
+
+cleanupScratchDir();
 
 console.log(`\n📊 Migration Summary:`);
 console.log(`   ✅ ${successCount} succeeded`);
