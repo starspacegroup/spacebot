@@ -127,7 +127,17 @@ function withDeployLock(fn) {
 	}
 }
 
-export function deploy(changedFiles, options = {}) {
+export interface DeployOptions {
+	branch?: string;
+	remote?: string;
+	trigger?: string;
+	/** Revision to deploy. Absent means "whatever a fast-forward pull brings". */
+	remoteHead?: string;
+	/** A previous deploy updated the checkout and died before restarting. */
+	stranded?: boolean;
+}
+
+export function deploy(changedFiles: string[], options: DeployOptions = {}) {
 	return withDeployLock(() => {
 		const branch = options.branch || MAIN_BRANCH;
 		const remote = options.remote || REMOTE_NAME;
@@ -139,20 +149,13 @@ export function deploy(changedFiles, options = {}) {
 		console.log(`\n🚀 [${new Date().toISOString()}] Deploying (${trigger})...`);
 
 		try {
-			// A resumed deploy is already sitting on the revision it is deploying,
-			// so there is nothing to validate and nothing to merge.
+			// A resumed deploy is already sitting on the revision it is
+			// deploying, so there is nothing to merge.
 			if (stranded) {
 				console.log(
 					`  ↩️  Resuming a deploy that reached the checkout but never restarted (${(remoteHead || '').slice(0, 7)})`
 				);
 			} else {
-				if (remoteHead) {
-					console.log(
-						`  🔎 Validating remote revision ${remoteHead.slice(0, 7)} before updating live checkout...`
-					);
-					validateRemoteRevision(remoteHead);
-				}
-
 				if (remoteHead) {
 					run(`git merge --ff-only ${remoteHead}`);
 				} else {
@@ -226,7 +229,7 @@ export function decideDeployAction(localHead, remoteHead, deployedHead) {
 	return null;
 }
 
-export function getRemoteDeployPlan(options = {}) {
+export function getRemoteDeployPlan(options: DeployOptions = {}) {
 	const branch = options.branch || MAIN_BRANCH;
 	const remote = options.remote || REMOTE_NAME;
 	const remoteRef = `${remote}/${branch}`;
