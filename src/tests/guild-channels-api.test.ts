@@ -44,6 +44,33 @@ vi.mock('$lib/db/managed-channels.js', () => ({
 	listActiveManagedChannels: async () => managedRooms,
 }));
 
+/** What the activity read was asked for, so the wiring can be checked without
+ *  standing up a database. The counts themselves are tested in
+ *  `channel-activity.test.ts`. */
+let activityAsk: { channelIds: string[]; days: number } | null = null;
+
+vi.mock('$lib/db/channel-activity.js', async (importOriginal) => {
+	const actual = (await importOriginal()) as any;
+	return {
+		...actual,
+		getChannelActivity: async (
+			_db: any,
+			_guild: string,
+			channelIds: string[],
+			days: number
+		) => {
+			activityAsk = { channelIds, days };
+			return {
+				days,
+				timezone: 'America/New_York',
+				channels: Object.fromEntries(
+					channelIds.map((id) => [id, { messages: Number(id), lobby: id === '2' }])
+				),
+			};
+		},
+	};
+});
+
 const { GET: channelsGet } = await import('../routes/api/v1/channels/+server.js');
 const { POST: syncPost } = await import('../routes/api/channels/sync/+server.js');
 
@@ -71,6 +98,7 @@ beforeEach(() => {
 	managedRooms = [];
 	syncedAt = '2026-09-07T12:00:00Z';
 	replaceResult = { success: true, stored: 0 };
+	activityAsk = null;
 });
 
 describe('GET /api/v1/channels', () => {
@@ -145,6 +173,43 @@ describe('GET /api/v1/channels', () => {
 	it('reports a missing database', async () => {
 		const response = await channelsGet({ ...event(), platform: { env: {} } } as any);
 		expect(response.status).toBe(500);
+	});
+
+	it('says nothing about activity unless asked', async () => {
+		stored.push(channel({ channelId: '1' }));
+		const body = await (await channelsGet(event() as any)).json();
+		expect(body.channels[0].activity).toBeUndefined();
+		expect(body.activity_days).toBeUndefined();
+		expect(activityAsk).toBeNull();
+	});
+
+	it('adds how each channel is used, and the window it answered for', async () => {
+		stored.push(channel({ channelId: '1' }), channel({ channelId: '2', type: 2 }));
+		const body = await (await channelsGet(event('?activity=7') as any)).json();
+
+		expect(activityAsk).toEqual({ channelIds: ['1', '2'], days: 7 });
+		expect(body.activity_days).toBe(7);
+		expect(body.timezone).toBe('America/New_York');
+		expect(body.channels[0].activity).toMatchObject({ messages: 1 });
+		expect(body.channels[1].activity).toMatchObject({ lobby: true });
+		// The grouped copy is the same channel, not a second one that can drift.
+		expect(body.categories[0].channels[0].activity).toMatchObject({ messages: 1 });
+	});
+
+	it('takes a bare flag as the default window, and false as no', async () => {
+		stored.push(channel({ channelId: '1' }));
+		expect((await (await channelsGet(event('?activity') as any)).json()).activity_days).toBe(
+			30
+		);
+		expect(
+			(await (await channelsGet(event('?activity=false') as any)).json()).activity_days
+		).toBeUndefined();
+	});
+
+	it('only asks about the channels it is going to serve', async () => {
+		stored.push(channel({ channelId: '1', type: 0 }), channel({ channelId: '2', type: 2 }));
+		await channelsGet(event('?type=voice&activity=30') as any);
+		expect(activityAsk?.channelIds).toEqual(['2']);
 	});
 });
 

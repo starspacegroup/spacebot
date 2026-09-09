@@ -3,6 +3,7 @@
  *
  * GET /api/v1/channels
  * GET /api/v1/channels?type=text
+ * GET /api/v1/channels?activity=30
  *
  * What a visitor would see in the sidebar without joining anything: name, type,
  * category, Discord ordering, and the channel's own topic where one is set.
@@ -17,6 +18,13 @@
  * Grouped by category in the response rather than returned flat, because that
  * is how Discord shows it and how a reader expects to find a channel.
  *
+ * `activity=<days>` adds how each channel is actually used — messages and
+ * distinct posters, voice time and head count, when it is busiest, and whether
+ * joining it makes the member a room. A directory of names and stale topics
+ * cannot tell a newcomer which rooms are alive; this can. It is counts only,
+ * never message text or who said it (see `channel-activity.ts`), and it costs
+ * four extra aggregate queries, so it is opt-in rather than always on.
+ *
  * Requires scope: channels:read
  * Auth: Bearer <api_key>
  */
@@ -28,6 +36,7 @@ import {
 	getGuildChannelsSyncedAt,
 	CHANNEL_TYPES,
 } from '$lib/db/guild-channels.js';
+import { getChannelActivity, normalizeActivityDays } from '$lib/db/channel-activity.js';
 import { log } from '$lib/db/logger.js';
 
 /** Wire names for Discord's numeric types. Anything unmapped serves `other`. */
@@ -97,6 +106,33 @@ export async function GET({ request, platform, url }) {
 				groups.push(group);
 			}
 			group.channels.push(channel);
+		}
+
+		// Asked for after the filters, so a `type=text` request never pays for the
+		// voice numbers it is not going to render.
+		const activityParam = url.searchParams.get('activity');
+		if (activityParam !== null && activityParam !== 'false') {
+			const days = normalizeActivityDays(
+				activityParam === '' || activityParam === 'true' ? undefined : activityParam
+			);
+			const report = await getChannelActivity(
+				db,
+				auth.guildId,
+				listed.map((channel) => channel.id),
+				days
+			);
+			for (const channel of listed) {
+				(channel as any).activity = report.channels[channel.id] || null;
+			}
+			return json({
+				guild_id: auth.guildId,
+				synced_at: syncedAt,
+				count: listed.length,
+				activity_days: report.days,
+				timezone: report.timezone,
+				categories: groups,
+				channels: listed,
+			});
 		}
 
 		return json({
