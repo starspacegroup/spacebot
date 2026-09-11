@@ -26,6 +26,31 @@ export interface AnniversaryEvent {
 	/** The body. Written to stand alone — these arrive hours apart. */
 	body: string;
 	/**
+	 * Where it happened. Rendered as a map link under the body.
+	 *
+	 * `query` is handed to the Google Maps URL API verbatim, so it is either
+	 * `"lat,lon"` where the coordinate is certain, or a place name where it is
+	 * not. A named search that lands on the right building beats a coordinate
+	 * invented to three decimals — false precision on a day like this is worse
+	 * than no pin at all.
+	 *
+	 * Omitted for the events that have no single place: an aircraft in the air,
+	 * an order that applied to the whole country.
+	 */
+	place?: { name: string; query: string };
+	/**
+	 * A photograph of the event, shown in the embed.
+	 *
+	 * Every URL here is a public-domain or Creative-Commons file on Wikimedia
+	 * Commons, and `credit` is the attribution that licence requires — it is
+	 * rendered in the footer, not optional. Press photographs of that morning
+	 * are almost all still under copyright, and none of them are used.
+	 *
+	 * Omitted where no properly-licensed photograph of the moment exists. An
+	 * empty frame is better than a stock photograph standing in for a death.
+	 */
+	image?: { url: string; credit: string };
+	/**
 	 * Marks the post that opens the day. It is the only one that carries the
 	 * "N years ago today" framing, so the rest do not repeat it 26 times.
 	 */
@@ -76,90 +101,136 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'American 11 leaves Boston',
 			body: 'American Airlines Flight 11 departs Boston Logan for Los Angeles with 92 people aboard. An ordinary Tuesday morning departure, eleven minutes late.',
 			opening: true,
+			place: { name: 'Boston Logan International Airport', query: '42.3656,-71.0096' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/View_of_the_Lower_Manhattan_skyline_including_the_World_Trade_Center_twin_towers_06.jpg/1280px-View_of_the_Lower_Manhattan_skyline_including_the_World_Trade_Center_twin_towers_06.jpg',
+				credit: 'Lower Manhattan with the towers standing · CC BY-SA 4.0 via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'ua175-departs',
 			time: '08:14',
 			title: 'United 175 leaves Boston',
 			body: 'United Airlines Flight 175 departs Boston Logan for Los Angeles with 65 aboard. In the same minute, American 11 is hijacked.',
+			place: { name: 'Boston Logan International Airport', query: '42.3656,-71.0096' },
 		},
 		{
 			key: 'betty-ong',
 			time: '08:19',
 			title: 'The first word from the air',
 			body: 'Flight attendant Betty Ong reaches American Airlines on an in-flight phone and reports the hijacking. She stays on the line for 23 minutes. Hers is the first account anyone on the ground receives.',
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/September_11_Flight_Crew_Memorial_Statue.jpg/1280px-September_11_Flight_Crew_Memorial_Statue.jpg',
+				credit: 'September 11 Flight Crew Memorial · CC BY-SA 4.0 via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'aa77-departs',
 			time: '08:20',
 			title: 'American 77 leaves Washington',
 			body: 'American Airlines Flight 77 departs Washington Dulles for Los Angeles with 64 aboard.',
+			place: { name: 'Washington Dulles International Airport', query: '38.9531,-77.4565' },
 		},
 		{
 			key: 'we-have-some-planes',
 			time: '08:24',
 			title: '"We have some planes"',
 			body: 'A hijacker aboard American 11 keys the microphone by mistake, and air traffic control hears the cockpit: "We have some planes." It is the first indication that this is not one aircraft.',
+			place: {
+				name: 'FAA Boston Center, Nashua, New Hampshire',
+				query: 'Boston Air Route Traffic Control Center, Nashua, NH',
+			},
 		},
 		{
 			key: 'neads-notified',
 			time: '08:37',
 			title: 'The military is told',
 			body: 'Boston Center notifies the Northeast Air Defense Sector that American 11 has been hijacked. It is the first notification the military receives, nine minutes before the first impact.',
+			place: { name: 'NEADS, Rome, New York', query: '43.2338,-75.4068' },
 		},
 		{
 			key: 'ua93-departs',
 			time: '08:42',
 			title: 'United 93 leaves Newark',
 			body: 'United Airlines Flight 93 departs Newark for San Francisco with 44 aboard, 42 minutes behind schedule. That delay is the reason its passengers will learn what is happening elsewhere.',
+			place: { name: 'Newark Liberty International Airport', query: '40.6895,-74.1745' },
 		},
 		{
 			key: 'north-tower-struck',
 			time: '08:46',
 			title: 'The North Tower is struck',
 			body: 'American 11 strikes the North Tower of the World Trade Center between floors 93 and 99. Everyone above the impact is cut off. Fighters are scrambled from Otis Air National Guard Base in Massachusetts, with nothing yet to intercept.',
+			place: { name: 'North Tower, World Trade Center', query: '40.7127,-74.0134' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/6/61/American_Airlines_Flight_11_approach_%28first_frame%29.jpg',
+				credit: 'American 11 on its final approach, from Wolfgang Staehle\u2019s automated camera · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'south-tower-struck',
 			time: '09:03',
 			title: 'The South Tower is struck',
 			body: 'United 175 strikes the South Tower between floors 77 and 85, live on television. In that moment an accident becomes an attack, watched by most of the country at once.',
+			place: { name: 'South Tower, World Trade Center', query: '40.7115,-74.0134' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/UA_Flight_175_hits_WTC_south_tower_9-11_edit.jpeg',
+				credit: 'United 175 striking the South Tower · CC BY-SA 2.0 via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'bush-informed',
 			time: '09:05',
 			title: 'The President is told',
 			body: 'In a second-grade classroom in Sarasota, Florida, Andrew Card leans over the President and says: "A second plane hit the second tower. America is under attack."',
+			place: {
+				name: 'Emma E. Booker Elementary School, Sarasota, Florida',
+				query: 'Emma E. Booker Elementary School, Sarasota, FL',
+			},
 		},
 		{
 			key: 'bridges-closed',
 			time: '09:21',
 			title: 'Manhattan is sealed',
 			body: 'The Port Authority closes every bridge and tunnel into Manhattan. Hundreds of thousands of people will walk home across them anyway.',
+			place: { name: 'Brooklyn Bridge, New York', query: '40.7061,-73.9969' },
 		},
 		{
 			key: 'ua93-hijacked',
 			time: '09:28',
 			title: 'United 93 is hijacked',
 			body: 'United 93 is taken over high above Ohio, 46 minutes after leaving Newark.',
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/UA_Flight_93-path-and-witness-locations.jpg/1280px-UA_Flight_93-path-and-witness-locations.jpg',
+				credit: 'The flight path of United 93 · National Park Service, public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'pentagon-struck',
 			time: '09:37',
 			title: 'The Pentagon is struck',
 			body: 'American 77 strikes the western face of the Pentagon, killing 59 aboard and 125 people in the building.',
+			place: { name: 'The Pentagon, Arlington, Virginia', query: '38.8719,-77.0563' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Pentagon_9-11.jpg/1280px-Pentagon_9-11.jpg',
+				credit: 'Tech. Sgt. Cedric H. Rudisill, U.S. Air Force · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'ground-stop',
 			time: '09:42',
 			title: 'Every aircraft is grounded',
 			body: 'The FAA orders every civilian aircraft over the United States to land immediately — about 4,500 planes. It has never been done before or since. The order is given by Ben Sliney, National Operations Manager, on his first day in the job.',
+			place: {
+				name: 'FAA Command Center, Herndon, Virginia',
+				query: 'FAA Air Traffic Control System Command Center, Warrenton, VA',
+			},
 		},
 		{
 			key: 'white-house-evacuated',
 			time: '09:45',
 			title: 'Washington empties',
 			body: 'The White House and the Capitol are evacuated. Staff are told to run, and to take off their shoes to do it.',
+			place: { name: 'The White House, Washington, D.C.', query: '38.8977,-77.0365' },
 		},
 		{
 			key: 'ua93-revolt',
@@ -172,30 +243,58 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			time: '09:59',
 			title: 'The South Tower falls',
 			body: 'The South Tower collapses in ten seconds. It stood for 56 minutes after being struck.',
+			place: { name: 'South Tower, World Trade Center', query: '40.7115,-74.0134' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/FEMA_-_3919_-_Photograph_by_Andrea_Booher_taken_on_09-16-2001_in_New_York.jpg/1280px-FEMA_-_3919_-_Photograph_by_Andrea_Booher_taken_on_09-16-2001_in_New_York.jpg',
+				credit: 'Andrea Booher, FEMA · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'ua93-crashes',
 			time: '10:03',
 			title: 'United 93 goes down',
 			body: 'United 93 crashes into a field near Shanksville, Pennsylvania, at 563 miles per hour. It is 20 minutes’ flying time from Washington. No one on the ground is harmed.',
+			place: {
+				name: 'Flight 93 National Memorial, Shanksville, Pennsylvania',
+				query: '40.0561,-78.9053',
+			},
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Flight_93_Crater.jpg/1280px-Flight_93_Crater.jpg',
+				credit: 'The impact site near Shanksville · U.S. government, public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'pentagon-collapse',
 			time: '10:15',
 			title: 'The Pentagon’s E-ring collapses',
 			body: 'A section of the Pentagon’s outermost ring gives way, half an hour after the impact.',
+			place: { name: 'The Pentagon, Arlington, Virginia', query: '38.8719,-77.0563' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Close_up_high_angle_view_showing_damage_to_the_Western_ring_wall_of_the_Pentagon_Building_after_the_September_11%2C_2001_attacks_010911-N-PU293-015.jpg/1280px-Close_up_high_angle_view_showing_damage_to_the_Western_ring_wall_of_the_Pentagon_Building_after_the_September_11%2C_2001_attacks_010911-N-PU293-015.jpg',
+				credit: 'PH2 Robert Houlihan, U.S. Navy · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'north-tower-falls',
 			time: '10:28',
 			title: 'The North Tower falls',
 			body: 'The North Tower collapses. It stood for 102 minutes — long enough for roughly 15,000 people to get out, and for hundreds of firefighters to be climbing it when it came down.',
+			place: { name: 'North Tower, World Trade Center', query: '40.7127,-74.0134' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/World_Trade_Center_collapse_-_West_Broadway.jpg',
+				credit: 'The collapse seen from West Broadway · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'lower-manhattan-evacuated',
 			time: '11:02',
 			title: 'Lower Manhattan is evacuated',
 			body: 'Mayor Giuliani orders everyone below Canal Street to leave. The area is under several inches of pulverised building.',
+			place: { name: 'Canal Street, Manhattan', query: '40.7189,-74.0018' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/FEMA_-_5319_-_Photograph_by_Andrea_Booher_taken_on_09-14-2001_in_New_York.jpg/1280px-FEMA_-_5319_-_Photograph_by_Andrea_Booher_taken_on_09-14-2001_in_New_York.jpg',
+				credit: 'Andrea Booher, FEMA · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'airspace-clear',
@@ -208,24 +307,40 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			time: '13:04',
 			title: 'Worldwide high alert',
 			body: 'From Barksdale Air Force Base in Louisiana, the President announces that American military forces are on high alert worldwide.',
+			place: { name: 'Barksdale Air Force Base, Louisiana', query: '32.5018,-93.6627' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg/1280px-President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg',
+				credit: 'White House photo · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'wtc7-falls',
 			time: '17:20',
 			title: '7 World Trade Center falls',
 			body: 'The 47-storey 7 World Trade Center collapses. Nothing struck it; it had burned unfought all afternoon, because there was no water and no one left to send.',
+			place: { name: '7 World Trade Center, New York', query: '40.7132,-74.0121' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/CBP_World_Trade_Center_Photography_18.jpg/1280px-CBP_World_Trade_Center_Photography_18.jpg',
+				credit: 'U.S. Customs and Border Protection · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'bush-returns',
 			time: '18:58',
 			title: 'The President returns to Washington',
 			body: 'After Barksdale and Offutt, the President arrives back at the White House.',
+			place: { name: 'The White House, Washington, D.C.', query: '38.8977,-77.0365' },
 		},
 		{
 			key: 'address',
 			time: '20:30',
 			title: 'The address to the nation',
 			body: 'The President addresses the country from the Oval Office. By now the rescue has become a recovery, and almost no one knows it yet.',
+			place: { name: 'The Oval Office, The White House', query: '38.8977,-77.0365' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/9/93/President_George_W._Bush_addresses_the_nation_from_the_Oval_Office_the_evening_of_Sept._11%2C_2001.jpg',
+				credit: 'White House photo · public domain via Wikimedia Commons',
+			},
 		},
 		{
 			key: 'toll',
@@ -239,6 +354,11 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 				'More have died since of illness from the air at Ground Zero than were killed that morning.',
 			].join('\n'),
 			closing: true,
+			place: { name: 'National September 11 Memorial, New York', query: '40.7115,-74.0134' },
+			image: {
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/North_reflecting_pool_of_the_National_September_11_Memorial%2C_New_York_City.jpg/1280px-North_reflecting_pool_of_the_National_September_11_Memorial%2C_New_York_City.jpg',
+				credit: 'The north reflecting pool, on the footprint of the North Tower · CC BY-SA 4.0 via Wikimedia Commons',
+			},
 		},
 	],
 };
