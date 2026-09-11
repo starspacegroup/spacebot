@@ -11,6 +11,7 @@ import {
 	buildEventMessage,
 	formatClock,
 	mapUrl,
+	mdLink,
 	normalizeAnniversarySettings,
 	processAnniversaryTimelines,
 } from '../lib/db/anniversary-timeline.js';
@@ -60,6 +61,37 @@ describe('timeline data', () => {
 				expect(event.place.query.trim().length).toBeGreaterThan(0);
 			}
 		}
+	});
+
+	it('only carries links that are https and labelled', () => {
+		for (const timeline of ANNIVERSARY_TIMELINES) {
+			for (const event of timeline.events) {
+				for (const link of event.links ?? []) {
+					expect(link.url.startsWith('https://')).toBe(true);
+					expect(link.label.trim().length).toBeGreaterThan(0);
+				}
+				if (event.image?.source) {
+					expect(event.image.source.startsWith('https://')).toBe(true);
+				}
+			}
+		}
+	});
+
+	it('gives every photograph a source page to credit', () => {
+		// The licences want a link to the file, not just a name in a footer.
+		for (const timeline of ANNIVERSARY_TIMELINES) {
+			for (const event of timeline.events) {
+				if (!event.image) continue;
+				expect(event.image.source).toBeDefined();
+			}
+		}
+	});
+
+	it('links no live flight tracker', () => {
+		// Flightradar24's history does not reach 2001 and all four flight
+		// numbers were retired, so every such page answers "no data available".
+		const all = JSON.stringify(ANNIVERSARY_TIMELINES);
+		expect(all).not.toMatch(/flightradar|flightaware|planefinder/i);
 	});
 
 	it('pins the impacts to the places they happened', () => {
@@ -239,8 +271,16 @@ describe('buildEventMessage', () => {
 		}
 	});
 
-	it('omits image and map cleanly when the event has neither', () => {
-		const bare = SEPT11.events.find((e) => !e.image && !e.place)!;
+	it('omits image, map and links cleanly when the event has none', () => {
+		// Built here rather than hunted for in the timeline: the point is that the
+		// RENDERER adds nothing of its own, and a data-driven version of this test
+		// silently stops testing that as soon as every real event gains a link.
+		const bare = {
+			key: 'bare',
+			time: '12:00',
+			title: 'Nothing attached',
+			body: 'Just the body.',
+		};
 		const embed = buildEventMessage(SEPT11, bare, { year: 2026, useEmbed: true }).embeds?.[0];
 		expect(embed?.image).toBeUndefined();
 		expect(String(embed?.description)).toBe(bare.body);
@@ -264,6 +304,26 @@ describe('buildEventMessage', () => {
 		expect(content).toContain(`<${impact.image!.url}>`);
 		expect(content).toContain(`<${mapUrl(impact.place!.query)}>`);
 		expect(content).toContain(impact.place!.name);
+	});
+
+	it('lists further reading under the body', () => {
+		const embed = buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: true }).embeds?.[0];
+		const description = String(embed?.description);
+		expect(description).toContain('American Airlines Flight 11');
+		expect(description).toContain('en.wikipedia.org');
+		// The photo's file page rides along, because a footer cannot hold a link.
+		expect(description).toContain('Photo source');
+		expect(description).toContain(impact.image!.source!);
+	});
+
+	it('reaches the links in plain-text mode too', () => {
+		const content = String(
+			buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: false }).content
+		);
+		for (const link of impact.links ?? []) {
+			expect(content).toContain(`<${link.url}>`);
+			expect(content).toContain(link.label);
+		}
 	});
 
 	it('honours a guild embed colour over the timeline default', () => {
@@ -544,5 +604,21 @@ describe('mapUrl', () => {
 
 	it('escapes a place name rather than pasting it raw', () => {
 		expect(mapUrl('Emma E. Booker Elementary School, Sarasota, FL')).not.toContain(' ');
+	});
+});
+
+describe('mdLink', () => {
+	it('encodes parentheses, which would end the link early in Discord', () => {
+		const out = mdLink('WTC', 'https://en.wikipedia.org/wiki/World_Trade_Center_(1973)');
+		expect(out).toBe('[WTC](https://en.wikipedia.org/wiki/World_Trade_Center_%281973%29)');
+		expect(out.indexOf(')')).toBe(out.length - 1);
+	});
+
+	it('drops square brackets from a label, which would close it early', () => {
+		expect(mdLink('a [b] c', 'https://example.com')).toBe('[a b c](https://example.com)');
+	});
+
+	it('leaves an ordinary link alone', () => {
+		expect(mdLink('Plain', 'https://example.com/x')).toBe('[Plain](https://example.com/x)');
 	});
 });

@@ -53,11 +53,25 @@ into the channel without context:
 - **A photograph**, where a properly-licensed one of that moment exists.
 - **A footer naming the day**, on every post rather than only the first, plus
   the photo credit.
+- **Further reading** — Wikipedia, the 9/11 Commission Report, the National Park
+  Service, the memorial — and the photograph's own Commons file page, because
+  the licences want a link to the source and an embed footer cannot carry one.
 
 Events with no single place get no pin — an aircraft in the air, an order that
 applied to the whole country. Events with no properly-licensed photograph get no
 image. **An empty frame is better than a stock photograph standing in for a
 death**, and a pin invented for a location nobody can verify is worse than none.
+
+**No live flight trackers.** Flightradar24 is the obvious thing to reach for and
+it does not work: its history does not reach back to 2001, and all four flight
+numbers were retired after the attacks, so `flightradar24.com/data/flights/aa11`
+answers _"There is currently no data available for your request."_ A link that
+resolves to an empty page is worse than no link, and worse still on this day.
+
+**Parentheses must be encoded in a link URL.** Discord ends a `[label](url)` at
+the first `)` it meets, so `World_Trade_Center_(1973–2001)` renders as a broken
+link trailing the stray text `1973–2001)`. `mdLink()` percent-encodes them; do
+not hand-build a masked link without it.
 
 ### Where the photographs come from
 

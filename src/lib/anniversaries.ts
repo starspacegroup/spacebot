@@ -49,7 +49,20 @@ export interface AnniversaryEvent {
 	 * Omitted where no properly-licensed photograph of the moment exists. An
 	 * empty frame is better than a stock photograph standing in for a death.
 	 */
-	image?: { url: string; credit: string };
+	image?: { url: string; credit: string; source?: string };
+	/**
+	 * Further reading, rendered as a row of links under the body.
+	 *
+	 * Kept to references that actually hold the record: Wikipedia, the 9/11
+	 * Commission Report, the National Park Service, the memorial itself. A link
+	 * here is a promise that pressing it tells you more, so a URL that resolves
+	 * to an empty page is worse than no link.
+	 *
+	 * Live flight trackers are deliberately absent. Flightradar24's history does
+	 * not reach 2001, and all four flight numbers were retired after the attacks,
+	 * so every one of those pages answers "no data available for your request".
+	 */
+	links?: { label: string; url: string }[];
 	/**
 	 * Marks the post that opens the day. It is the only one that carries the
 	 * "N years ago today" framing, so the rest do not repeat it 26 times.
@@ -104,8 +117,15 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'Boston Logan International Airport', query: '42.3656,-71.0096' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/View_of_the_Lower_Manhattan_skyline_including_the_World_Trade_Center_twin_towers_06.jpg/1280px-View_of_the_Lower_Manhattan_skyline_including_the_World_Trade_Center_twin_towers_06.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:View_of_the_Lower_Manhattan_skyline_including_the_World_Trade_Center_twin_towers_06.jpg',
 				credit: 'Lower Manhattan with the towers standing · CC BY-SA 4.0 via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'American Airlines Flight 11',
+					url: 'https://en.wikipedia.org/wiki/American_Airlines_Flight_11',
+				},
+			],
 		},
 		{
 			key: 'ua175-departs',
@@ -113,6 +133,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'United 175 leaves Boston',
 			body: 'United Airlines Flight 175 departs Boston Logan for Los Angeles with 65 aboard. In the same minute, American 11 is hijacked.',
 			place: { name: 'Boston Logan International Airport', query: '42.3656,-71.0096' },
+			links: [
+				{
+					label: 'United Airlines Flight 175',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_175',
+				},
+			],
 		},
 		{
 			key: 'betty-ong',
@@ -121,8 +147,16 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			body: 'Flight attendant Betty Ong reaches American Airlines on an in-flight phone and reports the hijacking. She stays on the line for 23 minutes. Hers is the first account anyone on the ground receives.',
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fd/September_11_Flight_Crew_Memorial_Statue.jpg/1280px-September_11_Flight_Crew_Memorial_Statue.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:September_11_Flight_Crew_Memorial_Statue.jpg',
 				credit: 'September 11 Flight Crew Memorial · CC BY-SA 4.0 via Wikimedia Commons',
 			},
+			links: [
+				{ label: 'Betty Ong', url: 'https://en.wikipedia.org/wiki/Betty_Ong' },
+				{
+					label: 'Her call, in the Commission Report',
+					url: 'https://www.9-11commission.gov/report/911Report_Ch1.htm',
+				},
+			],
 		},
 		{
 			key: 'aa77-departs',
@@ -130,6 +164,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'American 77 leaves Washington',
 			body: 'American Airlines Flight 77 departs Washington Dulles for Los Angeles with 64 aboard.',
 			place: { name: 'Washington Dulles International Airport', query: '38.9531,-77.4565' },
+			links: [
+				{
+					label: 'American Airlines Flight 77',
+					url: 'https://en.wikipedia.org/wiki/American_Airlines_Flight_77',
+				},
+			],
 		},
 		{
 			key: 'we-have-some-planes',
@@ -140,6 +180,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 				name: 'FAA Boston Center, Nashua, New Hampshire',
 				query: 'Boston Air Route Traffic Control Center, Nashua, NH',
 			},
+			links: [
+				{
+					label: '"We Have Some Planes" — Commission Report, ch. 1',
+					url: 'https://www.9-11commission.gov/report/911Report_Ch1.htm',
+				},
+			],
 		},
 		{
 			key: 'neads-notified',
@@ -147,6 +193,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'The military is told',
 			body: 'Boston Center notifies the Northeast Air Defense Sector that American 11 has been hijacked. It is the first notification the military receives, nine minutes before the first impact.',
 			place: { name: 'NEADS, Rome, New York', query: '43.2338,-75.4068' },
+			links: [
+				{
+					label: 'Eastern Air Defense Sector',
+					url: 'https://en.wikipedia.org/wiki/Eastern_Air_Defense_Sector',
+				},
+			],
 		},
 		{
 			key: 'ua93-departs',
@@ -154,6 +206,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'United 93 leaves Newark',
 			body: 'United Airlines Flight 93 departs Newark for San Francisco with 44 aboard, 42 minutes behind schedule. That delay is the reason its passengers will learn what is happening elsewhere.',
 			place: { name: 'Newark Liberty International Airport', query: '40.6895,-74.1745' },
+			links: [
+				{
+					label: 'United Airlines Flight 93',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_93',
+				},
+			],
 		},
 		{
 			key: 'north-tower-struck',
@@ -163,8 +221,19 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'North Tower, World Trade Center', query: '40.7127,-74.0134' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/6/61/American_Airlines_Flight_11_approach_%28first_frame%29.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:American_Airlines_Flight_11_approach_%28first_frame%29.jpg',
 				credit: 'American 11 on its final approach, from Wolfgang Staehle\u2019s automated camera · public domain via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'The World Trade Center',
+					url: 'https://en.wikipedia.org/wiki/World_Trade_Center_(1973%E2%80%932001)',
+				},
+				{
+					label: 'American Airlines Flight 11',
+					url: 'https://en.wikipedia.org/wiki/American_Airlines_Flight_11',
+				},
+			],
 		},
 		{
 			key: 'south-tower-struck',
@@ -174,8 +243,15 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'South Tower, World Trade Center', query: '40.7115,-74.0134' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/8/8a/UA_Flight_175_hits_WTC_south_tower_9-11_edit.jpeg',
+				source: 'https://commons.wikimedia.org/wiki/File:UA_Flight_175_hits_WTC_south_tower_9-11_edit.jpeg',
 				credit: 'United 175 striking the South Tower · CC BY-SA 2.0 via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'United Airlines Flight 175',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_175',
+				},
+			],
 		},
 		{
 			key: 'bush-informed',
@@ -186,6 +262,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 				name: 'Emma E. Booker Elementary School, Sarasota, Florida',
 				query: 'Emma E. Booker Elementary School, Sarasota, FL',
 			},
+			links: [
+				{
+					label: 'Emma E. Booker Elementary School',
+					url: 'https://en.wikipedia.org/wiki/Emma_E._Booker_Elementary_School',
+				},
+			],
 		},
 		{
 			key: 'bridges-closed',
@@ -201,8 +283,15 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			body: 'United 93 is taken over high above Ohio, 46 minutes after leaving Newark.',
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/UA_Flight_93-path-and-witness-locations.jpg/1280px-UA_Flight_93-path-and-witness-locations.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:UA_Flight_93-path-and-witness-locations.jpg',
 				credit: 'The flight path of United 93 · National Park Service, public domain via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'United Airlines Flight 93',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_93',
+				},
+			],
 		},
 		{
 			key: 'pentagon-struck',
@@ -212,8 +301,16 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'The Pentagon, Arlington, Virginia', query: '38.8719,-77.0563' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/US_Navy_010911-N-3783H-009_Pentagon_damage%2C_Sept._11%2C_2001.jpg/1280px-US_Navy_010911-N-3783H-009_Pentagon_damage%2C_Sept._11%2C_2001.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:US_Navy_010911-N-3783H-009_Pentagon_damage%2C_Sept._11%2C_2001.jpg',
 				credit: 'Firefighters at the 200-foot gash, that afternoon · PH2 Bob Houlihan, U.S. Navy, public domain via Wikimedia Commons',
 			},
+			links: [
+				{ label: 'The Pentagon', url: 'https://en.wikipedia.org/wiki/The_Pentagon' },
+				{
+					label: 'American Airlines Flight 77',
+					url: 'https://en.wikipedia.org/wiki/American_Airlines_Flight_77',
+				},
+			],
 		},
 		{
 			key: 'ground-stop',
@@ -224,6 +321,13 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 				name: 'FAA Command Center, Herndon, Virginia',
 				query: 'FAA Air Traffic Control System Command Center, Warrenton, VA',
 			},
+			links: [
+				{ label: 'Ben Sliney', url: 'https://en.wikipedia.org/wiki/Ben_Sliney' },
+				{
+					label: 'Operation Yellow Ribbon',
+					url: 'https://en.wikipedia.org/wiki/Operation_Yellow_Ribbon',
+				},
+			],
 		},
 		{
 			key: 'white-house-evacuated',
@@ -237,6 +341,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			time: '09:57',
 			title: 'The passengers of United 93 decide',
 			body: 'Having learned from phone calls what the other planes were used for, the passengers and crew take a vote, and then charge the cockpit.',
+			links: [
+				{
+					label: 'United Airlines Flight 93',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_93',
+				},
+			],
 		},
 		{
 			key: 'south-tower-falls',
@@ -246,8 +356,15 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'South Tower, World Trade Center', query: '40.7115,-74.0134' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/World_Trade_Center_collapse_-_West_Broadway.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:World_Trade_Center_collapse_-_West_Broadway.jpg',
 				credit: 'Dust and smoke on West Broadway after the South Tower came down · public domain via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'Collapse of the World Trade Center',
+					url: 'https://en.wikipedia.org/wiki/Collapse_of_the_World_Trade_Center',
+				},
+			],
 		},
 		{
 			key: 'ua93-crashes',
@@ -260,8 +377,16 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			},
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Flight_93_Crater.jpg/1280px-Flight_93_Crater.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:Flight_93_Crater.jpg',
 				credit: 'The impact site near Shanksville · U.S. government, public domain via Wikimedia Commons',
 			},
+			links: [
+				{ label: 'Flight 93 National Memorial', url: 'https://www.nps.gov/flni/index.htm' },
+				{
+					label: 'United Airlines Flight 93',
+					url: 'https://en.wikipedia.org/wiki/United_Airlines_Flight_93',
+				},
+			],
 		},
 		{
 			key: 'pentagon-collapse',
@@ -271,8 +396,10 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'The Pentagon, Arlington, Virginia', query: '38.8719,-77.0563' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Close_up_high_angle_view_showing_damage_to_the_Western_ring_wall_of_the_Pentagon_Building_after_the_September_11%2C_2001_attacks_010911-N-PU293-015.jpg/1280px-Close_up_high_angle_view_showing_damage_to_the_Western_ring_wall_of_the_Pentagon_Building_after_the_September_11%2C_2001_attacks_010911-N-PU293-015.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:Close_up_high_angle_view_showing_damage_to_the_Western_ring_wall_of_the_Pentagon_Building_after_the_September_11%2C_2001_attacks_010911-N-PU293-015.jpg',
 				credit: 'PH2 Robert Houlihan, U.S. Navy · public domain via Wikimedia Commons',
 			},
+			links: [{ label: 'The Pentagon', url: 'https://en.wikipedia.org/wiki/The_Pentagon' }],
 		},
 		{
 			key: 'north-tower-falls',
@@ -282,8 +409,15 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'North Tower, World Trade Center', query: '40.7127,-74.0134' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/5/55/September_11_2001_just_collapsed.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:September_11_2001_just_collapsed.jpg',
 				credit: 'Shortly after the North Tower collapsed · Wally Gobetz, CC BY 2.0 via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'Collapse of the World Trade Center',
+					url: 'https://en.wikipedia.org/wiki/Collapse_of_the_World_Trade_Center',
+				},
+			],
 		},
 		{
 			key: 'lower-manhattan-evacuated',
@@ -297,6 +431,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			time: '12:16',
 			title: 'The sky is empty',
 			body: 'The last commercial flight lands. For the first time, there is no civilian aircraft in American airspace. It stays that way for two days.',
+			links: [
+				{
+					label: 'Operation Yellow Ribbon',
+					url: 'https://en.wikipedia.org/wiki/Operation_Yellow_Ribbon',
+				},
+			],
 		},
 		{
 			key: 'military-alert',
@@ -306,6 +446,7 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'Barksdale Air Force Base, Louisiana', query: '32.5018,-93.6627' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg/1280px-President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg',
 				credit: 'Eric Draper, White House · public domain via Wikimedia Commons',
 			},
 		},
@@ -315,6 +456,12 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: '7 World Trade Center falls',
 			body: 'The 47-storey 7 World Trade Center collapses. Nothing struck it; it had burned unfought all afternoon, because there was no water and no one left to send.',
 			place: { name: '7 World Trade Center, New York', query: '40.7132,-74.0121' },
+			links: [
+				{
+					label: '7 World Trade Center',
+					url: 'https://en.wikipedia.org/wiki/7_World_Trade_Center',
+				},
+			],
 		},
 		{
 			key: 'bush-returns',
@@ -331,6 +478,7 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'The Oval Office, The White House', query: '38.8977,-77.0365' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/9/93/President_George_W._Bush_addresses_the_nation_from_the_Oval_Office_the_evening_of_Sept._11%2C_2001.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:President_George_W._Bush_addresses_the_nation_from_the_Oval_Office_the_evening_of_Sept._11%2C_2001.jpg',
 				credit: 'White House photo · public domain via Wikimedia Commons',
 			},
 		},
@@ -349,8 +497,19 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'National September 11 Memorial, New York', query: '40.7115,-74.0134' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/North_reflecting_pool_of_the_National_September_11_Memorial%2C_New_York_City.jpg/1280px-North_reflecting_pool_of_the_National_September_11_Memorial%2C_New_York_City.jpg',
+				source: 'https://commons.wikimedia.org/wiki/File:North_reflecting_pool_of_the_National_September_11_Memorial%2C_New_York_City.jpg',
 				credit: 'The north reflecting pool, on the footprint of the North Tower · CC BY-SA 4.0 via Wikimedia Commons',
 			},
+			links: [
+				{
+					label: 'National September 11 Memorial & Museum',
+					url: 'https://www.911memorial.org/',
+				},
+				{
+					label: 'The 9/11 Commission Report',
+					url: 'https://www.govinfo.gov/content/pkg/GPO-911REPORT/pdf/GPO-911REPORT.pdf',
+				},
+			],
 		},
 	],
 };
