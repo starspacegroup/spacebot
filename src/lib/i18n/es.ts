@@ -922,6 +922,8 @@ export const es: Record<string, string> = {
 	'adash.serverManagement': 'Gestión del servidor',
 	'adash.links.automations': 'Automatizaciones',
 	'adash.links.automationsDesc': 'Configura acciones automáticas en eventos',
+	'adash.links.observances': 'Conmemoraciones',
+	'adash.links.observancesDesc': 'Publica un día histórico tal como ocurrió, en su aniversario',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
 	'adash.links.commands': 'Comandos de barra',

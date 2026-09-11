@@ -36,6 +36,7 @@ import {
 } from '$lib/db/event-log-retention.js';
 import { pruneOldStats } from '$lib/db/server-stats.js';
 import { processScheduledMessages, getPendingMessages } from '$lib/db/scheduled-messages.js';
+import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { sweepAllTimedOutRunnerJobs, createRunnerJob } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -333,6 +334,16 @@ const OPERATIONS = {
 	processScheduledMessages: {
 		description: 'Deliver due scheduled messages',
 		handler: (ctx) => processScheduledMessages(ctx.db, requireBotToken(ctx)),
+	},
+
+	// --- Anniversary timelines ---
+	// Runs every minute and does nothing on 364 days out of 365: one indexed
+	// read of enabled rows, then a date check. It is registered here rather
+	// than given its own runtime so it inherits the workflow system's
+	// retries, history and superadmin visibility like every other job.
+	postAnniversaryTimelines: {
+		description: 'Post due anniversary timeline events for guilds that enabled one',
+		handler: (ctx) => processAnniversaryTimelines(ctx.db, requireBotToken(ctx)),
 	},
 
 	// --- Runner / AI maintenance ---

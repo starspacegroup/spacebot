@@ -32,6 +32,9 @@ beautiful admin dashboard.
 - **Member Rooms** — Members create and run their own text or voice channels with
   `/room` or a join-to-create lobby; a server preset decides who may make one, what
   the creator can do to it, and when it closes itself
+- **Observances** — Post a historical day's events at the minutes they happened,
+  on its anniversary. Ships with September 11, 2001; off unless a server owner
+  turns it on and picks a channel (see [docs/observances.md](docs/observances.md))
 - **Context Menu Commands** — Message context menu registration and routing with
   server-side permission enforcement
 - **AI Chat for Managers** — Server managers can DM the bot for AI-powered

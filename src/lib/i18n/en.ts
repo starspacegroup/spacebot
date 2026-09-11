@@ -905,6 +905,8 @@ export const en: Record<string, string> = {
 	'adash.serverManagement': 'Server Management',
 	'adash.links.automations': 'Automations',
 	'adash.links.automationsDesc': 'Set up automatic actions on events',
+	'adash.links.observances': 'Observances',
+	'adash.links.observancesDesc': 'Post a historical day as it happened, on its anniversary',
 	'adash.links.rooms': 'Member Rooms',
 	'adash.links.roomsDesc': 'Self-service channels with their own lifetime',
 	'adash.links.commands': 'Slash Commands',
