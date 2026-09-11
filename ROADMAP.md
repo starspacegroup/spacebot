@@ -42,8 +42,9 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone
       turns it on, and there is no enable-for-all path. Runs on the existing minute
       cadence; a unique claim per (timeline, year, event) makes a double post impossible,
-      and a grace window turns a missed stretch into a gap rather than a burst
-      (`docs/observances.md`)
+      and a grace window turns a missed stretch into a gap rather than a burst. Each post
+      carries a map link to the place and a public-domain or CC photograph of the moment,
+      credited in the footer, where a verified one exists (`docs/observances.md`)
 
 ### Database & Persistence
 

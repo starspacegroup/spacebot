@@ -1147,7 +1147,7 @@
 		display: flex;
 		gap: 0.25rem;
 		flex-wrap: wrap;
-		background: var(--color-bg);
+		background: var(--color-surface-elevated);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-md);
 		padding: 0.25rem;

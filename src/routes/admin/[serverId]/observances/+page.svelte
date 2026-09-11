@@ -306,7 +306,7 @@
 		padding: 0.5rem;
 		border-radius: 6px;
 		border: 1px solid var(--color-border);
-		background: var(--color-bg);
+		background: var(--color-surface-elevated);
 		color: var(--color-text);
 	}
 
@@ -414,7 +414,7 @@
 		font-size: 0.75rem;
 		padding: 0.1rem 0.45rem;
 		border-radius: 4px;
-		background: var(--color-bg);
+		background: var(--color-surface-elevated);
 		color: var(--color-text-muted);
 		border: 1px solid var(--color-border);
 	}
