@@ -211,8 +211,8 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			body: 'American 77 strikes the western face of the Pentagon, killing 59 aboard and 125 people in the building.',
 			place: { name: 'The Pentagon, Arlington, Virginia', query: '38.8719,-77.0563' },
 			image: {
-				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/16/Pentagon_9-11.jpg/1280px-Pentagon_9-11.jpg',
-				credit: 'Tech. Sgt. Cedric H. Rudisill, U.S. Air Force · public domain via Wikimedia Commons',
+				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/US_Navy_010911-N-3783H-009_Pentagon_damage%2C_Sept._11%2C_2001.jpg/1280px-US_Navy_010911-N-3783H-009_Pentagon_damage%2C_Sept._11%2C_2001.jpg',
+				credit: 'Firefighters at the 200-foot gash, that afternoon · PH2 Bob Houlihan, U.S. Navy, public domain via Wikimedia Commons',
 			},
 		},
 		{
@@ -306,7 +306,7 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			place: { name: 'Barksdale Air Force Base, Louisiana', query: '32.5018,-93.6627' },
 			image: {
 				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/72/President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg/1280px-President_George_W._Bush_delivers_remarks_on_the_terrorist_attacks_from_Barksdale_Air_Force_Base.jpg',
-				credit: 'White House photo · public domain via Wikimedia Commons',
+				credit: 'Eric Draper, White House · public domain via Wikimedia Commons',
 			},
 		},
 		{
