@@ -71,8 +71,11 @@ them are still under copyright to AP, Reuters and Getty, and a memorial is a bad
 place to be casual about somebody else's work. If you add a timeline, hold its
 images to the same line.
 
-In plain-text mode there is no embed frame, so the photograph becomes a labelled
-link rather than being dropped.
+In plain-text mode there is no embed frame, so the map and the photograph are
+spelled out as URLs wrapped in `<>`. Discord renders a masked `[text](url)` link
+**inside an embed only** — in ordinary message content it posts the brackets
+literally — and the angle brackets are what suppress the auto-preview a guild
+turned embeds off to avoid.
 
 ## How it runs
 

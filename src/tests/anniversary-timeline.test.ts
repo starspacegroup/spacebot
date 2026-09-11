@@ -253,6 +253,19 @@ describe('buildEventMessage', () => {
 		expect(message.content).toContain(impact.image!.credit);
 	});
 
+	it('spells URLs out in plain text, because Discord only masks links in embeds', () => {
+		const content = String(
+			buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: false }).content
+		);
+		// A masked link posted as ordinary content shows the brackets literally.
+		expect(content).not.toMatch(/\]\(https?:/);
+		// Angle brackets are what suppress the auto-preview embeds were turned off
+		// to avoid.
+		expect(content).toContain(`<${impact.image!.url}>`);
+		expect(content).toContain(`<${mapUrl(impact.place!.query)}>`);
+		expect(content).toContain(impact.place!.name);
+	});
+
 	it('honours a guild embed colour over the timeline default', () => {
 		const message = buildEventMessage(SEPT11, impact, {
 			year: 2026,

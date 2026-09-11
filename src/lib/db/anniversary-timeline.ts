@@ -236,18 +236,24 @@ export function buildEventMessage(
 		event.opening && years ? `**${timeline.title}** — ${years} years ago today\n\n` : '';
 	const stamp = event.closing ? '' : `**${formatClock(event.time)}** · `;
 
-	const place = event.place ? `📍 [${event.place.name}](${mapUrl(event.place.query)})` : '';
-
 	if (!options.useEmbed) {
+		// Discord renders a masked [text](url) link inside an embed and NOT in
+		// ordinary message content, where it posts the brackets literally. So the
+		// plain-text path spells the URL out, wrapped in <> — which is what
+		// suppresses the auto-preview a guild turned embeds off to avoid.
 		const lines = [`${header}${stamp}**${event.title}**`, event.body];
-		if (place) lines.push(place);
-		// Without an embed there is no image frame, so the photo becomes a link
-		// rather than being dropped — a bare URL would unfurl into the preview
-		// the guild turned off on purpose.
-		if (event.image) lines.push(`[Photograph](${event.image.url}) — ${event.image.credit}`);
+		if (event.place) {
+			lines.push(`📍 ${event.place.name} — <${mapUrl(event.place.query)}>`);
+		}
+		if (event.image) {
+			lines.push(`Photograph: <${event.image.url}> — ${event.image.credit}`);
+		}
 
 		return { content: lines.join('\n') };
 	}
+
+	// A masked link is fine here: this branch is an embed.
+	const place = event.place ? `📍 [${event.place.name}](${mapUrl(event.place.query)})` : '';
 
 	const embed: Record<string, unknown> = {
 		title: event.closing ? event.title : `${formatClock(event.time)} — ${event.title}`,
