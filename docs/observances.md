@@ -66,6 +66,13 @@ FEMA, the Navy, the Air Force, the National Park Service, Customs and Border
 Protection, White House photographers, and a few CC-licensed contributions.
 Attribution rides in the embed footer because those licences require it.
 
+**Check what a file actually shows, not what its filename suggests.** Read the
+Commons description and the date before you use one. Four of the first set
+picked here were wrong: a dust cloud captioned WTC2 sat under the North Tower's
+collapse, and two FEMA photographs taken on 14 and 16 September — one of them
+the President meeting rescue teams — sat under events from the morning of the
+11th. A caption is evidence. A filename is not.
+
 **The famous press photographs of that morning are not used.** Almost all of
 them are still under copyright to AP, Reuters and Getty, and a memorial is a bad
 place to be casual about somebody else's work. If you add a timeline, hold its

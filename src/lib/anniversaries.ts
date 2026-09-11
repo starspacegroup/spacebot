@@ -245,8 +245,8 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			body: 'The South Tower collapses in ten seconds. It stood for 56 minutes after being struck.',
 			place: { name: 'South Tower, World Trade Center', query: '40.7115,-74.0134' },
 			image: {
-				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/FEMA_-_3919_-_Photograph_by_Andrea_Booher_taken_on_09-16-2001_in_New_York.jpg/1280px-FEMA_-_3919_-_Photograph_by_Andrea_Booher_taken_on_09-16-2001_in_New_York.jpg',
-				credit: 'Andrea Booher, FEMA · public domain via Wikimedia Commons',
+				url: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/World_Trade_Center_collapse_-_West_Broadway.jpg',
+				credit: 'Dust and smoke on West Broadway after the South Tower came down · public domain via Wikimedia Commons',
 			},
 		},
 		{
@@ -281,8 +281,8 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			body: 'The North Tower collapses. It stood for 102 minutes — long enough for roughly 15,000 people to get out, and for hundreds of firefighters to be climbing it when it came down.',
 			place: { name: 'North Tower, World Trade Center', query: '40.7127,-74.0134' },
 			image: {
-				url: 'https://upload.wikimedia.org/wikipedia/commons/c/c5/World_Trade_Center_collapse_-_West_Broadway.jpg',
-				credit: 'The collapse seen from West Broadway · public domain via Wikimedia Commons',
+				url: 'https://upload.wikimedia.org/wikipedia/commons/5/55/September_11_2001_just_collapsed.jpg',
+				credit: 'Shortly after the North Tower collapsed · Wally Gobetz, CC BY 2.0 via Wikimedia Commons',
 			},
 		},
 		{
@@ -291,10 +291,6 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: 'Lower Manhattan is evacuated',
 			body: 'Mayor Giuliani orders everyone below Canal Street to leave. The area is under several inches of pulverised building.',
 			place: { name: 'Canal Street, Manhattan', query: '40.7189,-74.0018' },
-			image: {
-				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/FEMA_-_5319_-_Photograph_by_Andrea_Booher_taken_on_09-14-2001_in_New_York.jpg/1280px-FEMA_-_5319_-_Photograph_by_Andrea_Booher_taken_on_09-14-2001_in_New_York.jpg',
-				credit: 'Andrea Booher, FEMA · public domain via Wikimedia Commons',
-			},
 		},
 		{
 			key: 'airspace-clear',
@@ -319,10 +315,6 @@ const SEPTEMBER_11_2001: AnniversaryTimeline = {
 			title: '7 World Trade Center falls',
 			body: 'The 47-storey 7 World Trade Center collapses. Nothing struck it; it had burned unfought all afternoon, because there was no water and no one left to send.',
 			place: { name: '7 World Trade Center, New York', query: '40.7132,-74.0121' },
-			image: {
-				url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/CBP_World_Trade_Center_Photography_18.jpg/1280px-CBP_World_Trade_Center_Photography_18.jpg',
-				credit: 'U.S. Customs and Border Protection · public domain via Wikimedia Commons',
-			},
 		},
 		{
 			key: 'bush-returns',
