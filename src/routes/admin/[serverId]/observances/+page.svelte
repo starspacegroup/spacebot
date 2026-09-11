@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import Switch from '$lib/components/Switch.svelte';
 	import { mapUrl, formatClock } from '$lib/db/anniversary-timeline.js';
 
 	const { data, form } = $props();
@@ -14,24 +15,38 @@
 	// a form, so it must NOT track `data` continuously or a reload would wipe
 	// what someone is halfway through typing. The $effect below is the deliberate
 	// resync point, and it fires only when the loader actually returns.
-	let editing = $state({
-		enabled: data.settings.enabled,
-		channelId: data.settings.channel_id ?? '',
-		timezone: data.settings.timezone,
-		graceMinutes: data.settings.grace_minutes,
-		useEmbed: data.settings.use_embed,
-	});
+	let editing = $state(fromSettings(data.settings));
 
 	$effect(() => {
-		const settings = data.settings;
-		editing = {
+		editing = fromSettings(data.settings);
+	});
+
+	function fromSettings(settings: typeof data.settings) {
+		return {
 			enabled: settings.enabled,
 			channelId: settings.channel_id ?? '',
 			timezone: settings.timezone,
 			graceMinutes: settings.grace_minutes,
 			useEmbed: settings.use_embed,
 		};
+	}
+
+	/** True once anything differs from what the server last returned. */
+	const dirty = $derived.by(() => {
+		const saved = fromSettings(data.settings);
+		return (
+			saved.enabled !== editing.enabled ||
+			saved.channelId !== editing.channelId ||
+			saved.timezone !== editing.timezone ||
+			Number(saved.graceMinutes) !== Number(editing.graceMinutes) ||
+			saved.useEmbed !== editing.useEmbed
+		);
 	});
+
+	// `use:enhance` gives no signal of its own that a submit is in flight, and a
+	// save here takes a D1 round-trip. Without this the button stays pressable
+	// and a second click lands a second write.
+	let saving = $state(false);
 
 	/** One row of this year's post log, as the loader returns it. */
 	type PostLogRow = {
@@ -45,6 +60,15 @@
 		new Map<string, PostLogRow>(
 			((data.postLog ?? []) as PostLogRow[]).map((row) => [row.event_key, row])
 		)
+	);
+
+	// A saved channel can vanish from the cache — deleted in Discord, or the
+	// dashboard has not synced since. The select would then silently show blank
+	// and the form would post an empty channel on the next save, turning the
+	// timeline off without anyone choosing to. Keep the stored id selectable
+	// and say what happened.
+	const channelKnown = $derived(
+		editing.channelId === '' || data.channels.some((c) => c.channelId === editing.channelId)
 	);
 
 	// Enabling with no channel is refused server-side. Say so here too, so the
@@ -77,16 +101,20 @@
 		</p>
 	</header>
 
-	{#if form?.error}
-		<p class="alert alert-error">{form.error}</p>
-	{:else if form?.success}
-		<p class="alert alert-ok">Saved.</p>
-	{/if}
-
 	{#if !data.timeline}
 		<p class="alert alert-error">This timeline is no longer available.</p>
 	{:else}
-		<form method="POST" action="?/save" use:enhance>
+		<form
+			method="POST"
+			action="?/save"
+			use:enhance={() => {
+				saving = true;
+				return async ({ update }) => {
+					await update();
+					saving = false;
+				};
+			}}
+		>
 			<input type="hidden" name="timeline_key" value={data.timeline.key} />
 
 			<section class="card">
@@ -102,10 +130,11 @@
 						</p>
 					</div>
 
-					<label class="switch">
-						<input type="checkbox" name="enabled" bind:checked={editing.enabled} />
-						<span>{editing.enabled ? 'On' : 'Off'}</span>
-					</label>
+					<Switch
+						name="enabled"
+						bind:checked={editing.enabled}
+						label={editing.enabled ? 'On' : 'Off'}
+					/>
 				</div>
 
 				<div class="grid">
@@ -113,6 +142,11 @@
 						<span>Channel</span>
 						<select name="channel_id" bind:value={editing.channelId}>
 							<option value="">— pick a channel —</option>
+							{#if !channelKnown}
+								<option value={editing.channelId}>
+									Saved channel (no longer in the cache)
+								</option>
+							{/if}
 							{#each data.channels as channel (channel.channelId)}
 								<option value={channel.channelId}>
 									#{channel.name}{channel.parentName
@@ -121,7 +155,13 @@
 								</option>
 							{/each}
 						</select>
-						{#if data.channels.length === 0}
+						{#if !channelKnown}
+							<small class="warn">
+								The saved channel is not in the cached list. It may have been
+								deleted, or the dashboard has not synced since. Pick another or open
+								the server's dashboard once to re-sync.
+							</small>
+						{:else if data.channels.length === 0}
 							<small class="muted">
 								No channels cached yet. Open the server's dashboard once to sync
 								them.
@@ -148,6 +188,7 @@
 						<input
 							name="grace_minutes"
 							type="number"
+							inputmode="numeric"
 							min="1"
 							max="240"
 							bind:value={editing.graceMinutes}
@@ -158,16 +199,29 @@
 						</small>
 					</label>
 
-					<label class="field checkbox-field">
-						<input type="checkbox" name="use_embed" bind:checked={editing.useEmbed} />
-						<span>Post as embeds</span>
-					</label>
+					<div class="field">
+						<span>Format</span>
+						<Switch
+							name="use_embed"
+							bind:checked={editing.useEmbed}
+							label="Post as embeds"
+							description="Embeds, or plain text for servers that strip them."
+						/>
+					</div>
 				</div>
 
 				<div class="actions">
-					<button class="btn btn-primary" type="submit" disabled={!canSave}>Save</button>
+					<button class="btn btn-primary" type="submit" disabled={!canSave || saving}>
+						{saving ? 'Saving…' : 'Save'}
+					</button>
 					{#if !canSave}
 						<small class="muted">Pick a channel before turning it on.</small>
+					{:else if form?.error}
+						<small class="feedback feedback-error" role="alert">{form.error}</small>
+					{:else if dirty}
+						<small class="muted">Unsaved changes.</small>
+					{:else if form?.success}
+						<small class="feedback feedback-ok" role="status">Saved.</small>
 					{/if}
 				</div>
 			</section>
@@ -256,10 +310,15 @@
 		font-size: 0.9rem;
 	}
 
+	.warn {
+		color: var(--color-warning);
+		font-size: 0.85rem;
+	}
+
 	.card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
-		border-radius: 8px;
+		border-radius: var(--radius-md);
 		padding: 1.25rem;
 		margin-bottom: 1.5rem;
 	}
@@ -278,19 +337,10 @@
 		margin-bottom: 1.25rem;
 	}
 
-	.switch {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.9rem;
-		color: var(--color-text);
-		white-space: nowrap;
-	}
-
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-		gap: 1rem;
+		gap: 1rem 1.5rem;
 	}
 
 	.field {
@@ -304,40 +354,49 @@
 	.field input,
 	.field select {
 		padding: 0.5rem;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		border: 1px solid var(--color-border);
 		background: var(--color-surface-elevated);
 		color: var(--color-text);
 	}
 
-	.checkbox-field {
-		flex-direction: row;
-		align-items: center;
-		gap: 0.5rem;
+	.field input:focus-visible,
+	.field select:focus-visible {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: var(--focus-ring);
 	}
 
 	.actions {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.75rem;
 		margin-top: 1.25rem;
 	}
 
+	.feedback {
+		font-size: 0.9rem;
+	}
+
+	.feedback-error {
+		color: var(--color-danger);
+	}
+
+	.feedback-ok {
+		color: var(--color-success);
+	}
+
 	.alert {
 		padding: 0.75rem 1rem;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		margin-bottom: 1rem;
 		font-size: 0.9rem;
 	}
 
 	.alert-error {
-		background: var(--color-danger-bg, #3b1d1d);
-		color: var(--color-danger, #ff8a8a);
-	}
-
-	.alert-ok {
-		background: var(--color-success-bg, #16301f);
-		color: var(--color-success, #8ce0a8);
+		background: var(--color-danger-soft);
+		color: var(--color-danger);
 	}
 
 	.timeline {
@@ -383,9 +442,9 @@
 
 	.place {
 		display: inline-block;
-		margin-bottom: 0.4rem;
+		margin: 0.35rem 0 0.4rem;
 		font-size: 0.85rem;
-		color: #c8a882;
+		color: var(--color-primary);
 		text-decoration: none;
 	}
 
@@ -397,14 +456,15 @@
 		display: block;
 		width: 100%;
 		max-width: 360px;
-		border-radius: 6px;
+		border-radius: var(--radius-sm);
 		margin-bottom: 0.25rem;
+		background: var(--color-surface-elevated);
 	}
 
 	.credit {
 		display: block;
 		font-size: 0.72rem;
-		opacity: 0.6;
+		color: var(--color-text-light);
 		margin-bottom: 0.4rem;
 	}
 
@@ -413,17 +473,24 @@
 		margin-top: 0.4rem;
 		font-size: 0.75rem;
 		padding: 0.1rem 0.45rem;
-		border-radius: 4px;
+		border-radius: var(--radius-sm);
 		background: var(--color-surface-elevated);
 		color: var(--color-text-muted);
 		border: 1px solid var(--color-border);
 	}
 
 	.status-sent {
-		color: var(--color-success, #8ce0a8);
+		color: var(--color-success);
 	}
 
 	.status-failed {
-		color: var(--color-danger, #ff8a8a);
+		color: var(--color-danger);
+	}
+
+	@media (max-width: 560px) {
+		.timeline li {
+			grid-template-columns: 1fr;
+			gap: 0.2rem;
+		}
 	}
 </style>
