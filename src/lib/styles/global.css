@@ -9,29 +9,31 @@
 }
 
 :root {
+	color-scheme: light;
+
 	/* ===== Monochrome Hue — single source of truth for the palette ===== */
 	--hue: 263;
-	
+
 	/* Brand colors — vivid accent derived from --hue */
 	--color-accent: hsl(var(--hue), 80%, 55%);
 	--color-accent-hover: hsl(var(--hue), 82%, 47%);
 	--color-accent-light: hsl(var(--hue), 65%, 72%);
 	--color-accent-soft: hsla(var(--hue), 80%, 55%, 0.12);
-	
+
 	/* Discord brand colors (fixed — not affected by theme hue) */
-	--discord-blurple: #5865F2;
-	--discord-blurple-dark: #4752C4;
-	--discord-green: #57F287;
-	--discord-green-dark: #3BA55D;
-	--discord-yellow: #FEE75C;
-	--discord-red: #ED4245;
-	
+	--discord-blurple: #5865f2;
+	--discord-blurple-dark: #4752c4;
+	--discord-green: #57f287;
+	--discord-green-dark: #3ba55d;
+	--discord-yellow: #fee75c;
+	--discord-red: #ed4245;
+
 	/* Primary — aliases to accent */
 	--color-primary: var(--color-accent);
 	--color-primary-hover: var(--color-accent-hover);
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
-	
+
 	/* Buttons — darker shade to guarantee white-text contrast across ALL hues.
 	   ⚠️  ALWAYS use these for button/badge backgrounds with text on top.
 	   NEVER use --color-primary/--color-accent as a background with text —
@@ -39,24 +41,24 @@
 	--color-primary-button: hsl(var(--hue), 85%, 42%);
 	--color-primary-button-hover: hsl(var(--hue), 87%, 36%);
 	--color-primary-button-text: white;
-	
+
 	/* Semantic status colors (fixed hues — must stay consistent for UX) */
-	--color-success: #22C55E;
-	--color-success-hover: #16A34A;
+	--color-success: #22c55e;
+	--color-success-hover: #16a34a;
 	--color-success-soft: rgba(34, 197, 94, 0.15);
-	
-	--color-warning: #F59E0B;
-	--color-warning-hover: #D97706;
+
+	--color-warning: #f59e0b;
+	--color-warning-hover: #d97706;
 	--color-warning-soft: rgba(245, 158, 11, 0.15);
-	
-	--color-danger: #EF4444;
-	--color-danger-hover: #DC2626;
+
+	--color-danger: #ef4444;
+	--color-danger-hover: #dc2626;
 	--color-danger-soft: rgba(239, 68, 68, 0.15);
-	
-	--color-info: #3B82F6;
-	--color-info-hover: #2563EB;
+
+	--color-info: #3b82f6;
+	--color-info-hover: #2563eb;
 	--color-info-soft: rgba(59, 130, 246, 0.15);
-	
+
 	/* Backgrounds — subtle tint of the hue */
 	--color-background: hsl(var(--hue), 30%, 97%);
 	--color-background-alt: hsl(var(--hue), 28%, 95%);
@@ -64,19 +66,19 @@
 	--color-surface-elevated: hsl(var(--hue), 25%, 96%);
 	--color-surface-hover: hsl(var(--hue), 22%, 93%);
 	--color-surface-active: hsl(var(--hue), 22%, 89%);
-	
+
 	/* Text — dark, tinted with the hue */
 	--color-text: hsl(var(--hue), 25%, 14%);
 	--color-text-secondary: hsl(var(--hue), 22%, 33%);
 	--color-text-muted: hsl(var(--hue), 15%, 50%);
 	--color-text-light: hsl(var(--hue), 12%, 66%);
 	--color-text-inverse: hsl(var(--hue), 25%, 95%);
-	
+
 	/* Borders — subtle hue tint */
 	--color-border: hsl(var(--hue), 20%, 87%);
 	--color-border-light: hsl(var(--hue), 22%, 92%);
 	--color-border-strong: hsl(var(--hue), 15%, 66%);
-	
+
 	/* Code/Mono backgrounds */
 	--color-code-bg: hsl(var(--hue), 25%, 96%);
 
@@ -102,28 +104,28 @@
 	--color-overlay-scrim-mid: rgba(0, 0, 0, 0.75);
 	--color-overlay-scrim-strong: rgba(0, 0, 0, 0.7);
 	--color-overlay-scrim-stronger: rgba(0, 0, 0, 0.8);
-	
+
 	/* Shadows — tinted with hue */
 	--shadow-sm: 0 1px 2px hsla(var(--hue), 20%, 10%, 0.06);
 	--shadow-md: 0 4px 6px hsla(var(--hue), 20%, 10%, 0.09);
 	--shadow-lg: 0 10px 15px hsla(var(--hue), 20%, 10%, 0.11);
 	--shadow-xl: 0 20px 25px hsla(var(--hue), 20%, 10%, 0.13);
-	
+
 	/* Transitions */
 	--transition-fast: 0.15s ease;
 	--transition-normal: 0.2s ease;
 	--transition-slow: 0.3s ease;
-	
+
 	/* Border radius */
 	--radius-sm: 4px;
 	--radius-md: 8px;
 	--radius-lg: 12px;
 	--radius-xl: 16px;
 	--radius-full: 9999px;
-	
+
 	/* Focus ring */
 	--focus-ring: 0 0 0 3px var(--color-primary-soft);
-	
+
 	/* Backwards-compatible aliases for old variable names */
 	--bg-primary: var(--color-background);
 	--bg-secondary: var(--color-surface);
@@ -137,38 +139,40 @@
 }
 
 /* Dark theme — deep monochrome palette derived from --hue */
-[data-theme="dark"] {
+[data-theme='dark'] {
+	color-scheme: dark;
+
 	--color-accent: hsl(var(--hue), 78%, 75%);
 	--color-accent-hover: hsl(var(--hue), 72%, 82%);
 	--color-accent-light: hsl(var(--hue), 65%, 86%);
 	--color-accent-soft: hsla(var(--hue), 78%, 75%, 0.2);
-	
+
 	--color-primary: var(--color-accent);
 	--color-primary-hover: var(--color-accent-hover);
 	--color-primary-light: var(--color-accent-light);
 	--color-primary-soft: var(--color-accent-soft);
-	
+
 	/* Button — darker shade for white-text contrast */
 	--color-primary-button: hsl(var(--hue), 80%, 48%);
 	--color-primary-button-hover: hsl(var(--hue), 82%, 40%);
 	--color-primary-button-text: white;
-	
-	--color-success: #4ADE80;
-	--color-success-hover: #22C55E;
+
+	--color-success: #4ade80;
+	--color-success-hover: #22c55e;
 	--color-success-soft: rgba(74, 222, 128, 0.2);
-	
-	--color-warning: #FBBF24;
-	--color-warning-hover: #F59E0B;
+
+	--color-warning: #fbbf24;
+	--color-warning-hover: #f59e0b;
 	--color-warning-soft: rgba(251, 191, 36, 0.2);
-	
-	--color-danger: #F87171;
-	--color-danger-hover: #EF4444;
+
+	--color-danger: #f87171;
+	--color-danger-hover: #ef4444;
 	--color-danger-soft: rgba(248, 113, 113, 0.2);
-	
-	--color-info: #60A5FA;
-	--color-info-hover: #3B82F6;
+
+	--color-info: #60a5fa;
+	--color-info-hover: #3b82f6;
 	--color-info-soft: rgba(96, 165, 250, 0.2);
-	
+
 	/* Backgrounds — deep tinted darks */
 	--color-background: hsl(var(--hue), 35%, 7%);
 	--color-background-alt: hsl(var(--hue), 38%, 13%);
@@ -176,28 +180,28 @@
 	--color-surface-elevated: hsl(var(--hue), 32%, 20%);
 	--color-surface-hover: hsl(var(--hue), 28%, 26%);
 	--color-surface-active: hsl(var(--hue), 25%, 32%);
-	
+
 	/* Text — light, tinted with the hue */
 	--color-text: hsl(var(--hue), 25%, 95%);
 	--color-text-secondary: hsl(var(--hue), 18%, 83%);
 	--color-text-muted: hsl(var(--hue), 12%, 66%);
 	--color-text-light: hsl(var(--hue), 12%, 50%);
 	--color-text-inverse: hsl(var(--hue), 25%, 14%);
-	
+
 	/* Borders */
 	--color-border: hsl(var(--hue), 25%, 26%);
 	--color-border-light: hsl(var(--hue), 28%, 20%);
 	--color-border-strong: hsl(var(--hue), 22%, 32%);
-	
+
 	/* Code/Mono backgrounds */
 	--color-code-bg: hsl(var(--hue), 30%, 20%);
-	
+
 	/* Shadows — deeper in dark mode */
 	--shadow-sm: 0 1px 2px hsla(0, 0%, 0%, 0.3);
 	--shadow-md: 0 4px 6px hsla(0, 0%, 0%, 0.4);
 	--shadow-lg: 0 10px 15px hsla(0, 0%, 0%, 0.5);
 	--shadow-xl: 0 20px 25px hsla(0, 0%, 0%, 0.6);
-	
+
 	/* Backwards-compatible aliases for old variable names */
 	--bg-primary: var(--color-background);
 	--bg-secondary: var(--color-surface);
@@ -211,12 +215,15 @@
 }
 
 /* Global resets and defaults */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
 	box-sizing: border-box;
 }
 
 html {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+	font-family:
+		-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
@@ -226,14 +233,23 @@ body {
 	padding: 0;
 	background-color: var(--color-background);
 	color: var(--color-text);
-	transition: background-color var(--transition-normal), color var(--transition-normal);
+	transition:
+		background-color var(--transition-normal),
+		color var(--transition-normal);
 	-webkit-user-select: none;
 	user-select: none;
 }
 
 /* Re-enable text selection for interactive & content elements */
-input, textarea, select, code, pre, kbd, samp,
-[contenteditable="true"], .selectable {
+input,
+textarea,
+select,
+code,
+pre,
+kbd,
+samp,
+[contenteditable='true'],
+.selectable {
 	-webkit-user-select: text;
 	user-select: text;
 }
@@ -285,13 +301,13 @@ body select:not([multiple]):not([size])::-ms-expand {
 }
 
 /* Link defaults — exclude buttons so button-links never flash the link color */
-a:not(.btn):not([class*="-btn"]):not([class*="btn-"]) {
+a:not(.btn):not([class*='-btn']):not([class*='btn-']) {
 	color: var(--color-primary);
 	text-decoration: none;
 	transition: color var(--transition-fast);
 }
 
-a:not(.btn):not([class*="-btn"]):not([class*="btn-"]):hover {
+a:not(.btn):not([class*='-btn']):not([class*='btn-']):hover {
 	color: var(--color-primary-hover);
 }
 
@@ -337,10 +353,11 @@ pre code {
 	text-decoration: none;
 	font-family: inherit;
 	white-space: nowrap;
-	transition: background-color var(--transition-fast),
-	            border-color var(--transition-fast),
-	            color var(--transition-fast),
-	            opacity var(--transition-fast);
+	transition:
+		background-color var(--transition-fast),
+		border-color var(--transition-fast),
+		color var(--transition-fast),
+		opacity var(--transition-fast);
 }
 
 .btn:active {
@@ -407,7 +424,7 @@ pre code {
 /* Warning — yellow/amber for caution actions */
 .btn-warning {
 	background: var(--color-warning);
-	color: #1B1730;
+	color: #1b1730;
 	font-weight: 600;
 }
 
@@ -429,7 +446,7 @@ pre code {
 /* Success */
 .btn-success {
 	background: var(--color-success);
-	color: #1B1730;
+	color: #1b1730;
 	font-weight: 600;
 }
 
@@ -469,4 +486,30 @@ pre code {
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
 	}
+}
+
+/* ===== Native select popups =====
+ *
+ * The rules that style a closed <select> do not reach the list the browser
+ * opens when it is clicked. That popup is painted by the UA against its own
+ * canvas, so on a dark page the options inherit our light --color-text while
+ * the background stays white — pale grey on white, effectively unreadable.
+ *
+ * Two things are needed and neither is optional:
+ *
+ * 1. `color-scheme` declared HERE rather than only as the inline style the
+ *    anti-FOUC script in app.html writes. A popup is a UA-painted surface and
+ *    it follows color-scheme; leaving that to a script means anything the
+ *    script misses renders light.
+ * 2. Explicit colours on `option`, because color-scheme alone does not cover
+ *    every browser and platform.
+ *
+ * This lives in the global sheet on purpose. Eighteen components style a
+ * select and not one of them styled its options, which is exactly how the bug
+ * stayed invisible — every closed control looked right.
+ */
+option,
+optgroup {
+	background-color: var(--color-surface-elevated);
+	color: var(--color-text);
 }

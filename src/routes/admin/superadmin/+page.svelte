@@ -1611,7 +1611,7 @@
 		padding: 0.4rem 0.5rem;
 		border: 1px solid var(--color-border);
 		border-radius: 6px;
-		background: var(--color-bg);
+		background: var(--color-surface-elevated);
 		color: var(--color-text);
 		font-size: 0.95rem;
 	}
