@@ -248,16 +248,29 @@ export function buildEventMessage(
 		if (event.image) {
 			lines.push(`Photograph: <${event.image.url}> — ${event.image.credit}`);
 		}
+		for (const link of event.links ?? []) {
+			lines.push(`${link.label}: <${link.url}>`);
+		}
 
 		return { content: lines.join('\n') };
 	}
 
 	// A masked link is fine here: this branch is an embed.
-	const place = event.place ? `📍 [${event.place.name}](${mapUrl(event.place.query)})` : '';
+	const place = event.place ? `📍 ${mdLink(event.place.name, mapUrl(event.place.query))}` : '';
+
+	// Further reading, plus the photo's own file page when it has one — the
+	// licences want a link to the source, and an embed footer cannot carry one.
+	const references = [...(event.links ?? [])];
+	if (event.image?.source) {
+		references.push({ label: 'Photo source', url: event.image.source });
+	}
+	const reading = references.map((l) => mdLink(l.label, l.url)).join(' · ');
+
+	const body = [event.body, place, reading].filter(Boolean).join('\n\n');
 
 	const embed: Record<string, unknown> = {
 		title: event.closing ? event.title : `${formatClock(event.time)} — ${event.title}`,
-		description: place ? `${event.body}\n\n${place}` : event.body,
+		description: body,
 		color: options.color ?? timeline.color,
 	};
 
@@ -287,6 +300,24 @@ export function buildEventMessage(
  * `AnniversaryEvent.place`); both are valid input to the Maps URL API, which
  * is the documented, stable form rather than a scraped one.
  */
+/**
+ * A Discord masked link, with the URL made safe to put inside one.
+ *
+ * Discord ends a `[label](url)` at the first `)` it meets, so a URL that
+ * contains its own parentheses is cut in half — `World_Trade_Center_(1973–2001)`
+ * would render as a broken link followed by the stray text `1973–2001)`.
+ * Percent-encoding the brackets is transparent to the server on the other end
+ * and is the only form that survives the parser.
+ *
+ * Square brackets in the label would close it early for the same reason.
+ */
+export function mdLink(label: string, url: string): string {
+	const safeLabel = label.replace(/[[\]]/g, '');
+	const safeUrl = url.replace(/\(/g, '%28').replace(/\)/g, '%29');
+
+	return `[${safeLabel}](${safeUrl})`;
+}
+
 export function mapUrl(query: string): string {
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }

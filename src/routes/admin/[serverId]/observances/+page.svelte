@@ -252,6 +252,15 @@
 									rel="noopener noreferrer">📍 {event.place.name}</a
 								>
 							{/if}
+							{#if event.links?.length}
+								<span class="links">
+									{#each event.links as link (link.url)}
+										<a href={link.url} target="_blank" rel="noopener noreferrer"
+											>{link.label}</a
+										>
+									{/each}
+								</span>
+							{/if}
 							{#if event.image}
 								<img
 									class="shot"
@@ -459,6 +468,24 @@
 		border-radius: var(--radius-sm);
 		margin-bottom: 0.25rem;
 		background: var(--color-surface-elevated);
+	}
+
+	.links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 0.75rem;
+		margin-bottom: 0.4rem;
+	}
+
+	.links a {
+		font-size: 0.8rem;
+		color: var(--color-text-muted);
+		text-decoration: none;
+	}
+
+	.links a:hover {
+		color: var(--color-primary);
+		text-decoration: underline;
 	}
 
 	.credit {
