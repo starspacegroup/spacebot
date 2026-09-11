@@ -15,6 +15,7 @@ import {
 	runRebuildStats,
 } from '$lib/server/cron-jobs.js';
 import { processScheduledMessages } from '$lib/db/scheduled-messages.js';
+import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
@@ -80,6 +81,14 @@ function getCronJobDefinitions() {
 			name: 'send_scheduled_messages',
 			displayName: 'Send Scheduled Messages',
 			description: 'Processes and sends messages that were scheduled for later delivery.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'post_anniversary_timelines',
+			displayName: 'Post Anniversary Timelines',
+			description:
+				'Posts anniversary timeline events at the minute they happened, for guilds that enabled one.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -374,8 +383,22 @@ export async function POST({ request, cookies, platform }) {
 	// Proactively clean up any stale running jobs
 	await markStaleRunningJobs(db);
 
-	// Check if this job is already running (skip for send_scheduled_messages since it runs every minute)
-	if (jobName !== 'send_scheduled_messages') {
+	// Check if this job is already running.
+	//
+	// Skipped for every job on a one-minute cadence, not just the one this
+	// exemption was originally written for. The guard exists to stop a long
+	// hourly job from being started twice; applied to a minute job it does the
+	// opposite — one run that dies without writing `completed_at` leaves a
+	// 'running' row that blocks every later tick until the 30-minute stale
+	// sweep clears it. Reading the cadence from the job catalog means a new
+	// minute job cannot miss the exemption by forgetting to add its name here.
+	const minuteCadenceJobs = new Set(
+		getCronJobDefinitions()
+			.filter((job) => job.cronPattern === '* * * * *')
+			.map((job) => job.name)
+	);
+
+	if (!minuteCadenceJobs.has(jobName)) {
 		try {
 			const alreadyRunning = await db
 				.prepare(
@@ -477,6 +500,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await processScheduledMessages(db, botToken);
+		} else if (jobName === 'post_anniversary_timelines') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await processAnniversaryTimelines(db, botToken);
 		} else if (jobName === 'reap_managed_channels') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');

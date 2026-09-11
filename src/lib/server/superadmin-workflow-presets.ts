@@ -174,6 +174,39 @@ export const OPERATION_TEMPLATES = [
 		},
 	},
 	{
+		name: 'Minute Anniversary Timeline',
+		slug: 'minute-anniversary-timeline',
+		description:
+			'Posts anniversary timeline events at the minutes they happened, for guilds that turned one on.',
+		category: 'operations',
+		execution_backend: 'cloudflare_workflows',
+		legacy_job_name: 'post_anniversary_timelines',
+		schedule_type: 'cron',
+		cron_expression: '* * * * *',
+		canvas_json: {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Minute Trigger',
+					position: { x: 0, y: 0 },
+					data: { schedule: '* * * * *', source: 'gateway-cron' },
+				},
+				{
+					id: 'post',
+					type: 'task',
+					title: 'Post Due Events',
+					position: { x: 0, y: 140 },
+					data: {
+						operation: 'postAnniversaryTimelines',
+						queue_key: 'ops.anniversary.post',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 'start', target: 'post', label: 'start' }],
+		},
+	},
+	{
 		name: 'Minute Member Room Reap',
 		slug: 'minute-member-room-reap',
 		description:
