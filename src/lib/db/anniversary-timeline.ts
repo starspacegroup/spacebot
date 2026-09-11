@@ -237,20 +237,58 @@ export function buildEventMessage(
 	const stamp = event.closing ? '' : `**${formatClock(event.time)}** · `;
 
 	if (!options.useEmbed) {
-		return { content: `${header}${stamp}**${event.title}**\n${event.body}` };
+		// Discord renders a masked [text](url) link inside an embed and NOT in
+		// ordinary message content, where it posts the brackets literally. So the
+		// plain-text path spells the URL out, wrapped in <> — which is what
+		// suppresses the auto-preview a guild turned embeds off to avoid.
+		const lines = [`${header}${stamp}**${event.title}**`, event.body];
+		if (event.place) {
+			lines.push(`📍 ${event.place.name} — <${mapUrl(event.place.query)}>`);
+		}
+		if (event.image) {
+			lines.push(`Photograph: <${event.image.url}> — ${event.image.credit}`);
+		}
+
+		return { content: lines.join('\n') };
 	}
+
+	// A masked link is fine here: this branch is an embed.
+	const place = event.place ? `📍 [${event.place.name}](${mapUrl(event.place.query)})` : '';
 
 	const embed: Record<string, unknown> = {
 		title: event.closing ? event.title : `${formatClock(event.time)} — ${event.title}`,
-		description: event.body,
+		description: place ? `${event.body}\n\n${place}` : event.body,
 		color: options.color ?? timeline.color,
 	};
+
+	if (event.image) {
+		embed.image = { url: event.image.url };
+	}
+
+	// Every post says which day it belongs to. These arrive hours apart and
+	// land between whatever else the channel was talking about, so a post that
+	// only says "9:59 AM — The South Tower falls" leaves a reader who scrolled
+	// in to work out what they are looking at. The footer also carries the
+	// photo credit, which the licence requires wherever the photo appears.
+	const footer = [timeline.title, event.image?.credit].filter(Boolean).join(' · ');
+	embed.footer = { text: footer };
 
 	if (event.opening && years) {
 		embed.author = { name: `${timeline.title} · ${years} years ago today` };
 	}
 
 	return { embeds: [embed] };
+}
+
+/**
+ * A Google Maps link for a place.
+ *
+ * `query` is already either a `lat,lon` pair or a place name (see
+ * `AnniversaryEvent.place`); both are valid input to the Maps URL API, which
+ * is the documented, stable form rather than a scraped one.
+ */
+export function mapUrl(query: string): string {
+	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 /** "08:46" → "8:46 AM". The clock people remember, not the one we store. */

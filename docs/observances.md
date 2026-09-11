@@ -39,6 +39,51 @@ a bound, an outage from 9 AM to noon would empty three hours of a memorial into
 the channel at once, in the wrong order relative to the day. Past the window an
 event is recorded as `skipped` instead. A gap is quiet. A dump is not.
 
+## What a post contains
+
+Each post is one event, and it is meant to be legible to somebody who scrolled
+into the channel without context:
+
+- **The time and the title** — `8:46 AM — The North Tower is struck`.
+- **The body**, written to stand alone. These arrive hours apart.
+- **A map link** to where it happened, where there is a single place. The link
+  is the documented Google Maps URL API, built from either a coordinate or a
+  place name — a named search that lands on the right building beats a
+  coordinate invented to three decimals.
+- **A photograph**, where a properly-licensed one of that moment exists.
+- **A footer naming the day**, on every post rather than only the first, plus
+  the photo credit.
+
+Events with no single place get no pin — an aircraft in the air, an order that
+applied to the whole country. Events with no properly-licensed photograph get no
+image. **An empty frame is better than a stock photograph standing in for a
+death**, and a pin invented for a location nobody can verify is worse than none.
+
+### Where the photographs come from
+
+Every image is a public-domain or Creative-Commons file on Wikimedia Commons —
+FEMA, the Navy, the Air Force, the National Park Service, Customs and Border
+Protection, White House photographers, and a few CC-licensed contributions.
+Attribution rides in the embed footer because those licences require it.
+
+**Check what a file actually shows, not what its filename suggests.** Read the
+Commons description and the date before you use one. Four of the first set
+picked here were wrong: a dust cloud captioned WTC2 sat under the North Tower's
+collapse, and two FEMA photographs taken on 14 and 16 September — one of them
+the President meeting rescue teams — sat under events from the morning of the
+11th. A caption is evidence. A filename is not.
+
+**The famous press photographs of that morning are not used.** Almost all of
+them are still under copyright to AP, Reuters and Getty, and a memorial is a bad
+place to be casual about somebody else's work. If you add a timeline, hold its
+images to the same line.
+
+In plain-text mode there is no embed frame, so the map and the photograph are
+spelled out as URLs wrapped in `<>`. Discord renders a masked `[text](url)` link
+**inside an embed only** — in ordinary message content it posts the brackets
+literally — and the angle brackets are what suppress the auto-preview a guild
+turned embeds off to avoid.
+
 ## How it runs
 
 Exactly like the other minute-cadence jobs:

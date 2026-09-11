@@ -10,6 +10,7 @@ import {
 import {
 	buildEventMessage,
 	formatClock,
+	mapUrl,
 	normalizeAnniversarySettings,
 	processAnniversaryTimelines,
 } from '../lib/db/anniversary-timeline.js';
@@ -37,6 +38,35 @@ describe('timeline data', () => {
 			expect(timeline.events.filter((e) => e.opening)).toHaveLength(1);
 			expect(timeline.events.filter((e) => e.closing)).toHaveLength(1);
 		}
+	});
+
+	it('only links images that are https and carry a credit', () => {
+		for (const timeline of ANNIVERSARY_TIMELINES) {
+			for (const event of timeline.events) {
+				if (!event.image) continue;
+				expect(event.image.url.startsWith('https://')).toBe(true);
+				// The licences these files ship under require attribution, so a
+				// credit is not decoration and an empty one is a bug.
+				expect(event.image.credit.trim().length).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it('gives every place a name and a non-empty map query', () => {
+		for (const timeline of ANNIVERSARY_TIMELINES) {
+			for (const event of timeline.events) {
+				if (!event.place) continue;
+				expect(event.place.name.trim().length).toBeGreaterThan(0);
+				expect(event.place.query.trim().length).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	it('pins the impacts to the places they happened', () => {
+		const place = (key: string) => SEPT11.events.find((e) => e.key === key)?.place?.query;
+		expect(place('north-tower-struck')).toBe('40.7127,-74.0134');
+		expect(place('pentagon-struck')).toBe('38.8719,-77.0563');
+		expect(place('ua93-crashes')).toBe('40.0561,-78.9053');
 	});
 
 	it('puts the impacts and collapses at the minutes they happened', () => {
@@ -183,6 +213,57 @@ describe('buildEventMessage', () => {
 		const message = buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: false });
 		expect(message.content).toContain('8:46 AM');
 		expect(message.embeds).toBeUndefined();
+	});
+
+	it('puts a map link under the body when the event has a place', () => {
+		const message = buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: true });
+		const description = String(message.embeds?.[0].description);
+		expect(description).toContain('North Tower, World Trade Center');
+		expect(description).toContain('https://www.google.com/maps/search/?api=1&query=');
+		// The body still leads; the pin is added, not substituted.
+		expect(description.startsWith(impact.body)).toBe(true);
+	});
+
+	it('shows the photograph and credits it in the footer', () => {
+		const message = buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: true });
+		const embed = message.embeds?.[0];
+		expect((embed?.image as { url: string }).url).toBe(impact.image?.url);
+		expect((embed?.footer as { text: string }).text).toContain(impact.image!.credit);
+	});
+
+	it('names the day in the footer of every post, not just the first', () => {
+		for (const event of SEPT11.events) {
+			const message = buildEventMessage(SEPT11, event, { year: 2026, useEmbed: true });
+			const footer = (message.embeds?.[0].footer as { text: string }).text;
+			expect(footer).toContain('September 11, 2001');
+		}
+	});
+
+	it('omits image and map cleanly when the event has neither', () => {
+		const bare = SEPT11.events.find((e) => !e.image && !e.place)!;
+		const embed = buildEventMessage(SEPT11, bare, { year: 2026, useEmbed: true }).embeds?.[0];
+		expect(embed?.image).toBeUndefined();
+		expect(String(embed?.description)).toBe(bare.body);
+	});
+
+	it('keeps the map and the photo reachable in plain-text mode', () => {
+		const message = buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: false });
+		expect(message.content).toContain('https://www.google.com/maps/search/?api=1&query=');
+		expect(message.content).toContain(impact.image!.url);
+		expect(message.content).toContain(impact.image!.credit);
+	});
+
+	it('spells URLs out in plain text, because Discord only masks links in embeds', () => {
+		const content = String(
+			buildEventMessage(SEPT11, impact, { year: 2026, useEmbed: false }).content
+		);
+		// A masked link posted as ordinary content shows the brackets literally.
+		expect(content).not.toMatch(/\]\(https?:/);
+		// Angle brackets are what suppress the auto-preview embeds were turned off
+		// to avoid.
+		expect(content).toContain(`<${impact.image!.url}>`);
+		expect(content).toContain(`<${mapUrl(impact.place!.query)}>`);
+		expect(content).toContain(impact.place!.name);
 	});
 
 	it('honours a guild embed colour over the timeline default', () => {
@@ -451,5 +532,17 @@ describe('processAnniversaryTimelines', () => {
 		expect(result.posted).toBe(0);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		vi.unstubAllGlobals();
+	});
+});
+
+describe('mapUrl', () => {
+	it('builds a Maps URL API link from a coordinate', () => {
+		expect(mapUrl('40.7127,-74.0134')).toBe(
+			'https://www.google.com/maps/search/?api=1&query=40.7127%2C-74.0134'
+		);
+	});
+
+	it('escapes a place name rather than pasting it raw', () => {
+		expect(mapUrl('Emma E. Booker Elementary School, Sarasota, FL')).not.toContain(' ');
 	});
 });

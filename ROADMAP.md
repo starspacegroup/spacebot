@@ -37,6 +37,13 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       the bot at Discord's 50-child cap), a public/private default and a voice mode
       (open, push-to-talk, or listen-only with `/room unmute` to hand out the mic). The
       member picks at create time where the preset allows it (`docs/managed-channels.md`)
+- [x] Observances — a server owner can turn on a historical timeline and get its events
+      posted one at a time as their minutes come round on the anniversary (8:46 AM at
+      8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone
+      turns it on, and there is no enable-for-all path. Runs on the existing minute
+      cadence; a unique claim per (timeline, year, event) makes a double post impossible,
+      and a grace window turns a missed stretch into a gap rather than a burst
+      (`docs/observances.md`)
 
 ### Database & Persistence
 

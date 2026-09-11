@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { formatClock } from '$lib/db/anniversary-timeline.js';
+	import { mapUrl, formatClock } from '$lib/db/anniversary-timeline.js';
 
 	const { data, form } = $props();
 
@@ -190,6 +190,23 @@
 						<div class="entry">
 							<strong>{event.title}</strong>
 							<p>{event.body}</p>
+							{#if event.place}
+								<a
+									class="place"
+									href={mapUrl(event.place.query)}
+									target="_blank"
+									rel="noopener noreferrer">📍 {event.place.name}</a
+								>
+							{/if}
+							{#if event.image}
+								<img
+									class="shot"
+									src={event.image.url}
+									alt={event.title}
+									loading="lazy"
+								/>
+								<span class="credit">{event.image.credit}</span>
+							{/if}
 							{#if status}
 								<span class="status status-{statuses.get(event.key)?.status}"
 									>{status}</span
@@ -362,6 +379,33 @@
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
 		line-height: 1.5;
+	}
+
+	.place {
+		display: inline-block;
+		margin-bottom: 0.4rem;
+		font-size: 0.85rem;
+		color: #c8a882;
+		text-decoration: none;
+	}
+
+	.place:hover {
+		text-decoration: underline;
+	}
+
+	.shot {
+		display: block;
+		width: 100%;
+		max-width: 360px;
+		border-radius: 6px;
+		margin-bottom: 0.25rem;
+	}
+
+	.credit {
+		display: block;
+		font-size: 0.72rem;
+		opacity: 0.6;
+		margin-bottom: 0.4rem;
 	}
 
 	.status {
