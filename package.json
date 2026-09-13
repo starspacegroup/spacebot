@@ -75,7 +75,7 @@
 		"@vitest/coverage-v8": "^4.1.11",
 		"eslint": "^10",
 		"eslint-config-prettier": "^10.1.8",
-		"eslint-plugin-svelte": "^3.20.0",
+		"eslint-plugin-svelte": "^3.23.0",
 		"globals": "^17",
 		"husky": "^9.1.7",
 		"lint-staged": "^17",
