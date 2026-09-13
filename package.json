@@ -97,7 +97,7 @@
 	},
 	"dependencies": {
 		"@opentui/core": "0.5.10",
-		"@opentui/react": "0.4.2",
+		"@opentui/react": "0.5.11",
 		"@resvg/resvg-wasm": "^2.6.2",
 		"discord-api-types": "^0.38.49",
 		"discord-interactions": "^4.4.0",
