@@ -28,6 +28,8 @@ Errors return JSON with a top-level `error` string. Rate-limited requests return
   `hourly`, `daily` or `weekly`. Anything else is a 400 rather than a silent
   fallback. Retention keeps 90 days of snapshots, so longer periods return what
   remains.
+- `GET /api/v1/members/:userId?days=30` requires `members:read`. One member's
+  own counts — see below.
 - `GET /api/v1/settings` requires `settings:read`.
 - `GET /api/v1/channels?type=text` requires `channels:read`. The public channel
   directory — see below.
@@ -199,6 +201,74 @@ Categories group the response and are never listed as channels of their own.
 	"channels": ["… the same channels, flat …"]
 }
 ```
+
+## `GET /api/v1/members/:userId`
+
+What one member did here, and whether they are still in the server. This is the
+endpoint behind "sign in and see your own stats" on a community site.
+
+Requires `members:read`, which is **not** implied by `stats:read`. A key that
+may graph the member count has no business reading what one named account did,
+so an owner grants this one deliberately and a key issued before this endpoint
+existed does not carry it.
+
+| Parameter |                                                                  |
+| --------- | ---------------------------------------------------------------- |
+| `days`    | Window for `activity` and `standing`. Default 30, clamped to 90. |
+
+Counts only. No message text, no channel ids, no names, and never a word about
+who else is ahead of them.
+
+```json
+{
+	"guild_id": "…",
+	"user_id": "…",
+	"member": true,
+	"joined_at": "2026-01-04 12:00:00",
+	"bot": false,
+	"days": 30,
+	"retention_days": 90,
+	"unrecorded_channels": 1,
+	"activity": {
+		"messages": 12,
+		"channels": 3,
+		"last_message_at": "2026-09-20 10:00:00",
+		"voice_seconds": 3600,
+		"voice_sessions": 4,
+		"voice_channels": 2,
+		"last_voice_at": "2026-09-19 22:00:00",
+		"commands": 7
+	},
+	"recorded": { "… the same shape, over the full 90 days kept …": 0 },
+	"standing": {
+		"message_rank": 4,
+		"message_population": 37,
+		"voice_rank": 2,
+		"voice_population": 11
+	}
+}
+```
+
+Four properties are worth knowing before you build on it:
+
+- **A user who is not in the server answers `member: false` with empty counts,
+  at HTTP 200.** Not a 404 — a different status for a member and a stranger
+  would let a caller probe ids for existence. Somebody who left is a stranger
+  again, and their history stops being readable the moment the gateway notices.
+- **`rank` is null when they did none of that thing**, with `population` still
+  filled in. There is no rank among people you are not one of, and "last of 37"
+  would be a claim about a contest nobody entered.
+- **A channel in `excluded_channels` is never counted**, because those events
+  were never recorded. `unrecorded_channels` says how many there are, so the
+  caller can say so rather than present a total that reads too low.
+- **`recorded` is not a lifetime.** Raw events are pruned at 90 days, so it is
+  the full retained history and nothing older. `joined_at` is the one figure
+  here that does reach back further.
+
+The endpoint cannot verify that the person asking owns the account being asked
+about — a key with this scope may ask about any member. That is the trust being
+granted. The intended caller took the Discord id from its own OAuth session and
+never from a query parameter.
 
 ## `GET /api/v1/voice`
 
