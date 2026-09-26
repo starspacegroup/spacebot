@@ -25,11 +25,11 @@ const schema = readFileSync(join(__dirname, '../../migrations/0014_member_role_c
 
 let db: SqliteD1;
 
-function role(id: string, name: string, position: number, managed = 0) {
+function role(id: string, name: string, position: number, managed = 0, color = 0) {
 	db.prepare(
-		'INSERT INTO guild_roles_cache (guild_id, role_id, name, position, managed) VALUES (?, ?, ?, ?, ?)'
+		'INSERT INTO guild_roles_cache (guild_id, role_id, name, position, managed, color) VALUES (?, ?, ?, ?, ?, ?)'
 	)
-		.bind(GUILD, id, name, position, managed)
+		.bind(GUILD, id, name, position, managed, color)
 		.run();
 }
 
@@ -55,7 +55,7 @@ const counts = async () => {
 beforeEach(() => {
 	db = createSqliteD1(schema);
 	role(GUILD, '@everyone', 0);
-	role(PASSENGER, 'Passenger', 5);
+	role(PASSENGER, 'Passenger', 5, 0, 0x3498db);
 	role(BADGE, 'Wearing Communicator Badge', 9);
 	role(BOTS, 'SpaceBot', 20, 1);
 });
@@ -111,6 +111,13 @@ describe('getRoleMemberCounts', () => {
 			'Wearing Communicator Badge',
 			'Passenger',
 		]);
+	});
+
+	it('carries each role’s colour, and 0 for a role with none', async () => {
+		refreshed('2026-09-26 00:00:00');
+		const result = await getRoleMemberCounts(db as any, GUILD);
+		const colour = Object.fromEntries(result!.roles.map((r) => [r.name, r.color]));
+		expect(colour).toEqual({ Passenger: 0x3498db, 'Wearing Communicator Badge': 0 });
 	});
 
 	it('reports when the member cache was filled', async () => {

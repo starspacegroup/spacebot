@@ -703,7 +703,7 @@ export async function refreshGuildCache(db, botToken, guildId) {
  *
  * @param {D1Database} db
  * @param {string} guildId
- * @returns {Promise<{ refreshedAt: string, roles: Array<{ role_id: string, name: string, member_count: number }> } | null>}
+ * @returns {Promise<{ refreshedAt: string, roles: Array<{ role_id: string, name: string, color: number, member_count: number }> } | null>}
  */
 export async function getRoleMemberCounts(db, guildId) {
 	if (!db) return null;
@@ -718,7 +718,7 @@ export async function getRoleMemberCounts(db, guildId) {
 
 		const result = await db
 			.prepare(
-				`SELECT r.role_id, r.name,
+				`SELECT r.role_id, r.name, r.color,
             (SELECT COUNT(*) FROM guild_members_cache m
               WHERE m.guild_id = r.guild_id
                 AND m.is_bot = 0
@@ -738,6 +738,8 @@ export async function getRoleMemberCounts(db, guildId) {
 			roles: (result.results || []).map((row) => ({
 				role_id: String(row.role_id),
 				name: String(row.name),
+				// Discord's integer RGB; 0 means the role has no colour of its own.
+				color: Number(row.color) || 0,
 				member_count: Number(row.member_count) || 0,
 			})),
 		};
