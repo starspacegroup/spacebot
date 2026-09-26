@@ -1,11 +1,11 @@
 /**
  * Guild members and roles cache functions
- * 
+ *
  * Caches Discord guild members and roles in D1 for fast lookups
  * without hitting the Discord API. Updated periodically by cron job.
  */
 
-import { log } from "../log.js";
+import { log } from '../log.js';
 
 /**
  * @typedef {Object} CachedRole
@@ -61,32 +61,29 @@ import { log } from "../log.js";
  * @returns {Promise<{success: boolean, count?: number, error?: string}>}
  */
 export async function refreshRolesCache(db, botToken, guildId) {
-  if (!db || !botToken || !guildId) {
-    return { success: false, error: "Missing required parameters" };
-  }
+	if (!db || !botToken || !guildId) {
+		return { success: false, error: 'Missing required parameters' };
+	}
 
-  try {
-    // Fetch roles from Discord
-    const response = await fetch(
-      `https://discord.com/api/v10/guilds/${guildId}/roles`,
-      {
-        headers: { Authorization: `Bot ${botToken}` },
-      }
-    );
+	try {
+		// Fetch roles from Discord
+		const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
+			headers: { Authorization: `Bot ${botToken}` },
+		});
 
-    if (!response.ok) {
-      const error = `Discord API error: ${response.status}`;
-      log.error(`[RolesCache] ${error}`);
-      return { success: false, error };
-    }
+		if (!response.ok) {
+			const error = `Discord API error: ${response.status}`;
+			log.error(`[RolesCache] ${error}`);
+			return { success: false, error };
+		}
 
-    const roles = await response.json();
-    
-    // Clear existing roles for this guild and insert new ones
-    await db.prepare("DELETE FROM guild_roles_cache WHERE guild_id = ?").bind(guildId).run();
-    
-    // Insert all roles with comprehensive data
-    const stmt = db.prepare(`
+		const roles = await response.json();
+
+		// Clear existing roles for this guild and insert new ones
+		await db.prepare('DELETE FROM guild_roles_cache WHERE guild_id = ?').bind(guildId).run();
+
+		// Insert all roles with comprehensive data
+		const stmt = db.prepare(`
       INSERT INTO guild_roles_cache 
         (guild_id, role_id, name, color, position, permissions, hoist, managed, mentionable, 
          icon, unicode_emoji, bot_id, integration_id, premium_subscriber, 
@@ -94,37 +91,39 @@ export async function refreshRolesCache(db, botToken, guildId) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `);
 
-    for (const role of roles) {
-      // Extract role tags if present
-      const tags = role.tags || {};
-      
-      await stmt.bind(
-        guildId,
-        role.id,
-        role.name,
-        role.color || 0,
-        role.position || 0,
-        String(role.permissions || "0"),
-        role.hoist ? 1 : 0,
-        role.managed ? 1 : 0,
-        role.mentionable ? 1 : 0,
-        role.icon || null,
-        role.unicode_emoji || null,
-        tags.bot_id || null,
-        tags.integration_id || null,
-        tags.premium_subscriber !== undefined ? 1 : 0,
-        tags.subscription_listing_id || null,
-        tags.available_for_purchase !== undefined ? 1 : 0,
-        tags.guild_connections !== undefined ? 1 : 0
-      ).run();
-    }
+		for (const role of roles) {
+			// Extract role tags if present
+			const tags = role.tags || {};
 
-    log.debug(`[RolesCache] Cached ${roles.length} roles for guild ${guildId}`);
-    return { success: true, count: roles.length };
-  } catch (error) {
-    log.error(`[RolesCache] Error refreshing roles for ${guildId}:`, error);
-    return { success: false, error: error.message };
-  }
+			await stmt
+				.bind(
+					guildId,
+					role.id,
+					role.name,
+					role.color || 0,
+					role.position || 0,
+					String(role.permissions || '0'),
+					role.hoist ? 1 : 0,
+					role.managed ? 1 : 0,
+					role.mentionable ? 1 : 0,
+					role.icon || null,
+					role.unicode_emoji || null,
+					tags.bot_id || null,
+					tags.integration_id || null,
+					tags.premium_subscriber !== undefined ? 1 : 0,
+					tags.subscription_listing_id || null,
+					tags.available_for_purchase !== undefined ? 1 : 0,
+					tags.guild_connections !== undefined ? 1 : 0
+				)
+				.run();
+		}
+
+		log.debug(`[RolesCache] Cached ${roles.length} roles for guild ${guildId}`);
+		return { success: true, count: roles.length };
+	} catch (error) {
+		log.error(`[RolesCache] Error refreshing roles for ${guildId}:`, error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
@@ -137,65 +136,67 @@ export async function refreshRolesCache(db, botToken, guildId) {
  * @returns {Promise<{success: boolean, count?: number, botCount?: number, humanCount?: number, error?: string}>}
  */
 export async function refreshMembersCache(db, botToken, guildId, ownerId = null) {
-  if (!db || !botToken || !guildId) {
-    return { success: false, error: "Missing required parameters" };
-  }
+	if (!db || !botToken || !guildId) {
+		return { success: false, error: 'Missing required parameters' };
+	}
 
-  try {
-    const allMembers = [];
-    let lastMemberId = null;
-    const maxMembers = 50000; // Safety limit
-    
-    // Fetch all members with pagination
-    while (allMembers.length < maxMembers) {
-      const url = new URL(`https://discord.com/api/v10/guilds/${guildId}/members`);
-      url.searchParams.set("limit", "1000");
-      if (lastMemberId) {
-        url.searchParams.set("after", lastMemberId);
-      }
+	try {
+		const allMembers = [];
+		let lastMemberId = null;
+		const maxMembers = 50000; // Safety limit
 
-      const response = await fetch(url.toString(), {
-        headers: { Authorization: `Bot ${botToken}` },
-      });
+		// Fetch all members with pagination
+		while (allMembers.length < maxMembers) {
+			const url = new URL(`https://discord.com/api/v10/guilds/${guildId}/members`);
+			url.searchParams.set('limit', '1000');
+			if (lastMemberId) {
+				url.searchParams.set('after', lastMemberId);
+			}
 
-      if (!response.ok) {
-        if (response.status === 403) {
-          return { success: false, error: "Missing Server Members Intent or permission" };
-        }
-        return { success: false, error: `Discord API error: ${response.status}` };
-      }
+			const response = await fetch(url.toString(), {
+				headers: { Authorization: `Bot ${botToken}` },
+			});
 
-      const members = await response.json();
-      if (members.length === 0) break;
+			if (!response.ok) {
+				if (response.status === 403) {
+					return { success: false, error: 'Missing Server Members Intent or permission' };
+				}
+				return { success: false, error: `Discord API error: ${response.status}` };
+			}
 
-      allMembers.push(...members);
-      lastMemberId = members[members.length - 1].user.id;
+			const members = await response.json();
+			if (members.length === 0) break;
 
-      // If we got fewer than 1000, we've reached the end
-      if (members.length < 1000) break;
+			allMembers.push(...members);
+			lastMemberId = members[members.length - 1].user.id;
 
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+			// If we got fewer than 1000, we've reached the end
+			if (members.length < 1000) break;
 
-    // Clear existing members for this guild and insert new ones
-    await db.prepare("DELETE FROM guild_members_cache WHERE guild_id = ?").bind(guildId).run();
+			// Small delay to avoid rate limiting
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
 
-    // Count bots and humans
-    let botCount = 0;
-    let humanCount = 0;
+		// Clear existing members for this guild and insert new ones
+		await db.prepare('DELETE FROM guild_members_cache WHERE guild_id = ?').bind(guildId).run();
 
-    // Insert all members in batches to avoid memory issues
-    const batchSize = 100;
-    for (let i = 0; i < allMembers.length; i += batchSize) {
-      const batch = allMembers.slice(i, i + batchSize);
-      
-      for (const member of batch) {
-        const isBot = member.user.bot ? 1 : 0;
-        if (isBot) botCount++;
-        else humanCount++;
-        
-        await db.prepare(`
+		// Count bots and humans
+		let botCount = 0;
+		let humanCount = 0;
+
+		// Insert all members in batches to avoid memory issues
+		const batchSize = 100;
+		for (let i = 0; i < allMembers.length; i += batchSize) {
+			const batch = allMembers.slice(i, i + batchSize);
+
+			for (const member of batch) {
+				const isBot = member.user.bot ? 1 : 0;
+				if (isBot) botCount++;
+				else humanCount++;
+
+				await db
+					.prepare(
+						`
           INSERT INTO guild_members_cache 
             (guild_id, user_id, username, discriminator, global_name, nickname, 
              avatar, banner, accent_color, guild_avatar, guild_banner,
@@ -203,40 +204,45 @@ export async function refreshMembersCache(db, botToken, guildId, ownerId = null)
              joined_at, premium_since, pending, communication_disabled_until, 
              deaf, mute, roles, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        `).bind(
-          guildId,
-          member.user.id,
-          member.user.username,
-          member.user.discriminator || '0',
-          member.user.global_name || null,
-          member.nick || null,
-          member.user.avatar || null,
-          member.user.banner || null,
-          member.user.accent_color ?? null,
-          member.avatar || null,
-          member.banner || null,
-          isBot,
-          member.user.system ? 1 : 0,
-          member.user.id === ownerId ? 1 : 0,
-          member.user.public_flags || 0,
-          member.user.premium_type || 0,
-          member.joined_at || null,
-          member.premium_since || null,
-          member.pending ? 1 : 0,
-          member.communication_disabled_until || null,
-          member.deaf ? 1 : 0,
-          member.mute ? 1 : 0,
-          JSON.stringify(member.roles || [])
-        ).run();
-      }
-    }
+        `
+					)
+					.bind(
+						guildId,
+						member.user.id,
+						member.user.username,
+						member.user.discriminator || '0',
+						member.user.global_name || null,
+						member.nick || null,
+						member.user.avatar || null,
+						member.user.banner || null,
+						member.user.accent_color ?? null,
+						member.avatar || null,
+						member.banner || null,
+						isBot,
+						member.user.system ? 1 : 0,
+						member.user.id === ownerId ? 1 : 0,
+						member.user.public_flags || 0,
+						member.user.premium_type || 0,
+						member.joined_at || null,
+						member.premium_since || null,
+						member.pending ? 1 : 0,
+						member.communication_disabled_until || null,
+						member.deaf ? 1 : 0,
+						member.mute ? 1 : 0,
+						JSON.stringify(member.roles || [])
+					)
+					.run();
+			}
+		}
 
-    log.debug(`[MembersCache] Cached ${allMembers.length} members (${humanCount} humans, ${botCount} bots) for guild ${guildId}`);
-    return { success: true, count: allMembers.length, botCount, humanCount };
-  } catch (error) {
-    log.error(`[MembersCache] Error refreshing members for ${guildId}:`, error);
-    return { success: false, error: error.message };
-  }
+		log.debug(
+			`[MembersCache] Cached ${allMembers.length} members (${humanCount} humans, ${botCount} bots) for guild ${guildId}`
+		);
+		return { success: true, count: allMembers.length, botCount, humanCount };
+	} catch (error) {
+		log.error(`[MembersCache] Error refreshing members for ${guildId}:`, error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
@@ -246,10 +252,12 @@ export async function refreshMembersCache(db, botToken, guildId, ownerId = null)
  * @param {Object} data
  */
 export async function updateCacheMetadata(db, guildId, data) {
-  if (!db) return;
+	if (!db) return;
 
-  try {
-    await db.prepare(`
+	try {
+		await db
+			.prepare(
+				`
       INSERT INTO guild_cache_metadata 
         (guild_id, members_count, roles_count, bots_count, humans_count,
          members_last_refreshed, roles_last_refreshed, 
@@ -266,21 +274,24 @@ export async function updateCacheMetadata(db, guildId, data) {
         last_refresh_status = excluded.last_refresh_status,
         last_refresh_error = excluded.last_refresh_error,
         updated_at = datetime('now')
-    `).bind(
-      guildId,
-      data.membersCount ?? null,
-      data.rolesCount ?? null,
-      data.botsCount ?? null,
-      data.humansCount ?? null,
-      data.membersRefreshed ? new Date().toISOString() : null,
-      data.rolesRefreshed ? new Date().toISOString() : null,
-      data.durationMs ?? null,
-      data.status ?? null,
-      data.error ?? null
-    ).run();
-  } catch (error) {
-    log.error(`[CacheMetadata] Error updating metadata for ${guildId}:`, error);
-  }
+    `
+			)
+			.bind(
+				guildId,
+				data.membersCount ?? null,
+				data.rolesCount ?? null,
+				data.botsCount ?? null,
+				data.humansCount ?? null,
+				data.membersRefreshed ? new Date().toISOString() : null,
+				data.rolesRefreshed ? new Date().toISOString() : null,
+				data.durationMs ?? null,
+				data.status ?? null,
+				data.error ?? null
+			)
+			.run();
+	} catch (error) {
+		log.error(`[CacheMetadata] Error updating metadata for ${guildId}:`, error);
+	}
 }
 
 /**
@@ -292,74 +303,86 @@ export async function updateCacheMetadata(db, guildId, data) {
  * @returns {Promise<{role: CachedRole|null, members: CachedMember[], error?: string}>}
  */
 export async function getMembersWithRoleFromCache(db, guildId, roleNameOrId, limit = 100) {
-  if (!db) {
-    return { role: null, members: [], error: "Database not available" };
-  }
+	if (!db) {
+		return { role: null, members: [], error: 'Database not available' };
+	}
 
-  try {
-    // First, find the role
-    let role = await db.prepare(
-      "SELECT * FROM guild_roles_cache WHERE guild_id = ? AND role_id = ?"
-    ).bind(guildId, roleNameOrId).first();
+	try {
+		// First, find the role
+		let role = await db
+			.prepare('SELECT * FROM guild_roles_cache WHERE guild_id = ? AND role_id = ?')
+			.bind(guildId, roleNameOrId)
+			.first();
 
-    // If not found by ID, search by name
-    if (!role) {
-      const searchName = `%${roleNameOrId}%`;
-      role = await db.prepare(
-        "SELECT * FROM guild_roles_cache WHERE guild_id = ? AND name LIKE ? COLLATE NOCASE ORDER BY position DESC LIMIT 1"
-      ).bind(guildId, searchName).first();
-    }
+		// If not found by ID, search by name
+		if (!role) {
+			const searchName = `%${roleNameOrId}%`;
+			role = await db
+				.prepare(
+					'SELECT * FROM guild_roles_cache WHERE guild_id = ? AND name LIKE ? COLLATE NOCASE ORDER BY position DESC LIMIT 1'
+				)
+				.bind(guildId, searchName)
+				.first();
+		}
 
-    if (!role) {
-      // Return available roles for error message
-      const roles = await db.prepare(
-        "SELECT role_id, name FROM guild_roles_cache WHERE guild_id = ? ORDER BY position DESC"
-      ).bind(guildId).all();
-      
-      return { 
-        role: null, 
-        members: [], 
-        error: `Role "${roleNameOrId}" not found`,
-        availableRoles: roles.results || []
-      };
-    }
+		if (!role) {
+			// Return available roles for error message
+			const roles = await db
+				.prepare(
+					'SELECT role_id, name FROM guild_roles_cache WHERE guild_id = ? ORDER BY position DESC'
+				)
+				.bind(guildId)
+				.all();
 
-    // Find members with this role
-    // The roles column is a JSON array, so we search for the role_id within it
-    const members = await db.prepare(`
+			return {
+				role: null,
+				members: [],
+				error: `Role "${roleNameOrId}" not found`,
+				availableRoles: roles.results || [],
+			};
+		}
+
+		// Find members with this role
+		// The roles column is a JSON array, so we search for the role_id within it
+		const members = await db
+			.prepare(
+				`
       SELECT * FROM guild_members_cache 
       WHERE guild_id = ? AND roles LIKE ?
       ORDER BY COALESCE(nickname, global_name, username) COLLATE NOCASE
       LIMIT ?
-    `).bind(guildId, `%"${role.role_id}"%`, limit).all();
+    `
+			)
+			.bind(guildId, `%"${role.role_id}"%`, limit)
+			.all();
 
-    const formattedMembers = (members.results || []).map(m => ({
-      user_id: m.user_id,
-      username: m.username,
-      displayName: m.nickname || m.global_name || m.username,
-      global_name: m.global_name,
-      nickname: m.nickname,
-      avatar: m.avatar,
-      is_bot: Boolean(m.is_bot),
-      joined_at: m.joined_at,
-      roles: JSON.parse(m.roles || "[]"),
-    }));
+		const formattedMembers = (members.results || []).map((m) => ({
+			user_id: m.user_id,
+			username: m.username,
+			displayName: m.nickname || m.global_name || m.username,
+			global_name: m.global_name,
+			nickname: m.nickname,
+			avatar: m.avatar,
+			is_bot: Boolean(m.is_bot),
+			joined_at: m.joined_at,
+			roles: JSON.parse(m.roles || '[]'),
+		}));
 
-    return {
-      role: {
-        role_id: role.role_id,
-        name: role.name,
-        color: role.color,
-        position: role.position,
-        mentionable: Boolean(role.mentionable),
-      },
-      members: formattedMembers,
-      memberCount: formattedMembers.length,
-    };
-  } catch (error) {
-    log.error(`[MembersCache] Error getting members with role:`, error);
-    return { role: null, members: [], error: error.message };
-  }
+		return {
+			role: {
+				role_id: role.role_id,
+				name: role.name,
+				color: role.color,
+				position: role.position,
+				mentionable: Boolean(role.mentionable),
+			},
+			members: formattedMembers,
+			memberCount: formattedMembers.length,
+		};
+	} catch (error) {
+		log.error(`[MembersCache] Error getting members with role:`, error);
+		return { role: null, members: [], error: error.message };
+	}
 }
 
 /**
@@ -369,29 +392,30 @@ export async function getMembersWithRoleFromCache(db, guildId, roleNameOrId, lim
  * @returns {Promise<CachedRole[]>}
  */
 export async function getRolesFromCache(db, guildId) {
-  if (!db) return [];
+	if (!db) return [];
 
-  try {
-    const result = await db.prepare(
-      "SELECT * FROM guild_roles_cache WHERE guild_id = ? ORDER BY position DESC"
-    ).bind(guildId).all();
+	try {
+		const result = await db
+			.prepare('SELECT * FROM guild_roles_cache WHERE guild_id = ? ORDER BY position DESC')
+			.bind(guildId)
+			.all();
 
-    return (result.results || []).map(r => ({
-      role_id: r.role_id,
-      name: r.name,
-      color: r.color,
-      position: r.position,
-      permissions: r.permissions,
-      hoist: Boolean(r.hoist),
-      managed: Boolean(r.managed),
-      mentionable: Boolean(r.mentionable),
-      icon: r.icon,
-      unicode_emoji: r.unicode_emoji,
-    }));
-  } catch (error) {
-    log.error(`[RolesCache] Error getting roles:`, error);
-    return [];
-  }
+		return (result.results || []).map((r) => ({
+			role_id: r.role_id,
+			name: r.name,
+			color: r.color,
+			position: r.position,
+			permissions: r.permissions,
+			hoist: Boolean(r.hoist),
+			managed: Boolean(r.managed),
+			mentionable: Boolean(r.mentionable),
+			icon: r.icon,
+			unicode_emoji: r.unicode_emoji,
+		}));
+	} catch (error) {
+		log.error(`[RolesCache] Error getting roles:`, error);
+		return [];
+	}
 }
 
 /**
@@ -402,10 +426,12 @@ export async function getRolesFromCache(db, guildId) {
  * @returns {Promise<Array<{user_id: string, username: string, displayName: string, global_name: string|null, nickname: string|null, avatar: string|null, guild_avatar: string|null, discriminator: string, premium_since: string|null, is_bot: boolean}>>}
  */
 export async function getBoostingMembersFromCache(db, guildId, limit = 100) {
-  if (!db || !guildId) return [];
+	if (!db || !guildId) return [];
 
-  try {
-    const result = await db.prepare(`
+	try {
+		const result = await db
+			.prepare(
+				`
       SELECT
         user_id,
         username,
@@ -422,24 +448,27 @@ export async function getBoostingMembersFromCache(db, guildId, limit = 100) {
         AND TRIM(premium_since) != ''
       ORDER BY datetime(premium_since) DESC
       LIMIT ?
-    `).bind(guildId, limit).all();
+    `
+			)
+			.bind(guildId, limit)
+			.all();
 
-    return (result.results || []).map((member) => ({
-      user_id: member.user_id,
-      username: member.username,
-      displayName: member.nickname || member.global_name || member.username,
-      global_name: member.global_name,
-      nickname: member.nickname,
-      avatar: member.avatar,
-      guild_avatar: member.guild_avatar,
-      discriminator: member.discriminator || '0',
-      premium_since: member.premium_since,
-      is_bot: Boolean(member.is_bot),
-    }));
-  } catch (error) {
-    log.error(`[MembersCache] Error getting boosters for ${guildId}:`, error);
-    return [];
-  }
+		return (result.results || []).map((member) => ({
+			user_id: member.user_id,
+			username: member.username,
+			displayName: member.nickname || member.global_name || member.username,
+			global_name: member.global_name,
+			nickname: member.nickname,
+			avatar: member.avatar,
+			guild_avatar: member.guild_avatar,
+			discriminator: member.discriminator || '0',
+			premium_since: member.premium_since,
+			is_bot: Boolean(member.is_bot),
+		}));
+	} catch (error) {
+		log.error(`[MembersCache] Error getting boosters for ${guildId}:`, error);
+		return [];
+	}
 }
 
 /**
@@ -450,33 +479,34 @@ export async function getBoostingMembersFromCache(db, guildId, limit = 100) {
  * @returns {Promise<CachedMember|null>}
  */
 export async function getMemberFromCache(db, guildId, userId) {
-  if (!db) return null;
+	if (!db) return null;
 
-  try {
-    const member = await db.prepare(
-      "SELECT * FROM guild_members_cache WHERE guild_id = ? AND user_id = ?"
-    ).bind(guildId, userId).first();
+	try {
+		const member = await db
+			.prepare('SELECT * FROM guild_members_cache WHERE guild_id = ? AND user_id = ?')
+			.bind(guildId, userId)
+			.first();
 
-    if (!member) return null;
+		if (!member) return null;
 
-    return {
-      user_id: member.user_id,
-      username: member.username,
-      displayName: member.nickname || member.global_name || member.username,
-      global_name: member.global_name,
-      nickname: member.nickname,
-      avatar: member.avatar,
-      guild_avatar: member.guild_avatar,
-      is_bot: Boolean(member.is_bot),
-      is_owner: Boolean(member.is_owner),
-      joined_at: member.joined_at,
-      premium_since: member.premium_since,
-      roles: JSON.parse(member.roles || "[]"),
-    };
-  } catch (error) {
-    log.error(`[MembersCache] Error getting member:`, error);
-    return null;
-  }
+		return {
+			user_id: member.user_id,
+			username: member.username,
+			displayName: member.nickname || member.global_name || member.username,
+			global_name: member.global_name,
+			nickname: member.nickname,
+			avatar: member.avatar,
+			guild_avatar: member.guild_avatar,
+			is_bot: Boolean(member.is_bot),
+			is_owner: Boolean(member.is_owner),
+			joined_at: member.joined_at,
+			premium_since: member.premium_since,
+			roles: JSON.parse(member.roles || '[]'),
+		};
+	} catch (error) {
+		log.error(`[MembersCache] Error getting member:`, error);
+		return null;
+	}
 }
 
 /**
@@ -488,11 +518,13 @@ export async function getMemberFromCache(db, guildId, userId) {
  * @returns {Promise<CachedMember[]>}
  */
 export async function searchMembersInCache(db, guildId, query, limit = 20) {
-  if (!db) return [];
+	if (!db) return [];
 
-  try {
-    const searchPattern = `%${query}%`;
-    const result = await db.prepare(`
+	try {
+		const searchPattern = `%${query}%`;
+		const result = await db
+			.prepare(
+				`
       SELECT * FROM guild_members_cache 
       WHERE guild_id = ? AND (
         username LIKE ? COLLATE NOCASE OR
@@ -501,22 +533,25 @@ export async function searchMembersInCache(db, guildId, query, limit = 20) {
       )
       ORDER BY COALESCE(nickname, global_name, username) COLLATE NOCASE
       LIMIT ?
-    `).bind(guildId, searchPattern, searchPattern, searchPattern, limit).all();
+    `
+			)
+			.bind(guildId, searchPattern, searchPattern, searchPattern, limit)
+			.all();
 
-    return (result.results || []).map(m => ({
-      user_id: m.user_id,
-      username: m.username,
-      displayName: m.nickname || m.global_name || m.username,
-      global_name: m.global_name,
-      nickname: m.nickname,
-      is_bot: Boolean(m.is_bot),
-      joined_at: m.joined_at,
-      roles: JSON.parse(m.roles || "[]"),
-    }));
-  } catch (error) {
-    log.error(`[MembersCache] Error searching members:`, error);
-    return [];
-  }
+		return (result.results || []).map((m) => ({
+			user_id: m.user_id,
+			username: m.username,
+			displayName: m.nickname || m.global_name || m.username,
+			global_name: m.global_name,
+			nickname: m.nickname,
+			is_bot: Boolean(m.is_bot),
+			joined_at: m.joined_at,
+			roles: JSON.parse(m.roles || '[]'),
+		}));
+	} catch (error) {
+		log.error(`[MembersCache] Error searching members:`, error);
+		return [];
+	}
 }
 
 /**
@@ -526,15 +561,16 @@ export async function searchMembersInCache(db, guildId, query, limit = 20) {
  * @returns {Promise<Object|null>}
  */
 export async function getCacheMetadata(db, guildId) {
-  if (!db) return null;
+	if (!db) return null;
 
-  try {
-    return await db.prepare(
-      "SELECT * FROM guild_cache_metadata WHERE guild_id = ?"
-    ).bind(guildId).first();
-  } catch {
-    return null;
-  }
+	try {
+		return await db
+			.prepare('SELECT * FROM guild_cache_metadata WHERE guild_id = ?')
+			.bind(guildId)
+			.first();
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -545,12 +581,12 @@ export async function getCacheMetadata(db, guildId) {
  * @returns {Promise<boolean>}
  */
 export async function cacheNeedsRefresh(db, guildId, maxAgeMinutes = 60) {
-  const metadata = await getCacheMetadata(db, guildId);
-  if (!metadata || !metadata.members_last_refreshed) return true;
+	const metadata = await getCacheMetadata(db, guildId);
+	if (!metadata || !metadata.members_last_refreshed) return true;
 
-  const lastRefresh = new Date(metadata.members_last_refreshed);
-  const ageMs = Date.now() - lastRefresh.getTime();
-  return ageMs > maxAgeMinutes * 60 * 1000;
+	const lastRefresh = new Date(metadata.members_last_refreshed);
+	const ageMs = Date.now() - lastRefresh.getTime();
+	return ageMs > maxAgeMinutes * 60 * 1000;
 }
 /**
  * Refresh all cache data for a guild (members and roles)
@@ -561,83 +597,152 @@ export async function cacheNeedsRefresh(db, guildId, maxAgeMinutes = 60) {
  * @returns {Promise<{success: boolean, members?: Object, roles?: Object, error?: string}>}
  */
 export async function refreshGuildCache(db, botToken, guildId) {
-  if (!db || !botToken || !guildId) {
-    return { success: false, error: "Missing required parameters" };
-  }
+	if (!db || !botToken || !guildId) {
+		return { success: false, error: 'Missing required parameters' };
+	}
 
-  const startTime = Date.now();
-  const results = {
-    success: true,
-    members: null,
-    roles: null,
-    error: null,
-  };
+	const startTime = Date.now();
+	const results = {
+		success: true,
+		members: null,
+		roles: null,
+		error: null,
+	};
 
-  try {
-    // First, get guild info to know the owner
-    let ownerId = null;
-    try {
-      const guildResponse = await fetch(
-        `https://discord.com/api/v10/guilds/${guildId}`,
-        { headers: { Authorization: `Bot ${botToken}` } }
-      );
-      if (guildResponse.ok) {
-        const guild = await guildResponse.json();
-        ownerId = guild.owner_id;
-      }
-    } catch (e) {
-      log.debug(`[GuildCache] Could not fetch guild info for owner: ${e.message}`);
-    }
+	try {
+		// First, get guild info to know the owner
+		let ownerId = null;
+		try {
+			const guildResponse = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+				headers: { Authorization: `Bot ${botToken}` },
+			});
+			if (guildResponse.ok) {
+				const guild = await guildResponse.json();
+				ownerId = guild.owner_id;
+			}
+		} catch (e) {
+			log.debug(`[GuildCache] Could not fetch guild info for owner: ${e.message}`);
+		}
 
-    // Refresh roles first (faster, good baseline)
-    const rolesResult = await refreshRolesCache(db, botToken, guildId);
-    results.roles = rolesResult;
-    
-    if (!rolesResult.success) {
-      log.warn(`[GuildCache] Roles refresh failed for ${guildId}: ${rolesResult.error}`);
-    }
+		// Refresh roles first (faster, good baseline)
+		const rolesResult = await refreshRolesCache(db, botToken, guildId);
+		results.roles = rolesResult;
 
-    // Small delay between API calls
-    await new Promise(resolve => setTimeout(resolve, 100));
+		if (!rolesResult.success) {
+			log.warn(`[GuildCache] Roles refresh failed for ${guildId}: ${rolesResult.error}`);
+		}
 
-    // Refresh members (can be slow for large guilds)
-    const membersResult = await refreshMembersCache(db, botToken, guildId, ownerId);
-    results.members = membersResult;
-    
-    if (!membersResult.success) {
-      log.warn(`[GuildCache] Members refresh failed for ${guildId}: ${membersResult.error}`);
-      results.success = false;
-      results.error = membersResult.error;
-    }
+		// Small delay between API calls
+		await new Promise((resolve) => setTimeout(resolve, 100));
 
-    const durationMs = Date.now() - startTime;
+		// Refresh members (can be slow for large guilds)
+		const membersResult = await refreshMembersCache(db, botToken, guildId, ownerId);
+		results.members = membersResult;
 
-    // Update metadata
-    await updateCacheMetadata(db, guildId, {
-      membersCount: membersResult.count ?? null,
-      rolesCount: rolesResult.count ?? null,
-      botsCount: membersResult.botCount ?? null,
-      humansCount: membersResult.humanCount ?? null,
-      membersRefreshed: membersResult.success,
-      rolesRefreshed: rolesResult.success,
-      durationMs,
-      status: results.success ? 'success' : (rolesResult.success || membersResult.success ? 'partial' : 'failed'),
-      error: results.error,
-    });
+		if (!membersResult.success) {
+			log.warn(`[GuildCache] Members refresh failed for ${guildId}: ${membersResult.error}`);
+			results.success = false;
+			results.error = membersResult.error;
+		}
 
-    log.info(`[GuildCache] Refreshed cache for ${guildId} in ${durationMs}ms: ${membersResult.count ?? 0} members, ${rolesResult.count ?? 0} roles`);
-    
-    return results;
-  } catch (error) {
-    log.error(`[GuildCache] Error refreshing cache for ${guildId}:`, error);
-    
-    // Update metadata with failure
-    await updateCacheMetadata(db, guildId, {
-      durationMs: Date.now() - startTime,
-      status: 'failed',
-      error: error.message,
-    });
-    
-    return { success: false, error: error.message };
-  }
+		const durationMs = Date.now() - startTime;
+
+		// Update metadata
+		await updateCacheMetadata(db, guildId, {
+			membersCount: membersResult.count ?? null,
+			rolesCount: rolesResult.count ?? null,
+			botsCount: membersResult.botCount ?? null,
+			humansCount: membersResult.humanCount ?? null,
+			membersRefreshed: membersResult.success,
+			rolesRefreshed: rolesResult.success,
+			durationMs,
+			status: results.success
+				? 'success'
+				: rolesResult.success || membersResult.success
+					? 'partial'
+					: 'failed',
+			error: results.error,
+		});
+
+		log.info(
+			`[GuildCache] Refreshed cache for ${guildId} in ${durationMs}ms: ${membersResult.count ?? 0} members, ${rolesResult.count ?? 0} roles`
+		);
+
+		return results;
+	} catch (error) {
+		log.error(`[GuildCache] Error refreshing cache for ${guildId}:`, error);
+
+		// Update metadata with failure
+		await updateCacheMetadata(db, guildId, {
+			durationMs: Date.now() - startTime,
+			status: 'failed',
+			error: error.message,
+		});
+
+		return { success: false, error: error.message };
+	}
+}
+/**
+ * How many people hold each role, from the member cache.
+ *
+ * Read from `guild_members_cache`, which the daily refresh rebuilds from
+ * Discord, so the counts are as old as `refreshedAt` and no older. People only:
+ * bot accounts are left out, and so are `@everyone` (the role whose id is the
+ * guild's) and integration-managed roles, which describe bots rather than
+ * membership.
+ *
+ * Returns `null` rather than a list of zeroes when the member cache has never
+ * completed a refresh — the usual reason is that the Server Members intent is
+ * off, in which case the cache is empty and every role would honestly count 0
+ * while actually meaning "unknown". A caller printing those would be publishing
+ * a false figure.
+ *
+ * A member row with malformed `roles` JSON is skipped rather than failing the
+ * whole query: `json_each` raises on invalid JSON, and the CASE guarantees it is
+ * never reached for such a row.
+ *
+ * @param {D1Database} db
+ * @param {string} guildId
+ * @returns {Promise<{ refreshedAt: string, roles: Array<{ role_id: string, name: string, member_count: number }> } | null>}
+ */
+export async function getRoleMemberCounts(db, guildId) {
+	if (!db) return null;
+
+	try {
+		const meta = await db
+			.prepare('SELECT members_last_refreshed FROM guild_cache_metadata WHERE guild_id = ?')
+			.bind(guildId)
+			.first();
+		const refreshedAt = meta?.members_last_refreshed ?? null;
+		if (!refreshedAt) return null;
+
+		const result = await db
+			.prepare(
+				`SELECT r.role_id, r.name,
+            (SELECT COUNT(*) FROM guild_members_cache m
+              WHERE m.guild_id = r.guild_id
+                AND m.is_bot = 0
+                AND CASE WHEN json_valid(m.roles)
+                      THEN EXISTS (SELECT 1 FROM json_each(m.roles) j WHERE j.value = r.role_id)
+                      ELSE 0 END
+            ) AS member_count
+          FROM guild_roles_cache r
+          WHERE r.guild_id = ? AND r.role_id != r.guild_id AND r.managed = 0
+          ORDER BY r.position DESC`
+			)
+			.bind(guildId)
+			.all();
+
+		return {
+			refreshedAt,
+			roles: (result.results || []).map((row) => ({
+				role_id: String(row.role_id),
+				name: String(row.name),
+				member_count: Number(row.member_count) || 0,
+			})),
+		};
+	} catch (error) {
+		log.error(`[RolesCache] Error counting role members for ${guildId}:`, error);
+		return null;
+	}
 }
