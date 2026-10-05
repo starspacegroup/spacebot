@@ -19,6 +19,7 @@ import {
 	markRoomOccupied,
 } from '../db/managed-channels.js';
 import { CHANNEL_TYPE_VOICE, evaluateRoomExpiry } from '../discord/managed-channel-policy.js';
+import { releaseUserCategory } from '../automation/managed-channels.js';
 
 /** Rebuild the policy the room was created under from the joined columns. */
 function presetFromRow(row) {
@@ -112,6 +113,12 @@ export async function reapManagedChannels(db, botToken, now = new Date()) {
 			room.channel_id,
 			decision.reason === 'expired' ? 'expired' : 'idle_timeout'
 		);
+		await releaseUserCategory({
+			db,
+			discord,
+			guildId: room.guild_id,
+			categoryId: room.user_category_id,
+		});
 	}
 
 	if (summary.reaped > 0 || summary.failed > 0) {

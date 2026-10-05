@@ -7,10 +7,12 @@
 
 import { json } from '@sveltejs/kit';
 import { closeManagedChannel, getManagedChannel } from '$lib/db/managed-channels.js';
+import { releaseUserCategory } from '$lib/automation/managed-channels.js';
+import { createDiscordRestClient } from '$lib/discord/rest-client.js';
 
 function checkIsBotRequest(request, platform) {
 	const authHeader = request.headers.get('Authorization');
-	const botToken = platform?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+	const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 	return Boolean(botToken) && authHeader === `Bot ${botToken}`;
 }
 
@@ -39,5 +41,16 @@ export async function POST({ request, params, platform }) {
 	}
 
 	const result = await closeManagedChannel(db, channelId, 'channel_deleted');
+
+	// A member's own category goes with their last room, however it closed.
+	if (room.user_category_id) {
+		const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
+		await releaseUserCategory({
+			db,
+			discord: createDiscordRestClient(botToken),
+			guildId: params.guildId,
+			categoryId: room.user_category_id,
+		});
+	}
 	return json({ closed: Boolean(result.closed) });
 }

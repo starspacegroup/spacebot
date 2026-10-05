@@ -303,8 +303,8 @@ export async function recordManagedChannel(db, room: Record<string, any>) {
 				`INSERT INTO managed_channels (
            guild_id, channel_id, preset_id, owner_user_id, owner_user_name,
            channel_name, channel_type, expires_at, visibility, voice_mode,
-           last_occupied_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+           user_category_id, last_occupied_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
 			)
 			.bind(
 				String(room.guild_id),
@@ -316,13 +316,57 @@ export async function recordManagedChannel(db, room: Record<string, any>) {
 				room.channel_type ?? CHANNEL_TYPE_VOICE,
 				room.expires_at ?? null,
 				room.visibility ?? 'private',
-				room.voice_mode ?? 'open'
+				room.voice_mode ?? 'open',
+				room.user_category_id ?? null
 			)
 			.run();
 		return { success: true, id: result.meta?.last_row_id };
 	} catch (error) {
 		log.error('[ManagedChannels] Failed to record room:', error);
 		return { success: false, error: error.message };
+	}
+}
+
+/**
+ * The per-member category a member's open rooms on a preset already sit in, or
+ * null. Only set on `category_mode = 'per_user'` presets.
+ */
+export async function getUserRoomCategory(db, guildId, presetId, ownerUserId) {
+	if (!db || !guildId || !ownerUserId) return null;
+	try {
+		const row = await db
+			.prepare(
+				`SELECT user_category_id FROM managed_channels
+         WHERE guild_id = ? AND preset_id = ? AND owner_user_id = ?
+           AND status = 'active' AND user_category_id IS NOT NULL
+         ORDER BY id DESC LIMIT 1`
+			)
+			.bind(guildId, presetId, String(ownerUserId))
+			.first();
+		return row?.user_category_id ? String(row.user_category_id) : null;
+	} catch (error) {
+		log.error('[ManagedChannels] Failed to get member category:', error);
+		return null;
+	}
+}
+
+/** How many open rooms still live in a per-member category. */
+export async function countActiveRoomsInCategory(db, categoryId) {
+	if (!db || !categoryId) return 0;
+	try {
+		const row = await db
+			.prepare(
+				`SELECT COUNT(*) AS count FROM managed_channels
+         WHERE user_category_id = ? AND status = 'active'`
+			)
+			.bind(String(categoryId))
+			.first();
+		return Number(row?.count ?? 0);
+	} catch (error) {
+		log.error('[ManagedChannels] Failed to count category rooms:', error);
+		// Unknown is treated as "still in use" so a category is never deleted
+		// out from under a room on a failed read.
+		return 1;
 	}
 }
 

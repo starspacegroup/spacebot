@@ -36,7 +36,9 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Room shape — a preset can give its rooms their own category (made and rolled over by
       the bot at Discord's 50-child cap), a public/private default and a voice mode
       (open, push-to-talk, or listen-only with `/room unmute` to hand out the mic). The
-      member picks at create time where the preset allows it (`docs/managed-channels.md`)
+      member picks at create time where the preset allows it (`docs/managed-channels.md`).
+      A preset can also give each member a category of their own (`per_user`, migration
+      0068), removed when their last room closes
 - [x] Observances — a server owner can turn on a historical timeline and get its events
       posted one at a time as their minutes come round on the anniversary (8:46 AM at
       8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone

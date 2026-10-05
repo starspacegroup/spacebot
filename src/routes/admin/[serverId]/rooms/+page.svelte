@@ -163,6 +163,8 @@
 							{/if}
 							{#if preset.category_mode === 'own'}
 								· own category
+							{:else if preset.category_mode === 'per_user'}
+								· a category per member
 							{:else if preset.parent_id}
 								· under {channelName(preset.parent_id)}
 							{/if}
@@ -229,12 +231,15 @@
 						<span>Where rooms go</span>
 						<select name="category_mode" bind:value={editing.category_mode}>
 							<option value="own">Its own category, made by SpaceBot</option>
+							<option value="per_user">A category for each member</option>
 							<option value="existing">A category you already have</option>
 						</select>
 						<small>
 							{editing.category_mode === 'own'
 								? 'SpaceBot makes the category on first use and adds another once Discord’s 50-channel cap is hit.'
-								: 'Rooms are created under the category you pick below.'}
+								: editing.category_mode === 'per_user'
+									? 'Each member’s rooms go in a category of their own, removed when their last room closes.'
+									: 'Rooms are created under the category you pick below.'}
 						</small>
 					</label>
 
@@ -247,6 +252,16 @@
 								placeholder={editing.name || 'Rooms'}
 							/>
 							<small>Blank uses the preset’s own name.</small>
+						</label>
+					{:else if editing.category_mode === 'per_user'}
+						<label class="field">
+							<span>Category name</span>
+							<input
+								name="category_name"
+								bind:value={editing.category_name}
+								placeholder={"{user}'s rooms"}
+							/>
+							<small><code>{'{user}'}</code> becomes the member’s name.</small>
 						</label>
 					{:else}
 						<label class="field">

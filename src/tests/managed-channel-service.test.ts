@@ -15,11 +15,14 @@ const dbMock = vi.hoisted(() => ({
 	updateManagedChannel: vi.fn(async (..._args: any[]) => ({ success: true })),
 	closeManagedChannel: vi.fn(async () => ({ success: true, closed: 1 })),
 	appendManagedCategory: vi.fn(async (..._args: any[]) => ({ success: true })),
+	getUserRoomCategory: vi.fn(async (..._args: any[]): Promise<string | null> => null),
+	countActiveRoomsInCategory: vi.fn(async (..._args: any[]) => 0),
 }));
 
 vi.mock('../lib/db/managed-channels.js', () => dbMock);
 
-const { createManagedRoom, runRoomVerb } = await import('../lib/automation/managed-channels.js');
+const { createManagedRoom, runRoomVerb, releaseUserCategory } =
+	await import('../lib/automation/managed-channels.js');
 
 const VIEW_CHANNEL = 1n << 10n;
 const CONNECT = 1n << 20n;
@@ -388,6 +391,134 @@ describe('createManagedRoom categories', () => {
 
 		expect(discord.created).toHaveLength(1);
 		expect(discord.created[0].parent).toBe('cat1');
+	});
+});
+
+describe('createManagedRoom per-member categories', () => {
+	const perUser = (extra: Record<string, any> = {}) =>
+		preset({ category_mode: 'per_user', parent_id: null, name: 'Study Rooms', ...extra });
+
+	beforeEach(() => {
+		dbMock.getUserRoomCategory.mockResolvedValue(null);
+		dbMock.countActiveRoomsInCategory.mockResolvedValue(0);
+		dbMock.recordManagedChannel.mockClear();
+		dbMock.appendManagedCategory.mockClear();
+	});
+
+	it('makes a category named for the member and records it on the room', async () => {
+		const discord = fakeDiscord();
+		const result = await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: perUser(),
+			ownerId: 'owner1',
+			ownerName: 'Ada',
+			name: 'Study',
+		});
+
+		expect(result.success).toBe(true);
+		const category = discord.created.find((c) => c.type === 4);
+		expect(category?.name).toBe("Ada's rooms");
+		const channel = discord.created.find((c) => c.type !== 4);
+		expect(channel.parent).toBe('cat-1');
+		expect(dbMock.recordManagedChannel).toHaveBeenCalledWith(
+			db,
+			expect.objectContaining({ user_category_id: 'cat-1' })
+		);
+		// The shared-category list is for 'own' presets only.
+		expect(dbMock.appendManagedCategory).not.toHaveBeenCalled();
+	});
+
+	it('fills {user} into a custom category name', async () => {
+		const discord = fakeDiscord();
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: perUser({ category_name: '🏠 {user}' }),
+			ownerId: 'owner1',
+			ownerName: 'Ada',
+		});
+		expect(discord.created.find((c) => c.type === 4)?.name).toBe('🏠 Ada');
+	});
+
+	it("reuses the member's category while they still have a room in it", async () => {
+		dbMock.getUserRoomCategory.mockResolvedValue('catAda');
+		const discord = fakeDiscord({
+			guildChannels: [
+				{ id: 'catAda', name: "Ada's rooms", type: 4 },
+				{ id: 'r1', type: 2, parent_id: 'catAda' },
+			],
+		});
+
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: perUser({ max_per_user: 3 }),
+			ownerId: 'owner1',
+			ownerName: 'Ada',
+		});
+
+		expect(discord.created.filter((c) => c.type === 4)).toHaveLength(0);
+		expect(discord.created[0].parent).toBe('catAda');
+	});
+
+	it('makes a fresh category when the remembered one was deleted by hand', async () => {
+		dbMock.getUserRoomCategory.mockResolvedValue('gone');
+		const discord = fakeDiscord();
+		await createManagedRoom({
+			db,
+			discord,
+			guildId: 'g1',
+			preset: perUser(),
+			ownerId: 'owner1',
+			ownerName: 'Ada',
+		});
+		expect(discord.created.find((c) => c.type !== 4).parent).toBe('cat-1');
+	});
+});
+
+describe('releaseUserCategory', () => {
+	beforeEach(() => {
+		dbMock.countActiveRoomsInCategory.mockResolvedValue(0);
+	});
+
+	it('deletes an empty member category', async () => {
+		const discord = fakeDiscord({ guildChannels: [{ id: 'catAda', type: 4 }] });
+		const result = await releaseUserCategory({
+			db,
+			discord,
+			guildId: 'g1',
+			categoryId: 'catAda',
+		});
+		expect(result.deleted).toBe(true);
+		expect(discord.deletes).toEqual(['catAda']);
+	});
+
+	it('keeps it while the member has another room open there', async () => {
+		dbMock.countActiveRoomsInCategory.mockResolvedValue(1);
+		const discord = fakeDiscord({ guildChannels: [{ id: 'catAda', type: 4 }] });
+		await releaseUserCategory({ db, discord, guildId: 'g1', categoryId: 'catAda' });
+		expect(discord.deletes).toEqual([]);
+	});
+
+	it('keeps it when somebody moved another channel in by hand', async () => {
+		const discord = fakeDiscord({
+			guildChannels: [
+				{ id: 'catAda', type: 4 },
+				{ id: 'general', type: 0, parent_id: 'catAda' },
+			],
+		});
+		await releaseUserCategory({ db, discord, guildId: 'g1', categoryId: 'catAda' });
+		expect(discord.deletes).toEqual([]);
+	});
+
+	it('does nothing for a room with no member category', async () => {
+		const discord = fakeDiscord();
+		await releaseUserCategory({ db, discord, guildId: 'g1', categoryId: null });
+		expect(discord.deletes).toEqual([]);
 	});
 });
 

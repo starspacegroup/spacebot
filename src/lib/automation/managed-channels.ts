@@ -15,10 +15,12 @@ import {
 	appendManagedCategory,
 	closeManagedChannel,
 	countActiveRoomsForGuild,
+	countActiveRoomsInCategory,
 	countActiveRoomsForUser,
 	getChannelPreset,
 	getManagedChannel,
 	getOwnedManagedChannel,
+	getUserRoomCategory,
 	recordManagedChannel,
 	updateManagedChannel,
 } from '../db/managed-channels.js';
@@ -91,6 +93,25 @@ function categoryLabel(preset, ordinal: number) {
 	return ordinal <= 1 ? base : normalizeRoomName(`${base} ${ordinal}`, base);
 }
 
+/** The category label for one member's own category. */
+function userCategoryLabel(preset, ownerName) {
+	const who = String(ownerName || 'member').trim() || 'member';
+	const pattern = String(preset?.category_name || '').trim() || "{user}'s rooms";
+	return normalizeRoomName(pattern.replaceAll('{user}', who), `${who}'s rooms`);
+}
+
+/** Children per category id, from a full guild channel list. */
+function countChildren(channels) {
+	const children = new Map<string, number>();
+	for (const channel of channels) {
+		const parent = channel?.parent_id ?? channel?.parentId ?? null;
+		if (!parent) continue;
+		const key = String(parent);
+		children.set(key, (children.get(key) || 0) + 1);
+	}
+	return children;
+}
+
 /**
  * Decide which category a new room is created under.
  *
@@ -99,38 +120,56 @@ function categoryLabel(preset, ordinal: number) {
  * and makes another when they are all full or have been deleted by hand.
  * Discord caps a category at {@link MAX_CATEGORY_CHILDREN} children, and a
  * create against a full category fails outright, so the count is not optional.
+ * On `per_user` each member gets a category of their own, reused while they
+ * have a room open in it; `userCategoryId` is set so the room row records it.
  *
  * A failure here degrades to no category rather than losing the room — the
  * member asked for a room, not for filing.
  */
-async function resolveRoomParent({ db, discord, guildId, preset, reason }) {
-	if (String(preset?.category_mode || 'existing') !== 'own') {
-		return preset?.parent_id || undefined;
+async function resolveRoomParent({
+	db,
+	discord,
+	guildId,
+	preset,
+	ownerId,
+	ownerName,
+	reason,
+}): Promise<{ parentId?: string; userCategoryId?: string }> {
+	const mode = String(preset?.category_mode || 'existing');
+	if (mode !== 'own' && mode !== 'per_user') {
+		return { parentId: preset?.parent_id || undefined };
 	}
-
-	const known = Array.isArray(preset?.managed_category_ids)
-		? preset.managed_category_ids.map(String)
-		: [];
 
 	try {
 		const channels = await listGuildChannels(discord, guildId);
 		const present = new Set(channels.map((c) => String(c.id)));
+		const children = countChildren(channels);
+		const hasRoom = (id) => (children.get(id) || 0) < MAX_CATEGORY_CHILDREN;
+		const guild = await discord.guilds.fetch(guildId);
 
-		const children = new Map<string, number>();
-		for (const channel of channels) {
-			const parent = channel?.parent_id ?? channel?.parentId ?? null;
-			if (!parent) continue;
-			const key = String(parent);
-			children.set(key, (children.get(key) || 0) + 1);
+		if (mode === 'per_user') {
+			const mine = await getUserRoomCategory(db, guildId, preset.id, ownerId);
+			if (mine && present.has(mine) && hasRoom(mine)) {
+				return { parentId: mine, userCategoryId: mine };
+			}
+			const category = await guild.channels.create({
+				name: userCategoryLabel(preset, ownerName),
+				type: CHANNEL_TYPE_CATEGORY,
+				reason,
+			});
+			return { parentId: category.id, userCategoryId: String(category.id) };
 		}
+
+		const known = Array.isArray(preset?.managed_category_ids)
+			? preset.managed_category_ids.map(String)
+			: [];
 
 		for (const categoryId of known) {
 			// A category somebody deleted by hand is skipped, not resurrected.
 			if (!present.has(categoryId)) continue;
-			if ((children.get(categoryId) || 0) < MAX_CATEGORY_CHILDREN) return categoryId;
+			if (hasRoom(categoryId)) return { parentId: categoryId };
 		}
 
-		const guild = await discord.guilds.fetch(guildId);
 		const category = await guild.channels.create({
 			name: categoryLabel(preset, known.length + 1),
 			type: CHANNEL_TYPE_CATEGORY,
@@ -138,11 +177,41 @@ async function resolveRoomParent({ db, discord, guildId, preset, reason }) {
 		});
 
 		await appendManagedCategory(db, guildId, preset.id, category.id);
-		return category.id;
+		return { parentId: category.id };
 	} catch (error) {
 		log.warn('[ManagedChannels] Could not resolve a room category:', error?.message);
 		// Fall back to whatever the preset names, then to the top level.
-		return preset?.parent_id || undefined;
+		return { parentId: preset?.parent_id || undefined };
+	}
+}
+
+/**
+ * Delete a member's own category once nothing is left in it.
+ *
+ * Called after a room closes. It keeps the category while the member still has
+ * another room open there, and also while Discord shows any channel under it —
+ * somebody may have moved one in by hand, and that is not ours to delete.
+ * Never throws: a left-over empty folder is untidy, not broken.
+ */
+export async function releaseUserCategory({ db, discord, guildId, categoryId }) {
+	if (!db || !discord || !guildId || !categoryId) return { deleted: false };
+	try {
+		if ((await countActiveRoomsInCategory(db, categoryId)) > 0) return { deleted: false };
+
+		const channels = await listGuildChannels(discord, guildId);
+		if (!channels.some((c) => String(c.id) === String(categoryId))) {
+			return { deleted: false };
+		}
+		if ((countChildren(channels).get(String(categoryId)) || 0) > 0) {
+			return { deleted: false };
+		}
+
+		await discord.channels.delete(categoryId, 'Member has no rooms left');
+		return { deleted: true };
+	} catch (error) {
+		if (error?.status === 404) return { deleted: false };
+		log.warn('[ManagedChannels] Could not remove a member category:', error?.message);
+		return { deleted: false };
 	}
 }
 
@@ -227,7 +296,15 @@ export async function createManagedRoom({
 		{ visibility, voiceMode }
 	);
 
-	const parentId = await resolveRoomParent({ db, discord, guildId, preset, reason });
+	const { parentId, userCategoryId } = await resolveRoomParent({
+		db,
+		discord,
+		guildId,
+		preset,
+		ownerId,
+		ownerName,
+		reason,
+	});
 
 	const limit =
 		userLimit === undefined
@@ -251,6 +328,7 @@ export async function createManagedRoom({
 		});
 	} catch (error) {
 		log.error('[ManagedChannels] Channel creation failed:', error);
+		await releaseUserCategory({ db, discord, guildId, categoryId: userCategoryId });
 		return { success: false, error: describeDiscordError(error, 'Could not create the room.') };
 	}
 
@@ -266,6 +344,7 @@ export async function createManagedRoom({
 		expires_at: expiresAt,
 		visibility,
 		voice_mode: voiceMode,
+		user_category_id: userCategoryId ?? null,
 	});
 
 	if (!recorded.success) {
@@ -276,6 +355,7 @@ export async function createManagedRoom({
 		} catch (error) {
 			log.error('[ManagedChannels] Failed to roll back unrecorded room:', error);
 		}
+		await releaseUserCategory({ db, discord, guildId, categoryId: userCategoryId });
 		return { success: false, error: 'Could not record the room. Nothing was created.' };
 	}
 
@@ -681,5 +761,11 @@ async function verbDelete({ db, discord, room, reason }): Promise<RoomOperationR
 		if (error?.status !== 404) throw error;
 	}
 	await closeManagedChannel(db, room.channel_id, 'owner_deleted');
+	await releaseUserCategory({
+		db,
+		discord,
+		guildId: room.guild_id,
+		categoryId: room.user_category_id,
+	});
 	return { success: true, response: { content: '🧹 Room closed.' } };
 }

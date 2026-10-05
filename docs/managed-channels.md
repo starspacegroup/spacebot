@@ -43,7 +43,7 @@ at creation, so changing it governs rooms that already exist.
 | Field                                            | What it does                                            |
 | ------------------------------------------------ | ------------------------------------------------------- |
 | `channel_type`                                   | `2` for voice, `0` for text                             |
-| `category_mode`                                  | `own` (the bot keeps its own) or `existing`             |
+| `category_mode`                                  | `own`, `per_user`, or `existing`                        |
 | `category_name` / `parent_id`                    | What to call its category, or which one to use          |
 | `default_visibility` / `allow_visibility_choice` | `public` or `private`, and whether members may pick     |
 | `default_voice_mode` / `allow_voice_mode_choice` | `open`, `ptt` or `listen`, and whether members may pick |
@@ -78,6 +78,15 @@ Discord's 50-children cap. The ids it has made are appended to
 dashboard: room creation trusts that list for the overflow rollover, and a
 hand-supplied id would let the dashboard fill somebody else's category to the
 cap. A category deleted by hand is skipped rather than resurrected.
+
+On **`per_user`** each member gets a category of their own. It is named from
+`category_name` with `{user}` swapped for the member's name (`{user}'s rooms`
+when blank), and the room row records it in `user_category_id`. Their next room
+on the same preset goes in the same category while they still have one open
+there. When a room closes — `/room delete`, the reaper, or a hand delete in
+Discord — the category is deleted once no open room points at it and Discord
+shows nothing else under it. A channel somebody moved in by hand keeps it alive.
+A transferred room keeps the old owner's category until it closes.
 
 Resolving the category is best-effort. If listing or creating fails, the room is
 still created without one — the member asked for a room, not for filing.
@@ -195,13 +204,13 @@ rather than at the next scan.
 
 ## Where the code is
 
-| Piece                   | File                                                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Policy (pure decisions) | `src/lib/discord/managed-channel-policy.ts`                                                                                    |
-| Room operations         | `src/lib/automation/managed-channels.ts`                                                                                       |
-| Tables                  | `src/lib/db/managed-channels.ts`, `migrations/0060_managed_channels.sql`, `migrations/0064_room_visibility_voice_category.sql` |
-| `/room` command         | `migrations/0061_room_built_in_command.sql`, `migrations/0065_room_command_shape_options.sql`                                  |
-| Action types            | `CREATE_MANAGED_CHANNEL`, `MANAGE_MANAGED_CHANNEL` in `src/lib/db/automations.ts`                                              |
-| Reaper                  | `src/lib/server/managed-channel-reaper.ts`                                                                                     |
-| Lobby + reconciliation  | `src/routes/api/rooms/[guildId]/`, `src/lib/discord/gateway.ts`                                                                |
-| Dashboard               | `src/routes/admin/[serverId]/rooms/`                                                                                           |
+| Piece                   | File                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Policy (pure decisions) | `src/lib/discord/managed-channel-policy.ts`                                                                                                                                  |
+| Room operations         | `src/lib/automation/managed-channels.ts`                                                                                                                                     |
+| Tables                  | `src/lib/db/managed-channels.ts`, `migrations/0060_managed_channels.sql`, `migrations/0064_room_visibility_voice_category.sql`, `migrations/0068_room_per_user_category.sql` |
+| `/room` command         | `migrations/0061_room_built_in_command.sql`, `migrations/0065_room_command_shape_options.sql`                                                                                |
+| Action types            | `CREATE_MANAGED_CHANNEL`, `MANAGE_MANAGED_CHANNEL` in `src/lib/db/automations.ts`                                                                                            |
+| Reaper                  | `src/lib/server/managed-channel-reaper.ts`                                                                                                                                   |
+| Lobby + reconciliation  | `src/routes/api/rooms/[guildId]/`, `src/lib/discord/gateway.ts`                                                                                                              |
+| Dashboard               | `src/routes/admin/[serverId]/rooms/`                                                                                                                                         |

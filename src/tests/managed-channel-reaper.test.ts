@@ -8,6 +8,7 @@ const dbMock = vi.hoisted(() => ({
 	markRoomOccupied: vi.fn(async () => {}),
 	markRoomEmpty: vi.fn(async () => {}),
 	closeManagedChannel: vi.fn(async () => ({ success: true, closed: 1 })),
+	countActiveRoomsInCategory: vi.fn(async () => 0),
 }));
 
 const restMock = vi.hoisted(() => ({

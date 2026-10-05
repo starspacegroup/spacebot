@@ -63,8 +63,15 @@ export type RoomVisibility = (typeof ROOM_VISIBILITIES)[number];
 export const ROOM_VOICE_MODES = ['open', 'ptt', 'listen'] as const;
 export type RoomVoiceMode = (typeof ROOM_VOICE_MODES)[number];
 
-/** How a preset decides which category its rooms are created under. */
-export const CATEGORY_MODES = ['existing', 'own'] as const;
+/**
+ * How a preset decides which category its rooms are created under.
+ *
+ * - `existing`  a category the admin picked by hand.
+ * - `own`       one shared category SpaceBot makes and rolls over at the cap.
+ * - `per_user`  a category for each member, made with their first room and
+ *               deleted when their last one closes.
+ */
+export const CATEGORY_MODES = ['existing', 'own', 'per_user'] as const;
 export type CategoryMode = (typeof CATEGORY_MODES)[number];
 
 /** Discord's hard cap on channels in one category. */
