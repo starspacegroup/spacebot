@@ -207,7 +207,13 @@ export async function POST({ request, platform }) {
           // Skip sending log messages for events that occurred in the log channel itself
           // This prevents infinite loops when THIS bot sends log messages
           const isLogChannelEvent = event.channel_id === settings.log_channel_id;
-          const isOwnBotMessage = event.details?.isOwnBot === true;
+          // Belt and braces: the gateway flags its own messages, but also match the
+          // actor against the bot's own id (application id == bot user id) so a
+          // handler that forgets the flag can't loop the log channel on itself.
+          const ownBotId = (platform as any)?.env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
+          const isOwnBotMessage =
+            event.details?.isOwnBot === true ||
+            (ownBotId != null && event.actor_id === ownBotId);
           
           if (isLogChannelEvent && isOwnBotMessage) {
             log.debug("[Discord Log] Skipping log for own bot message in log channel to prevent loop");

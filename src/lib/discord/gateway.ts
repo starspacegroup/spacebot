@@ -3379,6 +3379,7 @@ function setupEventHandlers(client, logFn) {
 				embedCount: newMessage.embeds.length,
 				embedTexts: updateEmbedTexts,
 				isBot: newMessage.author?.bot || false,
+				isOwnBot: newMessage.author?.id === newMessage.client.user?.id,
 			},
 		});
 	});
