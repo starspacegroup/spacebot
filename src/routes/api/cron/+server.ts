@@ -17,6 +17,7 @@ import {
 import { processScheduledMessages } from '$lib/db/scheduled-messages.js';
 import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
+import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
@@ -98,6 +99,14 @@ function getCronJobDefinitions() {
 			displayName: 'Reap Member Rooms',
 			description:
 				'Deletes member-owned rooms that have expired or sat empty past their idle window.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'sweep_quorum',
+			displayName: 'Sweep Quorum Votes',
+			description:
+				'Closes questions at their deadline and posts the result, sends "remind me" DMs, and nudges decision owners at the due date.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -519,6 +528,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await reapManagedChannels(db, botToken);
+		} else if (jobName === 'sweep_quorum') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await sweepQuorum(db, botToken);
 		} else if (jobName === 'sweep_timebox') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');

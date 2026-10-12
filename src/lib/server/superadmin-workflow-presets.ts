@@ -288,6 +288,40 @@ export const OPERATION_TEMPLATES = [
 		},
 	},
 	{
+		name: 'Minute Quorum Sweep',
+		slug: 'minute-quorum-sweep',
+		description:
+			'Closes /quorum questions at their deadline and posts the result; sends "remind me" DMs and nudges decision owners when their due date arrives.',
+		category: 'operations',
+		execution_backend: 'cloudflare_workflows',
+		legacy_job_name: 'sweep_quorum',
+		schedule_type: 'cron',
+		cron_expression: '* * * * *',
+		canvas_json: {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Minute Trigger',
+					position: { x: 0, y: 0 },
+					data: { schedule: '* * * * *', source: 'gateway-cron' },
+				},
+				{
+					id: 'sweep',
+					type: 'task',
+					title: 'Sweep Questions',
+					position: { x: 0, y: 140 },
+					data: {
+						operation: 'sweepQuorum',
+						queue_key: 'ops.quorum.sweep',
+						notes: 'Reminders, deadlines, follow-up nudges, stale nudges. Nothing open means four indexed reads.',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 'start', target: 'sweep', label: 'start' }],
+		},
+	},
+	{
 		name: 'Workers AI Catalog Sync',
 		slug: 'workers-ai-catalog-sync',
 		description:

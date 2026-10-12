@@ -30,6 +30,7 @@ import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options
 import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
 import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
+import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
@@ -286,6 +287,25 @@ export async function POST({ request, platform: rawPlatform }) {
 			});
 		}
 
+		// `/quorum`: a vote is state the bot keeps, not a one-shot action, so it
+		// is handled here rather than by the action pipeline. The reply goes back
+		// at once; `after` (storing the card's message id and pinning it) rides
+		// waitUntil so the worker stays alive for it.
+		if (data.name === 'quorum' && guildId) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleQuorumCommand(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			if (reply.after) {
+				if (platform?.context?.waitUntil) platform.context.waitUntil(reply.after);
+				else
+					reply.after.catch((err) => log.error('[Quorum] after-reply work failed:', err));
+			}
+			return json(reply.response);
+		}
+
 		// `/timebox`: timers are state the bot keeps, so it is handled
 		// here and not by the action pipeline. The card's message id is stored by
 		// `after`, which rides waitUntil so the worker stays alive for it.
@@ -421,6 +441,15 @@ export async function POST({ request, platform: rawPlatform }) {
 
 	// Type 3: MESSAGE_COMPONENT - Button clicks, select menus
 	if (body.type === InteractionType.MESSAGE_COMPONENT) {
+		if (String(body.data?.custom_id || '').startsWith('quorum:')) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleQuorumComponent(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			return json(reply.response);
+		}
 		if (String(body.data?.custom_id || '').startsWith('timebox:')) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleTimeboxComponent(

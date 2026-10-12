@@ -52,6 +52,14 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       switch per server, framing allowed for Discord only, and the Entry Point command kept
       through a global command overwrite (`docs/activity.md`). Modules (timebox first) and
       Discovery (App Launcher) are open
+- [x] Quorum (#84) — `/quorum ask` puts a yes/no question to the server as a pinned card
+      with Yes / No / Abstain and a "remind me" button; one vote per member, a second press
+      changes it, the bar updates in the same round trip. The minute sweep closes it at the
+      deadline and posts a RESULT with a decision, an owner and a due date — or "no quorum"
+      and no winner — then nudges the owner once in-channel at the due date (done / stale).
+      Counts only: voters are an HMAC under a per-question salt that is deleted on close.
+      Owner veto with a public reason; protected question classes refused at ask time;
+      per-channel defaults for Crew (`docs/quorum.md`, migration 0069)
 - [x] Observances — a server owner can turn on a historical timeline and get its events
       posted one at a time as their minutes come round on the anniversary (8:46 AM at
       8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone

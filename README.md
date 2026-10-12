@@ -39,6 +39,9 @@ beautiful admin dashboard.
 - **Activity** — SpaceBot as a Discord Activity, opened from a voice channel or a DM,
   with a tab per module. The foundation is built (sign-in, place check, module
   switch); the timebox is its first module (see [docs/activity.md](docs/activity.md))
+- **Quorum** — `/quorum ask` puts a yes/no question to the server; it closes itself
+  at the deadline, posts a RESULT naming an owner and a due date, and keeps counts
+  only, never who voted (see [docs/quorum.md](docs/quorum.md))
 - **Observances** — Post a historical day's events at the minutes they happened,
   on its anniversary. Ships with September 11, 2001; off unless a server owner
   turns it on and picks a channel (see [docs/observances.md](docs/observances.md))

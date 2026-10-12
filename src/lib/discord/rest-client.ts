@@ -491,6 +491,32 @@ export function createDiscordRestClient(botToken) {
 			permissions(channelId) {
 				return buildPermissionOverwrites(botToken, channelId);
 			},
+			/** Post a message by channel id, without the GET that `fetch().send()` costs. */
+			async send(channelId, payload) {
+				const body = typeof payload === 'string' ? { content: payload } : payload;
+				return discordFetch(botToken, `/channels/${channelId}/messages`, {
+					method: 'POST',
+					body,
+				});
+			},
+			async editMessage(channelId, messageId, patch) {
+				return discordFetch(botToken, `/channels/${channelId}/messages/${messageId}`, {
+					method: 'PATCH',
+					body: patch,
+				});
+			},
+			async pin(channelId, messageId, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}/pins/${messageId}`, {
+					method: 'PUT',
+					reason,
+				});
+			},
+			async unpin(channelId, messageId, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}/pins/${messageId}`, {
+					method: 'DELETE',
+					reason,
+				});
+			},
 		},
 		/** Guild members by id, without the GET on the guild that `guilds.fetch` costs. */
 		members: {
@@ -535,6 +561,18 @@ export function createDiscordRestClient(botToken) {
 			},
 		},
 		users: {
+			/** DM a user by id: open (or reuse) the DM channel, then send. */
+			async dm(userId, payload) {
+				const dm = await discordFetch(botToken, `/users/@me/channels`, {
+					method: 'POST',
+					body: { recipient_id: userId },
+				});
+				const body = typeof payload === 'string' ? { content: payload } : payload;
+				return discordFetch(botToken, `/channels/${dm.id}/messages`, {
+					method: 'POST',
+					body,
+				});
+			},
 			async fetch(userId) {
 				const data = await discordFetch(botToken, `/users/${userId}`);
 				return {
