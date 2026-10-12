@@ -20,7 +20,7 @@ Thumbs.db
 !.env.test
 
 # PM2 logs
-logs/
+/logs/
 
 # Vite
 vite.config.js.timestamp-*
