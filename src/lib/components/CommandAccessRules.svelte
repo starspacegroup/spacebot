@@ -6,7 +6,7 @@
 	 * roles that are let in without the permission, and roles kept out with it.
 	 * Submits `allow_roles` and `deny_roles` as comma-separated role ids.
 	 */
-	let {
+	const {
 		guildId,
 		allow = [],
 		deny = [],
