@@ -668,6 +668,7 @@ describe('crew', () => {
 describe('auto-action on a passing vote', () => {
 	const MANAGE_CHANNELS = String(1n << 4n);
 	const auto = { action: 'voice_channel' as const, name: 'Game Night', threshold: 66 };
+	const turnOn = (d) => upsertSettings(d, GUILD, '', { auto_actions: true });
 
 	async function vote(d, q, yes: number, no: number, abstain = 0) {
 		let n = 0;
@@ -702,6 +703,7 @@ describe('auto-action on a passing vote', () => {
 
 	it('creates the channel beside the question when the vote clears the bar, and says so', async () => {
 		const d = db();
+		await turnOn(d);
 		const discord = fakeDiscord();
 		let q = await openQuestion(d, { auto });
 		await d
@@ -726,6 +728,7 @@ describe('auto-action on a passing vote', () => {
 			[1, 0],
 		]) {
 			const d = db();
+			await turnOn(d);
 			const discord = fakeDiscord();
 			const q = await vote(
 				d,
@@ -741,6 +744,7 @@ describe('auto-action on a passing vote', () => {
 
 	it('creates a text channel with a Discord-shaped name', async () => {
 		const d = db();
+		await turnOn(d);
 		const discord = fakeDiscord();
 		const q = await vote(
 			d,
@@ -759,6 +763,7 @@ describe('auto-action on a passing vote', () => {
 
 	it('records a Discord refusal and says it in the channel instead of failing quietly', async () => {
 		const d = db();
+		await turnOn(d);
 		const discord = fakeDiscord({ failCreate: true });
 		const q = await vote(d, await openQuestion(d, { auto }), 3, 0);
 		const closed = await closeQuestion(d, discord, q, { reason: 'early' });
@@ -784,6 +789,7 @@ describe('auto-action on a passing vote', () => {
 
 	it('only lets someone who can manage channels attach an action', async () => {
 		const d = db();
+		await turnOn(d);
 		const opts = { question: 'Make a channel?', then: 'voice_channel', name: 'Game Night' };
 		const refused = await handleQuorumCommand(askBody(opts), d, fakeDiscord());
 		expect(refused.response.data.content).toMatch(/Manage Channels/);
@@ -803,6 +809,7 @@ describe('auto-action on a passing vote', () => {
 
 	it('rejects a bad threshold, a missing name, and name without then', async () => {
 		const d = db();
+		await turnOn(d);
 		const m = member('asker', MANAGE_CHANNELS);
 		const run = async (o: any) =>
 			(await handleQuorumCommand(askBody({ question: 'q?', ...o }, m), d, fakeDiscord()))
@@ -810,5 +817,49 @@ describe('auto-action on a passing vote', () => {
 		expect(await run({ then: 'voice_channel', name: 'x', if_yes: 50 })).toMatch(/51 to 100/);
 		expect(await run({ then: 'voice_channel' })).toMatch(/call the channel/);
 		expect(await run({ name: 'x' })).toMatch(/only go with/);
+	});
+
+	it('is off by default: nobody can attach an action until the owner turns it on', async () => {
+		const d = db();
+		const r = await handleQuorumCommand(
+			askBody(
+				{ question: 'q?', then: 'voice_channel', name: 'x' },
+				member('asker', MANAGE_CHANNELS)
+			),
+			d,
+			fakeDiscord()
+		);
+		expect(r.response.data.content).toMatch(/off in this server/);
+		expect(await latestOpenInChannel(d, GUILD, CHANNEL)).toBeNull();
+	});
+
+	it('only the server owner can switch it on or off, and the choice sticks', async () => {
+		const d = db();
+		const settings = (a: any, who = 'owner-1') =>
+			handleQuorumCommand(
+				subBody('settings', { auto_actions: a }, member(who, CREW)),
+				d,
+				fakeDiscord({ ownerId: 'owner-1' })
+			);
+		expect((await settings(true, 'crew-1')).response.data.content).toMatch(
+			/Only the server owner/
+		);
+		expect((await getSettings(d, GUILD, CHANNEL)).auto_actions).toBe(false);
+		expect((await settings(true)).response.data.content).toMatch(/Automatic actions\*\* — on/);
+		expect((await getSettings(d, GUILD, CHANNEL)).auto_actions).toBe(true);
+		await settings(false);
+		expect((await getSettings(d, GUILD, CHANNEL)).auto_actions).toBe(false);
+	});
+
+	it('does nothing if the owner turned it off after the question was asked', async () => {
+		const d = db();
+		await turnOn(d);
+		const discord = fakeDiscord();
+		let q = await openQuestion(d, { auto });
+		q = await vote(d, q, 3, 0);
+		await upsertSettings(d, GUILD, '', { auto_actions: false });
+		const closed = await closeQuestion(d, discord, q, { reason: 'early' });
+		expect(closed!.auto_status).toBe('disabled');
+		expect(discord.calls.some((c) => c.op === 'createChannel')).toBe(false);
 	});
 });

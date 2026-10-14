@@ -167,6 +167,7 @@ export interface QuorumSettings {
 	announce_channel_id: string | null;
 	protected_classes: string[];
 	classes_locked: boolean;
+	auto_actions: boolean;
 }
 
 /**
@@ -189,6 +190,7 @@ export async function getSettings(db, guildId: string, channelId: string): Promi
 		announce_channel_id: guild.announce_channel_id || null,
 		protected_classes: parseJsonArray(guild.protected_classes, DEFAULT_PROTECTED),
 		classes_locked: guild.classes_locked === 1 || guild.classes_locked === true,
+		auto_actions: guild.auto_actions === 1 || guild.auto_actions === true,
 	};
 }
 
@@ -203,6 +205,7 @@ export async function upsertSettings(
 		announce_channel_id: string | null;
 		protected_classes: string[];
 		classes_locked: boolean;
+		auto_actions: boolean;
 	}>
 ) {
 	await db
@@ -237,6 +240,10 @@ export async function upsertSettings(
 	if (patch.classes_locked !== undefined) {
 		sets.push('classes_locked = ?');
 		args.push(patch.classes_locked ? 1 : 0);
+	}
+	if (patch.auto_actions !== undefined) {
+		sets.push('auto_actions = ?');
+		args.push(patch.auto_actions ? 1 : 0);
 	}
 	if (sets.length === 0) return;
 	sets.push(`updated_at = datetime('now')`);
@@ -282,7 +289,7 @@ export interface Question {
 	auto_action: AutoAction | null;
 	auto_name: string | null;
 	auto_threshold: number | null;
-	auto_status: 'done' | 'failed' | 'not_met' | null;
+	auto_status: 'done' | 'failed' | 'not_met' | 'disabled' | null;
 	auto_channel_id: string | null;
 	created_at: string;
 }
@@ -556,6 +563,8 @@ function autoOutcome(q: Question): string {
 	if (q.auto_status === 'done')
 		return `${label}: done${q.auto_channel_id ? ` — <#${q.auto_channel_id}>` : ''}`;
 	if (q.auto_status === 'failed') return `${label}: passed, but it could not be done`;
+	if (q.auto_status === 'disabled')
+		return `${label}: not done — the server owner has turned automatic actions off`;
 	if (q.auto_status === 'not_met')
 		return `${label}: not done — it needed ${q.auto_threshold}% yes and quorum`;
 	return autoSummary(q) as string;
@@ -755,6 +764,17 @@ async function runAutoAction(db, discord, q: Question) {
 
 	if (!autoMet(q)) {
 		await setStatus('not_met');
+		return;
+	}
+	// The owner's switch is read now, not just when the question was asked.
+	if (!(await getSettings(db, q.guild_id, q.channel_id)).auto_actions) {
+		await setStatus('disabled');
+		await discord?.channels
+			?.send(q.channel_id, {
+				content: `Question #${q.id} passed, but automatic actions are off in this server, so nothing was created.`,
+				allowed_mentions: { parse: [] },
+			})
+			.catch(() => {});
 		return;
 	}
 	const say = (content: string) =>
@@ -1141,6 +1161,13 @@ async function ask(
 		if (!AUTO_ACTIONS.includes(opts.then)) {
 			return { response: ephemeral('Unknown `then` action.') };
 		}
+		if (!settings.auto_actions) {
+			return {
+				response: ephemeral(
+					'Automatic actions are off in this server. The server owner turns them on with `/quorum settings auto_actions:True`.'
+				),
+			};
+		}
 		if (!canManageChannels(body.member?.permissions)) {
 			return {
 				response: ephemeral(
@@ -1237,6 +1264,15 @@ async function settingsCommand(
 	if (opts.footer !== undefined) guildPatch.footer_text = String(opts.footer).trim() || null;
 	if (opts.announce !== undefined) guildPatch.announce_channel_id = String(opts.announce);
 
+	if (opts.auto_actions !== undefined) {
+		if (!(await isGuildOwner(discord, ctx.guildId, ctx.userId))) {
+			return {
+				response: ephemeral('Only the server owner can turn automatic actions on or off.'),
+			};
+		}
+		guildPatch.auto_actions = Boolean(opts.auto_actions);
+	}
+
 	if (opts.protect !== undefined || opts.lock !== undefined) {
 		const owner = await isGuildOwner(discord, ctx.guildId, ctx.userId);
 		if (opts.lock !== undefined) {
@@ -1280,6 +1316,7 @@ async function settingsCommand(
 	const lines = [
 		`**This channel** — closes after ${formatDuration(s.closes_minutes)}, quorum ${s.quorum}`,
 		`**Server** — footer "${s.footer_text}"; results mirrored to ${s.announce_channel_id ? `<#${s.announce_channel_id}>` : 'nowhere'}`,
+		`**Automatic actions** — ${s.auto_actions ? 'on' : 'off'} (server owner only)`,
 		`**Protected classes** — ${s.protected_classes.length ? s.protected_classes.join(', ') : 'none'}${s.classes_locked ? ' (locked by the owner)' : ''}`,
 	];
 	return { response: ephemeral(lines.join('\n')) };

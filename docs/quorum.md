@@ -51,6 +51,12 @@ out.
 
 ## Doing it automatically
 
+This is **off by default**. The server owner turns it on, server-wide, with
+`/quorum settings auto_actions:True` (and off again with `False`); nobody else can
+change it. Until then `ask` refuses `then`. The switch is read again when the
+question closes, so turning it off stops a question already in flight: it posts that
+it passed but nothing was created.
+
 `ask` takes three more options for questions like "should we make this voice
 channel?":
 
@@ -67,7 +73,7 @@ was asked in. The bot then says what happened in the channel and the RESULT card
 quorum), or _passed, but it could not be done_ if Discord refused — usually the bot
 lacks Manage Channels. A failure is never silent, and it is not retried.
 
-Because this changes the server by itself, only a member with **Manage Channels**
+Because this changes the server by itself, on top of the owner's switch only a member with **Manage Channels**
 (or Administrator) can attach `then`, and a protected `class` is still refused. The
 action runs at the close, so an owner `veto` afterwards marks the decision vetoed
 but does not undo a channel that was already made. Three choices worth knowing: the
