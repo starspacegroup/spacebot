@@ -13,6 +13,7 @@ import {
 	closeQuestion,
 	createQuestion,
 	getQuestion,
+	latestOpenInChannel,
 	getSettings,
 	handleQuorumCommand,
 	handleQuorumComponent,
@@ -20,6 +21,8 @@ import {
 	parseDuration,
 	sweepQuorum,
 	tally,
+	autoMet,
+	channelName,
 	upsertSettings,
 	voterHash,
 } from '../lib/server/quorum.js';
@@ -27,17 +30,21 @@ import {
 // The real schema, so the SQL (RETURNING, ON CONFLICT, the recount) is what is
 // under test. The built-in command INSERT needs the commands table, which this
 // test does not care about, so only the quorum statements are run.
-const MIGRATION = readFileSync(
-	new URL('../../migrations/0069_quorum.sql', import.meta.url),
-	'utf8'
-).split('-- /quorum as a built-in command family')[0];
+const MIGRATION =
+	readFileSync(new URL('../../migrations/0069_quorum.sql', import.meta.url), 'utf8').split(
+		'-- /quorum as a built-in command family'
+	)[0] +
+	readFileSync(
+		new URL('../../migrations/0072_quorum_auto_action.sql', import.meta.url),
+		'utf8'
+	).split('UPDATE commands')[0];
 
 function db() {
 	return createSqliteD1(MIGRATION);
 }
 
 /** A REST client that records what it was asked to do. */
-function fakeDiscord(opts: { ownerId?: string } = {}) {
+function fakeDiscord(opts: { ownerId?: string; failCreate?: boolean } = {}) {
 	let nextId = 1000;
 	const calls: Array<{ op: string; args: any[] }> = [];
 	const rec =
@@ -53,9 +60,21 @@ function fakeDiscord(opts: { ownerId?: string } = {}) {
 			editMessage: rec('editMessage'),
 			pin: rec('pin'),
 			unpin: rec('unpin'),
+			fetch: async () => ({ parent_id: 'category-1' }),
 		},
 		users: { dm: rec('dm') },
-		guilds: { fetch: async () => ({ owner_id: opts.ownerId ?? 'owner-1' }) },
+		guilds: {
+			fetch: async () => ({
+				owner_id: opts.ownerId ?? 'owner-1',
+				channels: {
+					create: async (...args: any[]) => {
+						calls.push({ op: 'createChannel', args });
+						if (opts.failCreate) throw new Error('Missing Permissions');
+						return { id: String(nextId++) };
+					},
+				},
+			}),
+		},
 	};
 }
 
@@ -643,5 +662,153 @@ describe('crew', () => {
 		expect(isCrew(String(1n << 5n))).toBe(true);
 		expect(isCrew('8')).toBe(true);
 		expect(isCrew(undefined)).toBe(false);
+	});
+});
+
+describe('auto-action on a passing vote', () => {
+	const MANAGE_CHANNELS = String(1n << 4n);
+	const auto = { action: 'voice_channel' as const, name: 'Game Night', threshold: 66 };
+
+	async function vote(d, q, yes: number, no: number, abstain = 0) {
+		let n = 0;
+		for (const [count, choice] of [
+			[yes, 'yes'],
+			[no, 'no'],
+			[abstain, 'abstain'],
+		] as const) {
+			for (let i = 0; i < count; i++) {
+				q = (await castVote(d, (await getQuestion(d, q.id))!, `v${n++}`, choice))!;
+			}
+		}
+		return q;
+	}
+
+	it('judges yes against yes and no, with exact integer arithmetic', () => {
+		const base = { abstain_count: 0, quorum: 1, auto_threshold: 66 };
+		expect(autoMet({ ...base, yes_count: 2, no_count: 1 })).toBe(true); // 66.67%
+		expect(autoMet({ ...base, auto_threshold: 67, yes_count: 2, no_count: 1 })).toBe(false);
+		expect(autoMet({ ...base, yes_count: 0, no_count: 0 })).toBe(false);
+		// Abstentions count toward quorum, not toward the percentage.
+		expect(autoMet({ ...base, yes_count: 2, no_count: 1, abstain_count: 50 })).toBe(true);
+		// No quorum, no action, however lopsided.
+		expect(autoMet({ ...base, quorum: 5, yes_count: 3, no_count: 0 })).toBe(false);
+	});
+
+	it('names channels the way Discord wants them', () => {
+		expect(channelName('Game  Night!', false)).toBe('game-night');
+		expect(channelName('Game Night', true)).toBe('Game Night');
+		expect(channelName('!!!', false)).toBe('new-channel');
+	});
+
+	it('creates the channel beside the question when the vote clears the bar, and says so', async () => {
+		const d = db();
+		const discord = fakeDiscord();
+		let q = await openQuestion(d, { auto });
+		await d
+			.prepare('UPDATE quorum_questions SET message_id = ? WHERE id = ?')
+			.bind('card-1', q.id)
+			.run();
+		q = await vote(d, q, 4, 1, 1);
+		const closed = await closeQuestion(d, discord, q, { reason: 'deadline' });
+		const made = discord.calls.find((c) => c.op === 'createChannel')!;
+		expect(made.args[0]).toMatchObject({ name: 'Game Night', type: 2, parent: 'category-1' });
+		expect(closed).toMatchObject({ auto_status: 'done' });
+		expect(closed!.auto_channel_id).toBeTruthy();
+		const sent = discord.calls.filter((c) => c.op === 'send').map((c) => c.args[1]);
+		expect(sent.some((m) => String(m.content).includes('created voice channel'))).toBe(true);
+		const edited = discord.calls.filter((c) => c.op === 'editMessage').at(-1)!;
+		expect(JSON.stringify(edited.args[2])).toContain('done');
+	});
+
+	it('does nothing when yes falls short, or quorum is missed', async () => {
+		for (const [yes, no] of [
+			[1, 1],
+			[1, 0],
+		]) {
+			const d = db();
+			const discord = fakeDiscord();
+			const q = await vote(
+				d,
+				await openQuestion(d, { auto, quorum: yes + no === 1 ? 3 : 1 }),
+				yes,
+				no
+			);
+			const closed = await closeQuestion(d, discord, q, { reason: 'early' });
+			expect(closed!.auto_status).toBe('not_met');
+			expect(discord.calls.some((c) => c.op === 'createChannel')).toBe(false);
+		}
+	});
+
+	it('creates a text channel with a Discord-shaped name', async () => {
+		const d = db();
+		const discord = fakeDiscord();
+		const q = await vote(
+			d,
+			await openQuestion(d, {
+				auto: { action: 'text_channel', name: 'Game Night', threshold: 51 },
+			}),
+			3,
+			0
+		);
+		await closeQuestion(d, discord, q, { reason: 'early' });
+		expect(discord.calls.find((c) => c.op === 'createChannel')!.args[0]).toMatchObject({
+			name: 'game-night',
+			type: 0,
+		});
+	});
+
+	it('records a Discord refusal and says it in the channel instead of failing quietly', async () => {
+		const d = db();
+		const discord = fakeDiscord({ failCreate: true });
+		const q = await vote(d, await openQuestion(d, { auto }), 3, 0);
+		const closed = await closeQuestion(d, discord, q, { reason: 'early' });
+		expect(closed).toMatchObject({
+			status: 'closed',
+			auto_status: 'failed',
+			auto_channel_id: null,
+		});
+		const sent = discord.calls.filter((c) => c.op === 'send').map((c) => c.args[1].content);
+		expect(
+			sent.some((c) => /could not create the channel \(Missing Permissions\)/.test(String(c)))
+		).toBe(true);
+	});
+
+	it('a question with no action behaves as before', async () => {
+		const d = db();
+		const discord = fakeDiscord();
+		const q = await vote(d, await openQuestion(d), 3, 0);
+		const closed = await closeQuestion(d, discord, q, { reason: 'early' });
+		expect(closed!.auto_status).toBeNull();
+		expect(discord.calls.some((c) => c.op === 'createChannel')).toBe(false);
+	});
+
+	it('only lets someone who can manage channels attach an action', async () => {
+		const d = db();
+		const opts = { question: 'Make a channel?', then: 'voice_channel', name: 'Game Night' };
+		const refused = await handleQuorumCommand(askBody(opts), d, fakeDiscord());
+		expect(refused.response.data.content).toMatch(/Manage Channels/);
+		const ok = await handleQuorumCommand(
+			askBody(opts, member('asker', MANAGE_CHANNELS)),
+			d,
+			fakeDiscord()
+		);
+		const q = (await latestOpenInChannel(d, GUILD, CHANNEL))!;
+		expect(q).toMatchObject({
+			auto_action: 'voice_channel',
+			auto_name: 'Game Night',
+			auto_threshold: 66,
+		});
+		expect(JSON.stringify(ok.response.data.embeds[0])).toContain('If it passes');
+	});
+
+	it('rejects a bad threshold, a missing name, and name without then', async () => {
+		const d = db();
+		const m = member('asker', MANAGE_CHANNELS);
+		const run = async (o: any) =>
+			(await handleQuorumCommand(askBody({ question: 'q?', ...o }, m), d, fakeDiscord()))
+				.response.data.content;
+		expect(await run({ then: 'voice_channel', name: 'x', if_yes: 50 })).toMatch(/51 to 100/);
+		expect(await run({ then: 'voice_channel' })).toMatch(/call the channel/);
+		expect(await run({ name: 'x' })).toMatch(/only go with/);
 	});
 });

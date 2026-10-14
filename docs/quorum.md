@@ -49,6 +49,32 @@ is the same path `/room` took (see the roadmap note from 2026-09-07).
 15 minutes before the deadline. Those ids are kept only until the reminders go
 out.
 
+## Doing it automatically
+
+`ask` takes three more options for questions like "should we make this voice
+channel?":
+
+- `then` — what to do if it passes: **Create a voice channel** or **Create a text
+  channel**.
+- `name` — what to call it (text channels become `lowercase-with-hyphens`).
+- `if_yes` — how far yes must win, as a percent of the **yes and no** votes, from
+  51 to 100 (default 66). Abstentions count toward quorum but not toward this.
+
+When the question closes, the channel is made only if quorum was reached **and**
+yes met `if_yes`. The channel goes in the same category as the channel the question
+was asked in. The bot then says what happened in the channel and the RESULT card's
+**Then** line is updated: _done_ (with a link), _not done_ (it needed N% yes and
+quorum), or _passed, but it could not be done_ if Discord refused — usually the bot
+lacks Manage Channels. A failure is never silent, and it is not retried.
+
+Because this changes the server by itself, only a member with **Manage Channels**
+(or Administrator) can attach `then`, and a protected `class` is still refused. The
+action runs at the close, so an owner `veto` afterwards marks the decision vetoed
+but does not undo a channel that was already made. Three choices worth knowing: the
+card shows the rule while the question is open, so voters know what a yes does; the
+exact math is integer (2 of 3 yes is 66.67%, which clears 66 and not 67); and the
+vote is counts only, so nothing about who voted is used or kept.
+
 ## Privacy
 
 The database holds counts, never who voted.
@@ -86,13 +112,15 @@ Vetoing after the fact is for the rare case. It is declared up front (the
 footer), public and reasoned (the reason is posted on the result and kept in
 the log), and owner-only.
 
-## Tables (migration 0069)
+## Tables (migrations 0069, 0072)
 
 - `quorum_questions` — one row per question, open or settled: counts, timing,
   owner, status, result, follow-up state, and the result message id.
 - `quorum_votes` — the uniqueness check while open. Gone on close.
 - `quorum_reminders` — who asked for the reminder DM. Gone once sent.
 - `quorum_settings` — per channel, with `channel_id = ''` as the guild default.
+- `quorum_questions.auto_*` (0072) — the action, its channel name and threshold,
+  its outcome, and the channel it made.
 
 Code: `src/lib/server/quorum.ts` (commands, buttons, cards, the sweep), wired
 from the interactions route and the cron route. Tests: `src/tests/quorum.test.ts`

@@ -27,6 +27,7 @@ export const RESPOND_UPDATE = 7; // UPDATE_MESSAGE
 const EPHEMERAL = 64;
 
 const MANAGE_GUILD = 1n << 5n;
+const MANAGE_CHANNELS = 1n << 4n;
 const MANAGE_MESSAGES = 1n << 13n;
 
 export const CHOICES = ['yes', 'no', 'abstain'] as const;
@@ -34,6 +35,15 @@ export type Choice = (typeof CHOICES)[number];
 
 export const CLASSES = ['general', 'owner-only', 'money', 'access', 'legal'] as const;
 /** Classes refused at ask time unless a server opens them up. */
+export const AUTO_ACTIONS = ['voice_channel', 'text_channel'] as const;
+export type AutoAction = (typeof AUTO_ACTIONS)[number];
+export const DEFAULT_AUTO_THRESHOLD = 66;
+
+const AUTO_LABEL: Record<AutoAction, string> = {
+	voice_channel: 'Create a voice channel',
+	text_channel: 'Create a text channel',
+};
+
 export const DEFAULT_PROTECTED = ['owner-only', 'money', 'access', 'legal'];
 
 export const DEFAULTS = {
@@ -90,6 +100,13 @@ export function formatDuration(minutes: number): string {
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 const isoAfter = (from: Date, minutes: number) =>
 	new Date(from.getTime() + minutes * 60 * 1000).toISOString();
+
+/** Who may attach a channel-creating action: Manage Channels, or Administrator. */
+export function canManageChannels(permissions: unknown): boolean {
+	const bits = parsePermissionBits(permissions);
+	if (bits === null) return false;
+	return (bits & ADMINISTRATOR) === ADMINISTRATOR || (bits & MANAGE_CHANNELS) === MANAGE_CHANNELS;
+}
 
 /** Crew: anyone who can manage the server or its messages. Admins always. */
 export function isCrew(permissions: unknown): boolean {
@@ -262,6 +279,11 @@ export interface Question {
 	followup_asked_at: string | null;
 	followup_message_id: string | null;
 	reminded_at: string | null;
+	auto_action: AutoAction | null;
+	auto_name: string | null;
+	auto_threshold: number | null;
+	auto_status: 'done' | 'failed' | 'not_met' | null;
+	auto_channel_id: string | null;
 	created_at: string;
 }
 
@@ -319,6 +341,7 @@ export async function createQuestion(
 		due_minutes: number;
 		owner_kind: 'user' | 'role';
 		owner_id: string;
+		auto?: { action: AutoAction; name: string; threshold: number } | null;
 	},
 	now = new Date()
 ): Promise<Question> {
@@ -329,8 +352,8 @@ export async function createQuestion(
 		.prepare(
 			`INSERT INTO quorum_questions
 			   (guild_id, channel_id, asker_id, question, class, quorum, closes_at, due_at,
-			    owner_kind, owner_id, salt, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			    owner_kind, owner_id, salt, created_at, auto_action, auto_name, auto_threshold)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			 RETURNING *`
 		)
 		.bind(
@@ -345,7 +368,10 @@ export async function createQuestion(
 			input.owner_kind,
 			input.owner_id,
 			salt,
-			now.toISOString()
+			now.toISOString(),
+			input.auto?.action ?? null,
+			input.auto?.name ?? null,
+			input.auto?.threshold ?? null
 		)
 		.first();
 	return row;
@@ -441,6 +467,30 @@ export function bar(q: { yes_count: number; no_count: number; abstain_count: num
 
 // --- cards -------------------------------------------------------------------
 
+/**
+ * Did the vote pass far enough to trigger the question's action? Needs quorum,
+ * and yes at or above the threshold percent of the yes + no votes. Integer
+ * arithmetic, so 2 of 3 is exactly 66.67% and clears 66 but not 67.
+ */
+export function autoMet(q: {
+	yes_count: number;
+	no_count: number;
+	abstain_count: number;
+	quorum: number;
+	auto_threshold: number | null;
+}): boolean {
+	if (!tally(q).reached) return false;
+	const decisive = q.yes_count + q.no_count;
+	return decisive > 0 && q.yes_count * 100 >= (q.auto_threshold ?? 100) * decisive;
+}
+
+/** What the question will do, in one line, for the card. */
+function autoSummary(q: Question): string | null {
+	if (!q.auto_action) return null;
+	const label = AUTO_LABEL[q.auto_action] ?? q.auto_action;
+	return `${label} “${q.auto_name}” if yes is ${q.auto_threshold}% or more of yes and no votes`;
+}
+
 export function buildQuestionEmbed(q: Question) {
 	const t = tally(q);
 	const closed = q.status !== 'open';
@@ -468,6 +518,9 @@ export function buildQuestionEmbed(q: Question) {
 				value: `${bar(q)}\n${t.yesPct}% yes · ${t.noPct}% no · ${t.abstainPct}% abstain · counts only, no names`,
 				inline: false,
 			},
+			...(q.auto_action
+				? [{ name: 'If it passes', value: autoSummary(q) as string, inline: false }]
+				: []),
 		],
 		footer: { text: `Question #${q.id} · Quorum keeps counts, never who voted` },
 	};
@@ -495,6 +548,17 @@ export function buildQuestionComponents(q: Question, disabled = false) {
 			components: [btn('Remind me before close', 2, `quorum:remind:${q.id}`)],
 		},
 	];
+}
+
+/** What became of the question's action, for the RESULT card. */
+function autoOutcome(q: Question): string {
+	const label = AUTO_LABEL[q.auto_action as AutoAction] ?? q.auto_action;
+	if (q.auto_status === 'done')
+		return `${label}: done${q.auto_channel_id ? ` — <#${q.auto_channel_id}>` : ''}`;
+	if (q.auto_status === 'failed') return `${label}: passed, but it could not be done`;
+	if (q.auto_status === 'not_met')
+		return `${label}: not done — it needed ${q.auto_threshold}% yes and quorum`;
+	return autoSummary(q) as string;
 }
 
 export function buildResultEmbed(q: Question, settings: { footer_text: string }) {
@@ -534,6 +598,7 @@ export function buildResultEmbed(q: Question, settings: { footer_text: string })
 			{ name: 'Decision', value: decision, inline: true },
 			{ name: 'Owner', value: ownerMention(q), inline: true },
 			{ name: 'Due', value: `<t:${unix(q.due_at)}:D>${followup}`, inline: true },
+			...(q.auto_action ? [{ name: 'Then', value: autoOutcome(q), inline: false }] : []),
 		],
 		footer: { text: `Question #${q.id} · ${settings.footer_text}` },
 	};
@@ -669,7 +734,84 @@ export async function closeQuestion(
 				);
 		}
 	}
-	return q;
+	if (q.auto_action) await runAutoAction(db, discord, q);
+	return (await getQuestion(db, q.id)) as Question;
+}
+
+/**
+ * Carry out the question's action if the vote cleared its bar. Runs once, from
+ * the close that won the row, so a retried sweep cannot make two channels. The
+ * outcome is written to the row and said in the channel, so a refusal from
+ * Discord is never silent.
+ */
+async function runAutoAction(db, discord, q: Question) {
+	const setStatus = (status: string, channelId: string | null = null) =>
+		db
+			.prepare(
+				`UPDATE quorum_questions SET auto_status = ?, auto_channel_id = ? WHERE id = ?`
+			)
+			.bind(status, channelId, q.id)
+			.run();
+
+	if (!autoMet(q)) {
+		await setStatus('not_met');
+		return;
+	}
+	const say = (content: string) =>
+		discord?.channels
+			?.send(q.channel_id, { content, allowed_mentions: { parse: [] } })
+			.catch((err) => log.warn(`[Quorum] Could not post outcome #${q.id}: ${err?.message}`));
+	try {
+		if (!discord) throw new Error('no Discord client');
+		const voice = q.auto_action === 'voice_channel';
+		// Put it beside where the question was asked, when that can be found.
+		const parent = await discord.channels
+			.fetch(q.channel_id)
+			.then((c: any) => c?.parent_id ?? undefined)
+			.catch(() => undefined);
+		const guild = await discord.guilds.fetch(q.guild_id);
+		const created = await guild.channels.create({
+			name: channelName(q.auto_name as string, voice),
+			type: voice ? 2 : 0,
+			parent,
+			reason: `Quorum question #${q.id} passed`,
+		});
+		await setStatus('done', created?.id ?? null);
+		await say(
+			`✅ Question #${q.id} passed: created ${voice ? 'voice' : 'text'} channel ${created?.id ? `<#${created.id}>` : `“${q.auto_name}”`}.`
+		);
+	} catch (err: any) {
+		log.error(`[Quorum] Auto-action for #${q.id} failed: ${err?.message}`);
+		await setStatus('failed');
+		await say(
+			`⚠️ Question #${q.id} passed, but I could not create the channel (${err?.message || 'Discord refused'}). I need Manage Channels; someone who has it can make it by hand.`
+		);
+	}
+	// The RESULT card was posted before the outcome was known; bring it up to date.
+	if (discord && q.result_message_id) {
+		const fresh = (await getQuestion(db, q.id)) as Question;
+		const settings = await getSettings(db, fresh.guild_id, fresh.channel_id);
+		await discord.channels
+			.editMessage(fresh.channel_id, q.result_message_id, {
+				embeds: [buildResultEmbed(fresh, settings)],
+				allowed_mentions: { parse: [] },
+			})
+			.catch(() => {});
+	}
+}
+
+/** Discord text channels are lowercase with hyphens; voice names are free text. */
+export function channelName(name: string, voice: boolean): string {
+	const cleaned = name.replace(/\s+/g, ' ').trim().slice(0, 100);
+	if (voice) return cleaned || 'voice';
+	return (
+		cleaned
+			.toLowerCase()
+			.replace(/[^a-z0-9_ -]/g, '')
+			.replace(/[ ]+/g, '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '') || 'new-channel'
+	);
 }
 
 // --- the minute sweep --------------------------------------------------------
@@ -991,6 +1133,37 @@ async function ask(
 		ownerKind = body.data?.resolved?.roles?.[ownerId] ? 'role' : 'user';
 	}
 
+	// `then` is the one thing here that makes the bot change the server by itself,
+	// so it is held to the permission the change needs: the asker must be able to
+	// create channels themselves.
+	let auto: { action: AutoAction; name: string; threshold: number } | null = null;
+	if (opts.then) {
+		if (!AUTO_ACTIONS.includes(opts.then)) {
+			return { response: ephemeral('Unknown `then` action.') };
+		}
+		if (!canManageChannels(body.member?.permissions)) {
+			return {
+				response: ephemeral(
+					'You need Manage Channels to attach an automatic action to a question.'
+				),
+			};
+		}
+		const name = String(opts.name || '')
+			.replace(/\s+/g, ' ')
+			.trim();
+		if (!name) return { response: ephemeral('Say what to call the channel with `name`.') };
+		const threshold =
+			opts.if_yes === undefined || opts.if_yes === null
+				? DEFAULT_AUTO_THRESHOLD
+				: Number(opts.if_yes);
+		if (!Number.isInteger(threshold) || threshold < 51 || threshold > 100) {
+			return { response: ephemeral('`if_yes` is a whole percent from 51 to 100.') };
+		}
+		auto = { action: opts.then, name, threshold };
+	} else if (opts.name || opts.if_yes) {
+		return { response: ephemeral('`name` and `if_yes` only go with `then`.') };
+	}
+
 	const q = await createQuestion(db, {
 		guild_id: ctx.guildId,
 		channel_id: ctx.channelId,
@@ -1002,6 +1175,7 @@ async function ask(
 		due_minutes: dueMinutes,
 		owner_kind: ownerKind,
 		owner_id: ownerId,
+		auto,
 	});
 
 	// The card is the interaction's own reply, so the channel shows who asked.
