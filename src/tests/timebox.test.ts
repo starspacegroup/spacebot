@@ -17,6 +17,8 @@ import {
 	advance,
 	applyDeafen,
 	createSession,
+	endSession,
+	getGoals,
 	getParticipant,
 	getSession,
 	getSettings,
@@ -41,7 +43,8 @@ const schema = (file: string, cut?: string) => {
 const SCHEMA =
 	schema('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
-	schema('0070_timebox.sql', '-- /timebox as a built-in command family');
+	schema('0070_timebox.sql', '-- /timebox as a built-in command family') +
+	schema('0071_timebox_goals.sql', 'UPDATE commands');
 
 const G = '100000000000000001';
 const TEXT = '200000000000000001';
@@ -734,5 +737,114 @@ describe('the sweep', () => {
 		expect((await getSession(d, s.id))?.empty_since).toBeNull();
 		await sweepTimebox(d, f.client, at(20));
 		expect((await getSession(d, s.id))?.status).toBe('running');
+	});
+});
+
+describe('goals and percent done', () => {
+	const pct = (id: number, n: number, user = ALICE) => ({
+		type: 3,
+		guild_id: G,
+		member: { user: { id: user }, permissions: NONE },
+		data: { custom_id: `timebox:pct:${id}:${n}` },
+	});
+
+	it('takes a goal on start and shows it on the card', async () => {
+		const d = db();
+		const r = await handleTimeboxCommand(
+			slash('start', [opt('goal', '  write   the intro  ')]),
+			d,
+			fakeDiscord().client
+		);
+		const s = (await liveSoloFor(d, G, ALICE)) as Session;
+		expect(await getGoals(d, s.id)).toEqual([
+			{ user_id: ALICE, goal: 'write the intro', percent_done: null },
+		]);
+		expect(r.response.data.embeds[0].description).toContain('write the intro');
+	});
+
+	it('sets and changes a goal mid-timebox, and clears the percent when the goal changes', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await handleTimeboxCommand(slash('start', [opt('goal', 'old')]), d, f.client);
+		const s = (await liveSoloFor(d, G, ALICE)) as Session;
+		await handleTimeboxCommand(slash('progress', [opt('percent', 40)]), d, f.client);
+		await handleTimeboxCommand(slash('goal', [opt('text', 'new')]), d, f.client);
+		expect(await getGoals(d, s.id)).toEqual([
+			{ user_id: ALICE, goal: 'new', percent_done: null },
+		]);
+	});
+
+	it('refuses a goal with no timebox, and a percent with no goal', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		expect(
+			text(await handleTimeboxCommand(slash('goal', [opt('text', 'x')]), d, f.client))
+		).toMatch(/No timebox/);
+		await handleTimeboxCommand(slash('start'), d, f.client);
+		expect(
+			text(await handleTimeboxCommand(slash('progress', [opt('percent', 50)]), d, f.client))
+		).toMatch(/no goal/);
+	});
+
+	it('rejects a percent outside 0 to 100', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await handleTimeboxCommand(slash('start', [opt('goal', 'x')]), d, f.client);
+		expect(
+			text(await handleTimeboxCommand(slash('progress', [opt('percent', 101)]), d, f.client))
+		).toMatch(/0 to 100/);
+	});
+
+	it('asks for the percent when it ends, and records it from the button after it ended', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await handleTimeboxCommand(slash('start', [opt('goal', 'ship it')]), d, f.client);
+		const s = (await liveSoloFor(d, G, ALICE)) as Session;
+		await handleTimeboxCommand(slash('stop'), d, f.client);
+		const sent = f.log.filter((e) => e.op === 'send').at(-1)!.payload;
+		expect(sent.content).toMatch(/How much of your goal/);
+		expect(sent.components[0].components.map((c: any) => c.label)).toEqual([
+			'0%',
+			'25%',
+			'50%',
+			'75%',
+			'100%',
+		]);
+		const r = await handleTimeboxComponent(pct(s.id, 75), d, f.client);
+		expect(r.response.type).toBe(RESPOND_UPDATE);
+		expect(r.response.data.embeds[0].description).toContain('**75%**');
+		expect((await getGoals(d, s.id))[0].percent_done).toBe(75);
+	});
+
+	it('records /timebox progress against the timebox that just ended', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await handleTimeboxCommand(slash('start', [opt('goal', 'ship it')]), d, f.client);
+		const s = (await liveSoloFor(d, G, ALICE)) as Session;
+		await handleTimeboxCommand(slash('stop'), d, f.client);
+		await handleTimeboxCommand(slash('progress', [opt('percent', 100)]), d, f.client);
+		expect((await getGoals(d, s.id))[0].percent_done).toBe(100);
+	});
+
+	it('keeps each member of a shared timebox to their own goal and percent', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await shared(d);
+		putVoice(d, ALICE, VC);
+		putVoice(d, BOB, VC);
+		await handleTimeboxCommand(slash('goal', [opt('text', 'a')]), d, f.client);
+		await handleTimeboxCommand(slash('goal', [opt('text', 'b')], BOB), d, f.client);
+		await endSession(d, f.client, s, 'finished');
+		await handleTimeboxComponent(pct(s.id, 100, BOB), d, f.client);
+		expect(await getGoals(d, s.id)).toEqual([
+			{ user_id: ALICE, goal: 'a', percent_done: null },
+			{ user_id: BOB, goal: 'b', percent_done: 100 },
+		]);
+		const carol = await handleTimeboxComponent(
+			pct(s.id, 50, '400000000000000009'),
+			d,
+			f.client
+		);
+		expect(text(carol)).toMatch(/nothing to rate/);
 	});
 });

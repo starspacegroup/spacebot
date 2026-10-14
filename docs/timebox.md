@@ -32,11 +32,27 @@ the command in that server, and the handler refuses it anyway.
       each change is a fresh message in the channel pinging you, with the buttons.
       One at a time per member.
 - `/timebox stop`, `/timebox status` — for the timebox you are part of.
+- `/timebox goal text:...` — set or change your goal while a timebox runs.
+- `/timebox progress percent:...` — say how much of your goal you got done (0 to
+  100). It works after the timebox ended, against the last one you had a goal in.
 - `/timebox settings` (Crew) — the server defaults, and who may pause, skip and
   stop a shared timebox: the starter and Crew (default), or anyone in the voice
   channel. Crew means Manage Server, Manage Channels or Administrator.
 
 A shared timebox ends by itself if its voice channel stays empty for 5 minutes.
+
+## Goals
+
+Say what you want to get done with the `goal` option on `/timebox start`, or later
+with `/timebox goal`. The goal (200 characters, one line) shows on the card. When
+the timebox ends, whether it finished or was stopped, the card swaps its controls
+for **0 / 25 / 50 / 75 / 100 %** buttons, and the ping asks how it went. Pressing
+one records that percent against your goal; `/timebox progress` records any
+whole number. Changing a goal clears its percent.
+
+Goals are per member: in a shared timebox each person has their own, shown as
+`@name: goal — 75%` (the first 8). Someone who set no goal has nothing to rate. They
+live on `timebox_participants` (`goal`, `percent_done`, migration 0071).
 
 ## Deafen me
 
@@ -76,5 +92,5 @@ timed features; a gateway timer can replace it later without changing the data.
 
 A voice channel made for the timebox (access, who may talk or share a screen,
 delete-or-alert at the end), muting everyone during focus, controls on the Timebox tab in the
-Activity (it shows the countdown read-only, see `docs/activity.md`), a chime at each change, and a completed-blocks
-stat.
+Activity (it shows the countdown read-only, see `docs/activity.md`; goals are not shown there yet), a chime at each change, a completed-blocks
+stat, and a history of goals and percents.

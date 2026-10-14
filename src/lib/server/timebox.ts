@@ -389,6 +389,59 @@ async function setDeafenMode(db, sessionId: number, userId: string, mode: Deafen
 		.run();
 }
 
+// --- goals ---------------------------------------------------------------------
+
+export const GOAL_MAX = 200;
+const MAX_GOALS_SHOWN = 8;
+
+export interface Goal {
+	user_id: string;
+	goal: string;
+	percent_done: number | null;
+}
+
+/** A goal is one short line: whitespace squeezed, trimmed, capped. Empty means none. */
+export function cleanGoal(value: unknown): string | null {
+	const text = String(value ?? '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, GOAL_MAX);
+	return text || null;
+}
+
+export async function setGoal(db, sessionId: number, userId: string, goal: string) {
+	await db
+		.prepare(
+			`INSERT INTO timebox_participants (session_id, user_id, goal) VALUES (?, ?, ?)
+			 ON CONFLICT(session_id, user_id) DO UPDATE SET goal = excluded.goal, percent_done = NULL, updated_at = datetime('now')`
+		)
+		.bind(sessionId, userId, goal)
+		.run();
+}
+
+/** Record how much of their goal a member got done. Needs a goal to measure against. */
+export async function setPercent(db, sessionId: number, userId: string, percent: number) {
+	const res: any = await db
+		.prepare(
+			`UPDATE timebox_participants SET percent_done = ?, updated_at = datetime('now')
+			 WHERE session_id = ? AND user_id = ? AND goal IS NOT NULL`
+		)
+		.bind(percent, sessionId, userId)
+		.run();
+	return Number(res?.meta?.changes ?? 0) > 0;
+}
+
+export async function getGoals(db, sessionId: number): Promise<Goal[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT user_id, goal, percent_done FROM timebox_participants
+			 WHERE session_id = ? AND goal IS NOT NULL ORDER BY rowid LIMIT ?`
+		)
+		.bind(sessionId, MAX_GOALS_SHOWN)
+		.all();
+	return (results || []) as Goal[];
+}
+
 /** The voice channel a member is in right now, from the gateway's live table. */
 export async function voiceChannelOf(db, guildId: string, userId: string): Promise<string | null> {
 	const row: any = await db
@@ -535,7 +588,17 @@ async function syncDeafens(db, discord, s: Session) {
 
 // --- the card -----------------------------------------------------------------
 
-export function buildCard(s: Session, extra: { deafened?: number } = {}) {
+export interface CardExtra {
+	deafened?: number;
+	goals?: Goal[];
+}
+
+const goalLine = (g: Goal, shared: boolean, ended: boolean) =>
+	`${shared ? `<@${g.user_id}>: ` : ''}${g.goal}${
+		g.percent_done !== null ? ` — **${g.percent_done}%**` : ended ? ' — _percent not set_' : ''
+	}`;
+
+export function buildCard(s: Session, extra: CardExtra = {}) {
 	const live = s.status === 'running' || s.status === 'paused';
 	const title = !live
 		? s.status === 'done'
@@ -565,6 +628,13 @@ export function buildCard(s: Session, extra: { deafened?: number } = {}) {
 	if (extra.deafened) {
 		lines.push(`${extra.deafened} deafened at their own request`);
 	}
+	if (extra.goals?.length) {
+		const plural = extra.goals.length > 1 || s.kind === 'shared';
+		lines.push(
+			`**${plural ? 'Goals' : 'Goal'}**\n` +
+				extra.goals.map((g) => goalLine(g, s.kind === 'shared', !live)).join('\n')
+		);
+	}
 	return {
 		title,
 		description: lines.join('\n'),
@@ -575,8 +645,22 @@ export function buildCard(s: Session, extra: { deafened?: number } = {}) {
 	};
 }
 
-export function buildComponents(s: Session, disabled = false) {
+export function buildComponents(s: Session, disabled = false, goals: Goal[] = []) {
 	const live = s.status === 'running' || s.status === 'paused';
+	if (!live && goals.length) {
+		// Over: ask how it went. Each member answers for their own goal.
+		return [
+			{
+				type: 1,
+				components: [0, 25, 50, 75, 100].map((n) => ({
+					type: 2,
+					style: n === 100 ? 3 : 2,
+					label: `${n}%`,
+					custom_id: `timebox:pct:${s.id}:${n}`,
+				})),
+			},
+		];
+	}
 	const off = disabled || !live;
 	const btn = (action: string, label: string, style: number) => ({
 		type: 2,
@@ -607,12 +691,16 @@ const ephemeral = (content: string) => ({
 	data: { content, flags: EPHEMERAL, allowed_mentions: { parse: [] } },
 });
 
-function cardMessage(s: Session, extra: { deafened?: number } = {}) {
+function cardMessage(s: Session, extra: CardExtra = {}) {
 	return {
 		embeds: [buildCard(s, extra)],
-		components: buildComponents(s),
+		components: buildComponents(s, false, extra.goals),
 		allowed_mentions: { parse: [] },
 	};
+}
+
+async function cardExtra(db, s: Session): Promise<CardExtra> {
+	return { deafened: await deafenedCount(db, s.id), goals: await getGoals(db, s.id) };
 }
 
 async function deafenedCount(db, sessionId: number): Promise<number> {
@@ -646,9 +734,14 @@ function phaseAnnouncement(s: Session): string {
 /** Tell the channel what changed: edit the shared card, and ping the people in it. */
 async function announce(db, discord, s: Session) {
 	if (!discord) return;
-	const extra = { deafened: await deafenedCount(db, s.id) };
+	const extra = await cardExtra(db, s);
 	const mentions = await audience(db, s);
-	const content = `${mentions.map((id) => `<@${id}>`).join(' ')} ${phaseAnnouncement(s)}`;
+	const over = s.status === 'done' || s.status === 'stopped';
+	const askPercent =
+		over && extra.goals?.length
+			? ' How much of your goal did you get done? Press a percent on the card, or use `/timebox progress`.'
+			: '';
+	const content = `${mentions.map((id) => `<@${id}>`).join(' ')} ${phaseAnnouncement(s)}${askPercent}`;
 	try {
 		if (s.kind === 'shared' && s.message_id) {
 			await discord.channels
@@ -889,6 +982,46 @@ async function mayControl(db, s: Session, userId: string, perms: unknown): Promi
 	return false;
 }
 
+/** Whether a member is part of a session: its starter, or in its shared voice channel. */
+async function inSession(db, s: Session, userId: string): Promise<boolean> {
+	return (
+		s.starter_id === userId ||
+		Boolean(
+			s.kind === 'shared' &&
+			s.voice_channel_id &&
+			(await voiceChannelOf(db, s.guild_id, userId)) === s.voice_channel_id
+		)
+	);
+}
+
+/**
+ * The session a goal command is about: the live one for this member, or, when
+ * `orRecent`, the one that most recently ended with a goal of theirs in it.
+ */
+async function goalSession(db, guildId: string, userId: string, orRecent = false) {
+	const vc = await voiceChannelOf(db, guildId, userId);
+	const live = await sessionFor(db, guildId, userId, vc);
+	if (live || !orRecent) return live;
+	const row: any = await db
+		.prepare(
+			`SELECT s.id FROM timebox_sessions s
+			 JOIN timebox_participants p ON p.session_id = s.id AND p.user_id = ?
+			 WHERE s.guild_id = ? AND p.goal IS NOT NULL AND s.status IN ('done', 'stopped')
+			 ORDER BY s.id DESC LIMIT 1`
+		)
+		.bind(userId, guildId)
+		.first();
+	return row ? getSession(db, Number(row.id)) : null;
+}
+
+/** Put a changed goal or percent on the card people are looking at, where it can be edited. */
+async function refreshCard(db, discord, s: Session) {
+	if (!discord || s.kind !== 'shared' || !s.message_id) return;
+	await discord.channels
+		.editMessage(s.channel_id, s.message_id, cardMessage(s, await cardExtra(db, s)))
+		.catch((err) => log.warn(`[Timebox] Could not refresh card #${s.id}: ${err?.message}`));
+}
+
 export async function handleTimeboxCommand(body: Interaction, db, discord): Promise<TimeboxReply> {
 	const guildId = body.guild_id;
 	const channelId = body.channel_id;
@@ -927,11 +1060,40 @@ export async function handleTimeboxCommand(body: Interaction, db, discord): Prom
 				response: {
 					type: RESPOND_MESSAGE,
 					data: {
-						...cardMessage(s, { deafened: await deafenedCount(db, s.id) }),
+						...cardMessage(s, await cardExtra(db, s)),
 						flags: EPHEMERAL,
 					},
 				},
 			};
+		}
+		case 'goal': {
+			const goal = cleanGoal(opts.text);
+			if (!goal) return { response: ephemeral('Say what you want to get done.') };
+			const s = await goalSession(db, guildId, userId);
+			if (!s) return { response: ephemeral('No timebox is running for you here.') };
+			if (!(await inSession(db, s, userId))) {
+				return { response: ephemeral('Join the voice channel this timebox is for first.') };
+			}
+			await setGoal(db, s.id, userId, goal);
+			return { response: ephemeral(`Goal set: ${goal}`) };
+		}
+		case 'progress': {
+			const percent = intIn(opts.percent, 0, 100);
+			if (percent === null || Number.isNaN(percent)) {
+				return { response: ephemeral('`percent` is a whole number from 0 to 100.') };
+			}
+			// The timebox is usually over by now, so this looks at the live one first and
+			// then at the one that last ended for this member.
+			const s = await goalSession(db, guildId, userId, true);
+			if (!s || !(await setPercent(db, s.id, userId, percent))) {
+				return {
+					response: ephemeral(
+						'You have no goal to rate. Set one with `/timebox start goal:...` or `/timebox goal`.'
+					),
+				};
+			}
+			await refreshCard(db, discord, s);
+			return { response: ephemeral(`Recorded: ${percent}% of your goal.`) };
 		}
 		case 'settings': {
 			if (!isController(perms))
@@ -986,6 +1148,7 @@ async function startCommand(
 		chosen[key] = v ?? fallback;
 	}
 
+	const goal = cleanGoal(opts.goal);
 	const deafen: DeafenMode =
 		opts.deafen === 'focus' || opts.deafen === 'whole' ? opts.deafen : 'none';
 	const vc = opts.solo ? null : await voiceChannelOf(db, ctx.guildId, ctx.userId);
@@ -1016,6 +1179,8 @@ async function startCommand(
 		rounds: chosen.rounds,
 		control: settings.control,
 	});
+
+	if (goal) await setGoal(db, s.id, ctx.userId, goal);
 
 	let note = '';
 	if (deafen !== 'none') {
@@ -1056,6 +1221,7 @@ async function startCommand(
 			data: {
 				...cardMessage(s, {
 					deafened: deafen !== 'none' && note.startsWith('\nYou are') ? 1 : 0,
+					goals: goal ? [{ user_id: ctx.userId, goal, percent_done: null }] : [],
 				}),
 				content:
 					(s.kind === 'shared'
@@ -1077,7 +1243,7 @@ export async function handleTimeboxComponent(
 	db,
 	discord
 ): Promise<TimeboxReply> {
-	const [, action, idText] = String(body.data?.custom_id || '').split(':');
+	const [, action, idText, idRest] = String(body.data?.custom_id || '').split(':');
 	const id = Number(idText);
 	const userId = body.member?.user?.id || body.user?.id;
 	if (!db || !Number.isInteger(id) || !userId)
@@ -1085,6 +1251,26 @@ export async function handleTimeboxComponent(
 
 	const s = await getSession(db, id);
 	if (!s) return { response: ephemeral('That timebox is gone.') };
+
+	if (action === 'pct') {
+		// The buttons on the finished card: each member rates their own goal.
+		const percent = intIn(idRest, 0, 100);
+		if (percent === null || Number.isNaN(percent))
+			return { response: ephemeral('Unknown button.') };
+		if (!(await setPercent(db, s.id, userId, percent))) {
+			return {
+				response: ephemeral(
+					'You did not set a goal in this timebox, so there is nothing to rate.'
+				),
+			};
+		}
+		return {
+			response: {
+				type: RESPOND_UPDATE,
+				data: cardMessage(s, await cardExtra(db, s)),
+			},
+		};
+	}
 	if (s.status !== 'running' && s.status !== 'paused') {
 		return { response: ephemeral('That timebox has ended.') };
 	}
@@ -1160,7 +1346,7 @@ export async function handleTimeboxComponent(
 	return {
 		response: {
 			type: RESPOND_UPDATE,
-			data: cardMessage(fresh, { deafened: await deafenedCount(db, fresh.id) }),
+			data: cardMessage(fresh, await cardExtra(db, fresh)),
 		},
 	};
 }
