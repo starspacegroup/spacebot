@@ -24,7 +24,7 @@ import {
 	type PurgeMeta,
 } from '$lib/server/message-purge-queue.js';
 import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
-import { memberHasCommandPermission } from '$lib/discord/command-permissions.js';
+import { memberMayUseCommand } from '$lib/discord/command-access.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
 import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
@@ -273,6 +273,31 @@ export async function POST({ request, platform: rawPlatform }) {
 		const { data } = body;
 		const guildId = body.guild_id;
 
+		// Who may run it, before anything runs: the permission level and the role
+		// rules, for every command (custom, built-in and integration) in one place.
+		// Discord's own gate is advisory, and the built-ins below (`/quorum`,
+		// `/timebox`, `/room`, ...) are handled before the generic path, so the
+		// check lives here and not down there. `/help` answers for itself.
+		if (db && guildId && data.name !== 'help') {
+			const gated = await getCommandByName(db, data.name, guildId);
+			if (
+				gated &&
+				!memberMayUseCommand(
+					body.member,
+					gated.default_member_permissions,
+					gated.access_rules
+				)
+			) {
+				return json({
+					type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+					data: {
+						content: "🚫 You don't have permission to use this command.",
+						flags: 64, // EPHEMERAL
+					},
+				});
+			}
+		}
+
 		// `/help` answers "what can I run here?", so it is built per member from
 		// the guild's real command set rather than from a stored embed. Always
 		// ephemeral: it is a private answer to a private question, and a member
@@ -350,24 +375,7 @@ export async function POST({ request, platform: rawPlatform }) {
 			const customCommand = await getCommandByName(db, data.name, guildId);
 
 			if (customCommand) {
-				// Enforce configured permission restrictions server-side. Discord
-				// also gates on default_member_permissions at its UI layer, but that
-				// is advisory — re-check the invoking member's permissions here so a
-				// crafted/stale interaction cannot bypass the restriction.
-				if (
-					!memberHasCommandPermission(
-						body.member?.permissions,
-						customCommand.default_member_permissions
-					)
-				) {
-					return json({
-						type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-						data: {
-							content: "🚫 You don't have permission to use this command.",
-							flags: 64, // EPHEMERAL
-						},
-					});
-				}
+				// Permissions and role rules were enforced above, before dispatch.
 
 				// Resolve per-invocation ephemerality NOW — before the defer
 				// decision below, because Discord fixes a deferred reply's
@@ -1794,7 +1802,7 @@ async function buildHelpResponse(db, guildId, body) {
 		}
 
 		const commands = await collectGuildCommands(db, guildId);
-		return buildHelpEmbed(buildHelpEntries(commands, body?.member?.permissions), guildName);
+		return buildHelpEmbed(buildHelpEntries(commands, body?.member), guildName);
 	} catch (error) {
 		log.error('[Help] Could not build the command list:', error);
 		return {

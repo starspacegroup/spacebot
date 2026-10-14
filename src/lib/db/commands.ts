@@ -8,6 +8,12 @@ import { ApplicationCommandType } from 'discord-api-types/v10';
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from './automations.js';
 import { applyInteractionOptionsToContext } from '../discord/interaction-options.js';
 import { log } from '../log.js';
+import {
+	parseAccessRules,
+	serializeAccessRules,
+	visibleToEveryone,
+	type AccessRules,
+} from '../discord/command-access.js';
 import { coerceOptionBoolean, parseEphemeralOptionConditions } from '../command-ephemeral.js';
 
 // Re-export ACTION_TYPES and COMMAND_USER_SOURCES for use by commands
@@ -333,8 +339,8 @@ export async function createCommand(db, command) {
         default_member_permissions, dm_permission,
         context_menu_user, context_menu_message, require_voice,
         created_by,
-        source_integration_slug, source_template_key
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source_integration_slug, source_template_key, access_rules
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
 			)
 			.bind(
@@ -358,7 +364,8 @@ export async function createCommand(db, command) {
 				command.require_voice ? 1 : 0,
 				command.created_by || null,
 				command.source_integration_slug || null,
-				command.source_template_key || null
+				command.source_template_key || null,
+				serializeAccessRules(command.access_rules)
 			)
 			.run();
 
@@ -515,6 +522,11 @@ export async function updateCommand(db, id, updates: Record<string, any> = {}) {
 			fields.push('default_member_permissions = ?');
 			values.push(updates.default_member_permissions || null);
 			fields.push('registered = 0'); // Needs re-registration when permissions change
+		}
+		if (updates.access_rules !== undefined) {
+			fields.push('access_rules = ?');
+			values.push(serializeAccessRules(updates.access_rules));
+			fields.push('registered = 0'); // Registration depends on the rules
 		}
 		if (updates.dm_permission !== undefined) {
 			fields.push('dm_permission = ?');
@@ -673,7 +685,8 @@ export async function getCommandByName(db, name, guildId) {
 		const builtIn: any = await db
 			.prepare(
 				`
-      SELECT c.*, o.default_member_permissions AS override_member_permissions
+      SELECT c.*, o.default_member_permissions AS override_member_permissions,
+             o.access_rules AS override_access_rules
       FROM commands c
       LEFT JOIN built_in_command_overrides o
         ON o.command_id = c.id AND o.guild_id = ?
@@ -694,6 +707,9 @@ export async function getCommandByName(db, name, guildId) {
 				builtIn.override_member_permissions !== undefined
 			) {
 				parsed.default_member_permissions = builtIn.override_member_permissions;
+			}
+			if (builtIn.override_access_rules) {
+				parsed.access_rules = parseAccessRules(builtIn.override_access_rules);
 			}
 			return parsed;
 		}
@@ -972,6 +988,7 @@ function parseCommand(row) {
 		context_menu_user: !!row.context_menu_user,
 		context_menu_message: !!row.context_menu_message,
 		is_built_in: !!row.is_built_in,
+		access_rules: parseAccessRules(row.access_rules),
 		options: row.options ? JSON.parse(row.options) : [],
 		action_config: row.action_config ? JSON.parse(row.action_config) : {},
 		response_embed: row.response_embed ? JSON.parse(row.response_embed) : null,
@@ -1072,6 +1089,9 @@ function applyBuiltInOverride(command, override) {
 			override.default_member_permissions === undefined
 				? command.default_member_permissions
 				: override.default_member_permissions,
+		access_rules: override.access_rules
+			? parseAccessRules(override.access_rules)
+			: command.access_rules,
 		has_guild_override: true,
 	};
 }
@@ -1090,7 +1110,7 @@ export async function getBuiltInCommandOverrides(db, guildId) {
 		const { results } = await db
 			.prepare(
 				`
-      SELECT command_id, enabled, default_member_permissions
+      SELECT command_id, enabled, default_member_permissions, access_rules
       FROM built_in_command_overrides
       WHERE guild_id = ?
     `
@@ -1102,6 +1122,7 @@ export async function getBuiltInCommandOverrides(db, guildId) {
 			overrides.set(Number(row.command_id), {
 				enabled: row.enabled,
 				default_member_permissions: row.default_member_permissions,
+				access_rules: row.access_rules,
 			});
 		}
 
@@ -1124,7 +1145,11 @@ export async function setBuiltInCommandOverride(
 	db,
 	guildId,
 	commandId,
-	updates: { enabled?: boolean | null; default_member_permissions?: string | null } = {}
+	updates: {
+		enabled?: boolean | null;
+		default_member_permissions?: string | null;
+		access_rules?: Partial<AccessRules> | null;
+	} = {}
 ) {
 	if (!db) {
 		return { success: false, error: 'Database not available' };
@@ -1148,7 +1173,7 @@ export async function setBuiltInCommandOverride(
 		const current = await db
 			.prepare(
 				`
-      SELECT enabled, default_member_permissions
+      SELECT enabled, default_member_permissions, access_rules
       FROM built_in_command_overrides
       WHERE guild_id = ? AND command_id = ?
     `
@@ -1170,8 +1195,17 @@ export async function setBuiltInCommandOverride(
 				? (current?.default_member_permissions ?? null)
 				: updates.default_member_permissions || null;
 
+		const nextAccessRules =
+			updates.access_rules === undefined
+				? (current?.access_rules ?? null)
+				: serializeAccessRules(updates.access_rules);
+
 		// If there are no override values left, remove the row entirely.
-		if (nextEnabled === null && nextDefaultMemberPermissions === null) {
+		if (
+			nextEnabled === null &&
+			nextDefaultMemberPermissions === null &&
+			nextAccessRules === null
+		) {
 			await db
 				.prepare(
 					`
@@ -1188,16 +1222,17 @@ export async function setBuiltInCommandOverride(
 			.prepare(
 				`
       INSERT INTO built_in_command_overrides (
-        guild_id, command_id, enabled, default_member_permissions, updated_at
-      ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        guild_id, command_id, enabled, default_member_permissions, access_rules, updated_at
+      ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(guild_id, command_id)
       DO UPDATE SET
         enabled = excluded.enabled,
         default_member_permissions = excluded.default_member_permissions,
+        access_rules = excluded.access_rules,
         updated_at = CURRENT_TIMESTAMP
     `
 			)
-			.bind(guildId, commandId, nextEnabled, nextDefaultMemberPermissions)
+			.bind(guildId, commandId, nextEnabled, nextDefaultMemberPermissions, nextAccessRules)
 			.run();
 
 		return { success: true };
@@ -1237,7 +1272,7 @@ export async function getBuiltInCommandForGuild(db, guildId, id) {
 	const override = await db
 		.prepare(
 			`
-    SELECT enabled, default_member_permissions
+    SELECT enabled, default_member_permissions, access_rules
     FROM built_in_command_overrides
     WHERE guild_id = ? AND command_id = ?
   `
@@ -1575,9 +1610,15 @@ function toDiscordOption(opt) {
  */
 export function toDiscordCommand(command) {
 	const dmPermission = command.dm_permission === 1 || command.dm_permission === true;
+	// Allowed roles can only see a command Discord is not hiding from them, so
+	// when there are any the permission gate moves from Discord to us.
 	const hasPermissionRestriction =
 		command.default_member_permissions !== null &&
-		command.default_member_permissions !== undefined;
+		command.default_member_permissions !== undefined &&
+		!visibleToEveryone(
+			command.default_member_permissions,
+			parseAccessRules(command.access_rules)
+		);
 
 	const baseCommand: Record<string, any> = {
 		name: command.name,

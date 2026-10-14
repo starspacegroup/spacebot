@@ -1,3 +1,4 @@
+import { roleIdsFromField } from '$lib/discord/command-access.js';
 import { fail, redirect } from '@sveltejs/kit';
 import {
 	ACTION_TYPES,
@@ -272,6 +273,12 @@ export const actions = {
 				response_content: responseContent || null,
 				response_embed: responseEmbed,
 				default_member_permissions: defaultMemberPermissions,
+				access_rules: {
+					deny_roles: roleIdsFromField(formData.get('deny_roles')),
+					allow_roles: roleIdsFromField(formData.get('allow_roles')).filter(
+						(id) => !roleIdsFromField(formData.get('deny_roles')).includes(id)
+					),
+				},
 				dm_permission: false, // Guild commands typically don't work in DMs
 				context_menu_user: contextMenuUser,
 				require_voice: requireVoice,

@@ -16,6 +16,7 @@ import {
 	updateCommand,
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
+import { roleIdsFromField } from '$lib/discord/command-access.js';
 import { getGuildWebhooks } from '$lib/db/webhooks.js';
 import { getGuildContributedActions, getGuildContributedVariables } from '$lib/db/integrations.js';
 import { log } from '$lib/db/logger.js';
@@ -51,6 +52,19 @@ interface CommandUpdates {
 	response_embed?: Record<string, any> | null;
 	default_member_permissions?: FormDataEntryValue | null;
 	dm_permission?: boolean;
+	access_rules?: { allow_roles: string[]; deny_roles: string[] };
+}
+
+/** The role rules from the Permissions section: two comma-separated lists of role ids. */
+function accessRulesFrom(formData: FormData) {
+	const deny = roleIdsFromField(formData.get('deny_roles'));
+	return {
+		// A role in both lists is denied: the safe reading of a contradiction.
+		allow_roles: roleIdsFromField(formData.get('allow_roles')).filter(
+			(id) => !deny.includes(id)
+		),
+		deny_roles: deny,
+	};
 }
 
 /** @type {import('./$types').PageServerLoad} */
@@ -163,6 +177,7 @@ export const actions = {
 			if (!isSuperAdmin) {
 				const result = await setBuiltInCommandOverride(db, params.serverId, parseInt(id), {
 					default_member_permissions: defaultMemberPermissions,
+					access_rules: accessRulesFrom(formData),
 				});
 
 				if (!result.success) {
@@ -344,6 +359,8 @@ export const actions = {
 		// Parse permissions
 		const defaultMemberPermissions = formData.get('default_member_permissions') || null;
 		updates.default_member_permissions = defaultMemberPermissions;
+		// Role ids belong to one server, so a global built-in row never carries them.
+		if (!isBuiltIn) updates.access_rules = accessRulesFrom(formData);
 		updates.dm_permission = false; // Guild commands typically don't work in DMs
 
 		try {

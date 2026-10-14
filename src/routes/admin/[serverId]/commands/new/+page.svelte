@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
+	import CommandAccessRules from '$lib/components/CommandAccessRules.svelte';
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
 	import ButtonEditor from '$lib/components/ButtonEditor.svelte';
 	import { log } from '$lib/log.js';
@@ -1510,6 +1511,13 @@
 						{/each}
 					</div>
 				</div>
+			{/if}
+
+			{#if data.selectedGuildId}
+				<CommandAccessRules
+					guildId={data.selectedGuildId}
+					permissionLevelSet={selectedPermissionPreset !== 'everyone'}
+				/>
 			{/if}
 
 			<!-- Hidden field to pass the computed permission value -->

@@ -11,7 +11,7 @@
  * Discord.
  */
 
-import { memberHasCommandPermission } from './command-permissions.js';
+import { memberMayUseCommand } from './command-access.js';
 import { SUB_COMMAND, SUB_COMMAND_GROUP } from './interaction-options.js';
 
 /** Discord's cap on an embed field value. */
@@ -49,8 +49,14 @@ export function subcommandPaths(options: any, prefix = ''): string[] {
 /** Turn a guild's commands into the entries a member is allowed to see. */
 export function buildHelpEntries(
 	{ builtIn = [], custom = [], integration = [] }: Record<string, any[]>,
-	memberPermissions: unknown
+	memberOrPermissions: unknown
 ): HelpEntry[] {
+	// A member object (permissions and roles), or, for callers with no roles to
+	// offer, just the permission bitfield.
+	const member =
+		memberOrPermissions && typeof memberOrPermissions === 'object'
+			? (memberOrPermissions as { permissions?: unknown; roles?: unknown })
+			: { permissions: memberOrPermissions };
 	const entries: HelpEntry[] = [];
 
 	const add = (command: any, source: HelpEntry['source']) => {
@@ -59,7 +65,9 @@ export function buildHelpEntries(
 
 		// Discord gates on this too, but its gate is advisory and ours is the
 		// one that decides whether the command would actually run.
-		if (!memberHasCommandPermission(memberPermissions, command?.default_member_permissions)) {
+		if (
+			!memberMayUseCommand(member, command?.default_member_permissions, command?.access_rules)
+		) {
 			return;
 		}
 

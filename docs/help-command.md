@@ -49,7 +49,8 @@ A command family is listed with its subcommands underneath, so `/room` shows
 
 ## Filtering
 
-`memberHasCommandPermission` decides, the same function the interaction
+`memberMayUseCommand` decides (the permission level plus role rules, see
+[Command access](command-access.md)), the same function the interaction
 dispatcher uses to gate the command itself. That matters: Discord's own
 `default_member_permissions` gate is advisory, and this is the one that decides
 whether the command would actually run.

@@ -26,6 +26,7 @@ database — see the architecture overview below.
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
+- [Command access](command-access.md) — permission levels plus role rules for who can run a command
 - [The /help command](help-command.md) — what every member sees when they ask what the bot does
 - [Member Rooms](managed-channels.md) — self-service channels members create, run and outlive
 - [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
