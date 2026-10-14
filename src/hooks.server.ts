@@ -18,7 +18,11 @@ import { finishSpan, startSpan } from '$lib/server/telemetry.js';
 import { resolveLocale } from '$lib/i18n.js';
 import { sequence } from '@sveltejs/kit/hooks';
 import { sentryHandle, handleErrorWithSentry } from '@sentry/sveltekit';
-import { wrapRequestHandler, setAsyncLocalStorageAsyncContextStrategy } from '@sentry/cloudflare';
+import {
+	getDefaultIntegrations,
+	setAsyncLocalStorageAsyncContextStrategy,
+} from '@sentry/cloudflare';
+import { wrapRequestHandler } from '@sentry/cloudflare/request';
 
 /**
  * Dev Auth Bypass
@@ -611,14 +615,17 @@ export function initSentryHandle({ event, resolve }) {
 	// wrapRequestHandler already isolates the request scope; tell sentryHandle
 	// not to isolate again (matches initCloudflareSentryHandle's behavior).
 	event.locals._sentrySkipRequestIsolation = true;
+	const options = {
+		dsn,
+		environment: event.platform.env.SENTRY_ENVIRONMENT || 'production',
+		release: event.platform.env.SENTRY_RELEASE || undefined,
+		tracesSampleRate: Number(event.platform.env.SENTRY_TRACES_SAMPLE_RATE || '0.05'),
+	};
 	return wrapRequestHandler(
 		{
-			options: {
-				dsn,
-				environment: event.platform.env.SENTRY_ENVIRONMENT || 'production',
-				release: event.platform.env.SENTRY_RELEASE || undefined,
-				tracesSampleRate: Number(event.platform.env.SENTRY_TRACES_SAMPLE_RATE || '0.05'),
-			},
+			// Sentry 11's request wrapper defaults to the integrations that work without
+			// nodejs_compat; this app enables that flag, so ask for the full set.
+			options: { ...options, defaultIntegrations: getDefaultIntegrations(options) },
 			request: event.request,
 			context: event.platform.context,
 			// sentryHandle captures errors (and can distinguish redirects), so skip here.
