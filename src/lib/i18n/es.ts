@@ -926,6 +926,9 @@ export const es: Record<string, string> = {
 	'adash.links.observancesDesc': 'Publica un día histórico tal como ocurrió, en su aniversario',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
+	'adash.links.activity': 'Actividad',
+	'adash.links.activityDesc':
+		'Activa la Actividad en canales de voz y define los valores de Timebox',
 	'adash.links.commands': 'Comandos de barra',
 	'adash.links.commandsDesc': 'Crea comandos de barra personalizados',
 	'adash.links.events': 'Eventos programados',

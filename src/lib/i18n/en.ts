@@ -909,6 +909,8 @@ export const en: Record<string, string> = {
 	'adash.links.observancesDesc': 'Post a historical day as it happened, on its anniversary',
 	'adash.links.rooms': 'Member Rooms',
 	'adash.links.roomsDesc': 'Self-service channels with their own lifetime',
+	'adash.links.activity': 'Activity',
+	'adash.links.activityDesc': 'Turn on the voice-channel Activity and set Timebox defaults',
 	'adash.links.commands': 'Slash Commands',
 	'adash.links.commandsDesc': 'Create custom slash commands',
 	'adash.links.events': 'Scheduled Events',

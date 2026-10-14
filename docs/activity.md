@@ -48,6 +48,17 @@ keeps its tab and shows a help panel (what it does, how to start it).
   command, so a server turns it on the way it turns the command on
   (`built_in_command_overrides`).
 
+## Turning it on (the dashboard)
+
+Server dashboard → **Activity** (`/admin/<server>/activity`, full admin only).
+It holds one switch per Activity part (today only Timebox) and the Timebox
+defaults. A part's switch is the same per-server override as its slash command,
+so turning Timebox off also hides `/timebox` from members, and turning it on
+pushes the command to Discord at once. The defaults (focus, break, long break,
+rounds, who may pause or stop) are the ones `/timebox settings` writes; both use
+the same limits. Who may run `/timebox`, including by role, is on the Slash
+Commands page ([command access](command-access.md)).
+
 ## The Timebox tab
 
 Read-only. `/api/activity/timebox` takes the signed session token (not a cookie) and
