@@ -11,6 +11,38 @@
  */
 
 /**
+ * Find the JSON in `text`: the whole string, or failing that the payload that
+ * starts on a line of its own.
+ *
+ * Wrangler prints progress lines to stdout ahead of the JSON — "├ Checking if
+ * file needs uploading" and a "│" rule — so the output stopped parsing as a
+ * whole. The runner read that as an unreadable tracking table, re-attempted every
+ * migration on every build, and sent D1 dozens of imports it had no need for.
+ * Only a line that begins `[` or `{` is tried, and each candidate must parse to
+ * the end of the output, so a banner or an error page still fails.
+ */
+function parseJsonPayload(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		// fall through to the line-anchored search
+	}
+	const lines = text.split('\n');
+	let offset = 0;
+	for (const line of lines) {
+		if (line.startsWith('[') || line.startsWith('{')) {
+			try {
+				return JSON.parse(text.slice(offset));
+			} catch {
+				// not the payload; try the next candidate
+			}
+		}
+		offset += line.length + 1;
+	}
+	return undefined;
+}
+
+/**
  * Pull the rows out of a `wrangler d1 execute --json` response.
  *
  * Wrangler returns an array with one entry per statement; a single query is
@@ -25,10 +57,8 @@ export function parseD1Rows(output: string): Array<Record<string, any>> {
 	const text = String(output ?? '').trim();
 	if (!text) throw new Error('Empty response from D1');
 
-	let parsed;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
+	const parsed = parseJsonPayload(text);
+	if (parsed === undefined) {
 		// A banner, a warning, an error page — anything but a result set.
 		throw new Error(`Response was not JSON: ${text.slice(0, 200)}`);
 	}

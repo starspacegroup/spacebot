@@ -37,6 +37,24 @@ describe('parseD1Rows', () => {
 		expect(parseD1Rows(JSON.stringify([{ results: [], success: true }]))).toEqual([]);
 	});
 
+	it('finds the result set behind the progress lines Wrangler prints first', () => {
+		// What a production build actually got back: two progress lines, then the JSON.
+		const withPreamble = `├ Checking if file needs uploading\n│\n${JSON.stringify(
+			[{ results: [{ name: '0070_timebox.sql' }], success: true }],
+			null,
+			2
+		)}\n`;
+		expect(parseD1Rows(withPreamble)).toEqual([{ name: '0070_timebox.sql' }]);
+	});
+
+	it('still raises when a line that looks like JSON is not, or nothing follows the banner', () => {
+		expect(() => parseD1Rows('[wrangler:info] starting\nthen nothing useful')).toThrow(
+			/not JSON/
+		);
+		expect(() => parseD1Rows('├ Checking if file needs uploading\n│\n')).toThrow(/not JSON/);
+		expect(() => parseD1Rows('✘ [ERROR] A request failed\n[{"results": ')).toThrow(/not JSON/);
+	});
+
 	it('raises rather than reporting an empty table when the output is not JSON', () => {
 		// The whole bug: this used to be indistinguishable from "no migrations
 		// are applied", and the caller swallowed it.
