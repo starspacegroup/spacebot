@@ -266,6 +266,40 @@ export const OPERATION_TEMPLATES = [
 		canvas_json: {
 			nodes: [
 				{
+					name: 'Minute Command Sync',
+					slug: 'minute-command-sync',
+					description:
+						"Re-registers a server's slash commands with Discord when they differ from what was last sent, so a deploy that changes a command reaches every server without anyone running register-commands.",
+					category: 'operations',
+					execution_backend: 'cloudflare_workflows',
+					legacy_job_name: 'sync_commands',
+					schedule_type: 'cron',
+					cron_expression: '* * * * *',
+					canvas_json: {
+						nodes: [
+							{
+								id: 'start',
+								type: 'trigger',
+								title: 'Minute Trigger',
+								position: { x: 0, y: 0 },
+								data: { schedule: '* * * * *', source: 'gateway-cron' },
+							},
+							{
+								id: 'sync',
+								type: 'task',
+								title: 'Sync Slash Commands',
+								position: { x: 0, y: 140 },
+								data: {
+									operation: 'syncCommands',
+									queue_key: 'ops.commands.sync',
+									notes: 'Looks at ten servers per run, oldest first; syncs only those whose command list changed. A failed server waits 30 minutes.',
+								},
+							},
+						],
+						edges: [{ id: 'e1', source: 'start', target: 'sync', label: 'start' }],
+					},
+				},
+				{
 					id: 'start',
 					type: 'trigger',
 					title: 'Minute Trigger',

@@ -111,7 +111,7 @@ Discord will verify the endpoint by sending a test request. If configured correc
 
 ## Step 4: Register Discord Commands
 
-You need to register slash commands with Discord. You can do this locally or via Cloudflare Workers:
+Servers sync their own slash commands once the app runs (the `sync_commands` job; see `docs/command-sync.md`), so this step is only the first setup of a new bot application. You can do it locally or via Cloudflare Workers:
 
 ### Option A: Register Locally
 

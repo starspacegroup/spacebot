@@ -23,9 +23,9 @@ Filed as [spacebot#84](https://github.com/starspacegroup/spacebot/issues/84).
 qualify. The built-in's own enable/disable and permission gate come from the
 usual built-in command override (Server Settings → Commands), like `/room`.
 
-`/quorum` reaches a server the next time its command set is pushed to Discord:
-saving any command, or Commands → Register, on that server's admin page. That
-is the same path `/room` took (see the roadmap note from 2026-09-07).
+`/quorum` reaches a server by itself: the minute command sync notices the
+server's command list changed and pushes it (see [Command sync](command-sync.md)).
+Saving a command or pressing Register on the server's admin page does it at once.
 
 ## The round
 

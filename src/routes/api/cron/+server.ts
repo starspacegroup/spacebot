@@ -19,6 +19,7 @@ import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
+import { sweepCommandSync } from '$lib/discord/commands.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -115,6 +116,14 @@ function getCronJobDefinitions() {
 			displayName: 'Sweep Timeboxes',
 			description:
 				'Moves running timeboxes to their next block, keeps "deafen me" in step with the phase, ends shared ones whose voice channel emptied, and retries deafens it could not lift.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'sync_commands',
+			displayName: 'Sync Slash Commands',
+			description:
+				"Re-registers a server's slash commands with Discord whenever they differ from what was last sent, so a deploy that changes a command reaches every server without anyone running register-commands.",
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -538,6 +547,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await sweepTimebox(db, botToken);
+		} else if (jobName === 'sync_commands') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await sweepCommandSync(db, (platform as any)?.env ?? process.env);
 		} else if (jobName === 'sync_workers_ai_models') {
 			const synced = await syncWorkersAICatalog(db, platform);
 			result = {

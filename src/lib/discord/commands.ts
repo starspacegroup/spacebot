@@ -5,6 +5,7 @@
 
 import { log } from '../log.js';
 import {
+	BUILT_IN_GUILD_ID,
 	ensureBuiltInCommands,
 	getBuiltInCommandsForGuild,
 	getGuildCommands,
@@ -208,39 +209,14 @@ export async function syncGuildCommands(db, guildId, env) {
 	}
 
 	try {
-		const {
-			builtIn: builtInCommands,
-			custom: customCommands,
-			integration: integrationCommands,
-		} = await collectGuildCommands(db, guildId);
-
-		const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
-
-		// Convert to Discord format, tracking DB IDs
-		const discordCommands = [];
-		for (const cmd of customCommands) {
-			const result = toDiscordCommand(cmd);
-			if (Array.isArray(result)) {
-				for (const discordCmd of result) {
-					discordCommands.push({ ...discordCmd, _dbId: cmd.id });
-				}
-			} else {
-				discordCommands.push({ ...result, _dbId: cmd.id });
-			}
-		}
+		const { allCommands, discordCommands, integrationCommands } =
+			await buildGuildCommandPayload(db, guildId);
 
 		if (integrationCommands.length > 0) {
 			log.info(
 				`syncGuildCommands: Adding ${integrationCommands.length} integration command(s) for guild ${guildId}`
 			);
 		}
-
-		// Combine built-in (from DB), custom, and integration commands
-		const allCommands = [
-			...builtInDiscord,
-			...discordCommands.map(({ _dbId, ...cmd }) => cmd),
-			...integrationCommands,
-		];
 
 		// Bulk-overwrite guild commands (PUT replaces the entire set)
 		const url = `https://discord.com/api/v10/applications/${clientId}/guilds/${guildId}/commands`;
@@ -270,6 +246,8 @@ export async function syncGuildCommands(db, guildId, env) {
 			}
 		}
 
+		await recordCommandSync(db, guildId, await hashCommandPayload(allCommands));
+
 		log.info(
 			`syncGuildCommands: Synced ${registeredCommands.length} commands for guild ${guildId}`
 		);
@@ -278,4 +256,161 @@ export async function syncGuildCommands(db, guildId, env) {
 		log.error('syncGuildCommands error:', error);
 		return { success: false, error: error.message || String(error) };
 	}
+}
+
+/**
+ * The exact command list a guild should have in Discord, and the pieces it is
+ * built from. `syncGuildCommands` sends it; the sweep rebuilds it to see
+ * whether what Discord holds is stale. One builder, so the two cannot disagree.
+ */
+export async function buildGuildCommandPayload(db, guildId) {
+	const {
+		builtIn: builtInCommands,
+		custom: customCommands,
+		integration: integrationCommands,
+	} = await collectGuildCommands(db, guildId);
+
+	const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
+
+	// Convert to Discord format, tracking DB IDs
+	const discordCommands = [];
+	for (const cmd of customCommands) {
+		const result = toDiscordCommand(cmd);
+		if (Array.isArray(result)) {
+			for (const discordCmd of result) {
+				discordCommands.push({ ...discordCmd, _dbId: cmd.id });
+			}
+		} else {
+			discordCommands.push({ ...result, _dbId: cmd.id });
+		}
+	}
+
+	// Combine built-in (from DB), custom, and integration commands
+	const allCommands = [
+		...builtInDiscord,
+		...discordCommands.map(({ _dbId, ...cmd }) => cmd),
+		...integrationCommands,
+	];
+
+	return { allCommands, discordCommands, integrationCommands };
+}
+
+/** SHA-256 of the command list, hex. Order matters: it is the order we send. */
+export async function hashCommandPayload(allCommands) {
+	const bytes = new TextEncoder().encode(JSON.stringify(allCommands));
+	const digest = await crypto.subtle.digest('SHA-256', bytes);
+	return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function recordCommandSync(db, guildId, hash) {
+	try {
+		await db
+			.prepare(
+				`INSERT INTO guild_command_sync (guild_id, payload_hash, synced_at, checked_at, attempted_at, last_error)
+         VALUES (?, ?, datetime('now'), datetime('now'), datetime('now'), NULL)
+         ON CONFLICT(guild_id) DO UPDATE SET
+           payload_hash = excluded.payload_hash,
+           synced_at = excluded.synced_at,
+           checked_at = excluded.checked_at,
+           attempted_at = excluded.attempted_at,
+           last_error = NULL`
+			)
+			.bind(guildId, hash)
+			.run();
+	} catch (error) {
+		// Losing the record only means one extra sync later.
+		log.warn('recordCommandSync: could not save the sync record:', error);
+	}
+}
+
+/** How long a failed sync waits before the sweep tries that server again. */
+export const COMMAND_SYNC_RETRY_MINUTES = 30;
+/** Servers the sweep looks at per run. Each look is a few reads, a sync is one Discord call. */
+export const COMMAND_SYNC_BATCH = 10;
+
+/**
+ * Keep every server's slash commands in step with the code, without anyone
+ * running `register-commands`.
+ *
+ * Each run takes the servers looked at longest ago, rebuilds the list each
+ * should have, and syncs the ones whose list differs from the last one sent
+ * (or that were never sent). A server whose sync failed waits
+ * COMMAND_SYNC_RETRY_MINUTES, so one the bot has left does not fail every
+ * minute. A deploy that changes any command reaches every server within a few
+ * runs.
+ */
+export async function sweepCommandSync(db, env, { limit = COMMAND_SYNC_BATCH } = {}) {
+	const result = { checked: 0, synced: 0, failed: 0, current: 0 };
+	if (!db) return result;
+
+	const rows = await db
+		.prepare(
+			`SELECT g.guild_id
+         FROM (
+           SELECT guild_id FROM commands WHERE guild_id != ?
+           UNION SELECT guild_id FROM built_in_command_overrides
+           UNION SELECT guild_id FROM guild_integrations
+           UNION SELECT guild_id FROM guild_command_sync
+         ) g
+         LEFT JOIN guild_command_sync s ON s.guild_id = g.guild_id
+         WHERE g.guild_id IS NOT NULL
+           AND (s.attempted_at IS NULL
+                OR s.last_error IS NULL
+                OR s.attempted_at <= datetime('now', ?))
+         ORDER BY s.checked_at IS NOT NULL, s.checked_at
+         LIMIT ?`
+		)
+		.bind(BUILT_IN_GUILD_ID, `-${COMMAND_SYNC_RETRY_MINUTES} minutes`, limit)
+		.all();
+
+	for (const { guild_id: guildId } of rows?.results || []) {
+		result.checked++;
+		try {
+			const { allCommands } = await buildGuildCommandPayload(db, guildId);
+			const hash = await hashCommandPayload(allCommands);
+			const known = await db
+				.prepare('SELECT payload_hash FROM guild_command_sync WHERE guild_id = ?')
+				.bind(guildId)
+				.first();
+
+			if (known?.payload_hash === hash) {
+				await db
+					.prepare(
+						"UPDATE guild_command_sync SET checked_at = datetime('now') WHERE guild_id = ?"
+					)
+					.bind(guildId)
+					.run();
+				result.current++;
+				continue;
+			}
+
+			const synced = await syncGuildCommands(db, guildId, env);
+			if (synced.success) {
+				result.synced++;
+			} else {
+				result.failed++;
+				await db
+					.prepare(
+						`INSERT INTO guild_command_sync (guild_id, checked_at, attempted_at, last_error)
+             VALUES (?, datetime('now'), datetime('now'), ?)
+             ON CONFLICT(guild_id) DO UPDATE SET
+               checked_at = excluded.checked_at,
+               attempted_at = excluded.attempted_at,
+               last_error = excluded.last_error`
+					)
+					.bind(guildId, String(synced.error || 'unknown').slice(0, 500))
+					.run();
+			}
+		} catch (error) {
+			result.failed++;
+			log.warn(`sweepCommandSync: guild ${guildId} failed:`, error);
+		}
+	}
+
+	if (result.synced || result.failed) {
+		log.info(
+			`sweepCommandSync: ${result.synced} synced, ${result.failed} failed, ${result.current} current`
+		);
+	}
+	return result;
 }

@@ -28,7 +28,7 @@ bun run dev:gateway            # start the Discord gateway bot process (separate
 bun run build                  # production build → .svelte-kit/cloudflare
 bun run db:migrate:local       # apply migrations to local D1 (test here before prod)
 bun run db:migrate             # apply migrations to production D1
-bun run register-commands      # sync slash commands to Discord
+bun run register-commands      # first setup of a new bot only; servers sync themselves (docs/command-sync.md)
 bun run test                   # vitest run (tests in src/tests/*.test.ts)
 bun run test:watch             # vitest watch
 bun run test:coverage          # vitest with v8 coverage (thresholds enforced — see vite.config.js)
