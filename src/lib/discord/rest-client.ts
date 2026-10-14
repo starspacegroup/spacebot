@@ -492,6 +492,20 @@ export function createDiscordRestClient(botToken) {
 				return buildPermissionOverwrites(botToken, channelId);
 			},
 		},
+		/** Guild members by id, without the GET on the guild that `guilds.fetch` costs. */
+		members: {
+			async fetch(guildId, userId) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`);
+			},
+			/** Server-deafen or undeafen a member. Discord only allows it while they are in voice. */
+			async setDeaf(guildId, userId, deaf, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {
+					method: 'PATCH',
+					body: { deaf },
+					reason,
+				});
+			},
+		},
 		guilds: {
 			async fetch(guildId) {
 				const data = await discordFetch(botToken, `/guilds/${guildId}`);

@@ -28,6 +28,7 @@ database — see the architecture overview below.
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
 - [The /help command](help-command.md) — what every member sees when they ask what the bot does
 - [Member Rooms](managed-channels.md) — self-service channels members create, run and outlive
+- [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch
 
 ## Operations

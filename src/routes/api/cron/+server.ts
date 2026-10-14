@@ -17,6 +17,7 @@ import {
 import { processScheduledMessages } from '$lib/db/scheduled-messages.js';
 import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
+import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -97,6 +98,14 @@ function getCronJobDefinitions() {
 			displayName: 'Reap Member Rooms',
 			description:
 				'Deletes member-owned rooms that have expired or sat empty past their idle window.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'sweep_timebox',
+			displayName: 'Sweep Timeboxes',
+			description:
+				'Moves running timeboxes to their next block, keeps "deafen me" in step with the phase, ends shared ones whose voice channel emptied, and retries deafens it could not lift.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -510,6 +519,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await reapManagedChannels(db, botToken);
+		} else if (jobName === 'sweep_timebox') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await sweepTimebox(db, botToken);
 		} else if (jobName === 'sync_workers_ai_models') {
 			const synced = await syncWorkersAICatalog(db, platform);
 			result = {

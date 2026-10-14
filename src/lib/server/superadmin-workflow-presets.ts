@@ -254,6 +254,40 @@ export const OPERATION_TEMPLATES = [
 		},
 	},
 	{
+		name: 'Minute Timebox Sweep',
+		slug: 'minute-timebox-sweep',
+		description:
+			'Moves running /timebox sessions to their next block, keeps "deafen me" in step with the phase, ends shared timeboxes whose voice channel stayed empty, and retries deafens it could not lift.',
+		category: 'operations',
+		execution_backend: 'cloudflare_workflows',
+		legacy_job_name: 'sweep_timebox',
+		schedule_type: 'cron',
+		cron_expression: '* * * * *',
+		canvas_json: {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Minute Trigger',
+					position: { x: 0, y: 0 },
+					data: { schedule: '* * * * *', source: 'gateway-cron' },
+				},
+				{
+					id: 'sweep',
+					type: 'task',
+					title: 'Sweep Timeboxes',
+					position: { x: 0, y: 140 },
+					data: {
+						operation: 'sweepTimebox',
+						queue_key: 'ops.timebox.sweep',
+						notes: 'Block changes, deafen sync, empty-VC grace, deafen restores. Nothing live means two indexed reads.',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 'start', target: 'sweep', label: 'start' }],
+		},
+	},
+	{
 		name: 'Workers AI Catalog Sync',
 		slug: 'workers-ai-catalog-sync',
 		description:

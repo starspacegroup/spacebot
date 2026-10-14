@@ -39,6 +39,13 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       member picks at create time where the preset allows it (`docs/managed-channels.md`).
       A preset can also give each member a category of their own (`per_user`, migration
       0068), removed when their last room closes
+- [x] Timebox — `/timebox start|stop|status|settings`: focus blocks and breaks (23 / 5 / 15
+      minutes, 4 blocks by default), shared for a voice channel (one public card, everyone
+      pinged at each change, Pause / Skip / Stop) or solo; a minute sweep moves blocks on;
+      per-member "deafen me" per focus block or for the whole timebox that records and
+      restores the prior state and can always be lifted; off until a server enables it
+      (`docs/timebox.md`, migration 0070). Open: a voice channel made for the timebox, mute
+      mode, the Activity tab, a chime
 - [x] Activity foundation — SpaceBot as a Discord Activity: `/activity` page, sign-in that
       asks Discord who the viewer is and where it was opened (voice channel, or DM — a group
       DM only for a server everyone in it belongs to), a signed 5-minute session, a module

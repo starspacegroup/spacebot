@@ -32,6 +32,10 @@ beautiful admin dashboard.
 - **Member Rooms** — Members create and run their own text or voice channels with
   `/room` or a join-to-create lobby; a server preset decides who may make one, what
   the creator can do to it, and when it closes itself
+- **Timebox** — `/timebox start` runs focus blocks and breaks (23/5/15 minutes by default),
+  alone or for everyone in your voice channel, with Pause / Skip / Stop and an optional
+  "deafen me" you can always lift. Off until a server enables it (see
+  [docs/timebox.md](docs/timebox.md))
 - **Activity** — SpaceBot as a Discord Activity, opened from a voice channel or a DM,
   with a tab per module. The foundation is built (sign-in, place check, module
   switch); the timebox is its first module (see [docs/activity.md](docs/activity.md))
