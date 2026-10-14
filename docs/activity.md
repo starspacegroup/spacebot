@@ -48,9 +48,20 @@ keeps its tab and shows a help panel (what it does, how to start it).
   command, so a server turns it on the way it turns the command on
   (`built_in_command_overrides`).
 
+## The Timebox tab
+
+Read-only. `/api/activity/timebox` takes the signed session token (not a cookie) and
+a server id, checks the id against the token's list and that Timebox is on there,
+and returns only the timeboxes the viewer is part of: their own solo one, the shared
+one in the voice channel the Activity was opened in (carried in the token), and the
+shared one in the voice channel they are in now. It never returns another member's
+ids or deafen choices. The page polls every 15 seconds and counts down locally from
+the end time, so a block change shows within a poll of the bot's own minute sweep.
+Controls stay on the card in the channel for now.
+
 ## Not yet
 
-Module views and the controls on them, push updates (the page refreshes on a
+Controls in the Timebox tab and other modules' views, push updates (the page refreshes on a
 timer and on participant changes), Discovery (the App Launcher listing), and the
 User Install setting that Discord may require for launching in a DM. Developer
 Portal checks still open: whether the Activity needs its own verification beyond

@@ -163,7 +163,7 @@ describe('Activity in a guild voice channel', () => {
 		expect(d.calls).toContain('Bearer /users/@me');
 		expect(d.calls.some((c) => c.startsWith('Bot /applications/'))).toBe(true);
 		const claims = await verifySession(ENV.clientSecret, out.token, 1_000_000);
-		expect(claims).toMatchObject({ u: ME, k: 'guild', g: [G1] });
+		expect(claims).toMatchObject({ u: ME, k: 'guild', g: [G1], c: '777777777777777777' });
 	});
 
 	it('shows a module as off when the server has not enabled it', async () => {

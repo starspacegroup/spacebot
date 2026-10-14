@@ -24,6 +24,78 @@
 	let session = $state<Session | null>(null);
 	let guildId = $state<string | null>(null);
 	let moduleId = $state('timebox');
+	// Inside Discord, calls to our own server go through its proxy.
+	let base = '';
+
+	type TimeboxView = {
+		id: number;
+		kind: 'solo' | 'shared';
+		status: 'running' | 'paused' | 'done' | 'stopped';
+		phase: 'focus' | 'break' | 'long_break';
+		block_number: number;
+		rounds: number;
+		focus_minutes: number;
+		break_minutes: number;
+		long_break_minutes: number;
+		ends_at: number | null;
+		paused_remaining_ms: number | null;
+		voice_channel_id: string | null;
+		mine: boolean;
+		deafen: 'none' | 'focus' | 'whole';
+	};
+	let timeboxes = $state<TimeboxView[]>([]);
+	let timeboxLoaded = $state(false);
+	let now = $state(Date.now());
+
+	const PHASE_LABEL = { focus: 'Focus', break: 'Break', long_break: 'Long break' } as const;
+
+	function clock(tb: TimeboxView): string {
+		const ms =
+			tb.status === 'paused'
+				? (tb.paused_remaining_ms ?? 0)
+				: Math.max(0, (tb.ends_at ?? 0) * 1000 - now);
+		const total = Math.ceil(ms / 1000);
+		return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+	}
+
+	// The Timebox tab: fetch the viewer's timeboxes for this server and keep them fresh.
+	// The countdown itself runs here from the end time, so the poll can be slow; a block
+	// change shows up within one poll of the bot's own minute sweep.
+	$effect(() => {
+		if (!session || !guildId || moduleId !== 'timebox' || !mod?.enabled) return;
+		const token = session.token;
+		const gid = guildId;
+		let stopped = false;
+		async function load() {
+			try {
+				const res = await fetch(`${base}/api/activity/timebox`, {
+					method: 'POST',
+					headers: {
+						'content-type': 'application/json',
+						authorization: `Bearer ${token}`,
+					},
+					body: JSON.stringify({ guild_id: gid }),
+				});
+				if (!res.ok) return;
+				const json = await res.json();
+				if (!stopped) {
+					timeboxes = json.timeboxes ?? [];
+					timeboxLoaded = true;
+				}
+			} catch {
+				// Keep what is on screen; the next poll tries again.
+			}
+		}
+		timeboxLoaded = false;
+		load();
+		const poll = setInterval(load, 15000);
+		const tick = setInterval(() => (now = Date.now()), 1000);
+		return () => {
+			stopped = true;
+			clearInterval(poll);
+			clearInterval(tick);
+		};
+	});
 
 	const guild = $derived(session?.guilds.find((g) => g.id === guildId) ?? null);
 	const mod = $derived(guild?.modules.find((m) => m.id === moduleId) ?? null);
@@ -40,8 +112,7 @@
 			phase = 'outside';
 			return;
 		}
-		// Inside Discord, calls to our own server go through its proxy.
-		const base = '/.proxy';
+		base = '/.proxy';
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let accessToken = '';
 		let sdk: DiscordSDK;
@@ -182,9 +253,43 @@
 						</p>
 						<p class="quiet">{mod.help.summary}</p>
 					{:else}
-						<!-- Module views plug in here as they ship; until then, the help panel. -->
-						<p>{mod.help.summary}</p>
-						<p class="start">{mod.help.start}</p>
+						{#if mod.id === 'timebox' && timeboxes.length > 0}
+							{#each timeboxes as tb (tb.id)}
+								<div class="tb" class:focus={tb.phase === 'focus'}>
+									<div class="tb-clock" aria-live="off">{clock(tb)}</div>
+									<div class="tb-meta">
+										<strong>
+											{PHASE_LABEL[tb.phase]}{tb.phase === 'focus'
+												? ` · block ${tb.block_number} of ${tb.rounds}`
+												: ''}
+										</strong>
+										<span class="quiet">
+											{tb.status === 'paused' ? 'Paused · ' : ''}{tb.kind ===
+											'shared'
+												? 'Shared with the voice channel'
+												: 'Just you'}
+											· {tb.focus_minutes}/{tb.break_minutes}/{tb.long_break_minutes}
+											min
+										</span>
+										{#if tb.deafen !== 'none'}
+											<span class="quiet">
+												You asked to be deafened {tb.deafen === 'whole'
+													? 'until it ends'
+													: 'during focus blocks'}.
+											</span>
+										{/if}
+									</div>
+								</div>
+							{/each}
+							<p class="quiet">
+								Pause, skip and stop are on the card in the channel for now.
+							</p>
+						{:else if mod.id === 'timebox' && !timeboxLoaded}
+							<p class="quiet">Looking for your timebox…</p>
+						{:else}
+							<p>{mod.help.summary}</p>
+							<p class="start">{mod.help.start}</p>
+						{/if}
 					{/if}
 				</section>
 			{/if}
@@ -275,6 +380,26 @@
 		border-radius: 0.5rem;
 		padding: 0.3rem 0.5rem;
 		max-width: 12rem;
+	}
+	.tb {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		padding: 0.5rem 0;
+	}
+	.tb-clock {
+		font:
+			700 2.25rem/1 ui-monospace,
+			monospace;
+		font-variant-numeric: tabular-nums;
+		min-width: 5.5ch;
+	}
+	.tb.focus .tb-clock {
+		color: var(--color-primary, #7c6cf2);
+	}
+	.tb-meta {
+		display: flex;
+		flex-direction: column;
 	}
 	.sr {
 		position: absolute;

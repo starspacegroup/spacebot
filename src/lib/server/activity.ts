@@ -138,6 +138,8 @@ export interface TokenClaims {
 	k: ContextKind;
 	/** guild ids this session may touch */
 	g: string[];
+	/** the voice channel the Activity was opened in, for a guild session */
+	c?: string;
 	/** expiry, unix seconds */
 	e: number;
 }
@@ -367,6 +369,7 @@ export async function createActivitySession(
 		i: instanceId,
 		k: context.kind,
 		g: allowed,
+		...(context.channelId ? { c: context.channelId } : {}),
 		e: expiresAt,
 	});
 

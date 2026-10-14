@@ -75,6 +75,6 @@ timed features; a gateway timer can replace it later without changing the data.
 ## Not yet
 
 A voice channel made for the timebox (access, who may talk or share a screen,
-delete-or-alert at the end), muting everyone during focus, the Timebox tab in the
-Activity (`docs/activity.md`), a chime at each change, and a completed-blocks
+delete-or-alert at the end), muting everyone during focus, controls on the Timebox tab in the
+Activity (it shows the countdown read-only, see `docs/activity.md`), a chime at each change, and a completed-blocks
 stat.
