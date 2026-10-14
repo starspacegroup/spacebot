@@ -63,6 +63,7 @@
 	// change shows up within one poll of the bot's own minute sweep.
 	$effect(() => {
 		if (!session || !guildId || moduleId !== 'timebox' || !mod?.enabled) return;
+		if (import.meta.env.DEV && session.token === 'preview') return;
 		const token = session.token;
 		const gid = guildId;
 		let stopped = false;
@@ -105,9 +106,89 @@
 		return g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null;
 	}
 
+	function preview(kind: string) {
+		const modules = (enabled: boolean): Module[] => [
+			{
+				id: 'timebox',
+				name: 'Timebox',
+				enabled,
+				help: {
+					summary:
+						'Focus blocks and breaks, alone or with everyone in a voice channel. The countdown shows here.',
+					start: 'Start one with /timebox start in this server.',
+				},
+			},
+		];
+		const long = 'The Extremely Long Community Server Name That Keeps Going';
+		session = {
+			viewer: { id: '1', username: 'a-rather-long-display-name-here', avatar: null },
+			context: kind === 'dm' ? { kind: 'dm' } : { kind: 'guild', guildId: 'g1' },
+			guilds:
+				kind === 'empty'
+					? []
+					: kind === 'dm'
+						? [
+								{ id: 'g1', name: long, icon: null, modules: modules(true) },
+								{ id: 'g2', name: 'Small', icon: null, modules: modules(false) },
+							]
+						: [{ id: 'g1', name: long, icon: null, modules: modules(kind !== 'off') }],
+			token: 'preview',
+			expiresAt: 0,
+		};
+		guildId = session.guilds[0]?.id ?? null;
+		if (kind === 'error') {
+			message =
+				'You are not a member of this server, so there is nothing for me to show you here.';
+			phase = 'error';
+			return;
+		}
+		if (kind !== 'help') {
+			const base = {
+				id: 1,
+				status: 'running' as const,
+				rounds: 4,
+				focus_minutes: 23,
+				break_minutes: 5,
+				long_break_minutes: 15,
+				paused_remaining_ms: null as number | null,
+				voice_channel_id: 'v',
+				mine: true,
+				deafen: 'focus' as const,
+			};
+			timeboxes = [
+				{
+					...base,
+					kind: 'shared',
+					phase: 'focus',
+					block_number: 2,
+					ends_at: Math.floor(Date.now() / 1000) + 14 * 60 + 7,
+				},
+				{
+					...base,
+					id: 2,
+					kind: 'solo',
+					phase: 'long_break',
+					block_number: 4,
+					status: 'paused',
+					ends_at: null,
+					paused_remaining_ms: 9 * 60 * 1000,
+					deafen: 'whole',
+				},
+			];
+			timeboxLoaded = true;
+		}
+		phase = 'ready';
+	}
+
 	onMount(() => {
 		// Discord adds frame_id to the iframe URL; without it this is just a browser tab.
 		const params = new URLSearchParams(location.search);
+		// Dev only (stripped from production builds): render the signed-in states
+		// without Discord, to check layouts at phone width.
+		if (import.meta.env.DEV && params.has('preview')) {
+			preview(params.get('preview') ?? 'guild');
+			return;
+		}
 		if (!params.has('frame_id') || !data.clientId) {
 			phase = 'outside';
 			return;
@@ -299,7 +380,7 @@
 
 <style>
 	:global(html, body) {
-		background: var(--color-bg, #0d0b1a);
+		background: var(--color-background);
 	}
 	.act {
 		min-height: 100vh;
@@ -308,7 +389,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
-		color: var(--color-text, #e8e6f4);
+		color: var(--color-text);
 		font:
 			14px/1.5 system-ui,
 			sans-serif;
@@ -328,18 +409,18 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		color: var(--color-text-secondary, #a9a5c4);
+		color: var(--color-text-secondary);
 	}
 	.server img {
 		border-radius: 50%;
 	}
 	.quiet {
-		color: var(--color-text-secondary, #a9a5c4);
+		color: var(--color-text-secondary);
 		margin: 0;
 	}
 	.card {
-		background: var(--color-surface, #16132a);
-		border: 1px solid var(--color-border, #2a2745);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 0.75rem;
 		padding: 1rem 1.25rem;
 	}
@@ -362,44 +443,50 @@
 	.tab {
 		background: transparent;
 		color: inherit;
-		border: 1px solid var(--color-border, #2a2745);
+		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		padding: 0.3rem 0.9rem;
 		cursor: pointer;
 		font: inherit;
 	}
 	.tab.on {
-		background: var(--color-primary, #7c6cf2);
-		border-color: var(--color-primary, #7c6cf2);
+		background: var(--color-primary);
+		border-color: var(--color-primary);
 		color: var(--color-fixed-text-bright);
 	}
 	.pick select {
-		background: var(--color-surface, #16132a);
+		background: var(--color-surface);
 		color: inherit;
-		border: 1px solid var(--color-border, #2a2745);
+		border: 1px solid var(--color-border);
 		border-radius: 0.5rem;
 		padding: 0.3rem 0.5rem;
 		max-width: 12rem;
 	}
 	.tb {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.25rem 1rem;
 		padding: 0.5rem 0;
+	}
+	.tb + .tb {
+		border-top: 1px solid var(--color-border);
 	}
 	.tb-clock {
 		font:
-			700 2.25rem/1 ui-monospace,
+			700 clamp(1.75rem, 11vw, 2.25rem) / 1 ui-monospace,
 			monospace;
 		font-variant-numeric: tabular-nums;
 		min-width: 5.5ch;
 	}
 	.tb.focus .tb-clock {
-		color: var(--color-primary, #7c6cf2);
+		color: var(--color-primary);
 	}
 	.tb-meta {
 		display: flex;
+		flex: 1 1 11rem;
 		flex-direction: column;
+		min-width: 0;
 	}
 	.sr {
 		position: absolute;
