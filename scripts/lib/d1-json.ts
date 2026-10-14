@@ -21,7 +21,7 @@
  * Only a line that begins `[` or `{` is tried, and each candidate must parse to
  * the end of the output, so a banner or an error page still fails.
  */
-function parseJsonPayload(text: string): unknown {
+function parseJsonPayload(text: string): any {
 	try {
 		return JSON.parse(text);
 	} catch {
