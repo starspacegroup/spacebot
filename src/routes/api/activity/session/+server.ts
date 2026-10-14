@@ -13,7 +13,7 @@ export async function POST({ request, platform }) {
 	const clientId = getEnv('DISCORD_CLIENT_ID', platform);
 	const clientSecret = getEnv('DISCORD_CLIENT_SECRET', platform);
 	const botToken = getEnv('DISCORD_BOT_TOKEN', platform);
-	const db = platform?.env?.DB;
+	const db = (platform as any)?.env?.DB;
 	if (!clientId || !clientSecret || !botToken || !db) {
 		return json({ error: 'not_configured' }, { status: 503 });
 	}
