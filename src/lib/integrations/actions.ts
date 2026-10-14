@@ -26,9 +26,11 @@
 import { log } from '../log.js';
 import { getEnabledGuildIntegrations } from '../db/integrations.js';
 
-/** How long the integration's action handler has to respond. Mirrors the
- *  command_handler timeout in the interactions route. */
-const ACTION_HANDLER_TIMEOUT_MS = 8000;
+/** How long the integration's action handler has to respond. Longer than the
+ *  command_handler timeout because actions run after the reply is deferred, and
+ *  some (AgapeVerse poems take ~18s) call an LLM. Stays under the 30s waitUntil
+ *  limit the deferred work rides on. */
+const ACTION_HANDLER_TIMEOUT_MS = 25000;
 
 /**
  * A string is an integration action key if it is namespaced with a dot
