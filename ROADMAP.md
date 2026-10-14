@@ -39,6 +39,12 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       member picks at create time where the preset allows it (`docs/managed-channels.md`).
       A preset can also give each member a category of their own (`per_user`, migration
       0068), removed when their last room closes
+- [x] Activity foundation — SpaceBot as a Discord Activity: `/activity` page, sign-in that
+      asks Discord who the viewer is and where it was opened (voice channel, or DM — a group
+      DM only for a server everyone in it belongs to), a signed 5-minute session, a module
+      switch per server, framing allowed for Discord only, and the Entry Point command kept
+      through a global command overwrite (`docs/activity.md`). Modules (timebox first) and
+      Discovery (App Launcher) are open
 - [x] Observances — a server owner can turn on a historical timeline and get its events
       posted one at a time as their minutes come round on the anniversary (8:46 AM at
       8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone

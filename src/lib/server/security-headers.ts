@@ -17,14 +17,27 @@
  * validated in a browser.
  */
 
+/**
+ * Who may frame the Activity page. Discord runs an Activity in an iframe inside
+ * its own client, so `/activity` is the one page that must not say DENY. Nothing
+ * else is framable.
+ */
+export const ACTIVITY_FRAME_ANCESTORS =
+	'https://discord.com https://ptb.discord.com https://canary.discord.com https://*.discordsays.com';
+
+/** True for the only path that is meant to be framed (by Discord). */
+export function isFramablePath(pathname: string): boolean {
+	return pathname === '/activity' || pathname.startsWith('/activity/');
+}
+
 /** Static security headers applied to HTML responses. */
 export const SECURITY_HEADERS: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  // Deny powerful features by default; opt back in per-feature if ever needed.
-  "Permissions-Policy":
-    "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()",
+	'X-Content-Type-Options': 'nosniff',
+	'X-Frame-Options': 'DENY',
+	'Referrer-Policy': 'strict-origin-when-cross-origin',
+	// Deny powerful features by default; opt back in per-feature if ever needed.
+	'Permissions-Policy':
+		'accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()',
 };
 
 /**
@@ -35,25 +48,25 @@ export const SECURITY_HEADERS: Record<string, string> = {
  * and we cannot hash them from here without `kit.csp`. `frame-ancestors 'none'`
  * and `object-src 'none'` are the meaningful hardening directives.
  */
-export function buildContentSecurityPolicy(): string {
-  return [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "object-src 'none'",
-    "frame-ancestors 'none'",
-    "script-src 'self' 'unsafe-inline'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
-    "font-src 'self' data:",
-    "connect-src 'self' https: wss:",
-    "form-action 'self' https://discord.com",
-  ].join("; ");
+export function buildContentSecurityPolicy(options: { framable?: boolean } = {}): string {
+	return [
+		"default-src 'self'",
+		"base-uri 'self'",
+		"object-src 'none'",
+		options.framable ? `frame-ancestors ${ACTIVITY_FRAME_ANCESTORS}` : "frame-ancestors 'none'",
+		"script-src 'self' 'unsafe-inline'",
+		"style-src 'self' 'unsafe-inline'",
+		"img-src 'self' data: https:",
+		"font-src 'self' data:",
+		"connect-src 'self' https: wss:",
+		"form-action 'self' https://discord.com",
+	].join('; ');
 }
 
 /** True when the response is an HTML document (the only target for these headers). */
 export function isHtmlResponse(response: Response): boolean {
-  const contentType = response.headers.get("content-type") || "";
-  return contentType.includes("text/html");
+	const contentType = response.headers.get('content-type') || '';
+	return contentType.includes('text/html');
 }
 
 /**
@@ -64,25 +77,38 @@ export function isHtmlResponse(response: Response): boolean {
  * @returns the same `response` for convenient chaining.
  */
 export function applySecurityHeaders(
-  response: Response,
-  options: { cspReportOnly?: boolean } = {},
+	response: Response,
+	options: { cspReportOnly?: boolean; framable?: boolean } = {}
 ): Response {
-  if (!isHtmlResponse(response)) return response;
+	if (!isHtmlResponse(response)) return response;
 
-  const { cspReportOnly = true } = options;
+	const { cspReportOnly = true, framable = false } = options;
 
-  for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    if (!response.headers.has(name)) {
-      response.headers.set(name, value);
-    }
-  }
+	for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+		// X-Frame-Options has no way to name Discord, so a framable page omits it and
+		// relies on the CSP frame-ancestors list below.
+		if (framable && name === 'X-Frame-Options') continue;
+		if (!response.headers.has(name)) {
+			response.headers.set(name, value);
+		}
+	}
 
-  const cspHeader = cspReportOnly
-    ? "Content-Security-Policy-Report-Only"
-    : "Content-Security-Policy";
-  if (!response.headers.has(cspHeader)) {
-    response.headers.set(cspHeader, buildContentSecurityPolicy());
-  }
+	const cspHeader = cspReportOnly
+		? 'Content-Security-Policy-Report-Only'
+		: 'Content-Security-Policy';
+	if (!response.headers.has(cspHeader)) {
+		response.headers.set(cspHeader, buildContentSecurityPolicy({ framable }));
+	}
 
-  return response;
+	// The full policy above is Report-Only, which browsers do not enforce, so the
+	// framing rule for the Activity would otherwise protect nothing. Enforce just
+	// that one directive.
+	if (framable && !response.headers.has('Content-Security-Policy')) {
+		response.headers.set(
+			'Content-Security-Policy',
+			`frame-ancestors ${ACTIVITY_FRAME_ANCESTORS}`
+		);
+	}
+
+	return response;
 }

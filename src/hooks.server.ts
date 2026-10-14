@@ -4,7 +4,7 @@ import { log } from '$lib/log.js';
 import { upsertUser } from '$lib/db/users.js';
 import { trackUserActivity } from '$lib/db/user-activity.js';
 import { handleGatewayLogsApi } from '$lib/server/gateway-logs-api.js';
-import { applySecurityHeaders } from '$lib/server/security-headers.js';
+import { applySecurityHeaders, isFramablePath } from '$lib/server/security-headers.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
 import {
 	clearDiscordSession,
@@ -386,6 +386,17 @@ async function appHandle({ event, resolve }) {
 	});
 
 	try {
+		// Discord opens an Activity at the root of its proxy, with `frame_id` (and
+		// the other SDK parameters) on the query. The URL mapping can only name a
+		// host — a path would break /_app asset URLs — so the root hands that visit
+		// to /activity here, keeping the query the SDK reads.
+		if (url.pathname === '/' && url.searchParams.has('frame_id')) {
+			return new Response(null, {
+				status: 302,
+				headers: { location: `/activity${url.search}`, 'cache-control': 'no-store' },
+			});
+		}
+
 		const isDevAuthPath = url.pathname === '/dev-login' || url.pathname === '/dev-logout';
 		const hasDevAuthParams =
 			url.searchParams.has('dev_auth') || url.searchParams.has('dev_role');
@@ -535,7 +546,7 @@ async function appHandle({ event, resolve }) {
 		// Security headers (HTML responses only; no-op for API/assets/WebSocket).
 		// Safe to set after resolve() because this mutates the returned Response's
 		// own headers, unlike cookies (which SvelteKit serializes during resolve).
-		applySecurityHeaders(response);
+		applySecurityHeaders(response, { framable: isFramablePath(url.pathname) });
 
 		await trackAuthenticatedRequestActivity(event, response?.status || 200);
 		finishSpan(requestSpan, platform);

@@ -32,6 +32,9 @@ beautiful admin dashboard.
 - **Member Rooms** — Members create and run their own text or voice channels with
   `/room` or a join-to-create lobby; a server preset decides who may make one, what
   the creator can do to it, and when it closes itself
+- **Activity** — SpaceBot as a Discord Activity, opened from a voice channel or a DM,
+  with a tab per module. The foundation is built (sign-in, place check, module
+  switch); the timebox is its first module (see [docs/activity.md](docs/activity.md))
 - **Observances** — Post a historical day's events at the minutes they happened,
   on its anniversary. Ships with September 11, 2001; off unless a server owner
   turns it on and picks a channel (see [docs/observances.md](docs/observances.md))

@@ -73,6 +73,38 @@ export const commands = [
 	},
 ];
 
+/** Application command type for the Activity launcher Discord creates for us. */
+export const ENTRY_POINT_COMMAND_TYPE = 4;
+
+/**
+ * The app's Entry Point commands, as Discord returned them, shaped to go back in
+ * a bulk overwrite. Empty when Activities are not enabled or the read fails —
+ * a failed read must not stop a registration that would have worked before.
+ */
+export async function getEntryPointCommands(clientId, botToken, f: typeof fetch = fetch) {
+	try {
+		const res = await f(`https://discord.com/api/v10/applications/${clientId}/commands`, {
+			headers: { Authorization: `Bot ${botToken}` },
+		});
+		if (!res.ok) return [];
+		const existing: any[] = await res.json();
+		return existing
+			.filter((c) => c?.type === ENTRY_POINT_COMMAND_TYPE)
+			.map((c) => ({
+				id: c.id,
+				name: c.name,
+				description: c.description,
+				type: c.type,
+				handler: c.handler,
+				integration_types: c.integration_types,
+				contexts: c.contexts,
+			}));
+	} catch (error) {
+		log.warn('registerCommands: could not read Entry Point commands:', error);
+		return [];
+	}
+}
+
 /**
  * Register commands with Discord
  * Run this script to deploy commands to Discord
@@ -90,13 +122,19 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 		: `https://discord.com/api/v10/applications/${clientId}/commands`;
 
 	try {
+		// A global PUT replaces every global command. Once Activities are enabled
+		// the app owns an Entry Point command (type 4) that Discord created, and an
+		// overwrite that leaves it out is refused. Read it back and keep it.
+		const body: any[] = [...commands];
+		if (!guildId) body.push(...(await getEntryPointCommands(clientId, botToken)));
+
 		const response = await fetch(url, {
 			method: 'PUT',
 			headers: {
 				'Content-Type': 'application/json',
 				Authorization: `Bot ${botToken}`,
 			},
-			body: JSON.stringify(commands),
+			body: JSON.stringify(body),
 		});
 
 		if (!response.ok) {
