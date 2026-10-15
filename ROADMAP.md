@@ -60,6 +60,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       Counts only: voters are an HMAC under a per-question salt that is deleted on close.
       Owner veto with a public reason; protected question classes refused at ask time;
       per-channel defaults for Crew (`docs/quorum.md`, migration 0069)
+- [x] Oldest (#58) — `/oldest` ranks the top ten oldest Discord accounts in a server, read
+      from the account's creation time inside its id; `show:` switches to the newest
+      accounts or the longest-serving members. Bots left out; the reply says how old the
+      member list is (`docs/oldest.md`, migration 0075)
 - [x] Observances — a server owner can turn on a historical timeline and get its events
       posted one at a time as their minutes come round on the anniversary (8:46 AM at
       8:46 AM). One timeline ships: September 11, 2001. Off for every guild until someone
