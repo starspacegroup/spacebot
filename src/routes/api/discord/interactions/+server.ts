@@ -31,6 +31,7 @@ import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
 import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
+import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
@@ -329,6 +330,11 @@ export async function POST({ request, platform: rawPlatform }) {
 					reply.after.catch((err) => log.error('[Quorum] after-reply work failed:', err));
 			}
 			return json(reply.response);
+		}
+
+		// `/oldest`: a read over the member cache, answered at once.
+		if (data.name === 'oldest' && guildId) {
+			return json(await handleOldestCommand(body, db));
 		}
 
 		// `/timebox`: timers are state the bot keeps, so it is handled

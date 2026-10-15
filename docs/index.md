@@ -33,6 +33,7 @@ database — see the architecture overview below.
 - [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch
 - [Quorum](quorum.md) — one-command yes/no decisions that close themselves and post an owned result
+- [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
 
 ## Operations
 
