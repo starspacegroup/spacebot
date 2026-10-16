@@ -5,6 +5,12 @@ import { syncGuildCommands } from '$lib/discord/commands.js';
 import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { ACTIVITY_MODULES } from '$lib/server/activity.js';
 import { DEFAULTS, getSettings, upsertSettings } from '$lib/server/timebox.js';
+import {
+	DEFAULTS as GAME_DEFAULTS,
+	LIMITS as GAME_LIMITS,
+	getSettings as getGameSettings,
+	upsertSettings as upsertGameSettings,
+} from '$lib/server/game.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** Bounds match what `/timebox settings` accepts, so the two never disagree. */
@@ -56,6 +62,8 @@ export async function load({ cookies, platform, parent, params }) {
 			? await getSettings(db, serverId)
 			: { ...DEFAULTS, longBreak: DEFAULTS.longBreak },
 		limits: TIMEBOX_LIMITS,
+		game: db ? await getGameSettings(db, serverId) : { ...GAME_DEFAULTS },
+		gameLimits: GAME_LIMITS,
 	};
 }
 
@@ -124,5 +132,67 @@ export const actions = {
 			control,
 		});
 		return { success: true, message: 'Timebox defaults saved.' };
+	},
+
+	saveGame: async ({ request, cookies, platform, params }) => {
+		if (!cookies.get('discord_user_id')) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+
+		const formData = await request.formData();
+		const L = GAME_LIMITS;
+		const agentName = String(formData.get('agentName') || '').trim();
+		const crewName = String(formData.get('crewName') || '').trim();
+		// Names go into messages members read; keep them plain words.
+		const NAME = /^[\p{L}\p{N} '-]+$/u;
+		for (const [label, v] of [
+			['The hidden role name', agentName],
+			['The other role name', crewName],
+		] as const) {
+			if (v.length < L.name[0] || v.length > L.name[1] || !NAME.test(v)) {
+				return fail(400, {
+					success: false,
+					message: `${label} is ${L.name[0]}–${L.name[1]} characters: letters, numbers, spaces, apostrophes and hyphens.`,
+				});
+			}
+		}
+		const minPlayers = whole(formData, 'minPlayers', L.minPlayers);
+		const roundSeconds = whole(formData, 'roundSeconds', L.roundSeconds);
+		const callLockSeconds = whole(formData, 'callLockSeconds', L.callLockSeconds);
+		const meetingSeconds = whole(formData, 'meetingSeconds', L.meetingSeconds);
+		const callsPerPlayer = whole(formData, 'callsPerPlayer', L.callsPerPlayer);
+		if (
+			minPlayers === null ||
+			roundSeconds === null ||
+			callLockSeconds === null ||
+			meetingSeconds === null ||
+			callsPerPlayer === null
+		) {
+			return fail(400, {
+				success: false,
+				message: `Use whole numbers: players ${L.minPlayers[0]}–${L.minPlayers[1]}, round ${L.roundSeconds[0]}–${L.roundSeconds[1]} seconds, vote lock ${L.callLockSeconds[0]}–${L.callLockSeconds[1]}, vote length ${L.meetingSeconds[0]}–${L.meetingSeconds[1]}, calls ${L.callsPerPlayer[0]}–${L.callsPerPlayer[1]}.`,
+			});
+		}
+		if (callLockSeconds >= roundSeconds) {
+			return fail(400, {
+				success: false,
+				message:
+					'The vote lock has to be shorter than the round, or nobody could ever call one.',
+			});
+		}
+
+		await upsertGameSettings(db, params.serverId, {
+			agentName,
+			crewName,
+			minPlayers,
+			roundSeconds,
+			callLockSeconds,
+			meetingSeconds,
+			callsPerPlayer,
+			muteOut: formData.get('muteOut') === 'on',
+		});
+		return { success: true, message: 'Game settings saved. They apply to the next round.' };
 	},
 };

@@ -112,7 +112,7 @@
 					required
 				/>
 			</label>
-			<label>
+			<label class="wide">
 				Who can pause, skip or stop a shared timebox
 				<select name="control" value={data.timebox.control}>
 					<option value="crew">Moderators and the starter</option>
@@ -121,6 +121,107 @@
 			</label>
 			<button type="submit" class="btn-primary">Save defaults</button>
 		</form>
+	</section>
+
+	<section class="card">
+		<h2>Game settings</h2>
+		<p class="muted">
+			A hidden-agent round in a voice channel. Everyone but one is told a secret word; one is
+			the agent and is not. They talk it out, anyone can call a vote, and the table ejects who
+			it thinks the agent is. Changes apply to the next round, not one already running.
+		</p>
+		<form method="POST" action="?/saveGame" use:enhance class="settings-form">
+			<label>
+				Name for the hidden role
+				<input
+					type="text"
+					name="agentName"
+					maxlength="20"
+					value={data.game.agentName}
+					required
+				/>
+			</label>
+			<label>
+				Name for everyone else
+				<input
+					type="text"
+					name="crewName"
+					maxlength="20"
+					value={data.game.crewName}
+					required
+				/>
+			</label>
+			<label>
+				Players needed to start
+				<input
+					type="number"
+					name="minPlayers"
+					min={data.gameLimits.minPlayers[0]}
+					max={data.gameLimits.minPlayers[1]}
+					value={data.game.minPlayers}
+					required
+				/>
+			</label>
+			<label>
+				Round length (seconds)
+				<input
+					type="number"
+					name="roundSeconds"
+					min={data.gameLimits.roundSeconds[0]}
+					max={data.gameLimits.roundSeconds[1]}
+					value={data.game.roundSeconds}
+					required
+				/>
+			</label>
+			<label>
+				Votes locked for the first (seconds)
+				<input
+					type="number"
+					name="callLockSeconds"
+					min={data.gameLimits.callLockSeconds[0]}
+					max={data.gameLimits.callLockSeconds[1]}
+					value={data.game.callLockSeconds}
+					required
+				/>
+			</label>
+			<label>
+				A vote stays open for (seconds)
+				<input
+					type="number"
+					name="meetingSeconds"
+					min={data.gameLimits.meetingSeconds[0]}
+					max={data.gameLimits.meetingSeconds[1]}
+					value={data.game.meetingSeconds}
+					required
+				/>
+			</label>
+			<label>
+				Votes each player may call
+				<input
+					type="number"
+					name="callsPerPlayer"
+					min={data.gameLimits.callsPerPlayer[0]}
+					max={data.gameLimits.callsPerPlayer[1]}
+					value={data.game.callsPerPlayer}
+					required
+				/>
+			</label>
+			<label class="check">
+				<span>
+					<input type="checkbox" name="muteOut" checked={data.game.muteOut} />
+					Server-mute a player who is ejected
+				</span>
+				<span class="hint">
+					They can still hear. Needs Mute Members and a bot role above theirs. The mute is
+					lifted when the round ends, and a mute a moderator set is left alone.
+				</span>
+			</label>
+			<button type="submit" class="btn-primary">Save game settings</button>
+		</form>
+		<p class="muted">
+			Players can still message each other privately, so this is an honour-system game, not a
+			locked-down one.
+		</p>
 	</section>
 
 	<p class="muted">
@@ -246,9 +347,23 @@
 		font-size: 0.95rem;
 	}
 
-	.settings-form label:nth-child(5),
+	.settings-form .wide,
+	.settings-form .check,
 	.settings-form button {
 		grid-column: 1 / -1;
+	}
+
+	.settings-form .check {
+		color: var(--color-text);
+	}
+
+	.settings-form .check input {
+		margin-right: 0.4rem;
+	}
+
+	.hint {
+		color: var(--color-text-muted);
+		font-size: 0.8rem;
 	}
 
 	.btn-primary {

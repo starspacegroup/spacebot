@@ -26,6 +26,7 @@ database — see the architecture overview below.
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
+- [Game](game.md) — the hidden-agent round for a voice channel, played in the Activity
 - [Command sync](command-sync.md) — slash commands reach Discord by themselves after a deploy
 - [Command access](command-access.md) — permission levels plus role rules for who can run a command
 - [The /help command](help-command.md) — what every member sees when they ask what the bot does

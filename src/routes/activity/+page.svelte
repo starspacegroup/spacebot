@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { DiscordSDK } from '@discord/embedded-app-sdk';
+	import GameTab from '$lib/components/GameTab.svelte';
 
 	const { data } = $props();
 
@@ -25,7 +26,7 @@
 	let guildId = $state<string | null>(null);
 	let moduleId = $state('timebox');
 	// Inside Discord, calls to our own server go through its proxy.
-	let base = '';
+	let base = $state('');
 
 	type TimeboxView = {
 		id: number;
@@ -45,6 +46,8 @@
 	};
 	let timeboxes = $state<TimeboxView[]>([]);
 	let timeboxLoaded = $state(false);
+	// Dev only: a canned Game view for ?preview=game-*.
+	let gamePreview = $state<any>(null);
 	let now = $state(Date.now());
 
 	const PHASE_LABEL = { focus: 'Focus', break: 'Break', long_break: 'Long break' } as const;
@@ -118,6 +121,15 @@
 					start: 'Start one with /timebox start in this server.',
 				},
 			},
+			{
+				id: 'game',
+				name: 'Game',
+				enabled,
+				help: {
+					summary: 'A hidden-agent round for everyone in a voice channel.',
+					start: 'Join a voice channel and open a lobby here, or use /game start.',
+				},
+			},
 		];
 		const long = 'The Extremely Long Community Server Name That Keeps Going';
 		session = {
@@ -136,6 +148,12 @@
 			expiresAt: 0,
 		};
 		guildId = session.guilds[0]?.id ?? null;
+		if (kind.startsWith('game')) {
+			moduleId = 'game';
+			gamePreview = previewGame(kind);
+			phase = 'ready';
+			return;
+		}
 		if (kind === 'error') {
 			message =
 				'You are not a member of this server, so there is nothing for me to show you here.';
@@ -178,6 +196,95 @@
 			timeboxLoaded = true;
 		}
 		phase = 'ready';
+	}
+
+	/** Canned views of the game for the dev preview: lobby, agent, crew, meeting, ended. */
+	function previewGame(kind: string) {
+		const now = Math.floor(Date.now() / 1000);
+		const players = [
+			{ id: '1', name: 'a-rather-long-display-name-here', state: 'in' },
+			{ id: '2', name: 'Mira', state: 'in' },
+			{ id: '3', name: 'Dev', state: 'ejected' },
+			{ id: '4', name: 'Sol', state: 'in' },
+			{ id: '5', name: 'Quinn', state: 'in' },
+		];
+		const round: any = {
+			id: 1,
+			status: 'running',
+			agent_name: 'Agent',
+			crew_name: 'Crew',
+			min_players: 4,
+			calls_per_player: 1,
+			started_at: now - 100,
+			ends_at: now + 200,
+			call_unlocks_at: now - 40,
+			is_starter: true,
+			players,
+			me: {
+				in: true,
+				state: 'in',
+				role: 'crew',
+				word: 'lighthouse',
+				calls_left: 1,
+				call: 'ok',
+			},
+			meeting: null,
+			last_vote: null,
+			result: null,
+		};
+		if (kind === 'game-none') return { voice_channel_id: 'v', can_open: true, round: null };
+		if (kind === 'game-lobby')
+			return {
+				voice_channel_id: 'v',
+				can_open: false,
+				round: {
+					...round,
+					status: 'lobby',
+					players: players.slice(0, 3).map((p) => ({ ...p, state: 'in' })),
+				},
+			};
+		if (kind === 'game-agent')
+			return {
+				voice_channel_id: 'v',
+				can_open: false,
+				round: { ...round, me: { ...round.me, role: 'agent', word: null } },
+			};
+		if (kind === 'game-meeting')
+			return {
+				voice_channel_id: 'v',
+				can_open: false,
+				round: {
+					...round,
+					meeting: {
+						id: 1,
+						caller_id: '2',
+						closes_at: now + 21,
+						voted: 2,
+						living: 4,
+						my_vote: '4',
+					},
+				},
+			};
+		if (kind === 'game-over')
+			return {
+				voice_channel_id: 'v',
+				can_open: true,
+				round: {
+					...round,
+					status: 'ended',
+					result: {
+						code: 'players',
+						text: 'The Crew win: the Agent was ejected.',
+						agent_id: '4',
+						word: 'lighthouse',
+						roles: players.map((p) => ({
+							...p,
+							role: p.id === '4' ? 'agent' : 'crew',
+						})),
+					},
+				},
+			};
+		return { voice_channel_id: 'v', can_open: false, round };
 	}
 
 	onMount(() => {
@@ -334,7 +441,15 @@
 						</p>
 						<p class="quiet">{mod.help.summary}</p>
 					{:else}
-						{#if mod.id === 'timebox' && timeboxes.length > 0}
+						{#if mod.id === 'game'}
+							<GameTab
+								{base}
+								token={session!.token}
+								guildId={guild.id}
+								viewerId={session!.viewer.id}
+								preview={gamePreview}
+							/>
+						{:else if mod.id === 'timebox' && timeboxes.length > 0}
 							{#each timeboxes as tb (tb.id)}
 								<div class="tb" class:focus={tb.phase === 'focus'}>
 									<div class="tb-clock" aria-live="off">{clock(tb)}</div>

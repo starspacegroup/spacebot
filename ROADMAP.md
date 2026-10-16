@@ -43,7 +43,8 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       minutes, 4 blocks by default), shared for a voice channel (one public card, everyone
       pinged at each change, Pause / Skip / Stop) or solo; a minute sweep moves blocks on;
       per-member "deafen me" per focus block or for the whole timebox that records and
-      restores the prior state and can always be lifted; off until a server enables it
+      restores the prior state and can always be lifted; a goal per member and a percent done
+      when it ends (migration 0071); off until a server enables it
       (`docs/timebox.md`, migration 0070). The Activity shows its countdown read-only. Open: a
       voice channel made for the timebox, mute mode, controls in the Activity, a chime
 - [x] Activity foundation — SpaceBot as a Discord Activity: `/activity` page, sign-in that
@@ -59,7 +60,23 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       and no winner — then nudges the owner once in-channel at the due date (done / stale).
       Counts only: voters are an HMAC under a per-question salt that is deleted on close.
       Owner veto with a public reason; protected question classes refused at ask time;
-      per-channel defaults for Crew (`docs/quorum.md`, migration 0069)
+      per-channel defaults for Crew (`docs/quorum.md`, migration 0069). A server owner can turn on
+      auto-actions: when a question reaches quorum and a threshold of yes votes, the sweep
+      creates a channel (migration 0072)
+- [x] Game — `/game start|stop|status`: a hidden-agent round for a voice channel, played in
+      the Activity. All but one player are told a secret word; the table votes out who it
+      thinks the agent is (tie or skip ejects nobody; agent ejected, clock out, or two left
+      ends it). Roles, word and ballot are private to the viewer; an ejected player is
+      server-muted and the prior mute is restored when the round ends. Off until a server
+      enables it, settings on the dashboard Activity page (`docs/game.md`, migration 0076).
+      Open: agent takes, the rest of the out treatment, day & night, word guess
+- [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
+      server's command list, hashes it, and re-registers the server when it changed, so a
+      deploy never needs `register-commands` (`docs/command-sync.md`, migration 0074)
+- [x] Command access rules — who may run a command beyond its permission level: allow or
+      deny by role, one gate for every command, `/help` shows only what a member can run
+      (`docs/command-access.md`, migration 0073). Open: members, channels, categories,
+      time windows
 - [x] Oldest (#58) — `/oldest` ranks the top ten oldest Discord accounts in a server, read
       from the account's creation time inside its id; `show:` switches to the newest
       accounts or the longest-serving members. Bots left out; the reply says how old the

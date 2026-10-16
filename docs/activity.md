@@ -48,11 +48,17 @@ keeps its tab and shows a help panel (what it does, how to start it).
   command, so a server turns it on the way it turns the command on
   (`built_in_command_overrides`).
 
+## Modules
+
+Timebox (read-only countdown) and **Game** ([game.md](game.md)), the hidden-agent
+round, which is played entirely in the Activity: roles, the secret word and
+voting are private to each player and shown only here.
+
 ## Turning it on (the dashboard)
 
 Server dashboard → **Activity** (`/admin/<server>/activity`, full admin only).
-It holds one switch per Activity part (today only Timebox) and the Timebox
-defaults. A part's switch is the same per-server override as its slash command,
+It holds one switch per Activity part (Timebox and Game), the Timebox defaults,
+and the Game settings (role names, players, round and vote lengths, the mute). A part's switch is the same per-server override as its slash command,
 so turning Timebox off also hides `/timebox` from members, and turning it on
 pushes the command to Discord at once. The defaults (focus, break, long break,
 rounds, who may pause or stop) are the ones `/timebox settings` writes; both use

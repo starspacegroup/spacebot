@@ -47,7 +47,7 @@ const schema = (file: string, cut?: string) => {
 const SCHEMA =
 	schema('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
-	schema('0075_game.sql', '-- /game as a built-in command family');
+	schema('0076_game.sql', '-- /game as a built-in command family');
 
 const G = '100000000000000001';
 const VC = '300000000000000001';
