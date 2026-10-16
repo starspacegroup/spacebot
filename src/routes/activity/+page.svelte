@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { DiscordSDK } from '@discord/embedded-app-sdk';
 	import GameTab from '$lib/components/GameTab.svelte';
+	import QuorumTab from '$lib/components/QuorumTab.svelte';
 
 	const { data } = $props();
 
@@ -48,6 +49,8 @@
 	let timeboxLoaded = $state(false);
 	// Dev only: a canned Game view for ?preview=game-*.
 	let gamePreview = $state<any>(null);
+	// Dev only: a canned Quorum view for ?preview=quorum.
+	let quorumPreview = $state<any>(null);
 	let now = $state(Date.now());
 
 	const PHASE_LABEL = { focus: 'Focus', break: 'Break', long_break: 'Long break' } as const;
@@ -130,6 +133,15 @@
 					start: 'Join a voice channel and open a lobby here, or use /start agent.',
 				},
 			},
+			{
+				id: 'quorum',
+				name: 'Quorum',
+				enabled,
+				help: {
+					summary: 'Yes/no questions to the whole server.',
+					start: 'Ask one here, or with /start quorum in a channel.',
+				},
+			},
 		];
 		const long = 'The Extremely Long Community Server Name That Keeps Going';
 		session = {
@@ -148,6 +160,52 @@
 			expiresAt: 0,
 		};
 		guildId = session.guilds[0]?.id ?? null;
+		if (kind === 'quorum') {
+			moduleId = 'quorum';
+			const item = (id: number, q: string, yes: number, no: number, my: any) => ({
+				id,
+				question: q,
+				channel_id: 'c',
+				channel_name: 'general',
+				closes_at: Math.floor(Date.now() / 1000) + 6 * 3600,
+				quorum: 5,
+				yes,
+				no,
+				abstain: 1,
+				total: yes + no + 1,
+				reached: yes + no + 1 >= 5,
+				my_vote: my,
+				status: 'open',
+				result: null,
+				asked_by_me: false,
+			});
+			quorumPreview = {
+				ask_channel_id: 'v',
+				can_ask: true,
+				min_closes: '5m',
+				max_closes: '14d',
+				default_closes: '24h',
+				open: [
+					item(
+						1,
+						'Should we move game night to Friday so more people can make it?',
+						4,
+						2,
+						'yes'
+					),
+					item(2, 'Add a #memes channel?', 1, 3, null),
+				],
+				settled: [
+					{
+						...item(3, 'Rename the server?', 6, 2, null),
+						status: 'closed',
+						result: 'yes',
+					},
+				],
+			};
+			phase = 'ready';
+			return;
+		}
 		if (kind.startsWith('game')) {
 			moduleId = 'game';
 			gamePreview = previewGame(kind);
@@ -448,6 +506,13 @@
 								guildId={guild.id}
 								viewerId={session!.viewer.id}
 								preview={gamePreview}
+							/>
+						{:else if mod.id === 'quorum'}
+							<QuorumTab
+								{base}
+								token={session!.token}
+								guildId={guild.id}
+								preview={quorumPreview}
 							/>
 						{:else if mod.id === 'timebox' && timeboxes.length > 0}
 							{#each timeboxes as tb (tb.id)}

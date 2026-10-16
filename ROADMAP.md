@@ -62,7 +62,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       Owner veto with a public reason; protected question classes refused at ask time;
       per-channel defaults for Crew (`docs/quorum.md`, migration 0069). A server owner can turn on
       auto-actions: when a question reaches quorum and a threshold of yes votes, the sweep
-      creates a channel (migration 0072)
+      creates a channel (migration 0072). The Activity has a Quorum tab: open questions
+      the member can see, a vote on each, and a box to ask one (`docs/activity.md`)
+- [x] `/start` — one command for Timebox, the Game (`/start agent`) and Quorum, built per
+      server from what it has on; the old commands stay as shortcuts (`docs/activity.md`)
 - [x] Game — `/play start|stop|status`: a hidden-agent round for a voice channel, played in
       the Activity. All but one player are told a secret word; the table votes out who it
       thinks the agent is (tie or skip ejects nobody; agent ejected, clock out, or two left

@@ -98,3 +98,26 @@ originals. The interaction is turned back into the original command before the
 permission check, so command access rules still apply to `/timebox`, `/play` and
 `/quorum`. The old commands stay as shortcuts. Stop and status stay on those
 commands, on the cards' buttons and in the Activity.
+
+## Quorum in the Activity
+
+The Quorum tab shows the server's open yes/no questions, lets a member vote on
+each, and has a box to ask one. It is the same Quorum as `/quorum`: a vote from the
+Activity and a vote from the card in the channel are the same vote, and the card is
+edited to match. Switching Quorum off on the dashboard's Activity page switches off
+`/quorum` too.
+
+- **Who sees what.** A question lives in a text channel, and a channel can be
+  private. A question shows, and takes a vote, only for a member who can see its
+  channel (`src/lib/server/channel-access.ts` works it out from the server's roles,
+  the member's roles and the channel's overwrites). If Discord won't say, the answer
+  is "can't see". A member sees only their own vote.
+- **Asking.** A question goes to the chat of the voice channel the Activity is open in.
+  It uses that channel's Quorum defaults. It is a plain `general` question, owned by
+  the asker. Owner-only classes, owners, due dates, quorum and automatic actions stay
+  on `/quorum ask`. If the bot can't post the card, the question is taken back.
+- **Not in the tab.** Closing early, vetoing and follow-ups stay on the card and
+  `/quorum`.
+
+API: `POST /api/activity/quorum`. Code: `src/lib/server/activity-quorum.ts`,
+`src/lib/components/QuorumTab.svelte`.

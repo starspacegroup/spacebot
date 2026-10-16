@@ -72,6 +72,16 @@ export const ACTIVITY_MODULES: ActivityModule[] = [
 			start: 'Join a voice channel and open a lobby here, or use /start agent.',
 		},
 	},
+	{
+		id: 'quorum',
+		name: 'Quorum',
+		command: 'quorum',
+		help: {
+			summary:
+				'Yes/no questions to the whole server. See the open ones, vote, and ask your own here.',
+			start: 'Ask one here, or with /start quorum in a channel.',
+		},
+	},
 ];
 
 export type ContextKind = 'guild' | 'dm';
