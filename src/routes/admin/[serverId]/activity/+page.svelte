@@ -4,6 +4,16 @@
 
 	const { data, form } = $props();
 
+	// `use:enhance` resets a form after a successful save, and a reset puts every
+	// field back to its HTML default. These fields are set as properties, so the
+	// default is empty: the form blanked itself right after saving. Keep what the
+	// admin typed; the page's data refreshes behind it.
+	const keepValues =
+		() =>
+		async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => {
+			await update({ reset: false });
+		};
+
 	$effect(() => {
 		if (form?.message) {
 			if (form.success) toast.success(form.message);
@@ -41,7 +51,7 @@
 		<h2>Parts of the Activity</h2>
 		<p class="muted">A part you switch off also hides its slash command from members.</p>
 		{#each data.modules as mod (mod.id)}
-			<form method="POST" action="?/toggleModule" use:enhance class="module-row">
+			<form method="POST" action="?/toggleModule" use:enhance={keepValues} class="module-row">
 				<input type="hidden" name="module" value={mod.id} />
 				<div class="module-info">
 					<span class="module-name">{mod.name}</span>
@@ -67,7 +77,7 @@
 			What <code>/timebox start</code> uses when a member does not choose. Members can still override
 			each one when they start.
 		</p>
-		<form method="POST" action="?/saveTimebox" use:enhance class="settings-form">
+		<form method="POST" action="?/saveTimebox" use:enhance={keepValues} class="settings-form">
 			<label>
 				Focus (minutes)
 				<input
@@ -130,7 +140,7 @@
 			the agent and is not. They talk it out, anyone can call a vote, and the table ejects who
 			it thinks the agent is. Changes apply to the next round, not one already running.
 		</p>
-		<form method="POST" action="?/saveGame" use:enhance class="settings-form">
+		<form method="POST" action="?/saveGame" use:enhance={keepValues} class="settings-form">
 			<label>
 				Name for the hidden role
 				<input
