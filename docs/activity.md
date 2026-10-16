@@ -50,9 +50,53 @@ keeps its tab and shows a help panel (what it does, how to start it).
 
 ## Modules
 
-Timebox (read-only countdown) and **Game** ([game.md](game.md)), the hidden-agent
+Timebox (read-only countdown), **Agent** ([game.md](game.md)), the hidden-agent
 round, which is played entirely in the Activity: roles, the secret word and
-voting are private to each player and shown only here.
+voting are private to each player and shown only here, and Quorum. The nav says
+_Agent_ for the game module (id `game`, command `/play`), the name `/start agent`
+uses; the dashboard still calls it Game.
+
+## The look (LCARS)
+
+The Activity is drawn as a Star Trek LCARS panel: black ground, condensed
+uppercase type, orange, peach, lavender and blue pills and elbows, large text.
+The design is the mockup set in the workspace repo,
+`design/mockups/activity-lcars-2026-10-16/` (a PNG per screen, and the HTML that
+drew it).
+
+- **The frame** (`src/lib/components/activity/LcarsFrame.svelte`): elbows top and
+  bottom, the screen's title top right, a footer line bottom right. On a phone the
+  elbows go and the nav becomes a row of tabs under the title.
+- **The nav**: Timebox / Agent / Quorum. Inactive tabs are dim grey; the active
+  one is larger, carries a ▶ and the screen's state colour, and runs into the
+  content, so it is always plain which module you are in. _SpaceBot_ is a small
+  brand block under the tabs, not a tab.
+- **State colour**: one colour per screen, on the elbow, the title and the active
+  tab. In the Agent tab: blue for crew, red for the agent, grey when you are out
+  (or only watching), orange while the table acts (lobby, vote), lavender for a
+  vote's result.
+- **The viewer is not in the roster.** Their own badge sits bottom right (avatar,
+  name, role or status, vote calls left) in their state colour.
+- **Type** is Antonio, self-hosted through `@fontsource/antonio` (OFL), because an
+  Activity cannot load Google Fonts: everything it loads has to come through the
+  app's own origin. Avatars come from `cdn.discordapp.com`, which Discord allows,
+  and fall back to the player's first letter.
+- **Styles** are `src/lib/activity/lcars.css`, all scoped under `.lcars`; the
+  screen choice, colours and clock sums are pure functions in
+  `src/lib/activity/lcars.ts` (tested in `src/tests/activity-lcars.test.ts`).
+- **Dev preview** (dev builds only): `/activity?preview=<state>` draws a screen
+  with canned data and a _Sample data_ badge. States: `guild` (Timebox), `help`,
+  `off`, `dm`, `empty`, `error`, `quorum`, and `game-none`, `game-lobby`,
+  `game-crew`, `game-agent`, `game-round`, `game-vote`, `game-ejected`,
+  `game-out`, `game-watch`, `game-crew-win`, `game-agent-win`. The e2e checks in
+  `e2e/activity-lcars.e2e.ts` run against them.
+
+What the Agent tab shows about other players is only what Discord already shows
+everyone in the voice channel (name, avatar, whether they are in the channel and
+muted) plus who has a vote in during an open vote. **Speaking is not shown**: the
+Activity would need Discord's `rpc.voice.read` scope for the SDK's speaking
+events, which Discord grants only on approval, and the gateway bot does not
+receive speaking state without joining voice. It is not faked.
 
 ## Turning it on (the dashboard)
 
@@ -67,7 +111,8 @@ Commands page ([command access](command-access.md)).
 
 ## The Timebox tab
 
-Read-only. `/api/activity/timebox` takes the signed session token (not a cookie) and
+Read-only. A big countdown, one bar per focus block (done blocks full, the running
+one filling), what comes next, and the deafen choice. `/api/activity/timebox` takes the signed session token (not a cookie) and
 a server id, checks the id against the token's list and that Timebox is on there,
 and returns only the timeboxes the viewer is part of: their own solo one, the shared
 one in the voice channel the Activity was opened in (carried in the token), and the

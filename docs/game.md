@@ -19,13 +19,17 @@ workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql` and `0077_
 2. **Start.** The person who opened it (or Crew, from the card) starts it once
    enough players are in the voice channel (default 4). Anyone who left the voice
    channel since joining is dropped. The deal picks one agent at random, and a word.
-3. **The round.** Each player opens the Activity and sees their own card: the
-   agent is told they are the agent and not the word; everyone else is told the
-   word. Default length is five minutes.
+3. **The round.** Each player opens the Activity and sees their own card first:
+   the agent is told they are the agent and not the word, with how they win;
+   everyone else is told the word (hold _Hold to hide_ to cover it). _Got it_ puts
+   the card away and shows the round: the clock, the other players, and the vote
+   button. Default length is five minutes.
 4. **Calling a vote.** After a lock (default 60 s) any living player can call one
    vote (default one per player). A public line posts in the voice channel. Every
    living player picks a player, or Skip, in the Activity and can change their
-   pick until it closes. It closes when everyone has voted or after 30 s.
+   pick until it closes. Their own pick shows as a red _Your vote_ banner; the
+   other players show as _Voted_ or _Deciding_, never for whom. It closes when
+   everyone has voted or after 30 s.
 5. **The count.** The most votes is ejected. A tie, or Skip on top, ejects nobody.
    Who voted for whom is never shown.
 6. **The end.**
@@ -89,7 +93,13 @@ Everything is in `src/lib/server/game.ts` (rules, state, Discord side effects),
   ejected player to be in voice, and retries lifts Discord refused.
 - **Secrets.** The server's view for a viewer carries their own role, and the word
   only if they are not the agent. Other players' roles are not sent until the round
-  has ended. The word is never sent to the agent.
+  has ended. The word is never sent to the agent. During a vote it sends who has
+  voted (`voted_ids`), never the targets.
+- **What else the view carries** (for the Activity's roster): each player's avatar
+  and whether they are in the round's voice channel and muted, read from the
+  gateway's `live_voice_states` (what anyone in the channel already sees; an avatar
+  is passed only if it is on `cdn.discordapp.com`); the round's settings; and the
+  last vote's number and when it closed, so a result shows for a minute.
 - **Discord gets** the lobby card, a line when a vote is called, the vote's
   outcome, and the result. `/play stop` and `/play status` are in Discord too.
 

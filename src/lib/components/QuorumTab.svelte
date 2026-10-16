@@ -68,7 +68,7 @@
 		const m = Math.floor(s / 60);
 		if (m < 60) return `closes in ${m} min`;
 		const h = Math.floor(m / 60);
-		if (h < 48) return `closes in ${h} h`;
+		if (h < 48) return `closes in ${h} h${m % 60 ? ` ${m % 60} m` : ''}`;
 		return `closes in ${Math.floor(h / 24)} days`;
 	}
 
@@ -79,7 +79,12 @@
 		return q.result === 'yes' ? 'Passed' : 'Did not pass';
 	}
 
-	const pct = (n: number, q: Item) => (q.total === 0 ? 0 : Math.round((n / q.total) * 100));
+	// The bar is measured against the quorum until it is reached, so the grey end
+	// shows how far a question still is from counting.
+	const pct = (n: number, q: Item) => {
+		const scale = Math.max(q.total, q.quorum, 1);
+		return Math.round((n / scale) * 100);
+	};
 
 	async function call(body: Record<string, unknown>) {
 		const res = await fetch(`${base}/api/activity/quorum`, {
@@ -148,82 +153,99 @@
 	{#if problem}<p class="problem" role="alert">{problem}</p>{/if}
 
 	{#if !view}
-		<p class="quiet">Loading…</p>
+		<p class="st">Loading…</p>
 	{:else}
 		{#if view.open.length === 0}
-			<p class="quiet">No open questions you can see. Ask one below.</p>
+			<p class="st">No open questions</p>
+			<h2 class="hl md">Nothing to vote on</h2>
+			<p class="sub">No open question you can see. Ask one below.</p>
 		{/if}
 
-		{#each view.open as q (q.id)}
-			<article class="q">
-				<p class="text">{q.question}</p>
-				<p class="quiet meta">
-					{q.channel_name ? `#${q.channel_name} · ` : ''}{left(q.closes_at)} · {q.total}
-					{q.total === 1 ? 'vote' : 'votes'}, {q.quorum} needed
+		{#each view.open as q, i (q.id)}
+			<article class="q" class:first={i === 0}>
+				<p class="st">
+					{[
+						'Open question',
+						q.channel_name ? `#${q.channel_name}` : '',
+						left(q.closes_at),
+					]
+						.filter(Boolean)
+						.join(' · ')}
 				</p>
+				<p class="text">{q.question}</p>
 				<div class="bar" aria-hidden="true">
-					<span class="yes" style:width="{pct(q.yes, q)}%"></span>
-					<span class="no" style:width="{pct(q.no, q)}%"></span>
-					<span class="abs" style:width="{pct(q.abstain, q)}%"></span>
+					<span style:width="{pct(q.yes, q)}%" style:background="var(--s)"></span>
+					<span style:width="{pct(q.no, q)}%" style:background="var(--r)"></span>
+					<span style:width="{pct(q.abstain, q)}%" style:background="var(--l)"></span>
 				</div>
-				<p class="quiet meta">{q.yes} yes · {q.no} no · {q.abstain} abstain</p>
-				<div class="row" role="group" aria-label="Your vote">
+				<p class="st counts">
+					{q.yes} yes · {q.no} no · {q.abstain} abstain · quorum {q.quorum}
+					{q.reached ? 'reached' : `· ${q.quorum - q.total} to go`}
+				</p>
+				<div class="btns" role="group" aria-label="Your vote">
 					{#each CHOICES as c (c.value)}
 						<button
 							type="button"
-							class="pick"
+							class="btn {c.value === 'yes' ? 's' : c.value === 'no' ? 'r' : 'l'}"
 							class:on={q.my_vote === c.value}
 							aria-pressed={q.my_vote === c.value}
 							disabled={busy}
 							onclick={() =>
 								act({ action: 'vote', question_id: q.id, choice: c.value })}
 						>
-							{c.label}
+							{c.label}{q.my_vote === c.value ? ' ✓' : ''}
 						</button>
 					{/each}
 				</div>
 			</article>
 		{/each}
 
-		<h3>Ask a question</h3>
-		{#if view.can_ask}
-			<form class="ask" onsubmit={ask}>
-				<label>
-					<span>Yes or no</span>
-					<textarea
-						bind:value={text}
-						maxlength="240"
-						rows="2"
-						placeholder="Should we move game night to Friday?"
-						required></textarea>
-				</label>
-				<label>
-					<span>Stays open (default {view.default_closes})</span>
-					<input bind:value={closes} placeholder="24h, 90m, 2d" maxlength="12" />
-				</label>
-				<button class="btn primary" disabled={busy || !text.trim()}
-					>Post the question</button
-				>
-				<p class="quiet meta">
+		<section class="ask-wrap" aria-label="Ask a question">
+			<p class="st">Ask a question</p>
+			{#if view.can_ask}
+				<form class="ask" onsubmit={ask}>
+					<label class="grow">
+						<span class="sr">Yes or no question</span>
+						<textarea
+							bind:value={text}
+							maxlength="240"
+							rows="2"
+							placeholder="Should we move game night to Friday?"
+							required></textarea>
+					</label>
+					<label>
+						<span class="note">Stays open (default {view.default_closes})</span>
+						<input bind:value={closes} placeholder="24h, 90m, 2d" maxlength="12" />
+					</label>
+					<button class="btn o" disabled={busy || !text.trim()}>Post the question</button>
+				</form>
+				<p class="note">
 					It goes to this voice channel's chat. Members vote there or here.
 				</p>
-			</form>
-		{:else}
-			<p class="quiet">
-				Open the Activity in a voice channel you can see to ask a question there.
-			</p>
-		{/if}
+			{:else}
+				<p class="note">
+					Open the Activity in a voice channel you can see to ask a question there.
+				</p>
+			{/if}
+		</section>
 
 		{#if view.settled.length > 0}
-			<h3>Decided lately</h3>
-			{#each view.settled as q (q.id)}
-				<article class="q settled">
-					<p class="text">{q.question}</p>
-					<p class="quiet meta">
-						<strong>{outcome(q)}</strong> · {q.yes} yes · {q.no} no · {q.abstain} abstain
-					</p>
-				</article>
-			{/each}
+			<section aria-label="Decided lately">
+				<p class="st">Decided lately</p>
+				<ul class="settled">
+					{#each view.settled as q (q.id)}
+						<li>
+							<span class="sq">{q.question}</span>
+							<span
+								class="out"
+								class:pass={q.result === 'yes' && q.status === 'closed'}
+								>{outcome(q)}</span
+							>
+							<span class="note">{q.yes} yes · {q.no} no · {q.abstain} abstain</span>
+						</li>
+					{/each}
+				</ul>
+			</section>
 		{/if}
 	{/if}
 </div>
@@ -232,105 +254,109 @@
 	.quorum {
 		display: flex;
 		flex-direction: column;
-		gap: 0.75rem;
-	}
-	h3 {
-		margin: 0.5rem 0 0;
-		font-size: 1rem;
-	}
-	.quiet {
-		color: var(--color-text-secondary);
-		margin: 0;
-	}
-	.quorum .meta {
-		font-size: 0.85rem;
-	}
-	.problem {
-		margin: 0;
-		color: var(--color-danger);
+		gap: 1.4em;
 	}
 	.q {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		padding: 0.75rem;
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
+		gap: 0.7em;
 	}
 	.q .text {
-		margin: 0;
+		font-size: min(2.2em, 8vw);
+		line-height: 1.1;
 		font-weight: 600;
+		color: var(--p);
 		overflow-wrap: anywhere;
+	}
+	.q.first .text {
+		font-size: min(2.9em, 9vw);
 	}
 	.bar {
 		display: flex;
-		height: 0.5rem;
-		border-radius: 0.25rem;
+		height: 2em;
+		border-radius: 1em;
 		overflow: hidden;
-		background: var(--color-border);
+		background: var(--well);
+		max-width: 50em;
 	}
-	.bar .yes {
-		background: var(--color-success, #3ba55d);
+	.counts {
+		font-size: 1.4em;
 	}
-	.bar .no {
-		background: var(--color-danger);
+	.q :global(.btn.on) {
+		box-shadow:
+			0 0 0 0.12em var(--ink),
+			0 0 0 0.26em var(--white);
 	}
-	.bar .abs {
-		background: var(--color-text-secondary);
-	}
-	.row {
+	.ask-wrap {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-	.pick,
-	.btn {
-		background: var(--color-surface);
-		color: inherit;
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.5rem 1rem;
-		font: inherit;
-		cursor: pointer;
-	}
-	.pick.on {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: var(--color-fixed-text-bright);
-		font-weight: 600;
-	}
-	.btn.primary {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: var(--color-fixed-text-bright);
-		font-weight: 600;
-	}
-	.pick:disabled,
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: default;
+		flex-direction: column;
+		gap: 0.6em;
 	}
 	.ask {
 		display: flex;
-		flex-direction: column;
-		gap: 0.6rem;
+		flex-wrap: wrap;
+		gap: 0.7em;
+		align-items: flex-end;
 	}
 	.ask label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 0.25em;
+		min-width: 0;
+	}
+	.ask .grow {
+		flex: 1 1 18em;
 	}
 	.ask textarea,
 	.ask input {
 		font: inherit;
-		color: inherit;
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.5rem;
+		font-size: 1.2em;
+		letter-spacing: 0.05em;
+		color: var(--p);
+		background: var(--ink);
+		border: 0.12em solid var(--l);
+		border-radius: 0.9em;
+		padding: 0.45em 0.8em;
 		min-width: 0;
+		resize: vertical;
+	}
+	.ask input {
+		width: 9em;
+		border-radius: 2em;
 	}
 	.settled {
-		opacity: 0.85;
+		list-style: none;
+		margin: 0.4em 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.45em;
+	}
+	.settled li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.3em 0.9em;
+		border-left: 0.6em solid var(--l);
+		padding-left: 0.7em;
+	}
+	.settled .sq {
+		font-size: 1.2em;
+		color: var(--p);
+		overflow-wrap: anywhere;
+	}
+	.settled .out {
+		color: var(--r);
+		font-weight: 600;
+	}
+	.settled .out.pass {
+		color: var(--s);
+	}
+	.sr {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
 	}
 </style>
