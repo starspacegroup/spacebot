@@ -65,11 +65,11 @@ export const ACTIVITY_MODULES: ActivityModule[] = [
 	{
 		id: 'game',
 		name: 'Game',
-		command: 'game',
+		command: 'play',
 		help: {
 			summary:
 				'A hidden-agent round for everyone in a voice channel: all but one are told a secret word, and the table votes out who they think was not.',
-			start: 'Join a voice channel and open a lobby here, or use /game start.',
+			start: 'Join a voice channel and open a lobby here, or use /play start.',
 		},
 	},
 ];

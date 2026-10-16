@@ -127,7 +127,7 @@
 				enabled,
 				help: {
 					summary: 'A hidden-agent round for everyone in a voice channel.',
-					start: 'Join a voice channel and open a lobby here, or use /game start.',
+					start: 'Join a voice channel and open a lobby here, or use /play start.',
 				},
 			},
 		];

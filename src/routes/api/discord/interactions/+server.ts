@@ -358,9 +358,9 @@ export async function POST({ request, platform: rawPlatform }) {
 			return json(reply.response);
 		}
 
-		// `/game`: a round is state the bot keeps, so it is handled here, not by
+		// `/play`: a round is state the bot keeps, so it is handled here, not by
 		// the action pipeline.
-		if (data.name === 'game' && guildId) {
+		if (data.name === 'play' && guildId) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleGameCommand(
 				body,

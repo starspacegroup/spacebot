@@ -1,7 +1,7 @@
 /**
  * Game — a hidden-agent round for everyone in a voice channel.
  *
- * A server opens a lobby for a voice channel (`/game start`, or the Activity),
+ * A server opens a lobby for a voice channel (`/play start`, or the Activity),
  * players join, and the starter deals: everyone but one is told a secret word,
  * and one is the agent and is not. They talk in voice. After a short lock any
  * player may call a vote; every living player votes for who they think the agent
@@ -1033,7 +1033,7 @@ export async function handleGameCommand(body: Interaction, db, discord): Promise
 	const user = userOf(body);
 	if (!guildId || !user.id) return { response: ephemeral('Game only works inside a server.') };
 	if (!db) return { response: ephemeral('The database is not available right now.') };
-	if (!(await getCommandByName(db, 'game', guildId))) {
+	if (!(await getCommandByName(db, 'play', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
 
@@ -1043,7 +1043,7 @@ export async function handleGameCommand(body: Interaction, db, discord): Promise
 	switch (subcommand) {
 		case 'start': {
 			if (!vc)
-				return { response: ephemeral('Join a voice channel first, then run /game start.') };
+				return { response: ephemeral('Join a voice channel first, then run /play start.') };
 			const opened = await openLobby(db, discord, {
 				guildId,
 				voiceChannelId: vc,

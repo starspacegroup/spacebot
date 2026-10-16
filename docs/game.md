@@ -8,11 +8,11 @@ it is played in the [Activity](activity.md), not in Discord messages: nothing in
 a voice channel's text chat can be a secret.
 
 Design history and the reasons behind each rule: `planning/IDEAS.md` in the
-workspace repo, "Voice games" (issue #54). Migration `0076_game.sql`.
+workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql` and `0077_game_command_play.sql`. The command is `/play`, because `/game` belongs to the *Space Game integration.
 
 ## Playing
 
-1. **Lobby.** `/game start` in a voice channel, or _Open a lobby_ in the Activity's
+1. **Lobby.** `/play start` in a voice channel, or _Open a lobby_ in the Activity's
    Game tab. A card posts in the voice channel's text chat with Join, Leave,
    Start and Cancel; the Activity shows the same lobby. Only someone in that voice
    channel can join. One live round per voice channel.
@@ -91,7 +91,7 @@ Everything is in `src/lib/server/game.ts` (rules, state, Discord side effects),
   only if they are not the agent. Other players' roles are not sent until the round
   has ended. The word is never sent to the agent.
 - **Discord gets** the lobby card, a line when a vote is called, the vote's
-  outcome, and the result. `/game stop` and `/game status` are in Discord too.
+  outcome, and the result. `/play stop` and `/play status` are in Discord too.
 
 ## Honest limits
 

@@ -4,7 +4,7 @@ import { createSqliteD1 } from './helpers/sqlite-d1.js';
 
 let enabled = true;
 vi.mock('../lib/db/commands.js', () => ({
-	getCommandByName: vi.fn(async () => (enabled ? { name: 'game' } : null)),
+	getCommandByName: vi.fn(async () => (enabled ? { name: 'play' } : null)),
 }));
 
 import {
@@ -637,7 +637,7 @@ describe('Discord command and buttons', () => {
 		guild_id: G,
 		channel_id: VC,
 		member: { user: { id: A, username: 'a' }, permissions: '0' },
-		data: { name: 'game', options: [{ type: 1, name: 'start', options: [] }] },
+		data: { name: 'play', options: [{ type: 1, name: 'start', options: [] }] },
 		...extra,
 	});
 
@@ -668,7 +668,7 @@ describe('Discord command and buttons', () => {
 			handleGameCommand(
 				body({
 					member: { user: { id, username: 'x' }, permissions },
-					data: { name: 'game', options: [{ type: 1, name: 'stop' }] },
+					data: { name: 'play', options: [{ type: 1, name: 'stop' }] },
 				}),
 				db,
 				d

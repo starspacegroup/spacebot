@@ -51,7 +51,7 @@ async function authorize(db: any, claims: TokenClaims, guildId: unknown): Promis
 	if (typeof guildId !== 'string' || !claims.g.includes(guildId)) {
 		throw new GameAccessError(403, 'That server is not part of this session.');
 	}
-	if (!(await getCommandByName(db, 'game', guildId))) {
+	if (!(await getCommandByName(db, 'play', guildId))) {
 		throw new GameAccessError(403, 'Game is not turned on in this server.');
 	}
 	return guildId;

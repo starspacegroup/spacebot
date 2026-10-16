@@ -63,12 +63,12 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       per-channel defaults for Crew (`docs/quorum.md`, migration 0069). A server owner can turn on
       auto-actions: when a question reaches quorum and a threshold of yes votes, the sweep
       creates a channel (migration 0072)
-- [x] Game — `/game start|stop|status`: a hidden-agent round for a voice channel, played in
+- [x] Game — `/play start|stop|status`: a hidden-agent round for a voice channel, played in
       the Activity. All but one player are told a secret word; the table votes out who it
       thinks the agent is (tie or skip ejects nobody; agent ejected, clock out, or two left
       ends it). Roles, word and ballot are private to the viewer; an ejected player is
       server-muted and the prior mute is restored when the round ends. Off until a server
-      enables it, settings on the dashboard Activity page (`docs/game.md`, migration 0076).
+      enables it, settings on the dashboard Activity page (`docs/game.md`, migrations 0076, 0077).
       Open: agent takes, the rest of the out treatment, day & night, word guess
 - [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
       server's command list, hashes it, and re-registers the server when it changed, so a
