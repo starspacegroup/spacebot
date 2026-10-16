@@ -123,7 +123,7 @@
 		line-height: 1.5;
 	}
 
-	.hint strong {
+	.hint :global(strong) {
 		color: var(--color-text);
 	}
 
@@ -148,7 +148,7 @@
 		color: var(--color-text-muted);
 	}
 
-	.login-prompt a {
+	.login-prompt :global(a) {
 		color: var(--color-primary);
 		font-weight: 500;
 	}
