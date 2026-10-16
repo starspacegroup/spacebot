@@ -5,6 +5,7 @@
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import RepositorySelector from '$lib/components/RepositorySelector.svelte';
 	import UserSelector from '$lib/components/UserSelector.svelte';
+	import TimeWindowsEditor from '$lib/components/TimeWindowsEditor.svelte';
 	import BotCommandSelector from '$lib/components/BotCommandSelector.svelte';
 	import EmojiSelector from '$lib/components/EmojiSelector.svelte';
 	import DiscordMessageEditor from '$lib/components/DiscordMessageEditor.svelte';
@@ -804,6 +805,8 @@
 											>
 										{/each}
 									</select>
+								{:else if filterInfo.type === 'time_windows'}
+									<TimeWindowsEditor name="filter.{filterKey}" />
 								{:else if filterKey === 'github_repo'}
 									<RepositorySelector
 										repositories={data.githubRepositories || []}

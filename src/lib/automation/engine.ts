@@ -12,6 +12,8 @@ import {
 import { callWebhook, getWebhook } from '../db/webhooks.js';
 import { createScheduledMessage } from '../db/scheduled-messages.js';
 import { log } from '../log.js';
+import { matchesTimeWindows } from './time-windows.js';
+import { getGuildTimezone } from '../db/settings.js';
 import { detectCommandResult } from '../discord/bots.js';
 import { fetchSignedWidgetPng, resolveWidgetOrigin } from '../stats-widget-delivery.js';
 import { getDiscordEventTypeMeta } from '../discord/event-metadata.js';
@@ -313,6 +315,7 @@ export function matchesFilters(
 		actorRoles?: string[];
 		targetRoles?: string[];
 		accountAgeDays?: number;
+		timezone?: string | null;
 		[key: string]: any;
 	} = {}
 ) {
@@ -407,6 +410,10 @@ export function matchesFilters(
 					if (!requiredRoles.some((role) => context.targetRoles?.includes(role)))
 						return false;
 				}
+				break;
+
+			case 'time_windows':
+				if (!matchesTimeWindows(filterValue, event, context.timezone)) return false;
 				break;
 
 			case 'content_contains':
@@ -1877,7 +1884,13 @@ export async function executeAction(automation, event, context, discord, db: any
  * @param {Object} filterContext - Additional context for filtering (roles, etc.)
  * @returns {Promise<{executed: number, errors: number}>}
  */
-export async function processAutomations(event, db, discord, guildInfo = {}, filterContext = {}) {
+export async function processAutomations(
+	event,
+	db,
+	discord,
+	guildInfo = {},
+	filterContext: Record<string, any> = {}
+) {
 	const startTime = Date.now();
 	let executed = 0;
 	let errors = 0;
@@ -1896,6 +1909,17 @@ export async function processAutomations(event, db, discord, guildInfo = {}, fil
 		log.info(
 			`[Automation] Found ${automations.length} automation(s) for ${event.event_type} in guild ${event.guild_id}`
 		);
+
+		// Read the guild timezone only when some automation filters on time.
+		if (
+			filterContext.timezone === undefined &&
+			automations.some((a) => a.trigger_filters?.time_windows)
+		) {
+			filterContext = {
+				...filterContext,
+				timezone: await getGuildTimezone(db, event.guild_id),
+			};
+		}
 
 		for (const automation of automations) {
 			// Check if event matches filters
