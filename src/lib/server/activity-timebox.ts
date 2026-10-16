@@ -1,7 +1,7 @@
 /**
  * What the Activity's Timebox tab may show a viewer.
  *
- * Read-only for now. The viewer's session token says which servers they may
+ * The viewer's session token says which servers they may
  * touch; this answers only for those, only when the server has turned Timebox
  * on, and only with sessions the viewer is part of: their own solo timebox, the
  * shared one in the voice channel the Activity was opened in, and the shared one
@@ -11,9 +11,14 @@
 
 import { getCommandByName } from '../db/commands.js';
 import {
+	endSession,
 	getParticipant,
+	getSession,
 	liveForVoice,
 	liveSoloFor,
+	pauseSession,
+	resumeSession,
+	skipBlock,
 	voiceChannelOf,
 	type DeafenMode,
 	type Session,
@@ -97,4 +102,56 @@ export async function timeboxesForViewer(
 		out.push(view(s, claims.u, mine?.deafen_mode ?? 'none'));
 	}
 	return out;
+}
+
+export type TimeboxAction = 'pause' | 'resume' | 'skip' | 'stop';
+
+/**
+ * Pause, resume, skip or stop one of the viewer's timeboxes from the Activity.
+ * The same rule as the card's buttons, minus Crew (the Activity does not know the
+ * viewer's server permissions): the starter, or anyone in the voice channel when the
+ * server lets anyone control it. Crew still have the buttons on the card.
+ */
+export async function controlTimebox(
+	db: any,
+	discord: any,
+	claims: TokenClaims,
+	guildId: unknown,
+	id: unknown,
+	action: unknown
+): Promise<ActivityTimebox | null> {
+	if (typeof guildId !== 'string' || !claims.g.includes(guildId)) {
+		throw new TimeboxAccessError(403, 'That server is not part of this session.');
+	}
+	if (!['pause', 'resume', 'skip', 'stop'].includes(String(action))) {
+		throw new TimeboxAccessError(400, 'Unknown action.');
+	}
+	const s = typeof id === 'number' ? await getSession(db, id) : null;
+	if (!s || s.guild_id !== guildId) throw new TimeboxAccessError(404, 'That timebox is gone.');
+	if (s.status !== 'running' && s.status !== 'paused') {
+		throw new TimeboxAccessError(409, 'That timebox has ended.');
+	}
+	const allowed =
+		s.starter_id === claims.u ||
+		(s.kind === 'shared' &&
+			s.control === 'anyone' &&
+			!!s.voice_channel_id &&
+			(await voiceChannelOf(db, guildId, claims.u)) === s.voice_channel_id);
+	if (!allowed) {
+		throw new TimeboxAccessError(
+			403,
+			s.control === 'anyone'
+				? 'Only someone in the voice channel or the starter can do that.'
+				: 'Only the starter can do that here. Crew can use the card in the channel.'
+		);
+	}
+
+	let fresh: Session;
+	if (action === 'pause') fresh = await pauseSession(db, discord, s);
+	else if (action === 'resume') fresh = await resumeSession(db, discord, s);
+	else if (action === 'skip') fresh = await skipBlock(db, discord, s);
+	else fresh = await endSession(db, discord, s, 'stopped');
+	if (fresh.status !== 'running' && fresh.status !== 'paused') return null;
+	const mine = await getParticipant(db, fresh.id, claims.u);
+	return view(fresh, claims.u, mine?.deafen_mode ?? 'none');
 }

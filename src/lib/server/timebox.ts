@@ -22,6 +22,7 @@
  * cron route (the sweep): D1 and the REST client only, nothing from discord.js.
  */
 
+import { openActivityButton } from '$lib/discord/activity-button.js';
 import { log } from '../log.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { ADMINISTRATOR, parsePermissionBits } from '../discord/command-permissions.js';
@@ -38,7 +39,7 @@ export const DEFAULTS = {
 	focus: 23,
 	break: 5,
 	longBreak: 15,
-	rounds: 4,
+	rounds: 1,
 	control: 'crew' as Control,
 };
 /** A long break follows every this-many focus blocks. */
@@ -604,7 +605,7 @@ export function buildCard(s: Session, extra: CardExtra = {}) {
 		? s.status === 'done'
 			? 'Timebox finished'
 			: 'Timebox stopped'
-		: `${PHASE_LABEL[s.phase]}${s.phase === 'focus' ? ` · block ${s.block_number} of ${s.rounds}` : ''}`;
+		: `${PHASE_LABEL[s.phase]}${s.phase === 'focus' && s.rounds > 1 ? ` · block ${s.block_number} of ${s.rounds}` : ''}`;
 	const lines: string[] = [];
 	if (s.status === 'running' && s.phase_ends_at) {
 		lines.push(`Ends <t:${unix(s.phase_ends_at)}:R> (<t:${unix(s.phase_ends_at)}:t>)`);
@@ -620,9 +621,8 @@ export function buildCard(s: Session, extra: CardExtra = {}) {
 	}
 	if (live) {
 		const next = nextStep(s);
-		lines.push(
-			next ? `Then: ${PHASE_LABEL[next.phase].toLowerCase()}` : 'This is the last block.'
-		);
+		if (next) lines.push(`Then: ${PHASE_LABEL[next.phase].toLowerCase()}`);
+		else if (s.rounds > 1) lines.push('This is the last block.');
 	}
 	if (s.kind === 'shared' && live) lines.push(`Shared with <#${s.voice_channel_id}>`);
 	if (extra.deafened) {
@@ -640,7 +640,10 @@ export function buildCard(s: Session, extra: CardExtra = {}) {
 		description: lines.join('\n'),
 		color: !live ? COLOR_IDLE : s.phase === 'focus' ? COLOR_FOCUS : COLOR_BREAK,
 		footer: {
-			text: `${s.focus_minutes}/${s.break_minutes}/${s.long_break_minutes} min${s.kind === 'solo' ? ' · solo' : ''}`,
+			text:
+				(s.rounds > 1
+					? `${s.focus_minutes}/${s.break_minutes}/${s.long_break_minutes} min`
+					: `${s.focus_minutes} min`) + (s.kind === 'solo' ? ' · solo' : ''),
 		},
 	};
 }
@@ -681,6 +684,7 @@ export function buildComponents(s: Session, disabled = false, goals: Goal[] = []
 				btn('skip', 'Skip', 2),
 				btn('stop', 'Stop', 4),
 				btn('deafen', 'Deafen me', 2),
+				openActivityButton(off),
 			],
 		},
 	];

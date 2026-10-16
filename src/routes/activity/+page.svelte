@@ -62,6 +62,31 @@
 	let quorumPreview = $state<any>(null);
 	let now = $state(Date.now());
 
+	let timeboxBusy = $state(false);
+	let timeboxError = $state('');
+	async function actOnTimebox(id: number, action: string) {
+		if (!session || !guildId || timeboxBusy) return;
+		timeboxBusy = true;
+		timeboxError = '';
+		try {
+			const res = await fetch(`${base}/api/activity/timebox`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+					authorization: `Bearer ${session.token}`,
+				},
+				body: JSON.stringify({ guild_id: guildId, id, action }),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (res.ok) timeboxes = json.timeboxes ?? [];
+			else timeboxError = json.message ?? 'That did not work.';
+		} catch {
+			timeboxError = 'Could not reach SpaceBot. Try again.';
+		} finally {
+			timeboxBusy = false;
+		}
+	}
+
 	// The Timebox tab: fetch the viewer's timeboxes for this server and keep them fresh.
 	// The countdown itself runs here from the end time, so the poll can be slow; a block
 	// change shows up within one poll of the bot's own minute sweep.
@@ -625,7 +650,15 @@
 					preview={quorumPreview}
 				/>
 			{:else if mod.id === 'timebox'}
-				<TimeboxTab {timeboxes} loaded={timeboxLoaded} {now} help={mod.help} />
+				<TimeboxTab
+					{timeboxes}
+					loaded={timeboxLoaded}
+					{now}
+					help={mod.help}
+					act={actOnTimebox}
+					busy={timeboxBusy}
+					error={timeboxError}
+				/>
 			{:else}
 				<p class="sub">{mod.help.summary}</p>
 				<p class="st">{mod.help.start}</p>

@@ -50,7 +50,7 @@ keeps its tab and shows a help panel (what it does, how to start it).
 
 ## Modules
 
-Timebox (read-only countdown), **Agent** ([game.md](game.md)), the hidden-agent
+Timebox (countdown and controls), **Agent** ([game.md](game.md)), the hidden-agent
 round, which is played entirely in the Activity: roles, the secret word and
 voting are private to each player and shown only here, and Quorum. The nav says
 _Agent_ for the game module (id `game`, command `/play`), the name `/start agent`
@@ -111,7 +111,7 @@ Commands page ([command access](command-access.md)).
 
 ## The Timebox tab
 
-Read-only. A big countdown, one bar per focus block (done blocks full, the running
+A big countdown, one bar per focus block (done blocks full, the running
 one filling), what comes next, and the deafen choice. `/api/activity/timebox` takes the signed session token (not a cookie) and
 a server id, checks the id against the token's list and that Timebox is on there,
 and returns only the timeboxes the viewer is part of: their own solo one, the shared
@@ -119,7 +119,7 @@ one in the voice channel the Activity was opened in (carried in the token), and 
 shared one in the voice channel they are in now. It never returns another member's
 ids or deafen choices. The page polls every 15 seconds and counts down locally from
 the end time, so a block change shows within a poll of the bot's own minute sweep.
-Controls stay on the card in the channel for now.
+Pause/Resume, Skip and Stop work from the tab: `POST /api/activity/timebox` with `action` and `id`. Allowed for the starter, or anyone in the voice channel when the server sets control to "anyone". Crew use the card in the channel (the Activity does not know a viewer's server permissions). Timebox, game and quorum cards in the channel carry an **Open Activity** button (`activity:open`), answered with a LAUNCH_ACTIVITY response.
 
 ## Not yet
 

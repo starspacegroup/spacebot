@@ -234,7 +234,7 @@ describe('settings', () => {
 			focus: 23,
 			break: 5,
 			longBreak: 15,
-			rounds: 4,
+			rounds: 1,
 			control: 'crew',
 		});
 		await upsertSettings(d, G, { focus: 40 });
@@ -267,7 +267,7 @@ describe('/timebox start', () => {
 		expect(s).toMatchObject({
 			kind: 'shared',
 			focus_minutes: 23,
-			rounds: 4,
+			rounds: 1,
 			starter_id: ALICE,
 		});
 		expect(r.after).toBeDefined(); // stores the card's message id
@@ -392,7 +392,11 @@ describe('deafen me', () => {
 		const d = db();
 		const f = fakeDiscord();
 		putVoice(d, ALICE, VC);
-		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		await handleTimeboxCommand(
+			slash('start', [opt('deafen', 'focus'), opt('rounds', 2)]),
+			d,
+			f.client
+		);
 		const s = (await liveForVoice(d, G, VC)) as Session;
 		await sweepTimebox(d, f.client, at(24)); // 23-minute block has ended
 		expect(f.state.deaf.get(ALICE)).toBe(false);

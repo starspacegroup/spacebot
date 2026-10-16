@@ -1,8 +1,8 @@
 <script lang="ts">
 	/**
-	 * The Activity's Timebox tab, read-only: the viewer's timeboxes with a big
-	 * countdown and one bar per focus block. The page fetches and polls; this
-	 * only draws. Controls stay on the card in the channel.
+	 * The Activity's Timebox tab: the viewer's timeboxes with a big countdown, one
+	 * bar per focus block, and pause, skip and stop. The page fetches, polls and
+	 * sends the controls; this only draws.
 	 */
 	import {
 		TB_PHASE,
@@ -20,11 +20,14 @@
 		deafen: 'none' | 'focus' | 'whole';
 	};
 
-	const { timeboxes, loaded, now, help } = $props<{
+	const { timeboxes, loaded, now, help, act, busy, error } = $props<{
 		timeboxes: Timebox[];
 		loaded: boolean;
 		now: number;
 		help: { summary: string; start: string };
+		act: (id: number, action: 'pause' | 'resume' | 'skip' | 'stop') => void;
+		busy: boolean;
+		error: string;
 	}>();
 </script>
 
@@ -34,9 +37,11 @@
 		{@const colour = tb.phase === 'focus' ? 'var(--o)' : 'var(--s)'}
 		<section class="tbx" class:first={i === 0} aria-label="{TB_PHASE[tb.phase]} countdown">
 			<p class="st">
-				{tb.phase === 'focus'
-					? `Focus block ${tb.block_number} of ${tb.rounds}`
-					: `${TB_PHASE[tb.phase]} after block ${tb.block_number} of ${tb.rounds}`}
+				{tb.rounds === 1
+					? TB_PHASE[tb.phase]
+					: tb.phase === 'focus'
+						? `Focus block ${tb.block_number} of ${tb.rounds}`
+						: `${TB_PHASE[tb.phase]} after block ${tb.block_number} of ${tb.rounds}`}
 				· {tb.kind === 'shared' ? 'shared with the voice channel' : 'just you'}
 				{tb.status === 'paused' ? ' · paused' : ''}
 			</p>
@@ -48,12 +53,28 @@
 					<span><i style:width="{fill * 100}%" style:background={colour}></i></span>
 				{/each}
 			</div>
-			<p class="st">
-				{next
-					? `Next: ${TB_PHASE[next.phase].toLowerCase()} · ${next.minutes} minutes`
-					: 'Last block · then done'}
-				· {tb.focus_minutes}/{tb.break_minutes}/{tb.long_break_minutes} min
-			</p>
+			{#if next}
+				<p class="st">
+					Then: {TB_PHASE[next.phase].toLowerCase()} · {next.minutes} minutes
+				</p>
+			{/if}
+			<div class="ctl">
+				{#if tb.status === 'paused'}
+					<button class="btn o" disabled={busy} onclick={() => act(tb.id, 'resume')}
+						>Resume</button
+					>
+				{:else}
+					<button class="btn o" disabled={busy} onclick={() => act(tb.id, 'pause')}
+						>Pause</button
+					>
+				{/if}
+				{#if next}
+					<button class="btn" disabled={busy} onclick={() => act(tb.id, 'skip')}
+						>Skip</button
+					>
+				{/if}
+				<button class="btn" disabled={busy} onclick={() => act(tb.id, 'stop')}>Stop</button>
+			</div>
 			{#if tb.deafen !== 'none'}
 				<p class="note">
 					You asked to be deafened {tb.deafen === 'whole'
@@ -63,7 +84,7 @@
 			{/if}
 		</section>
 	{/each}
-	<p class="note">Pause, skip and stop are on the card in the channel for now.</p>
+	{#if error}<p class="note">{error}</p>{/if}
 {:else if !loaded}
 	<p class="st">Looking for your timebox…</p>
 {:else}
@@ -107,6 +128,11 @@
 	.segs i {
 		display: block;
 		height: 100%;
+	}
+	.ctl {
+		display: flex;
+		gap: 0.6em;
+		flex-wrap: wrap;
 	}
 	.first .st:last-of-type {
 		font-size: 1.3em;

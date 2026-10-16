@@ -1,13 +1,19 @@
 import { json } from '@sveltejs/kit';
 import { getEnv } from '$lib/env.js';
 import { sessionFromRequest } from '$lib/server/activity.js';
-import { TimeboxAccessError, timeboxesForViewer } from '$lib/server/activity-timebox.js';
+import {
+	TimeboxAccessError,
+	controlTimebox,
+	timeboxesForViewer,
+} from '$lib/server/activity-timebox.js';
+import { createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { log } from '$lib/log.js';
 
 /**
  * The Timebox tab's data: the timeboxes this viewer is part of in one server.
  * Authenticated by the signed session token from /api/activity/session, not a
- * cookie. Read-only.
+ * cookie. With `action` (pause, resume, skip, stop) and `id` it controls one timebox;
+ * without, it only reads.
  */
 export async function POST({ request, platform }) {
 	const secret = getEnv('DISCORD_CLIENT_SECRET', platform);
@@ -19,6 +25,17 @@ export async function POST({ request, platform }) {
 
 	try {
 		const body: any = await request.json().catch(() => ({}));
+		if (body?.action) {
+			const token = getEnv('DISCORD_BOT_TOKEN', platform);
+			await controlTimebox(
+				db,
+				token ? createDiscordRestClient(token) : null,
+				claims,
+				body.guild_id,
+				body.id,
+				body.action
+			);
+		}
 		const timeboxes = await timeboxesForViewer(db, claims, body?.guild_id);
 		return json({ timeboxes }, { headers: { 'cache-control': 'no-store' } });
 	} catch (error: any) {

@@ -6,8 +6,9 @@ layout: default
 # Timebox
 
 `/timebox` runs focus blocks and breaks, alone or for everyone in a voice
-channel. The default is 23 minutes of focus, a 5-minute break, and a 15-minute
-break after every fourth block, for 4 blocks. All of it is an option on the
+channel. The default is one block of 23 minutes of focus and then it is done. Ask for
+more `rounds` and it adds a 5-minute break after each block, and a 15-minute break after
+every fourth. All of it is an option on the
 command and a per-server default. The plan and its reasoning are in the workspace
 repo's `planning/IDEAS.md` ("Timebox").
 
@@ -92,5 +93,5 @@ timed features; a gateway timer can replace it later without changing the data.
 
 A voice channel made for the timebox (access, who may talk or share a screen,
 delete-or-alert at the end), muting everyone during focus, controls on the Timebox tab in the
-Activity (it shows the countdown read-only, see `docs/activity.md`; goals are not shown there yet), a chime at each change, a completed-blocks
+Activity (it shows the countdown with pause, skip and stop, see `docs/activity.md`; goals are not shown there yet), a chime at each change, a completed-blocks
 stat, and a history of goals and percents.
