@@ -12,6 +12,8 @@
  * Follows the same `*.svelte.ts` store convention as theme/command-palette.
  */
 
+import { untrack } from 'svelte';
+
 export type ToastType = 'success' | 'error' | 'info';
 
 /**
@@ -58,7 +60,9 @@ function dismiss(id: number) {
 		clearTimeout(timer);
 		_timers.delete(id);
 	}
-	_items = _items.filter((t) => t.id !== id);
+	untrack(() => {
+		_items = _items.filter((t) => t.id !== id);
+	});
 }
 
 function push(message: string, options: ToastOptions = {}): number {
@@ -71,7 +75,11 @@ function push(message: string, options: ToastOptions = {}): number {
 		duration,
 		link: options.link,
 	};
-	_items = [..._items, item];
+	// Untracked: callers push from `$effect`s, and reading the list there would
+	// subscribe the effect to it, so every push re-ran the effect and pushed again.
+	untrack(() => {
+		_items = [..._items, item];
+	});
 
 	if (duration > 0) {
 		_timers.set(
