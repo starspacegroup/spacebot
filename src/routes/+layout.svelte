@@ -22,8 +22,12 @@
 	const { children, data } = $props();
 
 	// The Activity runs inside Discord's iframe: no site header, footer or palette.
+	// Discord's proxy can put a prefix in front of the path (/.proxy/activity), and the
+	// iframe's own host is *.discordsays.com, so match on those as well as the plain path.
 	const isActivity = $derived(
-		$page.url.pathname === '/activity' || $page.url.pathname.startsWith('/activity/')
+		/^(\/\.proxy)?\/activity(\/|$)/.test($page.url.pathname) ||
+			$page.url.hostname.endsWith('.discordsays.com') ||
+			$page.url.searchParams.has('frame_id')
 	);
 
 	// Detect the user's browser timezone and store it in a cookie so
