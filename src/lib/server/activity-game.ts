@@ -73,7 +73,18 @@ export interface GameView {
 		ends_at: number | null;
 		call_unlocks_at: number | null;
 		is_starter: boolean;
-		players: { id: string; name: string; state: 'in' | 'ejected' }[];
+		starter_id: string;
+		/** The voice channel's name, from the gateway's live table, when anyone is in it. */
+		voice_channel_name: string | null;
+		round_seconds: number;
+		call_lock_seconds: number;
+		meeting_seconds: number;
+		mute_out: boolean;
+		/**
+		 * A name, whether they are still in, and what Discord shows everyone anyway:
+		 * their avatar and whether they are in the round's voice channel. No roles.
+		 */
+		players: GamePlayerView[];
 		me: {
 			in: boolean;
 			state: 'in' | 'ejected' | null;
@@ -90,8 +101,17 @@ export interface GameView {
 			voted: number;
 			living: number;
 			my_vote: string | null;
+			/** Who has a vote in, never what it is: who voted for whom is never sent. */
+			voted_ids: string[];
 		};
-		last_vote: null | { ejected_id: string | null; ejected_name: string | null };
+		last_vote: null | {
+			meeting_id: number;
+			/** 1 for the round's first vote. */
+			number: number;
+			closed_at: number | null;
+			ejected_id: string | null;
+			ejected_name: string | null;
+		};
 		/** Only once the round has ended. */
 		result: null | {
 			code: NonNullable<Round['result']>;
@@ -103,8 +123,41 @@ export interface GameView {
 				name: string;
 				role: 'agent' | 'crew' | null;
 				state: 'in' | 'ejected';
+				avatar: string | null;
 			}[];
 		};
+	};
+}
+
+export interface GamePlayerView {
+	id: string;
+	name: string;
+	state: 'in' | 'ejected';
+	avatar: string | null;
+	/** In the round's voice channel now, or not. */
+	voice: 'here' | 'away';
+	/** Muted in voice (by themselves or the server), as everyone in the channel can see. */
+	muted: boolean;
+}
+
+/** Only Discord's own image host goes into an <img src>; anything else is dropped. */
+export function safeAvatar(url: unknown): string | null {
+	return typeof url === 'string' && url.startsWith('https://cdn.discordapp.com/') ? url : null;
+}
+
+/** Who is in the round's voice channel right now, from the gateway's live table. */
+async function voiceTable(db: any, guildId: string, channelId: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT user_id, channel_name, avatar_url, self_mute, server_mute FROM live_voice_states
+			 WHERE guild_id = ? AND channel_id = ?`
+		)
+		.bind(guildId, channelId)
+		.all();
+	const rows = (results || []) as any[];
+	return {
+		name: rows.find((r) => r.channel_name)?.channel_name ?? null,
+		byUser: new Map(rows.map((r) => [String(r.user_id), r])),
 	};
 }
 
@@ -150,13 +203,17 @@ export async function gameViewForViewer(
 	let meetingView: NonNullable<GameView['round']>['meeting'] = null;
 	if (meeting) {
 		const votes = await getVotes(db, meeting.id);
+		// Only living players' votes count (as in closeMeeting), so only they show as voted.
+		const alive = new Set(living.map((p) => p.user_id));
+		const counted = votes.filter((v) => alive.has(v.voter_id));
 		meetingView = {
 			id: meeting.id,
 			caller_id: meeting.caller_id,
 			closes_at: unix(meeting.closes_at)!,
-			voted: votes.length,
+			voted: counted.length,
 			living: living.length,
 			my_vote: votes.find((v) => v.voter_id === claims.u)?.target ?? null,
+			voted_ids: counted.map((v) => v.voter_id),
 		};
 	}
 
@@ -164,12 +221,22 @@ export async function gameViewForViewer(
 	if (round.status !== 'lobby') {
 		const closed = await lastClosedMeeting(db, round.id);
 		if (closed) {
+			const n: any = await db
+				.prepare(`SELECT COUNT(*) AS n FROM game_meetings WHERE round_id = ? AND id <= ?`)
+				.bind(round.id, closed.id)
+				.first();
 			lastVote = {
+				meeting_id: closed.id,
+				number: Number(n?.n ?? 1),
+				closed_at: unix(closed.closed_at),
 				ejected_id: closed.ejected_id,
 				ejected_name: players.find((p) => p.user_id === closed.ejected_id)?.name ?? null,
 			};
 		}
 	}
+
+	const table = await voiceTable(db, gid, round.voice_channel_id);
+	const face = (userId: string) => safeAvatar(table.byUser.get(userId)?.avatar_url);
 
 	const role = mine?.role ?? null;
 	out.round = {
@@ -185,8 +252,25 @@ export async function gameViewForViewer(
 			? Math.floor(new Date(round.started_at).getTime() / 1000) + round.call_lock_seconds
 			: null,
 		is_starter: round.starter_id === claims.u,
-		// Roles are not in this list: a name and whether they are still in.
-		players: players.map((p) => ({ id: p.user_id, name: p.name, state: p.state })),
+		starter_id: round.starter_id,
+		voice_channel_name: table.name ? String(table.name) : null,
+		round_seconds: round.round_seconds,
+		call_lock_seconds: round.call_lock_seconds,
+		meeting_seconds: round.meeting_seconds,
+		mute_out: Boolean(round.mute_out),
+		// Roles are not in this list: a name, whether they are still in, and what
+		// anyone in the voice channel can already see.
+		players: players.map((p) => {
+			const live = table.byUser.get(p.user_id);
+			return {
+				id: p.user_id,
+				name: p.name,
+				state: p.state,
+				avatar: face(p.user_id),
+				voice: live ? ('here' as const) : ('away' as const),
+				muted: Boolean(live && (live.self_mute || live.server_mute)),
+			};
+		}),
 		me: {
 			in: Boolean(mine),
 			state: mine?.state ?? null,
@@ -213,6 +297,7 @@ export async function gameViewForViewer(
 						name: p.name,
 						role: p.role,
 						state: p.state,
+						avatar: face(p.user_id),
 					})),
 				}
 			: null,

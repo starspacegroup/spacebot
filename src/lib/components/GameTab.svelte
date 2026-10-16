@@ -1,85 +1,188 @@
 <script lang="ts">
 	/**
-	 * The Activity's Game tab: the hidden-agent round, played here.
+	 * The Activity's Agent tab: the hidden-agent round, played here, in LCARS.
 	 *
 	 * Everything private to a player (their role, the secret word, their ballot)
 	 * is drawn from the server's view for this viewer, which never contains
-	 * anyone else's role until the round has ended. The page polls that view
-	 * every couple of seconds and after every move, and runs the clock locally
-	 * from the end times it is given.
+	 * anyone else's role until the round has ended, and never who voted for whom.
+	 * The page polls that view every couple of seconds and after every move, and
+	 * runs the clocks locally from the end times it is given.
+	 *
+	 * The viewer is not in the roster grid: they get their own badge, bottom
+	 * right, in the colour of their state. Speaking is not shown: the Activity
+	 * cannot know it without a Discord scope it does not have (docs/activity.md).
 	 */
 	import { onMount } from 'svelte';
-
-	type Player = { id: string; name: string; state: 'in' | 'ejected' };
-	type Round = {
-		id: number;
-		status: 'lobby' | 'running' | 'ended';
-		agent_name: string;
-		crew_name: string;
-		min_players: number;
-		calls_per_player: number;
-		started_at: number | null;
-		ends_at: number | null;
-		call_unlocks_at: number | null;
-		is_starter: boolean;
-		players: Player[];
-		me: {
-			in: boolean;
-			state: 'in' | 'ejected' | null;
-			role: 'agent' | 'crew' | null;
-			word: string | null;
-			calls_left: number;
-			call: 'ok' | 'no_round' | 'not_in' | 'out' | 'open' | 'locked' | 'used';
-		};
-		meeting: null | {
-			id: number;
-			caller_id: string;
-			closes_at: number;
-			voted: number;
-			living: number;
-			my_vote: string | null;
-		};
-		last_vote: null | { ejected_id: string | null; ejected_name: string | null };
-		result: null | {
-			code: string;
-			text: string;
-			agent_id: string | null;
-			word: string | null;
-			roles: { id: string; name: string; role: 'agent' | 'crew' | null; state: string }[];
-		};
-	};
-	type View = { voice_channel_id: string | null; can_open: boolean; round: Round | null };
+	import {
+		LCARS,
+		gameAccent,
+		gameScreen,
+		mss,
+		msUntil,
+		pctLeft,
+		winner,
+		type Dismissed,
+		type Frame,
+		type GamePlayer,
+		type GameView,
+	} from '$lib/activity/lcars.js';
+	import Avatar from './activity/Avatar.svelte';
+	import LcarsClock from './activity/LcarsClock.svelte';
+	import PlayerCard from './activity/PlayerCard.svelte';
+	import SelfBadge from './activity/SelfBadge.svelte';
 
 	const {
 		base,
 		token,
 		guildId,
-		viewerId,
+		viewer,
 		preview = null,
+		previewDismissed = {},
+		onframe = () => {},
 	} = $props<{
 		base: string;
 		token: string;
 		guildId: string;
-		viewerId: string;
+		viewer: { id: string; name: string; avatar: string | null };
 		/** Dev only: a canned view, so layouts can be checked without Discord. */
-		preview?: View | null;
+		preview?: GameView | null;
+		/** Dev only: which screens the preview has already put away. */
+		previewDismissed?: Dismissed;
+		onframe?: (f: Frame) => void;
 	}>();
 
-	let view = $state<View | null>(null);
+	const STORE = 'spacebot.game.dismissed';
+	let view = $state<GameView | null>(null);
 	let problem = $state('');
 	let busy = $state(false);
-	let showWord = $state(true);
+	let hiding = $state(false);
+	let wordShown = $state(true);
 	let now = $state(Date.now());
+	let dismissed = $state<Dismissed>(readDismissed());
+
+	function readDismissed(): Dismissed {
+		try {
+			return JSON.parse(sessionStorage.getItem(STORE) || '{}') ?? {};
+		} catch {
+			return {};
+		}
+	}
+	function dismiss(patch: Dismissed) {
+		dismissed = { ...dismissed, ...patch };
+		try {
+			sessionStorage.setItem(STORE, JSON.stringify(dismissed));
+		} catch {
+			// Private mode or blocked storage: it is only remembered for this page.
+		}
+	}
 
 	const round = $derived(view?.round ?? null);
-	const nameOf = (id: string) => round?.players.find((p) => p.id === id)?.name ?? 'Someone';
+	const screen = $derived(gameScreen(view, dismissed, now));
+	const accent = $derived(gameAccent(screen, round));
+	const mePlayer = $derived(round?.players.find((p) => p.id === viewer.id) ?? null);
+	const others = $derived(round?.players.filter((p) => p.id !== viewer.id) ?? []);
 	const living = $derived(round?.players.filter((p) => p.state === 'in') ?? []);
+	const selfName = $derived(mePlayer?.name ?? viewer.name);
+	const selfAvatar = $derived(mePlayer?.avatar ?? viewer.avatar);
+	const nameOf = (id: string | null | undefined) =>
+		round?.players.find((p) => p.id === id)?.name ?? 'Someone';
+	const roleName = $derived(
+		round?.me.role === 'agent'
+			? round.agent_name
+			: round?.me.role === 'crew'
+				? round.crew_name
+				: ''
+	);
+	const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-	function clock(unix: number | null): string {
-		if (!unix) return '--:--';
-		const total = Math.max(0, Math.ceil((unix * 1000 - now) / 1000));
-		return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+	function voiceLine(p: GamePlayer, lobby = false): string {
+		if (p.voice === 'away') return lobby ? 'Not in voice' : 'Left voice · still playing';
+		return p.muted ? 'In voice · muted' : 'In voice';
 	}
+
+	function status(p: GamePlayer): string {
+		if (!round) return '';
+		if (round.status === 'lobby')
+			return (p.id === round.starter_id ? 'Host · ' : '') + voiceLine(p, true);
+		if (p.state === 'ejected') return round.mute_out ? 'Out · muted' : 'Out';
+		return voiceLine(p);
+	}
+
+	const frame = $derived.by((): Frame => {
+		const r = round;
+		const out = (t: string, f: string, tab: string | null = null) => ({
+			title: `Agent · ${t}`,
+			accent,
+			tab,
+			footer: f,
+		});
+		switch (screen) {
+			case 'loading':
+				return out('Standby', 'Looking for a round');
+			case 'none':
+				return out('Standby', view?.can_open ? 'Ready when you are' : 'No round here');
+			case 'lobby':
+				return out('Lobby', r?.is_starter ? 'You opened it' : 'Waiting for the host');
+			case 'card':
+				return out('Your card', 'Private to you');
+			case 'round':
+				return out('Round', 'Live from voice');
+			case 'vote':
+				return out('Vote', 'Votes are secret');
+			case 'ejected':
+				return out('Result', 'Round continues');
+			case 'out':
+				return out('You are out', 'Spectating', LCARS.grey);
+			case 'watch':
+				return out('Watching', 'Not in this round', LCARS.grey);
+			case 'over':
+				return out('Round over', r?.mute_out ? 'Game mutes lifted' : 'Round over');
+		}
+	});
+	$effect(() => onframe(frame));
+
+	const self = $derived.by(() => {
+		const r = round;
+		const callsLeft = r ? ` · ${plural(r.me.calls_left, 'vote call')} left` : '';
+		switch (screen) {
+			case 'lobby':
+				return {
+					status: r?.me.in ? 'In voice · joined' : 'Not joined',
+					colour: LCARS.lavender,
+				};
+			case 'card':
+				return { status: roleName, colour: accent };
+			case 'round':
+			case 'ejected':
+				return {
+					status: roleName + callsLeft,
+					colour: r?.me.role === 'agent' ? LCARS.alert : LCARS.sky,
+				};
+			case 'vote':
+				return {
+					status: r?.meeting?.my_vote ? 'Voted · can change' : 'Voting',
+					colour: LCARS.orange,
+				};
+			case 'out':
+				return { status: r?.mute_out ? 'Out · muted' : 'Out', colour: '#666666' };
+			case 'watch':
+				return { status: 'Watching', colour: '#666666' };
+			case 'over': {
+				const w = winner(r?.result?.code);
+				const mine = r?.me.role;
+				const won = w === 'none' || !mine ? '' : w === mine ? ' · won' : ' · lost';
+				return {
+					status: (roleName || 'Watched') + won,
+					colour: mine === 'agent' ? LCARS.alert : mine ? LCARS.sky : '#666666',
+				};
+			}
+			default:
+				return {
+					status: view?.can_open ? 'In voice' : 'Not in voice',
+					colour: LCARS.lavender,
+				};
+		}
+	});
 
 	async function call(body: Record<string, unknown>) {
 		const res = await fetch(`${base}/api/activity/game`, {
@@ -122,8 +225,10 @@
 	}
 
 	onMount(() => {
-		if (preview) view = preview;
-		else load();
+		if (preview) {
+			view = preview;
+			dismissed = previewDismissed;
+		} else load();
 		const poll = setInterval(load, 2500);
 		const tick = setInterval(() => (now = Date.now()), 1000);
 		return () => {
@@ -132,56 +237,127 @@
 		};
 	});
 
-	const callLabel = $derived.by(() => {
-		if (!round) return '';
-		switch (round.me.call) {
-			case 'ok':
-				return 'Call a vote';
-			case 'locked':
-				return `Votes unlock in ${clock(round.call_unlocks_at)}`;
-			case 'used':
-				return 'You have used your call';
-			case 'open':
-				return 'A vote is open';
-			case 'out':
-				return 'You are out';
-			default:
-				return 'Call a vote';
-		}
-	});
+	const roundClock = $derived(round ? mss(msUntil(round.ends_at, now)) : '0:00');
+	const roundPct = $derived(round ? pctLeft(round.ends_at, round.round_seconds, now) : 0);
+
+	const hold = {
+		onpointerdown: () => (hiding = true),
+		onpointerup: () => (hiding = false),
+		onpointerleave: () => (hiding = false),
+		onpointercancel: () => (hiding = false),
+		onkeydown: (e: KeyboardEvent) => {
+			if (e.key === ' ' || e.key === 'Enter') {
+				e.preventDefault();
+				hiding = true;
+			}
+		},
+		onkeyup: () => (hiding = false),
+		onblur: () => (hiding = false),
+	};
 </script>
 
-<div class="game">
-	{#if !view}
-		<p class="quiet">Looking for a round…</p>
-	{:else if !round}
-		<p>No round in your voice channel.</p>
-		{#if view.can_open}
-			<button class="btn primary" disabled={busy} onclick={() => act({ action: 'open' })}>
-				Open a lobby
-			</button>
-			<p class="quiet">
+{#snippet roster(list: GamePlayer[])}
+	{#if list.length === 0}
+		<p class="note">Nobody else yet.</p>
+	{:else}
+		<ul class="ros" aria-label="Players">
+			{#each list as p (p.id)}
+				<li>
+					<PlayerCard
+						id={p.id}
+						name={p.name}
+						avatar={p.avatar}
+						status={status(p)}
+						icon={p.state === 'ejected' ? '✕' : ''}
+						variant={[
+							p.state === 'ejected' ? 'out' : '',
+							p.state === 'in' && p.voice === 'away' ? 'away' : '',
+							round?.status === 'lobby' && p.id === round.starter_id ? 'host' : '',
+						].join(' ')}
+					/>
+				</li>
+			{/each}
+		</ul>
+	{/if}
+{/snippet}
+
+{#snippet badge()}
+	<SelfBadge
+		id={viewer.id}
+		name={selfName}
+		avatar={selfAvatar}
+		status={self.status}
+		colour={self.colour}
+	/>
+{/snippet}
+
+{#if screen === 'loading'}
+	<p class="st">Looking for a round…</p>
+{:else if screen === 'none'}
+	<div class="hd">
+		<div>
+			<p class="st">
+				{view?.can_open ? 'Your voice channel is free' : 'You are not in a voice channel'}
+			</p>
+			<h2 class="hl" style:color={accent}>No round here</h2>
+			<p class="sub">
 				Everyone but one is told a secret word. One is not. Talk it out, then vote out who
 				you think it is.
 			</p>
-		{:else}
-			<p class="quiet">Join a voice channel here to open a lobby.</p>
-		{/if}
-	{:else if round.status === 'lobby'}
-		<h3>Lobby</h3>
-		<p class="quiet">
-			{round.players.length} of {round.min_players} needed. Everyone but one is told a secret word;
-			one is the {round.agent_name} and is not.
-		</p>
-		<ul class="players">
-			{#each round.players as p (p.id)}
-				<li>{p.name}{p.id === viewerId ? ' (you)' : ''}</li>
-			{/each}
-		</ul>
-		<div class="row">
+		</div>
+	</div>
+	<div class="tail">
+		<div class="btns">
+			{#if view?.can_open}
+				<button class="btn o" disabled={busy} onclick={() => act({ action: 'open' })}>
+					Open a lobby
+				</button>
+			{:else}
+				<p class="note">Join a voice channel in this server to open a lobby.</p>
+			{/if}
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && screen === 'lobby'}
+	<div class="hd">
+		<div>
+			<p class="st">
+				{round.voice_channel_name ?? 'This'} voice channel · opened by {round.is_starter
+					? 'you'
+					: nameOf(round.starter_id)}
+			</p>
+			<h2 class="hl" style:color="var(--p)">{round.players.length} aboard</h2>
+			<p class="sub">
+				{round.min_players} needed · {round.players.length >= round.min_players
+					? 'ready to start'
+					: `${round.min_players - round.players.length} more to start`}
+			</p>
+		</div>
+		<div class="panel" style="line-height:1.55;color:var(--l);font-size:1.1em">
+			{#if round.round_seconds}Round {Math.round(round.round_seconds / 60)} min<br />{/if}
+			{#if round.call_lock_seconds != null}Votes unlock after {round.call_lock_seconds} s<br
+				/>{/if}
+			{plural(round.calls_per_player, 'vote call')} each{round.meeting_seconds
+				? ` · open ${round.meeting_seconds} s`
+				: ''}<br />
+			{round.mute_out ? 'Ejected players are muted' : 'Ejected players keep their mic'}
+		</div>
+	</div>
+	{@render roster(others)}
+	<div class="tail">
+		<div class="btns">
+			{#if round.is_starter}
+				<button
+					class="btn o"
+					disabled={busy || round.players.length < round.min_players}
+					onclick={() => act({ action: 'start', round_id: round.id })}
+				>
+					Start round
+				</button>
+			{/if}
 			{#if !round.me.in}
 				<button
-					class="btn primary"
+					class="btn o"
 					disabled={busy}
 					onclick={() => act({ action: 'join', round_id: round.id })}
 				>
@@ -189,7 +365,7 @@
 				</button>
 			{:else}
 				<button
-					class="btn"
+					class="btn b"
 					disabled={busy}
 					onclick={() => act({ action: 'leave', round_id: round.id })}
 				>
@@ -198,294 +374,422 @@
 			{/if}
 			{#if round.is_starter}
 				<button
-					class="btn primary"
-					disabled={busy || round.players.length < round.min_players}
-					onclick={() => act({ action: 'start', round_id: round.id })}
-				>
-					Start the round
-				</button>
-				<button
-					class="btn danger"
+					class="btn ghost"
 					disabled={busy}
 					onclick={() => act({ action: 'stop', round_id: round.id })}
 				>
 					Cancel
 				</button>
-			{:else}
-				<span class="quiet">Waiting for the person who opened it to start.</span>
+			{/if}
+			<p class="note">
+				{round.is_starter
+					? 'Only people in this voice channel can join'
+					: 'Only people in this voice channel can join · the host starts it'}
+			</p>
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && screen === 'card'}
+	{@const agent = round.me.role === 'agent'}
+	<div class="hd">
+		<div>
+			<p class="st">The round begins · only you can see this card</p>
+			<h2 class="hl" class:xl={!agent} style:color={accent}>
+				{agent ? `You are the ${round.agent_name}` : `You are ${round.crew_name}`}
+			</h2>
+			<p class="sub">
+				{#if agent}
+					Everyone else knows a word. You do not. Listen, blend in, survive {Math.round(
+						(round.round_seconds ?? 300) / 60
+					)} minutes.
+				{:else}
+					One of the other {others.length} is the {round.agent_name}. Talk about the word
+					without saying it.
+				{/if}
+			</p>
+		</div>
+		<LcarsClock label="Round" value={roundClock} pct={roundPct} colour={accent} />
+	</div>
+	<div class="panel word" style:--pc={accent}>
+		<span class="st" style="font-size:1.3em">The word</span>
+		{#if agent}
+			<span class="w unknown" aria-label="You do not know the word">? ? ? ? ? ?</span>
+			<span class="note">
+				You win if the clock runs out<br />or only one other player is left
+			</span>
+		{:else}
+			<span class="w" aria-live="polite">{hiding ? '• • • • • •' : round.me.word}</span>
+			<button class="btn small ghost" {...hold}>Hold to hide</button>
+			<span class="note">Covers the word if someone looks</span>
+		{/if}
+	</div>
+	<div class="tail">
+		<div class="btns">
+			<button class="btn {agent ? 'r' : 'o'}" onclick={() => dismiss({ card: round.id })}>
+				Got it
+			</button>
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && screen === 'round'}
+	{@const agent = round.me.role === 'agent'}
+	<div class="hd">
+		<div>
+			<p class="st">
+				{#if agent}
+					{round.agent_name} · you do not know the word
+				{:else}
+					{round.crew_name} · word:
+					<button class="link" onclick={() => (wordShown = !wordShown)}>
+						{wordShown ? round.me.word : 'show'}
+					</button>
+				{/if}
+			</p>
+			<h2 class="hl" style:color="var(--p)">Talk it out</h2>
+			<p class="sub">
+				{#if round.me.call === 'locked'}
+					Votes unlock in {mss(msUntil(round.call_unlocks_at, now))}
+				{:else if round.me.call === 'used'}
+					You have used your vote {round.calls_per_player === 1 ? 'call' : 'calls'}
+				{:else}
+					Votes are open · call one when you are ready
+				{/if}
+			</p>
+			{#if round.last_vote}
+				<p class="st" style="margin-top:.4em">
+					Vote {round.last_vote.number ?? ''}: {round.last_vote.ejected_name
+						? `${round.last_vote.ejected_name} was ejected`
+						: 'nobody was ejected'}
+				</p>
 			{/if}
 		</div>
-	{:else if round.status === 'running'}
-		{#if !round.me.in}
-			<p class="quiet">A round is running. You are not in it; you can watch the clock.</p>
-		{:else}
-			<div class="role" class:agent={round.me.role === 'agent'}>
-				{#if round.me.role === 'agent'}
-					<span class="kicker">You are the</span>
-					<strong class="big">{round.agent_name}</strong>
-					<span
-						>You do not know the word. Listen, blend in, and do not get voted out.</span
-					>
-				{:else}
-					<span class="kicker">You are a {round.crew_name} player. The word is</span>
-					{#if showWord}
-						<strong class="big">{round.me.word}</strong>
-					{:else}
-						<strong class="big hidden">••••••</strong>
-					{/if}
-					<button class="link" onclick={() => (showWord = !showWord)}>
-						{showWord ? 'Hide the word' : 'Show the word'}
-					</button>
-					<span>Hint at it without saying it. One of you does not know it.</span>
-				{/if}
-			</div>
-		{/if}
-
-		<div class="clock" aria-live="off">
-			<span class="clock-num">{clock(round.ends_at)}</span>
-			<span class="quiet">left in the round</span>
-		</div>
-
-		{#if round.last_vote && !round.meeting}
-			<p class="quiet">
-				Last vote: {round.last_vote.ejected_name
-					? `${round.last_vote.ejected_name} was ejected.`
-					: 'nobody was ejected.'}
-			</p>
-		{/if}
-
-		{#if round.meeting}
-			<div class="meeting">
-				<strong>{nameOf(round.meeting.caller_id)} called a vote</strong>
-				<span class="quiet">
-					closes in {clock(round.meeting.closes_at)} · {round.meeting.voted} of {round
-						.meeting.living}
-					voted
-				</span>
-				{#if round.me.state === 'in'}
-					<div class="ballot" role="group" aria-label="Your vote">
-						{#each living.filter((p) => p.id !== viewerId) as p (p.id)}
-							<button
-								class="pick"
-								class:chosen={round.meeting.my_vote === p.id}
-								disabled={busy}
-								aria-pressed={round.meeting.my_vote === p.id}
-								onclick={() =>
-									act({ action: 'vote', round_id: round.id, target: p.id })}
-							>
-								{p.name}
-							</button>
-						{/each}
-						<button
-							class="pick"
-							class:chosen={round.meeting.my_vote === 'skip'}
-							disabled={busy}
-							aria-pressed={round.meeting.my_vote === 'skip'}
-							onclick={() =>
-								act({ action: 'vote', round_id: round.id, target: 'skip' })}
-						>
-							Skip
-						</button>
-					</div>
-					<span class="quiet">You can change your vote until it closes.</span>
-				{:else}
-					<span class="quiet">You are out, so you cannot vote. You can still listen.</span
-					>
-				{/if}
-			</div>
-		{:else if round.me.in}
+		<LcarsClock label="Time left" value={roundClock} pct={roundPct} />
+	</div>
+	{@render roster(others)}
+	<div class="tail">
+		<div class="btns">
 			<button
-				class="btn primary"
+				class="btn o"
 				disabled={busy || round.me.call !== 'ok'}
 				onclick={() => act({ action: 'call', round_id: round.id })}
 			>
-				{callLabel}
+				{round.me.call === 'locked'
+					? `Call a vote · ${mss(msUntil(round.call_unlocks_at, now))}`
+					: round.me.call === 'used'
+						? 'No vote calls left'
+						: 'Call a vote'}
 			</button>
+			{#if round.is_starter}
+				<button
+					class="btn ghost small"
+					disabled={busy}
+					onclick={() => act({ action: 'stop', round_id: round.id })}
+				>
+					End the round
+				</button>
+			{/if}
+			<p class="note">{living.length} playing · 1 {round.agent_name} among them</p>
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && round.meeting && screen === 'vote'}
+	{@const m = round.meeting}
+	{@const picked = m.my_vote && m.my_vote !== 'skip' ? m.my_vote : null}
+	{@const pickedPlayer = round.players.find((p) => p.id === picked) ?? null}
+	<div class="hd">
+		<div>
+			<p class="st">
+				{m.caller_id === viewer.id ? 'You' : nameOf(m.caller_id)} called a vote · tap a player
+				or skip · change it until it closes
+			</p>
+			<h2 class="hl md" style:color={accent}>Who is the {round.agent_name}?</h2>
+		</div>
+		<LcarsClock
+			label="Closes in"
+			value={mss(msUntil(m.closes_at, now))}
+			pct={pctLeft(m.closes_at, round.meeting_seconds, now)}
+		/>
+	</div>
+	{#if pickedPlayer}
+		<div class="banner" aria-live="polite">
+			<Avatar id={pickedPlayer.id} name={pickedPlayer.name} src={pickedPlayer.avatar} />
+			<div class="who">
+				<div class="k">Your vote</div>
+				<div class="n">{pickedPlayer.name}</div>
+			</div>
+			<div class="ic" aria-hidden="true">◎</div>
+		</div>
+	{:else if m.my_vote === 'skip'}
+		<div class="banner skip" aria-live="polite">
+			<div class="who">
+				<div class="k">Your vote</div>
+				<div class="n">Skip</div>
+			</div>
+		</div>
+	{/if}
+	<ul class="ros" aria-label="Pick a player">
+		{#each others as p (p.id)}
+			{@const isPick = p.id === picked}
+			{@const voted = (m.voted_ids ?? []).includes(p.id)}
+			<li>
+				{#if p.state === 'ejected'}
+					<PlayerCard
+						id={p.id}
+						name={p.name}
+						avatar={p.avatar}
+						status={status(p)}
+						icon="✕"
+						variant="out"
+					/>
+				{:else}
+					<PlayerCard
+						id={p.id}
+						name={p.name}
+						avatar={p.avatar}
+						status={isPick ? '◎ Your vote' : voted ? 'Voted' : 'Deciding'}
+						icon={isPick ? '' : voted ? '✓' : '…'}
+						variant={isPick ? 'pick' : m.my_vote ? 'dimv' : ''}
+						pressed={isPick}
+						disabled={busy}
+						onpick={() => act({ action: 'vote', round_id: round.id, target: p.id })}
+					/>
+				{/if}
+			</li>
+		{/each}
+	</ul>
+	<div class="tail">
+		<div class="btns">
+			<button
+				class="btn b"
+				aria-pressed={m.my_vote === 'skip'}
+				disabled={busy || m.my_vote === 'skip'}
+				onclick={() => act({ action: 'vote', round_id: round.id, target: 'skip' })}
+			>
+				{m.my_vote === 'skip' ? 'Skipping' : m.my_vote ? 'Skip instead' : 'Skip'}
+			</button>
+			<p class="note">{m.voted} of {m.living} voted · no one sees who voted for whom</p>
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && screen === 'ejected' && round.last_vote}
+	{@const lv = round.last_vote}
+	<div class="hd">
+		<div>
+			<p class="st">Vote {lv.number ?? ''} · the round goes on</p>
+			<h2 class="hl" style:color={accent}>
+				{lv.ejected_name ? `${lv.ejected_name} is out` : 'Nobody is out'}
+			</h2>
+			<p class="sub">
+				{lv.ejected_name
+					? `They were not the ${round.agent_name}. The round goes on.`
+					: 'A tie, or skip on top. The round goes on.'}
+			</p>
+		</div>
+		<LcarsClock label="Time left" value={roundClock} pct={roundPct} />
+	</div>
+	{@render roster(others)}
+	<div class="tail">
+		<div class="btns">
+			<button class="btn o" onclick={() => dismiss({ vote: lv.meeting_id ?? null })}>
+				Back to the round
+			</button>
+			<p class="note">
+				{living.length} left · if only 2 remain, the {round.agent_name} wins
+			</p>
+		</div>
+		{@render badge()}
+	</div>
+{:else if round && (screen === 'out' || screen === 'watch')}
+	{@const out = screen === 'out'}
+	{@const lv = round.last_vote}
+	<div class="hd">
+		<div>
+			<p class="st">
+				{#if out}
+					{lv && lv.ejected_id === viewer.id && lv.number
+						? `Ejected in vote ${lv.number}`
+						: 'Ejected'} · you can still listen
+				{:else}
+					A round is running in this voice channel
+				{/if}
+			</p>
+			<h2 class="hl" style:color="#888">{out ? 'You are out' : 'Not in this round'}</h2>
+			<p class="sub" style:color="#888">
+				{#if out}
+					{round.mute_out ? 'You are muted until the round ends. ' : ''}You cannot vote or
+					call. Please don't help from outside.
+				{:else}
+					You can watch the clock. Join the next lobby to play.
+				{/if}
+			</p>
+		</div>
+		<LcarsClock label="Time left" value={roundClock} pct={roundPct} colour="#888" />
+	</div>
+	{@render roster(others)}
+	{#if round.meeting}
+		<p class="note">
+			{nameOf(round.meeting.caller_id)} called a vote · {round.meeting.voted} of {round
+				.meeting.living} voted
+		</p>
+	{/if}
+	<div class="tail">
+		{#if out && round.mute_out}
+			<p class="note">Your mute is lifted the moment the round ends</p>
 		{/if}
-
-		<h3>Players</h3>
-		<ul class="players">
-			{#each round.players as p (p.id)}
-				<li class:out={p.state === 'ejected'}>
-					{p.name}{p.id === viewerId ? ' (you)' : ''}{p.state === 'ejected'
-						? ' · ejected'
-						: ''}
+		{@render badge()}
+	</div>
+{:else if round && screen === 'over' && round.result}
+	{@const res = round.result}
+	{@const w = winner(res.code)}
+	{@const agentRole = res.roles.find((p) => p.id === res.agent_id) ?? null}
+	<div class="hd">
+		<div>
+			<p class="st">{res.text}</p>
+			<h2 class="hl xl" style:color={accent}>
+				{w === 'crew'
+					? `${round.crew_name} wins`
+					: w === 'agent'
+						? `${round.agent_name} wins`
+						: res.code === 'abandoned'
+							? 'Round abandoned'
+							: 'Round cancelled'}
+			</h2>
+			{#if res.word}
+				<p class="sub">The word was <span style="color:var(--o)">{res.word}</span></p>
+			{/if}
+		</div>
+		{#if agentRole}
+			<div class="panel reveal" style:--pc="var(--rr)">
+				<div class="st">The {round.agent_name}</div>
+				<Avatar id={agentRole.id} name={agentRole.name} src={agentRole.avatar} />
+				<div class="nm">{agentRole.id === viewer.id ? 'You' : agentRole.name}</div>
+			</div>
+		{/if}
+	</div>
+	{#if res.roles.length}
+		<ul class="ros" aria-label="Roles">
+			{#each res.roles.filter((p) => p.id !== viewer.id) as p (p.id)}
+				{@const isAgent = p.role === 'agent'}
+				<li>
+					<PlayerCard
+						id={p.id}
+						name={p.name}
+						avatar={p.avatar}
+						status={(isAgent ? round.agent_name : round.crew_name) +
+							(p.state === 'ejected' ? ' · ejected' : isAgent ? ' · survived' : '')}
+						variant={isAgent ? 'agent' : p.state === 'ejected' ? 'out' : ''}
+					/>
 				</li>
 			{/each}
 		</ul>
-		{#if round.is_starter}
-			<button
-				class="link"
-				disabled={busy}
-				onclick={() => act({ action: 'stop', round_id: round.id })}
-			>
-				End the round
-			</button>
-		{/if}
-	{:else if round.result}
-		<h3>{round.result.text}</h3>
-		{#if round.result.agent_id}
-			<p>
-				The {round.agent_name} was <strong>{nameOf(round.result.agent_id)}</strong>. The
-				word was
-				<strong>{round.result.word}</strong>.
-			</p>
-			<ul class="players">
-				{#each round.result.roles as p (p.id)}
-					<li class:out={p.state === 'ejected'}>
-						{p.name} · {p.role === 'agent'
-							? round.agent_name
-							: round.crew_name}{p.state === 'ejected' ? ' · ejected' : ''}
-					</li>
-				{/each}
-			</ul>
-		{/if}
-		{#if view.can_open}
-			<button class="btn primary" disabled={busy} onclick={() => act({ action: 'open' })}>
-				Play again
-			</button>
-		{/if}
 	{/if}
+	<div class="tail">
+		<div class="btns">
+			{#if view?.can_open}
+				<button class="btn o" disabled={busy} onclick={() => act({ action: 'open' })}>
+					Play again
+				</button>
+			{/if}
+			<button class="btn b" onclick={() => dismiss({ over: round.id })}>Close</button>
+			<p class="note">Roles stay visible for 10 minutes</p>
+		</div>
+		{@render badge()}
+	</div>
+{/if}
 
-	{#if problem}
-		<p class="problem" role="alert">{problem}</p>
-	{/if}
-</div>
+{#if problem}
+	<p class="problem" role="alert">{problem}</p>
+{/if}
 
 <style>
-	.game {
+	.word {
 		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	h3 {
-		margin: 0.25rem 0 0;
-		font-size: 1rem;
-	}
-	.quiet {
-		color: var(--color-text-secondary);
-		margin: 0;
-	}
-	.row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
 		align-items: center;
-	}
-	.btn {
-		background: var(--color-surface);
-		color: inherit;
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.5rem 1rem;
-		font: inherit;
-		cursor: pointer;
-	}
-	.btn.primary {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: var(--color-fixed-text-bright);
-		font-weight: 600;
-	}
-	.btn.danger {
-		border-color: var(--color-danger);
-		color: var(--color-danger);
-	}
-	.btn:disabled,
-	.pick:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
-	}
-	.link {
-		background: none;
-		border: none;
-		padding: 0;
-		color: var(--color-text-secondary);
-		text-decoration: underline;
-		font: inherit;
-		cursor: pointer;
-		align-self: flex-start;
-	}
-	.players {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
+		gap: 0.9em 1.8em;
 		flex-wrap: wrap;
-		gap: 0.4rem;
 	}
-	.players li {
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-		padding: 0.15rem 0.7rem;
-	}
-	.players li.out {
-		text-decoration: line-through;
-		color: var(--color-text-secondary);
-	}
-	.role {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 0.9rem 1rem;
-	}
-	.role.agent {
-		border-color: var(--color-danger);
-	}
-	.kicker {
-		color: var(--color-text-secondary);
-	}
-	.big {
-		font-size: clamp(1.5rem, 9vw, 2rem);
-		line-height: 1.1;
+	.word .w {
+		font-size: min(2.9em, 11vw);
+		color: var(--o);
+		font-weight: 600;
+		letter-spacing: 0.15em;
 		overflow-wrap: anywhere;
+		min-width: 0;
 	}
-	.big.hidden {
-		letter-spacing: 0.2em;
+	.word .w.unknown {
+		color: var(--unknown);
 	}
-	.clock {
+	.word :global(.btn.small) {
+		user-select: none;
+		-webkit-user-select: none;
+		touch-action: none;
+	}
+	.banner {
 		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
+		align-items: center;
+		gap: 1.2em;
+		padding: 0.64em 1.8em 0.64em 0.64em;
+		border-radius: 3.2em;
+		background: var(--rr);
+		color: var(--ink);
+		align-self: flex-start;
+		max-width: 100%;
+		min-width: 0;
+		box-shadow:
+			0 0 0 0.23em var(--ink),
+			0 0 0 0.5em var(--white);
+		margin: 0.5em 0 0.3em 0.5em;
 	}
-	.clock-num {
-		font:
-			700 clamp(1.75rem, 11vw, 2.25rem) / 1 ui-monospace,
-			monospace;
-		font-variant-numeric: tabular-nums;
+	.banner.skip {
+		background: var(--b);
+		padding-left: 1.8em;
 	}
-	.meeting {
+	.banner :global(.av) {
+		width: 4.7em;
+		height: 4.7em;
+		border: 0.23em solid var(--ink);
+	}
+	.banner :global(.av span) {
+		font-size: 2.4em;
+	}
+	.banner .who {
+		min-width: 0;
+	}
+	.banner .k {
+		font-size: 1.1em;
+		opacity: 0.75;
+	}
+	.banner .n {
+		font-size: min(3em, 12vw);
+		line-height: 1;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.banner .ic {
+		font-size: 2.9em;
+		margin-left: 0.3em;
+	}
+	.reveal {
+		text-align: center;
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		border: 1px solid var(--color-primary);
-		border-radius: 0.75rem;
-		padding: 0.9rem 1rem;
+		align-items: center;
+		gap: 0.45em;
+		min-width: 8em;
+		max-width: 100%;
 	}
-	.ballot {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
+	.reveal :global(.av) {
+		width: 5.5em;
+		height: 5.5em;
 	}
-	.pick {
-		background: var(--color-surface);
-		color: inherit;
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.5rem 0.9rem;
-		font: inherit;
-		cursor: pointer;
+	.reveal :global(.av span) {
+		font-size: 2.7em;
 	}
-	.pick.chosen {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: var(--color-fixed-text-bright);
-		font-weight: 600;
-	}
-	.problem {
-		color: var(--color-danger);
-		margin: 0;
+	.reveal .nm {
+		font-size: 1.8em;
+		color: var(--rr);
+		overflow-wrap: anywhere;
 	}
 </style>

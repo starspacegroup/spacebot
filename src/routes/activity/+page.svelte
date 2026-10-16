@@ -1,8 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { DiscordSDK } from '@discord/embedded-app-sdk';
+	import '@fontsource/antonio/400.css';
+	import '@fontsource/antonio/600.css';
+	import '@fontsource/antonio/700.css';
+	import '$lib/activity/lcars.css';
 	import GameTab from '$lib/components/GameTab.svelte';
 	import QuorumTab from '$lib/components/QuorumTab.svelte';
+	import TimeboxTab from '$lib/components/TimeboxTab.svelte';
+	import LcarsFrame from '$lib/components/activity/LcarsFrame.svelte';
+	import { LCARS, viewerAvatar, type Dismissed, type Frame } from '$lib/activity/lcars.js';
 
 	const { data } = $props();
 
@@ -49,20 +56,11 @@
 	let timeboxLoaded = $state(false);
 	// Dev only: a canned Game view for ?preview=game-*.
 	let gamePreview = $state<any>(null);
+	let gamePreviewDismissed = $state<Dismissed>({});
+	let gameFrame = $state<Frame | null>(null);
 	// Dev only: a canned Quorum view for ?preview=quorum.
 	let quorumPreview = $state<any>(null);
 	let now = $state(Date.now());
-
-	const PHASE_LABEL = { focus: 'Focus', break: 'Break', long_break: 'Long break' } as const;
-
-	function clock(tb: TimeboxView): string {
-		const ms =
-			tb.status === 'paused'
-				? (tb.paused_remaining_ms ?? 0)
-				: Math.max(0, (tb.ends_at ?? 0) * 1000 - now);
-		const total = Math.ceil(ms / 1000);
-		return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-	}
 
 	// The Timebox tab: fetch the viewer's timeboxes for this server and keep them fresh.
 	// The countdown itself runs here from the end time, so the poll can be slow; a block
@@ -107,6 +105,37 @@
 	const guild = $derived(session?.guilds.find((g) => g.id === guildId) ?? null);
 	const mod = $derived(guild?.modules.find((m) => m.id === moduleId) ?? null);
 	const tabs = $derived(guild?.modules ?? []);
+
+	/** The nav says Agent for the game: it is what /start agent calls it. */
+	const tabLabel = (m: Module) => (m.id === 'game' ? 'Agent' : m.name);
+	const isPreview = $derived(import.meta.env.DEV && session?.token === 'preview');
+
+	const frame = $derived.by((): Frame => {
+		const plain = (title: string, footer = '', accent: string = LCARS.orange) => ({
+			title,
+			accent,
+			tab: null,
+			footer,
+		});
+		if (phase === 'loading') return plain('SpaceBot', 'Signing in with Discord');
+		if (phase === 'outside') return plain('SpaceBot', 'Runs inside Discord');
+		if (phase === 'error') return plain('SpaceBot · Unable', '', LCARS.alert);
+		if (!guild || !mod) return plain('SpaceBot', 'Nothing turned on yet');
+		const name = tabLabel(mod);
+		if (!mod.enabled) return plain(`${name} · Off`, 'Turned off in this server', LCARS.grey);
+		if (mod.id === 'game' && gameFrame) return gameFrame;
+		if (mod.id === 'quorum') return plain('Quorum · SpaceBot', 'Same vote as the channel card');
+		if (mod.id === 'timebox') {
+			const shared = timeboxes[0]?.kind === 'shared';
+			return plain(
+				'Timebox · SpaceBot',
+				timeboxes.length
+					? `${shared ? 'Shared' : 'Your'} countdown · read only`
+					: 'Read only'
+			);
+		}
+		return plain(`${name} · SpaceBot`);
+	});
 
 	function guildIcon(g: Guild) {
 		return g.icon ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64` : null;
@@ -256,15 +285,29 @@
 		phase = 'ready';
 	}
 
-	/** Canned views of the game for the dev preview: lobby, agent, crew, meeting, ended. */
+	/**
+	 * Canned views of the game for the dev preview, one per screen in the LCARS
+	 * mockups: none, lobby, crew, agent, round, vote, ejected, out, watch,
+	 * crew-win, agent-win.
+	 */
 	function previewGame(kind: string) {
 		const now = Math.floor(Date.now() / 1000);
+		const p = (id: string, name: string, extra: any = {}) => ({
+			id,
+			name,
+			state: 'in',
+			avatar: null,
+			voice: 'here',
+			muted: false,
+			...extra,
+		});
 		const players = [
-			{ id: '1', name: 'a-rather-long-display-name-here', state: 'in' },
-			{ id: '2', name: 'Mira', state: 'in' },
-			{ id: '3', name: 'Dev', state: 'ejected' },
-			{ id: '4', name: 'Sol', state: 'in' },
-			{ id: '5', name: 'Quinn', state: 'in' },
+			p('1', 'a-rather-long-display-name-here'),
+			p('2', 'Nova'),
+			p('3', 'Orion'),
+			p('4', 'Vega'),
+			p('5', 'Lyra', { voice: 'away' }),
+			p('6', 'Rigel', { muted: true }),
 		];
 		const round: any = {
 			id: 1,
@@ -273,76 +316,151 @@
 			crew_name: 'Crew',
 			min_players: 4,
 			calls_per_player: 1,
-			started_at: now - 100,
-			ends_at: now + 200,
-			call_unlocks_at: now - 40,
-			is_starter: true,
+			started_at: now - 78,
+			ends_at: now + 222,
+			call_unlocks_at: now + 18,
+			is_starter: false,
+			starter_id: '2',
+			voice_channel_name: 'Engineering',
+			round_seconds: 300,
+			call_lock_seconds: 60,
+			meeting_seconds: 30,
+			mute_out: true,
 			players,
 			me: {
 				in: true,
 				state: 'in',
 				role: 'crew',
-				word: 'lighthouse',
+				word: 'nebula',
 				calls_left: 1,
-				call: 'ok',
+				call: 'locked',
 			},
 			meeting: null,
 			last_vote: null,
 			result: null,
 		};
-		if (kind === 'game-none') return { voice_channel_id: 'v', can_open: true, round: null };
-		if (kind === 'game-lobby')
-			return {
-				voice_channel_id: 'v',
-				can_open: false,
-				round: {
+		const v = (r: any, can_open = false) => ({ voice_channel_id: 'v', can_open, round: r });
+		const seen = { card: 1 };
+		gamePreviewDismissed = kind === 'game-crew' || kind === 'game-agent' ? {} : seen;
+		const ejected = players.map((x) => (x.id === '3' ? { ...x, state: 'ejected' } : x));
+		const roles = (agent: string, out: string[]) =>
+			players.map((x) => ({
+				id: x.id,
+				name: x.name,
+				avatar: null,
+				role: x.id === agent ? 'agent' : 'crew',
+				state: out.includes(x.id) ? 'ejected' : 'in',
+			}));
+		switch (kind) {
+			case 'game-none':
+				return v(null, true);
+			case 'game-lobby':
+				return v({
 					...round,
 					status: 'lobby',
-					players: players.slice(0, 3).map((p) => ({ ...p, state: 'in' })),
-				},
-			};
-		if (kind === 'game-agent')
-			return {
-				voice_channel_id: 'v',
-				can_open: false,
-				round: { ...round, me: { ...round.me, role: 'agent', word: null } },
-			};
-		if (kind === 'game-meeting')
-			return {
-				voice_channel_id: 'v',
-				can_open: false,
-				round: {
+					started_at: null,
+					ends_at: null,
+					call_unlocks_at: null,
+					me: { ...round.me, role: null, word: null, call: 'no_round' },
+					players: players.map((x) => ({ ...x, voice: 'here' })),
+				});
+			case 'game-crew':
+				return v({ ...round, ends_at: now + 300 });
+			case 'game-agent':
+				return v({
 					...round,
+					ends_at: now + 300,
+					me: { ...round.me, role: 'agent', word: null },
+				});
+			case 'game-vote':
+				return v({
+					...round,
+					me: { ...round.me, call: 'open' },
 					meeting: {
 						id: 1,
-						caller_id: '2',
+						caller_id: '4',
 						closes_at: now + 21,
-						voted: 2,
-						living: 4,
-						my_vote: '4',
+						voted: 3,
+						living: 6,
+						my_vote: '3',
+						voted_ids: ['1', '2', '4'],
 					},
-				},
-			};
-		if (kind === 'game-over')
-			return {
-				voice_channel_id: 'v',
-				can_open: true,
-				round: {
+				});
+			case 'game-ejected':
+				return v({
 					...round,
-					status: 'ended',
-					result: {
-						code: 'players',
-						text: 'The Crew win: the Agent was ejected.',
-						agent_id: '4',
-						word: 'lighthouse',
-						roles: players.map((p) => ({
-							...p,
-							role: p.id === '4' ? 'agent' : 'crew',
-						})),
+					ends_at: now + 178,
+					players: ejected,
+					me: { ...round.me, call: 'ok' },
+					last_vote: {
+						meeting_id: 1,
+						number: 1,
+						closed_at: now - 3,
+						ejected_id: '3',
+						ejected_name: 'Orion',
 					},
-				},
-			};
-		return { voice_channel_id: 'v', can_open: false, round };
+				});
+			case 'game-out':
+				return v({
+					...round,
+					ends_at: now + 178,
+					players: players.map((x) => (x.id === '1' ? { ...x, state: 'ejected' } : x)),
+					me: { ...round.me, state: 'ejected', call: 'out' },
+					last_vote: {
+						meeting_id: 1,
+						number: 1,
+						closed_at: now - 90,
+						ejected_id: '1',
+						ejected_name: 'a-rather-long-display-name-here',
+					},
+				});
+			case 'game-watch':
+				return v({
+					...round,
+					players: players.filter((x) => x.id !== '1'),
+					me: {
+						in: false,
+						state: null,
+						role: null,
+						word: null,
+						calls_left: 0,
+						call: 'not_in',
+					},
+				});
+			case 'game-crew-win':
+				return v(
+					{
+						...round,
+						status: 'ended',
+						players: ejected,
+						result: {
+							code: 'players',
+							text: 'The Crew win: the Agent was ejected.',
+							agent_id: '6',
+							word: 'nebula',
+							roles: roles('6', ['3', '6']),
+						},
+					},
+					true
+				);
+			case 'game-agent-win':
+				return v(
+					{
+						...round,
+						status: 'ended',
+						result: {
+							code: 'agent_time',
+							text: 'The Agent wins: the clock ran out.',
+							agent_id: '5',
+							word: 'nebula',
+							roles: roles('5', ['3', '4']),
+						},
+					},
+					true
+				);
+			default:
+				return v({ ...round, call_unlocks_at: now + 18 });
+		}
 	}
 
 	onMount(() => {
@@ -423,250 +541,109 @@
 	<title>SpaceBot Activity</title>
 </svelte:head>
 
-<main class="act">
-	{#if phase === 'loading'}
-		<p class="quiet">Signing in with Discord…</p>
-	{:else if phase === 'outside'}
-		<div class="card">
-			<h1>SpaceBot Activity</h1>
-			<p>
-				This page runs inside Discord. Open it from a voice channel's Activities menu, or
-				from a direct message.
-			</p>
-		</div>
-	{:else if phase === 'error'}
-		<div class="card">
-			<h1>Can't open it here</h1>
-			<p>{message}</p>
-		</div>
-	{:else if session}
-		<header class="bar">
-			<div class="who">
-				<strong>SpaceBot</strong>
-				<span class="quiet">{session.viewer.username}</span>
-			</div>
-			{#if session.guilds.length > 1}
-				<label class="pick">
-					<span class="sr">Server</span>
-					<select bind:value={guildId}>
-						{#each session.guilds as g (g.id)}
-							<option value={g.id}>{g.name}</option>
-						{/each}
-					</select>
-				</label>
-			{:else if guild}
-				<span class="server">
-					{#if guildIcon(guild)}<img
-							src={guildIcon(guild)}
-							alt=""
-							width="20"
-							height="20"
-						/>{/if}
-					{guild.name}
-				</span>
-			{/if}
-		</header>
-
-		{#if !guild}
-			<div class="card">
-				<h2>Nothing turned on for you yet</h2>
-				<p>
-					SpaceBot's Activity shows up for members of a server that has it enabled. Ask a
-					server admin to turn a module on from the SpaceBot dashboard.
-				</p>
-			</div>
-		{:else}
-			<nav class="tabs" aria-label="Modules">
-				{#each tabs as m (m.id)}
-					<button
-						class="tab"
-						class:on={m.id === moduleId}
-						aria-current={m.id === moduleId ? 'page' : undefined}
-						onclick={() => (moduleId = m.id)}
-					>
-						{m.name}
-					</button>
+{#snippet guildPick()}
+	{#if session && session.guilds.length > 1}
+		<label class="guild-label">
+			<span class="sr">Server</span>
+			<select class="guild" bind:value={guildId}>
+				{#each session.guilds as g (g.id)}
+					<option value={g.id}>{g.name}</option>
 				{/each}
-			</nav>
+			</select>
+		</label>
+	{:else if guild}
+		<span class="guild-name">
+			{#if guildIcon(guild)}<img
+					src={guildIcon(guild)}
+					alt=""
+					width="20"
+					height="20"
+					referrerpolicy="no-referrer"
+				/>{/if}
+			{guild.name}
+		</span>
+	{/if}
+{/snippet}
 
-			{#if mod}
-				<section class="card">
-					<h2>{mod.name}</h2>
-					{#if !mod.enabled}
-						<p>
-							Not turned on in {guild.name}. A server admin can enable it from the
-							dashboard.
-						</p>
-						<p class="quiet">{mod.help.summary}</p>
-					{:else}
-						{#if mod.id === 'game'}
-							<GameTab
-								{base}
-								token={session!.token}
-								guildId={guild.id}
-								viewerId={session!.viewer.id}
-								preview={gamePreview}
-							/>
-						{:else if mod.id === 'quorum'}
-							<QuorumTab
-								{base}
-								token={session!.token}
-								guildId={guild.id}
-								preview={quorumPreview}
-							/>
-						{:else if mod.id === 'timebox' && timeboxes.length > 0}
-							{#each timeboxes as tb (tb.id)}
-								<div class="tb" class:focus={tb.phase === 'focus'}>
-									<div class="tb-clock" aria-live="off">{clock(tb)}</div>
-									<div class="tb-meta">
-										<strong>
-											{PHASE_LABEL[tb.phase]}{tb.phase === 'focus'
-												? ` · block ${tb.block_number} of ${tb.rounds}`
-												: ''}
-										</strong>
-										<span class="quiet">
-											{tb.status === 'paused' ? 'Paused · ' : ''}{tb.kind ===
-											'shared'
-												? 'Shared with the voice channel'
-												: 'Just you'}
-											· {tb.focus_minutes}/{tb.break_minutes}/{tb.long_break_minutes}
-											min
-										</span>
-										{#if tb.deafen !== 'none'}
-											<span class="quiet">
-												You asked to be deafened {tb.deafen === 'whole'
-													? 'until it ends'
-													: 'during focus blocks'}.
-											</span>
-										{/if}
-									</div>
-								</div>
-							{/each}
-							<p class="quiet">
-								Pause, skip and stop are on the card in the channel for now.
-							</p>
-						{:else if mod.id === 'timebox' && !timeboxLoaded}
-							<p class="quiet">Looking for your timebox…</p>
-						{:else}
-							<p>{mod.help.summary}</p>
-							<p class="start">{mod.help.start}</p>
-						{/if}
-					{/if}
-				</section>
+<LcarsFrame
+	title={frame.title}
+	accent={frame.accent}
+	tab={frame.tab}
+	footer={frame.footer}
+	tabs={phase === 'ready' && guild ? tabs.map((m) => ({ id: m.id, label: tabLabel(m) })) : []}
+	active={moduleId}
+	onselect={(id) => (moduleId = id)}
+	sample={isPreview}
+	top={phase === 'ready' ? guildPick : undefined}
+>
+	{#if phase === 'loading'}
+		<p class="st">Signing in with Discord…</p>
+	{:else if phase === 'outside'}
+		<p class="st">SpaceBot Activity</p>
+		<h2 class="hl md">Open it in Discord</h2>
+		<p class="sub">
+			This page runs inside Discord. Open it from a voice channel's Activities menu, or from a
+			direct message.
+		</p>
+	{:else if phase === 'error'}
+		<p class="st">Can't open it here</p>
+		<h2 class="hl md" style:color="var(--rr)">Unable to comply</h2>
+		<p class="sub">{message}</p>
+	{:else if session}
+		{#if !guild}
+			<p class="st">Nothing turned on for you yet</p>
+			<h2 class="hl md">Standing by</h2>
+			<p class="sub">
+				SpaceBot's Activity shows up for members of a server that has it enabled. Ask a
+				server admin to turn a module on from the SpaceBot dashboard.
+			</p>
+		{:else if mod}
+			{#if !mod.enabled}
+				<p class="st">{tabLabel(mod)} · not turned on in {guild.name}</p>
+				<h2 class="hl md" style:color="#888">Offline</h2>
+				<p class="sub">{mod.help.summary}</p>
+				<p class="note">A server admin can enable it from the dashboard.</p>
+			{:else if mod.id === 'game'}
+				<GameTab
+					{base}
+					token={session.token}
+					guildId={guild.id}
+					viewer={{
+						id: session.viewer.id,
+						name: session.viewer.username,
+						avatar: viewerAvatar(session.viewer.id, session.viewer.avatar),
+					}}
+					preview={gamePreview}
+					previewDismissed={gamePreviewDismissed}
+					onframe={(f) => (gameFrame = f)}
+				/>
+			{:else if mod.id === 'quorum'}
+				<QuorumTab
+					{base}
+					token={session.token}
+					guildId={guild.id}
+					preview={quorumPreview}
+				/>
+			{:else if mod.id === 'timebox'}
+				<TimeboxTab {timeboxes} loaded={timeboxLoaded} {now} help={mod.help} />
+			{:else}
+				<p class="sub">{mod.help.summary}</p>
+				<p class="st">{mod.help.start}</p>
 			{/if}
 		{/if}
 	{/if}
-</main>
+</LcarsFrame>
 
 <style>
-	:global(html, body) {
-		background: var(--color-background);
+	.guild-label {
+		display: contents;
 	}
-	.act {
-		min-height: 100vh;
-		box-sizing: border-box;
-		padding: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		color: var(--color-text);
-		font:
-			14px/1.5 system-ui,
-			sans-serif;
-	}
-	.bar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75rem;
-		flex-wrap: wrap;
-	}
-	.who {
-		display: flex;
-		flex-direction: column;
-	}
-	.server {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		color: var(--color-text-secondary);
-	}
-	.server img {
+	.guild-name img {
 		border-radius: 50%;
-	}
-	.quiet {
-		color: var(--color-text-secondary);
-		margin: 0;
-	}
-	.card {
-		background: var(--color-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1rem 1.25rem;
-	}
-	.card h1,
-	.card h2 {
-		margin: 0 0 0.5rem;
-		font-size: 1.1rem;
-	}
-	.card p {
-		margin: 0.25rem 0;
-	}
-	.start {
-		font-weight: 600;
-	}
-	.tabs {
-		display: flex;
-		gap: 0.25rem;
-		overflow-x: auto;
-	}
-	.tab {
-		background: transparent;
-		color: inherit;
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-		padding: 0.3rem 0.9rem;
-		cursor: pointer;
-		font: inherit;
-	}
-	.tab.on {
-		background: var(--color-primary);
-		border-color: var(--color-primary);
-		color: var(--color-fixed-text-bright);
-	}
-	.pick select {
-		background: var(--color-surface);
-		color: inherit;
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 0.3rem 0.5rem;
-		max-width: 12rem;
-	}
-	.tb {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.25rem 1rem;
-		padding: 0.5rem 0;
-	}
-	.tb + .tb {
-		border-top: 1px solid var(--color-border);
-	}
-	.tb-clock {
-		font:
-			700 clamp(1.75rem, 11vw, 2.25rem) / 1 ui-monospace,
-			monospace;
-		font-variant-numeric: tabular-nums;
-		min-width: 5.5ch;
-	}
-	.tb.focus .tb-clock {
-		color: var(--color-primary);
-	}
-	.tb-meta {
-		display: flex;
-		flex: 1 1 11rem;
-		flex-direction: column;
-		min-width: 0;
+		vertical-align: middle;
+		width: 1.2em;
+		height: 1.2em;
+		margin-right: 0.3em;
 	}
 	.sr {
 		position: absolute;

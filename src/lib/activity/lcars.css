@@ -1,0 +1,644 @@
+/*
+ * The Activity's LCARS look. Everything is scoped under .lcars, so nothing here
+ * reaches the rest of the site. Sizes are in em off one base size that follows
+ * the viewport, so the same screen reads at 1600×900 and in a phone's portrait
+ * Activity. The design is design/mockups/activity-lcars-2026-10-16 in the
+ * workspace repo.
+ */
+
+:root {
+	--lcars-ink: #000;
+}
+html:has(.lcars),
+html:has(.lcars) body {
+	background: var(--lcars-ink);
+	margin: 0;
+}
+
+.lcars {
+	--o: #ff9900;
+	--p: #ffcc99;
+	--l: #cc99cc;
+	--b: #9999ff;
+	--r: #cc5555;
+	--rr: #ff5555;
+	--g: #ffcc66;
+	--s: #99ccff;
+	--dk: #1c1c1c;
+	--bg: var(--lcars-ink);
+	/* Neutrals as tokens: the LCARS skin is dark in every theme. */
+	--ink: var(--lcars-ink);
+	--white: #fff;
+	--well: #333;
+	--tab-off: #262633;
+	--dimv: #2a2a33;
+	--unknown: #444;
+	--acc: var(--o);
+	--tab: var(--acc);
+	--gap: 0.55em;
+
+	box-sizing: border-box;
+	height: 100vh;
+	height: 100dvh;
+	padding: 1em;
+	display: grid;
+	grid-template-columns: 8.2em minmax(0, 1fr);
+	grid-template-rows: 4.4em minmax(0, 1fr) 2.6em;
+	column-gap: var(--gap);
+	row-gap: 0.45em;
+	background: var(--bg);
+	color: var(--p);
+	font-family: Antonio, 'Arial Narrow', sans-serif;
+	font-size: clamp(13px, min(1.45vw, 2.5vh), 22px);
+	line-height: 1.15;
+	text-transform: uppercase;
+	letter-spacing: 0.09em;
+	overflow: hidden;
+}
+.lcars *,
+.lcars *::before,
+.lcars *::after {
+	box-sizing: border-box;
+}
+.lcars :is(h1, h2, h3, p) {
+	margin: 0;
+}
+
+/* --- the frame ------------------------------------------------------------ */
+
+.lcars .eT {
+	background: var(--acc);
+	border-radius: 2.5em 0 0 0;
+	position: relative;
+	transition: background 0.3s;
+}
+.lcars .eT::after {
+	content: '';
+	position: absolute;
+	right: -1px;
+	bottom: -1px;
+	width: 2.5em;
+	height: 2.1em;
+	background: var(--bg);
+	border-radius: 1.3em 0 0 0;
+}
+.lcars .tb {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.45em;
+	min-width: 0;
+}
+.lcars .seg {
+	height: 2.3em;
+	flex: 0 1 auto;
+	min-width: 0.6em;
+}
+.lcars .tb h1 {
+	margin-left: auto;
+	font-size: 2.6em;
+	line-height: 0.88;
+	font-weight: 600;
+	color: var(--acc);
+	white-space: nowrap;
+	flex: none;
+	transition: color 0.3s;
+}
+.lcars .sample {
+	align-self: flex-start;
+	margin-top: 0.6em;
+	font-size: 0.8em;
+	color: var(--g);
+	border: 0.1em solid var(--g);
+	border-radius: 1em;
+	padding: 0.1em 0.6em;
+	flex: none;
+}
+.lcars .guild {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 16em;
+	font: inherit;
+	font-size: 0.95em;
+	text-transform: uppercase;
+	letter-spacing: inherit;
+	color: var(--ink);
+	background: var(--l);
+	border: none;
+	border-radius: 1em;
+	padding: 0.25em 0.7em;
+	margin-top: 0.4em;
+	height: 1.7em;
+}
+.lcars .guild-name {
+	flex: 0 1 auto;
+	min-width: 0;
+	align-self: flex-start;
+	margin-top: 0.55em;
+	color: var(--l);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.lcars .sd {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45em;
+	min-height: 0;
+}
+.lcars .sd .tab {
+	flex: 1;
+	min-height: 2.6em;
+	display: flex;
+	align-items: flex-end;
+	justify-content: flex-end;
+	padding: 0.35em 0.65em;
+	background: var(--tab-off);
+	color: #77778a;
+	font: inherit;
+	font-size: 1.1em;
+	font-weight: 600;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	border: none;
+	border-radius: 0;
+	cursor: pointer;
+	position: relative;
+	text-align: right;
+	transition:
+		flex 0.25s,
+		background 0.3s;
+}
+.lcars .sd .tab:hover {
+	color: #b0b0c4;
+}
+.lcars .sd .tab.on {
+	flex: 1.6;
+	background: var(--tab);
+	color: var(--ink);
+	font-size: 1.8em;
+	margin-right: calc(-1 * var(--gap));
+	padding-right: 1.15em;
+	cursor: default;
+}
+.lcars .sd .tab.on::before {
+	content: '▶';
+	position: absolute;
+	left: 0.55em;
+	top: 0.45em;
+	font-size: 0.65em;
+}
+.lcars .sd .brand {
+	flex: 0.7;
+	min-height: 2em;
+	display: flex;
+	align-items: flex-end;
+	justify-content: flex-end;
+	padding: 0.35em 0.65em;
+	background: var(--l);
+	color: var(--ink);
+	font-size: 0.9em;
+	font-weight: 600;
+}
+
+.lcars .eB {
+	background: var(--b);
+	border-radius: 0 0 0 2.5em;
+	position: relative;
+}
+.lcars .eB::after {
+	content: '';
+	position: absolute;
+	right: -1px;
+	top: -1px;
+	width: 2.5em;
+	height: 1.2em;
+	background: var(--bg);
+	border-radius: 0 0 0 1.2em;
+}
+.lcars .bb {
+	display: flex;
+	gap: 0.45em;
+	align-items: flex-end;
+	min-width: 0;
+}
+.lcars .bb .seg {
+	height: 1.2em;
+}
+.lcars .bb .foot {
+	margin-left: auto;
+	align-self: center;
+	font-size: 0.9em;
+	color: var(--b);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+/* --- the content area ----------------------------------------------------- */
+
+.lcars .m {
+	padding: 0.2em 0.4em 0.4em 1.6em;
+	display: flex;
+	flex-direction: column;
+	gap: 1em;
+	min-height: 0;
+	min-width: 0;
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--well) transparent;
+}
+.lcars .hd {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 1em 1.4em;
+	flex-wrap: wrap;
+}
+.lcars .hd > :first-child {
+	min-width: 0;
+	flex: 1 1 20em;
+}
+.lcars .st {
+	font-size: 1.1em;
+	color: var(--l);
+}
+.lcars .hl {
+	font-size: min(5.4em, 13vw);
+	line-height: 0.95;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	overflow-wrap: anywhere;
+	color: var(--p);
+}
+.lcars .hl.xl {
+	font-size: min(6.8em, 15vw);
+}
+.lcars .hl.md {
+	font-size: min(4.2em, 11vw);
+}
+.lcars .sub {
+	font-size: 1.36em;
+	margin-top: 0.25em;
+	color: var(--p);
+}
+.lcars .note {
+	font-size: 1em;
+	color: var(--l);
+	max-width: 30em;
+}
+.lcars .quiet {
+	color: #77778a;
+}
+.lcars .problem {
+	color: var(--rr);
+	font-size: 1.1em;
+}
+
+.lcars .clock {
+	min-width: min(13em, 100%);
+	text-align: right;
+	margin-left: auto;
+}
+.lcars .clock .k {
+	font-size: 1em;
+	color: var(--l);
+}
+.lcars .clock .v {
+	font-size: min(4.4em, 16vw);
+	line-height: 0.95;
+	font-weight: 700;
+	color: var(--clk, var(--o));
+	font-variant-numeric: tabular-nums;
+}
+.lcars .clock .bar {
+	height: 0.73em;
+	border-radius: 0.4em;
+	background: var(--well);
+	margin-top: 0.35em;
+	overflow: hidden;
+}
+.lcars .clock .bar i {
+	display: block;
+	height: 100%;
+	background: var(--clk, var(--o));
+	transition: width 1s linear;
+}
+
+/* --- people --------------------------------------------------------------- */
+
+.lcars .ros {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(min(15em, 100%), 1fr));
+	gap: 0.73em;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.lcars .pc {
+	display: flex;
+	align-items: center;
+	gap: 0.73em;
+	height: 4.4em;
+	width: 100%;
+	padding: 0 1.1em 0 0.45em;
+	border-radius: 2.2em;
+	background: var(--p);
+	color: var(--ink);
+	border: none;
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	text-align: left;
+	position: relative;
+	min-width: 0;
+}
+.lcars button.pc {
+	cursor: pointer;
+}
+.lcars button.pc:disabled {
+	cursor: default;
+}
+.lcars .pc .who {
+	min-width: 0;
+	flex: 1;
+}
+.lcars .pc .nm {
+	font-size: 1.45em;
+	font-weight: 600;
+	line-height: 1.1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lcars .pc .ss {
+	font-size: 0.9em;
+	opacity: 0.75;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lcars .pc .ic {
+	margin-left: auto;
+	font-size: 1.3em;
+	flex: none;
+}
+.lcars .pc.out {
+	background: var(--dk);
+	color: #777;
+}
+.lcars .pc.out .av {
+	filter: grayscale(1) brightness(0.5);
+}
+.lcars .pc.out .nm {
+	text-decoration: line-through;
+}
+.lcars .pc.away {
+	opacity: 0.55;
+}
+.lcars .pc.dimv {
+	background: var(--dimv);
+	color: #aaa;
+}
+.lcars .pc.dimv .av {
+	opacity: 0.6;
+}
+.lcars .pc.pick {
+	background: var(--rr);
+	color: var(--ink);
+	box-shadow:
+		0 0 0 0.18em var(--ink),
+		0 0 0 0.41em var(--white);
+}
+.lcars .pc.agent {
+	background: var(--rr);
+}
+.lcars .pc.host .av {
+	box-shadow:
+		0 0 0 0.23em var(--ink),
+		0 0 0 0.45em var(--white);
+}
+
+.lcars .av {
+	width: 3.45em;
+	height: 3.45em;
+	border-radius: 50%;
+	display: grid;
+	place-items: center;
+	color: var(--ink);
+	flex: none;
+	overflow: hidden;
+	background: var(--avc, var(--s));
+}
+.lcars .av span {
+	font-size: 1.7em;
+	font-weight: 700;
+	line-height: 1;
+}
+.lcars .av img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+/* --- buttons -------------------------------------------------------------- */
+
+.lcars .btns {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.73em;
+	align-items: center;
+}
+.lcars .btn {
+	border-radius: 2em;
+	padding: 0.45em 1.2em;
+	font: inherit;
+	font-size: 1.45em;
+	font-weight: 600;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	color: var(--ink);
+	background: var(--p);
+	border: none;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.lcars .btn.o {
+	background: var(--o);
+}
+.lcars .btn.r {
+	background: var(--r);
+}
+.lcars .btn.b {
+	background: var(--b);
+}
+.lcars .btn.l {
+	background: var(--l);
+}
+.lcars .btn.s {
+	background: var(--s);
+}
+.lcars .btn.ghost {
+	background: var(--well);
+	color: #c8c8d4;
+}
+.lcars .btn.dim,
+.lcars .btn:disabled {
+	background: var(--well);
+	color: #8a8a8a;
+	cursor: default;
+}
+.lcars .btn.small {
+	font-size: 1.05em;
+	padding: 0.35em 1em;
+}
+.lcars .link {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	letter-spacing: inherit;
+	text-transform: inherit;
+	color: var(--l);
+	text-decoration: underline;
+	cursor: pointer;
+}
+.lcars :is(button, select, input, textarea, a):focus-visible {
+	outline: 0.15em solid var(--white);
+	outline-offset: 0.15em;
+}
+
+.lcars .panel {
+	border: 0.14em solid var(--pc, var(--l));
+	border-radius: 1.3em;
+	padding: 0.9em 1.3em;
+}
+
+/* --- the viewer's own badge ----------------------------------------------- */
+
+/* The actions and the viewer's badge share the rest of the screen: the actions
+   top left, the badge bottom right, on one line when there is room. */
+.lcars .tail {
+	flex: 1 0 auto;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	gap: 1em;
+	padding: 0 0.5em 0.4em 0;
+}
+.lcars .tail > :first-child:not(.self) {
+	align-self: flex-start;
+}
+.lcars .self {
+	margin-left: auto;
+	align-self: flex-end;
+	max-width: min(24em, 100%);
+	display: flex;
+	align-items: center;
+	gap: 0.9em;
+	padding: 0.64em 1.5em 0.64em 0.64em;
+	border-radius: 2.7em;
+	background: var(--selfc, var(--s));
+	color: var(--ink);
+	box-shadow:
+		0 0 0 0.18em var(--ink),
+		0 0 0 0.36em var(--selfc, var(--s));
+	min-width: 0;
+	transition: background 0.3s;
+}
+.lcars .self .av {
+	width: 4.4em;
+	height: 4.4em;
+	border: 0.18em solid var(--ink);
+}
+.lcars .self .av span {
+	font-size: 2.2em;
+}
+.lcars .self .who {
+	min-width: 0;
+}
+.lcars .self .k {
+	font-size: 0.82em;
+	opacity: 0.7;
+}
+.lcars .self .n {
+	font-size: 1.8em;
+	font-weight: 700;
+	line-height: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.lcars .self .t {
+	font-size: 1em;
+}
+
+/* --- narrow: a phone, or the Activity docked small ------------------------ */
+
+@media (max-width: 760px) {
+	.lcars {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: auto auto minmax(0, 1fr) auto;
+		font-size: clamp(13px, 3.6vw, 17px);
+		padding: 0.6em 0.75em;
+	}
+	.lcars .eT,
+	.lcars .eB {
+		display: none;
+	}
+	.lcars .tb {
+		border-left: 1.2em solid var(--acc);
+		border-radius: 1.2em 0 0 0;
+		padding-left: 0.4em;
+	}
+	.lcars .tb .seg {
+		display: none;
+	}
+	.lcars .tb h1 {
+		font-size: 1.9em;
+		margin-left: 0;
+		margin-right: auto;
+		order: -1;
+	}
+	.lcars .sd {
+		flex-direction: row;
+	}
+	.lcars .sd .tab {
+		min-height: 2.6em;
+		font-size: 1em;
+	}
+	.lcars .sd .tab.on {
+		font-size: 1.25em;
+		margin-right: 0;
+		margin-bottom: -0.45em;
+		padding-bottom: 0.8em;
+	}
+	.lcars .sd .tab.on::before {
+		left: 0.45em;
+		top: 0.35em;
+	}
+	.lcars .sd .brand {
+		display: none;
+	}
+	.lcars .m {
+		padding: 0.8em 0 0.4em;
+		border-top: 0.45em solid var(--tab);
+	}
+	.lcars .bb {
+		border-left: 1.2em solid var(--b);
+		border-radius: 0 0 0 1.2em;
+		padding-left: 0.4em;
+		min-height: 1.2em;
+	}
+	.lcars .bb .seg {
+		display: none;
+	}
+	.lcars .bb .foot {
+		margin-left: 0;
+	}
+	.lcars .self {
+		margin-left: 0;
+	}
+}

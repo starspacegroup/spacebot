@@ -758,6 +758,58 @@ describe('what the Activity may see and do', () => {
 		expect(other.round!.meeting).toMatchObject({ voted: 1, my_vote: null });
 	});
 
+	it('says who has voted, never for whom', async () => {
+		const { db, d, r } = await game();
+		await callVote(db, d, r.id, B, at(61));
+		await vote(db, d, r.id, C, D, at(62));
+		await vote(db, d, r.id, B, 'skip', at(62));
+		const v = await gameViewForViewer(db, d, claims(A), G, at(63));
+		expect([...v.round!.meeting!.voted_ids].sort()).toEqual([B, C].sort());
+		expect(v.round!.meeting!.my_vote).toBeNull();
+		// The targets are nowhere in another player's view.
+		expect(JSON.stringify(v.round!.meeting)).not.toContain('skip');
+		expect(JSON.stringify(v.round!.meeting)).not.toContain(D);
+	});
+
+	it('shows each player in or out of the voice channel, with only Discord-hosted avatars', async () => {
+		const { db, d } = await game();
+		db.exec(
+			`UPDATE live_voice_states SET avatar_url = 'https://cdn.discordapp.com/avatars/1/a.png', channel_name = 'Engineering' WHERE user_id = '${B}'`
+		);
+		db.exec(
+			`UPDATE live_voice_states SET avatar_url = 'https://evil.example/x.png', self_mute = 1 WHERE user_id = '${C}'`
+		);
+		leaveVoice(db, D);
+		const v = await gameViewForViewer(db, d, claims(A), G, at(5));
+		const p = (id: string) => v.round!.players.find((x) => x.id === id)!;
+		expect(p(B)).toMatchObject({
+			voice: 'here',
+			avatar: 'https://cdn.discordapp.com/avatars/1/a.png',
+			muted: false,
+		});
+		expect(p(C)).toMatchObject({ voice: 'here', avatar: null, muted: true });
+		expect(p(D)).toMatchObject({ voice: 'away', avatar: null, state: 'in' });
+		expect(v.round!.voice_channel_name).toBe('Engineering');
+	});
+
+	it('sends the round settings and numbers each vote', async () => {
+		const { db, d, r } = await game([A, B, C, D, E]);
+		const before = await gameViewForViewer(db, d, claims(B), G, at(5));
+		expect(before.round).toMatchObject({
+			starter_id: A,
+			round_seconds: r.round_seconds,
+			call_lock_seconds: r.call_lock_seconds,
+			meeting_seconds: r.meeting_seconds,
+			mute_out: true,
+			last_vote: null,
+		});
+		await callVote(db, d, r.id, B, at(61));
+		for (const u of [A, B, C, D, E]) await vote(db, d, r.id, u, 'skip', at(62));
+		const after = await gameViewForViewer(db, d, claims(B), G, at(63));
+		expect(after.round!.last_vote).toMatchObject({ number: 1, ejected_id: null });
+		expect(after.round!.last_vote!.meeting_id).toEqual(expect.any(Number));
+	});
+
 	it('refuses a server that is not in the session, or has the game off', async () => {
 		const db = setup([A]);
 		await expect(gameViewForViewer(db, null, { ...claims(A), g: [] }, G)).rejects.toMatchObject(
