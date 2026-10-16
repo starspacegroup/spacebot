@@ -781,6 +781,13 @@ export const FILTER_TYPES = {
 		description: "Don't trigger for messages from these users",
 		applicableEvents: ['MESSAGE_CREATE', 'MESSAGE_UPDATE', 'MESSAGE_DELETE'],
 	},
+	time_windows: {
+		type: 'time_windows',
+		label: 'Time of Day / Day of Week',
+		description:
+			"Only trigger inside (or outside) these time windows, in the server's timezone unless overridden",
+		applicableEvents: ['*'],
+	},
 	content_contains: {
 		type: 'text',
 		label: 'Content Contains',
