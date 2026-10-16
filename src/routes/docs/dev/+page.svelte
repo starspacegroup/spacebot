@@ -73,7 +73,7 @@
 		max-width: 640px;
 	}
 
-	.hero-sub code {
+	.hero-sub :global(code) {
 		font-size: 0.9em;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);

@@ -320,16 +320,18 @@
 		margin-bottom: 0.3rem;
 	}
 
-	.docs-content a {
+	/* Links and keys live inside i18n strings rendered by TrustedHtml, so scoped
+	   selectors never reach them. */
+	.docs-content :global(a) {
 		color: var(--color-primary);
 		text-decoration: none;
 	}
 
-	.docs-content a:hover {
+	.docs-content :global(a:hover) {
 		text-decoration: underline;
 	}
 
-	kbd {
+	.docs-content :global(kbd) {
 		display: inline-block;
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
