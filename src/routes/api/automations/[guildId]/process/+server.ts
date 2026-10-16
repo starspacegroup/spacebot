@@ -12,6 +12,7 @@ import { getMemberFromCache } from '$lib/db/guild-cache.js';
 import { getLatestServerStats } from '$lib/db/server-stats.js';
 import { getGuildMetadata } from '$lib/db/guild-metadata.js';
 import { getGuildTimezone } from '$lib/db/settings.js';
+import { checkVoiceThreshold } from '$lib/db/automation-trigger-state.js';
 
 /**
  * Verify bot authorization
@@ -153,8 +154,29 @@ export async function POST({ params, request, platform }) {
 		}
 
 		// Filter automations that match and prepare them for execution
+		// Edge check for head-count triggers. Arm state advances for every
+		// automation watching this channel, even when another filter then
+		// rejects the event, so a crossing is spent whether or not it fired.
+		const crossed = new Set<number>();
+		if (event.event_type === 'VOICE_CHANNEL_THRESHOLD') {
+			for (const automation of automations) {
+				const f = automation.trigger_filters || {};
+				const watching = matchesFilters(
+					event,
+					{ channel_id: f.channel_id, not_channel_id: f.not_channel_id },
+					filterContext
+				);
+				if (watching && (await checkVoiceThreshold(db, automation, event))) {
+					crossed.add(automation.id);
+				}
+			}
+		}
+
 		const matchingAutomations = automations
 			.filter((automation) => {
+				if (event.event_type === 'VOICE_CHANNEL_THRESHOLD' && !crossed.has(automation.id)) {
+					return false;
+				}
 				const matches = matchesFilters(event, automation.trigger_filters, filterContext);
 				log.debug(
 					`[Automation Process] Automation "${automation.name}" filter match: ${matches}`
