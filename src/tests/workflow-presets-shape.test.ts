@@ -27,7 +27,12 @@ describe('workflow presets', () => {
 
 	it('has a preset for each sweep', () => {
 		const slugs = OPERATION_TEMPLATES.map((t: any) => t.slug);
-		for (const slug of ['minute-command-sync', 'minute-timebox-sweep', 'minute-quorum-sweep']) {
+		for (const slug of [
+			'minute-command-sync',
+			'minute-game-sweep',
+			'minute-timebox-sweep',
+			'minute-quorum-sweep',
+		]) {
 			expect(slugs).toContain(slug);
 		}
 	});

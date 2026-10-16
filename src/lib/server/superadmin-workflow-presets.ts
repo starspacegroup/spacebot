@@ -322,6 +322,40 @@ export const OPERATION_TEMPLATES = [
 		},
 	},
 	{
+		name: 'Minute Game Sweep',
+		slug: 'minute-game-sweep',
+		description:
+			'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds.',
+		category: 'operations',
+		execution_backend: 'cloudflare_workflows',
+		legacy_job_name: 'sweep_game',
+		schedule_type: 'cron',
+		cron_expression: '* * * * *',
+		canvas_json: {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Minute Trigger',
+					position: { x: 0, y: 0 },
+					data: { schedule: '* * * * *', source: 'gateway-cron' },
+				},
+				{
+					id: 'task',
+					type: 'task',
+					title: 'Sweep Games',
+					position: { x: 0, y: 140 },
+					data: {
+						operation: 'sweepGame',
+						queue_key: 'ops.game.sweep',
+						notes: 'Overdue votes and clocks, stale lobbies, emptied voice channels, mute restores. Nothing live means two indexed reads.',
+					},
+				},
+			],
+			edges: [{ id: 'e1', source: 'start', target: 'task', label: 'start' }],
+		},
+	},
+	{
 		name: 'Minute Quorum Sweep',
 		slug: 'minute-quorum-sweep',
 		description:

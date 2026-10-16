@@ -33,6 +33,7 @@ import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-c
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
+import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -357,6 +358,18 @@ export async function POST({ request, platform: rawPlatform }) {
 			return json(reply.response);
 		}
 
+		// `/game`: a round is state the bot keeps, so it is handled here, not by
+		// the action pipeline.
+		if (data.name === 'game' && guildId) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleGameCommand(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			return json(reply.response);
+		}
+
 		// Handle /stats built-in command (generates chart image)
 		if (data.name === 'stats' && guildId) {
 			const applicationId = body.application_id;
@@ -458,6 +471,15 @@ export async function POST({ request, platform: rawPlatform }) {
 		if (String(body.data?.custom_id || '').startsWith('quorum:')) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleQuorumComponent(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			return json(reply.response);
+		}
+		if (String(body.data?.custom_id || '').startsWith('game:')) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleGameComponent(
 				body,
 				db,
 				token ? createDiscordRestClient(token) : null

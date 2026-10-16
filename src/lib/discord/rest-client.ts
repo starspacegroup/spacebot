@@ -523,6 +523,14 @@ export function createDiscordRestClient(botToken) {
 			async fetch(guildId, userId) {
 				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`);
 			},
+			/** Server-mute or unmute a member. Discord only allows it while they are in voice. */
+			async setMute(guildId, userId, mute, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {
+					method: 'PATCH',
+					body: { mute },
+					reason,
+				});
+			},
 			/** Server-deafen or undeafen a member. Discord only allows it while they are in voice. */
 			async setDeaf(guildId, userId, deaf, reason?) {
 				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {

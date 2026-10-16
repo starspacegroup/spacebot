@@ -19,6 +19,7 @@ import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
+import { sweepGame } from '$lib/server/game.js';
 import { sweepCommandSync } from '$lib/discord/commands.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
@@ -116,6 +117,14 @@ function getCronJobDefinitions() {
 			displayName: 'Sweep Timeboxes',
 			description:
 				'Moves running timeboxes to their next block, keeps "deafen me" in step with the phase, ends shared ones whose voice channel emptied, and retries deafens it could not lift.',
+			cronPattern: '* * * * *',
+			schedule: 'Every minute',
+		},
+		{
+			name: 'sweep_game',
+			displayName: 'Sweep Games',
+			description:
+				'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -547,6 +556,11 @@ export async function POST({ request, cookies, platform }) {
 				throw new Error('Bot token not configured');
 			}
 			result = await sweepTimebox(db, botToken);
+		} else if (jobName === 'sweep_game') {
+			if (!botToken) {
+				throw new Error('Bot token not configured');
+			}
+			result = await sweepGame(db, botToken);
 		} else if (jobName === 'sync_commands') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
