@@ -118,7 +118,7 @@
 				help: {
 					summary:
 						'Focus blocks and breaks, alone or with everyone in a voice channel. The countdown shows here.',
-					start: 'Start one with /timebox start in this server.',
+					start: 'Start one with /start timebox in this server.',
 				},
 			},
 			{
@@ -127,7 +127,7 @@
 				enabled,
 				help: {
 					summary: 'A hidden-agent round for everyone in a voice channel.',
-					start: 'Join a voice channel and open a lobby here, or use /play start.',
+					start: 'Join a voice channel and open a lobby here, or use /start agent.',
 				},
 			},
 		];

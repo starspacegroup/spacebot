@@ -109,6 +109,7 @@ describe('sweepCommandSync', () => {
 		expect(await hashCommandPayload([{ name: 'a' }])).toBe(a);
 		expect(await hashCommandPayload([{ name: 'b' }])).not.toBe(a);
 		const { allCommands } = await buildGuildCommandPayload(setup([]), 'g');
-		expect(allCommands).toEqual([{ name: 'timebox', options: [] }]);
+		// `/start` rides along, built from the timebox command the server has.
+		expect(allCommands.map((c) => c.name)).toEqual(['timebox', 'start']);
 	});
 });

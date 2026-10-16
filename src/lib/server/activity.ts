@@ -59,7 +59,7 @@ export const ACTIVITY_MODULES: ActivityModule[] = [
 		help: {
 			summary:
 				'Focus blocks and breaks, alone or with everyone in a voice channel. The countdown shows here.',
-			start: 'Start one with /timebox start in this server.',
+			start: 'Start one with /start timebox in this server.',
 		},
 	},
 	{
@@ -69,7 +69,7 @@ export const ACTIVITY_MODULES: ActivityModule[] = [
 		help: {
 			summary:
 				'A hidden-agent round for everyone in a voice channel: all but one are told a secret word, and the table votes out who they think was not.',
-			start: 'Join a voice channel and open a lobby here, or use /play start.',
+			start: 'Join a voice channel and open a lobby here, or use /start agent.',
 		},
 	},
 ];

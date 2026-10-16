@@ -14,6 +14,7 @@ import {
 } from '../db/commands.js';
 import { getEnabledGuildIntegrations } from '../db/integrations.js';
 import { getIntegrationCommands } from '../integrations/registry.js';
+import { buildStartCommand } from './start-command.js';
 
 /**
  * Hardcoded built-in command definitions for initial registration (before DB is available).
@@ -271,6 +272,9 @@ export async function buildGuildCommandPayload(db, guildId) {
 	} = await collectGuildCommands(db, guildId);
 
 	const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
+	// `/start` is built from the activity commands this server has on.
+	const start = buildStartCommand(builtInDiscord);
+	if (start) builtInDiscord.push(start);
 
 	// Convert to Discord format, tracking DB IDs
 	const discordCommands = [];

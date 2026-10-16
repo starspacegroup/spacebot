@@ -83,3 +83,18 @@ timer and on participant changes), Discovery (the App Launcher listing), and the
 User Install setting that Discord may require for launching in a DM. Developer
 Portal checks still open: whether the Activity needs its own verification beyond
 the bot's, and the participant cap.
+
+## `/start`
+
+One command starts any of these, and it lists only what the server has turned on:
+
+- `/start timebox` takes the options of `/timebox start`.
+- `/start agent` opens a Game lobby (`/play start`).
+- `/start quorum` takes the options of `/quorum ask`.
+
+`/start` has no row of its own. `src/lib/discord/start-command.ts` builds it for each
+server from the commands that server has on, so its options never drift from the
+originals. The interaction is turned back into the original command before the
+permission check, so command access rules still apply to `/timebox`, `/play` and
+`/quorum`. The old commands stay as shortcuts. Stop and status stay on those
+commands, on the cards' buttons and in the Activity.

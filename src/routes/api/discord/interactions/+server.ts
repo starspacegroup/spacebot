@@ -33,6 +33,7 @@ import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-c
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
+import { resolveStartInteraction } from '$lib/discord/start-command.js';
 import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
@@ -272,6 +273,16 @@ export async function POST({ request, platform: rawPlatform }) {
 
 	// Type 2: APPLICATION_COMMAND - Slash commands
 	if (body.type === InteractionType.APPLICATION_COMMAND) {
+		// `/start <activity>` is the same as running that activity's own command,
+		// so it is turned back into it here, before the permission gate looks.
+		const resolved = resolveStartInteraction(body.data);
+		if (!resolved) {
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: { content: "That isn't something I can start here.", flags: 64 },
+			});
+		}
+		body.data = resolved;
 		const { data } = body;
 		const guildId = body.guild_id;
 
