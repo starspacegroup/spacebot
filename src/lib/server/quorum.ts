@@ -16,6 +16,7 @@
  * REST client only — nothing from discord.js.
  */
 
+import { openActivityButton } from '$lib/discord/activity-button.js';
 import { log } from '../log.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { ADMINISTRATOR, parsePermissionBits } from '../discord/command-permissions.js';
@@ -552,7 +553,10 @@ export function buildQuestionComponents(q: Question, disabled = false) {
 		},
 		{
 			type: 1,
-			components: [btn('Remind me before close', 2, `quorum:remind:${q.id}`)],
+			components: [
+				btn('Remind me before close', 2, `quorum:remind:${q.id}`),
+				openActivityButton(disabled),
+			],
 		},
 	];
 }

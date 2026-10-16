@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { ACTIVITY_OPEN_ID, LAUNCH_ACTIVITY_RESPONSE } from '$lib/discord/activity-button.js';
 import { InteractionResponseType, InteractionType, verifyKey } from 'discord-interactions';
 import {
 	buildCommandContext,
@@ -479,6 +480,7 @@ export async function POST({ request, platform: rawPlatform }) {
 
 	// Type 3: MESSAGE_COMPONENT - Button clicks, select menus
 	if (body.type === InteractionType.MESSAGE_COMPONENT) {
+		if (body.data?.custom_id === ACTIVITY_OPEN_ID) return json(LAUNCH_ACTIVITY_RESPONSE);
 		if (String(body.data?.custom_id || '').startsWith('quorum:')) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleQuorumComponent(

@@ -25,6 +25,7 @@
  * Activity API, and the cron route (the sweep): D1 and the REST client only.
  */
 
+import { openActivityButton } from '$lib/discord/activity-button.js';
 import { log } from '../log.js';
 import { getCommandByName } from '../db/commands.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
@@ -865,11 +866,13 @@ export async function lobbyMessage(db, round: Round) {
 					{ type: 2, style: 2, label: 'Leave', custom_id: `game:leave:${round.id}` },
 					{ type: 2, style: 1, label: 'Start', custom_id: `game:start:${round.id}` },
 					{ type: 2, style: 4, label: 'Cancel', custom_id: `game:stop:${round.id}` },
+					openActivityButton(),
 				],
 			},
 		];
 	} else if (round.status === 'running') {
 		content = `**Hidden ${round.agent_name} — round running**\nPlayers (${players.length}): ${names}\nEnds <t:${unix(round.ends_at!)}:R>. Open the **SpaceBot Activity** to see your role and to vote.`;
+		components = [{ type: 1, components: [openActivityButton()] }];
 	} else {
 		content = `**Hidden ${round.agent_name} — over**\n${resultText(round)}`;
 	}

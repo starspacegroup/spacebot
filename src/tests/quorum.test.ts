@@ -398,6 +398,7 @@ describe('/quorum commands', () => {
 				'quorum:vote:1:no',
 				'quorum:vote:1:abstain',
 				'quorum:remind:1',
+				'activity:open',
 			]);
 			await reply.after;
 			const q = await getQuestion(d, 1);
