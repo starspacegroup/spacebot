@@ -1823,6 +1823,37 @@ function startVoiceSessionPolling(client) {
 }
 
 /**
+ * Tell the automation engine a voice channel's head-count just changed.
+ * Not logged: it exists so VOICE_CHANNEL_THRESHOLD can tell a crossing from a
+ * level. `delta` is +1 when the actor entered the channel and -1 when they
+ * left, which gives the count before the change without a second read.
+ */
+async function emitVoiceOccupancy(guild, channel, delta, actorIsBot) {
+	if (!channel) return;
+	let totalCount = 0;
+	let humanCount = 0;
+	for (const voiceState of guild.voiceStates.cache.values()) {
+		if (voiceState.channelId !== channel.id) continue;
+		totalCount++;
+		if (!voiceState.member?.user?.bot) humanCount++;
+	}
+
+	await processEventAutomations({
+		guild_id: guild.id,
+		event_type: 'VOICE_CHANNEL_THRESHOLD',
+		event_category: 'voice',
+		channel_id: channel.id,
+		channel_name: channel.name,
+		details: {
+			totalCount,
+			humanCount,
+			previousTotalCount: totalCount - delta,
+			previousHumanCount: humanCount - (actorIsBot ? 0 : delta),
+		},
+	});
+}
+
+/**
  * Process automations for an event via API
  * The API handles database access and returns actions to execute
  * @param {Object} event - The event data
@@ -3492,6 +3523,7 @@ function setupEventHandlers(client, logFn) {
 				},
 			});
 			scheduleLiveVoiceSync();
+			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
 			// A join-to-create lobby turns this join into a new room.
 			if (member) {
 				void handleLobbyJoin(guild, member, newState.channel.id);
@@ -3554,6 +3586,7 @@ function setupEventHandlers(client, logFn) {
 				},
 			});
 			scheduleLiveVoiceSync();
+			await emitVoiceOccupancy(guild, oldState.channel, -1, actorIsBot);
 			return;
 		}
 
@@ -3608,6 +3641,8 @@ function setupEventHandlers(client, logFn) {
 					actor_roles: actorRoles,
 				},
 			});
+			await emitVoiceOccupancy(guild, oldState.channel, -1, actorIsBot);
+			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
 		}
 
 		// ===== VOICE STATE CHANGES (while in a channel) =====

@@ -894,6 +894,37 @@ export const FILTER_TYPES = {
 		applicableEvents: ['VOICE_MOVE'],
 		voiceOnly: true,
 	},
+	// Voice head-count threshold (for VOICE_CHANNEL_THRESHOLD)
+	min_users: {
+		type: 'number',
+		label: 'People Needed',
+		description: 'Fire once when the channel reaches this many people',
+		applicableEvents: ['VOICE_CHANNEL_THRESHOLD'],
+	},
+	rearm_below: {
+		type: 'number',
+		label: 'Re-arm Below',
+		description:
+			'Fire again only after the channel drops under this many (default: one under People Needed)',
+		applicableEvents: ['VOICE_CHANNEL_THRESHOLD'],
+	},
+	cooldown_minutes: {
+		type: 'number',
+		label: 'Cooldown (minutes)',
+		description: 'Least time between fires, even once re-armed (default: 30)',
+		applicableEvents: ['VOICE_CHANNEL_THRESHOLD'],
+	},
+	count_bots: {
+		type: 'select',
+		label: 'Count Bots',
+		description: 'Whether bots in the channel count toward People Needed',
+		options: [
+			{ value: 'no', label: 'No, people only' },
+			{ value: 'yes', label: 'Yes, count bots too' },
+		],
+		default: 'no',
+		applicableEvents: ['VOICE_CHANNEL_THRESHOLD'],
+	},
 	// GitHub-specific filters (for GITHUB_* events)
 	github_repo: {
 		type: 'text',

@@ -35,6 +35,7 @@ database — see the architecture overview below.
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch
 - [Quorum](quorum.md) — one-command yes/no decisions that close themselves and post an owned result
 - [Automation time windows](automation-time-windows.md) — fire an automation only inside (or outside) hours and weekdays
+- [Voice channel threshold trigger](automation-voice-threshold.md) — fire an automation once when a voice channel reaches N people
 - [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
 
 ## Operations
