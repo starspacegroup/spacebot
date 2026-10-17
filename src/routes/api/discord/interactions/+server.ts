@@ -33,6 +33,7 @@ import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
+import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
 import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
@@ -348,6 +349,11 @@ export async function POST({ request, platform: rawPlatform }) {
 		// `/oldest`: a read over the member cache, answered at once.
 		if (data.name === 'oldest' && guildId) {
 			return json(await handleOldestCommand(body, db));
+		}
+
+		// `/about`: a member's own content, written only by the contributor role.
+		if (data.name === 'about' && guildId) {
+			return json(await handleAboutCommand(body, db));
 		}
 
 		// `/timebox`: timers are state the bot keeps, so it is handled

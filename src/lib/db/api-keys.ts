@@ -35,6 +35,7 @@ export const API_KEY_SCOPES = {
 	'automations:read': 'Read automations',
 	'automations:write': 'Create/update automations',
 	'channels:read': 'Read the public channel directory',
+	'content:read': "Read members' own content (/about)",
 	'commands:read': 'Read slash commands',
 	'commands:write': 'Create/update slash commands',
 	'stats:read': 'Read server statistics',
