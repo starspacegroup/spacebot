@@ -111,7 +111,7 @@ describe('GET /api/v1/member-content', () => {
 describe('migration', () => {
 	it('seeds /about as an enabled built-in with four subcommands', () => {
 		expect(MIGRATION).toContain("'__built_in__', 'about'");
-		const m = /\n    '(\[\{"name":"set".*?\}\])',\n/s.exec(MIGRATION)!;
+		const m = /\n {4}'(\[\{"name":"set".*?\}\])',\n/s.exec(MIGRATION)!;
 		const options = JSON.parse(m[1]);
 		expect(options.map((o: any) => o.name)).toEqual(['set', 'clear', 'show', 'role']);
 	});
