@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import '$lib/styles/global.css';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 	import UserMenu from '$lib/components/UserMenu.svelte';
@@ -96,7 +97,7 @@
 	// Publish the active locale to context so any descendant can translate
 	// without prop-drilling. Switching language reloads the page, so a static
 	// value is correct here.
-	setLocaleContext(locale);
+	setLocaleContext(untrack(() => locale));
 	const tr = (key: string, params?: Record<string, string | number>) => t(locale, key, params);
 
 	$effect(() => {

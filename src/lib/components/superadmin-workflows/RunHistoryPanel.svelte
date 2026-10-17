@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { RUN_STATUSES, statusBadgeClass } from './workflow-ui.js';
 
 	const PAGE_SIZE = 25;
@@ -6,7 +7,7 @@
 	const { runs = [], templates = [], onopenrun } = $props();
 
 	let page = $state(0);
-	let pageRuns = $state(runs);
+	let pageRuns = $state(untrack(() => runs));
 	let loading = $state(false);
 	let runSearch = $state('');
 	let runStatusFilter = $state('all');

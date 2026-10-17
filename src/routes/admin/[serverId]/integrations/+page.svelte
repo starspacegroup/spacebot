@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDateShort } from '$lib/timezone.js';
@@ -49,7 +50,7 @@
 	// extended in place as you apply more — appending beats invalidateAll(), which
 	// would re-run the whole route tree (including the root layout's Discord
 	// guild-list fetch) to learn one row we already have in hand.
-	let appliedCommands = $state({ ...(data.templateCommands || {}) });
+	let appliedCommands = $state(untrack(() => ({ ...(data.templateCommands || {}) })));
 
 	$effect(() => {
 		appliedCommands = { ...(data.templateCommands || {}) };
