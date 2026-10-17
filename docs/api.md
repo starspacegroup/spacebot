@@ -33,6 +33,8 @@ Errors return JSON with a top-level `error` string. Rate-limited requests return
 - `GET /api/v1/settings` requires `settings:read`.
 - `GET /api/v1/channels?type=text` requires `channels:read`. The public channel
   directory — see below.
+- `GET /api/v1/member-content?user_id=` requires `content:read`. What members
+  keep with `/about` — see [member content](member-content.md).
 - `GET /api/v1/commands?built_in=only|exclude` requires `commands:read`. Both
   SpaceBot's built-in commands and the ones the guild defined, built-ins first,
   each marked with `is_built_in`. `limit`/`offset` page across the two together.

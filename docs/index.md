@@ -37,6 +37,7 @@ database — see the architecture overview below.
 - [Automation time windows](automation-time-windows.md) — fire an automation only inside (or outside) hours and weekdays
 - [Voice channel threshold trigger](automation-voice-threshold.md) — fire an automation once when a voice channel reaches N people
 - [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
+- [Member content](member-content.md) — `/about`: a role-gated piece of content each member sets and clears, read by the bot and `GET /api/v1/member-content`
 
 ## Operations
 
