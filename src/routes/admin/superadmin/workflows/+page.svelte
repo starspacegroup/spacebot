@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import {
 		parseCanvasJson,
 		parseWorkflowFlat,
@@ -19,10 +20,10 @@
 
 	const { data } = $props();
 
-	let templates = $state(data.templates || []);
-	let runs = $state(data.runs || []);
-	const operationTemplates = data.operationTemplates || [];
-	const operationCatalog = data.operationCatalog || [];
+	let templates = $state(untrack(() => data.templates || []));
+	let runs = $state(untrack(() => data.runs || []));
+	const operationTemplates = untrack(() => data.operationTemplates || []);
+	const operationCatalog = untrack(() => data.operationCatalog || []);
 
 	// --- Draft construction ---
 	function blankDraft() {

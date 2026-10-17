@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 
@@ -12,8 +13,8 @@
 	// redirect_uri". Carry the search string through with it.
 	const approveAction = $derived(`${page.url.search}&/approve`);
 
-	let selectedGuild = $state(data.guilds?.[0]?.id ?? '');
-	let approvedScopes = $state((data.scopes ?? []).map((s) => s.scope));
+	let selectedGuild = $state(untrack(() => data.guilds?.[0]?.id ?? ''));
+	let approvedScopes = $state(untrack(() => (data.scopes ?? []).map((s) => s.scope)));
 
 	function toggleScope(scope: string) {
 		approvedScopes = approvedScopes.includes(scope)
