@@ -4,6 +4,7 @@ import { log } from '$lib/db/logger.js';
 import { hasFullAdminPermission } from '$lib/discord/guilds.js';
 import { normalizeLocalRunnerAssistPolicy } from '$lib/db/settings.js';
 import { getGuildMetadata } from '$lib/db/guild-metadata.js';
+import { fallbackDisplayGuild } from '$lib/server/guild-display.js';
 import { getDashboardCacheEntry } from '$lib/server/dashboard-stats.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
@@ -103,9 +104,13 @@ export async function load({ cookies, platform, parent, params }) {
 	// and `botInGuild` above still come from the authoritative Discord list.
 	const displayGuild =
 		guild ||
-		(guildMetadata
+		(guildMetadata?.name
 			? { id: serverId, name: guildMetadata.name, icon: guildMetadata.icon || null }
-			: undefined);
+			: ((await fallbackDisplayGuild(
+					db,
+					serverId,
+					(platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN
+				)) ?? undefined));
 
 	let loadMeta = {
 		source: 'live',
