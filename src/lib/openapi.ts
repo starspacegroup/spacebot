@@ -74,6 +74,101 @@ export const openApiDocument = {
 				responses: { '200': { description: 'Automation list' } },
 			},
 		},
+		'/channels': {
+			get: {
+				summary: 'List channels grouped by category (scope channels:read)',
+				parameters: [
+					{
+						name: 'type',
+						in: 'query',
+						description: 'Only channels of this type, e.g. text or voice.',
+						schema: { type: 'string' },
+					},
+					{
+						name: 'activity',
+						in: 'query',
+						description: 'true or a number of days: add per-channel activity numbers.',
+						schema: { type: 'string' },
+					},
+				],
+				responses: {
+					'200': { description: 'Channels in sidebar order' },
+					'403': { description: 'Missing scope' },
+				},
+			},
+		},
+		'/logs': {
+			get: {
+				summary: 'Read gateway event logs (scope logs:read)',
+				parameters: [
+					{ name: 'limit', in: 'query', schema: { type: 'integer', maximum: 100 } },
+					{ name: 'offset', in: 'query', schema: { type: 'integer' } },
+					{ name: 'event_type', in: 'query', schema: { type: 'string' } },
+					{ name: 'search', in: 'query', schema: { type: 'string' } },
+					{
+						name: 'stats',
+						in: 'query',
+						description: 'true returns log statistics instead of entries.',
+						schema: { type: 'string' },
+					},
+				],
+				responses: {
+					'200': { description: 'Log entries or statistics' },
+					'403': { description: 'Missing scope' },
+				},
+			},
+		},
+		'/members/{userId}': {
+			get: {
+				summary: 'Read one member’s activity (scope members:read)',
+				parameters: [
+					{ name: 'userId', in: 'path', required: true, schema: { type: 'string' } },
+					{ name: 'days', in: 'query', schema: { type: 'integer' } },
+				],
+				responses: {
+					'200': { description: 'Member activity' },
+					'400': { description: 'Invalid user id' },
+					'403': { description: 'Missing scope' },
+				},
+			},
+		},
+		'/voice': {
+			get: {
+				summary: 'Read who is in voice now (scope voice:read)',
+				parameters: [
+					{ name: 'channel', in: 'query', schema: { type: 'string' } },
+					{
+						name: 'include_bots',
+						in: 'query',
+						description: 'true includes bot accounts.',
+						schema: { type: 'string' },
+					},
+				],
+				responses: {
+					'200': { description: 'Voice state' },
+					'403': { description: 'Missing scope' },
+				},
+			},
+		},
+		'/member-content': {
+			get: {
+				summary: 'Read what members keep with /about (scope content:read)',
+				parameters: [
+					{ name: 'user_id', in: 'query', schema: { type: 'string' } },
+					{
+						name: 'limit',
+						in: 'query',
+						schema: { type: 'integer', minimum: 1, maximum: 100 },
+					},
+					{ name: 'offset', in: 'query', schema: { type: 'integer' } },
+				],
+				responses: {
+					'200': { description: 'One member’s content, or a page of all' },
+					'403': { description: 'Missing scope' },
+					'404': { description: 'user_id given and that member has set nothing' },
+				},
+			},
+		},
 		'/integrations/status': {
 			get: {
 				summary: 'Read integration status',
