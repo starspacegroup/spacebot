@@ -129,7 +129,11 @@
 
 	const guild = $derived(session?.guilds.find((g) => g.id === guildId) ?? null);
 	const mod = $derived(guild?.modules.find((m) => m.id === moduleId) ?? null);
-	const tabs = $derived(guild?.modules ?? []);
+	// Only what is turned on in this server gets a tab; the rest would open an "Off" page.
+	const tabs = $derived((guild?.modules ?? []).filter((m) => m.enabled));
+	$effect(() => {
+		if (tabs.length > 0 && !tabs.some((m) => m.id === moduleId)) moduleId = tabs[0].id;
+	});
 
 	/** The nav says Agent for the game: it is what /start agent calls it. */
 	const tabLabel = (m: Module) => (m.id === 'game' ? 'Agent' : m.name);
