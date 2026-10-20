@@ -32,6 +32,7 @@ export const DISCORD_SESSION_COOKIES = [
 	'discord_discriminator',
 	'discord_access_token',
 	'discord_refresh_token',
+	'sb_session',
 ];
 
 /** Fallback access-token lifetime when Discord omits `expires_in` (7 days). */

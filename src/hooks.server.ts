@@ -14,6 +14,11 @@ import {
 	shouldCheckDiscordSession,
 } from '$lib/server/discord-session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
+import {
+	establishSession,
+	getSessionSecret,
+	issueSessionCookie,
+} from '$lib/server/auth-session.js';
 import { finishSpan, startSpan } from '$lib/server/telemetry.js';
 import { resolveLocale } from '$lib/i18n.js';
 import { sequence } from '@sveltejs/kit/hooks';
@@ -214,7 +219,7 @@ function getDevUser(platform, role = 'superadmin') {
  * @param {import('@sveltejs/kit').Cookies} cookies
  * @param {import('@sveltejs/kit').RequestEvent['platform']} platform
  */
-function setDevAuthCookies(cookies, platform, role = 'superadmin') {
+async function setDevAuthCookies(cookies, platform, role = 'superadmin') {
 	const devUser = getDevUser(platform, role);
 	const cookieOptions = {
 		path: '/',
@@ -235,6 +240,16 @@ function setDevAuthCookies(cookies, platform, role = 'superadmin') {
 	// Set a mock access token for API calls
 	cookies.set('discord_access_token', 'dev_mock_token', cookieOptions);
 	cookies.set('dev_auth_role', devUser.role, cookieOptions);
+	await issueSessionCookie(
+		cookies,
+		devUser.id,
+		getSessionSecret((name) => getEnv(name, platform), dev),
+		{
+			secure: false,
+			maxAge: cookieOptions.maxAge,
+			httpOnly: false,
+		}
+	);
 
 	log.debug(
 		'[DevAuth] Set dev auth cookies for user:',
@@ -285,7 +300,7 @@ function isSecureRequest(event) {
  * Gated to non-dev so it never flips the httpOnly/secure attributes of the
  * dev-auth-bypass cookies.
  */
-function applySlidingSession(event) {
+async function applySlidingSession(event) {
 	if (dev) return;
 	if (!event.cookies.get('discord_user_id')) return;
 
@@ -311,6 +326,15 @@ function applySlidingSession(event) {
 		if (value !== undefined) {
 			event.cookies.set(name, value, cookieOptions);
 		}
+	}
+
+	const secret = getSessionSecret((name) => getEnv(name, event.platform), dev);
+	const userId = (event.locals as any).userId;
+	if (secret && userId) {
+		await issueSessionCookie(event.cookies, userId, secret, {
+			secure: cookieOptions.secure,
+			maxAge,
+		});
 	}
 }
 
@@ -423,7 +447,7 @@ async function appHandle({ event, resolve }) {
 			// Special /dev-login route for easy dev authentication
 			if (url.pathname === '/dev-login') {
 				const role = normalizeDevRole(url.searchParams.get('role') || 'superadmin');
-				const devUser = setDevAuthCookies(cookies, platform, role);
+				const devUser = await setDevAuthCookies(cookies, platform, role);
 
 				// Track dev user in the database so they appear in User Management
 				const db = (platform as any)?.env?.DB;
@@ -468,7 +492,7 @@ async function appHandle({ event, resolve }) {
 				const userId = cookies.get('discord_user_id');
 				if (!userId) {
 					const role = normalizeDevRole(url.searchParams.get('dev_role') || 'superadmin');
-					const devUser = setDevAuthCookies(cookies, platform, role);
+					const devUser = await setDevAuthCookies(cookies, platform, role);
 
 					// Track dev user in the database
 					const db = (platform as any)?.env?.DB;
@@ -500,6 +524,14 @@ async function appHandle({ event, resolve }) {
 		// Add dev auth status to event.locals for use in routes
 		(event.locals as any).devAuthEnabled = devAuthEnabled;
 
+		// Identity comes only from the signed sb_session cookie. After this line
+		// `discord_user_id` equals the verified user id or reads as absent.
+		(event.locals as any).userId = await establishSession(
+			cookies,
+			getSessionSecret((name) => getEnv(name, platform), dev),
+			isSecureRequest(event)
+		);
+
 		const rateLimitResponse = await checkRateLimit(event);
 		if (rateLimitResponse) {
 			finishSpan(requestSpan, platform);
@@ -524,7 +556,7 @@ async function appHandle({ event, resolve }) {
 			return applySecurityHeaders(sessionRedirect);
 		}
 
-		applySlidingSession(event);
+		await applySlidingSession(event);
 
 		// i18n: set <html lang> from the resolved locale (cookie → Accept-Language
 		// → default). Mirrors the resolution in +layout.server.ts.

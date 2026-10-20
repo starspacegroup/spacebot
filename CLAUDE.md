@@ -112,7 +112,12 @@ live as `cron_expression` in D1, managed under Admin → Superadmin → Workflow
 
 ## Auth model
 
-Discord OAuth2 sets cookies (`discord_user_id`, etc.); admin access is gated on Discord server-admin
+Identity is the signed `sb_session` cookie (HMAC-SHA256, key = `SESSION_SECRET` Wrangler secret),
+minted only by the OAuth callback. `establishSession` in `src/lib/server/auth-session.ts` runs first in
+`hooks.server.ts` and guarantees that `discord_user_id` equals the verified user id or reads as absent —
+a forged or unsigned cookie set is cleared. The other `discord_*` cookies are profile/display only. Never
+read identity from anything that bypasses the hook (Pages Functions in `_functions/` do not run it).
+Without `SESSION_SECRET` (≥32 chars) outside dev, logins fail closed. Admin access is gated on Discord server-admin
 permissions, with `ADMIN_USER_IDS` granting global superadmin. In dev only, `DEV_AUTH_BYPASS=true` enables
 `/dev-login?role=user|admin|superadmin` (handled in `hooks.server.ts`) — these routes 404 in production builds.
 
