@@ -15,7 +15,7 @@
 		onpick = null,
 		pressed = false,
 		disabled = false,
-	} = $props<{
+	}: {
 		id: string;
 		name: string;
 		avatar?: string | null;
@@ -26,7 +26,7 @@
 		onpick?: null | (() => void);
 		pressed?: boolean;
 		disabled?: boolean;
-	}>();
+	} = $props();
 </script>
 
 {#if onpick}

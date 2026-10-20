@@ -2,7 +2,7 @@
 	/** A player's Discord avatar, or their first letter on a colour when there is none. */
 	import { avatarColour, initial } from '$lib/activity/lcars.js';
 
-	const { id, name, src = null } = $props<{ id: string; name: string; src?: string | null }>();
+	const { id, name, src = null }: { id: string; name: string; src?: string | null } = $props();
 	let broken = $state(false);
 </script>
 

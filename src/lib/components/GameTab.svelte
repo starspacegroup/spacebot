@@ -39,7 +39,7 @@
 		preview = null,
 		previewDismissed = {},
 		onframe = () => {},
-	} = $props<{
+	}: {
 		base: string;
 		token: string;
 		guildId: string;
@@ -49,7 +49,7 @@
 		/** Dev only: which screens the preview has already put away. */
 		previewDismissed?: Dismissed;
 		onframe?: (f: Frame) => void;
-	}>();
+	} = $props();
 
 	const STORE = 'spacebot.game.dismissed';
 	let view = $state<GameView | null>(null);

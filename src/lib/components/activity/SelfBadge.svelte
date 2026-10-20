@@ -8,13 +8,13 @@
 		avatar = null,
 		status,
 		colour,
-	} = $props<{
+	}: {
 		id: string;
 		name: string;
 		avatar?: string | null;
 		status: string;
 		colour: string;
-	}>();
+	} = $props();
 </script>
 
 <div class="self" style:--selfc={colour} aria-label="You: {name}, {status}">
