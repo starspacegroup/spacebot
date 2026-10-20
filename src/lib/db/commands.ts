@@ -389,7 +389,12 @@ export async function createCommand(db, command) {
  * @param {Partial<Command>} updates
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-export async function updateCommand(db, id, updates: Record<string, any> = {}) {
+export async function updateCommand(
+	db,
+	id,
+	updates: Record<string, any> = {},
+	scopeGuildId: string | null = null
+) {
 	if (!db) {
 		return { success: false, error: 'Database not available' };
 	}
@@ -407,7 +412,7 @@ export async function updateCommand(db, id, updates: Record<string, any> = {}) {
 			.bind(id)
 			.first();
 
-		if (!existingRow) {
+		if (!existingRow || (scopeGuildId !== null && existingRow.guild_id !== scopeGuildId)) {
 			return { success: false, error: 'Command not found' };
 		}
 

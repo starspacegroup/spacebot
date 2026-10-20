@@ -14,6 +14,7 @@ import {
 	shouldCheckDiscordSession,
 } from '$lib/server/discord-session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
+import { authorizePageMutation } from '$lib/server/action-guard.js';
 import {
 	establishSession,
 	getSessionSecret,
@@ -536,6 +537,18 @@ async function appHandle({ event, resolve }) {
 		if (rateLimitResponse) {
 			finishSpan(requestSpan, platform);
 			return applySecurityHeaders(rateLimitResponse);
+		}
+
+		const actionDenied = await authorizePageMutation({
+			method: event.request.method,
+			pathname: url.pathname,
+			userId: (event.locals as any).userId,
+			cookies,
+			platform,
+		});
+		if (actionDenied) {
+			finishSpan(requestSpan, platform);
+			return applySecurityHeaders(actionDenied);
 		}
 
 		if (url.pathname === '/api/gateway/logs') {

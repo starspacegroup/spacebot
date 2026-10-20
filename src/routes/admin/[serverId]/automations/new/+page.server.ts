@@ -72,7 +72,7 @@ export const actions = {
 		}
 
 		const formData = await request.formData();
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 		const userId = cookies.get('discord_user_id');
 
 		if (!guildId) {
