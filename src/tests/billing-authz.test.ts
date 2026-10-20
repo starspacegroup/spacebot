@@ -82,7 +82,7 @@ describe('billing API authorization', () => {
 			'tok-admin'
 		);
 		expect(res.status).toBe(200);
-		expect(createBillingPortalSession.mock.calls[0][2]).toBe(
+		expect((createBillingPortalSession.mock.calls[0] as any[])[2]).toBe(
 			`https://app.example/admin/${VICTIM}/account`
 		);
 	});

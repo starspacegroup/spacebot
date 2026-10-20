@@ -114,7 +114,7 @@ describe('forged cookie against representative APIs', () => {
 		const { authenticateRequest } = await import('../lib/api-auth.js');
 		const auth = await authenticateRequest(new Request('http://x/'), jar as any, {});
 		expect(auth.authenticated).toBe(false);
-		expect(auth.status).toBe(401);
+		expect((auth as any).status).toBe(401);
 	});
 
 	it('a real session for the superadmin is honoured', async () => {

@@ -197,13 +197,12 @@ export const actions = {
 		}
 	},
 
-	delete: async ({ request, platform, params }) => {
+	delete: async ({ platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
 			return fail(500, { error: 'Database not available' });
 		}
 
-		const formData = await request.formData();
 		const guildId = params.serverId;
 
 		if (!guildId) {

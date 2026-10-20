@@ -60,7 +60,7 @@ export async function authorizeToolCall(
 	tool: string,
 	args: Record<string, any>,
 	ctx: ToolAuthzContext
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: boolean; error?: string }> {
 	if (SESSION_USER_TOOLS.has(tool)) return { ok: true };
 
 	if (SUPERADMIN_ONLY_TOOLS.has(tool)) {
