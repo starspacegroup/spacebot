@@ -26,6 +26,7 @@ import {
 	resolveManifestUrl,
 	validateManifest,
 } from '$lib/integrations/registry.js';
+import { safeFetch } from '$lib/server/safe-fetch.js';
 
 function isSuperAdmin(cookies: any, platform: any) {
 	const userId = cookies.get('discord_user_id');
@@ -45,7 +46,7 @@ function isSuperAdmin(cookies: any, platform: any) {
 async function probeHealth(healthUrl: string | undefined) {
 	if (!healthUrl) return { checked: false };
 	try {
-		const res = await fetch(healthUrl, {
+		const res = await safeFetch(healthUrl, {
 			headers: { Accept: 'application/json' },
 			signal: AbortSignal.timeout(5000),
 		});

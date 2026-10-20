@@ -13,6 +13,7 @@ import { isSafeLinkUrl } from '../safe-link-url.js';
 import { log } from '../log.js';
 import { upsertIntegration } from '../db/integrations.js';
 import { parseEphemeralOptionConditions } from '../command-ephemeral.js';
+import { safeFetch } from '../server/safe-fetch.js';
 
 // ---------------------------------------------------------------------------
 // Manifest schema (what an integration declares)
@@ -394,7 +395,7 @@ export function resolveManifestUrl(input) {
  */
 export async function fetchRemoteManifest(url) {
 	try {
-		const response = await fetch(url, {
+		const response = await safeFetch(url, {
 			headers: { Accept: 'application/json' },
 			signal: AbortSignal.timeout(10_000),
 		});

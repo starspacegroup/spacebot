@@ -128,10 +128,9 @@ describe('executeIntegrationAction', () => {
 	});
 
 	it('proxies to the action handler and exposes returned fields as {action.*}', async () => {
-		(fetch as any).mockResolvedValue({
-			ok: true,
-			json: async () => ({ result: { poem: 'Roses are red', title: 'Roses' } }),
-		});
+		(fetch as any).mockResolvedValue(
+			new Response(JSON.stringify({ result: { poem: 'Roses are red', title: 'Roses' } }))
+		);
 
 		const context: any = {};
 		const res = await executeIntegrationAction({
@@ -155,7 +154,7 @@ describe('executeIntegrationAction', () => {
 
 		// The resolved config (theme: roses) was sent to the handler.
 		const [url, init] = (fetch as any).mock.calls[0];
-		expect(url).toBe('https://agapeverse.app/api/spacebot/action');
+		expect(String(url)).toBe('https://agapeverse.app/api/spacebot/action');
 		const body = JSON.parse(init.body);
 		expect(body.action_key).toBe('agapeverse.generate_poem');
 		expect(body.config).toEqual({ theme: 'roses' });
@@ -163,10 +162,9 @@ describe('executeIntegrationAction', () => {
 	});
 
 	it('returns a direct response when the handler sends content/embeds', async () => {
-		(fetch as any).mockResolvedValue({
-			ok: true,
-			json: async () => ({ content: 'A poem for you' }),
-		});
+		(fetch as any).mockResolvedValue(
+			new Response(JSON.stringify({ content: 'A poem for you' }))
+		);
 		const res = await executeIntegrationAction({
 			db: fakeDb([agapeverseRow()]),
 			guildId: '123',
@@ -180,10 +178,9 @@ describe('executeIntegrationAction', () => {
 	});
 
 	it('forwards the handler-chosen `ephemeral` flag on the direct response', async () => {
-		(fetch as any).mockResolvedValue({
-			ok: true,
-			json: async () => ({ embeds: [{ title: 'Ode' }], ephemeral: false }),
-		});
+		(fetch as any).mockResolvedValue(
+			new Response(JSON.stringify({ embeds: [{ title: 'Ode' }], ephemeral: false }))
+		);
 		const res = await executeIntegrationAction({
 			db: fakeDb([agapeverseRow()]),
 			guildId: '123',
@@ -226,7 +223,7 @@ describe('executeIntegrationAction', () => {
 	});
 
 	it('fails gracefully when the handler errors', async () => {
-		(fetch as any).mockResolvedValue({ ok: false, status: 500, json: async () => ({}) });
+		(fetch as any).mockResolvedValue(new Response('{}', { status: 500 }));
 		const res = await executeIntegrationAction({
 			db: fakeDb([agapeverseRow()]),
 			guildId: '123',

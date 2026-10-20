@@ -50,6 +50,7 @@ import {
 } from '$lib/db/stats-aggregation.js';
 import { getTopVoiceUsers } from '$lib/db/statistics.js';
 import { WIDGET_TYPES } from '$lib/stats-widget.js';
+import { safeFetch } from '$lib/server/safe-fetch.js';
 
 /** Cloudflare-style platform context with env bindings and waitUntil. */
 interface PlatformLike {
@@ -571,7 +572,7 @@ async function handleIntegrationCommand(data, interaction, db, guildId) {
 
 					log.debug(`[Interactions] Proxying /${data.name} to ${handlerUrl}`);
 
-					const webhookResponse = await fetch(handlerUrl, {
+					const webhookResponse = await safeFetch(handlerUrl, {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json',

@@ -1,11 +1,12 @@
 /**
  * Webhooks Database Module
- * 
+ *
  * Handles CRUD operations for guild webhooks in the D1 database.
  * Webhooks can be used in automation and command actions.
  */
 
-import { log } from "./logger.js";
+import { log } from './logger.js';
+import { assertPublicHttpUrl, safeFetch } from '../server/safe-fetch.js';
 
 /**
  * @typedef {Object} Webhook
@@ -29,37 +30,37 @@ import { log } from "./logger.js";
  * @returns {Promise<Webhook[]>} - Array of webhooks
  */
 export async function getGuildWebhooks(db, guildId) {
-  if (!db || !guildId) {
-    log.warn("[Webhooks] Missing db or guildId");
-    return [];
-  }
+	if (!db || !guildId) {
+		log.warn('[Webhooks] Missing db or guildId');
+		return [];
+	}
 
-  try {
-    const result = await db
-      .prepare("SELECT * FROM webhooks WHERE guild_id = ? ORDER BY name ASC")
-      .bind(guildId)
-      .all();
+	try {
+		const result = await db
+			.prepare('SELECT * FROM webhooks WHERE guild_id = ? ORDER BY name ASC')
+			.bind(guildId)
+			.all();
 
-    const webhooks = (result.results || []).map((row) => ({
-      id: row.id,
-      guild_id: row.guild_id,
-      name: row.name,
-      description: row.description || "",
-      url: row.url,
-      method: row.method || "POST",
-      headers: parseJSON(row.headers, {}),
-      enabled: Boolean(row.enabled),
-      created_by: row.created_by,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    }));
+		const webhooks = (result.results || []).map((row) => ({
+			id: row.id,
+			guild_id: row.guild_id,
+			name: row.name,
+			description: row.description || '',
+			url: row.url,
+			method: row.method || 'POST',
+			headers: parseJSON(row.headers, {}),
+			enabled: Boolean(row.enabled),
+			created_by: row.created_by,
+			created_at: row.created_at,
+			updated_at: row.updated_at,
+		}));
 
-    log.debug("[Webhooks] Loaded webhooks for guild:", guildId, webhooks.length);
-    return webhooks;
-  } catch (error) {
-    log.error("[Webhooks] Error loading webhooks:", error);
-    return [];
-  }
+		log.debug('[Webhooks] Loaded webhooks for guild:', guildId, webhooks.length);
+		return webhooks;
+	} catch (error) {
+		log.error('[Webhooks] Error loading webhooks:', error);
+		return [];
+	}
 }
 
 /**
@@ -70,37 +71,37 @@ export async function getGuildWebhooks(db, guildId) {
  * @returns {Promise<Webhook|null>} - The webhook or null
  */
 export async function getWebhook(db, webhookId, guildId) {
-  if (!db || !webhookId) {
-    return null;
-  }
+	if (!db || !webhookId) {
+		return null;
+	}
 
-  try {
-    const result = await db
-      .prepare("SELECT * FROM webhooks WHERE id = ? AND guild_id = ?")
-      .bind(webhookId, guildId)
-      .first();
+	try {
+		const result = await db
+			.prepare('SELECT * FROM webhooks WHERE id = ? AND guild_id = ?')
+			.bind(webhookId, guildId)
+			.first();
 
-    if (!result) {
-      return null;
-    }
+		if (!result) {
+			return null;
+		}
 
-    return {
-      id: result.id,
-      guild_id: result.guild_id,
-      name: result.name,
-      description: result.description || "",
-      url: result.url,
-      method: result.method || "POST",
-      headers: parseJSON(result.headers, {}),
-      enabled: Boolean(result.enabled),
-      created_by: result.created_by,
-      created_at: result.created_at,
-      updated_at: result.updated_at,
-    };
-  } catch (error) {
-    log.error("[Webhooks] Error getting webhook:", error);
-    return null;
-  }
+		return {
+			id: result.id,
+			guild_id: result.guild_id,
+			name: result.name,
+			description: result.description || '',
+			url: result.url,
+			method: result.method || 'POST',
+			headers: parseJSON(result.headers, {}),
+			enabled: Boolean(result.enabled),
+			created_by: result.created_by,
+			created_at: result.created_at,
+			updated_at: result.updated_at,
+		};
+	} catch (error) {
+		log.error('[Webhooks] Error getting webhook:', error);
+		return null;
+	}
 }
 
 /**
@@ -112,64 +113,65 @@ export async function getWebhook(db, webhookId, guildId) {
  * @returns {Promise<{success: boolean, id?: number, error?: string}>}
  */
 export async function createWebhook(db, guildId, webhook, createdBy) {
-  if (!db || !guildId) {
-    return { success: false, error: "Missing database or guild ID" };
-  }
+	if (!db || !guildId) {
+		return { success: false, error: 'Missing database or guild ID' };
+	}
 
-  if (!webhook.name?.trim()) {
-    return { success: false, error: "Webhook name is required" };
-  }
+	if (!webhook.name?.trim()) {
+		return { success: false, error: 'Webhook name is required' };
+	}
 
-  if (!webhook.url?.trim()) {
-    return { success: false, error: "Webhook URL is required" };
-  }
+	if (!webhook.url?.trim()) {
+		return { success: false, error: 'Webhook URL is required' };
+	}
 
-  // Validate URL format
-  try {
-    new URL(webhook.url);
-  } catch {
-    return { success: false, error: "Invalid URL format" };
-  }
+	try {
+		assertPublicHttpUrl(webhook.url);
+	} catch (error) {
+		return { success: false, error: `Invalid webhook URL: ${error.message}` };
+	}
 
-  // Validate method
-  const validMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-  const method = (webhook.method || "POST").toUpperCase();
-  if (!validMethods.includes(method)) {
-    return { success: false, error: "Invalid HTTP method" };
-  }
+	// Validate method
+	const validMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+	const method = (webhook.method || 'POST').toUpperCase();
+	if (!validMethods.includes(method)) {
+		return { success: false, error: 'Invalid HTTP method' };
+	}
 
-  try {
-    const now = new Date().toISOString();
+	try {
+		const now = new Date().toISOString();
 
-    const result = await db
-      .prepare(`
+		const result = await db
+			.prepare(
+				`
         INSERT INTO webhooks (guild_id, name, description, url, method, headers, enabled, created_by, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .bind(
-        guildId,
-        webhook.name.trim(),
-        webhook.description?.trim() || null,
-        webhook.url.trim(),
-        method,
-        JSON.stringify(webhook.headers || {}),
-        webhook.enabled !== false ? 1 : 0,
-        createdBy,
-        now,
-        now
-      )
-      .run();
+      `
+			)
+			.bind(
+				guildId,
+				webhook.name.trim(),
+				webhook.description?.trim() || null,
+				webhook.url.trim(),
+				method,
+				JSON.stringify(webhook.headers || {}),
+				webhook.enabled !== false ? 1 : 0,
+				createdBy,
+				now,
+				now
+			)
+			.run();
 
-    log.info("[Webhooks] Created webhook for guild:", guildId, webhook.name);
-    return { success: true, id: result.meta?.last_row_id };
-  } catch (error) {
-    // Check for unique constraint violation
-    if (error.message?.includes("UNIQUE constraint failed")) {
-      return { success: false, error: "A webhook with this name already exists" };
-    }
-    log.error("[Webhooks] Error creating webhook:", error);
-    return { success: false, error: error.message };
-  }
+		log.info('[Webhooks] Created webhook for guild:', guildId, webhook.name);
+		return { success: true, id: result.meta?.last_row_id };
+	} catch (error) {
+		// Check for unique constraint violation
+		if (error.message?.includes('UNIQUE constraint failed')) {
+			return { success: false, error: 'A webhook with this name already exists' };
+		}
+		log.error('[Webhooks] Error creating webhook:', error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
@@ -181,93 +183,93 @@ export async function createWebhook(db, guildId, webhook, createdBy) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function updateWebhook(db, webhookId, guildId, updates) {
-  if (!db || !webhookId || !guildId) {
-    return { success: false, error: "Missing required parameters" };
-  }
+	if (!db || !webhookId || !guildId) {
+		return { success: false, error: 'Missing required parameters' };
+	}
 
-  // Validate URL if being updated
-  if (updates.url !== undefined) {
-    if (!updates.url?.trim()) {
-      return { success: false, error: "Webhook URL is required" };
-    }
-    try {
-      new URL(updates.url);
-    } catch {
-      return { success: false, error: "Invalid URL format" };
-    }
-  }
+	// Validate URL if being updated
+	if (updates.url !== undefined) {
+		if (!updates.url?.trim()) {
+			return { success: false, error: 'Webhook URL is required' };
+		}
+		try {
+			new URL(updates.url);
+		} catch {
+			return { success: false, error: 'Invalid URL format' };
+		}
+	}
 
-  // Validate method if being updated
-  if (updates.method !== undefined) {
-    const validMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
-    const method = (updates.method || "POST").toUpperCase();
-    if (!validMethods.includes(method)) {
-      return { success: false, error: "Invalid HTTP method" };
-    }
-  }
+	// Validate method if being updated
+	if (updates.method !== undefined) {
+		const validMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+		const method = (updates.method || 'POST').toUpperCase();
+		if (!validMethods.includes(method)) {
+			return { success: false, error: 'Invalid HTTP method' };
+		}
+	}
 
-  try {
-    // Build dynamic update query
-    const fields = [];
-    const values = [];
+	try {
+		// Build dynamic update query
+		const fields = [];
+		const values = [];
 
-    if (updates.name !== undefined) {
-      if (!updates.name?.trim()) {
-        return { success: false, error: "Webhook name is required" };
-      }
-      fields.push("name = ?");
-      values.push(updates.name.trim());
-    }
+		if (updates.name !== undefined) {
+			if (!updates.name?.trim()) {
+				return { success: false, error: 'Webhook name is required' };
+			}
+			fields.push('name = ?');
+			values.push(updates.name.trim());
+		}
 
-    if (updates.description !== undefined) {
-      fields.push("description = ?");
-      values.push(updates.description?.trim() || null);
-    }
+		if (updates.description !== undefined) {
+			fields.push('description = ?');
+			values.push(updates.description?.trim() || null);
+		}
 
-    if (updates.url !== undefined) {
-      fields.push("url = ?");
-      values.push(updates.url.trim());
-    }
+		if (updates.url !== undefined) {
+			fields.push('url = ?');
+			values.push(updates.url.trim());
+		}
 
-    if (updates.method !== undefined) {
-      fields.push("method = ?");
-      values.push(updates.method.toUpperCase());
-    }
+		if (updates.method !== undefined) {
+			fields.push('method = ?');
+			values.push(updates.method.toUpperCase());
+		}
 
-    if (updates.headers !== undefined) {
-      fields.push("headers = ?");
-      values.push(JSON.stringify(updates.headers || {}));
-    }
+		if (updates.headers !== undefined) {
+			fields.push('headers = ?');
+			values.push(JSON.stringify(updates.headers || {}));
+		}
 
-    if (updates.enabled !== undefined) {
-      fields.push("enabled = ?");
-      values.push(updates.enabled ? 1 : 0);
-    }
+		if (updates.enabled !== undefined) {
+			fields.push('enabled = ?');
+			values.push(updates.enabled ? 1 : 0);
+		}
 
-    if (fields.length === 0) {
-      return { success: true }; // Nothing to update
-    }
+		if (fields.length === 0) {
+			return { success: true }; // Nothing to update
+		}
 
-    fields.push("updated_at = ?");
-    values.push(new Date().toISOString());
+		fields.push('updated_at = ?');
+		values.push(new Date().toISOString());
 
-    // Add WHERE clause values
-    values.push(webhookId, guildId);
+		// Add WHERE clause values
+		values.push(webhookId, guildId);
 
-    await db
-      .prepare(`UPDATE webhooks SET ${fields.join(", ")} WHERE id = ? AND guild_id = ?`)
-      .bind(...values)
-      .run();
+		await db
+			.prepare(`UPDATE webhooks SET ${fields.join(', ')} WHERE id = ? AND guild_id = ?`)
+			.bind(...values)
+			.run();
 
-    log.info("[Webhooks] Updated webhook:", webhookId);
-    return { success: true };
-  } catch (error) {
-    if (error.message?.includes("UNIQUE constraint failed")) {
-      return { success: false, error: "A webhook with this name already exists" };
-    }
-    log.error("[Webhooks] Error updating webhook:", error);
-    return { success: false, error: error.message };
-  }
+		log.info('[Webhooks] Updated webhook:', webhookId);
+		return { success: true };
+	} catch (error) {
+		if (error.message?.includes('UNIQUE constraint failed')) {
+			return { success: false, error: 'A webhook with this name already exists' };
+		}
+		log.error('[Webhooks] Error updating webhook:', error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
@@ -278,22 +280,22 @@ export async function updateWebhook(db, webhookId, guildId, updates) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 export async function deleteWebhook(db, webhookId, guildId) {
-  if (!db || !webhookId || !guildId) {
-    return { success: false, error: "Missing required parameters" };
-  }
+	if (!db || !webhookId || !guildId) {
+		return { success: false, error: 'Missing required parameters' };
+	}
 
-  try {
-    await db
-      .prepare("DELETE FROM webhooks WHERE id = ? AND guild_id = ?")
-      .bind(webhookId, guildId)
-      .run();
+	try {
+		await db
+			.prepare('DELETE FROM webhooks WHERE id = ? AND guild_id = ?')
+			.bind(webhookId, guildId)
+			.run();
 
-    log.info("[Webhooks] Deleted webhook:", webhookId);
-    return { success: true };
-  } catch (error) {
-    log.error("[Webhooks] Error deleting webhook:", error);
-    return { success: false, error: error.message };
-  }
+		log.info('[Webhooks] Deleted webhook:', webhookId);
+		return { success: true };
+	} catch (error) {
+		log.error('[Webhooks] Error deleting webhook:', error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
@@ -303,67 +305,67 @@ export async function deleteWebhook(db, webhookId, guildId) {
  * @returns {Promise<{success: boolean, status?: number, response?: any, error?: string}>}
  */
 export async function callWebhook(webhook, payload) {
-  if (!webhook?.url) {
-    return { success: false, error: "Invalid webhook configuration" };
-  }
+	if (!webhook?.url) {
+		return { success: false, error: 'Invalid webhook configuration' };
+	}
 
-  if (!webhook.enabled) {
-    return { success: false, error: "Webhook is disabled" };
-  }
+	if (!webhook.enabled) {
+		return { success: false, error: 'Webhook is disabled' };
+	}
 
-  try {
-    const headers = {
-      "Content-Type": "application/json",
-      "User-Agent": "SpaceBot/1.0",
-      ...webhook.headers,
-    };
+	try {
+		const headers = {
+			'Content-Type': 'application/json',
+			'User-Agent': 'SpaceBot/1.0',
+			...webhook.headers,
+		};
 
-    const options: Record<string, any> = {
-      method: webhook.method || "POST",
-      headers,
-    };
+		const options: Record<string, any> = {
+			method: webhook.method || 'POST',
+			headers,
+		};
 
-    // Only include body for methods that support it
-    if (["POST", "PUT", "PATCH"].includes(options.method)) {
-      options.body = JSON.stringify(payload);
-    }
+		// Only include body for methods that support it
+		if (['POST', 'PUT', 'PATCH'].includes(options.method)) {
+			options.body = JSON.stringify(payload);
+		}
 
-    const response = await fetch(webhook.url, options);
+		const response = await safeFetch(webhook.url, options);
 
-    let responseData = null;
-    const contentType = response.headers.get("content-type");
-    if (contentType?.includes("application/json")) {
-      try {
-        responseData = await response.json();
-      } catch {
-        responseData = await response.text();
-      }
-    } else {
-      responseData = await response.text();
-    }
+		let responseData = null;
+		const contentType = response.headers.get('content-type');
+		if (contentType?.includes('application/json')) {
+			try {
+				responseData = await response.json();
+			} catch {
+				responseData = await response.text();
+			}
+		} else {
+			responseData = await response.text();
+		}
 
-    log.info("[Webhooks] Called webhook:", webhook.name, "Status:", response.status);
+		log.info('[Webhooks] Called webhook:', webhook.name, 'Status:', response.status);
 
-    return {
-      success: response.ok,
-      status: response.status,
-      response: responseData,
-      error: response.ok ? undefined : `HTTP ${response.status}`,
-    };
-  } catch (error) {
-    log.error("[Webhooks] Error calling webhook:", webhook.name, error);
-    return { success: false, error: error.message };
-  }
+		return {
+			success: response.ok,
+			status: response.status,
+			response: responseData,
+			error: response.ok ? undefined : `HTTP ${response.status}`,
+		};
+	} catch (error) {
+		log.error('[Webhooks] Error calling webhook:', webhook.name, error);
+		return { success: false, error: error.message };
+	}
 }
 
 /**
  * Helper to safely parse JSON with a fallback
  */
 function parseJSON(value, fallback) {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
+	if (!value) return fallback;
+	try {
+		return JSON.parse(value);
+	} catch {
+		return fallback;
+	}
 }
