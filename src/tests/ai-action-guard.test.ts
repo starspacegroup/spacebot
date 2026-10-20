@@ -100,7 +100,12 @@ describe('native tool calling', () => {
 	it('sends the tools array so the model can actually call functions', async () => {
 		const { aiRequests } = stubBackends([aiReply({ text: 'hello' })]);
 		await generateChatResponse(
-			{ message: 'hey there', userName: 'David', userId: 'user-1' },
+			{
+				message: 'hey there',
+				userName: 'David',
+				managedGuilds: [{ id: '1' }],
+				userId: 'user-1',
+			},
 			ENV
 		);
 
@@ -118,7 +123,11 @@ describe('native tool calling', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: 'what events are scheduled?', userName: 'David' },
+			{
+				message: 'what events are scheduled?',
+				userName: 'David',
+				managedGuilds: [{ id: '1' }],
+			},
 			ENV
 		);
 
@@ -139,7 +148,7 @@ describe('an action must never silently no-op', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: ASK, userName: 'David', userId: 'user-1' },
+			{ message: ASK, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			ENV
 		);
 
@@ -167,7 +176,7 @@ describe('an action must never silently no-op', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: ASK, userName: 'David', userId: 'user-1' },
+			{ message: ASK, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			ENV
 		);
 
@@ -184,7 +193,11 @@ describe('an action must never silently no-op', () => {
 		const { aiCallCount } = stubBackends([aiReply({ text: 'You have three events.' })]);
 
 		const result: any = await generateChatResponse(
-			{ message: 'what events are scheduled?', userName: 'David' },
+			{
+				message: 'what events are scheduled?',
+				userName: 'David',
+				managedGuilds: [{ id: '1' }],
+			},
 			ENV
 		);
 
@@ -204,7 +217,7 @@ describe('an action must never silently no-op', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: ASK, userName: 'David', userId: 'user-1' },
+			{ message: ASK, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			ENV
 		);
 
@@ -228,7 +241,7 @@ describe('preview/confirm handshake', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: ASK, userName: 'David', userId: 'user-1' },
+			{ message: ASK, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			ENV
 		);
 
@@ -286,7 +299,7 @@ describe('asking for a timezone instead of guessing one', () => {
 		]);
 
 		const result: any = await generateChatResponse(
-			{ message: ASK, userName: 'David', userId: 'user-1' },
+			{ message: ASK, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			ENV
 		);
 
@@ -367,6 +380,7 @@ describe('asking for a timezone instead of guessing one', () => {
 				message:
 					"I'm in Arizona — create an event called Launch on September 11th at 9:11PM",
 				userName: 'David',
+				managedGuilds: [{ id: '1' }],
 				userId: 'user-1',
 			},
 			ENV
@@ -397,7 +411,7 @@ describe('when the bot has no tools at all', () => {
 		stubBackends([aiReply({ text: ECHO })]);
 
 		const result: any = await generateChatResponse(
-			{ message: CREATE, userName: 'David', userId: 'user-1' },
+			{ message: CREATE, userName: 'David', managedGuilds: [{ id: '1' }], userId: 'user-1' },
 			NO_MCP_ENV
 		);
 
@@ -410,7 +424,13 @@ describe('when the bot has no tools at all', () => {
 	it('tells an operator why, and an ordinary user only what', async () => {
 		stubBackends([aiReply({ text: ECHO })]);
 		const admin: any = await generateChatResponse(
-			{ message: CREATE, userName: 'David', userId: 'user-1', isSuperAdmin: true },
+			{
+				message: CREATE,
+				userName: 'David',
+				managedGuilds: [{ id: '1' }],
+				userId: 'user-1',
+				isSuperAdmin: true,
+			},
 			NO_MCP_ENV
 		);
 		expect(admin.response).toContain('CLOUDFLARE_API_TOKEN');
@@ -431,6 +451,7 @@ describe('when the bot has no tools at all', () => {
 			{
 				message: 'how many members are in the starspace server?',
 				userName: 'David',
+				managedGuilds: [{ id: '1' }],
 				userId: 'user-1',
 			},
 			NO_MCP_ENV
