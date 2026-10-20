@@ -128,20 +128,14 @@
 		border-radius: 0.2em 0.5em 0.5em 0.2em;
 		background: var(--well);
 		overflow: hidden;
-		position: relative;
-	}
-	.segs span::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background: repeating-linear-gradient(
+		/* cut into tenths: only the alpha matters */
+		mask-image: repeating-linear-gradient(
 			90deg,
-			transparent 0,
+			currentColor 0,
+			currentColor calc(10% - 0.14em),
 			transparent calc(10% - 0.14em),
-			#000 calc(10% - 0.14em),
-			#000 10%
+			transparent 10%
 		);
-		pointer-events: none;
 	}
 	.segs i {
 		display: block;
