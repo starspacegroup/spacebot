@@ -497,3 +497,38 @@ describe('advanceSuperadminWorkflowRun', () => {
 		expect(loaded.workflow_instance_id).toBe('sa-run-1');
 	});
 });
+
+describe('run lease (security #9)', () => {
+	it('a concurrent advance of the same run does not execute the node twice', async () => {
+		const db = new FakeWorkflowDb();
+		const canvas = {
+			nodes: [
+				{
+					id: 'start',
+					type: 'trigger',
+					title: 'Start',
+					position: { x: 0, y: 0 },
+					data: {},
+				},
+				{
+					id: 'work',
+					type: 'task',
+					title: 'Work',
+					position: { x: 0, y: 140 },
+					data: { operation: 'slowOp' },
+				},
+			],
+			edges: [{ id: 'e1', source: 'start', target: 'work', label: 'start' }],
+		};
+		const { run } = await makeRun(db, canvas);
+		const held: any = db.runs.find((r: any) => r.id === run.id);
+		held.lease_until = 'held';
+		const busy = await advanceSuperadminWorkflowRun({ db, fetch, runId: run.id });
+		expect(busy?.wait).toMatchObject({ type: 'sleep' });
+		expect(busy?.executed_step).toBeNull();
+		held.lease_until = null;
+		const ok = await advanceSuperadminWorkflowRun({ db, fetch, runId: run.id });
+		expect(ok?.wait).toBeNull();
+		expect(held.lease_until).toBeNull();
+	});
+});

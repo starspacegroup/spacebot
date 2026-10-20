@@ -117,6 +117,24 @@ export async function getPendingMessages(db, limit = 50) {
 }
 
 /**
+ * Atomically take a due message (pending → sending). Only the caller that wins
+ * the update sends it, so overlapping cron ticks cannot deliver it twice
+ * (security review 2026-10-20, #9). A crash mid-send leaves it 'sending' —
+ * at-most-once, by choice, for messages.
+ */
+export async function claimMessageForSending(db, id) {
+	const result = await db
+		.prepare(
+			`UPDATE scheduled_messages
+       SET status = 'sending', updated_at = datetime('now')
+       WHERE id = ? AND status = 'pending'`
+		)
+		.bind(id)
+		.run();
+	return (result?.meta?.changes ?? 0) === 1;
+}
+
+/**
  * Mark a scheduled message as sent
  * @param {D1Database} db
  * @param {number} id
@@ -238,6 +256,7 @@ export async function processScheduledMessages(db, botToken) {
 	const results = { sent: 0, failed: 0, errors: [] };
 
 	for (const msg of messages) {
+		if (!(await claimMessageForSending(db, msg.id))) continue;
 		try {
 			const payload = JSON.parse(msg.message_payload);
 

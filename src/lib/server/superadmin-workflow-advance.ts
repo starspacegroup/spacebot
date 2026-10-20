@@ -168,7 +168,57 @@ async function loadPinnedTemplate(db, run) {
 /**
  * Advance a run by at most one node. See module docs for the contract.
  */
-export async function advanceSuperadminWorkflowRun({
+const RUN_LEASE_SECONDS = 15 * 60;
+const LEASE_BUSY_RETRY_SECONDS = 5;
+
+/**
+ * Exclusive lease on a run for one advance (security review 2026-10-20, #9).
+ * Two advance calls for the same run used to read the same cursor and both run
+ * that node's operation; now only the caller whose UPDATE wins proceeds. The
+ * lease expires on its own if the holder dies.
+ */
+async function acquireRunLease(db, runId): Promise<boolean> {
+	const res = await db
+		.prepare(
+			`UPDATE superadmin_workflow_runs
+       SET lease_until = datetime('now', ?)
+       WHERE id = ? AND (lease_until IS NULL OR lease_until <= datetime('now'))`
+		)
+		.bind(`+${RUN_LEASE_SECONDS} seconds`, runId)
+		.run();
+	return (res?.meta?.changes ?? 0) === 1;
+}
+
+async function releaseRunLease(db, runId) {
+	await db
+		.prepare(`UPDATE superadmin_workflow_runs SET lease_until = NULL WHERE id = ?`)
+		.bind(runId)
+		.run();
+}
+
+export async function advanceSuperadminWorkflowRun(
+	args: AdvanceArgs
+): Promise<AdvanceResult | null> {
+	const run = await getSuperadminWorkflowRun(args.db, args.runId);
+	if (!run) return null;
+
+	if (TERMINAL_STATUSES.has(run.status)) {
+		return result(run, run.status, { done: true });
+	}
+
+	if (!(await acquireRunLease(args.db, run.id))) {
+		return result(run, run.status, {
+			wait: { type: 'sleep', seconds: LEASE_BUSY_RETRY_SECONDS },
+		});
+	}
+	try {
+		return await advanceLeasedRun(args);
+	} finally {
+		await releaseRunLease(args.db, run.id);
+	}
+}
+
+async function advanceLeasedRun({
 	db,
 	platform,
 	fetch,
