@@ -40,13 +40,13 @@
 		token,
 		guildId,
 		preview = null,
-	} = $props<{
+	}: {
 		base: string;
 		token: string;
 		guildId: string;
 		/** Dev only: a canned view, so layouts can be checked without Discord. */
 		preview?: View | null;
-	}>();
+	} = $props();
 
 	let view = $state<View | null>(null);
 	let problem = $state('');

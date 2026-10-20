@@ -19,7 +19,7 @@
 		sample = false,
 		top,
 		children,
-	} = $props<{
+	}: {
 		title: string;
 		accent?: string;
 		/** The active tab's colour, when it differs from the accent (grey when out). */
@@ -32,7 +32,7 @@
 		sample?: boolean;
 		top?: Snippet;
 		children: Snippet;
-	}>();
+	} = $props();
 </script>
 
 <div class="lcars" style:--acc={accent} style:--tab={tab ?? accent}>

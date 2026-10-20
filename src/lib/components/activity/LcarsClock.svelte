@@ -5,7 +5,7 @@
 		value,
 		pct = 0,
 		colour = 'var(--o)',
-	} = $props<{ label: string; value: string; pct?: number; colour?: string }>();
+	}: { label: string; value: string; pct?: number; colour?: string } = $props();
 </script>
 
 <div class="clock" style:--clk={colour} role="timer" aria-label="{label}: {value}">

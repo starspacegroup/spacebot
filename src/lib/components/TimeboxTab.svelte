@@ -20,7 +20,15 @@
 		deafen: 'none' | 'focus' | 'whole';
 	};
 
-	const { timeboxes, loaded, now, help, act, busy, error } = $props<{
+	const {
+		timeboxes,
+		loaded,
+		now,
+		help,
+		act,
+		busy,
+		error,
+	}: {
 		timeboxes: Timebox[];
 		loaded: boolean;
 		now: number;
@@ -28,7 +36,7 @@
 		act: (id: number, action: 'pause' | 'resume' | 'skip' | 'stop') => void;
 		busy: boolean;
 		error: string;
-	}>();
+	} = $props();
 </script>
 
 {#if timeboxes.length > 0}
