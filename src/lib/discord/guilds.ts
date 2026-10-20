@@ -1,7 +1,9 @@
 /**
  * Discord Guilds Cache Helper
  *
- * Caches guild data using in-memory cache with cookie fallback.
+ * Caches guild data in server memory only. Guild lists decide authorization,
+ * so they are never read back from a (client-writable) cookie — the old
+ * `cached_*` cookies let anyone claim ADMINISTRATOR on any guild.
  * The cache is stored per-user and has a configurable TTL.
  */
 
@@ -24,18 +26,6 @@ const MANAGE_GUILD = BigInt(0x20);
 // In-memory cache for guilds (keyed by a hash of the access token)
 /** @type {Map<string, {data: any, timestamp: number}>} */
 const memoryCache = new Map();
-
-/**
- * Generate a simple hash of the access token for cache key
- * @param {string} token
- * @returns {string}
- */
-function hashToken(token) {
-	// Simple hash - just use first 16 chars + last 8 chars
-	// This is NOT cryptographic, just for cache keying
-	if (token.length < 24) return token;
-	return `${token.slice(0, 16)}...${token.slice(-8)}`;
-}
 
 /**
  * Get from in-memory cache
@@ -111,7 +101,7 @@ export async function getUserGuilds(accessToken, cookies, forceRefresh = false) 
 		return [];
 	}
 
-	const cacheKey = `user_guilds_${hashToken(accessToken)}`;
+	const cacheKey = `user_guilds_${accessToken}`;
 
 	// Check in-memory cache first (fastest)
 	if (!forceRefresh) {
@@ -124,17 +114,6 @@ export async function getUserGuilds(accessToken, cookies, forceRefresh = false) 
 			return memCached;
 		}
 
-		// Fallback to cookie cache
-		const cookieCached = getCachedGuilds(cookies, 'user_guilds');
-		if (cookieCached) {
-			log.debug(
-				'[Guilds Cache] Using cookie cached user guilds, count:',
-				cookieCached.length
-			);
-			// Populate in-memory cache from cookie
-			setMemoryCache(cacheKey, cookieCached);
-			return cookieCached;
-		}
 		log.debug('[Guilds Cache] No valid cache for user_guilds');
 	}
 
@@ -164,9 +143,6 @@ export async function getUserGuilds(accessToken, cookies, forceRefresh = false) 
 		// Cache in memory (always works, regardless of size)
 		setMemoryCache(cacheKey, guilds);
 
-		// Try to cache in cookie (may fail if too large, but that's okay)
-		setCachedGuilds(cookies, 'user_guilds', guilds);
-
 		return guilds;
 	} catch (error) {
 		log.error('[Guilds Cache] Error fetching user guilds:', error);
@@ -192,7 +168,7 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
 		return new Set();
 	}
 
-	const cacheKey = `bot_guild_ids_${hashToken(botToken)}`;
+	const cacheKey = `bot_guild_ids_${botToken}`;
 
 	// Check in-memory cache first
 	if (!forceRefresh) {
@@ -200,14 +176,6 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
 		if (memCached) {
 			log.debug('[Guilds Cache] Using in-memory cached bot guild IDs');
 			return new Set(memCached);
-		}
-
-		// Fallback to cookie cache
-		const cookieCached = getCachedGuilds(cookies, 'bot_guild_ids');
-		if (cookieCached) {
-			log.debug('[Guilds Cache] Using cookie cached bot guild IDs');
-			setMemoryCache(cacheKey, cookieCached);
-			return new Set(cookieCached);
 		}
 	}
 
@@ -237,9 +205,6 @@ export async function getBotGuildIds(botToken, cookies, forceRefresh = false) {
 		// Cache in memory
 		setMemoryCache(cacheKey, guildIds);
 
-		// Try to cache in cookie (store as array for JSON serialization)
-		setCachedGuilds(cookies, 'bot_guild_ids', guildIds);
-
 		return new Set(guildIds);
 	} catch (error) {
 		log.error('[Guilds Cache] Error fetching bot guilds:', error);
@@ -265,13 +230,10 @@ export async function getBotGuildsWithDetails(botToken, cookies, forceRefresh = 
 		return [];
 	}
 
-	// Check cache first
+	const cacheKey = `bot_guilds_details_${botToken}`;
 	if (!forceRefresh) {
-		const cached = getCachedGuilds(cookies, 'bot_guilds_details');
-		if (cached) {
-			log.debug('[Guilds Cache] Using cached bot guilds with details');
-			return cached;
-		}
+		const cached = getMemoryCache(cacheKey);
+		if (cached) return cached;
 	}
 
 	// Fetch from Discord API
@@ -296,8 +258,7 @@ export async function getBotGuildsWithDetails(botToken, cookies, forceRefresh = 
 			botIsInServer: true,
 		}));
 
-		// Cache the result
-		setCachedGuilds(cookies, 'bot_guilds_details', guildsWithDetails);
+		setMemoryCache(cacheKey, guildsWithDetails);
 
 		return guildsWithDetails;
 	} catch (error) {
@@ -509,65 +470,4 @@ export function invalidateGuildCache(cookies) {
 
 	// Clear in-memory cache entirely to ensure fresh data on next request
 	memoryCache.clear();
-}
-
-// --- Private helper functions ---
-
-/**
- * Get cached guilds from cookie
- * @param {import('@sveltejs/kit').Cookies} cookies
- * @param {string} key - Cache key
- * @returns {Array|null} - Cached data or null if expired/missing
- */
-function getCachedGuilds(cookies, key) {
-	try {
-		const cached = cookies.get(`cached_${key}`);
-		if (!cached) return null;
-
-		const { data, timestamp } = JSON.parse(cached);
-		const age = (Date.now() - timestamp) / 1000;
-
-		if (age > CACHE_TTL) {
-			log.debug(`[Guilds Cache] Cache expired for ${key} (age: ${age}s)`);
-			return null;
-		}
-
-		return data;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Set cached guilds in cookie
- * @param {import('@sveltejs/kit').Cookies} cookies
- * @param {string} key - Cache key
- * @param {Array} data - Data to cache
- */
-function setCachedGuilds(cookies, key, data) {
-	const cacheValue = JSON.stringify({
-		data,
-		timestamp: Date.now(),
-	});
-
-	// Skip caching if data is too large (cookies have ~4KB limit per cookie)
-	// This is expected for users with many guilds - in-memory cache handles it
-	const MAX_COOKIE_SIZE = 3500; // Leave room for cookie metadata
-	if (cacheValue.length > MAX_COOKIE_SIZE) {
-		log.debug(
-			`[Guilds Cache] Data too large for cookie (${cacheValue.length} bytes), using in-memory cache only for ${key}`
-		);
-		return;
-	}
-
-	// Only use secure cookies in production
-	const isProduction = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
-
-	cookies.set(`cached_${key}`, cacheValue, {
-		path: '/',
-		httpOnly: true,
-		secure: isProduction,
-		sameSite: 'lax',
-		maxAge: CACHE_TTL,
-	});
 }
