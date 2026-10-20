@@ -139,14 +139,15 @@ export function createNegotiationHandler({
 	const expectedPath = Buffer.from(`/callback/${nonce}`);
 
 	return (req: IncomingMessage, res: ServerResponse) => {
-		res.setHeader('access-control-allow-origin', expectedOrigin);
 		res.setHeader('vary', 'origin');
 
-		const origin = req.headers.origin;
-		if (origin !== undefined && origin !== expectedOrigin) {
+		// Browsers always send Origin on cross-origin POSTs; require an exact
+		// match so a missing or lookalike origin cannot hand off a token.
+		if (req.headers.origin !== expectedOrigin) {
 			writeHtml(res, 403, '<h1>Forbidden</h1>');
 			return;
 		}
+		res.setHeader('access-control-allow-origin', expectedOrigin);
 
 		if (req.method === 'OPTIONS') {
 			res.statusCode = 204;
@@ -175,6 +176,11 @@ export function createNegotiationHandler({
 			chunks.push(Buffer.from(chunk));
 		});
 		req.on('end', () => {
+			// Another callback may have won while this body was in flight.
+			if (consumed) {
+				writeHtml(res, 410, '<h1>Negotiation ended</h1>');
+				return;
+			}
 			const token = parseIncomingPayload(Buffer.concat(chunks).toString('utf8'));
 			if (!token) {
 				writeHtml(res, 400, '<h1>Invalid payload</h1><p>Token was not accepted.</p>');
