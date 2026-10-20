@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { safeReturnPath } from '$lib/server/safe-return-path.js';
 import { log } from '$lib/db/logger.js';
 import { invalidateGuildCache } from '$lib/discord/guilds.js';
 import { upsertUser } from '$lib/db/users.js';
@@ -296,15 +297,14 @@ export async function GET({ request, url, cookies, platform }) {
 			// the Discord API, not this table, so nothing is lost by waiting.
 
 			// Redirect to returnTo if set (e.g. upgrade flow), otherwise the installed server dashboard
+			const requestedReturn = safeReturnPath(flowData.returnTo);
 			const installRedirect =
-				flowData.returnTo && flowData.returnTo !== '/admin'
-					? flowData.returnTo
-					: `/admin/${tokenData.guild.id}`;
+				requestedReturn !== '/admin' ? requestedReturn : `/admin/${tokenData.guild.id}`;
 			throw redirect(302, installRedirect);
 		}
 
 		// Standard login flow - redirect to return URL or admin
-		const returnTo = flowData.returnTo || '/admin';
+		const returnTo = safeReturnPath(flowData.returnTo);
 		console.log('[OAuth Callback] Login complete, redirecting to:', returnTo);
 		throw redirect(302, returnTo);
 	} catch (error) {

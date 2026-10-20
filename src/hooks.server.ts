@@ -15,6 +15,7 @@ import {
 } from '$lib/server/discord-session.js';
 import { checkRateLimit } from '$lib/server/rate-limit.js';
 import { authorizePageMutation } from '$lib/server/action-guard.js';
+import { safeReturnPath } from '$lib/server/safe-return-path.js';
 import {
 	establishSession,
 	getSessionSecret,
@@ -468,7 +469,7 @@ async function appHandle({ event, resolve }) {
 					}
 				}
 
-				const returnTo = url.searchParams.get('return_to') || '/admin';
+				const returnTo = safeReturnPath(url.searchParams.get('return_to'));
 				// Use SvelteKit's redirect to ensure cookies are properly sent
 				throw redirect(302, returnTo);
 			}
