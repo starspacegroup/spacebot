@@ -105,7 +105,8 @@
 	}
 	.big {
 		font-size: min(4.5em, 22vw);
-		line-height: 0.9;
+		line-height: 1;
+		padding-bottom: 0.06em;
 		font-weight: 700;
 		letter-spacing: 0.06em;
 		font-variant-numeric: tabular-nums;
@@ -113,26 +114,46 @@
 	.first .big {
 		font-size: min(9.1em, 30vw);
 	}
+	/* One bar per focus block: a track cut into tenths, filled from the left, square at
+	   the start and rounded at the end like an LCARS elbow. */
 	.segs {
 		display: flex;
 		gap: 0.55em;
 		max-width: 42em;
+		margin: 0.5em 0 0.35em;
 	}
 	.segs span {
 		flex: 1;
-		height: 1.27em;
-		border-radius: 0.64em;
+		height: 0.95em;
+		border-radius: 0.2em 0.5em 0.5em 0.2em;
 		background: var(--well);
 		overflow: hidden;
+		position: relative;
+	}
+	.segs span::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: repeating-linear-gradient(
+			90deg,
+			transparent 0,
+			transparent calc(10% - 0.14em),
+			#000 calc(10% - 0.14em),
+			#000 10%
+		);
+		pointer-events: none;
 	}
 	.segs i {
 		display: block;
 		height: 100%;
+		border-radius: 0.2em 0 0 0.2em;
+		transition: width 1s linear;
 	}
 	.ctl {
 		display: flex;
-		gap: 0.6em;
+		gap: 0.7em;
 		flex-wrap: wrap;
+		margin-top: 0.9em;
 	}
 	.first .st:last-of-type {
 		font-size: 1.3em;

@@ -158,9 +158,7 @@
 			const shared = timeboxes[0]?.kind === 'shared';
 			return plain(
 				'Timebox · SpaceBot',
-				timeboxes.length
-					? `${shared ? 'Shared' : 'Your'} countdown · read only`
-					: 'Read only'
+				timeboxes.length ? `${shared ? 'Shared' : 'Your'} countdown` : 'Standing by'
 			);
 		}
 		return plain(`${name} · SpaceBot`);
