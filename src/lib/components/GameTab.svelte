@@ -792,4 +792,11 @@
 		color: var(--rr);
 		overflow-wrap: anywhere;
 	}
+	/* A phone is short: the picked row already says "Your vote", so the big banner
+	   would only push the list and Skip off the screen. */
+	@media (max-width: 760px) {
+		.banner {
+			display: none;
+		}
+	}
 </style>

@@ -582,7 +582,8 @@ html:has(.lcars) body {
 		grid-template-columns: minmax(0, 1fr);
 		grid-template-rows: auto auto minmax(0, 1fr) auto;
 		font-size: clamp(13px, 3.6vw, 17px);
-		padding: 0.6em 0.75em;
+		padding: max(0.6em, env(safe-area-inset-top)) max(0.75em, env(safe-area-inset-right))
+			max(0.6em, env(safe-area-inset-bottom)) max(0.75em, env(safe-area-inset-left));
 	}
 	.lcars .eT,
 	.lcars .eB {
@@ -596,11 +597,24 @@ html:has(.lcars) body {
 	.lcars .tb .seg {
 		display: none;
 	}
+	/* The title gets its own line; the server picker and the sample chip sit under it,
+	   so the server's name is readable instead of cut to two letters. */
+	.lcars .tb {
+		flex-wrap: wrap;
+		row-gap: 0.15em;
+	}
 	.lcars .tb h1 {
 		font-size: 1.9em;
 		margin-left: 0;
 		margin-right: auto;
 		order: -1;
+		flex: 1 1 100%;
+	}
+	.lcars .tb .guild {
+		flex: 1 1 0;
+	}
+	.lcars .tb .sample {
+		margin-top: 0;
 	}
 	.lcars .sd {
 		flex-direction: row;
