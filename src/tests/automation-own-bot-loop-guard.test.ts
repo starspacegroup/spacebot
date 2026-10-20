@@ -68,7 +68,7 @@ describe('SEND_MESSAGE channel_source', () => {
 			send,
 			discord: {
 				channels: {
-					fetch: vi.fn(async (id: string) => ({ id, send })),
+					fetch: vi.fn(async (id: string) => ({ id, guild_id: '111', send })),
 				},
 			},
 		};

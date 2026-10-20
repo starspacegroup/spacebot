@@ -22,6 +22,7 @@ import { createServer } from 'http';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { loadSecrets, getSecret } from '../src/lib/secrets.js';
 import { deploy } from './deploy-runner.js';
+import { readBoundedBody } from './bounded-body.js';
 
 // Load dotenv first, then override with GCP secrets if available
 import 'dotenv/config';
@@ -36,6 +37,10 @@ import 'dotenv/config';
 // empty log. scripts/cron.ts already had this shape; this one did not.
 
 const BRANCH = 'main';
+
+// GitHub push payloads for normal pushes are a few KB; 2 MiB leaves headroom
+// while capping what an unauthenticated caller can make us buffer.
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 let SECRET;
 
@@ -64,11 +69,14 @@ function createWebhookServer() {
 			return;
 		}
 
-		const chunks = [];
-		req.on('data', (chunk) => chunks.push(chunk));
-		req.on('end', () => {
-			const body = Buffer.concat(chunks);
+		readBoundedBody(req, MAX_BODY_BYTES).then(handleBody, () => {
+			if (!res.headersSent) {
+				res.writeHead(413, { Connection: 'close' });
+				res.end('Payload too large');
+			}
+		});
 
+		function handleBody(body) {
 			// Verify signature
 			const signature = req.headers['x-hub-signature-256'];
 			if (!verifySignature(body, signature)) {
@@ -125,7 +133,7 @@ function createWebhookServer() {
 			} catch {
 				// Errors are already logged inside the deploy runner.
 			}
-		});
+		}
 	});
 }
 
@@ -140,7 +148,11 @@ async function main() {
 
 	const port = getSecret('DEPLOY_WEBHOOK_PORT') || 9090;
 
-	createWebhookServer().listen(port, () => {
+	const server = createWebhookServer();
+	server.headersTimeout = 10_000;
+	server.requestTimeout = 15_000;
+	server.keepAliveTimeout = 5_000;
+	server.listen(port, () => {
 		console.log(`\n🔗 Deploy webhook listening on port ${port}`);
 		console.log(`   Watching for pushes to ${BRANCH}\n`);
 	});

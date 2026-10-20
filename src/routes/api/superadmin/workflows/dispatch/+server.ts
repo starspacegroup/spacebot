@@ -76,6 +76,21 @@ async function hasRunThisMinute(db, templateId, minuteSql) {
 }
 
 /**
+ * Atomic per-minute claim (security review 2026-10-20, #9): the primary key
+ * on (template_id, scheduled_minute) lets exactly one overlapping tick win.
+ */
+async function claimCronMinute(db, templateId, minuteSql) {
+	const res = await db
+		.prepare(
+			`INSERT OR IGNORE INTO superadmin_workflow_cron_claims (template_id, scheduled_minute)
+     VALUES (?, ?)`
+		)
+		.bind(templateId, minuteSql)
+		.run();
+	return (res?.meta?.changes ?? 0) === 1;
+}
+
+/**
  * Watchdog: recover runs the durable path lost.
  *  - `queued` runs older than 2 min: the start message was dropped → re-enqueue
  *    (idempotent: deterministic instance ids make duplicate creates no-ops).
@@ -237,6 +252,10 @@ export async function POST({ request, cookies, platform, fetch }) {
 	const inlineExecutions = [];
 
 	for (const template of due) {
+		if (!(await claimCronMinute(db, template.id, minuteSql))) {
+			skipped.push({ id: template.id, slug: template.slug, reason: 'already_dispatched' });
+			continue;
+		}
 		const created = await createSuperadminWorkflowRun(db, template.id, null, {
 			status: 'queued',
 			trigger_source: 'cron',

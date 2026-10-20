@@ -5,6 +5,7 @@
  * for LLM-based conversations with function calling capabilities.
  */
 
+import { SESSION_USER_TOOLS, authorizeToolCall, buildToolAuthzContext } from './tool-authz.js';
 import { log } from '../log.js';
 import { getMCPClient, formatToolsForPrompt, MCP_TOOLS } from './mcp-client.js';
 import { quoteNameForPrompt } from '../discord/markdown.js';
@@ -746,27 +747,26 @@ async function executeToolCalls(toolCalls, env, userId = null, session: any = {}
 		];
 	}
 
-	// These act on the DM user's own machines or their own account. The user id
-	// MUST come from the authenticated session, never from model-supplied args,
-	// or a crafted tool call could target another account's runners or rewrite
-	// somebody else's preferences.
-	const SESSION_USER_TOOLS = new Set([
-		'list_local_runners',
-		'get_local_runner_activity',
-		'start_local_runner_task',
-		'get_local_runner_job',
-		'cancel_local_runner_job',
-		'retry_local_runner_job',
-		'discover_vscode_instances',
-		'open_vscode_workspace',
-		'send_vscode_copilot_message',
-		'update_user_timezone',
-	]);
+	// Account tools are pinned to the session user; everything else is checked
+	// against the server-built guild allowlist. No context means no guilds.
+	const authz =
+		session.toolAuthz ?? buildToolAuthzContext({ isSuperAdmin: false, managedGuilds: [] });
 
 	const results = [];
 
 	for (const call of toolCalls) {
 		log.info(`[AI] Executing tool: ${call.tool}`);
+
+		const decision = await authorizeToolCall(call.tool, call.args || {}, authz);
+		if (!decision.ok) {
+			log.warn(`[AI] Tool call refused: ${call.tool} — ${decision.error}`);
+			results.push({
+				tool: call.tool,
+				args: call.args,
+				result: { success: false, error: decision.error },
+			});
+			continue;
+		}
 
 		const forceSessionUser = userId && SESSION_USER_TOOLS.has(call.tool);
 
@@ -1148,7 +1148,16 @@ export async function generateChatResponse(options, env) {
 	// Handed to every tool call: what the *user* said is read on the user's clock,
 	// with the server's zone as the stand-in for when we don't know theirs — and
 	// neither known means the event tools stop and ask instead of guessing.
-	const sessionContext = { userTimezone, guildTimezone, userName };
+	const sessionContext = {
+		userTimezone,
+		guildTimezone,
+		userName,
+		toolAuthz: buildToolAuthzContext({
+			isSuperAdmin,
+			managedGuilds,
+			botToken: env?.DISCORD_BOT_TOKEN,
+		}),
+	};
 
 	// Local Ollama path (opt-in via AI_PROVIDER=ollama). No MCP tool-calling —
 	// local models don't use the Workers-AI tool format — so this is a plain

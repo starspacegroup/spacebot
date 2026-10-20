@@ -117,6 +117,29 @@ export class FakeWorkflowDb {
 			return this.templates.filter((t) => !t.archived).slice(0, Number(args[0]) || 200);
 		}
 
+		// --- cron minute claims (PRIMARY KEY template_id, scheduled_minute) ---
+		if (sql.startsWith('INSERT OR IGNORE INTO superadmin_workflow_cron_claims')) {
+			const key = `${args[0]}|${args[1]}`;
+			const self: any = this;
+			self.cronClaims ??= new Set<string>();
+			if (self.cronClaims.has(key)) return { success: true, meta: { changes: 0 } };
+			self.cronClaims.add(key);
+			return { success: true, meta: { changes: 1 } };
+		}
+
+		// --- run lease (time is not modelled: held until released) ---
+		if (sql.startsWith('UPDATE superadmin_workflow_runs SET lease_until = datetime')) {
+			const row: any = this.runs.find((r) => r.id === Number(args[1]));
+			if (!row || row.lease_until) return { success: true, meta: { changes: 0 } };
+			row.lease_until = 'held';
+			return { success: true, meta: { changes: 1 } };
+		}
+		if (sql.startsWith('UPDATE superadmin_workflow_runs SET lease_until = NULL')) {
+			const row: any = this.runs.find((r) => r.id === Number(args[0]));
+			if (row) row.lease_until = null;
+			return { success: true, meta: { changes: row ? 1 : 0 } };
+		}
+
 		// --- runs ---
 		if (sql.startsWith('INSERT INTO superadmin_workflow_runs')) {
 			const row = {

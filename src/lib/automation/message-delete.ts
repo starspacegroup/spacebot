@@ -14,6 +14,7 @@
  * ([[message-purge]]); this is the inline, run-to-completion variant.
  */
 
+import { fetchGuildChannel } from './channel-scope.js';
 import { log } from '../log.js';
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -99,7 +100,7 @@ export async function purgeMessages(
 		if (maxMessages != null && totalDeleted >= maxMessages) break;
 		if (totalScanned >= maxScan) break;
 
-		const channel = await discord.channels.fetch(channelId).catch(() => null);
+		const channel = await fetchGuildChannel(discord, channelId, guildId);
 		if (!channel || !channel.messages) {
 			channelResults[channelId] = { error: 'Channel not found or not text-based' };
 			continue;

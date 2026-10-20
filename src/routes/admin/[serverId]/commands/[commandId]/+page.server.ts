@@ -158,7 +158,7 @@ export const actions = {
 
 		const formData = await request.formData();
 		const id = params.commandId;
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 		const isBuiltIn = formData.get('is_built_in') === 'true';
 
 		if (!id || !guildId) {
@@ -364,7 +364,12 @@ export const actions = {
 		updates.dm_permission = false; // Guild commands typically don't work in DMs
 
 		try {
-			const result = await updateCommand(db, parseInt(id), updates);
+			const result = await updateCommand(
+				db,
+				parseInt(id),
+				updates,
+				isBuiltIn && isSuperAdmin ? BUILT_IN_GUILD_ID : params.serverId
+			);
 
 			if (!result.success) {
 				return fail(500, { error: result.error });
@@ -385,14 +390,13 @@ export const actions = {
 		}
 	},
 
-	delete: async ({ request, platform, params }) => {
+	delete: async ({ platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
 			return fail(500, { error: 'Database not available' });
 		}
 
-		const formData = await request.formData();
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 
 		if (!guildId) {
 			return fail(400, { error: 'Guild ID is required' });

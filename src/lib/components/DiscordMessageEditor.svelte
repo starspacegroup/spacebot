@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { escapeHtml, previewLink } from '$lib/preview-html.js';
 	/**
 	 * Discord Message Editor Component
 	 * A rich text editor for Discord messages with:
@@ -429,7 +430,7 @@
 		let html = text;
 
 		// Escape HTML first
-		html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		html = escapeHtml(html);
 
 		// Template variables - highlight them
 		html = html.replace(/\{([^}]+)\}/g, '<span class="preview-variable">{$1}</span>');
@@ -438,7 +439,7 @@
 		html = html.replace(/&lt;#(\d+)&gt;/g, (match, id) => {
 			const channel = flatChannels.find((c) => c.id === id);
 			const name = channel ? channel.name : 'unknown';
-			return `<span class="preview-channel">#${name}</span>`;
+			return `<span class="preview-channel">#${escapeHtml(name)}</span>`;
 		});
 
 		// Role mentions
@@ -446,7 +447,7 @@
 			const role = roles?.find((r) => r.id === id);
 			const name = role ? role.name : 'unknown';
 			const color = role?.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5';
-			return `<span class="preview-role" style="background-color: ${color}20; color: ${color}">@${name}</span>`;
+			return `<span class="preview-role" style="background-color: ${color}20; color: ${color}">@${escapeHtml(name)}</span>`;
 		});
 
 		// User mentions (template-generated)
@@ -462,10 +463,9 @@
 
 		// Links [text](url) - must be before other bracket handling
 		// Strip any <span> tags from the URL part (template variables get wrapped in spans earlier)
-		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, rawUrl) => {
-			const url = rawUrl.replace(/<[^>]+>/g, '');
-			return `<a class="preview-link" href="${url}" target="_blank" rel="noopener">${text}</a>`;
-		});
+		html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, rawUrl) =>
+			previewLink(text, rawUrl)
+		);
 
 		// Bold (must be before italic)
 		html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -791,7 +791,7 @@
 		<div class="editor-preview">
 			<div class="preview-label">Preview</div>
 			<div class="preview-content">
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderPreview() HTML-escapes & < > before building markup (see escaping near top of the function), so the output is sanitized -->
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderPreview() escapes text for element and attribute context (escapeHtml) and links only http(s) URLs (previewLink) (see escaping near top of the function), so the output is sanitized -->
 				{@html renderPreview(value)}
 			</div>
 		</div>

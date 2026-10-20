@@ -9,9 +9,11 @@
  * at a remote URL that SpaceBot can fetch and register.
  */
 
+import { isSafeLinkUrl } from '../safe-link-url.js';
 import { log } from '../log.js';
 import { upsertIntegration } from '../db/integrations.js';
 import { parseEphemeralOptionConditions } from '../command-ephemeral.js';
+import { safeFetch } from '../server/safe-fetch.js';
 
 // ---------------------------------------------------------------------------
 // Manifest schema (what an integration declares)
@@ -189,6 +191,13 @@ export function validateManifest(manifest) {
 	}
 	if (typeof manifest.slug !== 'string' || !/^[a-z0-9][a-z0-9-]*$/.test(manifest.slug)) {
 		return { ok: false, error: "'slug' must be lowercase letters, numbers, and hyphens" };
+	}
+
+	for (const [key, value] of Object.entries(manifest)) {
+		const isLinkField = key === 'homepage' || key.endsWith('_url');
+		if (isLinkField && value != null && value !== '' && !isSafeLinkUrl(value)) {
+			return { ok: false, error: `'${key}' must be an https URL` };
+		}
 	}
 
 	const prefix = `${manifest.slug}.`;
@@ -386,7 +395,7 @@ export function resolveManifestUrl(input) {
  */
 export async function fetchRemoteManifest(url) {
 	try {
-		const response = await fetch(url, {
+		const response = await safeFetch(url, {
 			headers: { Accept: 'application/json' },
 			signal: AbortSignal.timeout(10_000),
 		});

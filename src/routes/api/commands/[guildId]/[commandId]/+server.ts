@@ -105,7 +105,7 @@ export async function PATCH({ params, request, cookies, platform }) {
 					log.warn('Plan limit check failed, allowing toggle:', err);
 				}
 			}
-			const result = await updateCommand(db, id, { enabled: body.enabled });
+			const result = await updateCommand(db, id, { enabled: body.enabled }, guildId);
 			if (!result.success) {
 				return json({ error: 'Failed to toggle command' }, { status: 500 });
 			}
@@ -137,7 +137,7 @@ export async function PATCH({ params, request, cookies, platform }) {
 			}
 		}
 
-		const result = await updateCommand(db, id, body);
+		const result = await updateCommand(db, id, body, guildId);
 
 		if (!result.success) {
 			return json({ error: result.error }, { status: 400 });

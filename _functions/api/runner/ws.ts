@@ -23,6 +23,12 @@
  * (standard WebSocket clients cannot set custom HTTP headers).
  */
 
+import {
+	boundArtifactRefs,
+	boundEventDetails,
+	jobIsActiveForRunner,
+} from '../../../src/lib/server/runner-limits.js';
+
 const MAX_OUTPUT_BYTES = 65_536;
 const MAX_EVENT_MESSAGE_CHARS = 2_000;
 const JOB_POLL_MIN_INTERVAL_MS = 500;
@@ -793,7 +799,7 @@ export async function onRequestGet(context) {
 					eventType: msg.eventType,
 					level: msg.level,
 					message: msg.message,
-					details: msg.details,
+					details: boundEventDetails(msg.details),
 					jobId: typeof msg.jobId === 'number' ? msg.jobId : null,
 				});
 			} catch (e) {
@@ -809,12 +815,15 @@ export async function onRequestGet(context) {
 				return; // ignore invalid
 			}
 			try {
+				// Nothing is written for a job this runner does not currently hold.
+				if (!(await jobIsActiveForRunner(db, auth.tokenId, state.instanceId, jobId)))
+					return;
 				const persistedArtifactRefs = await persistArtifacts(
 					db,
 					auth,
 					state,
 					jobId,
-					artifactRefs
+					boundArtifactRefs(artifactRefs)
 				);
 
 				const update = await storeResult(db, auth.tokenId, state.instanceId, jobId, {

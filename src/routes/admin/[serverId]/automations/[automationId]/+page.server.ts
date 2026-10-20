@@ -107,7 +107,7 @@ export const actions = {
 
 		const formData = await request.formData();
 		const id = params.automationId;
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 
 		if (!id || !guildId) {
 			return fail(400, { error: 'Automation ID and Guild ID are required' });
@@ -197,14 +197,13 @@ export const actions = {
 		}
 	},
 
-	delete: async ({ request, platform, params }) => {
+	delete: async ({ platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
 			return fail(500, { error: 'Database not available' });
 		}
 
-		const formData = await request.formData();
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 
 		if (!guildId) {
 			return fail(400, { error: 'Guild ID is required' });

@@ -7,6 +7,15 @@ Model Context Protocol (MCP) server that provides read access to SpaceBot data i
 - **Commands** - Custom slash commands and their usage logs
 - **Server Settings** - Guild configurations, permissions, and preferences
 
+## Read-only by default
+
+Without `SPACEBOT_MCP_WRITE=true` the server advertises and executes only read
+tools. With it, scheduled events can be created, but only through
+`preview_*` → `confirm_*`: the preview returns a `previewId` (single use, 10
+minutes) bound to a digest of the exact payload, and confirm refuses a missing,
+expired, reused or changed one. The direct `create_*` tools are never
+advertised or callable.
+
 ## Setup
 
 ### 1. Install Dependencies

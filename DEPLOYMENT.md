@@ -58,16 +58,17 @@ Enter the following build configuration:
 
 Click on **Environment variables** and add the following:
 
-| Variable Name           | Value                       | Notes                                            |
-| ----------------------- | --------------------------- | ------------------------------------------------ |
-| `DISCORD_PUBLIC_KEY`    | Your Discord public key     | From Discord Developer Portal                    |
-| `DISCORD_CLIENT_ID`     | Your Discord application ID | From Discord Developer Portal                    |
-| `DISCORD_CLIENT_SECRET` | Your Discord client secret  | From OAuth2 settings                             |
-| `DISCORD_BOT_TOKEN`     | Your Discord bot token      | From Bot settings                                |
-| `ADMIN_USER_IDS`        | Your Discord user ID(s)     | Comma-separated list for multiple admins         |
-| `CLOUDFLARE_API_TOKEN`  | Your Cloudflare API token   | Needs D1 edit permissions for auto-migrations    |
-| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID  | Required for D1 migrations during build          |
-| `BUN_VERSION`           | `1.2`                       | Tells Cloudflare Pages to use Bun as the runtime |
+| Variable Name           | Value                       | Notes                                                                                  |
+| ----------------------- | --------------------------- | -------------------------------------------------------------------------------------- |
+| `DISCORD_PUBLIC_KEY`    | Your Discord public key     | From Discord Developer Portal                                                          |
+| `DISCORD_CLIENT_ID`     | Your Discord application ID | From Discord Developer Portal                                                          |
+| `DISCORD_CLIENT_SECRET` | Your Discord client secret  | From OAuth2 settings                                                                   |
+| `DISCORD_BOT_TOKEN`     | Your Discord bot token      | From Bot settings                                                                      |
+| `ADMIN_USER_IDS`        | Your Discord user ID(s)     | Comma-separated list for multiple admins                                               |
+| `SESSION_SECRET`        | `openssl rand -base64 48`   | **Required.** Signs the `sb_session` cookie (≥32 chars). Rotating it logs everyone out |
+| `CLOUDFLARE_API_TOKEN`  | Your Cloudflare API token   | Needs D1 edit permissions for auto-migrations                                          |
+| `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID  | Required for D1 migrations during build                                                |
+| `BUN_VERSION`           | `1.2`                       | Tells Cloudflare Pages to use Bun as the runtime                                       |
 
 Optional roadmap integrations:
 

@@ -67,7 +67,7 @@ export async function load({ platform, parent, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-	toggle: async ({ request, platform }) => {
+	toggle: async ({ request, platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
 			return fail(500, { error: 'Database not available' });
@@ -75,7 +75,7 @@ export const actions = {
 
 		const formData = await request.formData();
 		const id = formData.get('id');
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 		const isBuiltIn = formData.get('is_built_in') === 'true';
 		const enabled = formData.get('enabled') === 'true';
 
@@ -106,7 +106,7 @@ export const actions = {
 					enabled,
 				});
 			} else {
-				result = await updateCommand(db, parseInt(id as string), { enabled });
+				result = await updateCommand(db, parseInt(id as string), { enabled }, guildId);
 			}
 
 			if (!result.success) {
@@ -126,7 +126,7 @@ export const actions = {
 		}
 	},
 
-	delete: async ({ request, platform }) => {
+	delete: async ({ request, platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
 			return fail(500, { error: 'Database not available' });
@@ -134,7 +134,7 @@ export const actions = {
 
 		const formData = await request.formData();
 		const id = formData.get('id');
-		const guildId = formData.get('guild_id');
+		const guildId = params.serverId;
 
 		if (!id || !guildId) {
 			return fail(400, { error: 'Command ID and Guild ID are required' });

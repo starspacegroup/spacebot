@@ -25,6 +25,7 @@
 
 import { log } from '../log.js';
 import { getEnabledGuildIntegrations } from '../db/integrations.js';
+import { safeFetch } from '../server/safe-fetch.js';
 
 /** How long the integration's action handler has to respond. Longer than the
  *  command_handler timeout because actions run after the reply is deferred, and
@@ -160,7 +161,7 @@ export async function executeIntegrationAction({
 
 	let data;
 	try {
-		const res = await fetch(handlerUrl, {
+		const res = await safeFetch(handlerUrl, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',

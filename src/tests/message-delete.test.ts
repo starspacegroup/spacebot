@@ -47,6 +47,7 @@ function makeClient(channels: Record<string, FakeMsg[]>, opts: { voice?: string[
 		if (!store.has(channelId)) return null;
 		return {
 			id: channelId,
+			guildId: 'g',
 			name: channelId,
 			isTextBased: () => !voice.has(channelId),
 			isVoiceBased: () => voice.has(channelId),

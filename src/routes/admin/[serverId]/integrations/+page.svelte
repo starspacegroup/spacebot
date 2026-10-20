@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { isSafeLinkUrl } from '$lib/safe-link-url.js';
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 	import { formatDateShort } from '$lib/timezone.js';
@@ -148,7 +149,7 @@
 								{#if integration.author}
 									<span class="meta-item"
 										>{tr('integ.by')}
-										{#if integration.manifest?.author_url}<a
+										{#if isSafeLinkUrl(integration.manifest?.author_url)}<a
 												href={integration.manifest.author_url}
 												target="_blank"
 												rel="noopener noreferrer">{integration.author}</a
@@ -419,7 +420,7 @@
 								</div>
 							{/if}
 
-							{#if integration.manifest?.homepage}
+							{#if isSafeLinkUrl(integration.manifest?.homepage)}
 								<div class="detail-section">
 									<a
 										href={integration.manifest.homepage}

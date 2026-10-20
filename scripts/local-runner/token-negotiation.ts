@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 interface NegotiationOptions {
 	apiUrl: string;
@@ -117,6 +118,79 @@ export function copyTextToClipboard(text: string): ClipboardResult {
 	};
 }
 
+/**
+ * The loopback callback that receives a negotiated token (security review
+ * 2026-10-20, #16). Any web page can POST to 127.0.0.1, so a token is accepted
+ * only on the one-time path carrying this flow's random nonce — known only to
+ * the browser tab this process opened — and only from the SpaceBot origin.
+ * Without this, a malicious page could bind the runner to the attacker's
+ * account and then send it jobs.
+ */
+export function createNegotiationHandler({
+	nonce,
+	expectedOrigin,
+	onToken,
+}: {
+	nonce: string;
+	expectedOrigin: string;
+	onToken: (token: string) => void;
+}) {
+	let consumed = false;
+	const expectedPath = Buffer.from(`/callback/${nonce}`);
+
+	return (req: IncomingMessage, res: ServerResponse) => {
+		res.setHeader('access-control-allow-origin', expectedOrigin);
+		res.setHeader('vary', 'origin');
+
+		const origin = req.headers.origin;
+		if (origin !== undefined && origin !== expectedOrigin) {
+			writeHtml(res, 403, '<h1>Forbidden</h1>');
+			return;
+		}
+
+		if (req.method === 'OPTIONS') {
+			res.statusCode = 204;
+			res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
+			res.setHeader('access-control-allow-headers', 'content-type');
+			res.end();
+			return;
+		}
+
+		const path = Buffer.from(req.url ?? '');
+		const pathMatches =
+			path.length === expectedPath.length && timingSafeEqual(path, expectedPath);
+		if (!pathMatches || req.method !== 'POST' || consumed) {
+			writeHtml(res, 404, '<h1>Not found</h1>');
+			return;
+		}
+
+		const chunks: Buffer[] = [];
+		let size = 0;
+		req.on('data', (chunk) => {
+			size += chunk.length;
+			if (size > 16_384) {
+				req.destroy();
+				return;
+			}
+			chunks.push(Buffer.from(chunk));
+		});
+		req.on('end', () => {
+			const token = parseIncomingPayload(Buffer.concat(chunks).toString('utf8'));
+			if (!token) {
+				writeHtml(res, 400, '<h1>Invalid payload</h1><p>Token was not accepted.</p>');
+				return;
+			}
+			consumed = true;
+			writeHtml(
+				res,
+				200,
+				'<h1>Connected</h1><p>You can close this tab and return to the terminal.</p>'
+			);
+			onToken(token);
+		});
+	};
+}
+
 export async function negotiateRunnerTokenViaBrowser(
 	options: NegotiationOptions
 ): Promise<NegotiationResult> {
@@ -136,38 +210,15 @@ export async function negotiateRunnerTokenViaBrowser(
 			resolve(result);
 		};
 
-		const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-			if (req.method === 'OPTIONS') {
-				res.statusCode = 204;
-				res.setHeader('access-control-allow-origin', '*');
-				res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
-				res.setHeader('access-control-allow-headers', 'content-type');
-				res.end();
-				return;
-			}
-
-			if (req.url !== '/callback' || req.method !== 'POST') {
-				writeHtml(res, 404, '<h1>Not found</h1>');
-				return;
-			}
-
-			const chunks: Buffer[] = [];
-			req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-			req.on('end', () => {
-				const token = parseIncomingPayload(Buffer.concat(chunks).toString('utf8'));
-				res.setHeader('access-control-allow-origin', '*');
-				if (!token) {
-					writeHtml(res, 400, '<h1>Invalid payload</h1><p>Token was not accepted.</p>');
-					return;
-				}
-				writeHtml(
-					res,
-					200,
-					'<h1>Connected</h1><p>You can close this tab and return to the terminal.</p>'
-				);
-				finish({ ok: true, token, browserUrl });
-			});
-		});
+		const nonce = randomBytes(32).toString('hex');
+		const expectedOrigin = new URL(options.apiUrl).origin;
+		const server = createServer(
+			createNegotiationHandler({
+				nonce,
+				expectedOrigin,
+				onToken: (token) => finish({ ok: true, token, browserUrl }),
+			})
+		);
 
 		server.listen(0, '127.0.0.1', () => {
 			const address = server.address();
@@ -180,7 +231,7 @@ export async function negotiateRunnerTokenViaBrowser(
 				return;
 			}
 
-			const callbackUrl = `http://127.0.0.1:${address.port}/callback`;
+			const callbackUrl = `http://127.0.0.1:${address.port}/callback/${nonce}`;
 			const tokenName = `${options.displayName} (negotiated)`;
 			const browserUrl = `${options.apiUrl.replace(/\/$/, '')}/api/account/runners/negotiate?callback=${encodeURIComponent(callbackUrl)}&name=${encodeURIComponent(tokenName)}`;
 			const opened = openExternalUrl(browserUrl);
