@@ -167,6 +167,7 @@ describe('a rate-limited automation send is queued, not dropped', () => {
 		const discord = {
 			channels: {
 				fetch: async () => ({
+					guild_id: 'g1',
 					send: async () => {
 						const error: any = new Error('Discord rate limited');
 						error.rateLimited = true;

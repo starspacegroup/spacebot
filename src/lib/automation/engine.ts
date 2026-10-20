@@ -3,6 +3,7 @@
  * Processes events and executes matching automations
  */
 
+import { fetchGuildChannel } from './channel-scope.js';
 import { getTriggeredAutomations, logAutomationExecution } from '../db/automations.js';
 import { executeIntegrationAction, isIntegrationActionType } from '../integrations/actions.js';
 import {
@@ -920,7 +921,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					};
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
@@ -1095,7 +1096,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					};
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
@@ -1149,7 +1150,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					};
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
@@ -1525,7 +1526,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: false, error: 'Missing channel ID' };
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
@@ -1592,7 +1593,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: false, error: 'Missing channel or thread name' };
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
@@ -1743,7 +1744,7 @@ export async function executeAction(automation, event, context, discord, db: any
 					return { success: false, error: 'No channel ID available' };
 				}
 
-				const channel = await discord.channels.fetch(channelId).catch(() => null);
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
 				if (!channel) {
 					return { success: false, error: 'Channel not found' };
 				}
