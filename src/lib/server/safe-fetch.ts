@@ -118,7 +118,7 @@ export function assertPublicHttpUrl(raw: string | URL): URL {
 	return url;
 }
 
-async function readCapped(response: Response, maxBytes: number): Promise<Uint8Array> {
+async function readCapped(response: Response, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
 	const declared = Number(response.headers.get('content-length'));
 	if (Number.isFinite(declared) && declared > maxBytes) {
 		await response.body?.cancel();
