@@ -68,6 +68,19 @@ export const openApiDocument = {
 				responses: { '200': { description: 'Command list' } },
 			},
 		},
+		'/commands/permissions': {
+			get: {
+				summary:
+					'Which commands a regular member (@everyone) can actually run, combining SpaceBot config with Discord registration and Integrations permission overrides (scope commands:read)',
+				responses: {
+					'200': {
+						description:
+							'Per-command access; discord_error set when Discord was unreachable',
+					},
+					'403': { description: 'Missing scope' },
+				},
+			},
+		},
 		'/automations': {
 			get: {
 				summary: 'List automations',
