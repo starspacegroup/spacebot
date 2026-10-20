@@ -39,5 +39,9 @@ Migration `0075_oldest_command.sql` adds the built-in. It is not in
 `ALWAYS_ENABLED_BUILT_INS`, so a server can turn it off or gate it under
 Commands like any other built-in.
 
-Not built: the caller's own rank ("you are #47"), and account age on a profile
-view.
+The reply ends with "You are #47 of 312." for the member who ran it, in the same
+order as the list (a second `COUNT(*)` query, so the rank stays right when the
+caller is outside the top ten). Bots, and anyone missing from the cache (or, for
+`members`, with no join date), get no line.
+
+Not built: account age on a profile view.

@@ -73,9 +73,14 @@ export type Roster =
 	| { state: 'never_synced' }
 	| { state: 'refreshing' }
 	| { state: 'empty' }
-	| { state: 'ok'; entries: Entry[]; total: number; cachedAt: Date | null };
+	| { state: 'ok'; entries: Entry[]; total: number; cachedAt: Date | null; callerRank?: number };
 
-export async function loadRoster(db, guildId: string, mode: Mode): Promise<Roster> {
+export async function loadRoster(
+	db,
+	guildId: string,
+	mode: Mode,
+	callerId?: string
+): Promise<Roster> {
 	const meta = await db
 		.prepare('SELECT members_last_refreshed FROM guild_cache_metadata WHERE guild_id = ?')
 		.bind(guildId)
@@ -122,7 +127,37 @@ export async function loadRoster(db, guildId: string, mode: Mode): Promise<Roste
 		const since = mode === 'members' ? parseStamp(row.joined_at) : snowflakeToDate(row.user_id);
 		if (since) entries.push({ user_id: String(row.user_id), since });
 	}
-	return entries.length ? { state: 'ok', entries, total, cachedAt } : { state: 'empty' };
+	if (!entries.length) return { state: 'empty' };
+	const callerRank = callerId ? await rankOf(db, guildId, mode, callerId, joinedOnly) : undefined;
+	return { state: 'ok', entries, total, cachedAt, callerRank };
+}
+
+/** 1-based place of one member in the same order the list uses, or undefined if not ranked. */
+async function rankOf(db, guildId: string, mode: Mode, userId: string, joinedOnly: string) {
+	if (!/^\d{15,20}$/.test(userId)) return undefined;
+	const me = await db
+		.prepare(
+			`SELECT joined_at FROM guild_members_cache
+			 WHERE guild_id = ? AND user_id = ? AND is_bot = 0${joinedOnly}`
+		)
+		.bind(guildId, userId)
+		.first();
+	if (!me) return undefined;
+	const before =
+		mode === 'account'
+			? 'CAST(user_id AS INTEGER) < CAST(? AS INTEGER)'
+			: mode === 'newest'
+				? 'CAST(user_id AS INTEGER) > CAST(? AS INTEGER)'
+				: '(joined_at < ? OR (joined_at = ? AND CAST(user_id AS INTEGER) < CAST(? AS INTEGER)))';
+	const binds = mode === 'members' ? [me.joined_at, me.joined_at, userId] : [userId];
+	const row = await db
+		.prepare(
+			`SELECT COUNT(*) AS n FROM guild_members_cache
+			 WHERE guild_id = ? AND is_bot = 0${joinedOnly} AND ${before}`
+		)
+		.bind(guildId, ...binds)
+		.first();
+	return (row?.n ?? 0) + 1;
 }
 
 function cacheNote(cachedAt: Date | null, now: Date): string {
@@ -157,7 +192,8 @@ export function renderRoster(roster: Roster, mode: Mode, now = new Date()): stri
 		(e, i) =>
 			`${i + 1}. <@${e.user_id}> — ${verb} ${formatDate(e.since)}, ${formatAge(e.since, now)} ago`
 	);
-	return `**${title}** (of ${roster.total} members)\n${lines.join('\n')}${cacheNote(roster.cachedAt, now)}`;
+	const you = roster.callerRank ? `\nYou are #${roster.callerRank} of ${roster.total}.` : '';
+	return `**${title}** (of ${roster.total} members)\n${lines.join('\n')}${you}${cacheNote(roster.cachedAt, now)}`;
 }
 
 function reply(content: string, ephemeral: boolean) {
@@ -178,6 +214,7 @@ export async function handleOldestCommand(body, db, now = new Date()) {
 
 	const picked = (body.data?.options ?? []).find((o) => o.name === 'show')?.value;
 	const mode: Mode = picked === 'newest' || picked === 'members' ? picked : 'account';
-	const roster = await loadRoster(db, guildId, mode);
+	const callerId = body.member?.user?.id ?? body.user?.id;
+	const roster = await loadRoster(db, guildId, mode, callerId);
 	return reply(renderRoster(roster, mode, now), roster.state !== 'ok');
 }

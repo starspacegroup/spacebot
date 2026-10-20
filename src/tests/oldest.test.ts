@@ -143,6 +143,47 @@ describe('handleOldestCommand', () => {
 		expect(res.data.content).toContain('not been synced');
 	});
 
+	it('tells the caller their own place, ordered by number not text', async () => {
+		const db = seed([
+			['g1', NEW_19],
+			['g1', OLD_17],
+			['g1', MID_18],
+		]);
+		const ask = (show: string | undefined, id: string) =>
+			handleOldestCommand({ ...body(show), member: { user: { id } } }, db, now);
+		expect((await ask(undefined, NEW_19)).data.content).toContain('You are #3 of 3.');
+		expect((await ask('newest', NEW_19)).data.content).toContain('You are #1 of 3.');
+		expect((await ask(undefined, OLD_17)).data.content).toContain('You are #1 of 3.');
+	});
+
+	it('ranks the caller by join date for members', async () => {
+		const db = seed([
+			['g1', OLD_17, 0, '2024-05-01 10:00:00'],
+			['g1', MID_18, 0, '2021-01-01 00:00:00'],
+		]);
+		const res = await handleOldestCommand(
+			{ ...body('members'), member: { user: { id: OLD_17 } } },
+			db,
+			now
+		);
+		expect(res.data.content).toContain('You are #2 of 2.');
+	});
+
+	it('says nothing about rank for a bot, a stranger, or no caller', async () => {
+		const db = seed([
+			['g1', OLD_17, 1],
+			['g1', MID_18],
+		]);
+		for (const id of [OLD_17, NEW_19, undefined]) {
+			const res = await handleOldestCommand(
+				{ ...body(), member: id ? { user: { id } } : undefined },
+				db,
+				now
+			);
+			expect(res.data.content).not.toContain('You are');
+		}
+	});
+
 	it('renders the refreshing state', () => {
 		expect(renderRoster({ state: 'refreshing' }, 'account', now)).toContain('being refreshed');
 	});
