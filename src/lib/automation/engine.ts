@@ -4,6 +4,7 @@
  */
 
 import { fetchGuildChannel } from './channel-scope.js';
+import { safeRegexTest } from './safe-regex.js';
 import { getTriggeredAutomations, logAutomationExecution } from '../db/automations.js';
 import { executeIntegrationAction, isIntegrationActionType } from '../integrations/actions.js';
 import {
@@ -423,12 +424,7 @@ export function matchesFilters(
 				break;
 
 			case 'content_regex':
-				try {
-					const regex = new RegExp(filterValue, 'i');
-					if (!regex.test(event.details?.content || '')) return false;
-				} catch {
-					return false;
-				}
+				if (!safeRegexTest(filterValue, event.details?.content || '')) return false;
 				break;
 
 			case 'bot_filter':
