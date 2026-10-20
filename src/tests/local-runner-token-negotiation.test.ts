@@ -102,13 +102,19 @@ describe('runner browser callback binding', () => {
 	it('consumes the handoff once even when another request body is already in flight', async () => {
 		const flow = await startFlow();
 		let finishBody!: () => void;
+		let markReceived!: () => void;
+		const received = new Promise<void>((resolve) => (markReceived = resolve));
 		const pending = new Promise<number>((resolve, reject) => {
 			const req = request(
 				flow.callback,
 				{
 					method: 'POST',
 					agent: false,
-					headers: { origin: flow.origin, 'content-type': 'text/plain' },
+					headers: {
+						origin: flow.origin,
+						'content-type': 'text/plain',
+						expect: '100-continue',
+					},
 				},
 				(res) => {
 					res.resume();
@@ -116,11 +122,12 @@ describe('runner browser callback binding', () => {
 				}
 			);
 			req.on('error', reject);
-			req.write(payload.slice(0, 10));
+			// Node's server sends 100 Continue only after dispatching the request handler.
+			req.on('continue', () => req.write(payload.slice(0, 10), () => markReceived()));
+			req.flushHeaders();
 			finishBody = () => req.end(payload.slice(10));
 		});
-		// Let the server receive the partial request before the competing handoff.
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await received;
 		expect((await post(flow.callback, flow.origin)).status).toBe(200);
 		finishBody();
 		expect(await pending).toBe(410);
