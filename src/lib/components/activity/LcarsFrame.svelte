@@ -2,7 +2,7 @@
 	/**
 	 * The LCARS frame around every Activity screen: the elbows, the bars, the
 	 * title in the state colour, and the module nav. The active tab is larger,
-	 * carries the ▶ marker and the state colour, and runs into the content, so
+	 * carries the arrow marker and the state colour, and runs into the content, so
 	 * it is always plain which app you are in. "SpaceBot" is a brand block, not
 	 * a tab.
 	 */
