@@ -53,6 +53,7 @@
 		deafen: 'none' | 'focus' | 'whole';
 	};
 	let timeboxes = $state<TimeboxView[]>([]);
+	let others = $state<any[]>([]);
 	let timeboxLoaded = $state(false);
 	// Dev only: a canned Game view for ?preview=game-*.
 	let gamePreview = $state<any>(null);
@@ -78,8 +79,10 @@
 				body: JSON.stringify({ guild_id: guildId, id, action }),
 			});
 			const json = await res.json().catch(() => ({}));
-			if (res.ok) timeboxes = json.timeboxes ?? [];
-			else timeboxError = json.message ?? 'That did not work.';
+			if (res.ok) {
+				timeboxes = json.timeboxes ?? [];
+				others = json.others ?? [];
+			} else timeboxError = json.message ?? 'That did not work.';
 		} catch {
 			timeboxError = 'Could not reach SpaceBot. Try again.';
 		} finally {
@@ -110,6 +113,7 @@
 				const json = await res.json();
 				if (!stopped) {
 					timeboxes = json.timeboxes ?? [];
+					others = json.others ?? [];
 					timeboxLoaded = true;
 				}
 			} catch {
@@ -305,6 +309,34 @@
 					ends_at: null,
 					paused_remaining_ms: 9 * 60 * 1000,
 					deafen: 'whole',
+				},
+			];
+			others = [
+				{
+					name: 'Riker',
+					avatar_url: null,
+					status: 'running',
+					phase: 'focus',
+					block_number: 1,
+					rounds: 1,
+					focus_minutes: 25,
+					break_minutes: 5,
+					long_break_minutes: 15,
+					ends_at: Math.floor(Date.now() / 1000) + 9 * 60 + 41,
+					paused_remaining_ms: null,
+				},
+				{
+					name: 'Data',
+					avatar_url: null,
+					status: 'paused',
+					phase: 'break',
+					block_number: 1,
+					rounds: 2,
+					focus_minutes: 25,
+					break_minutes: 5,
+					long_break_minutes: 15,
+					ends_at: null,
+					paused_remaining_ms: 3 * 60 * 1000,
 				},
 			];
 			timeboxLoaded = true;
@@ -654,6 +686,7 @@
 			{:else if mod.id === 'timebox'}
 				<TimeboxTab
 					{timeboxes}
+					{others}
 					loaded={timeboxLoaded}
 					{now}
 					help={mod.help}
