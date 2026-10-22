@@ -39,8 +39,14 @@ database — see the architecture overview below.
 - [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
 - [Member content](member-content.md) — `/about`: a role-gated piece of content each member sets and clears, read by the bot and `GET /api/v1/member-content`
 
+- [Observances](observances.md) — a historical day posted as it happened, on its anniversary
+- [Durable message purge](message-purge.md) — deleting a user's messages across every channel in bounded batches that fit the request limit
+- [Dirac interface plan](dirac-interface-plan.md) — plan, not implemented: SpaceBot as an interface to Dirac
+
 ## Operations
 
+- [Secrets](secrets.md) — where secrets really come from (environment fallback vs Secret Manager)
+- [Querying production](production-queries.md) — read-only `bun run db:query` against production D1
 - [Data retention](data-retention.md) — what is kept forever, what is pruned, and why
 - [Observability](observability.md) — structured logging and telemetry
 - [Alerting](alerts.md) — alert routing for critical issues
