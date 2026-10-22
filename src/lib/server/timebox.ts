@@ -369,6 +369,7 @@ export interface Participant {
 	user_id: string;
 	deafen_mode: DeafenMode;
 	prev_deaf: number;
+	prev_mute: number;
 	applied: number;
 	restore_pending: number;
 }
@@ -470,7 +471,8 @@ export function wantsDeaf(mode: DeafenMode, phase: Phase): boolean {
 type DeafOutcome = 'applied' | 'not_in_voice' | 'no_permission' | 'already' | 'error';
 
 /**
- * Server-deafen a member for this session, remembering what it was before. Only a
+ * Server-deafen and server-mute a member for this session, remembering what both
+ * were before. Only a
  * member who is in a voice channel can be changed; anyone else is skipped and the
  * sweep tries again.
  */
@@ -481,19 +483,23 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 	try {
 		const member = await discord.members.fetch(s.guild_id, userId);
 		const prev = member?.deaf ? 1 : 0;
-		if (!prev)
-			await discord.members.setDeaf(
+		const prevMute = member?.mute ? 1 : 0;
+		const change: { deaf?: boolean; mute?: boolean } = {};
+		if (!prev) change.deaf = true;
+		if (!prevMute) change.mute = true;
+		if (change.deaf !== undefined || change.mute !== undefined)
+			await discord.members.setVoice(
 				s.guild_id,
 				userId,
-				true,
-				'Timebox: deafened at their request'
+				change,
+				'Timebox: deafened and muted at their request'
 			);
 		await db
 			.prepare(
-				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, updated_at = datetime('now')
+				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, prev_mute = ?, updated_at = datetime('now')
 				 WHERE session_id = ? AND user_id = ?`
 			)
-			.bind(prev, s.id, userId)
+			.bind(prev, prevMute, s.id, userId)
 			.run();
 		return 'applied';
 	} catch (err: any) {
@@ -505,8 +511,8 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 }
 
 /**
- * Put back what the member's deafen was before the bot touched it. If they were
- * already deafened (by a moderator), nothing is changed. If Discord will not
+ * Put back what the member's deafen and mute were before the bot touched them. If
+ * they were already deafened or muted (by a moderator), that part is left alone. If Discord will not
  * change them right now — they are not in a voice channel — the row stays marked
  * `restore_pending` and the sweep retries.
  */
@@ -527,12 +533,15 @@ export async function restoreDeafen(
 			)
 			.bind(sessionId, userId)
 			.run();
-	if (row.prev_deaf) {
+	const change: { deaf?: boolean; mute?: boolean } = {};
+	if (!row.prev_deaf) change.deaf = false;
+	if (!row.prev_mute) change.mute = false;
+	if (change.deaf === undefined && change.mute === undefined) {
 		await done();
 		return true;
 	}
 	try {
-		await discord.members.setDeaf(guildId, userId, false, 'Timebox: deafen lifted');
+		await discord.members.setVoice(guildId, userId, change, 'Timebox: deafen and mute lifted');
 		await done();
 		return true;
 	} catch (err: any) {
@@ -626,7 +635,7 @@ export function buildCard(s: Session, extra: CardExtra = {}) {
 	}
 	if (s.kind === 'shared' && live) lines.push(`Shared with <#${s.voice_channel_id}>`);
 	if (extra.deafened) {
-		lines.push(`${extra.deafened} deafened at their own request`);
+		lines.push(`${extra.deafened} deafened and muted at their own request`);
 	}
 	if (extra.goals?.length) {
 		const plural = extra.goals.length > 1 || s.kind === 'shared';
@@ -1054,7 +1063,7 @@ export async function handleTimeboxCommand(body: Interaction, db, discord): Prom
 				return { response: ephemeral('Only the starter or Crew can stop this one.') };
 			}
 			await endSession(db, discord, s, 'stopped');
-			return { response: ephemeral('Stopped. Any deafen it held is lifted.') };
+			return { response: ephemeral('Stopped. Any deafen or mute it held is lifted.') };
 		}
 		case 'status': {
 			const vc = await voiceChannelOf(db, guildId, userId);
@@ -1192,11 +1201,11 @@ async function startCommand(
 		const out = await applyDeafen(db, discord, s, ctx.userId);
 		note =
 			out === 'applied'
-				? '\nYou are deafened. The **Deafen me** button lifts it any time.'
+				? '\nYou are deafened and muted. The **Deafen me** button lifts it any time.'
 				: out === 'not_in_voice'
-					? '\nJoin a voice channel and you will be deafened within a minute.'
+					? '\nJoin a voice channel and you will be deafened and muted within a minute.'
 					: out === 'no_permission'
-						? '\nI cannot deafen you here (I need Deafen Members and a role above yours), so I left it off.'
+						? '\nI cannot deafen you here (I need Deafen Members and Mute Members, and a role above yours), so I left it off.'
 						: '';
 		if (out === 'no_permission') await setDeafenMode(db, s.id, ctx.userId, 'none');
 	}
@@ -1295,13 +1304,13 @@ export async function handleTimeboxComponent(
 		if (mine && mine.deafen_mode !== 'none') {
 			await setDeafenMode(db, s.id, userId, 'none');
 			await restoreDeafen(db, discord, s.id, userId, s.guild_id);
-			return { response: ephemeral('Deafen off. You can hear again.') };
+			return { response: ephemeral('Deafen off. You can hear and talk again.') };
 		}
 		await setDeafenMode(db, s.id, userId, 'focus');
 		if (!wantsDeaf('focus', s.phase)) {
 			return {
 				response: ephemeral(
-					'You will be deafened during each focus block, starting with the next one.'
+					'You will be deafened and muted during each focus block, starting with the next one.'
 				),
 			};
 		}
@@ -1310,14 +1319,14 @@ export async function handleTimeboxComponent(
 			await setDeafenMode(db, s.id, userId, 'none');
 			return {
 				response: ephemeral(
-					'I cannot deafen you here: I need Deafen Members and a role above yours.'
+					'I cannot deafen you here: I need Deafen Members and Mute Members, and a role above yours.'
 				),
 			};
 		}
 		if (out === 'not_in_voice') {
 			return {
 				response: ephemeral(
-					'Join a voice channel and you will be deafened within a minute. Press again to turn it off.'
+					'Join a voice channel and you will be deafened and muted within a minute. Press again to turn it off.'
 				),
 			};
 		}
