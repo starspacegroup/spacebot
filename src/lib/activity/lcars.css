@@ -182,11 +182,15 @@ html:has(.lcars) body {
 	cursor: default;
 }
 .lcars .sd .tab.on::before {
-	content: '▶';
+	/* a drawn marker, not a glyph: a solid arrowhead with a notch, in the tab's ink */
+	content: '';
 	position: absolute;
-	left: 0.55em;
-	top: 0.45em;
-	font-size: 0.65em;
+	left: 0.7em;
+	top: 0.55em;
+	width: 0.55em;
+	height: 0.7em;
+	background: currentColor;
+	clip-path: polygon(0 0, 100% 50%, 0 100%, 22% 50%);
 }
 .lcars .sd .brand {
 	flex: 0.7;
