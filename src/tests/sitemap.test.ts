@@ -7,6 +7,9 @@ describe('sitemap', () => {
 		const paths = sitemapPaths();
 		expect(paths).toContain('/');
 		expect(paths).toContain('/privacy');
+		expect(paths).toContain('/servers');
+		expect(paths).toContain('/invite');
+		expect(paths).toContain('/vote');
 		for (const slug of listDocSlugs()) expect(paths).toContain(`/docs/dev/${slug}`);
 	});
 
