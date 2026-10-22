@@ -4,6 +4,7 @@ import { sessionFromRequest } from '$lib/server/activity.js';
 import {
 	TimeboxAccessError,
 	controlTimebox,
+	othersForViewer,
 	timeboxesForViewer,
 } from '$lib/server/activity-timebox.js';
 import { createDiscordRestClient } from '$lib/discord/rest-client.js';
@@ -37,7 +38,8 @@ export async function POST({ request, platform }) {
 			);
 		}
 		const timeboxes = await timeboxesForViewer(db, claims, body?.guild_id);
-		return json({ timeboxes }, { headers: { 'cache-control': 'no-store' } });
+		const others = await othersForViewer(db, claims, body.guild_id);
+		return json({ timeboxes, others }, { headers: { 'cache-control': 'no-store' } });
 	} catch (error: any) {
 		if (error instanceof TimeboxAccessError) {
 			return json({ error: 'forbidden', message: error.message }, { status: error.status });

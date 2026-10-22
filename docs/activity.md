@@ -119,7 +119,9 @@ one in the voice channel the Activity was opened in (carried in the token), and 
 shared one in the voice channel they are in now. It never returns another member's
 ids or deafen choices. The page polls every 15 seconds and counts down locally from
 the end time, so a block change shows within a poll of the bot's own minute sweep.
-Pause/Resume, Skip and Stop work from the tab: `POST /api/activity/timebox` with `action` and `id`. Allowed for the starter, or anyone in the voice channel when the server sets control to "anyone". Crew use the card in the channel (the Activity does not know a viewer's server permissions). Timebox, game and quorum cards in the channel carry an **Open Activity** button (`activity:open`), answered with a LAUNCH_ACTIVITY response.
+Pause/Resume, Skip and Stop work from the tab: `POST /api/activity/timebox` with `action` and `id`. Allowed for the starter, or anyone in the voice channel when the server sets control to "anyone". Crew use the card in the channel (the Activity does not know a viewer's server permissions).
+
+The tab also lists **other members' solo timers** (name, face, phase, countdown) for people in the same voice channel as the viewer or the one the Activity opened in: the response's `others`. No ids, goals or deafen choices leave the server. Shared timeboxes already show in full. Timebox, game and quorum cards in the channel carry an **Open Activity** button (`activity:open`), answered with a LAUNCH_ACTIVITY response.
 
 ## Not yet
 
