@@ -3,7 +3,9 @@
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
-	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
+	import { replaceState } from '$app/navigation';
+	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
 
 	const { data } = $props();
 
@@ -15,6 +17,14 @@
 	// machinery just to refresh one page's stats — fetch the dedicated
 	// endpoint directly instead (see src/routes/admin/[serverId]/+page.svelte
 	// for the same fix applied to the dashboard first).
+	// Dev only: `?preview=1` swaps in canned data (src/lib/stats/preview-fixture.ts).
+	const preview = import.meta.env.DEV && $page.url.searchParams.has('preview');
+	let previewData = $state<any>(null);
+	if (import.meta.env.DEV && preview) {
+		import('$lib/stats/preview-fixture.js').then((m) => (previewData = m.buildPreview()));
+	}
+	const previewVoice = $derived(previewData?.voice ?? null);
+
 	let liveStats = $state(null);
 	let statsKey = $state(null);
 	let statsLoading = $state(false);
@@ -43,7 +53,7 @@
 		const serverId = data.serverId;
 		const period = data.selectedPeriod;
 		const key = `${serverId}:${period}`;
-		if (!data.loadMeta?.needsHotload || statsKey === key) return;
+		if (preview || !data.loadMeta?.needsHotload || statsKey === key) return;
 
 		statsLoading = true;
 		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`)
@@ -67,9 +77,11 @@
 	// Merges the client-fetched stats (once loaded for the current
 	// server+period) over the shell/cached defaults from the page load.
 	const liveData = $derived(
-		liveStats && statsKey === `${data.serverId}:${data.selectedPeriod}`
-			? liveStats
-			: Object.fromEntries(LIVE_FIELDS.map((key) => [key, data[key]]))
+		previewData
+			? previewData.live
+			: liveStats && statsKey === `${data.serverId}:${data.selectedPeriod}`
+				? liveStats
+				: Object.fromEntries(LIVE_FIELDS.map((key) => [key, data[key]]))
 	);
 
 	const isStatisticsLoading = $derived(statsLoading);
@@ -103,131 +115,46 @@
 	const periodOptions = $derived(data.periodOptions || []);
 	const selectedPeriod = $derived(data.selectedPeriod || '30d');
 	const selectedPeriodLabel = $derived(data.selectedPeriodLabel || '30 Days');
-	const LIVE_VOICE_POLL_MS = 15000;
 	const liveUpdatesAuth = $derived(data.liveUpdatesAuth || null);
 
-	function normalizeLiveVoiceSnapshot(snapshot?: any) {
-		return {
-			channels: Array.isArray(snapshot?.channels) ? snapshot.channels : [],
-			totalUsers: Number(snapshot?.totalUsers || 0),
-			totalChannels: Number(snapshot?.totalChannels || 0),
-			activeCameras: Number(snapshot?.activeCameras || 0),
-			activeStreams: Number(snapshot?.activeStreams || 0),
-			updatedAt: snapshot?.updatedAt || null,
-		};
-	}
-
-	const initialLiveVoiceSnapshot = $derived(
-		normalizeLiveVoiceSnapshot(liveData.liveVoiceSnapshot)
-	);
-	let liveVoiceSnapshot = $state(normalizeLiveVoiceSnapshot());
-	let liveVoiceRefreshing = $state(false);
-	let _liveVoiceRefreshError = $state('');
-	let liveVoiceStreamConnected = $state(false);
-
-	$effect(() => {
-		liveVoiceSnapshot = initialLiveVoiceSnapshot;
-	});
-
 	function periodHref(period) {
-		return `/admin/${data.serverId}/stats?period=${period}`;
+		return `/admin/${data.serverId}/stats?period=${period}&tab=${tab}`;
 	}
 
-	async function refreshLiveVoiceSnapshot({ silent = false } = {}) {
-		if (liveVoiceStreamConnected && silent) return;
-		if (liveVoiceRefreshing) return;
+	// Tabs. The choice lives in the address bar (?tab=), so a link lands where it was
+	// copied, but switching is client-side: no reload, no new server load.
+	const TABS = [
+		{ id: 'overview', label: 'Overview' },
+		{ id: 'voice', label: 'Voice' },
+		{ id: 'activity', label: 'Activity' },
+		{ id: 'automations', label: 'Automations' },
+	] as const;
+	type TabId = (typeof TABS)[number]['id'];
+	const VOICE_LOG_PARAMS = [
+		'page',
+		'pageSize',
+		'sort',
+		'search',
+		'eventType',
+		'startDate',
+		'endDate',
+	];
 
-		liveVoiceRefreshing = true;
-		if (!silent) {
-			_liveVoiceRefreshError = '';
-		}
-
-		try {
-			const response = await fetch(`/api/admin/${data.serverId}/live-voice`, {
-				headers: {
-					accept: 'application/json',
-				},
-			});
-
-			if (!response.ok) {
-				throw new Error(`Refresh failed with status ${response.status}`);
-			}
-
-			liveVoiceSnapshot = normalizeLiveVoiceSnapshot(await response.json());
-			_liveVoiceRefreshError = '';
-		} catch (error) {
-			console.warn('[Stats] Live voice refresh failed', error);
-			if (!silent) {
-				_liveVoiceRefreshError = 'Unable to refresh live voice right now.';
-			}
-		} finally {
-			liveVoiceRefreshing = false;
-		}
+	function tabFromUrl(): TabId {
+		const wanted = $page.url.searchParams.get('tab');
+		return TABS.find((t) => t.id === wanted)?.id ?? 'overview';
 	}
 
-	// Live voice stream + polling runs regardless of hotload state, so a
-	// cold (shell) load still connects immediately.
-	onMount(() => {
-		let stream;
+	let tab = $state<TabId>(tabFromUrl());
 
-		if (liveUpdatesAuth?.signature && liveUpdatesAuth?.userId && liveUpdatesAuth?.expiresAt) {
-			const streamUrl = new URL(
-				`/api/admin/${data.serverId}/live-updates/stream`,
-				window.location.origin
-			);
-			streamUrl.searchParams.set('user', liveUpdatesAuth.userId);
-			streamUrl.searchParams.set('exp', String(liveUpdatesAuth.expiresAt));
-			streamUrl.searchParams.set('sig', liveUpdatesAuth.signature);
-
-			stream = new EventSource(streamUrl);
-			stream.addEventListener('open', () => {
-				liveVoiceStreamConnected = true;
-				_liveVoiceRefreshError = '';
-			});
-
-			stream.addEventListener('voice_snapshot', (event) => {
-				try {
-					const payload = JSON.parse(event.data);
-					liveVoiceSnapshot = normalizeLiveVoiceSnapshot(payload?.data || payload);
-					liveVoiceStreamConnected = true;
-					_liveVoiceRefreshError = '';
-				} catch (error) {
-					console.warn('[Stats] Invalid live voice event payload', error);
-				}
-			});
-
-			stream.addEventListener('error', () => {
-				liveVoiceStreamConnected = false;
-				if (!liveVoiceSnapshot.updatedAt) {
-					_liveVoiceRefreshError = 'Live stream unavailable, using refresh fallback.';
-				}
-			});
-		}
-
-		// Don't poll a backgrounded tab — nobody is looking at the result and each
-		// refresh is a real query against D1.
-		const isVisible = () =>
-			typeof document === 'undefined' || document.visibilityState === 'visible';
-
-		refreshLiveVoiceSnapshot({ silent: true });
-
-		const intervalId = setInterval(() => {
-			if (!isVisible()) return;
-			refreshLiveVoiceSnapshot({ silent: true });
-		}, LIVE_VOICE_POLL_MS);
-
-		// Catch up as soon as the tab is foregrounded again.
-		const onVisibilityChange = () => {
-			if (isVisible()) refreshLiveVoiceSnapshot({ silent: true });
-		};
-		document.addEventListener('visibilitychange', onVisibilityChange);
-
-		return () => {
-			clearInterval(intervalId);
-			document.removeEventListener('visibilitychange', onVisibilityChange);
-			stream?.close();
-		};
-	});
+	function selectTab(id: TabId) {
+		if (id === tab) return;
+		tab = id;
+		const next = new URL($page.url);
+		next.searchParams.set('tab', id);
+		if (id !== 'voice') for (const key of VOICE_LOG_PARAMS) next.searchParams.delete(key);
+		replaceState(next, {});
+	}
 
 	// Master toggle for all bot visibility
 	let showBotsGlobal = $state(false);
@@ -407,6 +334,33 @@
 		else if (voiceTimeUnit === 'minutes') voiceTimeUnit = 'seconds';
 		else voiceTimeUnit = 'hours';
 	}
+
+	/** A min–max scaled sparkline: a flat-looking member count still shows its trend. */
+	function sparkFrom(values) {
+		const v = values.filter((n) => Number.isFinite(n));
+		if (v.length < 2) return null;
+		const lo = Math.min(...v);
+		const hi = Math.max(...v);
+		const span = hi - lo || 1;
+		const pad = 3;
+		const step = 100 / (v.length - 1);
+		const pts = v.map((n, i) => [i * step, pad + (1 - (n - lo) / span) * (30 - pad * 2)]);
+		const path = pts
+			.map(([x, y], i) => `${i ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`)
+			.join(' ');
+		return { path, areaPath: `${path} L 100 30 L 0 30 Z` };
+	}
+
+	const memberSpark = $derived(
+		sparkFrom((liveData.memberHistory || []).map((d) => d.human_count ?? d.member_count ?? 0))
+	);
+	const eventSpark = $derived(
+		sparkFrom(
+			(statistics.timeSeries?.daily || []).map((d) =>
+				showBotsInTotalEvents ? d.count || 0 : d.non_bot_count || 0
+			)
+		)
+	);
 
 	// Build sparkline path from execution history data
 	function buildSparkline(history) {
@@ -745,82 +699,450 @@
 	<title>Statistics - {data.guild?.name || 'Server'} | SpaceBot</title>
 </svelte:head>
 
+{#snippet ico(name)}
+	<svg
+		viewBox="0 0 24 24"
+		width="20"
+		height="20"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="1.8"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true"
+	>
+		{#if name === 'members'}
+			<circle cx="9" cy="8" r="3.2" /><path
+				d="M2.8 20c.4-3.4 2.9-5.4 6.2-5.4s5.8 2 6.2 5.4"
+			/><path d="M16 5.2a3.1 3.1 0 0 1 0 5.8M18 14.9c2 .6 3.2 2.3 3.4 5.1" />
+		{:else if name === 'automations'}
+			<path d="M13 2 4 14h7l-1 8 9-12h-7z" />
+		{:else if name === 'commands'}
+			<path d="m5 8 5 4-5 4" /><path d="M12 17h7" />
+		{:else}
+			<path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+		{/if}
+	</svg>
+{/snippet}
+
 <div class="stats-page">
-	<!-- Header -->
-	<header class="page-header">
-		<div class="header-content">
-			<a href="/admin/{data.serverId}" class="back-link">
-				<span>←</span>
-				Back to Dashboard
-			</a>
-			<div class="title-row">
-				<div class="title-section">
-					<h1>📊 Statistics</h1>
-					<p class="subtitle">
-						Comprehensive analytics for {data.guild?.name || 'your server'}
-					</p>
-				</div>
-				<div class="header-actions">
-					<a
-						href="/admin/{data.serverId}/stats/vc-activity"
-						class="btn btn-secondary btn-sm">🔴 VC Activity</a
-					>
-					<a href="/admin/{data.serverId}/logs" class="btn btn-secondary btn-sm"
-						>📜 Event Logs</a
-					>
-					<label class="master-bot-toggle">
-						<input
-							type="checkbox"
-							bind:checked={showBotsGlobal}
-							onchange={(e) => toggleAllBots((e.target as HTMLInputElement).checked)}
-						/>
-						<span class="toggle-switch"></span>
-						<span class="toggle-label">🤖 Include Bots</span>
-					</label>
-				</div>
-			</div>
-			<div class="period-nav">
-				<div class="period-nav-label">
-					Range: {selectedPeriodLabel}
-					<span class="period-retention-note">
-						(Plan retention: {data.statsRetentionDays
-							? `${data.statsRetentionDays} days`
-							: 'Unlimited'})
-					</span>
-				</div>
-				<div class="period-pills">
-					{#each periodOptions as option}
-						<a
-							href={periodHref(option.value)}
-							class="period-pill"
-							class:active={selectedPeriod === option.value}
-						>
-							{option.label}
-						</a>
-					{/each}
-				</div>
-			</div>
+	<header class="sp-head">
+		<div class="sp-head-main">
+			<a href="/admin/{data.serverId}" class="sp-back">← Dashboard</a>
+			<h1>Statistics</h1>
+			<p class="sp-sub">{data.guild?.name || 'Your server'}</p>
+		</div>
+		<div class="sp-head-tools">
+			<a href="/admin/{data.serverId}/logs" class="sp-link">Event logs</a>
+			<label class="sp-switch" title="Count bots in every chart and total on this page">
+				<input
+					type="checkbox"
+					bind:checked={showBotsGlobal}
+					onchange={(e) => toggleAllBots((e.target as HTMLInputElement).checked)}
+				/>
+				<span class="sp-switch-track"></span>
+				<span>Include bots</span>
+			</label>
 		</div>
 	</header>
 
-	{#if !hasStatisticsData && !isStatisticsLoading}
-		<div class="empty-state">
-			<div class="empty-icon">📊</div>
-			<h2>No Statistics Available</h2>
-			<p>Statistics will appear once there is activity in your server.</p>
+	<div class="sp-bar">
+		<div class="sp-tabs" role="tablist" aria-label="Statistics sections">
+			{#each TABS as t (t.id)}
+				<button
+					type="button"
+					role="tab"
+					class="sp-tab"
+					class:active={tab === t.id}
+					aria-selected={tab === t.id}
+					onclick={() => selectTab(t.id)}
+				>
+					{t.label}
+				</button>
+			{/each}
 		</div>
-	{:else}
+		<div
+			class="sp-range"
+			role="group"
+			aria-label="Date range"
+			title="Plan retention: {data.statsRetentionDays
+				? `${data.statsRetentionDays} days`
+				: 'unlimited'}"
+		>
+			{#each periodOptions as option (option.value)}
+				<a
+					href={periodHref(option.value)}
+					class="sp-range-opt"
+					class:active={selectedPeriod === option.value}
+					aria-current={selectedPeriod === option.value ? 'true' : undefined}
+				>
+					{option.label.replace(' Days', 'd').replace(' Day', 'd')}
+				</a>
+			{/each}
+		</div>
+	</div>
+
+	{#if tab === 'voice' && (!preview || previewData)}
+		<VoiceLive
+			serverId={data.serverId}
+			{liveUpdatesAuth}
+			eventTypeOptions={data.voiceEventTypeOptions || []}
+			preview={previewVoice}
+		>
+			{#snippet between()}
+				<!-- Voice Activity Charts Section -->
+				<section class="chart-section">
+					<h2 class="section-title">
+						Voice Channel Activity
+						<span class="section-subtitle">{selectedPeriodLabel}</span>
+					</h2>
+					<div class="voice-charts-grid">
+						<ChartCard
+							title="Voice Time"
+							icon="⏱️"
+							loading={isStatisticsLoading}
+							stats={voiceActivityStats
+								? [
+										{
+											icon: '⏱️',
+											value:
+												voiceActivityStats.totalHours >= 1
+													? `${voiceActivityStats.totalHours.toFixed(1)}`
+													: `${voiceActivityStats.totalMinutes}`,
+											label: voiceActivityStats.useHours
+												? 'Total Hours'
+												: 'Total Minutes',
+											color: '#FEE75C',
+										},
+									]
+								: []}
+						>
+							<AreaChart
+								data={voiceActivityData}
+								color="#FEE75C"
+								gradientId="voiceGradientServer"
+								unit={voiceActivityStats?.useHours ? 'h' : 'm'}
+								title="Voice Time"
+								loading={isStatisticsLoading}
+								emptyMessage="No voice activity data yet."
+							/>
+						</ChartCard>
+
+						<ChartCard
+							title="Peak Unique Voice Users"
+							icon="👥"
+							loading={isStatisticsLoading}
+							stats={voiceActivityStats
+								? [
+										{
+											icon: '👥',
+											value: formatNumber(
+												voiceActivityStats.uniqueUsers || 0
+											),
+											label: 'Peak Unique',
+											color: '#5865F2',
+										},
+										{
+											icon: '👤',
+											value: voiceActivityStats.avgUniqueUsers || 0,
+											label: 'Avg Unique',
+											color: '#9B84EE',
+										},
+									]
+								: []}
+						>
+							<AreaChart
+								data={peakUsersData}
+								color="#5865F2"
+								gradientId="peakUsersGradient"
+								unit=""
+								title="Peak Unique Voice Users"
+								loading={isStatisticsLoading}
+								emptyMessage="No unique voice user data yet."
+							/>
+						</ChartCard>
+
+						<ChartCard
+							title="Peak Concurrent Voice Users"
+							icon="📊"
+							loading={isStatisticsLoading}
+							stats={voiceActivityStats
+								? [
+										{
+											icon: '📊',
+											value: formatNumber(
+												voiceActivityStats.peakConcurrent || 0
+											),
+											label: 'Peak Concurrent',
+											color: '#57F287',
+										},
+										{
+											icon: '📉',
+											value: voiceActivityStats.avgConcurrent || 0,
+											label: 'Avg Concurrent',
+											color: '#2ECC71',
+										},
+									]
+								: []}
+						>
+							<AreaChart
+								data={peakConcurrentData}
+								color="#57F287"
+								gradientId="peakConcurrentGradient"
+								unit=""
+								title="Peak Concurrent Voice Users"
+								loading={isStatisticsLoading}
+								emptyMessage="No peak concurrent data yet."
+							/>
+						</ChartCard>
+					</div>
+				</section>
+
+				<!-- Voice Activity Users Section -->
+				<section class="performance-section">
+					<h2 class="section-title">
+						Voice Activity Leaders
+						<span class="section-subtitle">{selectedPeriodLabel}</span>
+						<button
+							class="time-unit-toggle"
+							onclick={cycleTimeUnit}
+							title="Click to cycle between hours, minutes, and seconds"
+						>
+							{voiceTimeUnit === 'hours'
+								? 'Hours'
+								: voiceTimeUnit === 'minutes'
+									? 'Minutes'
+									: 'Seconds'}
+						</button>
+					</h2>
+					<div class="performance-grid">
+						<!-- Most Active Voice Users -->
+						<div class="performance-card user-card">
+							<div class="performance-header">
+								<span class="performance-name">Most Active Voice Users</span>
+								<label class="bot-toggle-sm">
+									<input type="checkbox" bind:checked={showBotsInVoiceUsers} />
+									<span class="toggle-switch-sm"></span>
+									<span class="toggle-label-sm">🤖</span>
+								</label>
+							</div>
+							<div class="user-list">
+								{#if filteredVoiceUsers?.length > 0}
+									{#each filteredVoiceUsers as user, i}
+										{@const maxVal = getMaxValue(
+											filteredVoiceUsers,
+											'total_seconds'
+										)}
+										<div class="user-item">
+											<span class="user-rank">#{i + 1}</span>
+											<div class="user-info">
+												<span class="user-name">
+													{#if user.actor_id}
+														<img
+															src={getAvatarUrl(
+																user.actor_id,
+																user.actor_avatar,
+																user.actor_discriminator,
+																20
+															)}
+															alt="{user.actor_name || 'User'} avatar"
+															class="inline-user-avatar"
+															onerror={(e) => {
+																(
+																	e.target as HTMLElement
+																).style.display = 'none';
+															}}
+														/>
+													{/if}
+													{user.actor_name || 'Unknown User'}
+													{#if isBot(user)}<span class="bot-badge-sm"
+															>🤖</span
+														>{/if}
+												</span>
+											</div>
+											<div class="user-bar-container">
+												<div
+													class="user-bar voice"
+													style="width: {(user.total_seconds / maxVal) *
+														100}%"
+												></div>
+											</div>
+											<span class="user-count"
+												>{formatTime(user.total_seconds)}</span
+											>
+										</div>
+									{/each}
+								{:else}
+									<div class="user-empty">No voice activity data</div>
+								{/if}
+							</div>
+							<span class="performance-last"
+								>{getTimeUnitLabel('spent in voice chat')}</span
+							>
+						</div>
+
+						<!-- Most Active Video Users -->
+						<div class="performance-card user-card">
+							<div class="performance-header">
+								<span class="performance-name">Most Active Video Users</span>
+								<label class="bot-toggle-sm">
+									<input type="checkbox" bind:checked={showBotsInVideoUsers} />
+									<span class="toggle-switch-sm"></span>
+									<span class="toggle-label-sm">🤖</span>
+								</label>
+							</div>
+							<div class="user-list">
+								{#if filteredVideoUsers?.length > 0}
+									{#each filteredVideoUsers as user, i}
+										{@const maxVal = getMaxValue(
+											filteredVideoUsers,
+											'total_seconds'
+										)}
+										<div class="user-item">
+											<span class="user-rank">#{i + 1}</span>
+											<div class="user-info">
+												<span class="user-name">
+													{#if user.actor_id}
+														<img
+															src={getAvatarUrl(
+																user.actor_id,
+																user.actor_avatar,
+																user.actor_discriminator,
+																20
+															)}
+															alt="{user.actor_name || 'User'} avatar"
+															class="inline-user-avatar"
+															onerror={(e) => {
+																(
+																	e.target as HTMLElement
+																).style.display = 'none';
+															}}
+														/>
+													{/if}
+													{user.actor_name || 'Unknown User'}
+													{#if isBot(user)}<span class="bot-badge-sm"
+															>🤖</span
+														>{/if}
+												</span>
+											</div>
+											<div class="user-bar-container">
+												<div
+													class="user-bar video"
+													style="width: {(user.total_seconds / maxVal) *
+														100}%"
+												></div>
+											</div>
+											<span class="user-count"
+												>{formatTime(user.total_seconds)}</span
+											>
+										</div>
+									{/each}
+								{:else}
+									<div class="user-empty">No video activity data</div>
+								{/if}
+							</div>
+							<span class="performance-last"
+								>{getTimeUnitLabel('with camera on')}</span
+							>
+						</div>
+
+						<!-- Most Active Screenshare Users -->
+						<div class="performance-card user-card">
+							<div class="performance-header">
+								<span class="performance-name">Most Active Screenshare Users</span>
+								<label class="bot-toggle-sm">
+									<input
+										type="checkbox"
+										bind:checked={showBotsInScreenshareUsers}
+									/>
+									<span class="toggle-switch-sm"></span>
+									<span class="toggle-label-sm">🤖</span>
+								</label>
+							</div>
+							<div class="user-list">
+								{#if filteredScreenshareUsers?.length > 0}
+									{#each filteredScreenshareUsers as user, i}
+										{@const maxVal = getMaxValue(
+											filteredScreenshareUsers,
+											'total_seconds'
+										)}
+										<div class="user-item">
+											<span class="user-rank">#{i + 1}</span>
+											<div class="user-info">
+												<span class="user-name">
+													{#if user.actor_id}
+														<img
+															src={getAvatarUrl(
+																user.actor_id,
+																user.actor_avatar,
+																user.actor_discriminator,
+																20
+															)}
+															alt="{user.actor_name || 'User'} avatar"
+															class="inline-user-avatar"
+															onerror={(e) => {
+																(
+																	e.target as HTMLElement
+																).style.display = 'none';
+															}}
+														/>
+													{/if}
+													{user.actor_name || 'Unknown User'}
+													{#if isBot(user)}<span class="bot-badge-sm"
+															>🤖</span
+														>{/if}
+												</span>
+											</div>
+											<div class="user-bar-container">
+												<div
+													class="user-bar screenshare"
+													style="width: {(user.total_seconds / maxVal) *
+														100}%"
+												></div>
+											</div>
+											<span class="user-count"
+												>{formatTime(user.total_seconds)}</span
+											>
+										</div>
+									{/each}
+								{:else}
+									<div class="user-empty">No screenshare activity data</div>
+								{/if}
+							</div>
+							<span class="performance-last"
+								>{getTimeUnitLabel('with screenshare active')}</span
+							>
+						</div>
+					</div>
+				</section>
+			{/snippet}
+		</VoiceLive>
+	{:else if !hasStatisticsData && !isStatisticsLoading}
+		<div class="empty-state">
+			<div class="empty-icon" aria-hidden="true">
+				<svg
+					viewBox="0 0 24 24"
+					width="30"
+					height="30"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.8"
+					stroke-linecap="round"
+					stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg
+				>
+			</div>
+			<h2>No statistics yet</h2>
+			<p>Charts fill in once there is activity in your server.</p>
+		</div>
+	{:else if tab === 'overview'}
 		<!-- Overview Cards -->
 		<section class="overview-section">
-			<h2 class="section-title">
-				<span class="section-icon">📈</span>
-				Overview
-			</h2>
+			<h2 class="section-title">Overview</h2>
 			<div class="overview-grid">
 				<!-- Members Card -->
 				<div class="stat-card primary members" class:loading={isStatisticsLoading}>
 					<div class="stat-card-header">
-						<div class="stat-icon">👥</div>
+						<div class="stat-icon">{@render ico('members')}</div>
 						<label
 							class="bot-toggle-sm"
 							title="Toggle to show only human members (excludes bots)"
@@ -848,6 +1170,21 @@
 							>{showBotsInMembers ? 'Server Members' : 'Human Members'}</span
 						>
 					</div>
+					{#if memberSpark}
+						<svg
+							class="spark"
+							viewBox="0 0 100 30"
+							preserveAspectRatio="none"
+							aria-hidden="true"
+						>
+							<path class="area" d={memberSpark.areaPath} />
+							<path
+								class="line"
+								d={memberSpark.path}
+								vector-effect="non-scaling-stroke"
+							/>
+						</svg>
+					{/if}
 					<div class="stat-breakdown">
 						<div
 							class="breakdown-item"
@@ -914,7 +1251,7 @@
 
 				<!-- Automations Card -->
 				<div class="stat-card" class:loading={isStatisticsLoading}>
-					<div class="stat-icon">⚡</div>
+					<div class="stat-icon">{@render ico('automations')}</div>
 					<div class="stat-content">
 						<span class="stat-value">{formatNumber(statistics.automations.active)}</span
 						>
@@ -947,7 +1284,7 @@
 
 				<!-- Commands Card -->
 				<div class="stat-card" class:loading={isStatisticsLoading}>
-					<div class="stat-icon">💬</div>
+					<div class="stat-icon">{@render ico('commands')}</div>
 					<div class="stat-content">
 						<span class="stat-value">{formatNumber(statistics.commands.active)}</span>
 						<span class="stat-label">Active Commands</span>
@@ -971,7 +1308,7 @@
 				<!-- Total Events Card -->
 				<div class="stat-card" class:loading={isStatisticsLoading}>
 					<div class="stat-card-header">
-						<div class="stat-icon">📊</div>
+						<div class="stat-icon">{@render ico('events')}</div>
 						<label class="bot-toggle-sm">
 							<input type="checkbox" bind:checked={showBotsInTotalEvents} />
 							<span class="toggle-switch-sm"></span>
@@ -988,6 +1325,21 @@
 						>
 						<span class="stat-label">Total Events</span>
 					</div>
+					{#if eventSpark}
+						<svg
+							class="spark"
+							viewBox="0 0 100 30"
+							preserveAspectRatio="none"
+							aria-hidden="true"
+						>
+							<path class="area" d={eventSpark.areaPath} />
+							<path
+								class="line"
+								d={eventSpark.path}
+								vector-effect="non-scaling-stroke"
+							/>
+						</svg>
+					{/if}
 					<div class="stat-breakdown">
 						<div class="breakdown-item">
 							<span class="breakdown-value"
@@ -1067,111 +1419,6 @@
 				</ChartCard>
 			</section>
 		{/if}
-
-		<!-- Voice Activity Charts Section -->
-		<section class="chart-section">
-			<h2 class="section-title">
-				<span class="section-icon">🎤</span>
-				Voice Channel Activity
-				<span class="section-subtitle">{selectedPeriodLabel}</span>
-			</h2>
-			<div class="voice-charts-grid">
-				<ChartCard
-					title="Voice Time"
-					icon="⏱️"
-					loading={isStatisticsLoading}
-					stats={voiceActivityStats
-						? [
-								{
-									icon: '⏱️',
-									value:
-										voiceActivityStats.totalHours >= 1
-											? `${voiceActivityStats.totalHours.toFixed(1)}`
-											: `${voiceActivityStats.totalMinutes}`,
-									label: voiceActivityStats.useHours
-										? 'Total Hours'
-										: 'Total Minutes',
-									color: '#FEE75C',
-								},
-							]
-						: []}
-				>
-					<AreaChart
-						data={voiceActivityData}
-						color="#FEE75C"
-						gradientId="voiceGradientServer"
-						unit={voiceActivityStats?.useHours ? 'h' : 'm'}
-						title="Voice Time"
-						loading={isStatisticsLoading}
-						emptyMessage="No voice activity data yet."
-					/>
-				</ChartCard>
-
-				<ChartCard
-					title="Peak Unique Voice Users"
-					icon="👥"
-					loading={isStatisticsLoading}
-					stats={voiceActivityStats
-						? [
-								{
-									icon: '👥',
-									value: formatNumber(voiceActivityStats.uniqueUsers || 0),
-									label: 'Peak Unique',
-									color: '#5865F2',
-								},
-								{
-									icon: '👤',
-									value: voiceActivityStats.avgUniqueUsers || 0,
-									label: 'Avg Unique',
-									color: '#9B84EE',
-								},
-							]
-						: []}
-				>
-					<AreaChart
-						data={peakUsersData}
-						color="#5865F2"
-						gradientId="peakUsersGradient"
-						unit=""
-						title="Peak Unique Voice Users"
-						loading={isStatisticsLoading}
-						emptyMessage="No unique voice user data yet."
-					/>
-				</ChartCard>
-
-				<ChartCard
-					title="Peak Concurrent Voice Users"
-					icon="📊"
-					loading={isStatisticsLoading}
-					stats={voiceActivityStats
-						? [
-								{
-									icon: '📊',
-									value: formatNumber(voiceActivityStats.peakConcurrent || 0),
-									label: 'Peak Concurrent',
-									color: '#57F287',
-								},
-								{
-									icon: '📉',
-									value: voiceActivityStats.avgConcurrent || 0,
-									label: 'Avg Concurrent',
-									color: '#2ECC71',
-								},
-							]
-						: []}
-				>
-					<AreaChart
-						data={peakConcurrentData}
-						color="#57F287"
-						gradientId="peakConcurrentGradient"
-						unit=""
-						title="Peak Concurrent Voice Users"
-						loading={isStatisticsLoading}
-						emptyMessage="No peak concurrent data yet."
-					/>
-				</ChartCard>
-			</div>
-		</section>
 
 		<!-- Member Growth Chart Section -->
 		<section class="chart-section">
@@ -1430,14 +1677,11 @@
 				</ChartCard>
 			{/if}
 		</div>
-
+	{:else if tab === 'activity'}
 		<!-- Event Categories -->
 		<section class="categories-section">
 			<div class="section-header-row">
-				<h2 class="section-title">
-					<span class="section-icon">📁</span>
-					Events by Category
-				</h2>
+				<h2 class="section-title">Events by Category</h2>
 				<label class="bot-toggle">
 					<input type="checkbox" bind:checked={showBotsInCategories} />
 					<span class="toggle-switch"></span>
@@ -1485,7 +1729,6 @@
 		<section class="chart-section">
 			<div class="section-header-row">
 				<h2 class="section-title">
-					<span class="section-icon">📈</span>
 					Activity ({selectedPeriodLabel})
 				</h2>
 				<label class="bot-toggle">
@@ -1524,7 +1767,6 @@
 		<section class="heatmap-section">
 			<div class="section-header-row">
 				<h2 class="section-title">
-					<span class="section-icon">🗓️</span>
 					Activity Heatmap ({selectedPeriodLabel})
 				</h2>
 				<label class="bot-toggle">
@@ -1575,10 +1817,7 @@
 			<!-- Top Channels -->
 			<section class="list-section">
 				<div class="section-header-row">
-					<h2 class="section-title">
-						<span class="section-icon">📢</span>
-						Most Active Channels
-					</h2>
+					<h2 class="section-title">Most Active Channels</h2>
 					<label class="bot-toggle">
 						<input
 							type="checkbox"
@@ -1642,10 +1881,7 @@
 			<!-- Server Boosters -->
 			<section class="list-section">
 				<div class="section-header-row">
-					<h2 class="section-title">
-						<span class="section-icon">🚀</span>
-						Server Boosters
-					</h2>
+					<h2 class="section-title">Server Boosters</h2>
 				</div>
 				<div class="list-container">
 					{#if filteredTopBoosters?.length > 0}
@@ -1715,204 +1951,10 @@
 				{/if}
 			</section>
 		</div>
-
-		<!-- Voice Activity Users Section -->
-		<section class="performance-section">
-			<h2 class="section-title">
-				<span class="section-icon">🎙️</span>
-				Voice Activity Leaders
-				<span class="section-subtitle">{selectedPeriodLabel}</span>
-				<button
-					class="time-unit-toggle"
-					onclick={cycleTimeUnit}
-					title="Click to cycle between hours, minutes, and seconds"
-				>
-					{voiceTimeUnit === 'hours'
-						? '🕐 hrs'
-						: voiceTimeUnit === 'minutes'
-							? '⏱️ min'
-							: '⏲️ sec'}
-				</button>
-			</h2>
-			<div class="performance-grid">
-				<!-- Most Active Voice Users -->
-				<div class="performance-card user-card">
-					<div class="performance-header">
-						<span class="performance-name">🎤 Most Active Voice Users</span>
-						<label class="bot-toggle-sm">
-							<input type="checkbox" bind:checked={showBotsInVoiceUsers} />
-							<span class="toggle-switch-sm"></span>
-							<span class="toggle-label-sm">🤖</span>
-						</label>
-					</div>
-					<div class="user-list">
-						{#if filteredVoiceUsers?.length > 0}
-							{#each filteredVoiceUsers as user, i}
-								{@const maxVal = getMaxValue(filteredVoiceUsers, 'total_seconds')}
-								<div class="user-item">
-									<span class="user-rank">#{i + 1}</span>
-									<div class="user-info">
-										<span class="user-name">
-											{#if user.actor_id}
-												<img
-													src={getAvatarUrl(
-														user.actor_id,
-														user.actor_avatar,
-														user.actor_discriminator,
-														20
-													)}
-													alt="{user.actor_name || 'User'} avatar"
-													class="inline-user-avatar"
-													onerror={(e) => {
-														(e.target as HTMLElement).style.display =
-															'none';
-													}}
-												/>
-											{/if}
-											{user.actor_name || 'Unknown User'}
-											{#if isBot(user)}<span class="bot-badge-sm">🤖</span
-												>{/if}
-										</span>
-									</div>
-									<div class="user-bar-container">
-										<div
-											class="user-bar voice"
-											style="width: {(user.total_seconds / maxVal) * 100}%"
-										></div>
-									</div>
-									<span class="user-count">{formatTime(user.total_seconds)}</span>
-								</div>
-							{/each}
-						{:else}
-							<div class="user-empty">No voice activity data</div>
-						{/if}
-					</div>
-					<span class="performance-last">{getTimeUnitLabel('spent in voice chat')}</span>
-				</div>
-
-				<!-- Most Active Video Users -->
-				<div class="performance-card user-card">
-					<div class="performance-header">
-						<span class="performance-name">📹 Most Active Video Users</span>
-						<label class="bot-toggle-sm">
-							<input type="checkbox" bind:checked={showBotsInVideoUsers} />
-							<span class="toggle-switch-sm"></span>
-							<span class="toggle-label-sm">🤖</span>
-						</label>
-					</div>
-					<div class="user-list">
-						{#if filteredVideoUsers?.length > 0}
-							{#each filteredVideoUsers as user, i}
-								{@const maxVal = getMaxValue(filteredVideoUsers, 'total_seconds')}
-								<div class="user-item">
-									<span class="user-rank">#{i + 1}</span>
-									<div class="user-info">
-										<span class="user-name">
-											{#if user.actor_id}
-												<img
-													src={getAvatarUrl(
-														user.actor_id,
-														user.actor_avatar,
-														user.actor_discriminator,
-														20
-													)}
-													alt="{user.actor_name || 'User'} avatar"
-													class="inline-user-avatar"
-													onerror={(e) => {
-														(e.target as HTMLElement).style.display =
-															'none';
-													}}
-												/>
-											{/if}
-											{user.actor_name || 'Unknown User'}
-											{#if isBot(user)}<span class="bot-badge-sm">🤖</span
-												>{/if}
-										</span>
-									</div>
-									<div class="user-bar-container">
-										<div
-											class="user-bar video"
-											style="width: {(user.total_seconds / maxVal) * 100}%"
-										></div>
-									</div>
-									<span class="user-count">{formatTime(user.total_seconds)}</span>
-								</div>
-							{/each}
-						{:else}
-							<div class="user-empty">No video activity data</div>
-						{/if}
-					</div>
-					<span class="performance-last">{getTimeUnitLabel('with camera on')}</span>
-				</div>
-
-				<!-- Most Active Screenshare Users -->
-				<div class="performance-card user-card">
-					<div class="performance-header">
-						<span class="performance-name">🖥️ Most Active Screenshare Users</span>
-						<label class="bot-toggle-sm">
-							<input type="checkbox" bind:checked={showBotsInScreenshareUsers} />
-							<span class="toggle-switch-sm"></span>
-							<span class="toggle-label-sm">🤖</span>
-						</label>
-					</div>
-					<div class="user-list">
-						{#if filteredScreenshareUsers?.length > 0}
-							{#each filteredScreenshareUsers as user, i}
-								{@const maxVal = getMaxValue(
-									filteredScreenshareUsers,
-									'total_seconds'
-								)}
-								<div class="user-item">
-									<span class="user-rank">#{i + 1}</span>
-									<div class="user-info">
-										<span class="user-name">
-											{#if user.actor_id}
-												<img
-													src={getAvatarUrl(
-														user.actor_id,
-														user.actor_avatar,
-														user.actor_discriminator,
-														20
-													)}
-													alt="{user.actor_name || 'User'} avatar"
-													class="inline-user-avatar"
-													onerror={(e) => {
-														(e.target as HTMLElement).style.display =
-															'none';
-													}}
-												/>
-											{/if}
-											{user.actor_name || 'Unknown User'}
-											{#if isBot(user)}<span class="bot-badge-sm">🤖</span
-												>{/if}
-										</span>
-									</div>
-									<div class="user-bar-container">
-										<div
-											class="user-bar screenshare"
-											style="width: {(user.total_seconds / maxVal) * 100}%"
-										></div>
-									</div>
-									<span class="user-count">{formatTime(user.total_seconds)}</span>
-								</div>
-							{/each}
-						{:else}
-							<div class="user-empty">No screenshare activity data</div>
-						{/if}
-					</div>
-					<span class="performance-last"
-						>{getTimeUnitLabel('with screenshare active')}</span
-					>
-				</div>
-			</div>
-		</section>
-
+	{:else}
 		<!-- Command Usage Section -->
 		<section class="performance-section">
-			<h2 class="section-title">
-				<span class="section-icon">💬</span>
-				Command Usage
-			</h2>
+			<h2 class="section-title">Command Usage</h2>
 			{#if statistics.commandUsage?.length > 0}
 				<div class="performance-grid">
 					{#each statistics.commandUsage as command}
@@ -1924,7 +1966,7 @@
 									class:enabled={command.enabled}
 									class:disabled={!command.enabled}
 								>
-									{command.enabled ? '✅' : '❌'}
+									{command.enabled ? 'On' : 'Off'}
 								</span>
 							</div>
 							<div class="performance-stats">
@@ -1956,10 +1998,7 @@
 
 		<!-- Automation Performance -->
 		<section class="performance-section">
-			<h2 class="section-title">
-				<span class="section-icon">⚡</span>
-				Automation Performance
-			</h2>
+			<h2 class="section-title">Automation Performance</h2>
 			{#if statistics.automationPerformance?.length > 0}
 				<div class="performance-grid">
 					{#each statistics.automationPerformance as automation}
@@ -2046,10 +2085,7 @@
 
 		<!-- Recent Automation Executions -->
 		<section class="executions-section">
-			<h2 class="section-title">
-				<span class="section-icon">📜</span>
-				Recent Automation Executions
-			</h2>
+			<h2 class="section-title">Recent Automation Executions</h2>
 			{#if liveData.recentExecutions?.length > 0}
 				<div class="executions-table">
 					<div class="table-header">
@@ -2093,8 +2129,9 @@
 <style>
 	.stats-page {
 		width: 100%;
+		max-width: 1320px;
 		margin: 0 auto;
-		padding: 1rem;
+		padding: 1.25rem 1rem 3rem;
 	}
 
 	@keyframes pulse {
@@ -2109,211 +2146,231 @@
 
 	@media (min-width: 640px) {
 		.stats-page {
-			padding: 1.5rem;
+			padding: 1.5rem 1.5rem 3.5rem;
 		}
 	}
 
 	@media (min-width: 1024px) {
 		.stats-page {
-			padding: 2rem 3rem;
-		}
-	}
-
-	@media (min-width: 1536px) {
-		.stats-page {
-			padding: 2rem 4rem;
+			padding: 1.75rem 2.5rem 4rem;
 		}
 	}
 
 	/* Header */
-	.page-header {
-		margin-bottom: 2rem;
-	}
-
-	.back-link {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--color-text-muted);
-		text-decoration: none;
-		font-size: 0.9rem;
-		margin-bottom: 0.75rem;
-		transition: color var(--transition-fast);
-	}
-
-	.back-link:hover {
-		color: var(--color-primary);
-	}
-
-	.title-row {
+	.sp-head {
 		display: flex;
-		align-items: flex-start;
+		align-items: flex-end;
 		justify-content: space-between;
 		gap: 1rem;
 		flex-wrap: wrap;
+		margin-bottom: 1rem;
 	}
 
-	.title-section h1 {
-		font-size: 1.75rem;
-		font-weight: 700;
-		margin: 0;
+	.sp-back {
+		font-size: 0.82rem;
+		color: var(--color-text-muted);
+		text-decoration: none;
+	}
+
+	.sp-back:hover {
+		color: var(--color-primary);
+	}
+
+	.sp-head h1 {
+		margin: 0.2rem 0 0;
+		font-size: clamp(1.6rem, 2.6vw, 2.15rem);
+		font-weight: 750;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
 		color: var(--color-text);
 	}
 
-	.subtitle {
+	.sp-sub {
+		margin: 0.2rem 0 0;
 		color: var(--color-text-muted);
-		margin: 0.25rem 0 0;
+		font-size: 0.95rem;
 	}
 
-	/* Master bot toggle */
-	.header-actions {
+	.sp-head-tools {
 		display: flex;
 		align-items: center;
-		gap: 1rem;
+		gap: 0.6rem;
 	}
 
-	.period-nav {
-		margin-top: 0.75rem;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.period-nav-label {
-		font-size: 0.9rem;
-		color: var(--color-text-muted);
-	}
-
-	.period-retention-note {
-		margin-left: 0.5rem;
-		opacity: 0.8;
-	}
-
-	.period-pills {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-
-	.period-pill {
-		display: inline-flex;
-		align-items: center;
-		padding: 0.35rem 0.7rem;
+	.sp-link {
+		padding: 0.4rem 0.85rem;
 		border: 1px solid var(--color-border);
-		border-radius: 999px;
+		border-radius: var(--radius-full);
 		background: var(--color-surface);
-		color: var(--color-text-muted);
+		color: var(--color-text-secondary);
+		font-size: 0.82rem;
+		font-weight: 550;
 		text-decoration: none;
-		font-size: 0.85rem;
-		transition: all var(--transition-fast);
 	}
 
-	.period-pill:hover {
+	.sp-link:hover {
 		border-color: var(--color-primary);
 		color: var(--color-primary);
 	}
 
-	.period-pill.active {
-		border-color: var(--color-primary);
-		background: var(--color-primary-soft);
-		color: var(--color-text);
-	}
-
-	@media (max-width: 767px) {
-		.period-nav {
-			align-items: flex-start;
-			flex-direction: column;
-		}
-	}
-
-	.master-bot-toggle {
-		display: flex;
+	.sp-switch {
+		display: inline-flex;
 		align-items: center;
 		gap: 0.5rem;
-		cursor: pointer;
-		font-size: 0.9rem;
-		color: var(--color-text-muted);
-		user-select: none;
-		background: var(--color-surface);
+		padding: 0.35rem 0.8rem 0.35rem 0.5rem;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		padding: 0.5rem 0.75rem;
+		border-radius: var(--radius-full);
+		background: var(--color-surface);
+		color: var(--color-text-secondary);
+		font-size: 0.82rem;
+		font-weight: 550;
+		cursor: pointer;
+		user-select: none;
 	}
 
-	.master-bot-toggle input[type='checkbox'] {
+	.sp-switch input {
 		position: absolute;
 		opacity: 0;
 		width: 0;
 		height: 0;
 	}
 
-	.master-bot-toggle .toggle-switch {
+	.sp-switch-track {
 		position: relative;
-		width: 40px;
-		height: 22px;
-		background: var(--color-surface-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 11px;
-		transition: all var(--transition-fast);
+		width: 2rem;
+		height: 1.15rem;
+		border-radius: var(--radius-full);
+		background: var(--color-surface-active);
+		transition: background var(--transition-fast);
 	}
 
-	.master-bot-toggle .toggle-switch::after {
+	.sp-switch-track::after {
 		content: '';
 		position: absolute;
-		top: 2px;
-		left: 2px;
-		width: 16px;
-		height: 16px;
-		background: var(--color-text-muted);
+		top: 0.15rem;
+		left: 0.15rem;
+		width: 0.85rem;
+		height: 0.85rem;
 		border-radius: 50%;
-		transition: all var(--transition-fast);
+		background: var(--color-surface);
+		box-shadow: var(--shadow-sm);
+		transition: transform var(--transition-fast);
 	}
 
-	.master-bot-toggle input:checked + .toggle-switch {
+	.sp-switch input:checked + .sp-switch-track {
 		background: var(--color-primary);
-		border-color: var(--color-primary);
 	}
 
-	.master-bot-toggle input:checked + .toggle-switch::after {
-		left: 20px;
+	.sp-switch input:checked + .sp-switch-track::after {
+		transform: translateX(0.85rem);
+	}
+
+	.sp-switch input:focus-visible + .sp-switch-track {
+		box-shadow: var(--focus-ring);
+	}
+
+	/* Tabs and range: one sticky bar, so both stay in reach while scrolling a long tab. */
+	.sp-bar {
+		position: sticky;
+		top: 0;
+		z-index: 5;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem 1rem;
+		flex-wrap: wrap;
+		margin-bottom: 1.5rem;
 		background: var(--color-background);
+		border-bottom: 1px solid var(--color-border);
 	}
 
-	.master-bot-toggle .toggle-label {
-		font-size: 0.85rem;
-		opacity: 0.5;
-		filter: grayscale(1);
+	.sp-tabs {
+		display: flex;
+		gap: 0.15rem;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+
+	.sp-tab {
+		padding: 0.7rem 0.95rem;
+		margin-bottom: -1px;
+		border: 0;
+		border-bottom: 2px solid transparent;
+		background: none;
+		color: var(--color-text-muted);
+		font: inherit;
+		font-size: 0.92rem;
+		font-weight: 600;
+		white-space: nowrap;
+		cursor: pointer;
 		transition:
-			opacity var(--transition-fast),
-			filter var(--transition-fast);
+			color var(--transition-fast),
+			border-color var(--transition-fast);
 	}
 
-	.master-bot-toggle input:checked ~ .toggle-label {
-		opacity: 1;
-		filter: grayscale(0);
+	.sp-tab:hover {
+		color: var(--color-text);
+	}
+
+	.sp-tab.active {
+		color: var(--color-text);
+		border-bottom-color: var(--color-primary);
+	}
+
+	.sp-tab:focus-visible {
+		outline: none;
+		box-shadow: inset var(--focus-ring);
+	}
+
+	.sp-range {
+		display: inline-flex;
+		padding: 2px;
+		margin: 0.35rem 0;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-full);
+		background: var(--color-surface-elevated);
+	}
+
+	.sp-range-opt {
+		padding: 0.25rem 0.7rem;
+		border-radius: var(--radius-full);
+		color: var(--color-text-muted);
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-decoration: none;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.sp-range-opt:hover {
+		color: var(--color-text);
+	}
+
+	.sp-range-opt.active {
+		background: var(--color-surface);
+		color: var(--color-text);
+		box-shadow: var(--shadow-sm);
 	}
 
 	/* Section Titles */
 	.section-title {
-		font-size: 1.1rem;
-		font-weight: 600;
-		margin: 0 0 1rem;
+		margin: 0 0 0.85rem;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		color: var(--color-text);
+		font-size: 0.74rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
 	}
 
 	.section-subtitle {
-		font-size: 0.85rem;
-		font-weight: 400;
-		color: var(--color-text-muted);
-		margin-left: 0.25rem;
-	}
-
-	.section-icon {
-		font-size: 1rem;
+		font-size: 0.74rem;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		text-transform: none;
+		color: var(--color-text-light);
+		margin-left: 0.15rem;
 	}
 
 	/* Empty State */
@@ -2347,13 +2404,19 @@
 
 	.overview-grid {
 		display: grid;
-		gap: 1rem;
+		gap: 0.9rem;
 		grid-template-columns: 1fr;
 	}
 
-	@media (min-width: 768px) {
+	@media (min-width: 640px) {
 		.overview-grid {
-			grid-template-columns: repeat(3, 1fr);
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (min-width: 1100px) {
+		.overview-grid {
+			grid-template-columns: repeat(4, 1fr);
 		}
 	}
 
@@ -2361,9 +2424,12 @@
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
-		padding: 1.25rem;
+		padding: 1.1rem 1.25rem 1rem;
 		position: relative;
 		overflow: hidden;
+		box-shadow: var(--shadow-sm);
+		display: flex;
+		flex-direction: column;
 	}
 
 	.stat-card.primary {
@@ -2421,39 +2487,77 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.7rem;
 	}
 
 	.stat-icon {
-		font-size: 2rem;
+		display: grid;
+		place-items: center;
+		width: 2.2rem;
+		height: 2.2rem;
+		margin-bottom: 0.7rem;
+		border-radius: 0.65rem;
+		background: var(--color-primary-soft);
+		color: var(--color-primary);
+	}
+
+	.stat-card-header .stat-icon {
+		margin-bottom: 0;
 	}
 
 	.stat-card-header + .stat-content {
-		margin-top: 0.75rem;
+		margin-top: 0;
 	}
 
 	.stat-content {
-		margin-bottom: 1rem;
+		display: flex;
+		flex-direction: column-reverse;
+		margin-bottom: 0.4rem;
 	}
 
 	.stat-value {
 		display: block;
-		font-size: 2rem;
-		font-weight: 700;
+		font-size: 2.1rem;
+		font-weight: 750;
+		letter-spacing: -0.02em;
 		color: var(--color-text);
-		line-height: 1.2;
+		line-height: 1.15;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.stat-label {
 		color: var(--color-text-muted);
-		font-size: 0.9rem;
+		font-size: 0.82rem;
+		font-weight: 600;
 	}
 
 	.stat-breakdown {
 		display: flex;
-		gap: 1rem;
+		gap: 1.25rem;
+		margin-top: auto;
 		padding-top: 0.75rem;
-		border-top: 1px solid var(--color-border);
+		border-top: 1px solid var(--color-border-light);
+	}
+
+	.spark {
+		display: block;
+		width: 100%;
+		height: 2rem;
+		margin: 0.15rem 0 0.7rem;
+		color: var(--color-primary);
+	}
+
+	.spark .area {
+		fill: currentColor;
+		opacity: 0.12;
+	}
+
+	.spark .line {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.8;
+		stroke-linejoin: round;
+		stroke-linecap: round;
 	}
 
 	.breakdown-item {
@@ -2483,25 +2587,7 @@
 	.categories-grid {
 		display: grid;
 		gap: 0.75rem;
-		grid-template-columns: 1fr;
-	}
-
-	@media (min-width: 480px) {
-		.categories-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-	}
-
-	@media (min-width: 768px) {
-		.categories-grid {
-			grid-template-columns: repeat(3, 1fr);
-		}
-	}
-
-	@media (min-width: 1024px) {
-		.categories-grid {
-			grid-template-columns: repeat(5, 1fr);
-		}
+		grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
 	}
 
 	.category-card {
@@ -2584,6 +2670,7 @@
 	}
 
 	.server-info-grid {
+		align-items: start;
 		display: grid;
 		grid-template-columns: repeat(2, 1fr);
 		gap: 1.5rem;
@@ -2741,14 +2828,12 @@
 
 	.voice-charts-grid {
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 1.5rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 1rem;
 	}
 
-	@media (max-width: 1200px) {
-		.voice-charts-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
+	.voice-charts-grid > :global(:first-child) {
+		grid-column: 1 / -1;
 	}
 
 	@media (max-width: 768px) {
@@ -2892,6 +2977,7 @@
 
 	/* Two Column Layout */
 	.two-column-section {
+		align-items: start;
 		display: grid;
 		gap: 1rem;
 		margin-bottom: 1.5rem;
@@ -3210,7 +3296,7 @@
 	.table-header,
 	.table-row {
 		display: grid;
-		grid-template-columns: 50px 1fr 1fr 100px 100px;
+		grid-template-columns: 4.5rem minmax(0, 1.4fr) minmax(0, 1fr) 6.5rem 6rem;
 		gap: 0.75rem;
 		padding: 0.75rem 1rem;
 		align-items: center;
@@ -3223,6 +3309,7 @@
 		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.025em;
+		white-space: nowrap;
 	}
 
 	.table-row {
@@ -3424,7 +3511,22 @@
 
 	/* Command Status Badge */
 	.command-status {
-		font-size: 0.9rem;
+		padding: 0.1rem 0.55rem;
+		border-radius: var(--radius-full);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+
+	.command-status.enabled {
+		background: var(--color-success-soft);
+		color: var(--color-success);
+	}
+
+	.command-status.disabled {
+		background: var(--color-surface-active);
+		color: var(--color-text-muted);
 	}
 
 	/* Bot Toggle and Badge Styles */
@@ -3445,13 +3547,6 @@
 
 	.section-header-row .section-title {
 		margin: 0;
-		font-size: 1rem;
-	}
-
-	@media (min-width: 480px) {
-		.section-header-row .section-title {
-			font-size: 1.1rem;
-		}
 	}
 
 	/* Toggle switch styles */
