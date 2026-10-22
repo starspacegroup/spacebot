@@ -6,7 +6,7 @@
 	const {
 		title = '',
 		subtitle = '',
-		icon = '📊',
+		icon: _icon = '',
 		stats = [],
 		loading = false,
 		children,
@@ -19,7 +19,6 @@
 	{#if title}
 		<header class="chart-header">
 			<h3 class="chart-title">
-				<span class="chart-icon">{icon}</span>
 				{#if loading}
 					<span class="skeleton skeleton-title"></span>
 				{:else}
@@ -42,9 +41,6 @@
 		<div class="chart-stats">
 			{#each stats as stat}
 				<div class="stat-item">
-					{#if stat.icon && !loading}
-						<span class="stat-icon">{stat.icon}</span>
-					{/if}
 					<div class="stat-content">
 						{#if loading}
 							<span class="stat-value skeleton skeleton-value"></span>
@@ -67,6 +63,7 @@
 
 <style>
 	.chart-card {
+		box-shadow: var(--shadow-sm, none);
 		background: var(--color-surface, #1a1a1a);
 		border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
 		border-radius: var(--radius-lg, 12px);
@@ -106,11 +103,11 @@
 	.chart-title {
 		display: flex;
 		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.5rem;
+		align-items: baseline;
+		gap: 0.15rem 0.6rem;
 		margin: 0;
 		font-size: 1rem;
-		font-weight: 600;
+		font-weight: 650;
 		color: var(--color-text, #fff);
 	}
 
@@ -118,10 +115,6 @@
 		.chart-title {
 			font-size: 1.1rem;
 		}
-	}
-
-	.chart-icon {
-		font-size: 1.1rem;
 	}
 
 	.chart-subtitle {
@@ -194,11 +187,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-	}
-
-	.stat-icon {
-		font-size: 1.25rem;
-		flex-shrink: 0;
 	}
 
 	.stat-content {
