@@ -4,7 +4,17 @@
  */
 import { listDocSlugs } from '$lib/server/docs';
 
-const STATIC_PATHS = ['/', '/docs', '/docs/dev', '/support', '/privacy', '/terms'];
+const STATIC_PATHS = [
+	'/',
+	'/servers',
+	'/invite',
+	'/vote',
+	'/docs',
+	'/docs/dev',
+	'/support',
+	'/privacy',
+	'/terms',
+];
 
 function escapeXml(value: string): string {
 	return value
