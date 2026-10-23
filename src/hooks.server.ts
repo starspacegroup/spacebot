@@ -105,7 +105,7 @@ function shouldTrackPath(pathname) {
 		pathname === '/favicon.ico' ||
 		pathname === '/robots.txt' ||
 		pathname === '/sitemap.xml' ||
-		pathname === '/manifest.webmanifest'
+		pathname === '/site.webmanifest'
 	) {
 		return false;
 	}
