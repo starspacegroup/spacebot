@@ -24,6 +24,10 @@
 		tr(code && KNOWN_ERRORS.includes(code) ? `login.errors.${code}` : 'login.errors.generic');
 </script>
 
+<svelte:head>
+	<title>{tr('login.title')} · SpaceBot</title>
+</svelte:head>
+
 <div class="login-container">
 	{#if error && data.isLoggedIn}
 		<h1>{tr('login.cancelledTitle')}</h1>
