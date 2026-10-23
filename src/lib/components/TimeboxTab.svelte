@@ -20,8 +20,11 @@
 		deafen: 'none' | 'focus' | 'whole';
 	};
 
+	type Other = TimeboxLike & { name: string; avatar_url: string | null };
+
 	const {
 		timeboxes,
+		others = [],
 		loaded,
 		now,
 		help,
@@ -30,6 +33,7 @@
 		error,
 	}: {
 		timeboxes: Timebox[];
+		others?: Other[];
 		loaded: boolean;
 		now: number;
 		help: { summary: string; start: string };
@@ -38,6 +42,30 @@
 		error: string;
 	} = $props();
 </script>
+
+{#snippet crew()}
+	{#if others.length > 0}
+		<section class="crew" aria-label="Other timers in your voice channel">
+			<p class="st">In your voice channel</p>
+			<ul>
+				{#each others as o (o.name + o.ends_at + o.phase)}
+					<li>
+						<span class="who">{o.name}</span>
+						<span
+							class="ph"
+							style:color={o.phase === 'focus' ? 'var(--o)' : 'var(--s)'}
+						>
+							{TB_PHASE[o.phase]}{o.status === 'paused' ? ' · paused' : ''}
+						</span>
+						<span class="clock" role="timer" aria-live="off"
+							>{mmss(tbLeft(o, now))}</span
+						>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+{/snippet}
 
 {#if timeboxes.length > 0}
 	{#each timeboxes as tb, i (tb.id)}
@@ -85,7 +113,7 @@
 			</div>
 			{#if tb.deafen !== 'none'}
 				<p class="note">
-					You asked to be deafened {tb.deafen === 'whole'
+					You asked to be deafened and muted {tb.deafen === 'whole'
 						? 'until it ends'
 						: 'during focus blocks'}.
 				</p>
@@ -93,6 +121,7 @@
 		</section>
 	{/each}
 	{#if error}<p class="note">{error}</p>{/if}
+	{@render crew()}
 {:else if !loaded}
 	<p class="st">Looking for your timebox…</p>
 {:else}
@@ -100,9 +129,41 @@
 	<h2 class="hl md">No timebox running</h2>
 	<p class="sub">{help.summary}</p>
 	<p class="st">{help.start}</p>
+	{@render crew()}
 {/if}
 
 <style>
+	.crew {
+		margin-top: 1.4em;
+	}
+	.crew ul {
+		list-style: none;
+		margin: 0.4em 0 0;
+		padding: 0;
+		display: grid;
+		gap: 0.35em;
+		max-width: 42em;
+	}
+	.crew li {
+		display: flex;
+		align-items: baseline;
+		gap: 0.8em;
+		padding: 0.35em 0.8em;
+		border-radius: 0.2em 0.6em 0.6em 0.2em;
+		background: var(--well);
+	}
+	.crew .who {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.crew .clock {
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.06em;
+	}
 	.tbx {
 		display: flex;
 		flex-direction: column;
