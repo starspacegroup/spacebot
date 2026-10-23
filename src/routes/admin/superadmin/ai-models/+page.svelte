@@ -169,6 +169,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Workers AI Models · Superadmin · SpaceBot</title>
+</svelte:head>
+
 <div class="page">
 	<div class="hero">
 		<div class="hero-text">
