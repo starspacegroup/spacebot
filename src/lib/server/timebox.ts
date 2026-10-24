@@ -549,6 +549,9 @@ export async function restoreDeafen(
 			await done(); // left the server
 			return true;
 		}
+		log.warn(
+			`[Timebox] Could not lift deafen/mute for ${userId} (session ${sessionId}): ${err?.status ?? ''} ${err?.message}`
+		);
 		await db
 			.prepare(
 				`UPDATE timebox_participants SET restore_pending = 1, updated_at = datetime('now')
