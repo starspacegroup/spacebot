@@ -32,6 +32,7 @@ database — see the architecture overview below.
 - [The /help command](help-command.md) — what every member sees when they ask what the bot does
 - [Member Rooms](managed-channels.md) — self-service channels members create, run and outlive
 - [Statistics](stats.md) — the admin Statistics page: its four tabs, and the Voice tab that replaced the VC activity page
+- [Automation templates](automation-templates.md) — ready-made automations an admin can start from; created switched off
 - [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch
 - [Quorum](quorum.md) — one-command yes/no decisions that close themselves and post an owned result
