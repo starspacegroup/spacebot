@@ -36,7 +36,10 @@ export async function PATCH({ cookies, platform, params, request }) {
 	const db = (platform as any)?.env?.DB;
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
-	const body = await request.json();
+	const body = await request.json().catch(() => null);
+	if (!body || typeof body !== 'object') {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 	const { change_note, ...patch } = body || {};
 	const result = await updateSuperadminWorkflowTemplate(db, templateId, userId, patch, {
 		changeNote: change_note ? String(change_note) : undefined,
