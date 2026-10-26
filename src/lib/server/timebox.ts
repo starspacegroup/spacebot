@@ -46,7 +46,11 @@ export const DEFAULTS = {
 export const LONG_BREAK_EVERY = 4;
 /** A shared session whose voice channel has been empty this long ends. */
 export const EMPTY_GRACE_MS = 5 * 60 * 1000;
-/** A deafen the bot could not lift is retried this long, then given up on. */
+/**
+ * The sweep retries a deafen it could not lift for this long after the timebox
+ * ended. After that only the member's next voice join lifts it (liftOnVoiceJoin),
+ * so the record is kept, never dropped.
+ */
 export const RESTORE_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 /** Most people pinged at one change. */
 const MAX_MENTIONS = 20;
@@ -560,6 +564,30 @@ export async function restoreDeafen(
 	}
 }
 
+/**
+ * A member who left voice before the bot could lift their timebox deafen/mute
+ * has a record still marked `restore_pending`. Discord only lets us change a
+ * server mute or deafen while the member is connected, so when they join voice
+ * again and their session is over, lift it then. restoreDeafen puts back only
+ * what the timebox itself changed. Sessions still live are left to the sweep.
+ */
+export async function liftOnVoiceJoin(db, discord, guildId: string, userId: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT p.session_id AS session_id FROM timebox_participants p
+			 JOIN timebox_sessions s ON s.id = p.session_id
+			 WHERE p.user_id = ? AND s.guild_id = ? AND p.restore_pending = 1
+			   AND s.status NOT IN ('running', 'paused')`
+		)
+		.bind(userId, guildId)
+		.all();
+	let lifted = 0;
+	for (const r of (results || []) as any[]) {
+		if (await restoreDeafen(db, discord, r.session_id, userId, guildId)) lifted++;
+	}
+	return lifted;
+}
+
 async function heldParticipants(db, sessionId: number): Promise<Participant[]> {
 	const { results } = await db
 		.prepare(`SELECT * FROM timebox_participants WHERE session_id = ? AND applied = 1`)
@@ -866,7 +894,6 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 		ended_empty: 0,
 		deafened: 0,
 		restored: 0,
-		restore_failed: 0,
 	};
 	if (!db) return { ...summary, error: 'Database not available' };
 
@@ -876,8 +903,10 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 	const { results: pending } = await db
 		.prepare(
 			`SELECT p.*, s.guild_id AS guild_id, s.ended_at AS ended_at FROM timebox_participants p
-			 JOIN timebox_sessions s ON s.id = p.session_id WHERE p.restore_pending = 1`
+			 JOIN timebox_sessions s ON s.id = p.session_id
+			 WHERE p.restore_pending = 1 AND (s.ended_at IS NULL OR s.ended_at > ?)`
 		)
+		.bind(new Date(now.getTime() - RESTORE_GIVE_UP_MS).toISOString())
 		.all();
 	if (!live?.length && !pending?.length) return summary;
 
@@ -945,18 +974,6 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 	}
 
 	for (const p of (pending || []) as any[]) {
-		const endedTooLong =
-			p.ended_at && now.getTime() - new Date(p.ended_at).getTime() > RESTORE_GIVE_UP_MS;
-		if (endedTooLong) {
-			await db
-				.prepare(
-					`UPDATE timebox_participants SET applied = 0, restore_pending = 0 WHERE session_id = ? AND user_id = ?`
-				)
-				.bind(p.session_id, p.user_id)
-				.run();
-			summary.restore_failed++;
-			continue;
-		}
 		if (await restoreDeafen(db, discord, p.session_id, p.user_id, p.guild_id))
 			summary.restored++;
 	}

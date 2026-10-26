@@ -26,6 +26,7 @@ import {
 	handleTimeboxComponent,
 	isController,
 	liveForVoice,
+	liftOnVoiceJoin,
 	liveSoloFor,
 	nextStep,
 	phaseMs,
@@ -505,7 +506,7 @@ describe('deafen me', () => {
 		});
 	});
 
-	it('gives up on a deafen it cannot lift a day after the timebox ended', async () => {
+	it('stops the sweep retrying a day after the timebox ended, but keeps the record', async () => {
 		const d = db();
 		const f = fakeDiscord();
 		putVoice(d, ALICE, VC);
@@ -515,11 +516,52 @@ describe('deafen me', () => {
 		f.state.failSetDeaf = { status: 400 };
 		await handleTimeboxComponent(press('stop', s.id), d, f.client);
 		const sum = await sweepTimebox(d, f.client, new Date(Date.now() + 25 * 3600 * 1000));
-		expect(sum.restore_failed).toBe(1);
+		expect(sum.restored).toBe(0);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 1,
+			restore_pending: 1,
+		});
+	});
+
+	it('lifts a held deafen and mute when the member rejoins voice, however long after', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		leaveVoice(d, ALICE);
+		f.state.failSetDeaf = { status: 400 };
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		f.state.failSetDeaf = null;
+		expect(await liftOnVoiceJoin(d, f.client, G, ALICE)).toBe(1);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.mute.get(ALICE)).toBe(false);
 		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
 			applied: 0,
 			restore_pending: 0,
 		});
+		expect(await liftOnVoiceJoin(d, f.client, G, ALICE)).toBe(0);
+	});
+
+	it('on rejoin, leaves a mute a moderator had set and ignores a live session', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		f.state.mute.set(ALICE, true);
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		await d
+			.prepare(`UPDATE timebox_participants SET restore_pending = 1 WHERE session_id = ?`)
+			.bind(s.id)
+			.run();
+		expect(await liftOnVoiceJoin(d, f.client, G, ALICE)).toBe(0); // still running
+		leaveVoice(d, ALICE);
+		f.state.failSetDeaf = { status: 400 };
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		f.state.failSetDeaf = null;
+		await liftOnVoiceJoin(d, f.client, G, ALICE);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.mute.get(ALICE)).toBe(true);
 	});
 
 	it('pausing lifts it and resuming brings it back', async () => {
