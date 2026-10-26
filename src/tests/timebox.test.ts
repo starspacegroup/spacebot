@@ -391,6 +391,25 @@ describe('deafen me', () => {
 		expect(f.state.mute.get(ALICE)).toBe(true);
 	});
 
+	it('leaves a moderator mute alone when the timebox began before the mute column existed', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		// A row applied before 0080 has the column's default, not a value applyDeafen wrote.
+		d.exec(
+			`DELETE FROM timebox_participants WHERE session_id = ${s.id};
+			 INSERT INTO timebox_participants (session_id, user_id, deafen_mode, applied, prev_deaf)
+			 VALUES (${s.id}, '${ALICE}', 'focus', 1, 0);`
+		);
+		f.state.deaf.set(ALICE, true);
+		f.state.mute.set(ALICE, true); // a moderator muted them mid-timebox
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.mute.get(ALICE)).toBe(true);
+	});
+
 	it('waits for a member who is not in voice yet, and the sweep deafens them when they join', async () => {
 		const d = db();
 		const f = fakeDiscord();
