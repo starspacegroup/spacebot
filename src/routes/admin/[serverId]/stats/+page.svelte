@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
+	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
 
 	const { data } = $props();
 
@@ -790,6 +791,12 @@
 			preview={previewVoice}
 		>
 			{#snippet between()}
+				<VoiceMembers
+					serverId={data.serverId}
+					period={selectedPeriod}
+					preview={previewData?.members ?? null}
+				/>
+
 				<!-- Voice Activity Charts Section -->
 				<section class="chart-section">
 					<h2 class="section-title">

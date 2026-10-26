@@ -235,6 +235,15 @@ export function buildPreview(days = 30) {
 			],
 			liveVoiceSnapshot: null,
 		},
+		members: users(1).map((u, i) => ({
+			id: String(100000000000000100n + BigInt(i)),
+			name: u.actor_name,
+			avatar: null,
+			discriminator: '0',
+			bot: false,
+			seconds: u.total_seconds,
+			last_active: new Date(Date.now() - (i + 1) * 5_400_000).toISOString(),
+		})),
 		voice: {
 			snapshot: {
 				totalUsers: 6,
