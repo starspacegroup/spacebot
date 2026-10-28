@@ -9,6 +9,10 @@
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 </script>
 
+<svelte:head>
+	<title>{tr('addServer.title')} · SpaceBot</title>
+</svelte:head>
+
 <div class="add-server-container">
 	<div class="add-server-card">
 		<div class="icon-container">
