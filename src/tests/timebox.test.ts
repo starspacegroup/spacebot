@@ -30,6 +30,7 @@ import {
 	nextStep,
 	phaseMs,
 	sweepTimebox,
+	hasOverdue,
 	upsertSettings,
 	wantsDeaf,
 	type Session,
@@ -44,7 +45,8 @@ const SCHEMA =
 	schema('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	schema('0070_timebox.sql', '-- /timebox as a built-in command family') +
-	schema('0071_timebox_goals.sql', 'UPDATE commands');
+	schema('0071_timebox_goals.sql', 'UPDATE commands') +
+	schema('0080_timebox_mute.sql');
 
 const G = '100000000000000001';
 const TEXT = '200000000000000001';
@@ -77,6 +79,7 @@ function fakeDiscord() {
 	const log: Array<{ op: string; [k: string]: any }> = [];
 	const state = {
 		deaf: new Map<string, boolean>(),
+		mute: new Map<string, boolean>(),
 		failSetDeaf: null as null | { status: number },
 	};
 	const client = {
@@ -93,7 +96,19 @@ function fakeDiscord() {
 		members: {
 			fetch: vi.fn(async (_g: string, userId: string) => ({
 				deaf: state.deaf.get(userId) ?? false,
+				mute: state.mute.get(userId) ?? false,
 			})),
+			setVoice: vi.fn(
+				async (_g: string, userId: string, v: { deaf?: boolean; mute?: boolean }) => {
+					if (state.failSetDeaf)
+						throw Object.assign(new Error('nope'), state.failSetDeaf);
+					if (v.deaf !== undefined) {
+						state.deaf.set(userId, v.deaf);
+						log.push({ op: 'deaf', userId, deaf: v.deaf });
+					}
+					if (v.mute !== undefined) state.mute.set(userId, v.mute);
+				}
+			),
 			setDeaf: vi.fn(async (_g: string, userId: string, deaf: boolean) => {
 				if (state.failSetDeaf) throw Object.assign(new Error('nope'), state.failSetDeaf);
 				state.deaf.set(userId, deaf);
@@ -339,10 +354,12 @@ describe('deafen me', () => {
 		const r = await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
 		expect(text(r)).toMatch(/You are deafened/);
 		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(f.state.mute.get(ALICE)).toBe(true);
 		const s = (await liveForVoice(d, G, VC)) as Session;
 		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
 			applied: 1,
 			prev_deaf: 0,
+			prev_mute: 0,
 			deafen_mode: 'focus',
 		});
 	});
@@ -351,13 +368,27 @@ describe('deafen me', () => {
 		const d = db();
 		const f = fakeDiscord();
 		f.state.deaf.set(ALICE, true);
+		f.state.mute.set(ALICE, true);
 		putVoice(d, ALICE, VC);
 		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
 		const s = (await liveForVoice(d, G, VC)) as Session;
-		expect(f.client.members.setDeaf).not.toHaveBeenCalled();
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
 		await handleTimeboxComponent(press('stop', s.id), d, f.client);
-		expect(f.client.members.setDeaf).not.toHaveBeenCalled();
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
 		expect(f.state.deaf.get(ALICE)).toBe(true);
+	});
+
+	it('lifts its own mute with the deafen, but leaves a mute a moderator set', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		f.state.mute.set(ALICE, true);
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.mute.get(ALICE)).toBe(true);
 	});
 
 	it('waits for a member who is not in voice yet, and the sweep deafens them when they join', async () => {
@@ -366,7 +397,7 @@ describe('deafen me', () => {
 		const r = await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
 		expect(text(r)).toMatch(/Join a voice channel/);
 		const s = (await liveSoloFor(d, G, ALICE)) as Session;
-		expect(f.client.members.setDeaf).not.toHaveBeenCalled();
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
 		putVoice(d, ALICE, VC);
 		const sum = await sweepTimebox(d, f.client, at(1));
 		expect(sum.deafened).toBe(1);
@@ -473,6 +504,30 @@ describe('deafen me', () => {
 			applied: 0,
 			restore_pending: 0,
 		});
+	});
+
+	it('does not count a lift as done while Discord still shows the member deafened', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		// Discord accepts the PATCH but the state does not change.
+		f.client.members.setVoice.mockImplementation(async () => {});
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 1,
+			restore_pending: 1,
+		});
+	});
+
+	it('reports a running block that has run out, so the Activity can settle it at once', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		expect(await hasOverdue(d)).toBe(false);
+		expect(await hasOverdue(d, at(24))).toBe(true);
 	});
 
 	it('gives up on a deafen it cannot lift a day after the timebox ended', async () => {

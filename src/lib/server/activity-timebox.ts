@@ -43,6 +43,21 @@ export interface ActivityTimebox {
 	deafen: DeafenMode;
 }
 
+/** Someone else's timer, as the people sharing their voice channel see it. */
+export interface ActivityTimeboxOther {
+	name: string;
+	avatar_url: string | null;
+	status: Session['status'];
+	phase: Session['phase'];
+	block_number: number;
+	rounds: number;
+	focus_minutes: number;
+	break_minutes: number;
+	long_break_minutes: number;
+	ends_at: number | null;
+	paused_remaining_ms: number | null;
+}
+
 export class TimeboxAccessError extends Error {
 	constructor(
 		public status: number,
@@ -102,6 +117,49 @@ export async function timeboxesForViewer(
 		out.push(view(s, claims.u, mine?.deafen_mode ?? 'none'));
 	}
 	return out;
+}
+
+/**
+ * The other members' solo timers, for the people in the same voice channel as the
+ * viewer (or the one the Activity was opened in). Only a name, a face and the
+ * countdown leave the server: no ids, no goals, no deafen choice. A shared timebox
+ * is already listed in full, so it is not repeated here.
+ */
+export async function othersForViewer(
+	db: any,
+	claims: TokenClaims,
+	guildId: string
+): Promise<ActivityTimeboxOther[]> {
+	const channels = new Set<string>();
+	if (claims.c) channels.add(claims.c);
+	const here = await voiceChannelOf(db, guildId, claims.u);
+	if (here) channels.add(here);
+	if (channels.size === 0) return [];
+	const marks = [...channels].map(() => '?').join(',');
+	const { results } = await db
+		.prepare(
+			`SELECT v.user_name, v.display_name, v.avatar_url, s.*
+			 FROM live_voice_states v
+			 JOIN timebox_sessions s ON s.guild_id = v.guild_id AND s.starter_id = v.user_id
+			 WHERE v.guild_id = ? AND v.channel_id IN (${marks}) AND v.user_id != ?
+			   AND s.kind = 'solo' AND s.status IN ('running', 'paused')
+			 ORDER BY s.id LIMIT 25`
+		)
+		.bind(guildId, ...channels, claims.u)
+		.all();
+	return ((results || []) as any[]).map((r) => ({
+		name: String(r.display_name || r.user_name || 'Someone'),
+		avatar_url: r.avatar_url ?? null,
+		status: r.status,
+		phase: r.phase,
+		block_number: r.block_number,
+		rounds: r.rounds,
+		focus_minutes: r.focus_minutes,
+		break_minutes: r.break_minutes,
+		long_break_minutes: r.long_break_minutes,
+		ends_at: r.phase_ends_at ? Math.floor(new Date(r.phase_ends_at).getTime() / 1000) : null,
+		paused_remaining_ms: r.paused_remaining_ms,
+	}));
 }
 
 export type TimeboxAction = 'pause' | 'resume' | 'skip' | 'stop';

@@ -9,7 +9,15 @@
 	import QuorumTab from '$lib/components/QuorumTab.svelte';
 	import TimeboxTab from '$lib/components/TimeboxTab.svelte';
 	import LcarsFrame from '$lib/components/activity/LcarsFrame.svelte';
-	import { LCARS, viewerAvatar, type Dismissed, type Frame } from '$lib/activity/lcars.js';
+	import {
+		LCARS,
+		TB_PHASE,
+		mmss,
+		tbLeft,
+		viewerAvatar,
+		type Dismissed,
+		type Frame,
+	} from '$lib/activity/lcars.js';
 
 	const { data } = $props();
 
@@ -53,6 +61,7 @@
 		deafen: 'none' | 'focus' | 'whole';
 	};
 	let timeboxes = $state<TimeboxView[]>([]);
+	let others = $state<any[]>([]);
 	let timeboxLoaded = $state(false);
 	// Dev only: a canned Game view for ?preview=game-*.
 	let gamePreview = $state<any>(null);
@@ -78,8 +87,10 @@
 				body: JSON.stringify({ guild_id: guildId, id, action }),
 			});
 			const json = await res.json().catch(() => ({}));
-			if (res.ok) timeboxes = json.timeboxes ?? [];
-			else timeboxError = json.message ?? 'That did not work.';
+			if (res.ok) {
+				timeboxes = json.timeboxes ?? [];
+				others = json.others ?? [];
+			} else timeboxError = json.message ?? 'That did not work.';
 		} catch {
 			timeboxError = 'Could not reach SpaceBot. Try again.';
 		} finally {
@@ -110,6 +121,7 @@
 				const json = await res.json();
 				if (!stopped) {
 					timeboxes = json.timeboxes ?? [];
+					others = json.others ?? [];
 					timeboxLoaded = true;
 				}
 			} catch {
@@ -129,6 +141,27 @@
 
 	const guild = $derived(session?.guilds.find((g) => g.id === guildId) ?? null);
 	const mod = $derived(guild?.modules.find((m) => m.id === moduleId) ?? null);
+
+	// The Activity also runs as a small tile in the voice channel's participant grid
+	// (about 210px square). The full frame is unreadable there, so a tile that small
+	// on its shortest side shows only what matters: for Timebox, the countdown.
+	let winW = $state(1000);
+	let winH = $state(1000);
+	const tile = $derived(Math.min(winW, winH) < 300);
+	const tileTimebox = $derived(
+		tile && phase === 'ready' && mod?.id === 'timebox' && mod.enabled
+			? (timeboxes[0] ?? null)
+			: null
+	);
+	const tileTimeboxIdle = $derived(
+		tile && phase === 'ready' && mod?.id === 'timebox' && !!mod.enabled && !timeboxes[0]
+	);
+	const tileTotalMs = (tb: TimeboxView) =>
+		(tb.phase === 'focus'
+			? tb.focus_minutes
+			: tb.phase === 'long_break'
+				? tb.long_break_minutes
+				: tb.break_minutes) * 60_000;
 	// Only what is turned on in this server gets a tab; the rest would open an "Off" page.
 	const tabs = $derived((guild?.modules ?? []).filter((m) => m.enabled));
 	$effect(() => {
@@ -305,6 +338,34 @@
 					ends_at: null,
 					paused_remaining_ms: 9 * 60 * 1000,
 					deafen: 'whole',
+				},
+			];
+			others = [
+				{
+					name: 'Riker',
+					avatar_url: null,
+					status: 'running',
+					phase: 'focus',
+					block_number: 1,
+					rounds: 1,
+					focus_minutes: 25,
+					break_minutes: 5,
+					long_break_minutes: 15,
+					ends_at: Math.floor(Date.now() / 1000) + 9 * 60 + 41,
+					paused_remaining_ms: null,
+				},
+				{
+					name: 'Data',
+					avatar_url: null,
+					status: 'paused',
+					phase: 'break',
+					block_number: 1,
+					rounds: 2,
+					focus_minutes: 25,
+					break_minutes: 5,
+					long_break_minutes: 15,
+					ends_at: null,
+					paused_remaining_ms: 3 * 60 * 1000,
 				},
 			];
 			timeboxLoaded = true;
@@ -592,82 +653,106 @@
 	{/if}
 {/snippet}
 
-<LcarsFrame
-	title={frame.title}
-	accent={frame.accent}
-	tab={frame.tab}
-	footer={frame.footer}
-	tabs={phase === 'ready' && guild ? tabs.map((m) => ({ id: m.id, label: tabLabel(m) })) : []}
-	active={moduleId}
-	onselect={(id) => (moduleId = id)}
-	sample={isPreview}
-	top={phase === 'ready' ? guildPick : undefined}
->
-	{#if phase === 'loading'}
-		<p class="st">Signing in with Discord…</p>
-	{:else if phase === 'outside'}
-		<p class="st">SpaceBot Activity</p>
-		<h2 class="hl md">Open it in Discord</h2>
-		<p class="sub">
-			This page runs inside Discord. Open it from a voice channel's Activities menu, or from a
-			direct message.
-		</p>
-	{:else if phase === 'error'}
-		<p class="st">Can't open it here</p>
-		<h2 class="hl md" style:color="var(--rr)">Unable to comply</h2>
-		<p class="sub">{message}</p>
-	{:else if session}
-		{#if !guild}
-			<p class="st">Nothing turned on for you yet</p>
-			<h2 class="hl md">Standing by</h2>
-			<p class="sub">
-				SpaceBot's Activity shows up for members of a server that has it enabled. Ask a
-				server admin to turn a module on from the SpaceBot dashboard.
-			</p>
-		{:else if mod}
-			{#if !mod.enabled}
-				<p class="st">{tabLabel(mod)} · not turned on in {guild.name}</p>
-				<h2 class="hl md" style:color="#888">Offline</h2>
-				<p class="sub">{mod.help.summary}</p>
-				<p class="note">A server admin can enable it from the dashboard.</p>
-			{:else if mod.id === 'game'}
-				<GameTab
-					{base}
-					token={session.token}
-					guildId={guild.id}
-					viewer={{
-						id: session.viewer.id,
-						name: session.viewer.username,
-						avatar: viewerAvatar(session.viewer.id, session.viewer.avatar),
-					}}
-					preview={gamePreview}
-					previewDismissed={gamePreviewDismissed}
-					onframe={(f) => (gameFrame = f)}
-				/>
-			{:else if mod.id === 'quorum'}
-				<QuorumTab
-					{base}
-					token={session.token}
-					guildId={guild.id}
-					preview={quorumPreview}
-				/>
-			{:else if mod.id === 'timebox'}
-				<TimeboxTab
-					{timeboxes}
-					loaded={timeboxLoaded}
-					{now}
-					help={mod.help}
-					act={actOnTimebox}
-					busy={timeboxBusy}
-					error={timeboxError}
-				/>
+<svelte:window bind:innerWidth={winW} bind:innerHeight={winH} />
+
+{#if tileTimebox || tileTimeboxIdle}
+	{@const left = tileTimebox ? tbLeft(tileTimebox, now) : 0}
+	{@const total = tileTimebox ? tileTotalMs(tileTimebox) : 0}
+	<div class="lcars tile" style:--acc={tileTimebox?.phase === 'focus' ? LCARS.orange : LCARS.sky}>
+		<p class="t-st">
+			{#if !tileTimebox}
+				No timebox
+			{:else if tileTimebox.status === 'paused'}
+				Paused
 			{:else}
-				<p class="sub">{mod.help.summary}</p>
-				<p class="st">{mod.help.start}</p>
+				{TB_PHASE[tileTimebox.phase]}
+			{/if}
+		</p>
+		<div class="t-big" role="timer" aria-live="off">{tileTimebox ? mmss(left) : '--:--'}</div>
+		<div class="t-bar" aria-hidden="true">
+			<i style:width="{total > 0 ? Math.max(0, Math.min(1, 1 - left / total)) * 100 : 0}%"
+			></i>
+		</div>
+	</div>
+{:else}
+	<LcarsFrame
+		title={frame.title}
+		accent={frame.accent}
+		tab={frame.tab}
+		footer={frame.footer}
+		tabs={phase === 'ready' && guild ? tabs.map((m) => ({ id: m.id, label: tabLabel(m) })) : []}
+		active={moduleId}
+		onselect={(id) => (moduleId = id)}
+		sample={isPreview}
+		top={phase === 'ready' ? guildPick : undefined}
+	>
+		{#if phase === 'loading'}
+			<p class="st">Signing in with Discord…</p>
+		{:else if phase === 'outside'}
+			<p class="st">SpaceBot Activity</p>
+			<h2 class="hl md">Open it in Discord</h2>
+			<p class="sub">
+				This page runs inside Discord. Open it from a voice channel's Activities menu, or
+				from a direct message.
+			</p>
+		{:else if phase === 'error'}
+			<p class="st">Can't open it here</p>
+			<h2 class="hl md" style:color="var(--rr)">Unable to comply</h2>
+			<p class="sub">{message}</p>
+		{:else if session}
+			{#if !guild}
+				<p class="st">Nothing turned on for you yet</p>
+				<h2 class="hl md">Standing by</h2>
+				<p class="sub">
+					SpaceBot's Activity shows up for members of a server that has it enabled. Ask a
+					server admin to turn a module on from the SpaceBot dashboard.
+				</p>
+			{:else if mod}
+				{#if !mod.enabled}
+					<p class="st">{tabLabel(mod)} · not turned on in {guild.name}</p>
+					<h2 class="hl md" style:color="#888">Offline</h2>
+					<p class="sub">{mod.help.summary}</p>
+					<p class="note">A server admin can enable it from the dashboard.</p>
+				{:else if mod.id === 'game'}
+					<GameTab
+						{base}
+						token={session.token}
+						guildId={guild.id}
+						viewer={{
+							id: session.viewer.id,
+							name: session.viewer.username,
+							avatar: viewerAvatar(session.viewer.id, session.viewer.avatar),
+						}}
+						preview={gamePreview}
+						previewDismissed={gamePreviewDismissed}
+						onframe={(f) => (gameFrame = f)}
+					/>
+				{:else if mod.id === 'quorum'}
+					<QuorumTab
+						{base}
+						token={session.token}
+						guildId={guild.id}
+						preview={quorumPreview}
+					/>
+				{:else if mod.id === 'timebox'}
+					<TimeboxTab
+						{timeboxes}
+						{others}
+						loaded={timeboxLoaded}
+						{now}
+						help={mod.help}
+						act={actOnTimebox}
+						busy={timeboxBusy}
+						error={timeboxError}
+					/>
+				{:else}
+					<p class="sub">{mod.help.summary}</p>
+					<p class="st">{mod.help.start}</p>
+				{/if}
 			{/if}
 		{/if}
-	{/if}
-</LcarsFrame>
+	</LcarsFrame>
+{/if}
 
 <style>
 	.guild-label {

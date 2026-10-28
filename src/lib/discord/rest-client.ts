@@ -531,6 +531,18 @@ export function createDiscordRestClient(botToken) {
 					reason,
 				});
 			},
+			/**
+			 * Set a member's server-deafen and server-mute together, in one request, so the
+			 * two never end up half-applied. Pass only the fields to change. Discord only
+			 * allows it while they are in voice.
+			 */
+			async setVoice(guildId, userId, state: { deaf?: boolean; mute?: boolean }, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {
+					method: 'PATCH',
+					body: state,
+					reason,
+				});
+			},
 			/** Server-deafen or undeafen a member. Discord only allows it while they are in voice. */
 			async setDeaf(guildId, userId, deaf, reason?) {
 				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {

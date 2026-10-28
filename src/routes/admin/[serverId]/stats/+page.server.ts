@@ -5,6 +5,7 @@ import { getServerPlan, PLAN_TIERS } from '$lib/db/server-plans.js';
 import { LIVE_UPDATE_TOKEN_TTL_SECONDS, signLiveUpdateAccess } from '$lib/live-updates.js';
 import { getStatsCacheEntry, statsCacheKey } from '$lib/server/stats-page-data.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { getVoiceEventTypeOptions } from '$lib/server/voice-activity-log.js';
 
 const PERIOD_PRESETS_DAYS = [1, 7, 30, 90, 180, 365];
 
@@ -204,6 +205,7 @@ export async function load({ params, cookies, platform, parent, url }) {
 		cachedRoles,
 		liveUpdatesAuth,
 		liveVoiceSnapshot,
+		voiceEventTypeOptions: getVoiceEventTypeOptions(),
 		plan,
 		statsRetentionDays,
 		periodOptions,

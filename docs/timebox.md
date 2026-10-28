@@ -58,15 +58,16 @@ live on `timebox_participants` (`goal`, `percent_done`, migration 0071).
 ## Deafen me
 
 A member's own choice for themselves: _during each focus block_ or _until the
-whole timebox ends_. It is applied as a server-deafen.
+whole timebox ends_. It is applied as a server-deafen **and** a server-mute, so
+the member neither hears nor is heard.
 
 - **The member can always end it.** Discord does not let a member lift their own
   server-deafen, so the **Deafen me** button toggles it off, and Stop and the
   sweep lift it too. Pausing lifts it; resuming brings it back.
 - **Restore, do not clear.** The bot records whether the member was already
-  deafened and puts back exactly that. A member a moderator deafened stays
-  deafened.
-- **Discord's limits.** The bot needs Deafen Members and a role above the member;
+  deafened and whether they were already muted (`prev_deaf`, `prev_mute`, migration 0080) and puts back exactly that. A member a moderator deafened or muted stays
+  that way.
+- **Discord's limits.** The bot needs Deafen Members and Mute Members and a role above the member;
   it cannot change the server owner. It can only change a member who is in a
   voice channel. A member who is not yet in one is deafened within a minute of
   joining; if the bot cannot lift a deafen because the member left voice, the
@@ -83,6 +84,7 @@ workflow preset beside the room reaper) moves a session on once its
 end time has passed, so a change can land up to a minute late. Each block ends
 where the schedule said it would, not when the sweep noticed, so lateness does not
 add up, and after an outage the sweep announces only where the session landed.
+While anyone has the Activity open, its poll also settles a block that has run out at once (`hasOverdue`, then the same sweep), so the deafen lifts when the timer hits zero.
 With nothing live and nothing pending the sweep is two indexed reads.
 
 The plan preferred a timer in the gateway process for exact changes. The minute
