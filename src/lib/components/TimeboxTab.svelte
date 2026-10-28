@@ -18,6 +18,7 @@
 		kind: 'solo' | 'shared';
 		mine: boolean;
 		deafen: 'none' | 'focus' | 'whole';
+		goal?: string | null;
 	};
 
 	type Other = TimeboxLike & { name: string; avatar_url: string | null };
@@ -111,6 +112,9 @@
 				{/if}
 				<button class="btn" disabled={busy} onclick={() => act(tb.id, 'stop')}>Stop</button>
 			</div>
+			{#if tb.goal}
+				<p class="note">Your goal: {tb.goal}</p>
+			{/if}
 			{#if tb.deafen !== 'none'}
 				<p class="note">
 					You asked to be deafened and muted {tb.deafen === 'whole'

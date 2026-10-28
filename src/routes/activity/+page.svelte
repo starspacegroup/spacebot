@@ -59,6 +59,7 @@
 		voice_channel_id: string | null;
 		mine: boolean;
 		deafen: 'none' | 'focus' | 'whole';
+		goal?: string | null;
 	};
 	let timeboxes = $state<TimeboxView[]>([]);
 	let others = $state<any[]>([]);

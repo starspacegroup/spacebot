@@ -94,5 +94,5 @@ timed features; a gateway timer can replace it later without changing the data.
 
 A voice channel made for the timebox (access, who may talk or share a screen,
 delete-or-alert at the end), muting everyone during focus, controls on the Timebox tab in the
-Activity (it shows the countdown with pause, skip and stop, see `docs/activity.md`; goals are not shown there yet), a chime at each change, a completed-blocks
+Activity (it shows the countdown with pause, skip and stop, see `docs/activity.md`; it shows your own goal; the percent done is not shown there yet), a chime at each change, a completed-blocks
 stat, and a history of goals and percents.
