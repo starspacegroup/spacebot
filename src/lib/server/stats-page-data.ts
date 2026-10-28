@@ -25,10 +25,17 @@ import {
 } from "$lib/db/stats-aggregation.js";
 import { getBoostingMembersFromCache, getRolesFromCache } from "$lib/db/guild-cache.js";
 import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
+import { runLimited } from "$lib/server/run-limited.js";
 
 // Shared by the admin/[serverId]/stats page load (cache-read path) and the
 // /api/admin/[serverId]/stats-data endpoint (the client-side fetch that
 // replaces the old goto(invalidateAll) hotload — see that route for why).
+/**
+ * How many of the page's queries run at once. D1 takes one at a time, so a higher
+ * number only lines other requests up behind these (see run-limited.ts).
+ */
+const STATS_QUERY_CONCURRENCY = 3;
+
 export const STATS_CACHE_FRESH_MS = 30 * 1000;
 export const STATS_CACHE_STALE_MS = 15 * 60 * 1000;
 export const STATS_CACHE = (globalThis as any).__spacebotStatsPageCache ||= new Map();
@@ -54,7 +61,7 @@ export function getStatsCacheEntry(cacheKey) {
  * interactive-load-path optimization; the background cron keeps it fully
  * accurate over time.
  */
-export async function fetchStatsPageLiveData(db, serverId, botToken, timezone, selectedPeriod) {
+export async function fetchStatsPageLiveData(db, serverId, botToken, timezone, selectedPeriod, signal?: AbortSignal) {
   try {
     const existingStats = await getLatestServerStats(db, serverId);
     const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
@@ -86,31 +93,35 @@ export async function fetchStatsPageLiveData(db, serverId, botToken, timezone, s
       topBoosters,
       cachedRoles,
       liveVoiceSnapshot,
-    ] = await Promise.all([
-      getGuildStatistics(db, serverId, timezone, selectedPeriod),
-      getActivityHeatmap(db, serverId, timezone, selectedPeriod),
-      getCategoryTrends(db, serverId, timezone, selectedPeriod),
-      getRecentAutomationExecutions(db, serverId, 15),
-      getAutomationExecutionHistory(db, serverId, timezone),
-      Promise.all([
+    ] = await runLimited<any>(
+      [
+      () => getGuildStatistics(db, serverId, timezone, selectedPeriod),
+      () => getActivityHeatmap(db, serverId, timezone, selectedPeriod),
+      () => getCategoryTrends(db, serverId, timezone, selectedPeriod),
+      () => getRecentAutomationExecutions(db, serverId, 15),
+      () => getAutomationExecutionHistory(db, serverId, timezone),
+      () =>
+        Promise.all([
         Promise.resolve(syncedStats.latest ?? existingStats),
         getMemberCountChanges(db, serverId, timezone),
         getPeakMemberCount(db, serverId, selectedPeriod),
       ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
-      getServerStatsHistory(db, serverId, { period: selectedPeriod, granularity: "daily", timezone }),
-      getVoiceActivitySummary(db, serverId, selectedPeriod),
-      getMemberGrowthSummary(db, serverId, selectedPeriod),
-      getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
-      getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
-      getTopVoiceUsers(db, serverId, 10, selectedPeriod),
-      getTopVideoUsers(db, serverId, 10, selectedPeriod),
-      getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
-      getBoostingMembersFromCache(db, serverId, 50),
-      getRolesFromCache(db, serverId).catch((rolesError) => {
+      () => getServerStatsHistory(db, serverId, { period: selectedPeriod, granularity: "daily", timezone }),
+      () => getVoiceActivitySummary(db, serverId, selectedPeriod),
+      () => getMemberGrowthSummary(db, serverId, selectedPeriod),
+      () => getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
+      () => getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
+      () => getTopVoiceUsers(db, serverId, 10, selectedPeriod),
+      () => getTopVideoUsers(db, serverId, 10, selectedPeriod),
+      () => getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
+      () => getBoostingMembersFromCache(db, serverId, 50),
+      () =>
+        getRolesFromCache(db, serverId).catch((rolesError) => {
         log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
         return [];
       }),
-      getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
+      () =>
+        getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
         log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
         return {
           channels: [],
@@ -121,7 +132,10 @@ export async function fetchStatsPageLiveData(db, serverId, botToken, timezone, s
           updatedAt: null,
         };
       }),
-    ]);
+      ],
+      STATS_QUERY_CONCURRENCY,
+      signal
+    );
 
     const data = {
       statistics,

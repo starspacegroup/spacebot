@@ -84,6 +84,7 @@ workflow preset beside the room reaper) moves a session on once its
 end time has passed, so a change can land up to a minute late. Each block ends
 where the schedule said it would, not when the sweep noticed, so lateness does not
 add up, and after an outage the sweep announces only where the session landed.
+While anyone has the Activity open, its poll also settles a block that has run out at once (`hasOverdue`, then the same sweep), so the deafen lifts when the timer hits zero.
 With nothing live and nothing pending the sweep is two indexed reads.
 
 The plan preferred a timer in the gateway process for exact changes. The minute

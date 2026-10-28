@@ -30,6 +30,11 @@ work.
   them from the address.
 - Only what is on is shown for each member (camera, sharing, muted, deafened), not a row
   of "off" chips.
+- **Voice members** (`VoiceMembers.svelte`) lists everyone who spent time in voice in the
+  chosen range, most time first: face, name, time, and when they were last there. It reads
+  `/api/admin/{id}/voice-members?period=` (same access rule as the other admin APIs, up to
+  500 people), hides bots unless you tick Bots, and has a name search. The leaders cards
+  below show only the top five.
 
 ## Preview data (dev only)
 

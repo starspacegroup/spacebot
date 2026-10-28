@@ -6,6 +6,7 @@
 	import { page } from '$app/stores';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
+	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
 
 	const { data } = $props();
 
@@ -56,7 +57,12 @@
 		if (preview || !data.loadMeta?.needsHotload || statsKey === key) return;
 
 		statsLoading = true;
-		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`)
+		// Leaving the page (or changing the range) cancels the request, so the server
+		// stops queuing queries nobody is waiting for.
+		const controller = new AbortController();
+		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`, {
+			signal: controller.signal,
+		})
 			.then((res) => {
 				if (!res.ok) throw new Error(`stats-data request failed: ${res.status}`);
 				return res.json();
@@ -66,12 +72,14 @@
 				statsKey = key;
 			})
 			.catch((err) => {
+				if (err?.name === 'AbortError') return; // left the page; load again on return
 				console.error('[Stats] Failed to load live stats:', err);
 				statsKey = key; // stop retrying automatically; fall back to the shell defaults below
 			})
 			.finally(() => {
 				statsLoading = false;
 			});
+		return () => controller.abort();
 	});
 
 	// Merges the client-fetched stats (once loaded for the current
@@ -790,6 +798,12 @@
 			preview={previewVoice}
 		>
 			{#snippet between()}
+				<VoiceMembers
+					serverId={data.serverId}
+					period={selectedPeriod}
+					preview={previewData?.members ?? null}
+				/>
+
 				<!-- Voice Activity Charts Section -->
 				<section class="chart-section">
 					<h2 class="section-title">
