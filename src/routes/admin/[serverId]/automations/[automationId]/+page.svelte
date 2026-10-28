@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import RepositorySelector from '$lib/components/RepositorySelector.svelte';
@@ -519,6 +520,12 @@
 </svelte:head>
 
 <div class="automation-form-page">
+	{#if $page.url.searchParams.has('from_template')}
+		<p class="template-note">
+			This came from a template and is switched off. Pick its channel or role, check the message,
+			then turn it on.
+		</p>
+	{/if}
 	<header class="page-header">
 		<a href="/admin/{selectedGuildId}/automations" class="back-link"> ← Back to Automations </a>
 		<h1>
@@ -2372,5 +2379,12 @@
 		align-self: flex-start;
 		font-size: 0.8rem;
 		padding: 0.35rem 0.75rem;
+	}
+	.template-note {
+		margin: 0 0 1rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface-elevated);
 	}
 </style>

@@ -182,11 +182,15 @@ html:has(.lcars) body {
 	cursor: default;
 }
 .lcars .sd .tab.on::before {
-	content: '▶';
+	/* a drawn marker, not a glyph: a solid arrowhead with a notch, in the tab's ink */
+	content: '';
 	position: absolute;
-	left: 0.55em;
-	top: 0.45em;
-	font-size: 0.65em;
+	left: 0.7em;
+	top: 0.55em;
+	width: 0.55em;
+	height: 0.7em;
+	background: currentColor;
+	clip-path: polygon(0 0, 100% 50%, 0 100%, 22% 50%);
 }
 .lcars .sd .brand {
 	flex: 0.7;
@@ -655,4 +659,42 @@ html:has(.lcars) body {
 	.lcars .self {
 		margin-left: 0;
 	}
+}
+
+/* The Activity as a small tile in the voice channel's participant grid: just the
+   state, the countdown and a thin bar, filling the tile. */
+.lcars.tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.5em;
+	padding: 0.6em;
+	text-align: center;
+	font-size: clamp(10px, min(7vw, 7vh), 22px);
+}
+.lcars.tile .t-st {
+	margin: 0;
+	color: var(--l);
+}
+.lcars.tile .t-big {
+	color: var(--acc);
+	font-size: min(4.6em, 21vw);
+	line-height: 1;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	font-variant-numeric: tabular-nums;
+}
+.lcars.tile .t-bar {
+	width: 80%;
+	height: 0.5em;
+	border-radius: 0.25em;
+	background: var(--well);
+	overflow: hidden;
+}
+.lcars.tile .t-bar i {
+	display: block;
+	height: 100%;
+	background: var(--acc);
+	transition: width 1s linear;
 }
