@@ -23,6 +23,7 @@ const SCHEMA =
 	sql('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	sql('0070_timebox.sql', '-- /timebox as a built-in command family') +
+	'ALTER TABLE timebox_participants ADD COLUMN goal TEXT;\n' +
 	sql('0080_timebox_mute.sql');
 
 const G = '100000000000000001';
@@ -157,6 +158,20 @@ describe('the Timebox tab data', () => {
 		const [tb] = await timeboxesForViewer(d, claims(), G);
 		expect(tb.deafen).toBe('focus');
 		expect(JSON.stringify(tb)).not.toContain(FRIEND);
+	});
+
+	it("reports the viewer's own goal, and never anyone else's", async () => {
+		const d = createSqliteD1(SCHEMA);
+		const s = await make(d);
+		d.exec(
+			`INSERT INTO timebox_participants (session_id, user_id, goal) VALUES (${s.id}, '${ME}', 'write the report')`
+		);
+		d.exec(
+			`INSERT INTO timebox_participants (session_id, user_id, goal) VALUES (${s.id}, '${FRIEND}', 'secret plan')`
+		);
+		const [tb] = await timeboxesForViewer(d, claims(), G);
+		expect(tb.goal).toBe('write the report');
+		expect(JSON.stringify(tb)).not.toContain('secret plan');
 	});
 
 	it('leaves out finished timeboxes', async () => {

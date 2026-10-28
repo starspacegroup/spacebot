@@ -41,6 +41,8 @@ export interface ActivityTimebox {
 	voice_channel_id: string | null;
 	mine: boolean;
 	deafen: DeafenMode;
+	/** The viewer's own goal for this session, or null. Never anyone else's. */
+	goal: string | null;
 }
 
 /** Someone else's timer, as the people sharing their voice channel see it. */
@@ -67,7 +69,12 @@ export class TimeboxAccessError extends Error {
 	}
 }
 
-function view(s: Session, userId: string, deafen: DeafenMode): ActivityTimebox {
+function view(
+	s: Session,
+	userId: string,
+	deafen: DeafenMode,
+	goal: string | null
+): ActivityTimebox {
 	return {
 		id: s.id,
 		kind: s.kind,
@@ -83,6 +90,7 @@ function view(s: Session, userId: string, deafen: DeafenMode): ActivityTimebox {
 		voice_channel_id: s.voice_channel_id,
 		mine: s.starter_id === userId,
 		deafen,
+		goal,
 	};
 }
 
@@ -114,7 +122,7 @@ export async function timeboxesForViewer(
 	const out: ActivityTimebox[] = [];
 	for (const s of found.values()) {
 		const mine = await getParticipant(db, s.id, claims.u);
-		out.push(view(s, claims.u, mine?.deafen_mode ?? 'none'));
+		out.push(view(s, claims.u, mine?.deafen_mode ?? 'none', mine?.goal ?? null));
 	}
 	return out;
 }
@@ -211,5 +219,5 @@ export async function controlTimebox(
 	else fresh = await endSession(db, discord, s, 'stopped');
 	if (fresh.status !== 'running' && fresh.status !== 'paused') return null;
 	const mine = await getParticipant(db, fresh.id, claims.u);
-	return view(fresh, claims.u, mine?.deafen_mode ?? 'none');
+	return view(fresh, claims.u, mine?.deafen_mode ?? 'none', mine?.goal ?? null);
 }
