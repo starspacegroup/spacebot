@@ -3,7 +3,6 @@ import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 import prettier from 'eslint-config-prettier';
-import svelteConfig from './svelte.config.js';
 
 /**
  * Flat-config ESLint setup for SvelteKit 2 / Svelte 5 + TypeScript.
@@ -91,14 +90,12 @@ export default ts.config(
 	},
 
 	{
-		// Svelte components need the TS parser for <script lang="ts"> and
-		// the svelte.config.js for runes/compiler awareness.
+		// Svelte components need the TS parser for <script lang="ts">.
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {
 				parser: ts.parser,
 				extraFileExtensions: ['.svelte'],
-				svelteConfig,
 			},
 		},
 		rules: {

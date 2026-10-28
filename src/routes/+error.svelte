@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { fly } from 'svelte/transition';
 	import { getTranslator } from '$lib/i18n.js';
 
 	const tr = getTranslator();
 
-	const status = $derived($page.status);
-	const message = $derived($page.error?.message ?? tr('error.default'));
+	const status = $derived(page.status);
+	const message = $derived(page.error?.message ?? tr('error.default'));
 
 	const title = $derived(
 		status === 404

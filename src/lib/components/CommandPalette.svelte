@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { theme } from '$lib/theme.svelte.js';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { getTranslator } from '$lib/i18n.js';
@@ -31,7 +31,7 @@
 
 	/** Active server ID from current URL or selected guild */
 	const activeServerId = $derived(
-		$page.url.pathname.match(/^\/admin\/(\d{17,20})/)?.[1] ?? selectedGuildId
+		page.url.pathname.match(/^\/admin\/(\d{17,20})/)?.[1] ?? selectedGuildId
 	);
 
 	const activeGuild = $derived(adminGuilds.find((g) => g.id === activeServerId));

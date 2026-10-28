@@ -1,4 +1,8 @@
+import { execSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import adapter from '@sveltejs/adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig } from 'vite';
 
 /**
@@ -58,8 +62,53 @@ function staleDepsFix() {
 	};
 }
 
+// Kit 3 starts its dev-server runner when Vitest boots Vite, which fails (the SSR
+// environment is not runnable there). Unit tests don't need the kit plugin, only
+// the $lib alias, so skip the plugin under Vitest.
+const underVitest = Boolean(process.env.VITEST);
+const kitPlugin = (/** @type {Parameters<typeof sveltekit>[0]} */ config) =>
+	underVitest ? [] : [sveltekit(config)];
+
 export default defineConfig({
-	plugins: [excludeNativeModules(), staleDepsFix(), sveltekit()],
+	resolve: underVitest
+		? {
+				alias: {
+					$lib: fileURLToPath(new URL('./src/lib', import.meta.url)),
+					'$app/env': fileURLToPath(
+						new URL('./src/tests/stubs/app-env.ts', import.meta.url)
+					),
+				},
+			}
+		: {},
+	plugins: [
+		excludeNativeModules(),
+		staleDepsFix(),
+		// SvelteKit 3 reads its config from here; svelte.config.js is no longer supported.
+		...kitPlugin({
+			// Enables <script lang="ts"> in Svelte components (TS migration).
+			preprocess: vitePreprocess(),
+			adapter: adapter(),
+			// Kit 3 no longer provides $lib out of the box.
+			alias: { $lib: 'src/lib' },
+			version: {
+				// SvelteKit uses this to detect stale clients and force reload.
+				// Changes on every deploy so cached JS/CSS can't persist across deploys.
+				// Must be deterministic within a build: SvelteKit evaluates this config
+				// several times per build (seconds apart), and a Date.now() here gave the
+				// server and client bundles different version hashes — the SSR HTML then
+				// defines __sveltekit_<A> while the client reads __sveltekit_<B>.env,
+				// crashing all client JS at startup.
+				// CF_PAGES_COMMIT_SHA covers Cloudflare CI builds; git covers local builds.
+				name: (process.env.CF_PAGES_COMMIT_SHA || execSync('git rev-parse HEAD').toString())
+					.trim()
+					.slice(0, 7),
+				// Poll every 60 seconds for version changes.
+				// Essential when HMR is disabled (e.g. over the cloudflared tunnel)
+				// so the client detects stale route manifests and forces a full reload.
+				pollInterval: 60000,
+			},
+		}),
+	],
 	test: {
 		environment: 'node',
 		coverage: {

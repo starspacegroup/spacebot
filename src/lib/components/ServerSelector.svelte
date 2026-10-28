@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { log } from '$lib/log.js';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { getTranslator } from '$lib/i18n.js';
 
 	const tr = getTranslator();
@@ -29,8 +29,8 @@
 
 	function selectGuild(guildId) {
 		closeDropdown();
-		const pathname = $page.url.pathname;
-		const search = $page.url.search || '';
+		const pathname = page.url.pathname;
+		const search = page.url.search || '';
 		const adminRouteMatch = pathname.match(/^\/admin\/\d{17,20}(\/.*)?$/);
 
 		if (adminRouteMatch) {

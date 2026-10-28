@@ -9,7 +9,7 @@
  * to driving the run inline — see driveSuperadminWorkflowRunInline.
  */
 
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '$lib/log.js';
 
 function getQueue(platform) {

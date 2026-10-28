@@ -103,15 +103,14 @@
 
 		handledSuccessUrl = href;
 		toast.success(msg);
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.delete('created');
 		url.searchParams.delete('updated');
 		url.searchParams.delete('deleted');
 		// Keep any other params (pagination/filters) instead of dropping them.
 		goto(url.pathname + url.search, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true,
+			replace: true,
+			reset: false,
 		});
 	});
 

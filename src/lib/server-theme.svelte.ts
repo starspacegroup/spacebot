@@ -9,7 +9,7 @@
  * only needs to set a single custom property.
  */
 
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 /** @type {string|null} Current guild ID whose theme is applied */
 let _currentGuildId = null;

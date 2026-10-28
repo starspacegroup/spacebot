@@ -1,4 +1,4 @@
-import { dev } from "$app/environment";
+import { dev } from '$app/env';
 
 /**
  * Safely get environment variable, works in both Node.js and Cloudflare Workers
@@ -7,14 +7,16 @@ import { dev } from "$app/environment";
  * @returns {string|undefined}
  */
 function getEnv(name, platform) {
-  return platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined);
+	return (
+		platform?.env?.[name] ?? (typeof process !== 'undefined' ? process.env?.[name] : undefined)
+	);
 }
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ platform }) {
-  const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+	const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
-  return {
-    devAuthEnabled,
-  };
+	return {
+		devAuthEnabled,
+	};
 }
