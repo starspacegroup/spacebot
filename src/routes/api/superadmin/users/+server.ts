@@ -41,7 +41,10 @@ export async function POST({ cookies, platform, request }) {
 	const db = (platform as any)?.env?.DB;
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
-	const body = await request.json();
+	const body = await request.json().catch(() => null);
+	if (!body || typeof body !== 'object') {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 	if (!body.id) {
 		return json({ error: 'User ID is required' }, { status: 400 });
 	}

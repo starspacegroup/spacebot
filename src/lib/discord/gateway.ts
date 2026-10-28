@@ -1576,6 +1576,21 @@ async function createLobbyRoom(guild, member, lobbyChannelId) {
 	return response.json();
 }
 
+async function liftTimeboxOnJoin(guildId, userId) {
+	try {
+		await fetch(`${API_BASE}/api/timebox/${guildId}/voice-join`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+			},
+			body: JSON.stringify({ user_id: userId }),
+		});
+	} catch (error) {
+		log.warn(`[Timebox] Could not lift a held mute on join: ${error.message}`);
+	}
+}
+
 /**
  * Lobby channel ids per guild, as last reported by the app.
  *
@@ -3524,6 +3539,8 @@ function setupEventHandlers(client, logFn) {
 			});
 			scheduleLiveVoiceSync();
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
+			// A timebox mute/deafen that outlived its session comes off now they are back.
+			if (actorId && !actorIsBot) void liftTimeboxOnJoin(guildId, actorId);
 			// A join-to-create lobby turns this join into a new room.
 			if (member) {
 				void handleLobbyJoin(guild, member, newState.channel.id);
