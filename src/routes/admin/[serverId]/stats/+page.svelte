@@ -3,7 +3,7 @@
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
 
@@ -18,7 +18,7 @@
 	// endpoint directly instead (see src/routes/admin/[serverId]/+page.svelte
 	// for the same fix applied to the dashboard first).
 	// Dev only: `?preview=1` swaps in canned data (src/lib/stats/preview-fixture.ts).
-	const preview = import.meta.env.DEV && $page.url.searchParams.has('preview');
+	const preview = import.meta.env.DEV && page.url.searchParams.has('preview');
 	let previewData = $state<any>(null);
 	if (import.meta.env.DEV && preview) {
 		import('$lib/stats/preview-fixture.js').then((m) => (previewData = m.buildPreview()));
@@ -141,7 +141,7 @@
 	];
 
 	function tabFromUrl(): TabId {
-		const wanted = $page.url.searchParams.get('tab');
+		const wanted = page.url.searchParams.get('tab');
 		return TABS.find((t) => t.id === wanted)?.id ?? 'overview';
 	}
 
@@ -150,7 +150,7 @@
 	function selectTab(id: TabId) {
 		if (id === tab) return;
 		tab = id;
-		const next = new URL($page.url);
+		const next = new URL(page.url.href);
 		next.searchParams.set('tab', id);
 		if (id !== 'voice') for (const key of VOICE_LOG_PARAMS) next.searchParams.delete(key);
 		replaceState(next, {});

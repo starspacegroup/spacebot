@@ -1,5 +1,5 @@
 {
-	"extends": "./.svelte-kit/tsconfig.json",
+	"extends": "$app/tsconfig",
 	"compilerOptions": {
 		// allowJs/checkJs stay on during the JS→TS migration so any
 		// not-yet-renamed .js files still resolve. checkJs is off so the
@@ -17,7 +17,10 @@
 		"noImplicitAny": false,
 		"strictNullChecks": false,
 		"skipLibCheck": true
-	}
+	},
+	// Kit 3 no longer generates include/exclude; these match what kit 2 wrote.
+	"include": ["src/**/*.js", "src/**/*.ts", "src/**/*.svelte", "vite.config.js"],
+	"exclude": ["node_modules", "src/service-worker.js", "src/service-worker.ts"]
 	// Path aliases are handled by https://svelte.dev/docs/kit/configuration#alias
 	// except $lib which is handled by https://svelte.dev/docs/kit/configuration#files
 	//

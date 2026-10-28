@@ -1,5 +1,5 @@
 import { json, redirect } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '$lib/log.js';
 import { upsertUser } from '$lib/db/users.js';
 import { trackUserActivity } from '$lib/db/user-activity.js';
