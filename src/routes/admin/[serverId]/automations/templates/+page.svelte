@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
 	const { data, form } = $props();
 
-	const serverId = $derived($page.params.serverId);
+	const serverId = $derived(page.params.serverId);
 	const order = ['welcome', 'logging', 'moderation', 'voice'] as const;
 	let busy = $state<string | null>(null);
 </script>

@@ -1,12 +1,12 @@
 import * as Sentry from '@sentry/sveltekit';
 import { handleErrorWithSentry } from '@sentry/sveltekit';
-import { env } from '$env/dynamic/public';
+import * as env from '$app/env/public';
 
 /**
  * Client-side Sentry.
  *
  * The DSN must be a PUBLIC_ var: client code can't read server env, so the
- * value is exposed to the browser at build/runtime via $env/dynamic/public.
+ * value is exposed to the browser at build/runtime via $app/env/public (declared in src/env.ts).
  * Set PUBLIC_SENTRY_DSN to enable; unset = no-op (Sentry.init is skipped and
  * handleErrorWithSentry just forwards errors).
  *

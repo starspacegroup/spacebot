@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	const { data } = $props();
 
@@ -9,8 +9,8 @@
 
 	/** @typedef {{ id: string, title: string, createdAt: string, messages: any[] }} ChatSession */
 
-	let sessions = $state(/** @type {ChatSession[]} */ ([]));
-	let activeSessionId = $state(/** @type {string|null} */ (null));
+	let sessions = $state(/** @type {ChatSession[]} */ []);
+	let activeSessionId = $state(/** @type {string|null} */ null);
 	let sidebarOpen = $state(false);
 
 	// DM history
@@ -788,8 +788,7 @@
 							: 'AI is disabled for this server'}
 						rows="1"
 						disabled={sending || !data.aiEnabled}
-						class="chat-input"
-					></textarea>
+						class="chat-input"></textarea>
 					<button
 						class="send-btn"
 						onclick={() => sendMessage()}

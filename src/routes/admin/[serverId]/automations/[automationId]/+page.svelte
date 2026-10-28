@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
 	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import RepositorySelector from '$lib/components/RepositorySelector.svelte';
@@ -520,10 +520,10 @@
 </svelte:head>
 
 <div class="automation-form-page">
-	{#if $page.url.searchParams.has('from_template')}
+	{#if page.url.searchParams.has('from_template')}
 		<p class="template-note">
-			This came from a template and is switched off. Pick its channel or role, check the message,
-			then turn it on.
+			This came from a template and is switched off. Pick its channel or role, check the
+			message, then turn it on.
 		</p>
 	{/if}
 	<header class="page-header">

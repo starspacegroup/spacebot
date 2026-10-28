@@ -25,7 +25,7 @@ function cookies(role?: string) {
 /** Import the module with `dev` forced to a given value. */
 async function loadWithDev(isDev: boolean) {
 	vi.resetModules();
-	vi.doMock('$app/environment', () => ({ dev: isDev, browser: false, building: false }));
+	vi.doMock('$app/env', () => ({ dev: isDev, browser: false, building: false }));
 	return await import('../lib/discord/guilds.js');
 }
 
@@ -42,7 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.unstubAllGlobals();
-	vi.doUnmock('$app/environment');
+	vi.doUnmock('$app/env');
 	vi.resetModules();
 });
 
