@@ -16,7 +16,14 @@
 		"strict": false,
 		"noImplicitAny": false,
 		"strictNullChecks": false,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		// Kit 3 extends "$app/tsconfig", a package export bun cannot follow at
+		// runtime. The pm2 gateway runs under bun and needs $lib from here, or it
+		// crash-loops on "Cannot find module '$lib/log.js'" (2026-10-28).
+		"paths": {
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"]
+		}
 	},
 	// Kit 3 no longer generates include/exclude; these match what kit 2 wrote.
 	"include": ["src/**/*.js", "src/**/*.ts", "src/**/*.svelte", "vite.config.js"],
