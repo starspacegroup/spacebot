@@ -77,6 +77,9 @@ export default defineConfig({
 					'$app/env': fileURLToPath(
 						new URL('./src/tests/stubs/app-env.ts', import.meta.url)
 					),
+					'cloudflare:workers': fileURLToPath(
+						new URL('./src/tests/stubs/cloudflare-workers.ts', import.meta.url)
+					),
 				},
 			}
 		: {},

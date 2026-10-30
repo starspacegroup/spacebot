@@ -30,6 +30,7 @@ import {
 	setAsyncLocalStorageAsyncContextStrategy,
 } from '@sentry/cloudflare';
 import { wrapRequestHandler } from '@sentry/cloudflare/request';
+import { restorePlatform } from '$lib/server/cloudflare-platform.js';
 
 /**
  * Dev Auth Bypass
@@ -681,5 +682,5 @@ export function initSentryHandle({ event, resolve }) {
 	);
 }
 
-export const handle = sequence(initSentryHandle, sentryHandle(), appHandle);
+export const handle = sequence(restorePlatform, initSentryHandle, sentryHandle(), appHandle);
 export const handleError = handleErrorWithSentry();
