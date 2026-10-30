@@ -10,6 +10,7 @@
 import { json } from '@sveltejs/kit';
 import { listUsers, upsertUser, getUser } from '$lib/db/users.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ cookies, platform, url }) {
@@ -22,8 +23,8 @@ export async function GET({ cookies, platform, url }) {
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
 	const search = url.searchParams.get('search') || undefined;
-	const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-	const offset = parseInt(url.searchParams.get('offset') || '0', 10);
+	const limit = intParam(url, 'limit', 50, 1, 200);
+	const offset = intParam(url, 'offset', 0, 0);
 	const sort = url.searchParams.get('sort') || 'last_login_at';
 	const order = url.searchParams.get('order') || 'desc';
 
