@@ -10,7 +10,10 @@
  *     "headers": { "Authorization": "Bearer sb_live_..." }
  *   }
  * 
- * Supports MCP tools for reading logs, automations, commands, stats, and settings.
+ * Supports MCP tools for reading logs, automations, commands, stats, and settings,
+ * and (with the matching write scope) for enabling/disabling automations and
+ * commands and scheduling channel messages. Writes use the same functions as
+ * the dashboard and are logged naming the API key.
  * Auth: Bearer <api_key>
  */
 
@@ -21,6 +24,12 @@ import { getAutomations, getAutomation } from "$lib/db/automations.js";
 import { getGuildCommands, getCommand } from "$lib/db/commands.js";
 import { getGuildSettings } from "$lib/db/settings.js";
 import { log } from "$lib/db/logger.js";
+import {
+  logApiKeyWrite,
+  scheduleChannelMessage,
+  setAutomationEnabled,
+  setCommandEnabled,
+} from "$lib/server/control-actions.js";
 
 /**
  * Define MCP tools available via this endpoint
@@ -118,12 +127,52 @@ const MCP_TOOLS = [
     },
     requiredScope: "settings:read",
   },
+  {
+    name: "set_automation_enabled",
+    description: "Enable or disable one automation on this server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The automation ID (numeric id or public id)" },
+        enabled: { type: "boolean", description: "true to enable, false to disable" },
+      },
+      required: ["id", "enabled"],
+    },
+    requiredScope: "automations:write",
+  },
+  {
+    name: "set_command_enabled",
+    description: "Enable or disable one slash command on this server. A built-in command is toggled for this server only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "number", description: "The command ID" },
+        enabled: { type: "boolean", description: "true to enable, false to disable" },
+      },
+      required: ["id", "enabled"],
+    },
+    requiredScope: "commands:write",
+  },
+  {
+    name: "schedule_message",
+    description: "Schedule a plain text message to a channel on this server at a future time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        channel_id: { type: "string", description: "Discord channel ID on this server" },
+        content: { type: "string", description: "Message text (1-2000 characters)" },
+        send_at: { type: "string", description: "When to send, ISO 8601 (e.g. 2026-11-01T15:00:00Z)" },
+      },
+      required: ["channel_id", "content", "send_at"],
+    },
+    requiredScope: "messages:write",
+  },
 ];
 
 /**
  * Handle a single MCP JSON-RPC request
  */
-async function handleMcpRequest(rpcRequest, auth, db) {
+async function handleMcpRequest(rpcRequest, auth, db, env) {
   const { method, params, id } = rpcRequest;
 
   // JSON-RPC response helper
@@ -178,7 +227,7 @@ async function handleMcpRequest(rpcRequest, auth, db) {
       }
 
       try {
-        const result = await executeTool(toolName, toolArgs, auth.guildId, db);
+        const result = await executeTool(toolName, toolArgs, auth, db, env);
         return rpcResult({
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         });
@@ -204,7 +253,8 @@ async function handleMcpRequest(rpcRequest, auth, db) {
 /**
  * Execute an MCP tool
  */
-async function executeTool(toolName, args, guildId, db) {
+async function executeTool(toolName, args, auth, db, env) {
+  const guildId = auth.guildId;
   switch (toolName) {
     case "get_event_logs": {
       const options = {
@@ -273,6 +323,38 @@ async function executeTool(toolName, args, guildId, db) {
       return await getGuildSettings(db, guildId);
     }
 
+    case "set_automation_enabled": {
+      if (typeof args.enabled !== "boolean") throw new Error("enabled must be a boolean");
+      if (args.id === undefined || args.id === null || args.id === "") throw new Error("id is required");
+      const result = await setAutomationEnabled(db, guildId, args.id, args.enabled);
+      if (!result.ok) throw new Error(result.error);
+      const id = result.automation?.id ?? args.id;
+      await logApiKeyWrite(db, auth, "API_AUTOMATION_TOGGLED", { id, name: result.automation?.name }, { enabled: args.enabled, via: "mcp" });
+      return { success: true, id, enabled: args.enabled };
+    }
+
+    case "set_command_enabled": {
+      if (typeof args.enabled !== "boolean") throw new Error("enabled must be a boolean");
+      const id = Number(args.id);
+      if (!Number.isInteger(id)) throw new Error("id must be a number");
+      const result = await setCommandEnabled(db, env, guildId, id, args.enabled);
+      if (!result.ok) throw new Error(result.error);
+      await logApiKeyWrite(db, auth, "API_COMMAND_TOGGLED", { id, name: result.command?.name }, { enabled: args.enabled, via: "mcp" });
+      return { success: true, id, enabled: args.enabled };
+    }
+
+    case "schedule_message": {
+      const result = await scheduleChannelMessage(db, guildId, {
+        channel_id: args.channel_id,
+        content: args.content,
+        send_at: args.send_at,
+        created_by: `api_key:${auth.keyId}`,
+      });
+      if (!result.ok) throw new Error(result.error);
+      await logApiKeyWrite(db, auth, "API_MESSAGE_SCHEDULED", { id: result.id, channel_id: args.channel_id }, { scheduled_message_id: result.id, send_at: result.send_at, via: "mcp" });
+      return { success: true, id: result.id, send_at: result.send_at };
+    }
+
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
@@ -298,7 +380,7 @@ export async function POST({ request, platform }) {
     if (Array.isArray(body)) {
       const results = [];
       for (const req of body) {
-        const result = await handleMcpRequest(req, auth, db);
+        const result = await handleMcpRequest(req, auth, db, (platform as any)?.env);
         if (result !== null) {
           results.push(result);
         }
@@ -307,7 +389,7 @@ export async function POST({ request, platform }) {
     }
 
     // Single request
-    const result = await handleMcpRequest(body, auth, db);
+    const result = await handleMcpRequest(body, auth, db, (platform as any)?.env);
     if (result === null) {
       // Notification - no response body
       return new Response(null, { status: 204 });

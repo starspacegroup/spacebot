@@ -38,6 +38,7 @@ export const API_KEY_SCOPES = {
 	'content:read': "Read members' own content (/about)",
 	'commands:read': 'Read slash commands',
 	'commands:write': 'Create/update slash commands',
+	'messages:write': 'Schedule channel messages',
 	'stats:read': 'Read server statistics',
 	'members:read': "Read one member's own activity counts",
 	'voice:read': 'Read who is currently in voice channels',
