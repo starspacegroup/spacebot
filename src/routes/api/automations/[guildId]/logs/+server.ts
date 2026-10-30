@@ -3,44 +3,45 @@
  * GET - Get execution logs for automations
  */
 
-import { json } from "@sveltejs/kit";
-import { getAutomationLogs } from "$lib/db/automations.js";
-import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { json } from '@sveltejs/kit';
+import { getAutomationLogs } from '$lib/db/automations.js';
+import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, url, cookies, platform }) {
-  const { guildId } = params;
-  const accessToken = cookies.get("discord_access_token");
+	const { guildId } = params;
+	const accessToken = cookies.get('discord_access_token');
 
-  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
-  if (!auth.authorized) {
-    return json({ error: auth.error }, { status: 403 });
-  }
+	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	if (!auth.authorized) {
+		return json({ error: auth.error }, { status: 403 });
+	}
 
-  const db = (platform as any)?.env?.DB;
-  if (!db) {
-    return json({ error: "Database not available" }, { status: 500 });
-  }
+	const db = (platform as any)?.env?.DB;
+	if (!db) {
+		return json({ error: 'Database not available' }, { status: 500 });
+	}
 
-  const limit = parseInt(url.searchParams.get("limit") || "50");
-  const offset = parseInt(url.searchParams.get("offset") || "0");
-  const automationId = url.searchParams.get("automationId");
-  const success = url.searchParams.get("success");
+	const limit = intParam(url, 'limit', 50, 1, 500);
+	const offset = intParam(url, 'offset', 0, 0);
+	const automationId = url.searchParams.get('automationId');
+	const success = url.searchParams.get('success');
 
-  const { logs, total } = await getAutomationLogs(db, guildId, {
-    limit,
-    offset,
-    automationId: automationId ? parseInt(automationId) : undefined,
-    success: success !== null ? success === "true" : undefined,
-  });
+	const { logs, total } = await getAutomationLogs(db, guildId, {
+		limit,
+		offset,
+		automationId: automationId ? parseInt(automationId) : undefined,
+		success: success !== null ? success === 'true' : undefined,
+	});
 
-  return json({
-    logs,
-    total,
-    pagination: {
-      limit,
-      offset,
-      hasMore: offset + logs.length < total,
-    },
-  });
+	return json({
+		logs,
+		total,
+		pagination: {
+			limit,
+			offset,
+			hasMore: offset + logs.length < total,
+		},
+	});
 }
