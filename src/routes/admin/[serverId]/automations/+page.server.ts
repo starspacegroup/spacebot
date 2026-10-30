@@ -7,10 +7,10 @@ import {
 	getAutomationLogs,
 	getAutomations,
 	TEMPLATE_VARIABLES,
-	toggleAutomation,
 	updateAutomation,
 } from '$lib/db/automations.js';
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from '$lib/db/logger.js';
+import { setAutomationEnabled } from '$lib/server/control-actions.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -253,30 +253,10 @@ export const actions = {
 			return fail(400, { error: 'Automation ID and Guild ID are required' });
 		}
 
-		// If enabling, check plan limits
-		if (enabled) {
-			try {
-				const activeResult = await getAutomations(db, guildId, {
-					enabled: true,
-					limit: 1000,
-				});
-				const activeCount = activeResult.automations?.length || 0;
-				const planCheck = await checkPlanLimit(db, guildId, 'automations', activeCount);
-				if (!planCheck.allowed) {
-					return fail(403, {
-						error: `Automation limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another automation first.`,
-					});
-				}
-			} catch (err) {
-				log.warn('Plan limit check failed, allowing toggle:', err);
-			}
-		}
-
 		try {
-			const result = await toggleAutomation(db, id, guildId, enabled);
-
-			if (!result.success) {
-				return fail(500, { error: 'Failed to toggle automation' });
+			const result = await setAutomationEnabled(db, guildId, String(id), enabled);
+			if (!result.ok) {
+				return fail(result.status, { error: result.error });
 			}
 
 			return {
