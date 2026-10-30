@@ -16,6 +16,33 @@ import { getTimezoneOffsetSQL } from '../timezone.js';
 const VOICE_SESSION_DELETE_BUDGET = 1500;
 const HOURLY_AGGREGATE_DELETE_BUDGET = 1500;
 
+/** Hourly rows are pruned after 30 days; the daily rollups are kept. Reads use
+ *  hourly rows for the last HOURLY_FULL_DAYS days (exact local-day alignment)
+ *  and daily rows before that, so 60d/90d views are not empty past a month.
+ *  The cutoff is a UTC midnight, so no day is counted from both sources. */
+const HOURLY_FULL_DAYS = 28;
+
+/** Rows of `columns` from aggregated_stats, hourly recent + daily older, inside
+ *  the `period_start >= datetime('now', ?)` window. Binds four values:
+ *  guildId, timeRange, guildId, timeRange. `dateExpr` adds a `date` column;
+ *  daily rows are labelled by their UTC day (they cover whole UTC days). */
+function rollupRows(columns: string, tzOffset: string | null = null) {
+	const hourlyDate =
+		tzOffset === null ? '' : `date(datetime(period_start, '${tzOffset}')) as date, `;
+	const dailyDate = tzOffset === null ? '' : 'date(period_start) as date, ';
+	return `(
+      SELECT ${hourlyDate}${columns} FROM aggregated_stats
+      WHERE guild_id = ? AND period_type = 'hourly'
+        AND period_start >= datetime('now', ?)
+        AND period_start >= date('now', '-${HOURLY_FULL_DAYS} days')
+      UNION ALL
+      SELECT ${dailyDate}${columns} FROM aggregated_stats
+      WHERE guild_id = ? AND period_type = 'daily'
+        AND period_start >= datetime('now', ?)
+        AND period_start < date('now', '-${HOURLY_FULL_DAYS} days')
+    )`;
+}
+
 const HOURLY_REPAIR_DAYS = 7;
 const DAILY_REPAIR_DAYS = 14;
 const HOURLY_BOOTSTRAP_MAX_DAYS = 14;
@@ -965,13 +992,10 @@ export async function getVoiceActivitySummary(db, guildId, period = '7d') {
       SELECT 
         SUM(voice_total_seconds) as total_seconds,
         MAX(voice_unique_users) as unique_users
-      FROM aggregated_stats
-      WHERE guild_id = ? 
-        AND period_type = 'hourly'
-        AND period_start >= datetime('now', ?)
+      FROM ${rollupRows('voice_total_seconds, voice_unique_users')}
     `
 			)
-			.bind(guildId, timeRange)
+			.bind(guildId, timeRange, guildId, timeRange)
 			.first();
 
 		// Add the current in-progress hour so summaries stay aligned with live activity.
@@ -1042,13 +1066,10 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
         SUM(member_joins) as joins,
         SUM(member_leaves) as leaves,
         SUM(member_net_change) as net_change
-      FROM aggregated_stats
-      WHERE guild_id = ? 
-        AND period_type = 'hourly'
-        AND period_start >= datetime('now', ?)
+      FROM ${rollupRows('member_joins, member_leaves, member_net_change')}
     `
 			)
-			.bind(guildId, timeRange)
+			.bind(guildId, timeRange, guildId, timeRange)
 			.first();
 
 		const joins = stats?.joins || 0;
@@ -1706,19 +1727,16 @@ export async function getVoiceActivityChart(db, guildId, period = '30d', timezon
 			.prepare(
 				`
       SELECT 
-        date(datetime(period_start, '${tzOffset}')) as date,
+        date,
         SUM(voice_total_seconds) as total_seconds,
         MAX(voice_unique_users) as unique_users,
         MAX(voice_peak_concurrent) as peak_concurrent
-      FROM aggregated_stats
-      WHERE guild_id = ?
-        AND period_type = 'hourly'
-        AND period_start >= datetime('now', ?)
+      FROM ${rollupRows('voice_total_seconds, voice_unique_users, voice_peak_concurrent', tzOffset)}
       GROUP BY date
       ORDER BY date ASC
     `
 			)
-			.bind(guildId, timeRange)
+			.bind(guildId, timeRange, guildId, timeRange)
 			.all();
 
 		const rawData = (result.results || []).map((row) => ({
@@ -1788,18 +1806,15 @@ export async function getMessageActivityChart(db, guildId, period = '30d', timez
 			.prepare(
 				`
       SELECT
-        date(datetime(period_start, '${tzOffset}')) as date,
+        date,
         SUM(message_count) as message_count,
         MAX(message_unique_users) as message_unique_users
-      FROM aggregated_stats
-      WHERE guild_id = ?
-        AND period_type = 'hourly'
-        AND period_start >= datetime('now', ?)
+      FROM ${rollupRows('message_count, message_unique_users', tzOffset)}
       GROUP BY date
       ORDER BY date ASC
     `
 			)
-			.bind(guildId, timeRange)
+			.bind(guildId, timeRange, guildId, timeRange)
 			.all();
 
 		const rawData = (result.results || []).map((row) => ({
