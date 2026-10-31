@@ -13,6 +13,7 @@ import { loadSecrets } from '../secrets.js';
 import { escapeDiscordMarkdown, findGuildMatches } from './markdown.js';
 await loadSecrets();
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -28,6 +29,15 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
+
+/**
+ * discord.js retries a send that times out (15s default), and Discord may have
+ * created the first message already. A nonce with enforceNonce makes Discord
+ * drop the retried duplicate; the retry reuses the same body, so the same nonce.
+ */
+function sendNonce() {
+	return { nonce: randomUUID().replaceAll('-', '').slice(0, 25), enforceNonce: true };
+}
 import { buildLiveVoiceSnapshot } from '../db/live-voice.js';
 import { generateChatResponse, isAIEnabled } from '../ai/chat.js';
 import { resolveTargetUser } from '../automation/engine.js';
@@ -2224,6 +2234,7 @@ async function executeAutomationAction(automation, event) {
 
 			if (action_config.embed) {
 				const msg = await channel.send({
+					...sendNonce(),
 					embeds: [
 						{
 							description: content,
@@ -2240,7 +2251,7 @@ async function executeAutomationAction(automation, event) {
 				});
 				return { messageId: msg.id, channelId, embed: true };
 			} else {
-				const msg = await channel.send(content);
+				const msg = await channel.send({ content, ...sendNonce() });
 				return { messageId: msg.id, channelId };
 			}
 		}
@@ -2346,7 +2357,7 @@ async function executeAutomationAction(automation, event) {
 				messagePayload.content = content;
 			}
 
-			const msg = await channel.send(messagePayload);
+			const msg = await channel.send({ ...messagePayload, ...sendNonce() });
 			return { messageId: msg.id, channelId, buttonsAttached: buttonComponents.length };
 		}
 
