@@ -186,6 +186,8 @@ export const actions = {
 		const target = new URL(resolved.redirectUri);
 		target.searchParams.set('code', issued.code);
 		target.searchParams.set('state', resolved.state);
-		throw redirect(302, target.toString());
+		// The URI is on the client's registered allowlist (checked above), so an
+		// off-site redirect is intended; `true` still blocks javascript: and data:.
+		throw redirect(302, target.toString(), { external: true });
 	},
 };

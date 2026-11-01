@@ -498,6 +498,9 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 				change,
 				'Timebox: deafened and muted at their request'
 			);
+		log.info(
+			`[Timebox] Held ${userId} in session ${s.id} (was deaf ${prev}, mute ${prevMute}; set ${JSON.stringify(change)})`
+		);
 		await db
 			.prepare(
 				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, prev_mute = ?, updated_at = datetime('now')
@@ -546,6 +549,14 @@ export async function restoreDeafen(
 	}
 	try {
 		await discord.members.setVoice(guildId, userId, change, 'Timebox: deafen and mute lifted');
+		// Trust Discord's answer, not the PATCH: if the member still shows deafened or
+		// muted, the lift did not take, so keep the row pending and try again.
+		const after = await discord.members.fetch(guildId, userId).catch(() => null);
+		if ((change.deaf === false && after?.deaf) || (change.mute === false && after?.mute)) {
+			throw Object.assign(new Error('still deafened or muted after the lift'), {
+				status: 'stuck',
+			});
+		}
 		await done();
 		return true;
 	} catch (err: any) {
@@ -553,6 +564,9 @@ export async function restoreDeafen(
 			await done(); // left the server
 			return true;
 		}
+		log.warn(
+			`[Timebox] Could not lift deafen/mute for ${userId} (session ${sessionId}): ${err?.status ?? ''} ${err?.message}`
+		);
 		await db
 			.prepare(
 				`UPDATE timebox_participants SET restore_pending = 1, updated_at = datetime('now')
@@ -881,6 +895,21 @@ export async function resumeSession(db, discord, s: Session, now = new Date()) {
 }
 
 // --- the minute sweep ----------------------------------------------------------
+
+/**
+ * Whether any running session is past the end of its block. The Activity asks this
+ * on every poll so a block that has run out is settled at once, not up to a minute
+ * later when the sweep comes round.
+ */
+export async function hasOverdue(db, now = new Date()): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`SELECT 1 AS hit FROM timebox_sessions WHERE status = 'running' AND phase_ends_at <= ? LIMIT 1`
+		)
+		.bind(now.toISOString())
+		.first();
+	return Boolean(row);
+}
 
 /**
  * Moves due sessions to their next block, keeps deafens in step with the phase,

@@ -1602,6 +1602,40 @@ export async function executeAction(automation, event, context, discord, db: any
 				return { success: true, result: { threadId: thread.id } };
 			}
 
+			case 'SET_CHANNEL_TOPIC': {
+				const channelId = action_config.channel_id || event.channel_id;
+				if (!channelId) return { success: false, error: 'No channel to set the topic on' };
+				// Discord caps a topic at 1024 characters (120 for forum and media channels).
+				const topic = processTemplate(action_config.topic ?? '', context)
+					.trim()
+					.substring(0, 1024);
+
+				const channel = await fetchGuildChannel(discord, channelId, event.guild_id);
+				if (!channel) return { success: false, error: 'Channel not found' };
+				if (typeof channel.edit !== 'function') {
+					return { success: false, error: 'This channel cannot have a topic' };
+				}
+
+				try {
+					await channel.edit(
+						{ topic },
+						`Topic set by an automation (${event.event_type ?? 'command'})`
+					);
+				} catch (err: any) {
+					const code = err?.status ?? err?.code;
+					return {
+						success: false,
+						error:
+							code === 429
+								? 'Discord only allows two topic changes per channel every ten minutes. Try again shortly.'
+								: code === 403 || code === 50013 || code === 50001
+									? 'SpaceBot needs Manage Channels in that channel to change its topic.'
+									: `Could not set the topic: ${err?.message ?? err}`,
+					};
+				}
+				return { success: true, result: { channelId, topic } };
+			}
+
 			case 'CREATE_MANAGED_CHANNEL': {
 				if (!db) {
 					return { success: false, error: 'Database not available' };
