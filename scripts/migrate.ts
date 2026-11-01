@@ -88,7 +88,18 @@ function extractErrorOutput(error) {
  * Throws on anything it cannot read, so the caller decides what that means.
  */
 function d1Query(sql) {
-	return parseD1Rows(d1Execute(sql, ['--json']));
+	// Reads go as --command, never --file. With --remote, `d1 execute --file`
+	// takes D1's import path, which answers with a summary and no rows; once
+	// spacebot-logs passed ~1 GB (2026-10-28) the tracking read came back empty,
+	// every build re-ran all 80 migrations, and an old ALTER on event_logs made
+	// D1 reset (D1_RESET_DO). Production went undeployed for two days. The
+	// queries here are fixed strings, so the command-line quoting trouble that
+	// moved statements to --file (3539d77) cannot reach them; a leading dash
+	// would be read as a flag, so refuse one.
+	const text = sql.trim();
+	if (text.startsWith('-'))
+		throw new Error(`d1Query: SQL must not start with "-": ${text.slice(0, 40)}`);
+	return parseD1Rows(d1CliExecute(['--command', text, '--json']));
 }
 
 /**

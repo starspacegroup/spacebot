@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { EVENT_CATEGORIES, EVENT_TYPES, getLogs, getLogStats, log } from '$lib/db/logger.js';
 import { verifyGuildAccess } from '$lib/discord/guilds.js';
 import { intParam } from '$lib/server/query-params.js';

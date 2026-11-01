@@ -3,9 +3,10 @@
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
+	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
 
 	const { data } = $props();
 
@@ -18,7 +19,7 @@
 	// endpoint directly instead (see src/routes/admin/[serverId]/+page.svelte
 	// for the same fix applied to the dashboard first).
 	// Dev only: `?preview=1` swaps in canned data (src/lib/stats/preview-fixture.ts).
-	const preview = import.meta.env.DEV && $page.url.searchParams.has('preview');
+	const preview = import.meta.env.DEV && page.url.searchParams.has('preview');
 	let previewData = $state<any>(null);
 	if (import.meta.env.DEV && preview) {
 		import('$lib/stats/preview-fixture.js').then((m) => (previewData = m.buildPreview()));
@@ -56,7 +57,12 @@
 		if (preview || !data.loadMeta?.needsHotload || statsKey === key) return;
 
 		statsLoading = true;
-		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`)
+		// Leaving the page (or changing the range) cancels the request, so the server
+		// stops queuing queries nobody is waiting for.
+		const controller = new AbortController();
+		fetch(`/api/admin/${serverId}/stats-data?period=${encodeURIComponent(period)}`, {
+			signal: controller.signal,
+		})
 			.then((res) => {
 				if (!res.ok) throw new Error(`stats-data request failed: ${res.status}`);
 				return res.json();
@@ -66,12 +72,14 @@
 				statsKey = key;
 			})
 			.catch((err) => {
+				if (err?.name === 'AbortError') return; // left the page; load again on return
 				console.error('[Stats] Failed to load live stats:', err);
 				statsKey = key; // stop retrying automatically; fall back to the shell defaults below
 			})
 			.finally(() => {
 				statsLoading = false;
 			});
+		return () => controller.abort();
 	});
 
 	// Merges the client-fetched stats (once loaded for the current
@@ -141,7 +149,7 @@
 	];
 
 	function tabFromUrl(): TabId {
-		const wanted = $page.url.searchParams.get('tab');
+		const wanted = page.url.searchParams.get('tab');
 		return TABS.find((t) => t.id === wanted)?.id ?? 'overview';
 	}
 
@@ -150,7 +158,7 @@
 	function selectTab(id: TabId) {
 		if (id === tab) return;
 		tab = id;
-		const next = new URL($page.url);
+		const next = new URL(page.url.href);
 		next.searchParams.set('tab', id);
 		if (id !== 'voice') for (const key of VOICE_LOG_PARAMS) next.searchParams.delete(key);
 		replaceState(next, {});
@@ -790,6 +798,12 @@
 			preview={previewVoice}
 		>
 			{#snippet between()}
+				<VoiceMembers
+					serverId={data.serverId}
+					period={selectedPeriod}
+					preview={previewData?.members ?? null}
+				/>
+
 				<!-- Voice Activity Charts Section -->
 				<section class="chart-section">
 					<h2 class="section-title">

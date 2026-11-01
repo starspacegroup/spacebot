@@ -39,6 +39,27 @@ Errors return JSON with a top-level `error` string. Rate-limited requests return
   SpaceBot's built-in commands and the ones the guild defined, built-ins first,
   each marked with `is_built_in`. `limit`/`offset` page across the two together.
 - `GET /api/v1/automations` requires `automations:read`.
+
+### Writes
+
+Each write is limited to the key's own guild (an id from another server is a
+404, a channel from another server a 403), runs the same function the
+dashboard does (`$lib/server/control-actions.ts`: plan limits, Discord sync),
+and is logged to the guild's event log as an `api` event naming the key.
+
+- `PATCH /api/v1/automations/:id` with `{ "enabled": boolean }` requires
+  `automations:write`. `:id` is the numeric id or the public id.
+- `PATCH /api/v1/commands/:id` with `{ "enabled": boolean }` requires
+  `commands:write`. Syncs the guild's commands to Discord. A built-in command
+  is toggled as this guild's override, as on the dashboard Commands page.
+- `POST /api/v1/scheduled-messages` with
+  `{ "channel_id": "...", "content": "...", "send_at": "2026-11-01T15:00:00Z" }`
+  requires `messages:write`. Returns 201 with `id` and `send_at`. Sent by the
+  scheduled-messages cron, the same path as automation `send_later`.
+
+The MCP endpoint (`POST /api/v1/mcp`) offers the same three as
+`set_automation_enabled`, `set_command_enabled` and `schedule_message`, listed
+only to keys holding the write scope.
 - `GET /api/v1/integrations/status` reads integration status.
 - `GET /api/stats/:guildId/export?format=json|csv` exports admin-authenticated report data.
 

@@ -12,7 +12,7 @@ import {
 // src/routes/admin/[serverId]/stats/+page.svelte for why this replaced
 // goto(url, { invalidateAll: true }).
 
-export async function GET({ params, cookies, platform, url }) {
+export async function GET({ params, cookies, platform, url, request }) {
 	const { serverId } = params;
 
 	if (!/^\d{17,20}$/.test(serverId || '')) {
@@ -62,7 +62,14 @@ export async function GET({ params, cookies, platform, url }) {
 		});
 	}
 
-	const result = await fetchStatsPageLiveData(db, serverId, botToken, timezone, selectedPeriod);
+	const result = await fetchStatsPageLiveData(
+		db,
+		serverId,
+		botToken,
+		timezone,
+		selectedPeriod,
+		request.signal
+	);
 
 	if (!result.success) {
 		return json({ error: 'Failed to load statistics' }, { status: 502 });
