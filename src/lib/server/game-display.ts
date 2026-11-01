@@ -128,13 +128,13 @@ export function applyDisplaysToCommands<T extends Record<string, any>>(
 				if (o?.name === 'start' && agent?.custom.name) {
 					return {
 						...o,
-						description: fit(`Open a ${agent.name} lobby for your voice channel`),
+						description: fit(`Start ${agent.name} in your voice channel`),
 					};
 				}
 				if (o?.name === 'shiritori' && shiritori?.custom.name) {
 					return {
 						...o,
-						description: fit(`Open a ${shiritori.name} round in this channel`),
+						description: fit(`Start ${shiritori.name} in this channel`),
 					};
 				}
 				return o;
