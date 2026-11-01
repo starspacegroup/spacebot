@@ -2799,6 +2799,22 @@ async function executeAutomationAction(automation, event) {
 			return { threadId: thread.id, threadName: threadName.substring(0, 100) };
 		}
 
+		case 'SET_CHANNEL_TOPIC': {
+			const channelId = action_config.channel_id || event.channel_id;
+			if (!channelId) throw new Error('No channel to set the topic on');
+			const channel = await client.channels.fetch(channelId);
+			if (!channel) throw new Error('Channel not found');
+			// A stored channel id must belong to the guild that owns the automation.
+			if (String(channel.guildId ?? channel.guild_id) !== String(event.guild_id)) {
+				throw new Error('Channel not found');
+			}
+			const topic = String(action_config.topic ?? '')
+				.trim()
+				.substring(0, 1024);
+			await channel.edit({ topic }, 'Topic set by an automation');
+			return { channelId, topic };
+		}
+
 		case 'ADD_REACTION': {
 			const emoji = action_config.emoji;
 			// For SLASH_COMMAND_USE events, messageId is the bot's response message
