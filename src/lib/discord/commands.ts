@@ -388,6 +388,9 @@ export const COMMAND_SYNC_RETRY_MINUTES = 30;
 /** Servers the sweep looks at per run. Each look is a few reads, a sync is one Discord call. */
 export const COMMAND_SYNC_BATCH = 10;
 
+/** The most servers one POST /api/cron sync_commands call may ask for. */
+export const COMMAND_SYNC_MAX_BATCH = 50;
+
 /**
  * Keep every server's slash commands in step with the code, without anyone
  * running `register-commands`.

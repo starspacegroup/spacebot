@@ -22,7 +22,11 @@ import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepGame } from '$lib/server/game.js';
 import { sweepShiritori } from '$lib/server/shiritori-game.js';
 import { createDiscordRestClient } from '$lib/discord/rest-client.js';
-import { sweepCommandSync } from '$lib/discord/commands.js';
+import {
+	COMMAND_SYNC_BATCH,
+	COMMAND_SYNC_MAX_BATCH,
+	sweepCommandSync,
+} from '$lib/discord/commands.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -572,7 +576,14 @@ export async function POST({ request, cookies, platform }) {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
 			}
-			result = await sweepCommandSync(db, (platform as any)?.env ?? process.env);
+			// A post-deploy run (scripts/sync-commands.ts) may ask for a bigger
+			// batch than the minute sweep's ten; it is capped so one request stays
+			// well inside the Worker subrequest budget.
+			const limit = Math.min(
+				Math.max(Number.parseInt(String(body.limit ?? ''), 10) || COMMAND_SYNC_BATCH, 1),
+				COMMAND_SYNC_MAX_BATCH
+			);
+			result = await sweepCommandSync(db, (platform as any)?.env ?? process.env, { limit });
 		} else if (jobName === 'sync_workers_ai_models') {
 			const synced = await syncWorkersAICatalog(db, platform);
 			result = {
