@@ -7,7 +7,7 @@ Game: `src/lib/server/shiritori-game.ts`.
 
 **Off by default.** A server turns it on with the Enable switch on its card under Dashboard → Activity → Games; its settings
 are in that card's Settings panel.
-Rounds also need the Game command (`/play`) turned on in the same page.
+Rounds also need the Game command (`/game`, synonym `/play`) turned on in the same page.
 
 ## The rules
 
@@ -24,7 +24,7 @@ Rounds also need the Game command (`/play`) turned on in the same page.
 
 ## Voice chat rounds
 
-Run `/play shiritori` **inside a voice channel's chat**, while you are in the call, and the
+Run `/game shiritori` (or `/play shiritori`) **inside a voice channel's chat**, while you are in the call, and the
 round is a **voice round**. It plays the same, with these differences:
 
 - **People agree to play.** Nobody is added for being in the call. The lobby lists who is in
@@ -71,7 +71,7 @@ A channel the server picks. Anyone posts the next word.
 
 Crew can reset the chain from the dashboard.
 
-## Round mode — `/play shiritori`
+## Round mode — `/game shiritori`
 
 Timed and turn-based, in any text channel except the Chain channel. One round per channel.
 

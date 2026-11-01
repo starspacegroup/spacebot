@@ -8,11 +8,11 @@ it is played in the [Activity](activity.md), not in Discord messages: nothing in
 a voice channel's text chat can be a secret.
 
 Design history and the reasons behind each rule: `planning/IDEAS.md` in the
-workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql` and `0077_game_command_play.sql`. The command is `/play`, because `/game` belongs to the *Space Game integration.
+workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql`, `0077_game_command_play.sql` and `0082_game_command_unified.sql`. The command is `/game`, one command for every game: `/game start|stop|status` for this round, `/game shiritori` for [Shiritori](shiritori.md), and, where the *Space Game integration is on, its `/game stats|leaderboard|play` merged in (`src/lib/discord/game-command.ts`). `/play` is a synonym: the sync sends an identical copy of `/game` named `/play` ("Same as /game"), and the interactions route reads it as `/game`. Discord has no aliases, so it costs one of the server's command slots.
 
 ## Playing
 
-1. **Lobby.** `/play start` in a voice channel, or _Open a lobby_ in the Activity's
+1. **Lobby.** `/game start` (or `/play start`) in a voice channel, or _Open a lobby_ in the Activity's
    Game tab. A card posts in the voice channel's text chat with Join, Leave,
    Start and Cancel; the Activity shows the same lobby. Only someone in that voice
    channel can join. One live round per voice channel.
@@ -59,7 +59,7 @@ member outlives the round that did it.
 ## Settings
 
 Dashboard → Activity → Games → **Hidden Agent** card → Settings (the card's
-Enable switch is the `/play` command, which Shiritori rounds also use). They are copied into a round when its
+Enable switch is the `/game` command, which Shiritori rounds also use). They are copied into a round when its
 lobby opens, so changing them never changes a round in progress.
 
 | Setting                                    | Default      | Limits                        |
@@ -102,7 +102,7 @@ Everything is in `src/lib/server/game.ts` (rules, state, Discord side effects),
   is passed only if it is on `cdn.discordapp.com`); the round's settings; and the
   last vote's number and when it closed, so a result shows for a minute.
 - **Discord gets** the lobby card, a line when a vote is called, the vote's
-  outcome, and the result. `/play stop` and `/play status` are in Discord too.
+  outcome, and the result. `/game stop` and `/game status` are in Discord too.
 
 ## Honest limits
 
