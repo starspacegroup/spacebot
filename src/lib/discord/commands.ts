@@ -3,6 +3,7 @@
  * Register these commands using the Discord API
  */
 
+import { applyDisplaysToCommands, getGameDisplays } from '../server/game-display.js';
 import { log } from '../log.js';
 import {
 	BUILT_IN_GUILD_ID,
@@ -170,7 +171,11 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 export async function collectGuildCommands(db, guildId) {
 	await ensureBuiltInCommands(db);
 
-	const builtIn = (await getBuiltInCommandsForGuild(db, guildId)).filter((cmd) => cmd.enabled);
+	// Game names are per server, and so are these descriptions (docs/activity.md).
+	const builtIn = applyDisplaysToCommands(
+		(await getBuiltInCommandsForGuild(db, guildId)).filter((cmd) => cmd.enabled),
+		await getGameDisplays(db, guildId)
+	);
 	const custom = await getGuildCommands(db, guildId, { enabledOnly: true });
 
 	const integration = [];

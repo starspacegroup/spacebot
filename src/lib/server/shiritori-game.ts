@@ -16,6 +16,7 @@
  */
 
 import { log } from '../log.js';
+import { getGameDisplay } from './game-display.js';
 import { getCommandByName } from '../db/commands.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
@@ -788,7 +789,10 @@ export async function openRound(
 	now = new Date()
 ): Promise<Round | Fail> {
 	const s = await getSettings(db, ctx.guildId);
-	if (!s.enabled) return fail('Shiritori is not turned on in this server.');
+	if (!s.enabled) {
+		const { name } = await getGameDisplay(db, ctx.guildId, 'shiritori');
+		return fail(`${name} is not turned on in this server.`);
+	}
 	if (s.chainChannelId === ctx.channelId) {
 		return fail('This is the Chain channel. Start a round in another channel.');
 	}
@@ -1230,6 +1234,10 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 	const players = await getPlayers(db, round.id);
 	const mention = (p: Player) => `<@${p.user_id}>`;
 	const note = extra.note ? `\n${extra.note}` : '';
+	// The server's own name and icon for the game, when it set them.
+	const shown = await getGameDisplay(db, round.guild_id, 'shiritori');
+	const name = shown.name;
+	const mark = (fallback: string) => (shown.custom.icon ? shown.icon : fallback);
 	let content: string;
 	let components: any[] = [];
 	const hard = Boolean(round.hard_mode);
@@ -1249,7 +1257,7 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 				'\n';
 		}
 		content =
-			`${round.voice ? '🎙️' : '🔗'} **Shiritori — ${round.voice ? 'voice chat ' : ''}lobby**\n` +
+			`${mark(round.voice ? '🎙️' : '🔗')} **${name} — ${round.voice ? 'voice chat ' : ''}lobby**\n` +
 			`Players (${players.length}): ${players.map(mention).join(', ') || '_nobody yet_'}\n` +
 			callLine +
 			`Each word must start with the last letter of the one before${hard ? ' (hard mode: the last two)' : ''}. ` +
@@ -1272,7 +1280,7 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 		const alive = players.filter((p) => p.state === 'in');
 		const out = players.filter((p) => p.state === 'out');
 		content =
-			`${round.voice ? '🎙️' : '🔗'} **Shiritori${round.voice ? ' — voice chat' : ''}**\n` +
+			`${mark(round.voice ? '🎙️' : '🔗')} **${name}${round.voice ? ' — voice chat' : ''}**\n` +
 			`Dead letter **${round.dead_letter}** · ${round.turn_seconds}s a turn (lap ${round.lap + 1})\n` +
 			`In (${alive.length}): ${alive.map(mention).join(', ')}` +
 			(out.length
@@ -1307,7 +1315,7 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 					? 'The round was closed: nobody finished it.'
 					: 'The round was cancelled.';
 		content =
-			`🔗 **Shiritori — over**\n${head}${note}\n` +
+			`${mark('🔗')} **${name} — over**\n${head}${note}\n` +
 			(words.length
 				? `${words.length} word${words.length === 1 ? '' : 's'}` +
 					(st.longest ? ` · longest **${st.longest}**` : '') +

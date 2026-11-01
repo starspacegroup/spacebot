@@ -7,6 +7,8 @@
 	import Switch from '$lib/components/Switch.svelte';
 	import type { GameDefinition } from '$lib/games/registry.js';
 	import type { GameState } from '$lib/server/games-admin.js';
+	import type { GameDisplay } from '$lib/games/display.js';
+	import { NAME_MAX, TAGLINE_MAX } from '$lib/games/display.js';
 	import { GAME_SETTINGS, type GameSettingsProps } from './game-settings.js';
 
 	const {
@@ -14,13 +16,37 @@
 		data,
 		keepValues,
 		alsoControls = [],
+		blockerName = '',
+		form = null,
 	}: {
-		game: GameDefinition & GameState;
+		game: GameDefinition &
+			GameState & {
+				/** The registry's text, for placeholders and Reset. */
+				defaults?: { name: string; icon: string; tagline: string };
+				/** What members see on this server. */
+				display?: GameDisplay;
+			};
 		data: GameSettingsProps['data'];
 		keepValues: GameSettingsProps['keepValues'];
 		/** Other games that stop working when this switch is off. */
 		alsoControls?: string[];
+		/** This server's name for the game whose command is off (`blockedBy`). */
+		blockerName?: string;
+		/** The page's last action result, to show a naming error on this card. */
+		form?: { success?: boolean; game?: string; message?: string } | null;
 	} = $props();
+
+	const shown = $derived({
+		name: game.display?.name ?? game.name,
+		icon: game.display?.icon ?? game.icon,
+		tagline: game.display?.tagline ?? game.tagline,
+	});
+	const custom = $derived(
+		Boolean(
+			game.display?.custom.name || game.display?.custom.icon || game.display?.custom.tagline
+		)
+	);
+	const nameError = $derived(form && !form.success && form.game === game.id ? form.message : '');
 
 	const Settings = $derived(GAME_SETTINGS[game.id]);
 	const planned = $derived(game.status === 'planned');
@@ -33,9 +59,12 @@
 
 <article class="game" class:planned id="game-{game.id}" aria-labelledby="game-{game.id}-name">
 	<div class="head">
-		<span class="icon" aria-hidden="true">{game.icon}</span>
+		<span class="icon" aria-hidden="true">{shown.icon}</span>
 		<div class="title">
-			<h3 id="game-{game.id}-name">{game.name}</h3>
+			<h3 id="game-{game.id}-name">{shown.name}</h3>
+			{#if game.display?.custom.name}
+				<span class="was">({game.name})</span>
+			{/if}
 			{#if planned}
 				<span class="pill soon">Coming soon</span>
 			{:else}
@@ -56,7 +85,7 @@
 		{/if}
 	</div>
 
-	<p class="tagline">{game.tagline}</p>
+	<p class="tagline">{shown.tagline}</p>
 
 	<dl class="meta">
 		<div>
@@ -80,9 +109,75 @@
 	{/if}
 	{#if game.blockedBy}
 		<p class="sb-warning" role="status">
-			<code>/{game.blockedBy}</code> is off, so rounds cannot start. Turn on Hidden Agent above
-			to allow it.
+			<code>/{game.blockedBy}</code> is off, so rounds cannot start. Turn on {blockerName ||
+				`/${game.blockedBy}`} above to allow it.
 		</p>
+	{/if}
+
+	{#if !planned}
+		<details class="settings naming" open={Boolean(nameError) || undefined}>
+			<summary>Name on this server</summary>
+			<form
+				method="POST"
+				action="?/saveGameName"
+				use:enhance={keepValues}
+				class="name-form"
+				aria-describedby="game-{game.id}-name-hint"
+			>
+				<input type="hidden" name="game" value={game.id} />
+				<div class="name-row">
+					<label class="field icon-field">
+						<span>Icon</span>
+						<input
+							name="icon"
+							value={game.display?.custom.icon ? game.display.icon : ''}
+							placeholder={game.defaults?.icon ?? game.icon}
+							maxlength="16"
+							autocomplete="off"
+							aria-label="Icon, one emoji"
+						/>
+					</label>
+					<label class="field name-field">
+						<span>Name</span>
+						<input
+							name="name"
+							value={game.display?.custom.name ? game.display.name : ''}
+							placeholder={game.defaults?.name ?? game.name}
+							maxlength={NAME_MAX}
+							autocomplete="off"
+						/>
+					</label>
+				</div>
+				<label class="field">
+					<span>Description</span>
+					<input
+						name="tagline"
+						value={game.display?.custom.tagline ? game.display.tagline : ''}
+						placeholder={game.defaults?.tagline ?? game.tagline}
+						maxlength={TAGLINE_MAX}
+						autocomplete="off"
+					/>
+				</label>
+				<p class="hint" id="game-{game.id}-name-hint">
+					Members see this name on cards, in the Activity and in <code>/help</code>. Leave
+					a field empty for the default. Slash commands keep their names ({#each game.commands as c, i (c)}{i
+							? ', '
+							: ''}<code>{c}</code>{/each}): Discord fixes command names for every
+					server.
+				</p>
+				{#if nameError}
+					<p class="sb-warning" role="alert">{nameError}</p>
+				{/if}
+				<div class="name-actions">
+					<button type="submit" class="sb-btn-primary">Save name</button>
+					{#if custom}
+						<button type="submit" name="reset" value="1" class="sb-btn-secondary"
+							>Reset to {game.defaults?.name ?? game.name}</button
+						>
+					{/if}
+				</div>
+			</form>
+		</details>
 	{/if}
 
 	{#if Settings && !planned}
@@ -173,6 +268,73 @@
 
 	.toggle {
 		margin-left: auto;
+	}
+
+	.was {
+		color: var(--color-text-muted);
+		font-size: 0.95rem;
+	}
+
+	.name-form {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-top: 1rem;
+	}
+
+	.name-row {
+		display: grid;
+		grid-template-columns: 5rem minmax(0, 1fr);
+		gap: 0.75rem;
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		min-width: 0;
+	}
+
+	.field span {
+		color: var(--color-text);
+		font-weight: 600;
+		font-size: 0.95rem;
+	}
+
+	.field input {
+		min-height: 2.75rem;
+		width: 100%;
+		box-sizing: border-box;
+		padding: 0.5rem 0.75rem;
+		font-size: 1rem;
+		color: var(--color-text);
+		background: var(--color-background);
+		border: 1px solid var(--color-border-strong);
+		border-radius: var(--radius-md, 6px);
+	}
+
+	.field input::placeholder {
+		color: var(--color-text-muted);
+	}
+
+	.field input:focus-visible {
+		outline: none;
+		box-shadow: var(--focus-ring);
+	}
+
+	.icon-field input {
+		text-align: center;
+		font-size: 1.3rem;
+	}
+
+	.name-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+	}
+
+	.name-actions button {
+		min-height: 2.75rem;
 	}
 
 	.tagline {
