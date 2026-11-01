@@ -10,7 +10,11 @@ import {
 	OPTION_TYPES,
 	RESPONSE_TYPES,
 } from '$lib/db/commands.js';
-import { syncGuildCommands } from '$lib/discord/commands.js';
+import {
+	getCommandSyncStatus,
+	syncGuildCommands,
+	syncGuildCommandsNow,
+} from '$lib/discord/commands.js';
 import { log } from '$lib/db/logger.js';
 import { setCommandEnabled } from '$lib/server/control-actions.js';
 
@@ -34,6 +38,7 @@ export async function load({ platform, parent, params }) {
 	let commands = [];
 	let builtInCmds = [];
 	let recentLogs = [];
+	let commandSync = null;
 
 	if (db) {
 		try {
@@ -43,6 +48,7 @@ export async function load({ platform, parent, params }) {
 			// Get recent command logs
 			const logsResult = await getCommandLogs(db, guildId, { limit: 10 });
 			recentLogs = logsResult;
+			commandSync = await getCommandSyncStatus(db, guildId);
 		} catch (error) {
 			log.error('Failed to fetch commands:', error);
 		}
@@ -54,6 +60,7 @@ export async function load({ platform, parent, params }) {
 		isSuperAdmin: parentData.isSuperAdmin || false,
 		total: commands.length,
 		recentLogs,
+		commandSync,
 		// Meta info for the UI
 		actionTypes: ACTION_TYPES,
 		optionTypes: OPTION_TYPES,
@@ -65,6 +72,15 @@ export async function load({ platform, parent, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
+	/** "Sync commands now": send this server's command list to Discord. */
+	sync: async ({ platform, params }) => {
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { error: 'Database not available' });
+		const result = await syncGuildCommandsNow(db, params.serverId, (platform as any)?.env);
+		if (!result.success) return fail(502, { error: result.error || 'Sync failed' });
+		return { success: true, synced: result.registered ?? 0 };
+	},
+
 	toggle: async ({ request, platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {

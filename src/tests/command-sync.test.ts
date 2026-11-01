@@ -16,8 +16,14 @@ vi.mock('../lib/db/commands.js', () => ({
 vi.mock('../lib/db/integrations.js', () => ({ getEnabledGuildIntegrations: async () => [] }));
 vi.mock('../lib/integrations/registry.js', () => ({ getIntegrationCommands: () => [] }));
 
-const { COMMAND_SYNC_BATCH, hashCommandPayload, buildGuildCommandPayload, sweepCommandSync } =
-	await import('../lib/discord/commands.js');
+const {
+	COMMAND_SYNC_BATCH,
+	hashCommandPayload,
+	buildGuildCommandPayload,
+	sweepCommandSync,
+	getCommandSyncStatus,
+	syncGuildCommandsNow,
+} = await import('../lib/discord/commands.js');
 
 const SCHEMA = `
 CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT);
@@ -111,5 +117,51 @@ describe('sweepCommandSync', () => {
 		const { allCommands } = await buildGuildCommandPayload(setup([]), 'g');
 		// `/start` rides along, built from the timebox command the server has.
 		expect(allCommands.map((c) => c.name)).toEqual(['timebox', 'start']);
+	});
+});
+
+describe('syncGuildCommandsNow + getCommandSyncStatus', () => {
+	let status: number;
+	beforeEach(() => {
+		builtIn = [{ name: 'game', enabled: 1, options: [] }];
+		status = 200;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(status === 200 ? '[]' : 'Missing Access', { status }))
+		);
+	});
+
+	it('is null before the first sync, and without a db', async () => {
+		const db = setup(['g1']);
+		expect(await getCommandSyncStatus(db, 'g1')).toBeNull();
+		expect(await getCommandSyncStatus(null, 'g1')).toBeNull();
+	});
+
+	it('records a success with its time and no error', async () => {
+		const db = setup(['g1']);
+		expect(await syncGuildCommandsNow(db, 'g1', ENV)).toMatchObject({ success: true });
+		const s = await getCommandSyncStatus(db, 'g1');
+		expect(s?.syncedAt).toBeTruthy();
+		expect(s?.lastError).toBeNull();
+	});
+
+	it('records a failure so the page shows it', async () => {
+		const db = setup(['g1']);
+		status = 403;
+		expect(await syncGuildCommandsNow(db, 'g1', ENV)).toMatchObject({ success: false });
+		const s = await getCommandSyncStatus(db, 'g1');
+		expect(s?.lastError).toContain('Missing Access');
+		expect(s?.syncedAt).toBeNull();
+	});
+
+	it('survives a broken table on read and on the error write', async () => {
+		const broken = {
+			prepare: () => {
+				throw new Error('no table');
+			},
+		};
+		expect(await getCommandSyncStatus(broken, 'g1')).toBeNull();
+		status = 500;
+		expect(await syncGuildCommandsNow(broken, 'g1', ENV)).toMatchObject({ success: false });
 	});
 });

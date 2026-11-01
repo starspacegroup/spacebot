@@ -327,6 +327,62 @@ async function recordCommandSync(db, guildId, hash) {
 	}
 }
 
+async function recordCommandSyncError(db, guildId, error) {
+	await db
+		.prepare(
+			`INSERT INTO guild_command_sync (guild_id, checked_at, attempted_at, last_error)
+         VALUES (?, datetime('now'), datetime('now'), ?)
+         ON CONFLICT(guild_id) DO UPDATE SET
+           checked_at = excluded.checked_at,
+           attempted_at = excluded.attempted_at,
+           last_error = excluded.last_error`
+		)
+		.bind(guildId, String(error || 'unknown').slice(0, 500))
+		.run();
+}
+
+/**
+ * The last sync of one server, for the Commands page: when it last reached
+ * Discord and the error of the last failed try. Null when it never synced.
+ */
+export async function getCommandSyncStatus(db, guildId) {
+	if (!db) return null;
+	try {
+		const row = await db
+			.prepare(
+				'SELECT synced_at, attempted_at, last_error FROM guild_command_sync WHERE guild_id = ?'
+			)
+			.bind(guildId)
+			.first();
+		return row
+			? {
+					syncedAt: row.synced_at ?? null,
+					attemptedAt: row.attempted_at ?? null,
+					lastError: row.last_error ?? null,
+				}
+			: null;
+	} catch (error) {
+		log.warn('getCommandSyncStatus: could not read the sync record:', error);
+		return null;
+	}
+}
+
+/**
+ * Sync one server now (the Commands page button), and store a failure the
+ * same way the sweep does so the page and the backoff both see it.
+ */
+export async function syncGuildCommandsNow(db, guildId, env) {
+	const result = await syncGuildCommands(db, guildId, env);
+	if (!result.success && db) {
+		try {
+			await recordCommandSyncError(db, guildId, result.error);
+		} catch (error) {
+			log.warn('syncGuildCommandsNow: could not save the error:', error);
+		}
+	}
+	return result;
+}
+
 /** How long a failed sync waits before the sweep tries that server again. */
 export const COMMAND_SYNC_RETRY_MINUTES = 30;
 /** Servers the sweep looks at per run. Each look is a few reads, a sync is one Discord call. */
@@ -393,17 +449,7 @@ export async function sweepCommandSync(db, env, { limit = COMMAND_SYNC_BATCH } =
 				result.synced++;
 			} else {
 				result.failed++;
-				await db
-					.prepare(
-						`INSERT INTO guild_command_sync (guild_id, checked_at, attempted_at, last_error)
-             VALUES (?, datetime('now'), datetime('now'), ?)
-             ON CONFLICT(guild_id) DO UPDATE SET
-               checked_at = excluded.checked_at,
-               attempted_at = excluded.attempted_at,
-               last_error = excluded.last_error`
-					)
-					.bind(guildId, String(synced.error || 'unknown').slice(0, 500))
-					.run();
+				await recordCommandSyncError(db, guildId, synced.error);
 			}
 		} catch (error) {
 			result.failed++;
