@@ -5,7 +5,8 @@ of the one before. A word is used once. Plan: `planning/SHIRITORI_PLAN.md` in th
 workspace repo. Migration `0081_shiritori.sql`. Rules: `src/lib/server/shiritori.ts`.
 Game: `src/lib/server/shiritori-game.ts`.
 
-**Off by default.** A server turns it on under Dashboard → Activity → Shiritori.
+**Off by default.** A server turns it on with the Enable switch on its card under Dashboard → Activity → Games; its settings
+are in that card's Settings panel.
 Rounds also need the Game command (`/play`) turned on in the same page.
 
 ## The rules

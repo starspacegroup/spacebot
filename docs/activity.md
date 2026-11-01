@@ -54,7 +54,7 @@ Timebox (countdown and controls), **Agent** ([game.md](game.md)), the hidden-age
 round, which is played entirely in the Activity: roles, the secret word and
 voting are private to each player and shown only here, and Quorum. The nav says
 _Agent_ for the game module (id `game`, command `/play`), the name `/start agent`
-uses; the dashboard still calls it Game.
+uses; the dashboard's Games section calls it Hidden Agent.
 
 ## The look (LCARS)
 
@@ -101,8 +101,28 @@ receive speaking state without joining voice. It is not faked.
 ## Turning it on (the dashboard)
 
 Server dashboard → **Activity** (`/admin/<server>/activity`, full admin only).
-It holds one switch per Activity part (Timebox and Game), the Timebox defaults,
-and the Game settings (role names, players, round and vote lengths, the mute). A part's switch is the same per-server override as its slash command,
+The page has three parts: a short **How members open it**, **Tools** (Timebox
+and Quorum, each with its switch; Timebox has a Defaults panel), and **Games**.
+
+**Games** is drawn from the game registry, `src/lib/games/registry.ts`. Each game
+is a card: icon, name, one-line description, players, where it is played, its
+commands, an On/Off pill, an Enable switch and a Settings panel. A game's switch
+stays where it always was: Hidden Agent is the `/play` command override (the
+Activity's `game` module), Shiritori is `shiritori_settings.enabled`. The
+`toggleGame` action writes whichever the entry names
+(`src/lib/server/games-admin.ts`). Shiritori rounds start with `/play`, so its
+card warns when Shiritori is on and Hidden Agent (`/play`) is off.
+
+**Adding a game:** one entry in `GAMES` (id, name, icon, tagline, players,
+where, commands, `status: 'live' | 'planned'`, `enable`, optional
+`needsCommand`, doc), its settings component in
+`src/lib/components/activity-admin/game-settings.ts`, and, if its switch is a
+setting rather than a command, a reader/writer in `SETTING_STORES` in
+`games-admin.ts`. A `planned` entry shows as Coming soon with no switch.
+`registryProblems()` (run by the tests) catches a bad entry. Every form in a
+panel must use `use:enhance={keepValues}`.
+
+A tool's switch is the same per-server override as its slash command,
 so turning Timebox off also hides `/timebox` from members, and turning it on
 pushes the command to Discord at once. The defaults (focus, break, long break,
 rounds, who may pause or stop) are the ones `/timebox settings` writes; both use

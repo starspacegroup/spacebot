@@ -26,7 +26,7 @@
 	const planned = $derived(game.status === 'planned');
 	const switchHint = $derived(
 		alsoControls.length && game.enable?.kind === 'command'
-			? `Also needed by ${alsoControls.join(', ')}: off hides /${game.enable.command} entirely.`
+			? `${alsoControls.join(' and ')} rounds also start with /${game.enable.command}, so switching this off stops them too.`
 			: ''
 	);
 </script>
@@ -275,6 +275,13 @@
 
 	.settings-body {
 		margin-top: 1rem;
+	}
+
+	@media (max-width: 479px) {
+		.meta div {
+			grid-template-columns: 1fr;
+			gap: 0.15rem;
+		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {

@@ -58,7 +58,8 @@ member outlives the round that did it.
 
 ## Settings
 
-Dashboard → Activity → Game settings. They are copied into a round when its
+Dashboard → Activity → Games → **Hidden Agent** card → Settings (the card's
+Enable switch is the `/play` command, which Shiritori rounds also use). They are copied into a round when its
 lobby opens, so changing them never changes a round in progress.
 
 | Setting                                    | Default      | Limits                        |
