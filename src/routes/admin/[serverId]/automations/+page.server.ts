@@ -12,6 +12,7 @@ import {
 } from '$lib/db/automations.js';
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from '$lib/db/logger.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ platform, parent, url, params }) {
@@ -33,7 +34,7 @@ export async function load({ platform, parent, url, params }) {
 	// Get query params for filtering
 	const eventType = url.searchParams.get('eventType') || undefined;
 	const enabled = url.searchParams.get('enabled');
-	const page = parseInt(url.searchParams.get('page') || '1');
+	const page = intParam(url, 'page', 1, 1);
 	const limit = 20;
 	const offset = (page - 1) * limit;
 
