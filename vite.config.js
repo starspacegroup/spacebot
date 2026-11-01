@@ -122,6 +122,8 @@ export default defineConfig({
 				'scripts/local-runner/workspace-context.ts',
 				'scripts/local-runner/vscode-bridge-client.ts',
 				'src/routes/api/account/runners/artifacts/[id]/+server.ts',
+				'src/lib/games/registry.ts',
+				'src/lib/server/games-admin.ts',
 			],
 			thresholds: {
 				lines: 80,

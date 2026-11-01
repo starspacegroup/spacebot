@@ -26,6 +26,8 @@ import { discordFor } from '$lib/server/shiritori-api.js';
 import { CHANNEL_TYPES, getGuildChannels } from '$lib/db/guild-channels.js';
 import { nameOf } from '$lib/server/game.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { GAMES, findGame, gameCommands } from '$lib/games/registry.js';
+import { loadGameStates, setGameEnabled } from '$lib/server/games-admin.js';
 
 /** Bounds match what `/timebox settings` accepts, so the two never disagree. */
 const TIMEBOX_LIMITS = {
@@ -56,7 +58,10 @@ export async function load({ cookies, platform, parent, params }) {
 
 	const db = (platform as any)?.env?.DB;
 	const commands = db ? await getBuiltInCommandsForGuild(db, serverId) : [];
-	const modules = ACTIVITY_MODULES.map((m) => {
+	// Tools are the Activity's modules that are not a game's switch; the games
+	// are drawn from the registry, below.
+	const asGame = gameCommands();
+	const tools = ACTIVITY_MODULES.filter((m) => !asGame.has(m.command)).map((m) => {
 		const command = commands.find((c) => c.name === m.command);
 		return {
 			id: m.id,
@@ -68,10 +73,15 @@ export async function load({ cookies, platform, parent, params }) {
 		};
 	});
 
+	const switches = commands.map((c) => ({ name: c.name, enabled: Boolean(c.enabled) }));
+	const states = await loadGameStates(db, serverId, switches);
+	const games = GAMES.map((g, i) => ({ ...g, ...states[i] }));
+
 	return {
 		serverId,
 		guild,
-		modules,
+		tools,
+		games,
 		timebox: db
 			? await getSettings(db, serverId)
 			: { ...DEFAULTS, longBreak: DEFAULTS.longBreak },
@@ -166,6 +176,27 @@ export const actions = {
 		// for the minute sweep.
 		await syncGuildCommands(db, params.serverId, (platform as any)?.env);
 		return { success: true, message: `${module.name} is ${enabled ? 'on' : 'off'}.` };
+	},
+
+	toggleGame: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+
+		const formData = await request.formData();
+		const game = findGame(formData.get('game'));
+		if (!game) return fail(400, { success: false, message: 'Unknown game.' });
+		const enabled = formData.get('enabled') === 'on';
+
+		const result = await setGameEnabled(db, params.serverId, game, enabled);
+		if ('message' in result)
+			return fail(result.status, { success: false, message: result.message });
+
+		log.info(`[Activity] ${game.name} ${enabled ? 'on' : 'off'} for ${params.serverId}`);
+		if (result.sync) await syncGuildCommands(db, params.serverId, (platform as any)?.env);
+		return { success: true, message: `${game.name} is ${enabled ? 'on' : 'off'}.` };
 	},
 
 	saveTimebox: async (event) => {
@@ -302,7 +333,11 @@ export const actions = {
 			});
 		}
 
-		const enabled = formData.get('enabled') === 'on';
+		// The game card's switch owns `enabled` now; a form without the field keeps
+		// what is stored. A form that sends it (older pages) still sets it.
+		const enabled = formData.has('enabled')
+			? formData.get('enabled') === 'on'
+			: (await getShiritoriSettings(db, params.serverId)).enabled;
 		if (enabled && !chainChannelId) {
 			// Rounds work without a Chain channel; only the Chain mode needs one.
 			log.debug('[Shiritori] Enabled without a Chain channel: rounds only');
