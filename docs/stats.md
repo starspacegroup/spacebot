@@ -30,6 +30,19 @@ work.
   them from the address.
 - Only what is on is shown for each member (camera, sharing, muted, deafened), not a row
   of "off" chips.
+- **Voice members** (`VoiceMembers.svelte`) lists everyone who spent time in voice in the
+  chosen range, most time first: face, name, time, and when they were last there. It reads
+  `/api/admin/{id}/voice-members?period=` (same access rule as the other admin APIs, up to
+  500 people), hides bots unless you tick Bots, and has a name search. The leaders cards
+  below show only the top five.
+
+## Long ranges (60d, 90d)
+
+Hourly aggregates are pruned after 30 days; the daily rollups are kept. The voice and
+message charts and the voice and member summaries read hourly rows for the last 28 days
+and daily rows before that (`rollupRows` in `stats-aggregation.ts`), so a 90d view is not
+empty past a month. Days from the daily rollups are labelled by UTC day, not the
+server's time zone, because a daily row covers a whole UTC day.
 
 ## Preview data (dev only)
 

@@ -6,7 +6,7 @@ import { upsertUser } from '$lib/db/users.js';
 import { notifySuperAdminsOfFirstLogin } from '$lib/server/superadmin-notifications.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
 import { getSessionSecret, issueSessionCookie } from '$lib/server/auth-session.js';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 
 /**
  * Safely get environment variable from platform.env (Cloudflare Workers/Pages)

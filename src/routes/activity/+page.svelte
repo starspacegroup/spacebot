@@ -26,6 +26,8 @@
 		name: string;
 		enabled: boolean;
 		help: { summary: string; start: string };
+		/** The server's name for this module, when it renamed the game. */
+		label?: string;
 	};
 	type Guild = { id: string; name: string; icon: string | null; modules: Module[] };
 	type Session = {
@@ -59,7 +61,6 @@
 		voice_channel_id: string | null;
 		mine: boolean;
 		deafen: 'none' | 'focus' | 'whole';
-		goal?: string | null;
 	};
 	let timeboxes = $state<TimeboxView[]>([]);
 	let others = $state<any[]>([]);
@@ -169,8 +170,11 @@
 		if (tabs.length > 0 && !tabs.some((m) => m.id === moduleId)) moduleId = tabs[0].id;
 	});
 
-	/** The nav says Agent for the game: it is what /start agent calls it. */
-	const tabLabel = (m: Module) => (m.id === 'game' ? 'Agent' : m.name);
+	/**
+	 * The nav says Agent for the game (what /start agent calls it), unless the
+	 * server gave the game its own name.
+	 */
+	const tabLabel = (m: Module) => m.label ?? (m.id === 'game' ? 'Agent' : m.name);
 	const isPreview = $derived(import.meta.env.DEV && session?.token === 'preview');
 
 	const frame = $derived.by((): Frame => {
@@ -726,6 +730,7 @@
 						}}
 						preview={gamePreview}
 						previewDismissed={gamePreviewDismissed}
+						label={tabLabel(mod)}
 						onframe={(f) => (gameFrame = f)}
 					/>
 				{:else if mod.id === 'quorum'}

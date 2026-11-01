@@ -45,16 +45,29 @@ export async function createScheduledMessage(
 		action_type,
 		message_payload,
 		delay,
+		send_at,
 		created_by,
 		source_automation_id,
-	}
+	}: Record<string, any>
 ) {
-	const delayMs = parseDelay(delay);
-	if (delayMs <= 0) {
-		return { success: false, error: 'Invalid delay' };
+	// Either a relative delay ("5m") or an absolute send_at time (ISO 8601, future).
+	let sendAt;
+	if (send_at !== undefined && send_at !== null) {
+		const at = new Date(send_at);
+		if (typeof send_at !== 'string' || Number.isNaN(at.getTime())) {
+			return { success: false, error: 'Invalid send_at' };
+		}
+		if (at.getTime() <= Date.now()) {
+			return { success: false, error: 'send_at must be in the future' };
+		}
+		sendAt = at.toISOString();
+	} else {
+		const delayMs = parseDelay(delay);
+		if (delayMs <= 0) {
+			return { success: false, error: 'Invalid delay' };
+		}
+		sendAt = new Date(Date.now() + delayMs).toISOString();
 	}
-
-	const sendAt = new Date(Date.now() + delayMs).toISOString();
 
 	try {
 		const result = await db
@@ -79,7 +92,7 @@ export async function createScheduledMessage(
 
 		const id = result.meta?.last_row_id;
 		log.info(
-			`[ScheduledMessages] Created scheduled message #${id} for ${sendAt} (${delay} delay)`
+			`[ScheduledMessages] Created scheduled message #${id} for ${sendAt} (${delay ? `${delay} delay` : 'absolute'})`
 		);
 
 		return { success: true, id, send_at: sendAt };
@@ -96,12 +109,16 @@ export async function createScheduledMessage(
  * @returns {Promise<Array>}
  */
 export async function getPendingMessages(db, limit = 50) {
+	// send_at is stored as ISO 8601 ("2026-10-30T14:00:00.000Z") and datetime('now') is
+	// "2026-10-30 14:00:00". Compared as raw strings the 'T' sorts after the space, so a
+	// message due later today never matched until the date rolled over. datetime(send_at)
+	// normalises both sides.
 	try {
 		const result = await db
 			.prepare(
 				`
       SELECT * FROM scheduled_messages
-      WHERE status = 'pending' AND send_at <= datetime('now')
+      WHERE status = 'pending' AND datetime(send_at) <= datetime('now')
       ORDER BY send_at ASC
       LIMIT ?
     `

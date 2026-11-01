@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '$lib/db/logger.js';
 import { filterAdminGuilds, getBotGuildIds, getUserGuilds } from '$lib/discord/guilds.js';
 import { resolveLocale } from '$lib/i18n.js';
