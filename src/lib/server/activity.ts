@@ -27,6 +27,7 @@
  * Edge-safe: Web Crypto and `fetch` only, with `fetch` injectable for tests.
  */
 
+import { getGameDisplays } from './game-display.js';
 import { getCommandByName } from '../db/commands.js';
 
 const DISCORD_API = 'https://discord.com/api/v10';
@@ -90,7 +91,14 @@ export interface ViewerGuild {
 	id: string;
 	name: string;
 	icon: string | null;
-	modules: { id: string; name: string; enabled: boolean; help: ActivityModule['help'] }[];
+	modules: {
+		id: string;
+		name: string;
+		enabled: boolean;
+		help: ActivityModule['help'];
+		/** The tab's label when the server renamed the game; absent means the default. */
+		label?: string;
+	}[];
 }
 
 export interface ActivitySession {
@@ -266,9 +274,18 @@ const SNOWFLAKE = /^\d{16,20}$/;
 /** Modules this server has switched on, with the help text for the empty state. */
 export async function modulesForGuild(db: any, guildId: string): Promise<ViewerGuild['modules']> {
 	const out: ViewerGuild['modules'] = [];
+	const games = await getGameDisplays(db, guildId);
 	for (const m of ACTIVITY_MODULES) {
 		const cmd = await getCommandByName(db, m.command, guildId);
-		out.push({ id: m.id, name: m.name, enabled: Boolean(cmd), help: m.help });
+		const entry: ViewerGuild['modules'][number] = {
+			id: m.id,
+			name: m.name,
+			enabled: Boolean(cmd),
+			help: m.help,
+		};
+		// The game module is Hidden Agent: a server's name for it labels the tab.
+		if (m.id === 'game' && games.agent?.custom.name) entry.label = games.agent.name;
+		out.push(entry);
 	}
 	return out;
 }

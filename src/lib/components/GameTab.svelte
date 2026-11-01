@@ -38,6 +38,7 @@
 		viewer,
 		preview = null,
 		previewDismissed = {},
+		label = 'Agent',
 		onframe = () => {},
 	}: {
 		base: string;
@@ -48,6 +49,8 @@
 		preview?: GameView | null;
 		/** Dev only: which screens the preview has already put away. */
 		previewDismissed?: Dismissed;
+		/** The game's name in the frame title: the server's own, or Agent. */
+		label?: string;
 		onframe?: (f: Frame) => void;
 	} = $props();
 
@@ -111,7 +114,7 @@
 	const frame = $derived.by((): Frame => {
 		const r = round;
 		const out = (t: string, f: string, tab: string | null = null) => ({
-			title: `Agent · ${t}`,
+			title: `${label} · ${t}`,
 			accent,
 			tab,
 			footer: f,

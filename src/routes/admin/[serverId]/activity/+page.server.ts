@@ -28,6 +28,7 @@ import { nameOf } from '$lib/server/game.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import { GAMES, findGame, gameCommands } from '$lib/games/registry.js';
 import { loadGameStates, setGameEnabled } from '$lib/server/games-admin.js';
+import { getGameDisplays, saveGameDisplay } from '$lib/server/game-display.js';
 
 /** Bounds match what `/timebox settings` accepts, so the two never disagree. */
 const TIMEBOX_LIMITS = {
@@ -75,7 +76,15 @@ export async function load({ cookies, platform, parent, params }) {
 
 	const switches = commands.map((c) => ({ name: c.name, enabled: Boolean(c.enabled) }));
 	const states = await loadGameStates(db, serverId, switches);
-	const games = GAMES.map((g, i) => ({ ...g, ...states[i] }));
+	const displays = await getGameDisplays(db, serverId);
+	// `defaults` is the registry's text, for placeholders and Reset; `display` is
+	// what members see on this server.
+	const games = GAMES.map((g, i) => ({
+		...g,
+		...states[i],
+		defaults: { name: g.name, icon: g.icon, tagline: g.tagline },
+		display: displays[g.id],
+	}));
 
 	return {
 		serverId,
@@ -196,7 +205,47 @@ export const actions = {
 
 		log.info(`[Activity] ${game.name} ${enabled ? 'on' : 'off'} for ${params.serverId}`);
 		if (result.sync) await syncGuildCommands(db, params.serverId, (platform as any)?.env);
-		return { success: true, message: `${game.name} is ${enabled ? 'on' : 'off'}.` };
+		const { name } = (await getGameDisplays(db, params.serverId))[game.id];
+		return { success: true, message: `${name} is ${enabled ? 'on' : 'off'}.` };
+	},
+
+	/** A game's name, icon and description on this server. Empty fields reset. */
+	saveGameName: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+
+		const formData = await request.formData();
+		const game = findGame(formData.get('game'));
+		if (!game) return fail(400, { success: false, message: 'Unknown game.' });
+		const reset = formData.get('reset') === '1';
+		const result = await saveGameDisplay(
+			db,
+			params.serverId,
+			game.id,
+			reset
+				? {}
+				: {
+						name: formData.get('name'),
+						icon: formData.get('icon'),
+						tagline: formData.get('tagline'),
+					}
+		);
+		if ('error' in result)
+			return fail(400, { success: false, game: game.id, message: result.error });
+
+		log.info(`[Activity] ${game.id} display name saved for ${params.serverId}`);
+		// /play's descriptions carry the names (docs/command-sync.md): push them now.
+		await syncGuildCommands(db, params.serverId, (platform as any)?.env);
+		return {
+			success: true,
+			game: game.id,
+			message: reset
+				? `${game.name} is back to its default name.`
+				: `Saved. Members now see ${result.display.name}.`,
+		};
 	},
 
 	saveTimebox: async (event) => {

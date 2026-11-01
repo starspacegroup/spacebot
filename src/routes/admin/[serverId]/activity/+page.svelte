@@ -27,10 +27,15 @@
 					.filter(
 						(o) => g.enable?.kind === 'command' && o.needsCommand === g.enable.command
 					)
-					.map((o) => o.name),
+					.map((o) => o.display?.name ?? o.name),
 			])
 		)
 	);
+	/** What this server calls the game whose command is `name`, for the "is off" warning. */
+	const commandOwner = (name: string | null) => {
+		const g = data.games.find((o) => o.enable?.kind === 'command' && o.enable.command === name);
+		return g?.display?.name ?? g?.name ?? '';
+	};
 	const liveCount = $derived(data.games.filter((g) => g.status === 'live').length);
 	const onCount = $derived(data.games.filter((g) => g.enabled).length);
 
@@ -186,7 +191,14 @@
 		</div>
 		<div class="game-list">
 			{#each data.games as game (game.id)}
-				<GameCard {game} {data} {keepValues} alsoControls={dependents[game.id]} />
+				<GameCard
+					{game}
+					{data}
+					{keepValues}
+					{form}
+					alsoControls={dependents[game.id]}
+					blockerName={commandOwner(game.blockedBy)}
+				/>
 			{/each}
 		</div>
 	</section>
