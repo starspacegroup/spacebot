@@ -1100,6 +1100,28 @@ describe('voice chat rounds', () => {
 		expect((await turnOf(round.id)).current_user_id).toBe('u2');
 	});
 
+	it('does not mistake people in a big call for people who left', async () => {
+		const round = await startVoice(['u1', 'u2', 'u3']);
+		// 30 other people fill the call; the three players are still in it
+		await inCall('u1', 'u2', 'u3', ...Array.from({ length: 30 }, (_, i) => `x${i}`));
+		await tickRounds(db, discord, at(5));
+		await tickRounds(db, discord, new Date(at(5).getTime() + AWAY_GRACE_MS + 1000));
+		expect(
+			(await getPlayers(db, round.id)).every(
+				(p) => p.state === 'in' || p.out_reason === 'timeout'
+			)
+		).toBe(true);
+		expect((await stateOf(round.id, 'u3'))?.away_since).toBeNull();
+	});
+
+	it('posts one turn prompt when a tick and a word race', async () => {
+		const round = await startVoice(['u1', 'u2', 'u3'], { turnSeconds: 60 });
+		await inCall('u2', 'u3'); // u1 holds the turn and has left
+		await Promise.all([tickRounds(db, discord, at(5)), tickRounds(db, discord, at(5))]);
+		expect(discord.sent.filter((m) => m.payload.content.includes('<@u2>'))).toHaveLength(1);
+		expect((await turnOf(round.id)).current_user_id).toBe('u2');
+	});
+
 	it('leaves an ordinary text round alone, whoever is in a call', async () => {
 		await enable();
 		await inCall('u1', 'u2');

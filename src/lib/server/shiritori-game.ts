@@ -19,7 +19,7 @@ import { log } from '../log.js';
 import { getCommandByName } from '../db/commands.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
-import { humansInChannel, voiceChannelOf } from './timebox.js';
+import { voiceChannelOf } from './timebox.js';
 import {
 	DEAD_LETTERS,
 	MIN_WORD_LENGTH,
@@ -912,7 +912,7 @@ export async function startRound(
 	let players = await getPlayers(db, roundId);
 	if (round.voice) {
 		// Joined, but left the call since: not dealt in.
-		const present = new Set(await humansInChannel(db, round.guild_id, round.channel_id));
+		const present = new Set(await humansInCall(db, round.guild_id, round.channel_id));
 		const here = players.filter((p) => present.has(p.user_id));
 		if (here.length < MIN_PLAYERS) {
 			return fail(`It needs ${MIN_PLAYERS} players who joined and are in the call.`);
@@ -981,8 +981,9 @@ export async function eliminate(
 		});
 	}
 	// Only the current player's elimination moves the turn.
+	let moved = false;
 	if (round.current_user_id === userId) {
-		await passTurn(
+		moved = await passTurn(
 			db,
 			round,
 			left.map((p) => ({ ...p, state: 'in' as const })),
@@ -994,7 +995,7 @@ export async function eliminate(
 	await refreshCard(db, discord, round, {
 		note: `<@${userId}> is out: ${REASON_TEXT[reason as keyof typeof REASON_TEXT] ?? reason}.`,
 	});
-	if (round.current_user_id === userId) await announceTurn(db, discord, round.id);
+	if (moved) await announceTurn(db, discord, round.id);
 	return getRound(db, round.id);
 }
 
@@ -1010,15 +1011,15 @@ async function passTurn(
 	fromSeat: number,
 	fromUserId: string,
 	now: Date
-) {
+): Promise<boolean> {
 	// In a voice chat, hand the turn to someone who is actually in the call.
 	const present = await presentIn(db, round);
 	const here = present ? live.filter((p) => present.has(p.user_id)) : live;
 	const next = nextSeat(here.length ? here : live, fromSeat);
-	if (!next) return;
+	if (!next) return false;
 	const lap = round.lap + (next.lapped ? 1 : 0);
 	const seconds = clockFor(round.base_turn_seconds, lap);
-	await db
+	const res = await db
 		.prepare(
 			`UPDATE shiritori_rounds
 			    SET current_user_id = ?, lap = ?, turn_seconds = ?, turn_ends_at = ?
@@ -1033,6 +1034,7 @@ async function passTurn(
 			fromUserId
 		)
 		.run();
+	return res.meta.changes === 1;
 }
 
 export async function endRound(
@@ -1083,10 +1085,24 @@ export function roundStats(words: { word: string }[]) {
 
 // --- the call ----------------------------------------------------------------------
 
+/**
+ * Everyone (not a bot) in a voice channel right now. Not `humansInChannel`, which stops
+ * at 20 for mention lists: past that, people in a big call would look as if they had left.
+ */
+async function humansInCall(db: Db, guildId: string, channelId: string): Promise<string[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT user_id FROM live_voice_states WHERE guild_id = ? AND channel_id = ? AND is_bot = 0`
+		)
+		.bind(guildId, channelId)
+		.all();
+	return (results || []).map((r: any) => String(r.user_id));
+}
+
 /** Who is in the round's voice channel right now, or null for a round that is not in one. */
 async function presentIn(db: Db, round: Round): Promise<Set<string> | null> {
 	if (!round.voice) return null;
-	return new Set(await humansInChannel(db, round.guild_id, round.channel_id));
+	return new Set(await humansInCall(db, round.guild_id, round.channel_id));
 }
 
 /**
@@ -1151,9 +1167,10 @@ export async function syncPresence(
 	if (fresh.status === 'running' && holder && !present.has(holder)) {
 		const live = (await getPlayers(db, round.id)).filter((p) => p.state === 'in');
 		const seat = live.find((p) => p.user_id === holder)?.seat ?? 0;
-		await passTurn(db, fresh, live, seat, holder, now);
-		await announceTurn(db, discord, round.id);
-		acted = true;
+		if (await passTurn(db, fresh, live, seat, holder, now)) {
+			await announceTurn(db, discord, round.id);
+			acted = true;
+		}
 	}
 	return { round: (await getRound(db, round.id)) as Round, acted };
 }
@@ -1221,7 +1238,7 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 		let callLine = '';
 		if (round.voice) {
 			const joined = new Set(players.map((p) => p.user_id));
-			const waiting = (await humansInChannel(db, round.guild_id, round.channel_id)).filter(
+			const waiting = (await humansInCall(db, round.guild_id, round.channel_id)).filter(
 				(id) => !joined.has(id)
 			);
 			callLine =
@@ -1418,8 +1435,9 @@ async function handleRoundMessage(
 		await eliminate(db, discord, landed, msg.userId, 'dead_letter', now);
 		return { action: 'ended', reason: 'dead_letter' };
 	}
-	await passTurn(db, landed, players, me?.seat ?? 0, msg.userId, now);
-	await announceTurn(db, discord, round.id);
+	if (await passTurn(db, landed, players, me?.seat ?? 0, msg.userId, now)) {
+		await announceTurn(db, discord, round.id);
+	}
 	return { action: 'accepted' };
 }
 
