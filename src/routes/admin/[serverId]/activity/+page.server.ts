@@ -11,6 +11,19 @@ import {
 	getSettings as getGameSettings,
 	upsertSettings as upsertGameSettings,
 } from '$lib/server/game.js';
+import {
+	DEFAULTS as SHIRITORI_DEFAULTS,
+	LIMITS as SHIRITORI_LIMITS,
+	chainRecord,
+	getLeaderboard,
+	getSettings as getShiritoriSettings,
+	parseWordList,
+	resetChain,
+	upsertSettings as upsertShiritoriSettings,
+} from '$lib/server/shiritori-game.js';
+import { discordFor } from '$lib/server/shiritori-api.js';
+import { CHANNEL_TYPES, getGuildChannels } from '$lib/db/guild-channels.js';
+import { nameOf } from '$lib/server/game.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** Bounds match what `/timebox settings` accepts, so the two never disagree. */
@@ -64,6 +77,30 @@ export async function load({ cookies, platform, parent, params }) {
 		limits: TIMEBOX_LIMITS,
 		game: db ? await getGameSettings(db, serverId) : { ...GAME_DEFAULTS },
 		gameLimits: GAME_LIMITS,
+		shiritori: db ? await getShiritoriSettings(db, serverId) : { ...SHIRITORI_DEFAULTS },
+		shiritoriLimits: SHIRITORI_LIMITS,
+		shiritoriChannels: db
+			? (await getGuildChannels(db, serverId))
+					.filter((c) => c.type === CHANNEL_TYPES.TEXT)
+					.map((c) => ({ id: c.channelId, name: c.name }))
+			: [],
+		shiritoriBoard: db ? await shiritoriBoard(db, serverId) : { rows: [], record: 0 },
+	};
+}
+
+async function shiritoriBoard(db, serverId: string) {
+	const rows = await getLeaderboard(db, serverId, 10);
+	return {
+		record: await chainRecord(db, serverId),
+		rows: await Promise.all(
+			rows.map(async (r) => ({
+				name: await nameOf(db, serverId, r.user_id),
+				wordsAdded: r.words_added,
+				chainsBroken: r.chains_broken,
+				roundsWon: r.rounds_won,
+				longestWord: r.longest_word,
+			}))
+		),
 	};
 }
 
@@ -194,5 +231,76 @@ export const actions = {
 			muteOut: formData.get('muteOut') === 'on',
 		});
 		return { success: true, message: 'Game settings saved. They apply to the next round.' };
+	},
+	saveShiritori: async ({ request, cookies, platform, params }) => {
+		if (!cookies.get('discord_user_id')) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+
+		const formData = await request.formData();
+		const turnSeconds = whole(formData, 'turnSeconds', SHIRITORI_LIMITS.turnSeconds);
+		if (turnSeconds === null) {
+			return fail(400, {
+				success: false,
+				message: `The turn clock is a whole number of seconds, ${SHIRITORI_LIMITS.turnSeconds[0]}–${SHIRITORI_LIMITS.turnSeconds[1]}.`,
+			});
+		}
+
+		const chainChannelId = String(formData.get('chainChannelId') || '');
+		if (chainChannelId) {
+			const known = (await getGuildChannels(db, params.serverId)).some(
+				(c) => c.channelId === chainChannelId && c.type === CHANNEL_TYPES.TEXT
+			);
+			if (!known) {
+				return fail(400, { success: false, message: 'Pick a text channel from the list.' });
+			}
+		}
+
+		// A pool of single letters; an empty or invalid one falls back to the default.
+		const letters = [...new Set(String(formData.get('deadLetters') || '').toLowerCase())]
+			.filter((l) => /^[a-z]$/.test(l))
+			.join('');
+
+		const allowWords = [...parseWordList(String(formData.get('allowWords') || ''))].join('\n');
+		const blockWords = [...parseWordList(String(formData.get('blockWords') || ''))].join('\n');
+		if (
+			allowWords.length > SHIRITORI_LIMITS.wordList ||
+			blockWords.length > SHIRITORI_LIMITS.wordList
+		) {
+			return fail(400, {
+				success: false,
+				message: `The word lists hold up to ${SHIRITORI_LIMITS.wordList} characters each.`,
+			});
+		}
+
+		const enabled = formData.get('enabled') === 'on';
+		if (enabled && !chainChannelId) {
+			// Rounds work without a Chain channel; only the Chain mode needs one.
+			log.debug('[Shiritori] Enabled without a Chain channel: rounds only');
+		}
+		await upsertShiritoriSettings(db, params.serverId, {
+			enabled,
+			chainChannelId: chainChannelId || null,
+			turnSeconds,
+			hardMode: formData.get('hardMode') === 'on',
+			deadLetters: letters || SHIRITORI_DEFAULTS.deadLetters,
+			allowWords,
+			blockWords,
+		});
+		return { success: true, message: 'Shiritori settings saved.' };
+	},
+
+	resetShiritoriChain: async ({ cookies, platform, params }) => {
+		if (!cookies.get('discord_user_id')) {
+			return fail(401, { success: false, message: 'Not authenticated' });
+		}
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+		const done = await resetChain(db, discordFor(platform), params.serverId);
+		return done
+			? { success: true, message: 'The chain was reset.' }
+			: fail(400, { success: false, message: 'Pick a Chain channel and save first.' });
 	},
 };

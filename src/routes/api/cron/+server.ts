@@ -20,6 +20,8 @@ import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepGame } from '$lib/server/game.js';
+import { sweepShiritori } from '$lib/server/shiritori-game.js';
+import { createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { sweepCommandSync } from '$lib/discord/commands.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
@@ -124,7 +126,7 @@ function getCronJobDefinitions() {
 			name: 'sweep_game',
 			displayName: 'Sweep Games',
 			description:
-				'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds.',
+				'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds. Also times out overdue Shiritori turns, closes idle Shiritori lobbies, and prunes old word rows.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -560,7 +562,10 @@ export async function POST({ request, cookies, platform }) {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
 			}
-			result = await sweepGame(db, botToken);
+			result = {
+				...(await sweepGame(db, botToken)),
+				shiritori: await sweepShiritori(db, createDiscordRestClient(botToken)),
+			};
 		} else if (jobName === 'sync_commands') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');

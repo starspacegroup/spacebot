@@ -505,6 +505,14 @@ export function createDiscordRestClient(botToken) {
 					body: patch,
 				});
 			},
+			/** React to a message by id, without fetching the channel first. */
+			async react(channelId, messageId, emoji) {
+				return discordFetch(
+					botToken,
+					`/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`,
+					{ method: 'PUT' }
+				);
+			},
 			async pin(channelId, messageId, reason?) {
 				return discordFetch(botToken, `/channels/${channelId}/pins/${messageId}`, {
 					method: 'PUT',

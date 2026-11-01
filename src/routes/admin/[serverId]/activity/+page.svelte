@@ -234,6 +234,103 @@
 		</p>
 	</section>
 
+	<section class="card">
+		<h2>Shiritori</h2>
+		<p class="muted">
+			The word chain. Each word starts with the last letter of the one before, and no word is
+			used twice. Pick a Chain channel for an always-on chain, and members can also run a
+			timed round anywhere with <code>/play shiritori</code> (turn on the Game command above). A
+			word that ends in the dead letter ends the chain, or puts a player out of a round.
+		</p>
+		<form method="POST" action="?/saveShiritori" use:enhance={keepValues} class="settings-form">
+			<label class="check wide">
+				<input type="checkbox" name="enabled" checked={data.shiritori.enabled} />
+				<span>Turn Shiritori on</span>
+			</label>
+			<label class="wide">
+				Chain channel
+				<select name="chainChannelId" value={data.shiritori.chainChannelId ?? ''}>
+					<option value="">None (rounds only)</option>
+					{#each data.shiritoriChannels as channel (channel.id)}
+						<option value={channel.id}>#{channel.name}</option>
+					{/each}
+				</select>
+				<span class="hint">
+					A valid word gets a ✅. A bad one gets a ❌ and breaks the chain. Anything that
+					is not one word is ignored, and a message that starts with <code>//</code> is too.
+				</span>
+			</label>
+			<label>
+				Turn clock (seconds)
+				<input
+					type="number"
+					name="turnSeconds"
+					min={data.shiritoriLimits.turnSeconds[0]}
+					max={data.shiritoriLimits.turnSeconds[1]}
+					value={data.shiritori.turnSeconds}
+					required
+				/>
+			</label>
+			<label>
+				Dead letters
+				<input
+					type="text"
+					name="deadLetters"
+					maxlength="8"
+					value={data.shiritori.deadLetters}
+					autocomplete="off"
+				/>
+				<span class="hint">One is drawn for each chain or round.</span>
+			</label>
+			<label class="check wide">
+				<input type="checkbox" name="hardMode" checked={data.shiritori.hardMode} />
+				<span>Hard mode: the next word starts with the last two letters</span>
+			</label>
+			<label class="wide">
+				Community words
+				<textarea name="allowWords" rows="3" value={data.shiritori.allowWords}></textarea>
+				<span class="hint"
+					>Words the dictionary lacks and your server accepts, one per line.</span
+				>
+			</label>
+			<label class="wide">
+				Blocked words
+				<textarea name="blockWords" rows="3" value={data.shiritori.blockWords}></textarea>
+				<span class="hint">Words your server refuses, one per line.</span>
+			</label>
+			<button type="submit" class="btn-primary">Save Shiritori settings</button>
+		</form>
+		{#if data.shiritori.chainChannelId}
+			<form method="POST" action="?/resetShiritoriChain" use:enhance={keepValues}>
+				<button type="submit" class="btn-secondary">Reset the chain</button>
+			</form>
+		{/if}
+		{#if data.shiritoriBoard.rows.length}
+			<h3>Leaderboard</h3>
+			<p class="muted">Server record: {data.shiritoriBoard.record} words in one chain.</p>
+			<table class="board">
+				<thead>
+					<tr
+						><th>Member</th><th>Words</th><th>Chains broken</th><th>Rounds won</th><th
+							>Longest</th
+						></tr
+					>
+				</thead>
+				<tbody>
+					{#each data.shiritoriBoard.rows as row (row.name)}
+						<tr>
+							<td>{row.name}</td>
+							<td>{row.wordsAdded}</td>
+							<td>{row.chainsBroken}</td>
+							<td>{row.roundsWon}</td>
+							<td>{row.longestWord ?? '—'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{/if}
+	</section>
+
 	<p class="muted">
 		Who may use <code>/timebox</code> is set under
 		<a href="/admin/{data.serverId}/commands">Slash Commands</a>, including by role.
@@ -348,7 +445,8 @@
 	}
 
 	.settings-form input,
-	.settings-form select {
+	.settings-form select,
+	.settings-form textarea {
 		padding: 0.5rem 0.6rem;
 		background: var(--color-bg);
 		color: var(--color-text);
@@ -389,6 +487,34 @@
 
 	.btn-primary:hover {
 		filter: brightness(1.1);
+	}
+
+	.btn-secondary {
+		margin-top: 0.75rem;
+		padding: 0.5rem 1rem;
+		background: transparent;
+		color: var(--color-text);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md, 6px);
+		cursor: pointer;
+	}
+
+	.board {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.9rem;
+	}
+
+	.board th,
+	.board td {
+		padding: 0.35rem 0.5rem;
+		text-align: left;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.board th {
+		color: var(--color-text-muted);
+		font-weight: 600;
 	}
 
 	@media (max-width: 560px) {

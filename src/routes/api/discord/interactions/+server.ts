@@ -37,6 +37,11 @@ import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
 import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
+import {
+	handleShiritoriCommand,
+	handleShiritoriComponent,
+	isShiritoriCommand,
+} from '$lib/server/shiritori-game.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -381,6 +386,14 @@ export async function POST({ request, platform: rawPlatform }) {
 		// the action pipeline.
 		if (data.name === 'play' && guildId) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			if (isShiritoriCommand(body)) {
+				const reply = await handleShiritoriCommand(
+					body,
+					db,
+					token ? createDiscordRestClient(token) : null
+				);
+				return json(reply.response);
+			}
 			const reply = await handleGameCommand(
 				body,
 				db,
@@ -491,6 +504,15 @@ export async function POST({ request, platform: rawPlatform }) {
 		if (String(body.data?.custom_id || '').startsWith('quorum:')) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleQuorumComponent(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			return json(reply.response);
+		}
+		if (String(body.data?.custom_id || '').startsWith('shiritori:')) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleShiritoriComponent(
 				body,
 				db,
 				token ? createDiscordRestClient(token) : null

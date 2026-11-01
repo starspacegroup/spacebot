@@ -1830,6 +1830,85 @@ function stopVoiceSessionPolling() {
 	}
 }
 
+// --- Shiritori ------------------------------------------------------------------
+// The game lives on the site (it is D1 and the REST client); the gateway only
+// forwards the words. It asks the site every few seconds which channels to
+// listen to, so a message anywhere else costs nothing. The same poll shows when
+// a round's turn is overdue, and the gateway calls the site's tick to time it out.
+
+const SHIRITORI_POLL_MS = 10_000;
+const SHIRITORI_TICK_SLACK_MS = 2_500;
+let shiritoriPollTimer = null;
+let shiritoriChannels = new Set<string>();
+let shiritoriTicking = false;
+
+const botHeaders = () => ({
+	'Content-Type': 'application/json',
+	Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+});
+
+async function pollShiritoriState() {
+	try {
+		const res = await fetch(`${API_BASE}/api/shiritori/state`, { headers: botHeaders() });
+		if (!res.ok) return;
+		const state = await res.json();
+		shiritoriChannels = new Set([
+			...state.chains.map((c) => c.channelId),
+			...state.rounds.map((r) => r.channelId),
+		]);
+		const overdue = state.rounds.some(
+			(r) => r.turnEndsAt && Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS
+		);
+		if (overdue && !shiritoriTicking) {
+			shiritoriTicking = true;
+			try {
+				await fetch(`${API_BASE}/api/shiritori/tick`, {
+					method: 'POST',
+					headers: botHeaders(),
+				});
+			} finally {
+				shiritoriTicking = false;
+			}
+		}
+	} catch (error) {
+		log.debug(`[Shiritori] State poll failed: ${error.message}`);
+	}
+}
+
+function startShiritoriPolling() {
+	if (shiritoriPollTimer) return;
+	void pollShiritoriState();
+	shiritoriPollTimer = setInterval(() => void pollShiritoriState(), SHIRITORI_POLL_MS);
+	log.info(`[Shiritori] State poll started (${SHIRITORI_POLL_MS / 1000}s interval)`);
+}
+
+function stopShiritoriPolling() {
+	if (shiritoriPollTimer) {
+		clearInterval(shiritoriPollTimer);
+		shiritoriPollTimer = null;
+	}
+}
+
+async function forwardShiritoriMessage(message) {
+	try {
+		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
+			method: 'POST',
+			headers: botHeaders(),
+			body: JSON.stringify({
+				channelId: message.channelId,
+				messageId: message.id,
+				userId: message.author.id,
+				userName: message.member?.displayName || message.author.username,
+				content: message.content,
+				sentAt: message.createdAt.toISOString(),
+			}),
+		});
+		if (!res.ok) log.error(`[Shiritori] Message API returned ${res.status}`);
+	} catch (error) {
+		log.error('[Shiritori] Could not forward a message:', error.message);
+	}
+}
+
 function startVoiceSessionPolling(client) {
 	if (voiceSessionPollTimer) {
 		return;
@@ -3181,6 +3260,11 @@ function setupEventHandlers(client, logFn) {
 				log.error('[DM] Error handling DM:', error.message);
 			}
 			return;
+		}
+
+		// Shiritori: a word in the Chain channel, or a turn in a running round.
+		if (!message.author?.bot && shiritoriChannels.has(message.channelId)) {
+			void forwardShiritoriMessage(message);
 		}
 
 		log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);
@@ -4649,6 +4733,7 @@ function setupEventHandlers(client, logFn) {
 		});
 
 		startVoiceSessionPolling(c);
+		startShiritoriPolling();
 
 		// Start gateway benchmark reporting (every 60 seconds)
 		startBenchmarkReporting(c);
@@ -4817,6 +4902,7 @@ async function recoverGatewayClient(reason) {
 	benchmarkLastRecoveryAt = Date.now();
 	stopBenchmarkReporting();
 	stopVoiceSessionPolling();
+	stopShiritoriPolling();
 
 	const previousClient = discordClient;
 	log.error(`[BenchmarkWatchdog] ${reason}. Recycling Discord client.`);
@@ -5063,6 +5149,7 @@ function gracefulShutdown(signal) {
 	clearGatewayLogFlushTimer();
 	stopBenchmarkReporting();
 	stopVoiceSessionPolling();
+	stopShiritoriPolling();
 	if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
 	if (httpServer) httpServer.close();
 	if (discordClient) {
