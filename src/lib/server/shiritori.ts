@@ -22,6 +22,23 @@ export function normalizeWord(raw: string): string | null {
 	return /^[a-z]+$/.test(word) && word.length >= MIN_WORD_LENGTH ? word : null;
 }
 
+/**
+ * A typed word: one run of letters, lower-cased. Anything else is talk and is
+ * ignored: several words, links, emoji, numbers, and a line that starts with `//`.
+ */
+export function wordToken(content: string): string | null {
+	const text = content.trim();
+	if (!text || text.startsWith('//')) return null;
+	return /^[A-Za-z]+$/.test(text) ? text.toLowerCase() : null;
+}
+
+/**
+ * Whether a message could be a move at all. The gateway asks this before it
+ * forwards anything, so chat in a Chain channel costs no request.
+ */
+export const couldBeAMove = (content: string) =>
+	(wordToken(content)?.length ?? 0) >= MIN_WORD_LENGTH;
+
 /** What the next word must start with: the last letter, or the last two in hard mode. */
 export function requiredStart(prev: string, hard = false): string {
 	return prev.slice(hard ? -2 : -1);

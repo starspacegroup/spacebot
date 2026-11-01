@@ -29,6 +29,7 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
+import { couldBeAMove } from '../server/shiritori.js';
 
 /**
  * discord.js retries a send that times out (15s default), and Discord may have
@@ -1832,13 +1833,22 @@ function stopVoiceSessionPolling() {
 
 // --- Shiritori ------------------------------------------------------------------
 // The game lives on the site (it is D1 and the REST client); the gateway only
-// forwards the words. It asks the site every few seconds which channels to
-// listen to, so a message anywhere else costs nothing. The same poll shows when
-// a round's turn is overdue, and the gateway calls the site's tick to time it out.
+// forwards the words. It asks the site which channels to listen to, and keeps the
+// cost of asking close to nothing:
+//
+//  - idle (no lobby or round anywhere): one cheap read a minute. That is all it
+//    takes to notice a server turning Shiritori on.
+//  - a lobby or round is open: every 5 seconds, which is also the round clock. The
+//    bot's own lobby card appearing wakes the poll at once, so a new round is seen
+//    straight away rather than up to a minute late.
+//  - only a Chain channel or a *running* round's channel is listened to, and only
+//    for a message that could be a move (one word of letters). Chat costs nothing.
 
-const SHIRITORI_POLL_MS = 10_000;
+const SHIRITORI_IDLE_POLL_MS = 60_000;
+const SHIRITORI_ACTIVE_POLL_MS = 5_000;
 const SHIRITORI_TICK_SLACK_MS = 2_500;
-let shiritoriPollTimer = null;
+let shiritoriPollTimer: ReturnType<typeof setTimeout> | null = null;
+let shiritoriStopped = true;
 let shiritoriChannels = new Set<string>();
 let shiritoriTicking = false;
 
@@ -1847,17 +1857,24 @@ const botHeaders = () => ({
 	Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
 });
 
-async function pollShiritoriState() {
+/** Poll once. Returns how long to wait before the next one. */
+async function pollShiritoriState(): Promise<number> {
 	try {
-		const res = await fetch(`${API_BASE}/api/shiritori/state`, { headers: botHeaders() });
-		if (!res.ok) return;
+		const res = await fetch(`${API_BASE}/api/shiritori/state`, {
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!res.ok) return SHIRITORI_IDLE_POLL_MS;
 		const state = await res.json();
 		shiritoriChannels = new Set([
 			...state.chains.map((c) => c.channelId),
-			...state.rounds.map((r) => r.channelId),
+			...state.rounds.filter((r) => r.status === 'running').map((r) => r.channelId),
 		]);
 		const overdue = state.rounds.some(
-			(r) => r.turnEndsAt && Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS
+			(r) =>
+				r.status === 'running' &&
+				r.turnEndsAt &&
+				Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS
 		);
 		if (overdue && !shiritoriTicking) {
 			shiritoriTicking = true;
@@ -1865,28 +1882,55 @@ async function pollShiritoriState() {
 				await fetch(`${API_BASE}/api/shiritori/tick`, {
 					method: 'POST',
 					headers: botHeaders(),
+					signal: AbortSignal.timeout(15_000),
 				});
 			} finally {
 				shiritoriTicking = false;
 			}
 		}
+		return state.rounds.length > 0 ? SHIRITORI_ACTIVE_POLL_MS : SHIRITORI_IDLE_POLL_MS;
 	} catch (error) {
 		log.debug(`[Shiritori] State poll failed: ${error.message}`);
+		return SHIRITORI_IDLE_POLL_MS;
 	}
+}
+
+function scheduleShiritoriPoll(delayMs: number) {
+	if (shiritoriStopped) return;
+	if (shiritoriPollTimer) clearTimeout(shiritoriPollTimer);
+	shiritoriPollTimer = setTimeout(async () => {
+		scheduleShiritoriPoll(await pollShiritoriState());
+	}, delayMs);
 }
 
 function startShiritoriPolling() {
-	if (shiritoriPollTimer) return;
-	void pollShiritoriState();
-	shiritoriPollTimer = setInterval(() => void pollShiritoriState(), SHIRITORI_POLL_MS);
-	log.info(`[Shiritori] State poll started (${SHIRITORI_POLL_MS / 1000}s interval)`);
+	if (!shiritoriStopped) return;
+	shiritoriStopped = false;
+	scheduleShiritoriPoll(0);
+	log.info(
+		`[Shiritori] State poll started (${SHIRITORI_IDLE_POLL_MS / 1000}s idle, ${SHIRITORI_ACTIVE_POLL_MS / 1000}s while a round is open)`
+	);
+}
+
+/** Poll now: something just showed that a round is starting. */
+function wakeShiritoriPolling() {
+	if (!shiritoriStopped) scheduleShiritoriPoll(0);
 }
 
 function stopShiritoriPolling() {
+	shiritoriStopped = true;
 	if (shiritoriPollTimer) {
-		clearInterval(shiritoriPollTimer);
+		clearTimeout(shiritoriPollTimer);
 		shiritoriPollTimer = null;
 	}
+}
+
+/** The bot's own lobby card: buttons whose ids start with `shiritori:`. */
+function isShiritoriCard(message, botUserId: string) {
+	if (message.author?.id !== botUserId) return false;
+	return message.components?.some((row) =>
+		row.components?.some((c) => String(c.customId ?? '').startsWith('shiritori:'))
+	);
 }
 
 /**
@@ -3282,8 +3326,14 @@ function setupEventHandlers(client, logFn) {
 		}
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
-		if (!message.author?.bot && shiritoriChannels.has(message.channelId)) {
+		if (
+			!message.author?.bot &&
+			shiritoriChannels.has(message.channelId) &&
+			couldBeAMove(message.content)
+		) {
 			forwardShiritoriMessage(message);
+		} else if (isShiritoriCard(message, client.user?.id)) {
+			wakeShiritoriPolling();
 		}
 
 		log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);

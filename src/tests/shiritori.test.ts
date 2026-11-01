@@ -6,6 +6,8 @@ import {
 	lemmaOf,
 	normalizeWord,
 	requiredStart,
+	couldBeAMove,
+	wordToken,
 } from '../lib/server/shiritori.js';
 import {
 	dictionarySize,
@@ -132,5 +134,22 @@ describe('drawDeadLetter', () => {
 	it('honours a custom pool and falls back when it is empty', () => {
 		expect(drawDeadLetter(['k'], () => 0.5)).toBe('k');
 		expect(DEAD_LETTERS).toContain(drawDeadLetter(['!!'], () => 0));
+	});
+});
+
+describe('wordToken and couldBeAMove', () => {
+	it('reads one word and ignores talk', () => {
+		expect(wordToken(' Apple ')).toBe('apple');
+		for (const talk of ['two words', 'apple!', '// apple', '', 'https://x.io', '12']) {
+			expect(wordToken(talk)).toBeNull();
+		}
+	});
+
+	it('is what the gateway asks before forwarding: one word, three letters or more', () => {
+		expect(couldBeAMove('eagle')).toBe(true);
+		expect(couldBeAMove('ok')).toBe(false);
+		expect(couldBeAMove('hello there')).toBe(false);
+		expect(couldBeAMove('// eagle')).toBe(false);
+		expect(couldBeAMove('👍')).toBe(false);
 	});
 });

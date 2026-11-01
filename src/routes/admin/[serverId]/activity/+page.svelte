@@ -8,6 +8,10 @@
 	// field back to its HTML default. These fields are set as properties, so the
 	// default is empty: the form blanked itself right after saving. Keep what the
 	// admin typed; the page's data refreshes behind it.
+	const shiritoriChannelName = $derived(
+		data.shiritoriChannels.find((c) => c.id === data.shiritoriHealth?.channelId)?.name ?? ''
+	);
+
 	const keepValues =
 		() =>
 		async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => {
@@ -242,6 +246,18 @@
 			timed round anywhere with <code>/play shiritori</code> (turn on the Game command above). A
 			word that ends in the dead letter ends the chain, or puts a player out of a round.
 		</p>
+		{#if data.shiritoriHealth}
+			<p class="warning" role="alert">
+				<strong>SpaceBot could not post there.</strong>
+				{data.shiritoriHealth.message}{data.shiritoriHealth.status
+					? ` (error ${data.shiritoriHealth.status})`
+					: ''}{shiritoriChannelName ? ` in #${shiritoriChannelName}` : ''}, at {data.shiritoriHealth.at
+					.slice(0, 16)
+					.replace('T', ' ')} UTC.
+				{data.shiritoriHealth.hint}
+				Saving these settings clears this notice.
+			</p>
+		{/if}
 		<form method="POST" action="?/saveShiritori" use:enhance={keepValues} class="settings-form">
 			<label class="check wide">
 				<input type="checkbox" name="enabled" checked={data.shiritori.enabled} />
@@ -487,6 +503,14 @@
 
 	.btn-primary:hover {
 		filter: brightness(1.1);
+	}
+
+	.warning {
+		margin: 0.75rem 0;
+		padding: 0.6rem 0.8rem;
+		border: 1px solid var(--color-warning, #d99a1d);
+		border-radius: var(--radius-md, 6px);
+		font-size: 0.9rem;
 	}
 
 	.btn-secondary {

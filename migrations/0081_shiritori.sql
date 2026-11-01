@@ -25,8 +25,15 @@ CREATE TABLE IF NOT EXISTS shiritori_settings (
     dead_letters TEXT,                     -- NULL: the default pool "xqjz"; letters, no separators
     allow_words TEXT,                      -- community words, one per line
     block_words TEXT,                      -- words this server refuses, one per line
+    last_error TEXT,                       -- JSON: the last time the bot could not post or react
+    last_error_at TEXT,                    -- cleared when the settings are saved
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- The gateway asks which servers have a Chain channel every minute or so; this
+-- keeps that read to the servers that do, however many have saved settings.
+CREATE INDEX IF NOT EXISTS idx_shiritori_settings_chain
+    ON shiritori_settings(guild_id) WHERE enabled = 1 AND chain_channel_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS shiritori_chains (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

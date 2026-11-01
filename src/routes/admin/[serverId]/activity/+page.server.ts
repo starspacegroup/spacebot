@@ -15,6 +15,7 @@ import {
 	DEFAULTS as SHIRITORI_DEFAULTS,
 	LIMITS as SHIRITORI_LIMITS,
 	chainRecord,
+	getHealth as getShiritoriHealth,
 	getLeaderboard,
 	getSettings as getShiritoriSettings,
 	parseWordList,
@@ -85,6 +86,7 @@ export async function load({ cookies, platform, parent, params }) {
 					.map((c) => ({ id: c.channelId, name: c.name }))
 			: [],
 		shiritoriBoard: db ? await shiritoriBoard(db, serverId) : { rows: [], record: 0 },
+		shiritoriHealth: db ? await getShiritoriHealth(db, serverId) : null,
 	};
 }
 
@@ -136,10 +138,10 @@ function whole(formData: FormData, key: string, [min, max]: readonly [number, nu
 
 /** @type {import('./$types').Actions} */
 export const actions = {
-	toggleModule: async ({ request, cookies, platform, params }) => {
-		if (!cookies.get('discord_user_id')) {
-			return fail(401, { success: false, message: 'Not authenticated' });
-		}
+	toggleModule: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
 		const db = (platform as any)?.env?.DB;
 		if (!db) return fail(500, { success: false, message: 'Database not available' });
 
@@ -166,10 +168,10 @@ export const actions = {
 		return { success: true, message: `${module.name} is ${enabled ? 'on' : 'off'}.` };
 	},
 
-	saveTimebox: async ({ request, cookies, platform, params }) => {
-		if (!cookies.get('discord_user_id')) {
-			return fail(401, { success: false, message: 'Not authenticated' });
-		}
+	saveTimebox: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
 		const db = (platform as any)?.env?.DB;
 		if (!db) return fail(500, { success: false, message: 'Database not available' });
 
@@ -196,10 +198,10 @@ export const actions = {
 		return { success: true, message: 'Timebox defaults saved.' };
 	},
 
-	saveGame: async ({ request, cookies, platform, params }) => {
-		if (!cookies.get('discord_user_id')) {
-			return fail(401, { success: false, message: 'Not authenticated' });
-		}
+	saveGame: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
 		const db = (platform as any)?.env?.DB;
 		if (!db) return fail(500, { success: false, message: 'Database not available' });
 

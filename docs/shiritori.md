@@ -62,24 +62,39 @@ Timed and turn-based, in any text channel except the Chain channel. One round pe
 
 The game lives on the site (D1 and the Discord REST client). The gateway only forwards.
 
-- The gateway polls `GET /api/shiritori/state` every 10 s. It lists the Chain channels and
-  the channels of running rounds, with each turn's deadline. A message in a listed channel
-  goes to `POST /api/shiritori/{guild}/message`. A message anywhere else costs nothing.
+- The gateway asks `GET /api/shiritori/state` which channels to listen to. It lists the Chain
+  channels, and the lobbies and running rounds with each turn's deadline. It is **one read**.
+  Idle (no lobby or round anywhere) the gateway asks once a minute, so a server that turns
+  Shiritori on or sets a Chain channel is noticed within a minute. While a lobby or round
+  is open it asks every 5 seconds, and the bot's own lobby card appearing wakes it at once.
+- The gateway forwards only a message in a Chain channel or a **running** round's channel,
+  and only if it could be a move: one word of letters, three or more. Chat costs no request.
+  A forwarded word goes to `POST /api/shiritori/{guild}/message`.
 - When a deadline has passed, the gateway calls `POST /api/shiritori/tick`. So a turn times
-  out within about 12 seconds. A late word is judged by the time the member **sent** it.
+  out within about 8 seconds. A late word is judged by the time the member **sent** it. The
+  first turn of a round gets 10 extra seconds, so a round is always noticed before it starts.
 - The gateway sends a channel's words one at a time, in the order they were sent, so two
   quick words cannot race and break the chain.
 - All three routes need `Authorization: Bot <token>`, the same as `/api/logs/create`.
 - The minute sweep (`sweep_game`) is the backstop when the gateway is down: it times out
-  turns, closes lobbies nobody started (30 minutes), and prunes word rows of finished games
-  after 90 days. Chain and round summaries and member stats stay.
+  turns and closes lobbies nobody started (30 minutes). An idle minute is one read. Once an
+  hour it prunes word rows of finished games older than 90 days. Chain and round summaries and member stats stay.
 - Every transition is a guarded write. A word's position in a game is a primary key, and a
   word's lemma is a unique index, so two messages that race cannot both count.
 
+## When SpaceBot cannot post
+
+If SpaceBot loses Send Messages, Add Reactions or Read Message History in a channel, the game
+would otherwise fail without a word: a chain breaks, or a word gets no reaction. Every failed
+post, edit or reaction is recorded (once a minute per server), and the dashboard shows it
+above the settings with the channel, Discord's error and what to grant. Saving the settings
+clears the notice. The game itself carries on.
+
 ## Who can change it
 
-The settings and the chain reset need Administrator on the server (or a superadmin). The
-check runs in the form action itself, because an action does not run the page's load.
+Every form action on the Activity page (the Shiritori settings and chain reset, and the
+Timebox, Game and module settings) needs Administrator on the server, or a superadmin. The
+check runs in the action itself, because an action does not run the page's load.
 
 ## Stats
 

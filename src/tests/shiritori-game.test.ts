@@ -14,6 +14,7 @@ import {
 	chainRecord,
 	clockFor,
 	eliminate,
+	getHealth,
 	getLeaderboard,
 	getOpenChain,
 	getPlayers,
@@ -663,6 +664,90 @@ describe('Round mode', () => {
 		const rows = await db.prepare(`SELECT COUNT(*) AS n FROM shiritori_words`).first();
 		expect(rows?.n).toBe(0);
 		expect(await chainRecord(db, GUILD)).toBe(1);
+	});
+});
+
+describe('cost', () => {
+	it('answers the gateway in one read, listing lobbies and running rounds with their status', async () => {
+		await enable();
+		const round = await openRound(
+			db,
+			discord,
+			{ guildId: GUILD, channelId: ROUND_CH, starterId: 'u1', starterName: 'One' },
+			() => 0.3,
+			T0
+		);
+		if (isFail(round)) throw new Error(round.error);
+		const prepare = vi.spyOn(db, 'prepare');
+		const active = await listActive(db);
+		expect(prepare).toHaveBeenCalledTimes(1);
+		expect(active.chains).toEqual([{ guildId: GUILD, channelId: CHAIN_CH }]);
+		expect(active.rounds).toEqual([
+			{ guildId: GUILD, channelId: ROUND_CH, status: 'lobby', turnEndsAt: null },
+		]);
+	});
+
+	it('is one read for an idle minute, and prunes only on the hour', async () => {
+		await enable();
+		const prepare = vi.spyOn(db, 'prepare');
+		await sweepShiritori(db, discord, new Date('2026-10-31T12:30:00Z'));
+		expect(prepare).toHaveBeenCalledTimes(1);
+		prepare.mockClear();
+		await sweepShiritori(db, discord, new Date('2026-10-31T13:00:00Z'));
+		expect(prepare).toHaveBeenCalledTimes(3);
+	});
+
+	it('keeps old words until the hourly prune', async () => {
+		await enable();
+		await chainFrom('apple');
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'banana'), T0); // breaks it
+		const late = new Date(T0.getTime() + 91 * 86_400_000 + 30 * 60_000);
+		await sweepShiritori(db, discord, late); // minute 30: no prune
+		expect((await db.prepare(`SELECT COUNT(*) AS n FROM shiritori_words`).first())?.n).toBe(1);
+		await sweepShiritori(db, discord, late, true);
+		expect((await db.prepare(`SELECT COUNT(*) AS n FROM shiritori_words`).first())?.n).toBe(0);
+	});
+});
+
+describe('when SpaceBot cannot post', () => {
+	const denied = () => {
+		const err: any = new Error('Missing Access');
+		err.status = 403;
+		return err;
+	};
+
+	it('records it for the dashboard, once a minute, and saving the settings clears it', async () => {
+		await enable();
+		await chainFrom('apple');
+		discord.channels.react = async () => {
+			throw denied();
+		};
+		const out = await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		expect(out).toEqual({ action: 'accepted' }); // the game carries on
+		const health = await getHealth(db, GUILD);
+		expect(health).toMatchObject({
+			status: 403,
+			channelId: CHAIN_CH,
+			message: 'Missing Access',
+		});
+		expect(health?.hint).toContain('Add Reactions');
+
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
+		expect((await getHealth(db, GUILD))?.at).toBe(health?.at); // throttled
+
+		await enable();
+		expect(await getHealth(db, GUILD)).toBeNull();
+	});
+
+	it('records a failed post too, and says nothing when all is well', async () => {
+		await enable();
+		expect(await getHealth(db, GUILD)).toBeNull();
+		discord.channels.send = async () => {
+			throw denied();
+		};
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'apple'), T0); // opens a chain: posts
+		expect((await getHealth(db, GUILD))?.status).toBe(403);
 	});
 });
 

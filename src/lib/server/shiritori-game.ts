@@ -26,6 +26,7 @@ import {
 	judgeMove,
 	lemmaOf,
 	requiredStart,
+	wordToken,
 	type MoveCode,
 } from './shiritori.js';
 import { isBlocked as baseBlocked, isWord as baseWord, seedWord } from './shiritori-dict.js';
@@ -94,7 +95,8 @@ export async function upsertSettings(db: Db, guildId: string, s: Settings) {
 			   enabled = excluded.enabled, chain_channel_id = excluded.chain_channel_id,
 			   turn_seconds = excluded.turn_seconds, hard_mode = excluded.hard_mode,
 			   dead_letters = excluded.dead_letters, allow_words = excluded.allow_words,
-			   block_words = excluded.block_words, updated_at = datetime('now')`
+			   block_words = excluded.block_words, updated_at = datetime('now'),
+			   last_error = NULL, last_error_at = NULL`
 		)
 		.bind(
 			guildId,
@@ -134,6 +136,8 @@ export function guildDictionary(s: Settings) {
 
 export const deadLetterPool = (s: Settings) => [...s.deadLetters];
 
+export { wordToken };
+
 // --- shared bits -----------------------------------------------------------------
 
 const fail = (error: string) => ({ error });
@@ -142,13 +146,6 @@ export const isFail = (v: unknown): v is Fail =>
 	Boolean(v && typeof v === 'object' && 'error' in v);
 
 const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000);
-
-/** A typed word: one run of letters. Anything else is talk and is ignored. */
-export function wordToken(content: string): string | null {
-	const text = content.trim();
-	if (!text || text.startsWith('//')) return null;
-	return /^[A-Za-z]+$/.test(text) ? text.toLowerCase() : null;
-}
 
 const REASON_TEXT: Record<MoveCode | 'dead_letter' | 'timeout' | 'left' | 'reset', string> = {
 	too_short: 'too short',
@@ -193,6 +190,99 @@ const reply = (discord: Discord, channelId: string, messageId: string | null, co
 				})
 			)
 		: null;
+
+/** Whether a failed post is worth telling the server's admins about, and what to tell them. */
+export interface Health {
+	status: number | null;
+	channelId: string | null;
+	message: string;
+	at: string;
+	hint: string;
+}
+
+const HINTS: Record<number, string> = {
+	401: 'The bot token is not accepted.',
+	403: 'Give SpaceBot View Channel, Send Messages, Add Reactions and Read Message History there.',
+	404: 'The channel or message is gone.',
+};
+
+/**
+ * Remember that SpaceBot could not post or react, so the dashboard can say so. The
+ * bot losing a permission otherwise fails silently: a chain breaks, or a word gets
+ * no reaction, and nothing says why. One write a minute at most, per server.
+ */
+async function recordFailure(db: Db, guildId: string, channelId: string | null, err: any) {
+	try {
+		const now = new Date();
+		await db
+			.prepare(
+				`UPDATE shiritori_settings SET last_error = ?, last_error_at = ?
+				  WHERE guild_id = ? AND (last_error_at IS NULL OR last_error_at < ?)`
+			)
+			.bind(
+				JSON.stringify({
+					status: typeof err?.status === 'number' ? err.status : null,
+					channelId,
+					message: String(err?.message ?? err).slice(0, 200),
+				}),
+				now.toISOString(),
+				guildId,
+				new Date(now.getTime() - 60_000).toISOString()
+			)
+			.run();
+	} catch {
+		// Recording a problem must never be a problem.
+	}
+}
+
+/**
+ * The Discord client, with every post, edit and reaction watched: a failure is
+ * recorded for the dashboard and then thrown on, so callers behave as before.
+ */
+function watched(db: Db, guildId: string, discord: Discord): Discord {
+	if (!discord?.channels) return discord;
+	const watch =
+		(fn: (...args: any[]) => Promise<any>) =>
+		async (channelId: string, ...rest: any[]) => {
+			try {
+				return await fn(channelId, ...rest);
+			} catch (err) {
+				await recordFailure(db, guildId, channelId, err);
+				throw err;
+			}
+		};
+	const { send, editMessage, react } = discord.channels;
+	return {
+		...discord,
+		channels: {
+			...discord.channels,
+			send: watch(send),
+			editMessage: watch(editMessage),
+			react: watch(react),
+		},
+	};
+}
+
+/** The last problem posting for a server, if any, for the dashboard. */
+export async function getHealth(db: Db, guildId: string): Promise<Health | null> {
+	const row = await db
+		.prepare(`SELECT last_error, last_error_at FROM shiritori_settings WHERE guild_id = ?`)
+		.bind(guildId)
+		.first();
+	if (!row?.last_error) return null;
+	try {
+		const e = JSON.parse(row.last_error);
+		return {
+			status: e.status ?? null,
+			channelId: e.channelId ?? null,
+			message: e.message ?? '',
+			at: row.last_error_at,
+			hint: HINTS[e.status as number] ?? '',
+		};
+	} catch {
+		return null;
+	}
+}
 
 const isUnique = (err: any) => /UNIQUE|constraint/i.test(String(err?.message));
 
@@ -555,6 +645,7 @@ export async function resetChain(
 ): Promise<boolean> {
 	const s = await getSettings(db, guildId);
 	if (!s.chainChannelId) return false;
+	discord = watched(db, guildId, discord);
 	const open = await getOpenChain(db, guildId, s.chainChannelId);
 	if (open) await endChain(db, open, 'reset', null, now);
 	const next = await startChain(db, s, guildId, s.chainChannelId, rand, now);
@@ -1154,6 +1245,7 @@ export async function handleMessage(
 	if (msg.isBot) return IGNORE;
 	const s = await getSettings(db, msg.guildId);
 	if (!s.enabled) return IGNORE;
+	discord = watched(db, msg.guildId, discord);
 	if (s.chainChannelId === msg.channelId) {
 		return handleChainMessage(db, discord, s, msg, now, rand);
 	}
@@ -1164,24 +1256,29 @@ export async function handleMessage(
 
 /** What the gateway should forward: Chain channels, and the channels of running rounds. */
 export async function listActive(db: Db) {
-	const chains = await db
+	// One statement, so an idle poll is a single read, and the partial index on the
+	// settings keeps it to the servers that actually have a Chain channel.
+	const { results } = await db
 		.prepare(
-			`SELECT guild_id, chain_channel_id AS channel_id FROM shiritori_settings
-			  WHERE enabled = 1 AND chain_channel_id IS NOT NULL`
-		)
-		.all();
-	const rounds = await db
-		.prepare(
-			`SELECT guild_id, channel_id, turn_ends_at FROM shiritori_rounds WHERE status = 'running'`
+			`SELECT 'chain' AS kind, guild_id, chain_channel_id AS channel_id, NULL AS status, NULL AS turn_ends_at
+			   FROM shiritori_settings WHERE enabled = 1 AND chain_channel_id IS NOT NULL
+			 UNION ALL
+			 SELECT 'round', guild_id, channel_id, status, turn_ends_at
+			   FROM shiritori_rounds WHERE status IN ('lobby', 'running')`
 		)
 		.all();
 	return {
-		chains: chains.results.map((r: any) => ({ guildId: r.guild_id, channelId: r.channel_id })),
-		rounds: rounds.results.map((r: any) => ({
-			guildId: r.guild_id,
-			channelId: r.channel_id,
-			turnEndsAt: r.turn_ends_at,
-		})),
+		chains: results
+			.filter((r: any) => r.kind === 'chain')
+			.map((r: any) => ({ guildId: r.guild_id, channelId: r.channel_id })),
+		rounds: results
+			.filter((r: any) => r.kind === 'round')
+			.map((r: any) => ({
+				guildId: r.guild_id,
+				channelId: r.channel_id,
+				status: r.status as 'lobby' | 'running',
+				turnEndsAt: r.turn_ends_at as string | null,
+			})),
 	};
 }
 
@@ -1193,21 +1290,42 @@ export async function tickRounds(db: Db, discord: Discord, now = new Date()): Pr
 		.all();
 	let n = 0;
 	for (const round of results as Round[]) {
-		if (await resolveOverdue(db, discord, round, now)) n++;
+		if (await resolveOverdue(db, watched(db, round.guild_id, discord), round, now)) n++;
 	}
 	return n;
 }
 
-/** The minute sweep: overdue turns, lobbies nobody started, and old word rows. */
-export async function sweepShiritori(db: Db, discord: Discord, now = new Date()) {
-	const timedOut = await tickRounds(db, discord, now);
-	const { results: stale } = await db
-		.prepare(`SELECT * FROM shiritori_rounds WHERE status = 'lobby' AND created_at < ?`)
-		.bind(new Date(now.getTime() - LOBBY_TTL_MS).toISOString())
+/**
+ * The minute sweep: overdue turns, lobbies nobody started, and (once an hour) old
+ * word rows. An idle minute is one read: the rounds still in play, of which there
+ * are usually none.
+ */
+export async function sweepShiritori(
+	db: Db,
+	discord: Discord,
+	now = new Date(),
+	pruneNow = now.getUTCMinutes() === 0
+) {
+	const { results } = await db
+		.prepare(`SELECT * FROM shiritori_rounds WHERE status IN ('lobby', 'running')`)
 		.all();
-	for (const round of stale as Round[]) {
-		await endRound(db, discord, round, 'abandoned', null, now);
+	const staleBefore = new Date(now.getTime() - LOBBY_TTL_MS).toISOString();
+	let timedOut = 0;
+	let closedLobbies = 0;
+	for (const round of results as Round[]) {
+		const io = watched(db, round.guild_id, discord);
+		if (round.status === 'running') {
+			if (await resolveOverdue(db, io, round, now)) timedOut++;
+		} else if (round.created_at < staleBefore) {
+			await endRound(db, io, round, 'abandoned', null, now);
+			closedLobbies++;
+		}
 	}
+	if (pruneNow) await pruneOldWords(db, now);
+	return { timedOut, closedLobbies };
+}
+
+async function pruneOldWords(db: Db, now: Date) {
 	const cutoff = new Date(now.getTime() - WORD_RETENTION_DAYS * 86_400_000).toISOString();
 	await db
 		.prepare(
@@ -1223,7 +1341,6 @@ export async function sweepShiritori(db: Db, discord: Discord, now = new Date())
 		)
 		.bind(cutoff)
 		.run();
-	return { timedOut, closedLobbies: stale.length };
 }
 
 // --- the command and its buttons -----------------------------------------------------
@@ -1258,6 +1375,7 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	if (!(await getCommandByName(db, 'play', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
+	discord = watched(db, guildId, discord);
 	const live = await liveRoundIn(db, guildId, channelId);
 	if (live) {
 		const msg = await roundMessage(db, live);
@@ -1283,6 +1401,7 @@ export async function handleShiritoriComponent(body: Interaction, db: Db, discor
 	const round = await getRound(db, id);
 	if (!round) return { response: ephemeral('That round is gone.') };
 	if (round.status === 'ended') return { response: ephemeral('That round is over.') };
+	discord = watched(db, round.guild_id, discord);
 
 	const card = async () => ({
 		type: RESPOND_UPDATE,
