@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS shiritori_round_words (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_shiritori_round_words_lemma
     ON shiritori_round_words(round_id, lemma);
+CREATE INDEX IF NOT EXISTS idx_shiritori_round_words_at ON shiritori_round_words(at);
 
 -- Rolled-up per-member numbers for the leaderboard. Incremented as words land,
 -- so a pruned word row never changes a total.

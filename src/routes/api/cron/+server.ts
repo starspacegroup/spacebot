@@ -562,10 +562,12 @@ export async function POST({ request, cookies, platform }) {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
 			}
-			result = {
-				...(await sweepGame(db, botToken)),
-				shiritori: await sweepShiritori(db, createDiscordRestClient(botToken)),
-			};
+			const gameResult = await sweepGame(db, botToken);
+			// Its own failure must not fail the Game sweep: that one lifts mutes.
+			const shiritori = await sweepShiritori(db, createDiscordRestClient(botToken)).catch(
+				(err: any) => ({ error: String(err?.message ?? err) })
+			);
+			result = { ...gameResult, shiritori };
 		} else if (jobName === 'sync_commands') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');

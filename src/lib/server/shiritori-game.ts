@@ -436,6 +436,7 @@ async function handleChainMessage(
 
 	if (move.ok === false) {
 		if (move.code === 'too_short') return IGNORE;
+		if (move.code === 'blocked') return refuseWord(discord, msg, move.message);
 		return breakChain(db, discord, chain, msg, move.code, move.message, now, rand, s);
 	}
 
@@ -491,6 +492,18 @@ async function handleChainMessage(
 		return { action: 'ended', reason: 'dead_letter' };
 	}
 	return { action: 'accepted' };
+}
+
+/**
+ * A word on the block list is turned away, and nothing else happens: no break,
+ * no one put out. A block list matches stems, so it will catch an innocent word
+ * now and then, and one member must not be able to end a chain on purpose by
+ * typing something the filter refuses.
+ */
+async function refuseWord(discord: Discord, msg: ChannelMessage, why: string): Promise<Outcome> {
+	await react(discord, msg.channelId, msg.messageId, '❌');
+	await reply(discord, msg.channelId, msg.messageId, `${why[0].toUpperCase()}${why.slice(1)}.`);
+	return { action: 'refused' };
 }
 
 async function breakChain(
@@ -840,6 +853,7 @@ export async function eliminate(
 			round,
 			left.map((p) => ({ ...p, state: 'in' as const })),
 			player.seat ?? 0,
+			userId,
 			now
 		);
 	}
@@ -849,8 +863,19 @@ export async function eliminate(
 	return getRound(db, round.id);
 }
 
-/** Hand the turn to the next player in the order and restart the clock. */
-async function passTurn(db: Db, round: Round, live: Player[], fromSeat: number, now: Date) {
+/**
+ * Hand the turn to the next player in the order and restart the clock. Guarded on
+ * who holds the turn: a word and a timeout that race both try to pass it, and the
+ * second must not skip a player.
+ */
+async function passTurn(
+	db: Db,
+	round: Round,
+	live: Player[],
+	fromSeat: number,
+	fromUserId: string,
+	now: Date
+) {
 	const next = nextSeat(live, fromSeat);
 	if (!next) return;
 	const lap = round.lap + (next.lapped ? 1 : 0);
@@ -859,14 +884,15 @@ async function passTurn(db: Db, round: Round, live: Player[], fromSeat: number, 
 		.prepare(
 			`UPDATE shiritori_rounds
 			    SET current_user_id = ?, lap = ?, turn_seconds = ?, turn_ends_at = ?
-			  WHERE id = ? AND status = 'running'`
+			  WHERE id = ? AND status = 'running' AND current_user_id = ?`
 		)
 		.bind(
 			next.player.user_id,
 			lap,
 			seconds,
 			new Date(now.getTime() + seconds * 1000).toISOString(),
-			round.id
+			round.id,
+			fromUserId
 		)
 		.run();
 }
@@ -1052,6 +1078,7 @@ async function handleRoundMessage(
 
 	if (move.ok === false) {
 		if (move.code === 'too_short') return IGNORE;
+		if (move.code === 'blocked') return refuseWord(discord, msg, move.message);
 		await react(discord, msg.channelId, msg.messageId, '❌');
 		await reply(
 			discord,
@@ -1099,9 +1126,19 @@ async function handleRoundMessage(
 		await eliminate(db, discord, landed, msg.userId, 'dead_letter', now);
 		return { action: 'ended', reason: 'dead_letter' };
 	}
-	await passTurn(db, landed, players, me?.seat ?? 0, now);
+	await passTurn(db, landed, players, me?.seat ?? 0, msg.userId, now);
 	await refreshCard(db, discord, landed);
 	return { action: 'accepted' };
+}
+
+/**
+ * When the member sent it: used to judge a word against the clock, so a word that
+ * was in time still counts if it was processed late. A missing, unparseable or
+ * future timestamp (clock skew) falls back to now, so it can never stretch a turn.
+ */
+export function sentTime(sentAt: string | undefined, now: Date): Date {
+	const sent = sentAt ? new Date(sentAt) : now;
+	return Number.isNaN(sent.getTime()) || sent > now ? now : sent;
 }
 
 // --- the entry points ---------------------------------------------------------------
@@ -1122,7 +1159,7 @@ export async function handleMessage(
 	}
 	const round = await liveRoundIn(db, msg.guildId, msg.channelId);
 	if (!round) return IGNORE;
-	return handleRoundMessage(db, discord, s, round, msg, new Date(msg.sentAt ?? now));
+	return handleRoundMessage(db, discord, s, round, msg, sentTime(msg.sentAt, now));
 }
 
 /** What the gateway should forward: Chain channels, and the channels of running rounds. */

@@ -29,6 +29,9 @@ A channel the server picks. Anyone posts the next word.
 - ❌ on a word that does not, with the reason. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random
   seed word.
+- A word on the server's block list gets a ❌ and a reason, and **nothing else**: the chain
+  does not break. A block list matches stems, so it can catch an innocent word, and one
+  member must not be able to end a chain on purpose with a word the filter refuses.
 - A word that ends in the dead letter is counted and ends the chain. It does not count
   as a break for the member.
 - The same member twice in a row gets a ❌ and a reminder, and the chain does **not** break.
@@ -48,8 +51,8 @@ Timed and turn-based, in any text channel except the Chain channel. One round pe
 2. Start deals a random turn order. The first player may say any word. The first turn gets
    10 extra seconds, because the gateway learns of a new round by polling.
 3. Type your word in the channel on your turn. Only the player on the clock is read.
-4. A word that is wrong, a repeat, blocked, or ends in the dead letter puts you out, as does
-   the clock. A dead-letter word still counts. The next player continues from the same letter.
+4. A word that is wrong, or a repeat, or ends in the dead letter puts you out, as does
+   the clock. A blocked word is turned away with a ❌ and you can try again. A dead-letter word still counts. The next player continues from the same letter.
 5. The clock starts at the server's setting (5–60 s, default 15) and drops a second every
    full lap, to a floor of 5 s.
 6. The last player in wins. The card becomes the result: the chain, the longest word and
@@ -64,12 +67,19 @@ The game lives on the site (D1 and the Discord REST client). The gateway only fo
   goes to `POST /api/shiritori/{guild}/message`. A message anywhere else costs nothing.
 - When a deadline has passed, the gateway calls `POST /api/shiritori/tick`. So a turn times
   out within about 12 seconds. A late word is judged by the time the member **sent** it.
+- The gateway sends a channel's words one at a time, in the order they were sent, so two
+  quick words cannot race and break the chain.
 - All three routes need `Authorization: Bot <token>`, the same as `/api/logs/create`.
 - The minute sweep (`sweep_game`) is the backstop when the gateway is down: it times out
   turns, closes lobbies nobody started (30 minutes), and prunes word rows of finished games
   after 90 days. Chain and round summaries and member stats stay.
 - Every transition is a guarded write. A word's position in a game is a primary key, and a
   word's lemma is a unique index, so two messages that race cannot both count.
+
+## Who can change it
+
+The settings and the chain reset need Administrator on the server (or a superadmin). The
+check runs in the form action itself, because an action does not run the page's load.
 
 ## Stats
 

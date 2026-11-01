@@ -13,6 +13,7 @@ import {
 	START_GRACE_SECONDS,
 	chainRecord,
 	clockFor,
+	eliminate,
 	getLeaderboard,
 	getOpenChain,
 	getPlayers,
@@ -32,6 +33,7 @@ import {
 	parseWordList,
 	resetChain,
 	roundStats,
+	sentTime,
 	shuffle,
 	startRound,
 	sweepShiritori,
@@ -39,6 +41,7 @@ import {
 	upsertSettings,
 	wordToken,
 	type Player,
+	type Round,
 } from '../lib/server/shiritori-game.js';
 import { isWord } from '../lib/server/shiritori-dict.js';
 
@@ -170,6 +173,14 @@ describe('helpers', () => {
 		expect(shuffle([1, 2, 3, 4]).sort()).toEqual([1, 2, 3, 4]);
 	});
 
+	it('trusts a send time only if it is real and not in the future', () => {
+		const now = at(10);
+		expect(sentTime(at(5).toISOString(), now)).toEqual(at(5));
+		expect(sentTime(undefined, now)).toEqual(now);
+		expect(sentTime('not a date', now)).toEqual(now);
+		expect(sentTime(at(60).toISOString(), now)).toEqual(now);
+	});
+
 	it('summarises a round', () => {
 		expect(roundStats([])).toEqual({ longest: null, letter: null, letterCount: 0 });
 		const st = roundStats([{ word: 'apple' }, { word: 'eagle' }, { word: 'elephant' }]);
@@ -272,7 +283,7 @@ describe('Chain mode', () => {
 		).toBe(1);
 	});
 
-	it('breaks on a word that is not in the dictionary, a repeat, and a blocked word', async () => {
+	it('breaks on a word that is not in the dictionary, and a repeat; refuses a blocked word', async () => {
 		await enable({ blockWords: 'elbow' });
 		await chainFrom('apple');
 		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'ezzzq'), T0)).toEqual({
@@ -291,10 +302,12 @@ describe('Chain mode', () => {
 		);
 
 		await chainFrom('apple');
+		const open = await getOpenChain(db, GUILD, CHAIN_CH);
 		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'elbow'), T0)).toEqual({
-			action: 'broken',
-			reason: 'blocked',
+			action: 'refused',
 		});
+		expect((await getOpenChain(db, GUILD, CHAIN_CH))?.id).toBe(open?.id);
+		expect(discord.reactions.at(-1)?.emoji).toBe('❌');
 	});
 
 	it('breaks on a repeat of an inflection', async () => {
@@ -571,14 +584,40 @@ describe('Round mode', () => {
 		expect((await turn(round.id))?.status).toBe('running');
 	});
 
-	it('refuses a repeat and a blocked word', async () => {
+	it('turns a blocked word away without putting anyone out', async () => {
 		const round = await start(['u1', 'u2', 'u3'], { blockWords: 'ear' });
 		await handleMessage(db, discord, say(ROUND_CH, 'u1', 'apple', at(1)), at(1));
 		expect(await handleMessage(db, discord, say(ROUND_CH, 'u2', 'ear', at(2)), at(2))).toEqual({
-			action: 'broken',
-			reason: 'blocked',
+			action: 'refused',
 		});
-		expect((await turn(round.id))?.current_user_id).toBe('u3');
+		expect(await turn(round.id)).toMatchObject({ status: 'running', current_user_id: 'u2' });
+		expect((await getPlayers(db, round.id)).every((p) => p.state === 'in')).toBe(true);
+	});
+
+	it('puts a player out for a repeat', async () => {
+		const round = await start(['u1', 'u2', 'u3']);
+		await handleMessage(db, discord, say(ROUND_CH, 'u1', 'apple', at(1)), at(1));
+		await handleMessage(db, discord, say(ROUND_CH, 'u2', 'eagle', at(2)), at(2));
+		expect(
+			await handleMessage(db, discord, say(ROUND_CH, 'u3', 'eagles', at(3)), at(3))
+		).toEqual({
+			action: 'broken',
+			reason: 'repeat',
+		});
+		expect((await turn(round.id))?.current_user_id).toBe('u1');
+	});
+
+	it('does not move the turn twice when a timeout lands after the word', async () => {
+		const round = await start(['u1', 'u2', 'u3']);
+		const stale = (await turn(round.id)) as Round; // u1 still holds the turn
+		await handleMessage(db, discord, say(ROUND_CH, 'u1', 'apple', at(1)), at(1));
+		const held = await turn(round.id);
+		expect(held?.current_user_id).toBe('u2');
+		// a tick that read the round before u1's word now times u1 out
+		await eliminate(db, discord, stale, 'u1', 'timeout', at(30));
+		const after = await turn(round.id);
+		expect(after?.current_user_id).toBe('u2');
+		expect(after?.turn_ends_at).toBe(held?.turn_ends_at);
 	});
 
 	it('lets a player leave a running round, and passes the turn', async () => {

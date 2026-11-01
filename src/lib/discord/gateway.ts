@@ -1889,11 +1889,30 @@ function stopShiritoriPolling() {
 	}
 }
 
-async function forwardShiritoriMessage(message) {
+/**
+ * One request at a time per channel, in the order the words were sent. Two words
+ * posted a second apart would otherwise race on the site, and the second one could
+ * be judged against the word before the first: a spurious break. A request that
+ * hangs is cut off, so it cannot hold the channel's queue for good.
+ */
+const shiritoriQueues = new Map<string, Promise<void>>();
+
+function forwardShiritoriMessage(message) {
+	const channelId = message.channelId;
+	const previous = shiritoriQueues.get(channelId) ?? Promise.resolve();
+	const next = previous.then(() => postShiritoriMessage(message));
+	shiritoriQueues.set(channelId, next);
+	void next.then(() => {
+		if (shiritoriQueues.get(channelId) === next) shiritoriQueues.delete(channelId);
+	});
+}
+
+async function postShiritoriMessage(message) {
 	try {
 		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
 			method: 'POST',
 			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
 			body: JSON.stringify({
 				channelId: message.channelId,
 				messageId: message.id,
@@ -3264,7 +3283,7 @@ function setupEventHandlers(client, logFn) {
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
 		if (!message.author?.bot && shiritoriChannels.has(message.channelId)) {
-			void forwardShiritoriMessage(message);
+			forwardShiritoriMessage(message);
 		}
 
 		log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);

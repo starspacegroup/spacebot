@@ -317,7 +317,7 @@
 					>
 				</thead>
 				<tbody>
-					{#each data.shiritoriBoard.rows as row (row.name)}
+					{#each data.shiritoriBoard.rows as row (row.userId)}
 						<tr>
 							<td>{row.name}</td>
 							<td>{row.wordsAdded}</td>

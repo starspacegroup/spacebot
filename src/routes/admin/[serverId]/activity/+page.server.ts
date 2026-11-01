@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
 import { getBuiltInCommandsForGuild, setBuiltInCommandOverride } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
-import { hasFullAdminPermission } from '$lib/discord/guilds.js';
+import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 import { ACTIVITY_MODULES } from '$lib/server/activity.js';
 import { DEFAULTS, getSettings, upsertSettings } from '$lib/server/timebox.js';
 import {
@@ -94,6 +94,7 @@ async function shiritoriBoard(db, serverId: string) {
 		record: await chainRecord(db, serverId),
 		rows: await Promise.all(
 			rows.map(async (r) => ({
+				userId: r.user_id,
 				name: await nameOf(db, serverId, r.user_id),
 				wordsAdded: r.words_added,
 				chainsBroken: r.chains_broken,
@@ -102,6 +103,30 @@ async function shiritoriBoard(db, serverId: string) {
 			}))
 		),
 	};
+}
+
+/**
+ * The caller must be an Administrator (or owner) of this server, or a superadmin.
+ * A form action runs without the page's load, so the load's check does not cover
+ * it: the cookie alone only says someone is signed in, not that they manage THIS
+ * server. Returns a failure to hand back, or null when allowed.
+ */
+async function denyUnlessAdmin({ cookies, platform, params }) {
+	const userId = cookies.get('discord_user_id');
+	if (!userId) return fail(401, { success: false, message: 'Not authenticated' });
+	if (checkIsSuperAdmin(userId, platform)) return null;
+	const checked = await verifyGuildAdmin(
+		params.serverId,
+		cookies.get('discord_access_token'),
+		cookies
+	);
+	if (!checked.authorized || !hasFullAdminPermission(checked.guild)) {
+		return fail(403, {
+			success: false,
+			message: 'You need Administrator on this server to change this.',
+		});
+	}
+	return null;
 }
 
 function whole(formData: FormData, key: string, [min, max]: readonly [number, number]) {
@@ -232,10 +257,10 @@ export const actions = {
 		});
 		return { success: true, message: 'Game settings saved. They apply to the next round.' };
 	},
-	saveShiritori: async ({ request, cookies, platform, params }) => {
-		if (!cookies.get('discord_user_id')) {
-			return fail(401, { success: false, message: 'Not authenticated' });
-		}
+	saveShiritori: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
 		const db = (platform as any)?.env?.DB;
 		if (!db) return fail(500, { success: false, message: 'Database not available' });
 
@@ -292,10 +317,10 @@ export const actions = {
 		return { success: true, message: 'Shiritori settings saved.' };
 	},
 
-	resetShiritoriChain: async ({ cookies, platform, params }) => {
-		if (!cookies.get('discord_user_id')) {
-			return fail(401, { success: false, message: 'Not authenticated' });
-		}
+	resetShiritoriChain: async (event) => {
+		const { platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
 		const db = (platform as any)?.env?.DB;
 		if (!db) return fail(500, { success: false, message: 'Database not available' });
 		const done = await resetChain(db, discordFor(platform), params.serverId);
