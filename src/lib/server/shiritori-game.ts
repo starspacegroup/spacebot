@@ -408,11 +408,13 @@ export async function startChain(
 	return (await getOpenChain(db, guildId, channelId)) as Chain;
 }
 
-export const chainPrompt = (c: Chain) =>
-	`Start with **${requiredStart(c.last_word, Boolean(c.hard_mode))}**. Dead letter this chain: **${c.dead_letter}**.`;
-
 function startAnnouncement(c: Chain) {
-	return `🔗 **New chain.** The word is **${c.seed_word}**. Next word: ${chainPrompt(c)} Post one word at a time, and no one goes twice in a row.`;
+	const need = requiredStart(c.last_word, Boolean(c.hard_mode));
+	return (
+		`🔗 **New chain.** The word is **${c.seed_word}**.\n` +
+		`The next word starts with **${need}**. Dead letter: **${c.dead_letter}**.\n` +
+		`One word at a time, and no one goes twice in a row.`
+	);
 }
 
 /** Close a chain. Returns false when something else already closed it. */
