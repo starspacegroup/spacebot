@@ -323,6 +323,21 @@
 					<span class="endpoint-scope">commands:read</span>
 				</div>
 				<div class="endpoint">
+					<span class="endpoint-method patch">PATCH</span>
+					<code>/api/v1/automations/:id</code>
+					<span class="endpoint-scope">automations:write</span>
+				</div>
+				<div class="endpoint">
+					<span class="endpoint-method patch">PATCH</span>
+					<code>/api/v1/commands/:id</code>
+					<span class="endpoint-scope">commands:write</span>
+				</div>
+				<div class="endpoint">
+					<span class="endpoint-method post">POST</span>
+					<code>/api/v1/scheduled-messages</code>
+					<span class="endpoint-scope">messages:write</span>
+				</div>
+				<div class="endpoint">
 					<span class="endpoint-method get">GET</span>
 					<code>/api/v1/stats</code>
 					<span class="endpoint-scope">stats:read</span>
@@ -875,6 +890,12 @@
 	.endpoint-method.get {
 		background: rgba(34, 197, 94, 0.15);
 		color: #22c55e;
+	}
+
+	.endpoint-method.patch,
+	.endpoint-method.post {
+		background: rgba(245, 158, 11, 0.15);
+		color: #f59e0b;
 	}
 
 	.endpoint code {

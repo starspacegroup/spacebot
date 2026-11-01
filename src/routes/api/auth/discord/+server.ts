@@ -143,5 +143,8 @@ export async function GET({ request, url, cookies, platform }) {
 		params.set('scope', 'identify guilds');
 	}
 
-	throw redirect(302, `https://discord.com/api/oauth2/authorize?${params}`);
+	// SvelteKit 3 refuses an off-site redirect unless it is named.
+	throw redirect(302, `https://discord.com/api/oauth2/authorize?${params}`, {
+		external: ['https://discord.com'],
+	});
 }

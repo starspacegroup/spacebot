@@ -73,6 +73,13 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       server-muted and the prior mute is restored when the round ends. Off until a server
       enables it, settings on the dashboard Activity page (`docs/game.md`, migrations 0076, 0077).
       Open: agent takes, the rest of the out treatment, day & night, word guess
+- [x] Shiritori — the English word chain: an always-on Chain channel (✅ on a word that
+      fits, ❌ and a break on one that does not, a server record) and `/play shiritori`
+      timed rounds with a lobby, a turn clock that tightens each lap, and a last-one-in
+      winner. Offline dictionary from SCOWL (77k words), lemma-aware no-repeat, a dead
+      letter per game, hard mode, per-server allow and block lists, leaderboard. Off until a
+      server turns it on, on the dashboard Activity page (`docs/shiritori.md`, migration
+      0081). Open: the Activity strip, Computer as referee and as a seat
 - [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
       server's command list, hashes it, and re-registers the server when it changed, so a
       deploy never needs `register-commands` (`docs/command-sync.md`, migration 0074)

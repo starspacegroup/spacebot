@@ -2,7 +2,7 @@
  * `/start`: one door to every Activity-style feature a server has turned on.
  *
  * It has no row in `commands`. Its subcommands are built from the commands
- * that exist and are enabled in the server (`/timebox`, `/play`, `/quorum`), so a server
+ * that exist and are enabled in the server (`/timebox`, `/game`, `/quorum`), so a server
  * sees exactly what it can start, and the options of `/start timebox` are the
  * options of `/timebox start`, never a copy that can drift. The interaction is
  * turned back into the underlying command before anything else looks at it, so
@@ -31,7 +31,7 @@ export const START_ACTIVITIES: StartActivity[] = [
 	},
 	{
 		name: 'agent',
-		command: 'play',
+		command: 'game',
 		sub: 'start',
 		description: 'Open a hidden-agent lobby for the voice channel you are in',
 	},

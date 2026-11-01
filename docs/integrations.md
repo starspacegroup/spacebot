@@ -890,6 +890,14 @@ Commands provided:
 - `/game leaderboard [category]` — Server leaderboard
 - `/game play` — Get the game link
 
+Discord allows one `/game` per server, and SpaceBot's built-in Game command is
+`/game` too. Where both are on, the sync merges these subcommands into the
+built-in `/game` (a built-in subcommand wins a name clash) and the interactions
+route sends `stats`, `leaderboard` and `play` to this integration's handler by
+subcommand; `/play` is a synonym of the merged `/game`. Where only the
+integration is on, its `/game` is sent unchanged. See
+`src/lib/discord/game-command.ts` and [game.md](game.md).
+
 The Game project syncs its manifest when it starts up and sends heartbeats every 2 minutes. When SpaceBot is offline or the Game project adds new commands, it calls the sync endpoint and all guilds automatically get the updated command list.
 
 ---

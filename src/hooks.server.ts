@@ -1,5 +1,5 @@
 import { json, redirect } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '$lib/log.js';
 import { upsertUser } from '$lib/db/users.js';
 import { trackUserActivity } from '$lib/db/user-activity.js';
@@ -30,6 +30,7 @@ import {
 	setAsyncLocalStorageAsyncContextStrategy,
 } from '@sentry/cloudflare';
 import { wrapRequestHandler } from '@sentry/cloudflare/request';
+import { restorePlatform } from '$lib/server/cloudflare-platform.js';
 
 /**
  * Dev Auth Bypass
@@ -681,5 +682,5 @@ export function initSentryHandle({ event, resolve }) {
 	);
 }
 
-export const handle = sequence(initSentryHandle, sentryHandle(), appHandle);
+export const handle = sequence(restorePlatform, initSentryHandle, sentryHandle(), appHandle);
 export const handleError = handleErrorWithSentry();
