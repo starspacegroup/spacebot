@@ -505,6 +505,12 @@ export function createDiscordRestClient(botToken) {
 					body: patch,
 				});
 			},
+			/** Delete a message by id. The bot can always delete its own. */
+			async deleteMessage(channelId, messageId) {
+				return discordFetch(botToken, `/channels/${channelId}/messages/${messageId}`, {
+					method: 'DELETE',
+				});
+			},
 			/** React to a message by id, without fetching the channel first. */
 			async react(channelId, messageId, emoji) {
 				return discordFetch(

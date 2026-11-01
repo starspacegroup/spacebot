@@ -21,6 +21,33 @@ Rounds also need the Game command (`/play`) turned on in the same page.
 - Each game draws one **dead letter** from the server's pool (default `x q j z`). It is
   shown at the start. A word that ends in it is legal, and it has a price.
 
+## Voice chat rounds
+
+Run `/play shiritori` **inside a voice channel's chat**, while you are in the call, and the
+round is a **voice round**. It plays the same, with these differences:
+
+- **People agree to play.** Nobody is added for being in the call. The lobby lists who is in
+  the call and has not joined, and they press **Join**. Only someone in the call can join.
+- **The call is the table.** Start deals in only the people who joined and are still in the
+  call. During the round, a player who leaves the call is **skipped at once** if it is their
+  turn, and skipped each time their turn would come. If they are back within 20 seconds, or
+  any time before their next turn is skipped for good, they are still in. If they are still
+  gone after 20 seconds, they are put out ("left the call"). The grace covers a reconnect.
+- **Everyone leaves**: the round closes. **One player is left**: that player wins.
+- You cannot open a round in a voice channel's chat from outside the call.
+- The gateway ticks a voice round every poll (5 seconds), so a leaver is noticed quickly. The
+  call comes from the same live voice table the Timebox and Game use. If the gateway restarts
+  mid-round that table is rebuilt, and the 20 seconds is what keeps a restart from skipping
+  people.
+
+## The turn prompt
+
+Every round, text or voice, keeps **one short message at the bottom of the chat** for whoever
+is on the clock: who, the letter, the time left, the dead letter, and the last three words. It
+pings the player. Each turn posts a new one and deletes the last, so it is always where people
+are looking. The round card above holds who is in and out and is edited only when that
+changes. The last prompt is deleted when the round ends.
+
 ## Chain mode
 
 A channel the server picks. Anyone posts the next word.
@@ -50,7 +77,8 @@ Timed and turn-based, in any text channel except the Chain channel. One round pe
 1. `/play shiritori` posts a lobby card: Join, Leave, Start, Cancel. 2–12 players.
 2. Start deals a random turn order. The first player may say any word. The first turn gets
    10 extra seconds, because the gateway learns of a new round by polling.
-3. Type your word in the channel on your turn. Only the player on the clock is read.
+3. Type your word in the channel on your turn. Only the player on the clock is read. The turn
+   prompt at the bottom of the chat says who it is.
 4. A word that is wrong, or a repeat, or ends in the dead letter puts you out, as does
    the clock. A blocked word is turned away with a ❌ and you can try again. A dead-letter word still counts. The next player continues from the same letter.
 5. The clock starts at the server's setting (5–60 s, default 15) and drops a second every

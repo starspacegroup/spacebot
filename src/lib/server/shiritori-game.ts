@@ -19,6 +19,7 @@ import { log } from '../log.js';
 import { getCommandByName } from '../db/commands.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
+import { humansInChannel, voiceChannelOf } from './timebox.js';
 import {
 	DEAD_LETTERS,
 	MIN_WORD_LENGTH,
@@ -60,6 +61,11 @@ export const MIN_TURN_SECONDS = 5;
 export const LOBBY_TTL_MS = 30 * 60 * 1000;
 /** The gateway learns of a new round by polling, so the first turn gets this much extra. */
 export const START_GRACE_SECONDS = 10;
+/**
+ * In a voice chat, a player who is not in the call is skipped at once, and put out
+ * if they are still gone after this long. A reconnect inside it costs nothing.
+ */
+export const AWAY_GRACE_MS = 20_000;
 /** A turn is not timed out until it is this far past its deadline, for message latency. */
 export const TURN_SLACK_MS = 2000;
 /** Word rows of a finished game are pruned after this long; the summaries stay. */
@@ -147,7 +153,10 @@ export const isFail = (v: unknown): v is Fail =>
 
 const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 
-const REASON_TEXT: Record<MoveCode | 'dead_letter' | 'timeout' | 'left' | 'reset', string> = {
+const REASON_TEXT: Record<
+	MoveCode | 'dead_letter' | 'timeout' | 'left' | 'left_call' | 'reset',
+	string
+> = {
 	too_short: 'too short',
 	not_a_word: 'not in the dictionary',
 	bad_start: 'it did not start with the right letter',
@@ -156,6 +165,7 @@ const REASON_TEXT: Record<MoveCode | 'dead_letter' | 'timeout' | 'left' | 'reset
 	dead_letter: 'it ended in the dead letter',
 	timeout: 'out of time',
 	left: 'left the round',
+	left_call: 'left the call',
 	reset: 'reset by Crew',
 };
 
@@ -251,7 +261,7 @@ function watched(db: Db, guildId: string, discord: Discord): Discord {
 				throw err;
 			}
 		};
-	const { send, editMessage, react } = discord.channels;
+	const { send, editMessage, react, deleteMessage } = discord.channels;
 	return {
 		...discord,
 		channels: {
@@ -259,6 +269,7 @@ function watched(db: Db, guildId: string, discord: Discord): Discord {
 			send: watch(send),
 			editMessage: watch(editMessage),
 			react: watch(react),
+			...(deleteMessage ? { deleteMessage: watch(deleteMessage) } : {}),
 		},
 	};
 }
@@ -683,6 +694,8 @@ export interface Round {
 	prev_word: string | null;
 	turn_ends_at: string | null;
 	message_id: string | null;
+	voice: number;
+	turn_message_id: string | null;
 	created_at: string;
 	started_at: string | null;
 	ended_at: string | null;
@@ -698,6 +711,7 @@ export interface Player {
 	state: 'in' | 'out';
 	out_reason: string | null;
 	words: number;
+	away_since: string | null;
 }
 
 export const getRound = async (db: Db, id: number) =>
@@ -762,7 +776,14 @@ export function shuffle<T>(items: T[], rand = Math.random): T[] {
 export async function openRound(
 	db: Db,
 	discord: Discord,
-	ctx: { guildId: string; channelId: string; starterId: string; starterName: string },
+	ctx: {
+		guildId: string;
+		channelId: string;
+		starterId: string;
+		starterName: string;
+		/** The round is in a voice channel's chat: only people in the call play. */
+		voice?: boolean;
+	},
 	rand = Math.random,
 	now = new Date()
 ): Promise<Round | Fail> {
@@ -778,8 +799,8 @@ export async function openRound(
 			.prepare(
 				`INSERT INTO shiritori_rounds
 				   (guild_id, channel_id, starter_id, dead_letter, hard_mode, base_turn_seconds,
-				    turn_seconds, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
+				    turn_seconds, voice, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`
 			)
 			.bind(
 				ctx.guildId,
@@ -789,6 +810,7 @@ export async function openRound(
 				s.hardMode ? 1 : 0,
 				s.turnSeconds,
 				s.turnSeconds,
+				ctx.voice ? 1 : 0,
 				now.toISOString()
 			)
 			.first()
@@ -830,6 +852,9 @@ export async function joinRound(
 	if (!round || round.status !== 'lobby') return fail('That lobby is closed.');
 	const players = await getPlayers(db, roundId);
 	if (players.some((p) => p.user_id === user.id)) return round;
+	if (round.voice && (await voiceChannelOf(db, round.guild_id, user.id)) !== round.channel_id) {
+		return fail('Join the voice channel this round is in first.');
+	}
 	if (players.length >= MAX_PLAYERS) return fail(`A round holds ${MAX_PLAYERS} players.`);
 	await db
 		.prepare(
@@ -884,7 +909,22 @@ export async function startRound(
 	if (!round || round.status !== 'lobby') return fail('That lobby is closed.');
 	if (round.starter_id !== by.by && !by.byCrew)
 		return fail('Only the starter or Crew can start it.');
-	const players = await getPlayers(db, roundId);
+	let players = await getPlayers(db, roundId);
+	if (round.voice) {
+		// Joined, but left the call since: not dealt in.
+		const present = new Set(await humansInChannel(db, round.guild_id, round.channel_id));
+		const here = players.filter((p) => present.has(p.user_id));
+		if (here.length < MIN_PLAYERS) {
+			return fail(`It needs ${MIN_PLAYERS} players who joined and are in the call.`);
+		}
+		for (const gone of players.filter((p) => !present.has(p.user_id))) {
+			await db
+				.prepare(`DELETE FROM shiritori_players WHERE round_id = ? AND user_id = ?`)
+				.bind(roundId, gone.user_id)
+				.run();
+		}
+		players = here;
+	}
 	if (players.length < MIN_PLAYERS) return fail(`It needs ${MIN_PLAYERS} players to start.`);
 
 	const order = shuffle(players, rand);
@@ -906,6 +946,7 @@ export async function startRound(
 		.run();
 	if (res.meta.changes !== 1) return fail('That round already started.');
 	await refreshCard(db, discord, round);
+	await announceTurn(db, discord, roundId);
 	return (await getRound(db, roundId)) as Round;
 }
 
@@ -953,6 +994,7 @@ export async function eliminate(
 	await refreshCard(db, discord, round, {
 		note: `<@${userId}> is out: ${REASON_TEXT[reason as keyof typeof REASON_TEXT] ?? reason}.`,
 	});
+	if (round.current_user_id === userId) await announceTurn(db, discord, round.id);
 	return getRound(db, round.id);
 }
 
@@ -969,7 +1011,10 @@ async function passTurn(
 	fromUserId: string,
 	now: Date
 ) {
-	const next = nextSeat(live, fromSeat);
+	// In a voice chat, hand the turn to someone who is actually in the call.
+	const present = await presentIn(db, round);
+	const here = present ? live.filter((p) => present.has(p.user_id)) : live;
+	const next = nextSeat(here.length ? here : live, fromSeat);
 	if (!next) return;
 	const lap = round.lap + (next.lapped ? 1 : 0);
 	const seconds = clockFor(round.base_turn_seconds, lap);
@@ -1017,7 +1062,9 @@ export async function endRound(
 		}
 	}
 	await refreshCard(db, discord, round, extra);
-	return getRound(db, round.id);
+	const fresh = await getRound(db, round.id);
+	await clearTurnPrompt(discord, fresh);
+	return fresh;
 }
 
 /** The words, longest word and busiest starting letter of a round, for the result card. */
@@ -1034,6 +1081,132 @@ export function roundStats(words: { word: string }[]) {
 	return { longest, letter, letterCount: top };
 }
 
+// --- the call ----------------------------------------------------------------------
+
+/** Who is in the round's voice channel right now, or null for a round that is not in one. */
+async function presentIn(db: Db, round: Round): Promise<Set<string> | null> {
+	if (!round.voice) return null;
+	return new Set(await humansInChannel(db, round.guild_id, round.channel_id));
+}
+
+/**
+ * Keep a voice round in step with the call. Someone who has left it is skipped when
+ * their turn comes (or at once, if it is their turn), and put out if they are still
+ * gone after the grace. If the call empties the round is closed. Returns the round as
+ * it is now, and whether anything changed.
+ */
+export async function syncPresence(
+	db: Db,
+	discord: Discord,
+	round: Round,
+	now = new Date()
+): Promise<{ round: Round; acted: boolean }> {
+	if (round.status !== 'running' || !round.voice) return { round, acted: false };
+	const present = (await presentIn(db, round)) as Set<string>;
+	const players = (await getPlayers(db, round.id)).filter((p) => p.state === 'in');
+	let acted = false;
+
+	for (const p of players) {
+		if (present.has(p.user_id)) {
+			if (p.away_since) {
+				await db
+					.prepare(
+						`UPDATE shiritori_players SET away_since = NULL WHERE round_id = ? AND user_id = ?`
+					)
+					.bind(round.id, p.user_id)
+					.run();
+			}
+		} else if (!p.away_since) {
+			await db
+				.prepare(
+					`UPDATE shiritori_players SET away_since = ? WHERE round_id = ? AND user_id = ? AND away_since IS NULL`
+				)
+				.bind(now.toISOString(), round.id, p.user_id)
+				.run();
+			p.away_since = now.toISOString();
+		}
+	}
+
+	const here = players.filter((p) => present.has(p.user_id));
+	if (!here.length) {
+		const ended = await endRound(db, discord, round, 'abandoned', null, now, {
+			note: 'Everyone left the call.',
+		});
+		return { round: ended ?? round, acted: true };
+	}
+
+	for (const p of players) {
+		if (present.has(p.user_id) || !p.away_since) continue;
+		if (now.getTime() - Date.parse(p.away_since) >= AWAY_GRACE_MS) {
+			const after = await eliminate(db, discord, round, p.user_id, 'left_call', now);
+			if (after) round = after;
+			acted = true;
+			if (round.status !== 'running') return { round, acted };
+		}
+	}
+
+	// Their turn, and they are not here: move on without waiting for the clock.
+	const fresh = (await getRound(db, round.id)) as Round;
+	const holder = fresh.current_user_id;
+	if (fresh.status === 'running' && holder && !present.has(holder)) {
+		const live = (await getPlayers(db, round.id)).filter((p) => p.state === 'in');
+		const seat = live.find((p) => p.user_id === holder)?.seat ?? 0;
+		await passTurn(db, fresh, live, seat, holder, now);
+		await announceTurn(db, discord, round.id);
+		acted = true;
+	}
+	return { round: (await getRound(db, round.id)) as Round, acted };
+}
+
+// --- the turn prompt ---------------------------------------------------------------
+
+/**
+ * One short message at the bottom of the chat for whoever is on the clock, replacing
+ * the last one. The round card is edited in place, so in a busy channel (a voice
+ * chat above all) it scrolls out of sight; this stays where people are looking, and
+ * it pings the player.
+ */
+export function turnPrompt(round: Round, words: { word: string }[]) {
+	const hard = Boolean(round.hard_mode);
+	const need = round.prev_word ? requiredStart(round.prev_word, hard) : null;
+	const last = words.slice(-3).map((w) => w.word);
+	return (
+		`${round.voice ? '🎙️' : '🔗'} <@${round.current_user_id}> — ` +
+		`${need ? `a word starting with **${need}**` : 'any word to start'} · ` +
+		`<t:${unix(round.turn_ends_at as string)}:R> · dead letter **${round.dead_letter}**` +
+		(last.length ? `\n${last.join(' → ')}` : '')
+	);
+}
+
+async function announceTurn(db: Db, discord: Discord, roundId: number) {
+	if (!discord) return;
+	const round = await getRound(db, roundId);
+	if (!round || round.status !== 'running' || !round.current_user_id) return;
+	const sent = await safely('turn prompt', async () =>
+		discord.channels.send(round.channel_id, {
+			content: turnPrompt(round, await roundWords(db, round.id)),
+			allowed_mentions: { users: [round.current_user_id] },
+		})
+	);
+	if (sent?.id) {
+		await db
+			.prepare(`UPDATE shiritori_rounds SET turn_message_id = ? WHERE id = ?`)
+			.bind(sent.id, roundId)
+			.run();
+	}
+	if (round.turn_message_id) await deletePrompt(discord, round.channel_id, round.turn_message_id);
+}
+
+const deletePrompt = (discord: Discord, channelId: string, messageId: string) =>
+	discord?.channels?.deleteMessage
+		? safely('delete prompt', () => discord.channels.deleteMessage(channelId, messageId))
+		: null;
+
+async function clearTurnPrompt(discord: Discord, round: Round | null) {
+	if (round?.turn_message_id)
+		await deletePrompt(discord, round.channel_id, round.turn_message_id);
+}
+
 // --- the card ---------------------------------------------------------------------
 
 export async function roundMessage(db: Db, round: Round, extra: { note?: string } = {}) {
@@ -1045,9 +1218,23 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 	const hard = Boolean(round.hard_mode);
 
 	if (round.status === 'lobby') {
+		let callLine = '';
+		if (round.voice) {
+			const joined = new Set(players.map((p) => p.user_id));
+			const waiting = (await humansInChannel(db, round.guild_id, round.channel_id)).filter(
+				(id) => !joined.has(id)
+			);
+			callLine =
+				`Only people in this call can play, and anyone who leaves it is skipped.` +
+				(waiting.length
+					? `\nIn the call, not joined: ${waiting.map((id) => `<@${id}>`).join(', ')}. Press **Join** to play.`
+					: '') +
+				'\n';
+		}
 		content =
-			`🔗 **Shiritori — lobby**\n` +
+			`${round.voice ? '🎙️' : '🔗'} **Shiritori — ${round.voice ? 'voice chat ' : ''}lobby**\n` +
 			`Players (${players.length}): ${players.map(mention).join(', ') || '_nobody yet_'}\n` +
+			callLine +
 			`Each word must start with the last letter of the one before${hard ? ' (hard mode: the last two)' : ''}. ` +
 			`No repeats. A word that ends in **${round.dead_letter}** puts you out. ` +
 			`${round.turn_seconds} seconds a turn, and the clock drops a second every lap. Needs ${MIN_PLAYERS}+ to start.`;
@@ -1063,16 +1250,22 @@ export async function roundMessage(db: Db, round: Round, extra: { note?: string 
 			},
 		];
 	} else if (round.status === 'running') {
-		const words = await roundWords(db, round.id);
-		const last = words.slice(-5).map((w) => w.word);
-		const need = round.prev_word ? requiredStart(round.prev_word, hard) : null;
+		// The turn itself is the prompt at the bottom of the chat; this card holds who is
+		// in and out, so it only needs editing when that changes.
 		const alive = players.filter((p) => p.state === 'in');
+		const out = players.filter((p) => p.state === 'out');
 		content =
-			`🔗 **Shiritori**\n` +
-			`<@${round.current_user_id}>'s turn — ${need ? `a word starting with **${need}**` : 'any word to start'}. ` +
-			`Time: <t:${unix(round.turn_ends_at as string)}:R> · dead letter **${round.dead_letter}**\n` +
+			`${round.voice ? '🎙️' : '🔗'} **Shiritori${round.voice ? ' — voice chat' : ''}**\n` +
+			`Dead letter **${round.dead_letter}** · ${round.turn_seconds}s a turn (lap ${round.lap + 1})\n` +
 			`In (${alive.length}): ${alive.map(mention).join(', ')}` +
-			(last.length ? `\nLately: ${last.join(' → ')}` : '') +
+			(out.length
+				? `\nOut: ${out
+						.map(
+							(p) =>
+								`<@${p.user_id}> (${REASON_TEXT[p.out_reason as keyof typeof REASON_TEXT] ?? p.out_reason ?? 'out'})`
+						)
+						.join(', ')}`
+				: '') +
 			note;
 		components = [
 			{
@@ -1144,7 +1337,13 @@ async function handleRoundMessage(
 	now: Date
 ): Promise<Outcome> {
 	if (round.status !== 'running') return IGNORE;
-	// The clock first: a player who was too slow is out before their word is read.
+	// Who is still in the call, first: someone who left is skipped before a word is read.
+	if (round.voice) {
+		const synced = await syncPresence(db, discord, round, now);
+		if (synced.round.status !== 'running') return IGNORE;
+		round = synced.round;
+	}
+	// The clock next: a player who was too slow is out before their word is read.
 	if (await resolveOverdue(db, discord, round, now)) {
 		const fresh = await getRound(db, round.id);
 		if (!fresh || fresh.status !== 'running') return IGNORE;
@@ -1220,7 +1419,7 @@ async function handleRoundMessage(
 		return { action: 'ended', reason: 'dead_letter' };
 	}
 	await passTurn(db, landed, players, me?.seat ?? 0, msg.userId, now);
-	await refreshCard(db, discord, landed);
+	await announceTurn(db, discord, round.id);
 	return { action: 'accepted' };
 }
 
@@ -1262,10 +1461,10 @@ export async function listActive(db: Db) {
 	// settings keeps it to the servers that actually have a Chain channel.
 	const { results } = await db
 		.prepare(
-			`SELECT 'chain' AS kind, guild_id, chain_channel_id AS channel_id, NULL AS status, NULL AS turn_ends_at
+			`SELECT 'chain' AS kind, guild_id, chain_channel_id AS channel_id, NULL AS status, NULL AS turn_ends_at, NULL AS voice
 			   FROM shiritori_settings WHERE enabled = 1 AND chain_channel_id IS NOT NULL
 			 UNION ALL
-			 SELECT 'round', guild_id, channel_id, status, turn_ends_at
+			 SELECT 'round', guild_id, channel_id, status, turn_ends_at, voice
 			   FROM shiritori_rounds WHERE status IN ('lobby', 'running')`
 		)
 		.all();
@@ -1280,6 +1479,7 @@ export async function listActive(db: Db) {
 				channelId: r.channel_id,
 				status: r.status as 'lobby' | 'running',
 				turnEndsAt: r.turn_ends_at as string | null,
+				voice: Boolean(r.voice),
 			})),
 	};
 }
@@ -1287,12 +1487,19 @@ export async function listActive(db: Db) {
 /** The clock: time out every running round whose turn is overdue. */
 export async function tickRounds(db: Db, discord: Discord, now = new Date()): Promise<number> {
 	const { results } = await db
-		.prepare(`SELECT * FROM shiritori_rounds WHERE status = 'running' AND turn_ends_at < ?`)
+		.prepare(
+			`SELECT * FROM shiritori_rounds WHERE status = 'running' AND (voice = 1 OR turn_ends_at < ?)`
+		)
 		.bind(new Date(now.getTime() - TURN_SLACK_MS).toISOString())
 		.all();
 	let n = 0;
-	for (const round of results as Round[]) {
-		if (await resolveOverdue(db, watched(db, round.guild_id, discord), round, now)) n++;
+	for (let round of results as Round[]) {
+		const io = watched(db, round.guild_id, discord);
+		if (round.voice) {
+			round = (await syncPresence(db, io, round, now)).round;
+			if (round.status !== 'running') continue;
+		}
+		if (await resolveOverdue(db, io, round, now)) n++;
 	}
 	return n;
 }
@@ -1314,9 +1521,13 @@ export async function sweepShiritori(
 	const staleBefore = new Date(now.getTime() - LOBBY_TTL_MS).toISOString();
 	let timedOut = 0;
 	let closedLobbies = 0;
-	for (const round of results as Round[]) {
+	for (let round of results as Round[]) {
 		const io = watched(db, round.guild_id, discord);
 		if (round.status === 'running') {
+			if (round.voice) {
+				round = (await syncPresence(db, io, round, now)).round;
+				if (round.status !== 'running') continue;
+			}
 			if (await resolveOverdue(db, io, round, now)) timedOut++;
 		} else if (round.created_at < staleBefore) {
 			await endRound(db, io, round, 'abandoned', null, now);
@@ -1366,6 +1577,17 @@ function userOf(body: Interaction) {
 export const isShiritoriCommand = (body: Interaction) =>
 	flattenInteractionOptions(body.data).subcommand === 'shiritori';
 
+/** Voice or stage channel, from the synced channel list. Unknown counts as no. */
+async function isVoiceChannel(db: Db, guildId: string, channelId: string) {
+	const row: any = await safely('channel type', () =>
+		db
+			.prepare(`SELECT type FROM guild_channels WHERE guild_id = ? AND channel_id = ?`)
+			.bind(guildId, channelId)
+			.first()
+	);
+	return row?.type === 2 || row?.type === 13;
+}
+
 export async function handleShiritoriCommand(body: Interaction, db: Db, discord: Discord) {
 	const guildId = body.guild_id;
 	const channelId = body.channel_id;
@@ -1378,19 +1600,35 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
 	discord = watched(db, guildId, discord);
+	const inCall = (await voiceChannelOf(db, guildId, user.id)) === channelId;
 	const live = await liveRoundIn(db, guildId, channelId);
 	if (live) {
 		const msg = await roundMessage(db, live);
 		return { response: { type: RESPOND_MESSAGE, data: { ...msg, flags: EPHEMERAL } } };
+	}
+	// A voice channel's chat belongs to its call: you have to be in it to open a round there.
+	if (!inCall && (await isVoiceChannel(db, guildId, channelId))) {
+		return {
+			response: ephemeral(
+				'Join this voice channel first, then run /play shiritori in its chat.'
+			),
+		};
 	}
 	const opened = await openRound(db, discord, {
 		guildId,
 		channelId,
 		starterId: user.id,
 		starterName: user.name,
+		voice: inCall,
 	});
 	if (isFail(opened)) return { response: ephemeral(opened.error) };
-	return { response: ephemeral('Lobby opened. Others join with the button.') };
+	return {
+		response: ephemeral(
+			inCall
+				? 'Lobby opened. Anyone in the call can press Join to play.'
+				: 'Lobby opened. Others join with the button.'
+		),
+	};
 }
 
 export async function handleShiritoriComponent(body: Interaction, db: Db, discord: Discord) {

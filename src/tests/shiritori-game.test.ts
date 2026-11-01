@@ -24,6 +24,8 @@ import {
 	handleMessage,
 	handleShiritoriCommand,
 	handleShiritoriComponent,
+	syncPresence,
+	AWAY_GRACE_MS,
 	isFail,
 	joinRound,
 	leaveRound,
@@ -46,10 +48,13 @@ import {
 } from '../lib/server/shiritori-game.js';
 import { isWord } from '../lib/server/shiritori-dict.js';
 
-const SCHEMA = readFileSync(
-	new URL('../../migrations/0081_shiritori.sql', import.meta.url),
-	'utf8'
-).split('-- `/play shiritori` joins')[0];
+const migration = (file: string) =>
+	readFileSync(new URL(`../../migrations/${file}`, import.meta.url), 'utf8');
+const SCHEMA =
+	migration('0041_live_voice_states.sql') +
+	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
+	'CREATE TABLE guild_channels (guild_id TEXT, channel_id TEXT, name TEXT, type INTEGER);\n' +
+	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0];
 
 const GUILD = '100000000000000001';
 const CHAIN_CH = '200000000000000001';
@@ -62,11 +67,16 @@ function fakeDiscord() {
 	const sent: { channelId: string; payload: any }[] = [];
 	const edits: { channelId: string; messageId: string; payload: any }[] = [];
 	const reactions: { messageId: string; emoji: string }[] = [];
+	const deleted: string[] = [];
 	return {
 		sent,
 		edits,
 		reactions,
+		deleted,
 		channels: {
+			deleteMessage: async (_c: string, messageId: string) => {
+				deleted.push(messageId);
+			},
 			send: async (channelId: string, payload: any) => {
 				sent.push({ channelId, payload });
 				return { id: `bot-${sent.length}` };
@@ -683,7 +693,13 @@ describe('cost', () => {
 		expect(prepare).toHaveBeenCalledTimes(1);
 		expect(active.chains).toEqual([{ guildId: GUILD, channelId: CHAIN_CH }]);
 		expect(active.rounds).toEqual([
-			{ guildId: GUILD, channelId: ROUND_CH, status: 'lobby', turnEndsAt: null },
+			{
+				guildId: GUILD,
+				channelId: ROUND_CH,
+				status: 'lobby',
+				turnEndsAt: null,
+				voice: false,
+			},
 		]);
 	});
 
@@ -838,5 +854,265 @@ describe('migration 0081', () => {
 				expect(results[1].options).toBe('[]');
 				expect(results[2].options).toBe('[]');
 			});
+	});
+});
+
+describe('voice chat rounds', () => {
+	const VC = '300000000000000001';
+	const inCall = async (...users: string[]) => {
+		await db.prepare(`DELETE FROM live_voice_states WHERE channel_id = ?`).bind(VC).run();
+		for (const u of users) {
+			await db
+				.prepare(
+					`INSERT OR REPLACE INTO live_voice_states (guild_id, user_id, channel_id, is_bot) VALUES (?, ?, ?, 0)`
+				)
+				.bind(GUILD, u, VC)
+				.run();
+		}
+	};
+	const slash = (userId: string) => ({
+		guild_id: GUILD,
+		channel_id: VC,
+		member: { user: { id: userId, username: userId }, permissions: '0' },
+		data: { name: 'play', options: [{ name: 'shiritori', type: 1 }] },
+	});
+	/** A voice round with u1, u2 and u3 in the call and in the game. */
+	const startVoice = async (
+		players = ['u1', 'u2', 'u3'],
+		settings: Partial<typeof DEFAULTS> = {}
+	) => {
+		await enable(settings);
+		await inCall(...players);
+		const round = await openRound(
+			db,
+			discord,
+			{
+				guildId: GUILD,
+				channelId: VC,
+				starterId: players[0],
+				starterName: 'One',
+				voice: true,
+			},
+			() => 0.3,
+			T0
+		);
+		if (isFail(round)) throw new Error(round.error);
+		for (const id of players.slice(1))
+			await joinRound(db, discord, round.id, { id, name: id }, T0);
+		const started = await startRound(
+			db,
+			discord,
+			round.id,
+			{ by: players[0], byCrew: false },
+			NO_SHUFFLE,
+			T0
+		);
+		if (isFail(started)) throw new Error(started.error);
+		discord.sent.length = 0;
+		return started;
+	};
+	const turnOf = async (id: number) => (await getRound(db, id)) as Round;
+	const stateOf = async (id: number, user: string) =>
+		(await getPlayers(db, id)).find((p) => p.user_id === user);
+
+	it('opens a voice round from inside the call, and nobody is added for being in it', async () => {
+		await enable();
+		await inCall('u1', 'u2', 'u3');
+		const out = await handleShiritoriCommand(slash('u1'), db, discord);
+		expect(out.response.data.content).toContain('press Join');
+		const round = (await liveRoundIn(db, GUILD, VC))!;
+		expect(round.voice).toBe(1);
+		expect(await getPlayers(db, round.id)).toHaveLength(1);
+		const card = discord.sent[0].payload.content;
+		expect(card).toContain('voice chat lobby');
+		expect(card).toContain('In the call, not joined: <@u2>, <@u3>');
+		expect(card).toContain('anyone who leaves it is skipped');
+	});
+
+	it('will not open in a voice channel chat unless you are in the call', async () => {
+		await enable();
+		await db
+			.prepare(
+				`INSERT INTO guild_channels (guild_id, channel_id, name, type) VALUES (?, ?, 'General', 2)`
+			)
+			.bind(GUILD, VC)
+			.run();
+		const out = await handleShiritoriCommand(slash('u9'), db, discord);
+		expect(out.response.data.content).toContain('Join this voice channel first');
+		expect(await liveRoundIn(db, GUILD, VC)).toBeNull();
+	});
+
+	it('only lets people in the call join', async () => {
+		await enable();
+		await inCall('u1', 'u2');
+		const round = await openRound(db, discord, {
+			guildId: GUILD,
+			channelId: VC,
+			starterId: 'u1',
+			starterName: 'One',
+			voice: true,
+		});
+		if (isFail(round)) throw new Error(round.error);
+		expect(await joinRound(db, discord, round.id, { id: 'u9', name: 'Out' })).toMatchObject({
+			error: expect.stringContaining('Join the voice channel'),
+		});
+		expect(isFail(await joinRound(db, discord, round.id, { id: 'u2', name: 'Two' }))).toBe(
+			false
+		);
+	});
+
+	it('deals in only the people who joined and are still in the call', async () => {
+		await enable();
+		await inCall('u1', 'u2', 'u3');
+		const round = await openRound(
+			db,
+			discord,
+			{ guildId: GUILD, channelId: VC, starterId: 'u1', starterName: 'One', voice: true },
+			() => 0.3,
+			T0
+		);
+		if (isFail(round)) throw new Error(round.error);
+		await joinRound(db, discord, round.id, { id: 'u2', name: 'Two' }, T0);
+		await joinRound(db, discord, round.id, { id: 'u3', name: 'Three' }, T0);
+		await inCall('u1', 'u2'); // u3 left before Start
+		await startRound(db, discord, round.id, { by: 'u1', byCrew: false }, NO_SHUFFLE, T0);
+		expect((await getPlayers(db, round.id)).map((p) => p.user_id).sort()).toEqual(['u1', 'u2']);
+		await inCall('u1'); // not enough left
+		const lobby2 = await openRound(db, discord, {
+			guildId: GUILD,
+			channelId: '400',
+			starterId: 'u1',
+			starterName: 'One',
+		});
+		expect(isFail(lobby2)).toBe(false);
+	});
+
+	it('refuses to start with fewer than two people in the call', async () => {
+		await enable();
+		await inCall('u1', 'u2');
+		const round = await openRound(db, discord, {
+			guildId: GUILD,
+			channelId: VC,
+			starterId: 'u1',
+			starterName: 'One',
+			voice: true,
+		});
+		if (isFail(round)) throw new Error(round.error);
+		await joinRound(db, discord, round.id, { id: 'u2', name: 'Two' });
+		await inCall('u1');
+		expect(await startRound(db, discord, round.id, { by: 'u1', byCrew: false })).toMatchObject({
+			error: expect.stringContaining('in the call'),
+		});
+	});
+
+	it('posts a turn prompt that pings the player, and replaces it each turn', async () => {
+		const round = await startVoice();
+		expect(discord.sent).toHaveLength(0); // startVoice cleared the lobby traffic
+		await handleMessage(db, discord, say(VC, 'u1', 'apple', at(1)), at(1));
+		const prompt = discord.sent.at(-1)!;
+		expect(prompt.payload.content).toContain('<@u2>');
+		expect(prompt.payload.content).toContain('starting with **e**');
+		expect(prompt.payload.allowed_mentions).toEqual({ users: ['u2'] });
+		await handleMessage(db, discord, say(VC, 'u2', 'eagle', at(2)), at(2));
+		expect(discord.sent.at(-1)!.payload.content).toContain('<@u3>');
+		expect(discord.deleted).toHaveLength(2); // each prompt took the one before away
+		expect((await turnOf(round.id)).turn_message_id).toBeTruthy();
+	});
+
+	it('takes the last prompt down when the round ends', async () => {
+		const round = await startVoice(['u1', 'u2']);
+		await handleMessage(db, discord, say(VC, 'u1', 'apple', at(1)), at(1));
+		const before = discord.deleted.length;
+		await handleMessage(db, discord, say(VC, 'u2', 'zebra', at(2)), at(2)); // out: u1 wins
+		expect((await turnOf(round.id)).status).toBe('ended');
+		expect(discord.deleted.length).toBeGreaterThan(before);
+	});
+
+	it('skips the player on the clock the moment they leave the call', async () => {
+		const round = await startVoice();
+		await inCall('u2', 'u3'); // u1, who holds the turn, drops out
+		expect(await tickRounds(db, discord, at(5))).toBe(0);
+		expect((await turnOf(round.id)).current_user_id).toBe('u2');
+		const u1 = await stateOf(round.id, 'u1');
+		expect(u1).toMatchObject({ state: 'in' }); // skipped, not yet out
+		expect(u1?.away_since).toBeTruthy();
+		expect(discord.sent.at(-1)!.payload.content).toContain('<@u2>');
+	});
+
+	it('brings them back into the rotation if they return in time', async () => {
+		const round = await startVoice();
+		await inCall('u2', 'u3');
+		await tickRounds(db, discord, at(5));
+		await inCall('u1', 'u2', 'u3');
+		await tickRounds(db, discord, at(10));
+		expect((await stateOf(round.id, 'u1'))?.away_since).toBeNull();
+		await handleMessage(db, discord, say(VC, 'u2', 'apple', at(11)), at(11));
+		await handleMessage(db, discord, say(VC, 'u3', 'eagle', at(12)), at(12));
+		expect((await turnOf(round.id)).current_user_id).toBe('u1'); // u1 is back in the order
+	});
+
+	it('puts them out if they stay away past the grace', async () => {
+		const round = await startVoice(['u1', 'u2', 'u3'], { turnSeconds: 60 });
+		await inCall('u2', 'u3');
+		await tickRounds(db, discord, at(5));
+		await tickRounds(db, discord, new Date(at(5).getTime() + AWAY_GRACE_MS + 1000));
+		expect(await stateOf(round.id, 'u1')).toMatchObject({
+			state: 'out',
+			out_reason: 'left_call',
+		});
+		expect((await turnOf(round.id)).status).toBe('running'); // two are left
+	});
+
+	it('ends the round with a winner when the call is down to one player', async () => {
+		const round = await startVoice(['u1', 'u2'], { turnSeconds: 60 });
+		await inCall('u2');
+		await tickRounds(db, discord, at(5));
+		await tickRounds(db, discord, new Date(at(5).getTime() + AWAY_GRACE_MS + 1000));
+		expect(await turnOf(round.id)).toMatchObject({
+			status: 'ended',
+			result: 'winner',
+			winner_id: 'u2',
+		});
+	});
+
+	it('closes the round when everyone has left the call', async () => {
+		const round = await startVoice();
+		await inCall();
+		await tickRounds(db, discord, at(5));
+		expect(await turnOf(round.id)).toMatchObject({ status: 'ended', result: 'abandoned' });
+		expect(discord.edits.at(-1)!.payload.content).toContain('Everyone left the call');
+	});
+
+	it('ignores a word from a player who has left, and moves on', async () => {
+		const round = await startVoice();
+		await inCall('u2', 'u3');
+		expect(await handleMessage(db, discord, say(VC, 'u1', 'apple', at(3)), at(3))).toEqual({
+			action: 'ignore',
+		});
+		expect((await turnOf(round.id)).current_user_id).toBe('u2');
+	});
+
+	it('is checked on every sweep and tick, and listed as a voice round for the gateway', async () => {
+		const round = await startVoice();
+		expect((await listActive(db)).rounds[0]).toMatchObject({ voice: true, status: 'running' });
+		await inCall('u2', 'u3');
+		await sweepShiritori(db, discord, at(5));
+		expect((await turnOf(round.id)).current_user_id).toBe('u2');
+	});
+
+	it('leaves an ordinary text round alone, whoever is in a call', async () => {
+		await enable();
+		await inCall('u1', 'u2');
+		const round = await openRound(
+			db,
+			discord,
+			{ guildId: GUILD, channelId: ROUND_CH, starterId: 'u1', starterName: 'One' },
+			() => 0.3,
+			T0
+		);
+		if (isFail(round)) throw new Error(round.error);
+		expect(round.voice).toBe(0);
+		const { acted } = await syncPresence(db, discord, round, at(5));
+		expect(acted).toBe(false);
 	});
 });

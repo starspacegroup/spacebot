@@ -85,6 +85,8 @@ CREATE TABLE IF NOT EXISTS shiritori_rounds (
     prev_word TEXT,                        -- NULL until the first word
     turn_ends_at TEXT,
     message_id TEXT,                       -- the lobby/status card
+    voice INTEGER NOT NULL DEFAULT 0,      -- played in a voice channel's chat: only people in the call play
+    turn_message_id TEXT,                  -- the turn prompt now at the bottom of the chat
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     started_at TEXT,
     ended_at TEXT,
@@ -102,7 +104,8 @@ CREATE TABLE IF NOT EXISTS shiritori_players (
     name TEXT NOT NULL,
     seat INTEGER,                          -- turn order, shuffled at the start
     state TEXT NOT NULL DEFAULT 'in',      -- 'in' | 'out'
-    out_reason TEXT,                       -- 'not_a_word' | 'bad_start' | 'repeat' | 'blocked' | 'dead_letter' | 'timeout' | 'left'
+    out_reason TEXT,                       -- 'not_a_word' | 'bad_start' | 'repeat' | 'blocked' | 'dead_letter' | 'timeout' | 'left' | 'left_call'
+    away_since TEXT,                       -- voice rounds: when they were first seen out of the call
     words INTEGER NOT NULL DEFAULT 0,
     joined_at TEXT NOT NULL DEFAULT (datetime('now')),
     out_at TEXT,

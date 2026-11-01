@@ -1870,11 +1870,14 @@ async function pollShiritoriState(): Promise<number> {
 			...state.chains.map((c) => c.channelId),
 			...state.rounds.filter((r) => r.status === 'running').map((r) => r.channelId),
 		]);
+		// A voice round is ticked every poll, so someone leaving the call is noticed; any
+		// other round only when its turn is overdue.
 		const overdue = state.rounds.some(
 			(r) =>
 				r.status === 'running' &&
-				r.turnEndsAt &&
-				Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS
+				(r.voice ||
+					(r.turnEndsAt &&
+						Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS))
 		);
 		if (overdue && !shiritoriTicking) {
 			shiritoriTicking = true;
