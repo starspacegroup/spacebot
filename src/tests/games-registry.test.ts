@@ -40,7 +40,7 @@ const G = '100000000000000001';
 let db: ReturnType<typeof createSqliteD1>;
 beforeEach(() => {
 	db = createSqliteD1(SCHEMA);
-	commands.list = [{ id: 'cmd-play', name: 'play', enabled: true }];
+	commands.list = [{ id: 'cmd-play', name: 'game', enabled: true }];
 	commands.set = vi.fn(async () => ({ success: true }));
 	sync.mockClear();
 	superadmin = true;
@@ -53,10 +53,10 @@ describe('the game registry', () => {
 	});
 
 	it('keeps the switches the page always used', () => {
-		expect(findGame('agent')?.enable).toEqual({ kind: 'command', command: 'play' });
+		expect(findGame('agent')?.enable).toEqual({ kind: 'command', command: 'game' });
 		expect(findGame('shiritori')?.enable).toEqual({ kind: 'setting', store: 'shiritori' });
 		// The Activity's `game` module is the same command as the agent game.
-		expect(ACTIVITY_MODULES.find((m) => m.id === 'game')?.command).toBe('play');
+		expect(ACTIVITY_MODULES.find((m) => m.id === 'game')?.command).toBe('game');
 	});
 
 	it('names each game a doc that exists', () => {
@@ -70,7 +70,7 @@ describe('the game registry', () => {
 	});
 
 	it('knows which commands are game switches', () => {
-		expect([...gameCommands()]).toEqual(['play']);
+		expect([...gameCommands()]).toEqual(['game']);
 		expect(gameCommands([])).toEqual(new Set());
 	});
 
@@ -102,19 +102,19 @@ describe('the game registry', () => {
 describe('loadGameStates', () => {
 	it('reads a command switch and a setting switch', async () => {
 		await shiritori.upsertSettings(db, G, { ...shiritori.DEFAULTS, enabled: true });
-		const states = await loadGameStates(db, G, [{ name: 'play', enabled: true }]);
+		const states = await loadGameStates(db, G, [{ name: 'game', enabled: true }]);
 		expect(states).toEqual([
 			{ id: 'agent', enabled: true, blockedBy: null },
 			{ id: 'shiritori', enabled: true, blockedBy: null },
 		]);
 	});
 
-	it('flags Shiritori when /play is off, and only when Shiritori is on', async () => {
+	it('flags Shiritori when /game is off, and only when Shiritori is on', async () => {
 		await shiritori.upsertSettings(db, G, { ...shiritori.DEFAULTS, enabled: true });
 		expect((await loadGameStates(db, G, []))[1]).toEqual({
 			id: 'shiritori',
 			enabled: true,
-			blockedBy: 'play',
+			blockedBy: 'game',
 		});
 		await shiritori.upsertSettings(db, G, { ...shiritori.DEFAULTS, enabled: false });
 		expect((await loadGameStates(db, G, []))[1].blockedBy).toBeNull();
@@ -143,7 +143,7 @@ describe('setGameEnabled', () => {
 		});
 	});
 
-	it('flips the agent game through the /play override and asks for a sync', async () => {
+	it('flips the agent game through the /game override and asks for a sync', async () => {
 		expect(await setGameEnabled(db, G, findGame('agent')!, false)).toEqual({
 			ok: true,
 			sync: true,
@@ -156,9 +156,9 @@ describe('setGameEnabled', () => {
 		expect(await setGameEnabled(db, G, findGame('agent')!, true)).toEqual({
 			ok: false,
 			status: 404,
-			message: '/play is missing.',
+			message: '/game is missing.',
 		});
-		commands.list = [{ id: 'cmd-play', name: 'play', enabled: true }];
+		commands.list = [{ id: 'cmd-play', name: 'game', enabled: true }];
 		commands.set = vi.fn(async () => ({ success: false, error: 'nope' }));
 		expect(await setGameEnabled(db, G, findGame('agent')!, true)).toEqual({
 			ok: false,

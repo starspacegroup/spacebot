@@ -6,7 +6,7 @@
  *
  *  - **Chain**: a channel a server marks as the Shiritori channel. Anyone posts
  *    the next word; a good word gets a ✅ and a bad one a ❌ and breaks the chain.
- *  - **Round**: `/play shiritori` opens a lobby in the channel; players take
+ *  - **Round**: `/game shiritori` opens a lobby in the channel; players take
  *    turns against a clock, and a miss puts you out. The last one in wins.
  *
  * Words reach this module as a message the gateway forwards (`handleMessage`),
@@ -1591,7 +1591,7 @@ function userOf(body: Interaction) {
 	};
 }
 
-/** True when `/play shiritori` was invoked, so the route can send it here. */
+/** True when `/game shiritori` was invoked, so the route can send it here. */
 export const isShiritoriCommand = (body: Interaction) =>
 	flattenInteractionOptions(body.data).subcommand === 'shiritori';
 
@@ -1614,7 +1614,7 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 		return { response: ephemeral('Shiritori only works inside a server channel.') };
 	}
 	if (!db) return { response: ephemeral('The database is not available right now.') };
-	if (!(await getCommandByName(db, 'play', guildId))) {
+	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
 	discord = watched(db, guildId, discord);
@@ -1628,7 +1628,7 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	if (!inCall && (await isVoiceChannel(db, guildId, channelId))) {
 		return {
 			response: ephemeral(
-				'Join this voice channel first, then run /play shiritori in its chat.'
+				'Join this voice channel first, then run /game shiritori in its chat.'
 			),
 		};
 	}

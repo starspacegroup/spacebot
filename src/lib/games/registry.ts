@@ -39,7 +39,7 @@ export interface GameDefinition {
 	enable?: GameEnable;
 	/**
 	 * A built-in command the game also needs on, when its own switch is not that
-	 * command. Shiritori rounds start with `/play`, so they need the Game command.
+	 * command. Shiritori rounds start with `/game`, so they need the Game command.
 	 */
 	needsCommand?: string;
 	/** The doc in `docs/` that explains it. */
@@ -55,10 +55,10 @@ export const GAMES: readonly GameDefinition[] = [
 			'Everyone but one is told a secret word. Talk it out, call a vote, and eject who you think the agent is.',
 		players: '3–15 players',
 		where: 'A voice channel, played in the Activity',
-		commands: ['/play start', '/start agent'],
+		commands: ['/game start', '/start agent'],
 		status: 'live',
-		// `/play` is also the Activity's `game` module switch (ACTIVITY_MODULES).
-		enable: { kind: 'command', command: 'play' },
+		// `/game` is also the Activity's `game` module switch (ACTIVITY_MODULES).
+		enable: { kind: 'command', command: 'game' },
 		doc: 'game.md',
 	},
 	{
@@ -69,10 +69,10 @@ export const GAMES: readonly GameDefinition[] = [
 			'The word chain: each word starts with the last letter of the one before, and no word is used twice.',
 		players: 'Anyone in the Chain channel; 2–12 in a round',
 		where: 'A Chain channel, or a timed round in any text or voice chat',
-		commands: ['/play shiritori'],
+		commands: ['/game shiritori'],
 		status: 'live',
 		enable: { kind: 'setting', store: 'shiritori' },
-		needsCommand: 'play',
+		needsCommand: 'game',
 		doc: 'shiritori.md',
 	},
 ];

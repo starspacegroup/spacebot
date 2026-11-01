@@ -15,6 +15,7 @@ import {
 import { getEnabledGuildIntegrations } from '../db/integrations.js';
 import { getIntegrationCommands } from '../integrations/registry.js';
 import { buildStartCommand } from './start-command.js';
+import { unifyGameCommands } from './game-command.js';
 
 /**
  * Hardcoded built-in command definitions for initial registration (before DB is available).
@@ -268,10 +269,17 @@ export async function buildGuildCommandPayload(db, guildId) {
 	const {
 		builtIn: builtInCommands,
 		custom: customCommands,
-		integration: integrationCommands,
+		integration: collectedIntegration,
 	} = await collectGuildCommands(db, guildId);
 
-	const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
+	// One /game: the integration's /game subcommands join the built-in one,
+	// and /play is sent as its synonym (game-command.ts).
+	const unified = unifyGameCommands(
+		builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat(),
+		collectedIntegration
+	);
+	const builtInDiscord = unified.builtIn;
+	const integrationCommands = unified.integration;
 	// `/start` is built from the activity commands this server has on.
 	const start = buildStartCommand(builtInDiscord);
 	if (start) builtInDiscord.push(start);

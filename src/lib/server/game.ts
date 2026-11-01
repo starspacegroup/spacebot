@@ -1036,7 +1036,7 @@ export async function handleGameCommand(body: Interaction, db, discord): Promise
 	const user = userOf(body);
 	if (!guildId || !user.id) return { response: ephemeral('Game only works inside a server.') };
 	if (!db) return { response: ephemeral('The database is not available right now.') };
-	if (!(await getCommandByName(db, 'play', guildId))) {
+	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
 

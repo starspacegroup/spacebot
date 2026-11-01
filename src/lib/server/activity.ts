@@ -65,7 +65,7 @@ export const ACTIVITY_MODULES: ActivityModule[] = [
 	{
 		id: 'game',
 		name: 'Game',
-		command: 'play',
+		command: 'game',
 		help: {
 			summary:
 				'A hidden-agent round for everyone in a voice channel: all but one are told a secret word, and the table votes out who they think was not.',

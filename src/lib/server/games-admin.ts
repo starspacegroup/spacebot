@@ -3,7 +3,7 @@
  *
  * The registry (`$lib/games/registry.ts`) says where each switch lives; this is
  * the code that reads and writes it there. Nothing new is stored: a command
- * switch is the same built-in command override `/play` always used, and a
+ * switch is the same built-in command override `/game` (then `/play`) always used, and a
  * setting switch is the game's own `enabled` column.
  */
 
