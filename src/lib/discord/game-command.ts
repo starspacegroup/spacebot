@@ -1,7 +1,7 @@
 /**
  * `/game` is one command for every game, and `/play` is its synonym.
  *
- * The built-in Game command row (migration 0082) holds the hidden-agent round
+ * The built-in Game command row (migration 0083) holds the hidden-agent round
  * (`start`, `stop`, `status`) and Shiritori (`shiritori`). Where a server has
  * the *Space Game integration on, its manifest also declares a `/game`;
  * Discord allows one command per name, so its subcommands (`stats`,

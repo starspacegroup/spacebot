@@ -8,7 +8,7 @@ it is played in the [Activity](activity.md), not in Discord messages: nothing in
 a voice channel's text chat can be a secret.
 
 Design history and the reasons behind each rule: `planning/IDEAS.md` in the
-workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql`, `0077_game_command_play.sql` and `0082_game_command_unified.sql`. The command is `/game`, one command for every game: `/game start|stop|status` for this round, `/game shiritori` for [Shiritori](shiritori.md), and, where the *Space Game integration is on, its `/game stats|leaderboard|play` merged in (`src/lib/discord/game-command.ts`). `/play` is a synonym: the sync sends an identical copy of `/game` named `/play` ("Same as /game"), and the interactions route reads it as `/game`. Discord has no aliases, so it costs one of the server's command slots.
+workspace repo, "Voice games" (issue #54). Migrations `0076_game.sql`, `0077_game_command_play.sql` and `0083_game_command_unified.sql`. The command is `/game`, one command for every game: `/game start|stop|status` for this round, `/game shiritori` for [Shiritori](shiritori.md), and, where the *Space Game integration is on, its `/game stats|leaderboard|play` merged in (`src/lib/discord/game-command.ts`). `/play` is a synonym: the sync sends an identical copy of `/game` named `/play` ("Same as /game"), and the interactions route reads it as `/game`. Discord has no aliases, so it costs one of the server's command slots.
 
 ## Playing
 

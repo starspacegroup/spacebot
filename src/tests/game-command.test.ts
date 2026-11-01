@@ -135,12 +135,12 @@ describe('help for /game', () => {
 	});
 });
 
-describe('migration 0082', () => {
+describe('migration 0083', () => {
 	it('renames the built-in /play row to /game, keeping its id, once', async () => {
 		const { readFileSync } = await import('node:fs');
 		const { createSqliteD1 } = await import('./helpers/sqlite-d1.js');
 		const sql = readFileSync(
-			new URL('../../migrations/0082_game_command_unified.sql', import.meta.url),
+			new URL('../../migrations/0083_game_command_unified.sql', import.meta.url),
 			'utf8'
 		);
 		const db: any = createSqliteD1();
