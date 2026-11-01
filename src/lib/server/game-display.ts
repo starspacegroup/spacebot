@@ -109,7 +109,9 @@ export function applyDisplaysToCommands<T extends Record<string, any>>(
 	const shiritori = displays.shiritori;
 	if (!agent?.custom.name && !shiritori?.custom.name) return commands;
 	return commands.map((cmd) => {
-		if (cmd?.name !== 'play') return cmd;
+		// /game and its twin /play carry the same subcommands; only those take the
+		// custom names. The top-level description stays general (it covers every game).
+		if (cmd?.name !== 'game' && cmd?.name !== 'play') return cmd;
 		let options = cmd.options;
 		if (typeof options === 'string') {
 			try {
@@ -120,9 +122,6 @@ export function applyDisplaysToCommands<T extends Record<string, any>>(
 		}
 		const fit = (s: string) => (s.length > 100 ? `${s.slice(0, 99)}…` : s);
 		const next: Record<string, any> = { ...cmd };
-		if (agent?.custom.name) {
-			next.description = fit(`${agent.name}: a round for everyone in your voice channel`);
-		}
 		if (Array.isArray(options)) {
 			next.options = options.map((o: any) => {
 				if (o?.name === 'start' && agent?.custom.name) {

@@ -280,7 +280,7 @@ describe('command descriptions', () => {
 		]);
 		const [p, o] = applyDisplaysToCommands([play, other], displays);
 		expect(p.name).toBe('play');
-		expect(p.description).toBe('Impostor: a round for everyone in your voice channel');
+		expect(p.description).toBe(play.description); // the top level covers every game
 		expect(p.options.map((x: any) => [x.name, x.description])).toEqual([
 			['start', 'Start Impostor in your voice channel'],
 			['stop', 'End the round here'],
@@ -309,7 +309,14 @@ describe('command descriptions', () => {
 		expect(p.options[0].description).toBe('Start Imp in your voice channel');
 		const [q] = applyDisplaysToCommands([{ ...play, options: '{nope' }], displays);
 		expect(q.options).toBe('{nope');
-		expect(q.description).toMatch(/^Imp:/);
+		expect(q.description).toBe(play.description);
+	});
+
+	it('names the game in /game the same way as its twin /play', () => {
+		const displays = resolveAll([{ game_id: 'agent', name: 'Imp' }]);
+		const [g] = applyDisplaysToCommands([{ ...play, name: 'game' }], displays);
+		expect(g.name).toBe('game');
+		expect(g.options[0].description).toBe('Start Imp in your voice channel');
 	});
 
 	it('stays within Discord’s 100-character description limit', () => {
