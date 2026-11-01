@@ -47,6 +47,11 @@ the help, or the reverse.
 A command family is listed with its subcommands underneath, so `/room` shows
 `/room create`, `/room lock` and the rest rather than one opaque line.
 
+When two sources register the same name, the first (built-in) wins, except for
+`/game`: the *Space Game integration's subcommands are merged into the built-in
+`/game` entry, the way the sync merges them in Discord, and the entry says that
+`/play` works too. `/play` itself is not listed; it is the same command.
+
 ## Filtering
 
 `memberMayUseCommand` decides (the permission level plus role rules, see

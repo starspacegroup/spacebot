@@ -8,6 +8,7 @@ import {
 	timeboxesForViewer,
 } from '$lib/server/activity-timebox.js';
 import { createDiscordRestClient } from '$lib/discord/rest-client.js';
+import { hasOverdue, sweepTimebox } from '$lib/server/timebox.js';
 import { log } from '$lib/log.js';
 
 /**
@@ -37,6 +38,10 @@ export async function POST({ request, platform }) {
 				body.action
 			);
 		}
+		// A block that ran out is settled now (advance, or end and lift the deafen),
+		// not at the next minute sweep.
+		const botToken = getEnv('DISCORD_BOT_TOKEN', platform);
+		if (botToken && (await hasOverdue(db))) await sweepTimebox(db, botToken);
 		const timeboxes = await timeboxesForViewer(db, claims, body?.guild_id);
 		const others = await othersForViewer(db, claims, body.guild_id);
 		return json({ timeboxes, others }, { headers: { 'cache-control': 'no-store' } });

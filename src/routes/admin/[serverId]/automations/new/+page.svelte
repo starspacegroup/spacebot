@@ -90,6 +90,7 @@
 
 	interface PageDataShape {
 		selectedGuildId: string;
+		templates: Array<{ id: string; name: string; description: string }>;
 		eventTypes: Record<string, EventTypeInfo>;
 		eventCategories: Record<string, CategoryInfo>;
 		actionTypes: Record<string, ActionTypeInfo>;
@@ -508,6 +509,23 @@
 		</h1>
 		<p class="header-subtitle">Set up an automatic action triggered by Discord events</p>
 	</header>
+
+	<section class="template-strip">
+		<div class="template-strip-head">
+			<h2>Start from a template</h2>
+			<a href="/admin/{selectedGuildId}/automations/templates">See all with details</a>
+		</div>
+		<div class="template-chips">
+			{#each data.templates as t (t.id)}
+				<form method="POST" action="/admin/{selectedGuildId}/automations/templates?/use">
+					<input type="hidden" name="template" value={t.id} />
+					<button type="submit" class="template-chip" title={t.description}
+						>{t.name}</button
+					>
+				</form>
+			{/each}
+		</div>
+	</section>
 
 	{#if form?.error}
 		<div class="error-banner">
@@ -2192,5 +2210,41 @@
 		align-self: flex-start;
 		font-size: 0.8rem;
 		padding: 0.35rem 0.75rem;
+	}
+	.template-strip {
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.25rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
+	}
+	.template-strip-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+	.template-strip-head h2 {
+		margin: 0;
+		font-size: 1rem;
+	}
+	.template-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+	.template-chip {
+		padding: 0.4rem 0.8rem;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-surface-elevated);
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+	.template-chip:hover,
+	.template-chip:focus-visible {
+		border-color: var(--color-primary);
 	}
 </style>

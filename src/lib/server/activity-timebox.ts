@@ -60,6 +60,21 @@ export interface ActivityTimeboxOther {
 	paused_remaining_ms: number | null;
 }
 
+/** Someone else's timer, as the people sharing their voice channel see it. */
+export interface ActivityTimeboxOther {
+	name: string;
+	avatar_url: string | null;
+	status: Session['status'];
+	phase: Session['phase'];
+	block_number: number;
+	rounds: number;
+	focus_minutes: number;
+	break_minutes: number;
+	long_break_minutes: number;
+	ends_at: number | null;
+	paused_remaining_ms: number | null;
+}
+
 export class TimeboxAccessError extends Error {
 	constructor(
 		public status: number,

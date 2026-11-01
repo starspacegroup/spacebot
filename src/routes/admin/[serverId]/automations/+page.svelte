@@ -103,15 +103,14 @@
 
 		handledSuccessUrl = href;
 		toast.success(msg);
-		const url = new URL(page.url);
+		const url = new URL(page.url.href);
 		url.searchParams.delete('created');
 		url.searchParams.delete('updated');
 		url.searchParams.delete('deleted');
 		// Keep any other params (pagination/filters) instead of dropping them.
 		goto(url.pathname + url.search, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true,
+			replace: true,
+			reset: false,
 		});
 	});
 
@@ -225,6 +224,9 @@
 				<span>📋</span>
 				{showLogs ? 'Hide Logs' : 'View Logs'}
 			</button>
+			<a href="/admin/{selectedGuildId}/automations/templates" class="btn btn-secondary">
+				Templates
+			</a>
 			<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-primary">
 				<span>➕</span>
 				Create Automation
@@ -430,7 +432,13 @@
 				<div class="empty-icon">🤖</div>
 				<h2>No Automations Yet</h2>
 				<p>Create your first automation to get started.</p>
-				<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-primary btn-lg">
+				<a
+					href="/admin/{selectedGuildId}/automations/templates"
+					class="btn btn-primary btn-lg"
+				>
+					Start from a template
+				</a>
+				<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-secondary btn-lg">
 					<span>➕</span>
 					Create Your First Automation
 				</a>

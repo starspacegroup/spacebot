@@ -15,6 +15,7 @@ import {
 	getGuildContributedVariables,
 } from '$lib/db/integrations.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
+import { AUTOMATION_TEMPLATES } from '$lib/automation/templates.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ platform, parent, params }) {
@@ -51,6 +52,11 @@ export async function load({ platform, parent, params }) {
 	const contributedVariables = db ? await getGuildContributedVariables(db, guildId) : {};
 
 	return {
+		templates: AUTOMATION_TEMPLATES.map((t) => ({
+			id: t.id,
+			name: t.name,
+			description: t.description,
+		})),
 		// Meta info for the UI
 		actionTypes: { ...ACTION_TYPES, ...contributedActions },
 		filterTypes: FILTER_TYPES,

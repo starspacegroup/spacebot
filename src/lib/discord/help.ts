@@ -19,6 +19,8 @@ const FIELD_VALUE_LIMIT = 1024;
 /** Discord's cap on fields in one embed. */
 const MAX_FIELDS = 25;
 
+import { GAME_ALIAS, GAME_COMMAND } from './game-command.js';
+
 export interface HelpEntry {
 	name: string;
 	description: string;
@@ -89,11 +91,22 @@ export function buildHelpEntries(
 	entries.sort((a, b) => a.name.localeCompare(b.name));
 
 	// One command can be registered from more than one source; the first wins.
-	const seen = new Set<string>();
+	// `/game` is the exception: the *Space Game integration's subcommands are
+	// merged into the built-in one in Discord, so they are merged here too.
+	const seen = new Map<string, HelpEntry>();
 	return entries.filter((entry) => {
 		const key = entry.name.toLowerCase();
-		if (seen.has(key)) return false;
-		seen.add(key);
+		const first = seen.get(key);
+		if (first) {
+			if (key === GAME_COMMAND) {
+				for (const sub of entry.subcommands) {
+					if (!first.subcommands.includes(sub)) first.subcommands.push(sub);
+				}
+			}
+			return false;
+		}
+		seen.set(key, entry);
+		if (key === GAME_COMMAND) entry.description += ` (\`/${GAME_ALIAS}\` works too)`;
 		return true;
 	});
 }

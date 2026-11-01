@@ -84,6 +84,11 @@ describe('actions take the guild from the route, not the form', () => {
 		const toggleAutomation = vi.fn(async () => ({ success: true }));
 		vi.doMock('$lib/db/automations.js', async (orig) => ({
 			...(await orig<any>()),
+			// The toggle now looks the automation up first (control-actions.ts), in
+			// the route's guild.
+			getAutomation: vi.fn(async (_db, _id, guildId) =>
+				guildId === GUILD_A ? { id: 7 } : null
+			),
 			toggleAutomation,
 		}));
 		const { actions }: any =
