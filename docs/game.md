@@ -122,3 +122,12 @@ rest of the out treatment (the `Stream` deny, a bot role without `SEND_MESSAGES`
 a name marker), day & night format and its sub-minute scheduler, the agent guessing
 the word to win, non-player spectating, custom word lists, and the Activity showing
 a round's history.
+
+## Name on this server
+
+A server can rename the game and give it an icon (dashboard → Activity → Hidden
+Agent card → _Name on this server_; rules in [activity.md](activity.md)). The
+cards then read `🔪 **Fed Hunt — lobby**` instead of `**Hidden Agent — lobby**`,
+the Activity tab and title use the name, and `/play`'s description and
+`/play start`'s say it. With no custom name the heading stays "Hidden <role
+name>". `/play` and `/start agent` keep their names.

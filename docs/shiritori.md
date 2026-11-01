@@ -145,3 +145,11 @@ bun scripts/build-shiritori-words.ts <scowl-dir>/final
 ```
 
 The generated file is committed, so a normal build never needs the download.
+
+## Name on this server
+
+A server can rename Shiritori and give it an icon (dashboard → Activity →
+Shiritori card → _Name on this server_; rules in [activity.md](activity.md)).
+Round cards use the name, and the custom icon replaces the 🔗/🎙️ mark; the
+`/play shiritori` description says "Start <name> in this channel". The command
+itself stays `/play shiritori`.

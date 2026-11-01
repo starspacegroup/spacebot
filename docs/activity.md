@@ -113,6 +113,20 @@ Activity's `game` module), Shiritori is `shiritori_settings.enabled`. The
 (`src/lib/server/games-admin.ts`). Shiritori rounds start with `/play`, so its
 card warns when Shiritori is on and Hidden Agent (`/play`) is off.
 
+**Names on this server.** Each live card has a _Name on this server_ panel:
+icon (one emoji), name (1–40 characters) and description (up to 120), with the
+registry's text as placeholders, Save and Reset to the default. Stored per
+server per game id in `game_display_names` (migration 0082); no row or an empty
+field is the default. Values are cleaned on save and again on read
+(`src/lib/games/display.ts`): links are refused; mention and markdown
+characters, control and bidi characters are stripped. The name is used on the
+lobby/round/result cards, the Activity's tab and frame title (the `game` module
+gets a `label`), the dashboard card, and the `/play` descriptions synced per
+server (so `/help` shows it). Slash command names never change: Discord would
+need them re-registered. Reads fall back to the defaults on any error
+(`src/lib/server/game-display.ts`), so a post never fails over a name.
+Screenshots: `docs/screenshots/activity-names-*.png`.
+
 **Adding a game:** one entry in `GAMES` (id, name, icon, tagline, players,
 where, commands, `status: 'live' | 'planned'`, `enable`, optional
 `needsCommand`, doc), its settings component in
