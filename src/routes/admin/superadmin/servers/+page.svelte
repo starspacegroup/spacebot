@@ -371,8 +371,7 @@
 							bind:value={editingServer.billing_notes}
 							class="form-textarea"
 							rows="2"
-							placeholder="Internal notes..."
-						></textarea>
+							placeholder="Internal notes..."></textarea>
 					</div>
 				</div>
 				<div class="modal-footer">
@@ -433,7 +432,7 @@
 										server.bot_presence
 									)}"
 									title={server.bot_presence === 'unknown'
-										? 'Discord API unavailable, status could not be verified right now.'
+										? `Could not check with Discord just now${data.botPresenceReason ? `: ${data.botPresenceReason}` : ''}. Reload to try again.`
 										: ''}
 								>
 									{getBotPresenceLabel(server.bot_presence)}
