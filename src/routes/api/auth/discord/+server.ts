@@ -1,5 +1,6 @@
 import { redirect, json } from '@sveltejs/kit';
 import { safeReturnPath } from '$lib/server/safe-return-path.js';
+import { recordSiteEvent } from '$lib/server/site-traffic.js';
 
 /**
  * Discord OAuth2 Authorization Endpoint
@@ -94,6 +95,18 @@ export async function GET({ request, url, cookies, platform }) {
 	// Default bot permissions (Administrator for now, configure as needed)
 	// See: https://discord.com/developers/docs/topics/permissions#permissions-bitwise-permission-flags
 	const DEFAULT_BOT_PERMISSIONS = '8'; // Administrator
+
+	// Funnel counters for the traffic page: a count a day, nothing about who.
+	const db = (platform as any)?.env?.DB;
+	if (db) {
+		const write = recordSiteEvent(
+			db,
+			(url.searchParams.get('flow') || 'login') === 'install'
+				? 'install_start'
+				: 'login_start'
+		).catch(() => {});
+		(platform as any)?.context?.waitUntil?.(write);
+	}
 
 	// Generate a state parameter for CSRF protection
 	const state = crypto.randomUUID();
