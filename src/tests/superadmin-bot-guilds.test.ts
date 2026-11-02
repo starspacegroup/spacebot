@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getBotGuilds } from '../routes/admin/superadmin/servers/+page.server.js';
+import { getBotGuilds } from '../lib/server/bot-guilds.js';
 
 const res = (status: number, body: any = {}) =>
 	new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
