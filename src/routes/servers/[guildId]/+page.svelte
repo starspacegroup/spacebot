@@ -72,7 +72,7 @@
 					{#await data.canManage then canManage}
 						{#if canManage}
 							<a class="btn-manage" href="/admin/{listing.guild_id}/settings#listing"
-								>{tr('browse.manageListing')}</a
+								>{tr('browse.manageThisListing')}</a
 							>
 						{/if}
 					{/await}

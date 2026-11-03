@@ -21,7 +21,7 @@ describe('getManageableGuilds', () => {
 			cookies({ discord_user_id: '1', discord_access_token: 't' }),
 			platform
 		);
-		expect(result).toEqual([{ id: '111111111111111111', name: 'Mine' }]);
+		expect(result).toEqual([{ id: '111111111111111111', name: 'Mine', icon: null }]);
 	});
 
 	it('returns nothing for a signed-out visitor', async () => {
@@ -34,5 +34,36 @@ describe('getManageableGuilds', () => {
 			{ env: {} }
 		);
 		expect(result).toEqual([]);
+	});
+});
+
+describe('getListedGuildIds', () => {
+	it('asks for approved, opted-in listings among the given servers only', async () => {
+		const { getListedGuildIds } = await import('$lib/db/server-listings.js');
+		const calls: { sql: string; args: unknown[] }[] = [];
+		const db = {
+			prepare: (sql: string) => ({
+				bind: (...args: unknown[]) => ({
+					all: async () => {
+						calls.push({ sql, args });
+						return { results: [{ guild_id: '111111111111111111' }] };
+					},
+				}),
+			}),
+		};
+		const result = await getListedGuildIds(db, [
+			'111111111111111111',
+			'222222222222222222',
+			'not-an-id',
+		]);
+		expect([...result]).toEqual(['111111111111111111']);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].args).toEqual(['111111111111111111', '222222222222222222']);
+		expect(calls[0].sql).toContain("review_status = 'approved'");
+	});
+
+	it('does not touch the database when there is nothing to look up', async () => {
+		const { getListedGuildIds } = await import('$lib/db/server-listings.js');
+		expect((await getListedGuildIds({}, [])).size).toBe(0);
 	});
 });

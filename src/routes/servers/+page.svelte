@@ -34,6 +34,14 @@
 	const hueFor = serverHue;
 </script>
 
+{#snippet invite()}
+	<footer class="browse-cta">
+		<h2>{tr('browse.ctaTitle')}</h2>
+		<p>{tr('browse.ctaDesc')}</p>
+		<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
+	</footer>
+{/snippet}
+
 <svelte:head>
 	<title>{tr('browse.metaTitle')}</title>
 	<meta name="description" content={tr('browse.metaDescription')} />
@@ -230,35 +238,75 @@
 		{/if}
 	{/if}
 
-	<footer class="browse-cta">
-		{#await data.manageable}
-			<h2>{tr('browse.ctaTitle')}</h2>
-			<p>{tr('browse.ctaDesc')}</p>
-			<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
-		{:then guilds}
-			{#if guilds.length > 0}
-				<h2>{tr('browse.manageTitle')}</h2>
-				<p>{tr('browse.manageDesc')}</p>
-				<div class="manage-list">
-					{#each guilds as guild (guild.id)}
-						<a href="/admin/{guild.id}/settings#listing" class="btn-primary">
-							{guilds.length === 1
-								? tr('browse.manageListing')
-								: tr('browse.manageListingFor', { name: guild.name })}
-						</a>
+	{#await data.manageable then yours}
+		{#if yours.length > 0}
+			<section class="your-servers" aria-labelledby="your-servers-title">
+				<header class="your-head">
+					<div>
+						<h2 id="your-servers-title">{tr('browse.yoursTitle')}</h2>
+						<p>{tr('browse.yoursDesc')}</p>
+					</div>
+					<a href="/admin" class="your-dashboard">{tr('browse.ctaButton')} →</a>
+				</header>
+				<ul class="your-list">
+					{#each yours as guild (guild.id)}
+						<li class="your-row">
+							{#if guild.icon}
+								<img
+									class="your-icon"
+									src="https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=64"
+									alt=""
+									loading="lazy"
+								/>
+							{:else}
+								<span
+									class="your-icon your-icon-fallback"
+									style="--card-hue: {hueFor(guild.id)}"
+									>{initials(guild.name)}</span
+								>
+							{/if}
+							<div class="your-text">
+								<span class="your-name">{guild.name}</span>
+								{#if guild.listed}
+									<span class="your-status live"
+										><span class="dot dot-online"></span>{tr(
+											'browse.statusListed'
+										)}</span
+									>
+								{:else}
+									<span class="your-status"
+										><span class="dot dot-members"></span>{tr(
+											'browse.statusUnlisted'
+										)}</span
+									>
+								{/if}
+							</div>
+							<div class="your-actions">
+								{#if guild.listed}
+									<a class="btn-quiet" href="/servers/{guild.id}"
+										>{tr('browse.view')}</a
+									>
+								{/if}
+								<a
+									class={guild.listed
+										? 'btn-quiet strong'
+										: 'btn-primary btn-small'}
+									href="/admin/{guild.id}/settings#listing"
+									>{guild.listed
+										? tr('browse.manageListing')
+										: tr('browse.listThisServer')}</a
+								>
+							</div>
+						</li>
 					{/each}
-				</div>
-			{:else}
-				<h2>{tr('browse.ctaTitle')}</h2>
-				<p>{tr('browse.ctaDesc')}</p>
-				<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
-			{/if}
-		{:catch}
-			<h2>{tr('browse.ctaTitle')}</h2>
-			<p>{tr('browse.ctaDesc')}</p>
-			<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
-		{/await}
-	</footer>
+				</ul>
+			</section>
+		{:else}
+			{@render invite()}
+		{/if}
+	{:catch}
+		{@render invite()}
+	{/await}
 </div>
 
 <style>
@@ -696,11 +744,163 @@
 		color: var(--color-text-muted);
 	}
 
-	.manage-list {
+	.your-servers {
+		margin-top: 3rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
+		overflow: hidden;
+	}
+
+	.your-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+		padding: 1.25rem 1.5rem 1rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.your-head h2 {
+		margin: 0 0 0.25rem;
+		font-size: 1.1rem;
+		color: var(--color-text);
+	}
+
+	.your-head p {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--color-text-muted);
+	}
+
+	.your-dashboard {
+		font-size: 0.85rem;
+		color: var(--color-primary);
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	.your-dashboard:hover {
+		text-decoration: underline;
+	}
+
+	.your-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		max-height: 24rem;
+		overflow-y: auto;
+	}
+
+	.your-row {
+		display: flex;
+		align-items: center;
+		gap: 0.85rem;
+		padding: 0.7rem 1.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.your-row:last-child {
+		border-bottom: none;
+	}
+
+	.your-row:hover {
+		background: var(--color-surface-hover);
+	}
+
+	.your-icon {
+		width: 36px;
+		height: 36px;
+		border-radius: 10px;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+
+	.your-icon-fallback {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: hsl(var(--card-hue) 45% 40%);
+		color: var(--color-primary-button-text);
+		font-size: 0.8rem;
+		font-weight: 600;
+	}
+
+	.your-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+		flex: 1;
+	}
+
+	.your-name {
+		font-weight: 600;
+		font-size: 0.92rem;
+		color: var(--color-text);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.your-status {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.your-status.live {
+		color: var(--color-text);
+	}
+
+	.your-actions {
 		display: flex;
 		gap: 0.5rem;
-		justify-content: center;
-		flex-wrap: wrap;
+		align-items: center;
+		flex-shrink: 0;
+	}
+
+	.btn-quiet {
+		padding: 0.4rem 0.9rem;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+		background: transparent;
+		color: var(--color-text);
+		font-size: 0.82rem;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	.btn-quiet:hover {
+		border-color: var(--color-primary);
+	}
+
+	.btn-quiet.strong {
+		background: var(--color-surface-hover);
+	}
+
+	.btn-small {
+		padding: 0.4rem 0.9rem;
+		font-size: 0.82rem;
+		white-space: nowrap;
+	}
+
+	@media (max-width: 560px) {
+		.your-head {
+			flex-direction: column;
+		}
+
+		.your-row {
+			flex-wrap: wrap;
+			padding: 0.75rem 1rem;
+		}
+
+		.your-actions {
+			width: 100%;
+			justify-content: flex-end;
+		}
 	}
 
 	.btn-primary {

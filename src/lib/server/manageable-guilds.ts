@@ -3,6 +3,7 @@ import { filterAdminGuilds, getBotGuildIds, getUserGuilds } from '$lib/discord/g
 export interface ManageableGuild {
 	id: string;
 	name: string;
+	icon: string | null;
 }
 
 const LOOKUP_TIMEOUT_MS = 4000;
@@ -36,7 +37,11 @@ export async function getManageableGuilds(
 		]).then(([userGuilds, botGuildIds]) =>
 			filterAdminGuilds(userGuilds)
 				.filter((guild) => botGuildIds.has(guild.id))
-				.map((guild) => ({ id: guild.id as string, name: guild.name as string }))
+				.map((guild) => ({
+					id: guild.id as string,
+					name: guild.name as string,
+					icon: (guild.icon as string | null) || null,
+				}))
 		);
 		const timeout = new Promise<ManageableGuild[]>((resolve) =>
 			setTimeout(() => resolve([]), LOOKUP_TIMEOUT_MS)

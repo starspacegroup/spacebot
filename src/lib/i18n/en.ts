@@ -1405,11 +1405,15 @@ export const en: Record<string, string> = {
 	'browse.ctaDesc':
 		'Add SpaceBot, then opt in from Server settings to have your community listed here.',
 	'browse.ctaButton': 'Open dashboard',
-	'browse.manageTitle': 'Manage your public listing',
-	'browse.manageDesc':
-		'Your server is in SpaceBot. Edit how it appears in the browser, or take it down.',
-	'browse.manageListing': 'Manage listing',
-	'browse.manageListingFor': 'Manage listing: {name}',
+	'browse.yoursTitle': 'Your servers',
+	'browse.yoursDesc':
+		'Servers you manage that have SpaceBot. Listed ones are live in this browser.',
+	'browse.statusListed': 'Listed',
+	'browse.statusUnlisted': 'Not listed',
+	'browse.view': 'View',
+	'browse.manageListing': 'Manage',
+	'browse.listThisServer': 'List this server',
+	'browse.manageThisListing': 'Manage listing',
 	'browse.backToBrowser': 'Back to server browser',
 	'browse.aboutHeading': 'About this server',
 	'browse.tagsHeading': 'Tags',
