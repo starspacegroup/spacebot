@@ -11,6 +11,7 @@ import { generateChatResponse, isAIEnabled } from '$lib/ai/chat.js';
 import { filterAdminGuilds, getUserGuilds, getBotGuildIds } from '$lib/discord/guilds.js';
 import { resolveRuntimeModelConfig } from '$lib/server/workers-ai-models.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /**
  * Safely get environment variable
@@ -39,7 +40,7 @@ export async function GET({ cookies, platform, url }) {
 		return json({ error: 'Bot token not configured' }, { status: 500 });
 	}
 
-	const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
+	const limit = intParam(url, 'limit', 50, 1, 100);
 	const before = url.searchParams.get('before') || '';
 
 	try {
