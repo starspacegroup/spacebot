@@ -9,6 +9,7 @@ import { driveSuperadminWorkflowRunInline } from '$lib/server/superadmin-workflo
 import { enqueueWorkflowRunStart, runInBackground } from '$lib/server/superadmin-workflow-queue.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import { log } from '$lib/log.js';
+import { intParam } from '$lib/server/query-params.js';
 
 export async function GET({ cookies, platform, params, url }) {
 	const userId = cookies.get('discord_user_id');
@@ -25,7 +26,7 @@ export async function GET({ cookies, platform, params, url }) {
 	const template = await getSuperadminWorkflowTemplate(db, templateId);
 	if (!template) return json({ error: 'Workflow not found' }, { status: 404 });
 
-	const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+	const limit = intParam(url, 'limit', 50, 1, 200);
 	const runs = await listSuperadminWorkflowRuns(db, { templateId, limit });
 	return json({ template, runs });
 }

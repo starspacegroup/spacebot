@@ -4,7 +4,9 @@ import {
 	PAGE_SIZE,
 	browsePublicListings,
 	getCategoryCounts,
+	getListedGuildIds,
 } from '$lib/db/server-listings.js';
+import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
 
 /**
  * Public server browser.
@@ -17,7 +19,7 @@ import {
  * inside the app shell, which contains the signed-in user's menu, so a shared
  * cache would serve one visitor's header to another.
  */
-export async function load({ platform, url }) {
+export async function load({ platform, url, cookies }) {
 	const db = (platform as any)?.env?.DB;
 
 	const q = (url.searchParams.get('q') || '').slice(0, 80);
@@ -39,6 +41,19 @@ export async function load({ platform, url }) {
 
 	return {
 		...result,
+		// Streamed: the page renders first, the manage button appears when Discord answers.
+		manageable: getManageableGuilds(cookies, platform).then(async (guilds) => {
+			const listed = await getListedGuildIds(
+				db,
+				guilds.map((guild) => guild.id)
+			);
+			// Live listings first, then the rest by name.
+			return guilds
+				.map((guild) => ({ ...guild, listed: listed.has(guild.id) }))
+				.sort(
+					(a, b) => Number(b.listed) - Number(a.listed) || a.name.localeCompare(b.name)
+				);
+		}),
 		q,
 		category,
 		sort,

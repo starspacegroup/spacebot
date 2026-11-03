@@ -34,6 +34,7 @@ database — see the architecture overview below.
 - [Statistics](stats.md) — the admin Statistics page: its four tabs, and the Voice tab that replaced the VC activity page
 - [Automation templates](automation-templates.md) — ready-made automations an admin can start from; created switched off
 - [Set channel topic](set-channel-topic.md) — the automation action that lets a command change a channel's topic
+- [Site traffic](site-traffic.md) — the superadmin page that counts views of the public pages, with nothing stored per visitor
 - [Shiritori](shiritori.md) — the word chain: an always-on channel, and `/play shiritori` rounds
 - [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch

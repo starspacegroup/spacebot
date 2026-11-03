@@ -21,6 +21,7 @@ import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepGame } from '$lib/server/game.js';
 import { sweepShiritori } from '$lib/server/shiritori-game.js';
+import { pruneSiteTraffic } from '$lib/server/site-traffic.js';
 import { createDiscordRestClient } from '$lib/discord/rest-client.js';
 import {
 	COMMAND_SYNC_BATCH,
@@ -58,7 +59,8 @@ function getCronJobDefinitions() {
 		{
 			name: 'hourly_aggregation',
 			displayName: 'Hourly Stats Aggregation',
-			description: 'Aggregates event logs into hourly and daily statistics',
+			description:
+				'Aggregates event logs into hourly and daily statistics, and drops marketing-traffic counters past their retention.',
 			cronPattern: '0 * * * *',
 			schedule: 'Every hour at :00',
 		},
@@ -522,6 +524,10 @@ export async function POST({ request, cookies, platform }) {
 			// Also sweep any runner jobs that timed out since the last poll cycle.
 			const runnerSweep = await sweepAllTimedOutRunnerJobs(db);
 			result = { ...result, runnerSweep };
+			// Old marketing-traffic counters (the page's own failure must not fail this job).
+			await pruneSiteTraffic(db).catch((err: any) =>
+				log.warn('[Cron API] Failed to prune site traffic counters:', err)
+			);
 		} else if (jobName === 'daily_refresh') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');

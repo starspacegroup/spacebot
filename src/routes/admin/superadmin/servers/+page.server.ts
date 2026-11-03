@@ -2,49 +2,8 @@ import { redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
 import { getAllGuildMetadata } from '$lib/db/guild-metadata.js';
 import { getAllServerPlans, PLAN_TIERS } from '$lib/db/server-plans.js';
+import { getBotGuilds } from '$lib/server/bot-guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
-
-interface DiscordApiGuild {
-	id: string;
-	name?: string;
-	icon?: string | null;
-	owner?: boolean;
-	owner_id?: string | null;
-	approximate_member_count?: number;
-	features?: string[];
-	[key: string]: any;
-}
-
-/**
- * Get all guilds the bot is currently in from the Discord API.
- */
-async function getBotGuilds(
-	botToken: string | undefined
-): Promise<{ guilds: DiscordApiGuild[]; available: boolean }> {
-	if (!botToken) {
-		return { guilds: [], available: false };
-	}
-
-	try {
-		const response = await fetch(
-			'https://discord.com/api/v10/users/@me/guilds?with_counts=true',
-			{
-				headers: { Authorization: `Bot ${botToken}` },
-			}
-		);
-
-		if (!response.ok) {
-			log.warn(`[Superadmin Servers] Failed to fetch bot guilds: ${response.status}`);
-			return { guilds: [], available: false };
-		}
-
-		const guilds = (await response.json()) as DiscordApiGuild[];
-		return { guilds, available: true };
-	} catch (error) {
-		log.error('[Superadmin Servers] Failed to fetch bot guilds:', error);
-		return { guilds: [], available: false };
-	}
-}
 
 /**
  * Get per-guild usage counts for commands and automations.
@@ -129,13 +88,20 @@ export async function load({ cookies, platform }) {
 	const isDevMockToken = cookies.get('discord_access_token') === 'dev_mock_token';
 
 	const [botGuildsResult, allMetadata, allPlans, usageMap] = await Promise.all([
-		isDevMockToken ? Promise.resolve({ guilds: [], available: false }) : getBotGuilds(botToken),
+		isDevMockToken
+			? Promise.resolve({
+					guilds: [],
+					available: false,
+					reason: 'dev sign-in has no real bot' as string | undefined,
+				})
+			: getBotGuilds(botToken),
 		db ? getAllGuildMetadata(db) : [],
 		db ? getAllServerPlans(db) : [],
 		db ? getGuildUsageCounts(db) : new Map(),
 	]);
 	const botGuilds = botGuildsResult.guilds;
 	const botPresenceReliable = botGuildsResult.available;
+	const botPresenceReason = botGuildsResult.reason ?? null;
 
 	// Build lookup maps
 	const planMap = new Map(allPlans.map((p) => [p.guild_id, p]));
@@ -201,6 +167,7 @@ export async function load({ cookies, platform }) {
 
 	return {
 		servers,
+		botPresenceReason: botPresenceReliable ? null : botPresenceReason,
 		planTiers: PLAN_TIERS,
 	};
 }
