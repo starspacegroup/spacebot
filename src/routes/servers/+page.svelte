@@ -231,9 +231,33 @@
 	{/if}
 
 	<footer class="browse-cta">
-		<h2>{tr('browse.ctaTitle')}</h2>
-		<p>{tr('browse.ctaDesc')}</p>
-		<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
+		{#await data.manageable}
+			<h2>{tr('browse.ctaTitle')}</h2>
+			<p>{tr('browse.ctaDesc')}</p>
+			<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
+		{:then guilds}
+			{#if guilds.length > 0}
+				<h2>{tr('browse.manageTitle')}</h2>
+				<p>{tr('browse.manageDesc')}</p>
+				<div class="manage-list">
+					{#each guilds as guild (guild.id)}
+						<a href="/admin/{guild.id}/settings#listing" class="btn-primary">
+							{guilds.length === 1
+								? tr('browse.manageListing')
+								: tr('browse.manageListingFor', { name: guild.name })}
+						</a>
+					{/each}
+				</div>
+			{:else}
+				<h2>{tr('browse.ctaTitle')}</h2>
+				<p>{tr('browse.ctaDesc')}</p>
+				<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
+			{/if}
+		{:catch}
+			<h2>{tr('browse.ctaTitle')}</h2>
+			<p>{tr('browse.ctaDesc')}</p>
+			<a href="/admin" class="btn-primary">{tr('browse.ctaButton')}</a>
+		{/await}
 	</footer>
 </div>
 
@@ -670,6 +694,13 @@
 		margin: 0 0 1.1rem;
 		font-size: 0.88rem;
 		color: var(--color-text-muted);
+	}
+
+	.manage-list {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: center;
+		flex-wrap: wrap;
 	}
 
 	.btn-primary {
