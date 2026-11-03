@@ -80,6 +80,12 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       letter per game, hard mode, per-server allow and block lists, leaderboard. Off until a
       server turns it on, on the dashboard Activity page (`docs/shiritori.md`, migration
       0081). Open: the Activity strip, Computer as referee and as a seat
+- [x] Site traffic — a superadmin page counting views of the public marketing pages only (home,
+      invite, servers, docs, leaderboards, support, legal): views by hour or day, pages,
+      referrers, countries, device, system, browser, language, and the step counts from first
+      look to installed. Daily aggregates, nothing per visitor, no cookies or IP addresses;
+      ported from NebulaKit's stats stack (`docs/site-traffic.md`, migration 0084). Open:
+      viewport sizes, a per-page conversion view
 - [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
       server's command list, hashes it, and re-registers the server when it changed, so a
       deploy never needs `register-commands` (`docs/command-sync.md`, migration 0074)

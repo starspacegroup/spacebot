@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { dev } from '$app/env';
 import { EVENT_CATEGORIES, EVENT_TYPES, getLogs, getLogStats, log } from '$lib/db/logger.js';
 import { verifyGuildAccess } from '$lib/discord/guilds.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /**
  * Safely get environment variable, works in both Node.js and Cloudflare Workers
@@ -61,8 +62,8 @@ export async function GET({ params, url, cookies, platform }) {
 	}
 
 	// Parse query parameters
-	const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
-	const offset = parseInt(url.searchParams.get('offset') || '0');
+	const limit = intParam(url, 'limit', 50, 1, 100);
+	const offset = intParam(url, 'offset', 0, 0);
 	const category = url.searchParams.get('category');
 	const eventType = url.searchParams.get('eventType');
 	const actorId = url.searchParams.get('actorId');

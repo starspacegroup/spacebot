@@ -105,6 +105,13 @@
 				keywords: ['calendar', 'events', 'schedule', 'eventos'],
 			},
 			{
+				label: tr('cmd.listing.label'),
+				icon: '🪐',
+				path: '/listing',
+				desc: tr('cmd.listing.desc'),
+				keywords: ['listing', 'public', 'browser', 'discover', 'servers', 'listado'],
+			},
+			{
 				label: tr('cmd.integrations.label'),
 				icon: '🔌',
 				path: '/integrations',

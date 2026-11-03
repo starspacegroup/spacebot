@@ -16,6 +16,10 @@
 			<span class="nav-icon">👥</span>
 			Users
 		</a>
+		<a href="/admin/superadmin/traffic" class="nav-link">
+			<span class="nav-icon">📈</span>
+			Site traffic
+		</a>
 		<a href="/admin/superadmin/gateway" class="nav-link">
 			<span class="nav-icon">📡</span>
 			Gateway
