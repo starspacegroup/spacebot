@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { getSuperadminWorkflowTemplate } from '$lib/db/superadmin-workflows.js';
 import { listTemplateVersions } from '$lib/db/superadmin-workflow-versions.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** GET /api/superadmin/workflows/:id/versions — version history (newest first). */
 export async function GET({ cookies, platform, params, url }) {
@@ -18,7 +19,7 @@ export async function GET({ cookies, platform, params, url }) {
 	const template = await getSuperadminWorkflowTemplate(db, templateId);
 	if (!template) return json({ error: 'Workflow not found' }, { status: 404 });
 
-	const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+	const limit = intParam(url, 'limit', 50, 1, 200);
 	const versions = await listTemplateVersions(db, templateId, { limit });
 
 	return json({

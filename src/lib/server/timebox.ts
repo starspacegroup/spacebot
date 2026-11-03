@@ -376,6 +376,7 @@ export interface Participant {
 	prev_mute: number;
 	applied: number;
 	restore_pending: number;
+	goal: string | null;
 }
 
 export async function getParticipant(db, sessionId: number, userId: string) {
