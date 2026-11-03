@@ -16,6 +16,7 @@ import { json } from '@sveltejs/kit';
 import { authenticateApiKey, hasScope } from '$lib/api-auth.js';
 import { log } from '$lib/db/logger.js';
 import { getRoleMemberCounts } from '$lib/db/guild-cache.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ request, platform, url }) {
@@ -34,7 +35,7 @@ export async function GET({ request, platform, url }) {
 	}
 
 	try {
-		const days = Math.min(parseInt(url.searchParams.get('days') || '30'), 90);
+		const days = intParam(url, 'days', 30, 1, 90);
 
 		// Get aggregated stats
 		const statsResult = await db

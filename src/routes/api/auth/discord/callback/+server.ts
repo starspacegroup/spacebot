@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { safeReturnPath } from '$lib/server/safe-return-path.js';
+import { recordSiteEvent } from '$lib/server/site-traffic.js';
 import { log } from '$lib/db/logger.js';
 import { invalidateGuildCache } from '$lib/discord/guilds.js';
 import { upsertUser } from '$lib/db/users.js';
@@ -295,6 +296,13 @@ export async function GET({ request, url, cookies, platform }) {
 			// re-install. The gateway + daily metadata sync populate the full
 			// record from GET /guilds/{id}; the dashboard's guild list comes from
 			// the Discord API, not this table, so nothing is lost by waiting.
+
+			// Funnel counter: one more install finished. A count a day, nothing about who.
+			const trafficDb = (platform as any)?.env?.DB;
+			if (trafficDb) {
+				const write = recordSiteEvent(trafficDb, 'install_done').catch(() => {});
+				(platform as any)?.context?.waitUntil?.(write);
+			}
 
 			// Redirect to returnTo if set (e.g. upgrade flow), otherwise the installed server dashboard
 			const requestedReturn = safeReturnPath(flowData.returnTo);
