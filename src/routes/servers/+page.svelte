@@ -291,7 +291,7 @@
 									class={guild.listed
 										? 'btn-quiet strong'
 										: 'btn-primary btn-small'}
-									href="/admin/{guild.id}/settings#listing"
+									href="/admin/{guild.id}/listing"
 									>{guild.listed
 										? tr('browse.manageListing')
 										: tr('browse.listThisServer')}</a

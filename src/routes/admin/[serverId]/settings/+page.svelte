@@ -10,15 +10,6 @@
 	const tr = getTranslator();
 	const { data, form } = $props();
 
-	function getListingInviteError(result: unknown): string | undefined {
-		if (!result || typeof result !== 'object' || !('listingErrors' in result)) return;
-		const errors = result.listingErrors;
-		if (!errors || typeof errors !== 'object' || !('invite_url' in errors)) return;
-		return typeof errors.invite_url === 'string' ? errors.invite_url : undefined;
-	}
-
-	const listingInviteError = $derived(getListingInviteError(form));
-
 	let autoSaveTimer = null;
 	let settingsFormEl = $state(null);
 
@@ -113,134 +104,6 @@
 	let brandingBannerUrl = $state(data.branding?.banner_url || '');
 	// svelte-ignore state_referenced_locally
 	let brandingTagline = $state(data.branding?.public_tagline || '');
-
-	// Public server browser listing. Publishing is opt-in — `listed` is false
-	// until an admin ticks the box, and the server treats a missing checkbox as
-	// unlisted, so nothing here can publish a server by accident.
-	// svelte-ignore state_referenced_locally
-	let listingPublished = $state(Boolean(data.listing?.listed));
-	// svelte-ignore state_referenced_locally
-	let listingHeadline = $state(data.listing?.headline || '');
-	// svelte-ignore state_referenced_locally
-	let listingDescription = $state(data.listing?.description || '');
-	// svelte-ignore state_referenced_locally
-	let listingCategory = $state(data.listing?.category || 'community');
-	// svelte-ignore state_referenced_locally
-	let listingTags = $state((data.listing?.tags || []).join(', '));
-	// svelte-ignore state_referenced_locally
-	let listingInviteUrl = $state(data.listing?.invite_url || '');
-	// svelte-ignore state_referenced_locally
-	let listingShowMemberCount = $state(data.listing?.show_member_count !== false);
-	// svelte-ignore state_referenced_locally
-	let listingNsfw = $state(Boolean(data.listing?.nsfw));
-
-	/** What still has to be filled in before this server can go public. */
-	const listingBlockers = $derived(
-		[
-			listingHeadline.trim() ? null : tr('listing.blockerHeadline'),
-			listingInviteUrl.trim() ? null : tr('listing.blockerInvite'),
-		].filter(Boolean)
-	);
-
-	/**
-	 * Auto-save the listing, but don't fire a doomed request: while the publish
-	 * box is ticked and required copy is missing the server would reject the
-	 * whole settings save, so hold off and let the inline hint do the talking.
-	 */
-	function autoSaveListing() {
-		if (listingPublished && listingBlockers.length > 0) return;
-		autoSave();
-	}
-
-	// --- AI drafting -------------------------------------------------------
-	// The draft is applied to the form but deliberately NOT saved. This copy is
-	// public-facing, and on an already-published server an auto-save would put
-	// machine-written text live before anyone read it — so the admin keeps or
-	// discards it explicitly.
-	let draftLoading = $state(false);
-	let draftPending = $state(false);
-	let draftBackup: Record<string, any> | null = null;
-
-	async function draftWithAI() {
-		if (draftLoading) return;
-		draftLoading = true;
-		try {
-			const res = await fetch(`/api/admin/${data.serverId}/listing/suggest`, {
-				method: 'POST',
-			});
-			const body = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				toast.error(body?.error || tr('listing.aiFailed'));
-				return;
-			}
-
-			// Snapshot first so Discard is a real undo, not an approximation.
-			draftBackup = {
-				headline: listingHeadline,
-				description: listingDescription,
-				category: listingCategory,
-				tags: listingTags,
-			};
-			listingHeadline = body.draft?.headline || listingHeadline;
-			listingDescription = body.draft?.description || listingDescription;
-			listingCategory = body.draft?.category || listingCategory;
-			if (Array.isArray(body.draft?.tags) && body.draft.tags.length) {
-				listingTags = body.draft.tags.join(', ');
-			}
-			draftPending = true;
-			toast.success(tr('listing.aiFilled'));
-		} catch {
-			toast.error(tr('listing.aiFailed'));
-		} finally {
-			draftLoading = false;
-		}
-	}
-
-	function keepDraft() {
-		draftPending = false;
-		draftBackup = null;
-		autoSaveListing();
-	}
-
-	function discardDraft() {
-		if (draftBackup) {
-			listingHeadline = draftBackup.headline;
-			listingDescription = draftBackup.description;
-			listingCategory = draftBackup.category;
-			listingTags = draftBackup.tags;
-		}
-		draftPending = false;
-		draftBackup = null;
-	}
-
-	// --- Bot-generated invite ----------------------------------------------
-	let inviteLoading = $state(false);
-
-	async function generateInvite() {
-		if (inviteLoading) return;
-		inviteLoading = true;
-		try {
-			const res = await fetch(`/api/admin/${data.serverId}/listing/invite`, {
-				method: 'POST',
-			});
-			const body = await res.json().catch(() => ({}));
-			if (!res.ok || !body?.invite_url) {
-				toast.error(body?.error || tr('listing.inviteFailed'));
-				return;
-			}
-			listingInviteUrl = body.invite_url;
-			// Unlike the AI copy, this is a fact about the server rather than a
-			// piece of writing to review, so it saves like any other field edit.
-			autoSaveListing();
-			toast.success(
-				body.source === 'created' ? tr('listing.inviteCreated') : tr('listing.inviteFound')
-			);
-		} catch {
-			toast.error(tr('listing.inviteFailed'));
-		} finally {
-			inviteLoading = false;
-		}
-	}
 
 	// Browser timezone detection
 	let browserTimezone = $state('');
@@ -349,14 +212,6 @@
 		brandingLogoUrl = data.branding?.logo_url || '';
 		brandingBannerUrl = data.branding?.banner_url || '';
 		brandingTagline = data.branding?.public_tagline || '';
-		listingPublished = Boolean(data.listing?.listed);
-		listingHeadline = data.listing?.headline || '';
-		listingDescription = data.listing?.description || '';
-		listingCategory = data.listing?.category || 'community';
-		listingTags = (data.listing?.tags || []).join(', ');
-		listingInviteUrl = data.listing?.invite_url || '';
-		listingShowMemberCount = data.listing?.show_member_count !== false;
-		listingNsfw = Boolean(data.listing?.nsfw);
 		viewDashboardPerm = data.permissionSettings?.viewDashboard?.permission || 'MANAGE_GUILD';
 		viewLogsPerm = data.permissionSettings?.viewLogs?.permission || 'MANAGE_GUILD';
 		manageAutomationsPerm =
@@ -734,234 +589,25 @@
 			</div>
 		</section>
 
-		<!-- Public server browser listing -->
+		<!-- Public listing: edited on its own page -->
 		<section class="settings-section" id="listing">
 			<h2>
 				<span class="section-icon">🪐</span>
-				{tr('listing.sectionTitle')}
+				{tr('lst.cardTitle')}
 			</h2>
-			<p class="section-desc">{tr('listing.sectionDesc')}</p>
-
-			{#if data.listing?.review_status === 'rejected'}
-				<div class="listing-notice listing-notice-warn">
-					<strong>{tr('listing.removedTitle')}</strong>
-					<span>{data.listing.review_note || tr('listing.removedDesc')} </span>
+			<a class="listing-link-card" href="/admin/{data.serverId}/listing">
+				<div class="listing-link-text">
+					<strong>
+						{#if data.listingLive}
+							<span class="listing-dot live"></span>{tr('lst.cardLive')}
+						{:else}
+							<span class="listing-dot"></span>{tr('lst.cardOff')}
+						{/if}
+					</strong>
+					<span>{tr('lst.cardDesc')}</span>
 				</div>
-			{/if}
-
-			<div class="settings-card">
-				<div class="setting-row">
-					<div class="setting-info">
-						<label for="listingPublished" class="setting-label"
-							>{tr('listing.publishLabel')}</label
-						>
-						<span class="setting-desc">{tr('listing.publishDesc')}</span>
-					</div>
-					<div class="setting-control">
-						<label class="listing-switch">
-							<input
-								id="listingPublished"
-								name="listingPublished"
-								type="checkbox"
-								bind:checked={listingPublished}
-								onchange={autoSaveListing}
-							/>
-							<span class="listing-switch-track"></span>
-							<span class="listing-switch-text"
-								>{listingPublished
-									? tr('listing.statePublished')
-									: tr('listing.stateUnlisted')}</span
-							>
-						</label>
-					</div>
-				</div>
-
-				{#if listingPublished && listingBlockers.length > 0}
-					<div class="listing-notice listing-notice-info">
-						<strong>{tr('listing.blockersTitle')}</strong>
-						<ul>
-							{#each listingBlockers as blocker}
-								<li>{blocker}</li>
-							{/each}
-						</ul>
-					</div>
-				{:else if listingPublished && data.listingVisible}
-					<p class="listing-live">
-						{tr('listing.liveHint')}
-						<a href="/servers/{data.serverId}">{tr('listing.viewPublicPage')}</a>
-					</p>
-				{:else if listingPublished && data.listing?.review_status !== 'rejected'}
-					<!-- Opted in, not taken down, but still not showing: the guild's
-					     metadata has gone stale, which means SpaceBot is no longer in
-					     the server. Say so rather than claiming it's live. -->
-					<div class="listing-notice listing-notice-warn">
-						<strong>{tr('listing.notVisibleTitle')}</strong>
-						<span
-							>{tr('listing.notVisibleDesc', {
-								days: data.listingFreshnessDays ?? 7,
-							})}</span
-						>
-					</div>
-				{/if}
-			</div>
-
-			<div class="settings-card listing-assist-card">
-				<div class="setting-info">
-					<span class="setting-label">{tr('listing.aiTitle')}</span>
-					<span class="setting-desc">{tr('listing.aiDesc')}</span>
-				</div>
-				<button
-					type="button"
-					class="btn btn-secondary btn-sm listing-assist-btn"
-					onclick={draftWithAI}
-					disabled={draftLoading}
-				>
-					{draftLoading ? tr('listing.aiWorking') : `✨ ${tr('listing.aiButton')}`}
-				</button>
-			</div>
-
-			{#if draftPending}
-				<div class="listing-notice listing-notice-info listing-draft-bar">
-					<div>
-						<strong>{tr('listing.aiPendingTitle')}</strong>
-						<span>{tr('listing.aiPendingDesc')}</span>
-					</div>
-					<div class="listing-draft-actions">
-						<button type="button" class="btn btn-primary btn-sm" onclick={keepDraft}
-							>{tr('listing.aiKeep')}</button
-						>
-						<button
-							type="button"
-							class="btn btn-secondary btn-sm"
-							onclick={discardDraft}>{tr('listing.aiDiscard')}</button
-						>
-					</div>
-				</div>
-			{/if}
-
-			<div class="settings-card">
-				<label for="listingHeadline" class="setting-label">{tr('listing.headline')}</label>
-				<span class="setting-desc">{tr('listing.headlineDesc')}</span>
-				<input
-					id="listingHeadline"
-					name="listingHeadline"
-					class="form-input"
-					bind:value={listingHeadline}
-					maxlength="120"
-					placeholder={tr('listing.headlinePlaceholder')}
-					onchange={autoSaveListing}
-				/>
-			</div>
-
-			<div class="settings-card">
-				<label for="listingDescription" class="setting-label"
-					>{tr('listing.description')}</label
-				>
-				<span class="setting-desc">{tr('listing.descriptionDesc')}</span>
-				<textarea
-					id="listingDescription"
-					name="listingDescription"
-					class="form-input listing-textarea"
-					bind:value={listingDescription}
-					maxlength="1000"
-					rows="4"
-					placeholder={tr('listing.descriptionPlaceholder')}
-					onchange={autoSaveListing}></textarea>
-				<span class="listing-counter">{listingDescription.length}/1000</span>
-			</div>
-
-			<div class="settings-grid">
-				<div class="settings-card">
-					<label for="listingCategory" class="setting-label"
-						>{tr('listing.category')}</label
-					>
-					<select
-						id="listingCategory"
-						name="listingCategory"
-						class="permission-select"
-						bind:value={listingCategory}
-						onchange={autoSaveListing}
-					>
-						{#each data.listingCategories || [] as cat}
-							<option value={cat.value}>{cat.label}</option>
-						{/each}
-					</select>
-				</div>
-				<div class="settings-card">
-					<label for="listingTags" class="setting-label">{tr('listing.tags')}</label>
-					<input
-						id="listingTags"
-						name="listingTags"
-						class="form-input"
-						bind:value={listingTags}
-						placeholder={tr('listing.tagsPlaceholder')}
-						onchange={autoSaveListing}
-					/>
-					<span class="setting-desc">{tr('listing.tagsDesc')}</span>
-				</div>
-			</div>
-
-			<div class="settings-card">
-				<label for="listingInviteUrl" class="setting-label">{tr('listing.invite')}</label>
-				<span class="setting-desc">{tr('listing.inviteDesc')}</span>
-				<div class="listing-invite-row">
-					<input
-						id="listingInviteUrl"
-						name="listingInviteUrl"
-						class="form-input"
-						class:input-error={Boolean(listingInviteError)}
-						bind:value={listingInviteUrl}
-						placeholder="https://discord.gg/your-invite"
-						onchange={autoSaveListing}
-					/>
-					<button
-						type="button"
-						class="btn btn-secondary btn-sm listing-assist-btn"
-						onclick={generateInvite}
-						disabled={inviteLoading}
-					>
-						{inviteLoading ? tr('listing.inviteWorking') : tr('listing.inviteButton')}
-					</button>
-				</div>
-				{#if listingInviteError}
-					<span class="listing-error">{listingInviteError}</span>
-				{/if}
-			</div>
-
-			<div class="settings-card">
-				<div class="setting-row">
-					<div class="setting-info">
-						<label for="listingShowMemberCount" class="setting-label"
-							>{tr('listing.showMembers')}</label
-						>
-						<span class="setting-desc">{tr('listing.showMembersDesc')}</span>
-					</div>
-					<div class="setting-control">
-						<input
-							id="listingShowMemberCount"
-							name="listingShowMemberCount"
-							type="checkbox"
-							bind:checked={listingShowMemberCount}
-							onchange={autoSaveListing}
-						/>
-					</div>
-				</div>
-				<div class="setting-row">
-					<div class="setting-info">
-						<label for="listingNsfw" class="setting-label">{tr('listing.nsfw')}</label>
-						<span class="setting-desc">{tr('listing.nsfwDesc')}</span>
-					</div>
-					<div class="setting-control">
-						<input
-							id="listingNsfw"
-							name="listingNsfw"
-							type="checkbox"
-							bind:checked={listingNsfw}
-							onchange={autoSaveListing}
-						/>
-					</div>
-				</div>
-			</div>
+				<span class="listing-link-go">{tr('lst.cardOpen')} →</span>
+			</a>
 		</section>
 
 		<!-- Timezone Settings -->
@@ -2112,184 +1758,54 @@
 		padding: 0.35rem 0.625rem;
 	}
 
-	/* Public server browser listing */
-	.listing-switch {
-		display: inline-flex;
+	/* Public listing link card */
+	.listing-link-card {
+		display: flex;
 		align-items: center;
-		gap: 0.6rem;
-		cursor: pointer;
-		user-select: none;
-	}
-
-	.listing-switch input {
-		position: absolute;
-		opacity: 0;
-		width: 0;
-		height: 0;
-	}
-
-	.listing-switch-track {
-		position: relative;
-		width: 2.75rem;
-		height: 1.5rem;
-		border-radius: var(--radius-full);
-		background: var(--color-border);
-		transition: background var(--transition-fast);
-		flex-shrink: 0;
-	}
-
-	.listing-switch-track::after {
-		content: '';
-		position: absolute;
-		top: 0.1875rem;
-		left: 0.1875rem;
-		width: 1.125rem;
-		height: 1.125rem;
-		border-radius: 50%;
-		background: var(--color-surface);
-		box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
-		transition: transform var(--transition-fast);
-	}
-
-	.listing-switch input:checked + .listing-switch-track {
-		background: var(--color-primary);
-	}
-
-	.listing-switch input:checked + .listing-switch-track::after {
-		transform: translateX(1.25rem);
-	}
-
-	.listing-switch input:focus-visible + .listing-switch-track {
-		outline: 2px solid var(--color-primary);
-		outline-offset: 2px;
-	}
-
-	.listing-switch-text {
-		font-size: 0.85rem;
-		font-weight: 500;
-		color: var(--color-text-secondary);
-	}
-
-	.listing-notice {
-		margin-top: 0.875rem;
-		padding: 0.75rem 0.875rem;
-		border-radius: var(--radius-md);
-		font-size: 0.8rem;
-		line-height: 1.5;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 1rem 1.25rem;
 		border: 1px solid var(--color-border);
-	}
-
-	.listing-notice strong {
-		display: block;
-		margin-bottom: 0.25rem;
+		border-radius: var(--radius-lg);
+		background: var(--color-surface);
 		color: var(--color-text);
-	}
-
-	.listing-notice ul {
-		margin: 0;
-		padding-left: 1.1rem;
-		color: var(--color-text-secondary);
-	}
-
-	.listing-notice-info {
-		background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-		border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
-	}
-
-	.listing-notice-warn {
-		background: color-mix(in srgb, var(--color-danger) 8%, transparent);
-		border-color: color-mix(in srgb, var(--color-danger) 35%, transparent);
-	}
-
-	.listing-live {
-		margin: 0.875rem 0 0;
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
-	}
-
-	.listing-live a {
-		color: var(--color-primary);
 		text-decoration: none;
 	}
 
-	.listing-live a:hover {
-		text-decoration: underline;
+	.listing-link-card:hover {
+		border-color: var(--color-primary);
 	}
 
-	.listing-textarea {
-		resize: vertical;
-		min-height: 5.5rem;
-		font-family: inherit;
-		line-height: 1.5;
-	}
-
-	.listing-counter {
-		display: block;
-		margin-top: 0.375rem;
-		text-align: right;
-		font-size: 0.7rem;
+	.listing-link-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		font-size: 0.85rem;
 		color: var(--color-text-muted);
-		font-variant-numeric: tabular-nums;
 	}
 
-	.listing-error {
-		display: block;
-		margin-top: 0.375rem;
-		font-size: 0.75rem;
-		color: var(--color-danger);
-	}
-
-	.input-error {
-		border-color: var(--color-danger);
-	}
-
-	.listing-assist-card {
-		display: flex;
+	.listing-link-text strong {
+		display: inline-flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
+		gap: 0.45rem;
+		font-size: 0.95rem;
+		color: var(--color-text);
 	}
 
-	.listing-assist-btn {
-		flex-shrink: 0;
+	.listing-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--color-text-muted);
+	}
+
+	.listing-dot.live {
+		background: var(--color-success);
+	}
+
+	.listing-link-go {
+		color: var(--color-primary);
+		font-size: 0.88rem;
 		white-space: nowrap;
-	}
-
-	.listing-assist-btn:disabled {
-		opacity: 0.6;
-		cursor: progress;
-	}
-
-	.listing-draft-bar {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		flex-wrap: wrap;
-	}
-
-	.listing-draft-actions {
-		display: flex;
-		gap: 0.5rem;
-		flex-shrink: 0;
-	}
-
-	.listing-invite-row {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
-	.listing-invite-row .form-input {
-		flex: 1;
-		min-width: 0;
-	}
-
-	@media (max-width: 560px) {
-		.listing-invite-row {
-			flex-direction: column;
-			align-items: stretch;
-		}
 	}
 </style>

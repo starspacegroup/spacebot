@@ -71,7 +71,7 @@
 				<div class="detail-actions">
 					{#await data.canManage then canManage}
 						{#if canManage}
-							<a class="btn-manage" href="/admin/{listing.guild_id}/settings#listing"
+							<a class="btn-manage" href="/admin/{listing.guild_id}/listing"
 								>{tr('browse.manageThisListing')}</a
 							>
 						{/if}
