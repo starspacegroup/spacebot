@@ -1,0 +1,43 @@
+name: Sync slash commands after deploy
+
+# Cloudflare Pages deploys main from its own Git integration. This waits until
+# that build is live (/_app/version.json reports the pushed commit), then syncs
+# every server's slash commands at once. The minute sweep (minute-command-sync)
+# is the backstop if this job fails or is skipped. See docs/command-sync.md.
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+
+concurrency:
+    group: sync-commands-after-deploy
+    cancel-in-progress: true
+
+jobs:
+    sync:
+        name: Sync commands
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        permissions:
+            contents: read
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Wait for the deploy, then sync every server
+              env:
+                  SPACEBOT_API_BASE: ${{ secrets.ORCHESTRATOR_SPACEBOT_API_BASE }}
+                  CRON_SECRET: ${{ secrets.CRON_SECRET }}
+              run: |
+                  if [[ -z "$SPACEBOT_API_BASE" || -z "$CRON_SECRET" ]]; then
+                    echo "::warning::ORCHESTRATOR_SPACEBOT_API_BASE or CRON_SECRET is not set; skipping. The minute sweep will sync."
+                    exit 0
+                  fi
+                  bun scripts/sync-commands.ts --sha "$GITHUB_SHA"

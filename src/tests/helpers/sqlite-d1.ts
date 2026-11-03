@@ -38,6 +38,7 @@ class Statement {
 export interface SqliteD1 {
 	prepare(sql: string): Statement;
 	exec(sql: string): void;
+	batch(statements: Statement[]): Promise<any[]>;
 	close(): void;
 }
 
@@ -47,6 +48,19 @@ export function createSqliteD1(schema?: string): SqliteD1 {
 	return {
 		prepare: (sql: string) => new Statement(db, sql),
 		exec: (sql: string) => db.exec(sql),
+		// D1's batch runs its statements in order, in one transaction.
+		batch: async (statements: Statement[]) => {
+			const out: any[] = [];
+			db.exec('BEGIN');
+			try {
+				for (const st of statements) out.push(await st.run());
+				db.exec('COMMIT');
+			} catch (err) {
+				db.exec('ROLLBACK');
+				throw err;
+			}
+			return out;
+		},
 		close: () => db.close(),
 	};
 }

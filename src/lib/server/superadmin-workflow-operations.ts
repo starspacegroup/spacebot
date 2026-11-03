@@ -39,6 +39,14 @@ import { processScheduledMessages, getPendingMessages } from '$lib/db/scheduled-
 import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { sweepAllTimedOutRunnerJobs, createRunnerJob } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
+import { listRoomsForReaping } from '$lib/db/managed-channels.js';
+import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
+import { sweepQuorum } from '$lib/server/quorum.js';
+import { sweepTimebox } from '$lib/server/timebox.js';
+import { sweepGame } from '$lib/server/game.js';
+import { sweepShiritori } from '$lib/server/shiritori-game.js';
+import { createDiscordRestClient } from '$lib/discord/rest-client.js';
+import { sweepCommandSync } from '$lib/discord/commands.js';
 import { log } from '$lib/log.js';
 
 const RUNNER_WAIT_POLL_MS = 2_500;
@@ -381,6 +389,52 @@ const OPERATIONS = {
 			const seconds = Math.max(0, Math.min(30, Number(ctx.data.seconds) || 1));
 			await sleep(seconds * 1000);
 			return { slept_seconds: seconds };
+		},
+	},
+	// --- Minute sweeps ---
+	// The minute presets (rooms, timebox, game, quorum, command sync) named
+	// these operations before they existed here, so every run failed with
+	// "Unknown workflow operation" and none of the sweeps ran from the
+	// dispatcher. workflow-presets-shape.test.ts now checks every preset
+	// operation is registered.
+	listRoomsForReaping: {
+		description: 'Count member rooms that are open and may need reaping',
+		handler: async (ctx) => {
+			const rooms = await listRoomsForReaping(ctx.db);
+			ctx.variables.rooms_open = rooms.length;
+			return { count: rooms.length };
+		},
+	},
+	reapManagedChannels: {
+		description: 'Delete member rooms that have expired or sat empty past their idle window',
+		destructive: true,
+		handler: (ctx) => reapManagedChannels(ctx.db, requireBotToken(ctx)),
+	},
+	sweepTimebox: {
+		description: 'Advance running timeboxes and keep their deafens in step',
+		handler: (ctx) => sweepTimebox(ctx.db, requireBotToken(ctx)),
+	},
+	sweepGame: {
+		description: 'Resolve overdue hidden-agent rounds and time out Shiritori turns',
+		handler: async (ctx) => {
+			const token = requireBotToken(ctx);
+			const game = await sweepGame(ctx.db, token);
+			// Its own failure must not fail the Game sweep: that one lifts mutes.
+			const shiritori = await sweepShiritori(ctx.db, createDiscordRestClient(token)).catch(
+				(err: any) => ({ error: String(err?.message ?? err) })
+			);
+			return { ...game, shiritori };
+		},
+	},
+	sweepQuorum: {
+		description: 'Close quorum questions at their deadline and send reminders',
+		handler: (ctx) => sweepQuorum(ctx.db, requireBotToken(ctx)),
+	},
+	syncCommands: {
+		description: "Re-register each server's slash commands whose list changed",
+		handler: (ctx) => {
+			requireBotToken(ctx);
+			return sweepCommandSync(ctx.db, ctx.platform?.env ?? process.env);
 		},
 	},
 	noop: {

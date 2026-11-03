@@ -10,13 +10,12 @@ import {
 	ACTION_TYPES,
 	deleteCommand,
 	getCommand,
-	getGuildCommands,
 	updateCommand,
 } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { log } from '$lib/db/logger.js';
 import { verifyGuildAdmin } from '$lib/discord/guilds.js';
-import { checkPlanLimit } from '$lib/db/server-plans.js';
+import { setCommandEnabled } from '$lib/server/control-actions.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
 /** @type {import('./$types').RequestHandler} */
@@ -81,36 +80,18 @@ export async function PATCH({ params, request, cookies, platform }) {
 
 		// Handle toggle action
 		if (body.action === 'toggle') {
-			// If enabling, check plan limits
-			if (body.enabled) {
-				try {
-					const activeCommands = await getGuildCommands(db, guildId, {
-						enabledOnly: true,
-					});
-					const planCheck = await checkPlanLimit(
-						db,
-						guildId,
-						'commands',
-						activeCommands.length
-					);
-					if (!planCheck.allowed) {
-						return json(
-							{
-								error: `Command limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another command first.`,
-							},
-							{ status: 403 }
-						);
-					}
-				} catch (err) {
-					log.warn('Plan limit check failed, allowing toggle:', err);
-				}
+			// Built-in commands were checked for superadmin above.
+			const result = await setCommandEnabled(
+				db,
+				(platform as any)?.env,
+				guildId,
+				id,
+				!!body.enabled,
+				{ builtIn: 'global' }
+			);
+			if (!result.ok) {
+				return json({ error: result.error }, { status: result.status });
 			}
-			const result = await updateCommand(db, id, { enabled: body.enabled }, guildId);
-			if (!result.success) {
-				return json({ error: 'Failed to toggle command' }, { status: 500 });
-			}
-			// Auto-sync to Discord
-			await syncGuildCommands(db, guildId, (platform as any)?.env);
 			return json({ success: true, enabled: body.enabled });
 		}
 

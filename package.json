@@ -25,6 +25,7 @@
 		"prepare": "svelte-kit sync || echo '' ; husky || true",
 		"typecheck": "svelte-kit sync && svelte-check --tsgo --tsconfig ./tsconfig.json",
 		"register-commands": "bun scripts/register-commands.ts",
+		"sync-commands": "bun scripts/sync-commands.ts",
 		"register-linked-role": "bun scripts/register-linked-role-metadata.ts",
 		"runner": "bun run scripts/local-runner/index.ts",
 		"runner:headless": "bun run scripts/local-runner/index.ts --headless",

@@ -224,6 +224,9 @@
 				<span>📋</span>
 				{showLogs ? 'Hide Logs' : 'View Logs'}
 			</button>
+			<a href="/admin/{selectedGuildId}/automations/templates" class="btn btn-secondary">
+				Templates
+			</a>
 			<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-primary">
 				<span>➕</span>
 				Create Automation
@@ -429,7 +432,13 @@
 				<div class="empty-icon">🤖</div>
 				<h2>No Automations Yet</h2>
 				<p>Create your first automation to get started.</p>
-				<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-primary btn-lg">
+				<a
+					href="/admin/{selectedGuildId}/automations/templates"
+					class="btn btn-primary btn-lg"
+				>
+					Start from a template
+				</a>
+				<a href="/admin/{selectedGuildId}/automations/new" class="btn btn-secondary btn-lg">
 					<span>➕</span>
 					Create Your First Automation
 				</a>

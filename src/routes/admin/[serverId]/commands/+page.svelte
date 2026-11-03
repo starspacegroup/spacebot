@@ -11,6 +11,7 @@
 	let { data, form } = $props();
 
 	let showLogs = $state(false);
+	let syncing = $state(false);
 	let processingId = $state(null);
 	// Built-ins a server cannot turn off. The server refuses the write too; this
 	// is so the dashboard does not offer a toggle that springs back.
@@ -116,8 +117,43 @@
 				{tr('adash.links.commands')}
 			</h1>
 			<p class="header-subtitle">{tr('commands.subtitle')}</p>
+			<p class="sync-status" data-testid="command-sync-status">
+				{#if data.commandSync?.syncedAt}
+					{tr('commands.lastSynced', {
+						when: formatRelativeTime(data.commandSync.syncedAt),
+					})}
+				{:else}
+					{tr('commands.neverSynced')}
+				{/if}
+				{#if data.commandSync?.lastError}
+					<span class="sync-error"
+						>{tr('commands.lastSyncError', { error: data.commandSync.lastError })}</span
+					>
+				{/if}
+			</p>
 		</div>
 		<div class="header-actions">
+			<form
+				method="POST"
+				action="?/sync"
+				use:enhance={() => {
+					syncing = true;
+					return async ({ result }) => {
+						syncing = false;
+						if (result.type === 'success') {
+							toast.success(tr('commands.synced'));
+						} else if (result.type === 'failure') {
+							toast.error(String((result.data as any)?.error ?? 'Sync failed'));
+						}
+						await invalidateAll();
+					};
+				}}
+			>
+				<button type="submit" class="btn btn-secondary" disabled={syncing}>
+					<span>🔄</span>
+					{syncing ? tr('commands.syncing') : tr('commands.syncNow')}
+				</button>
+			</form>
 			<button class="btn btn-secondary" onclick={() => (showLogs = !showLogs)}>
 				<span>📋</span>
 				{showLogs ? tr('commands.hideLogs') : tr('commands.viewLogs')}
@@ -580,6 +616,20 @@
 	.header-subtitle {
 		color: var(--text-muted);
 		margin: 0.25rem 0 0;
+	}
+
+	.sync-status {
+		margin: 0.5rem 0 0;
+		font-size: 0.875rem;
+		color: var(--text-muted);
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem 0.75rem;
+	}
+
+	.sync-error {
+		color: var(--color-danger);
+		overflow-wrap: anywhere;
 	}
 
 	.header-actions {
