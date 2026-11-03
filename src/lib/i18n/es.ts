@@ -1399,12 +1399,13 @@ export const es: Record<string, string> = {
 
 	// --- Explorador público de servidores ---
 	'nav.browseServers': 'Explorar servidores',
-	'browse.metaTitle': 'Explorador de servidores — SpaceBot',
+	'browse.metaTitle': 'Explorador de servidores de Discord — SpaceBot',
 	'browse.metaDescription':
 		'Explora comunidades de Discord que usan SpaceBot y eligieron aparecer públicamente.',
-	'browse.title': 'Explorador de servidores',
-	'browse.subtitle': 'Comunidades con SpaceBot que eligieron aparecer públicamente.',
-	'browse.searchPlaceholder': 'Buscar servidores, temas, etiquetas…',
+	'browse.title': 'Explorador de servidores de Discord',
+	'browse.subtitle':
+		'Encuentra una comunidad de Discord. Todos los servidores aquí usan SpaceBot y eligieron aparecer.',
+	'browse.searchPlaceholder': 'Buscar servidores de Discord, temas, etiquetas…',
 	'browse.searchButton': 'Buscar',
 	'browse.sortLabel': 'Ordenar servidores',
 	'browse.sortRecent': 'Añadidos recientemente',

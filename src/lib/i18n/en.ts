@@ -1373,12 +1373,13 @@ export const en: Record<string, string> = {
 
 	// --- Public server browser ---
 	'nav.browseServers': 'Server browser',
-	'browse.metaTitle': 'Server Browser — SpaceBot',
+	'browse.metaTitle': 'Discord Server Browser — SpaceBot',
 	'browse.metaDescription':
 		'Browse Discord communities that run on SpaceBot and chose to be listed publicly.',
-	'browse.title': 'Server browser',
-	'browse.subtitle': 'Communities running SpaceBot that chose to be listed publicly.',
-	'browse.searchPlaceholder': 'Search servers, topics, tags…',
+	'browse.title': 'Discord server browser',
+	'browse.subtitle':
+		'Find a Discord community to join. Every server here runs SpaceBot and chose to be listed.',
+	'browse.searchPlaceholder': 'Search Discord servers, topics, tags…',
 	'browse.searchButton': 'Search',
 	'browse.sortLabel': 'Sort servers',
 	'browse.sortRecent': 'Recently listed',
