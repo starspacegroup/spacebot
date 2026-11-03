@@ -869,8 +869,20 @@
 	.lst {
 		max-width: 1180px;
 		margin: 0 auto;
-		padding: 0 0 4rem;
+		padding: 1.5rem 1rem 4rem;
 		color: var(--color-text);
+	}
+
+	@media (min-width: 768px) {
+		.lst {
+			padding: 2rem 1.5rem 4rem;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.lst {
+			padding: 2.5rem 2rem 4rem;
+		}
 	}
 
 	/* Header */
@@ -1124,7 +1136,7 @@
 		color: var(--color-success);
 	}
 
-	.lst-hint {
+	.lst-progress .lst-hint {
 		margin: 0.75rem 0 0;
 		font-size: 0.78rem;
 		color: var(--color-text-muted);
@@ -1162,18 +1174,25 @@
 	.field {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
+		gap: 0.5rem;
 		border: 0;
 		padding: 0;
 		margin: 0;
 		min-width: 0;
 	}
 
-	.field label,
+	.field label:not(.cat),
 	.field legend {
 		font-size: 0.85rem;
 		font-weight: 600;
 		padding: 0;
+		margin-top: 0;
+		/* A legend is not a flex item, so the field's gap does not reach it. */
+		margin-bottom: 0.55rem;
+	}
+
+	.lst .field .field-label-row label {
+		margin: 0;
 	}
 
 	.field-label-row {
@@ -1249,11 +1268,11 @@
 	/* Category picker */
 	.cats {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
 		gap: 0.5rem;
 	}
 
-	.cat {
+	.field .cat {
 		position: relative;
 		display: flex;
 		align-items: center;
