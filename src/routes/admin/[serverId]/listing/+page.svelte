@@ -1602,9 +1602,12 @@
 	.pv-top,
 	.pv-page-top {
 		display: flex;
-		align-items: flex-end;
+		align-items: flex-start;
 		gap: 0.7rem;
 		margin-top: -22px;
+		/* Paint above the banner, which is positioned. */
+		position: relative;
+		z-index: 1;
 	}
 
 	.pv-icon {
@@ -1636,7 +1639,8 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-		padding-bottom: 0.15rem;
+		/* Start below the banner edge: the icon overlaps it by 22px. */
+		padding-top: 28px;
 		flex: 1;
 	}
 
@@ -1651,6 +1655,8 @@
 	.pv-titles strong.lg {
 		font-size: 1.25rem;
 		color: var(--color-text);
+		white-space: normal;
+		overflow-wrap: break-word;
 	}
 
 	.pv-titles span {
@@ -1736,6 +1742,18 @@
 		background: var(--color-danger-soft);
 		color: var(--color-danger);
 		font-weight: 700;
+	}
+
+	.pv-page-top {
+		flex-wrap: wrap;
+	}
+
+	.pv-page-top .pv-titles {
+		flex-basis: 9rem;
+	}
+
+	.pv-page-top .pv-join {
+		margin-top: 0.15rem;
 	}
 
 	.pv-join {
