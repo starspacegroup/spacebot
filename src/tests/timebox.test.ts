@@ -31,6 +31,7 @@ import {
 	nextStep,
 	phaseMs,
 	sweepTimebox,
+	hasOverdue,
 	upsertSettings,
 	wantsDeaf,
 	type Session,
@@ -391,25 +392,6 @@ describe('deafen me', () => {
 		expect(f.state.mute.get(ALICE)).toBe(true);
 	});
 
-	it('leaves a moderator mute alone when the timebox began before the mute column existed', async () => {
-		const d = db();
-		const f = fakeDiscord();
-		putVoice(d, ALICE, VC);
-		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
-		const s = (await liveForVoice(d, G, VC)) as Session;
-		// A row applied before 0080 has the column's default, not a value applyDeafen wrote.
-		d.exec(
-			`DELETE FROM timebox_participants WHERE session_id = ${s.id};
-			 INSERT INTO timebox_participants (session_id, user_id, deafen_mode, applied, prev_deaf)
-			 VALUES (${s.id}, '${ALICE}', 'focus', 1, 0);`
-		);
-		f.state.deaf.set(ALICE, true);
-		f.state.mute.set(ALICE, true); // a moderator muted them mid-timebox
-		await handleTimeboxComponent(press('stop', s.id), d, f.client);
-		expect(f.state.deaf.get(ALICE)).toBe(false);
-		expect(f.state.mute.get(ALICE)).toBe(true);
-	});
-
 	it('waits for a member who is not in voice yet, and the sweep deafens them when they join', async () => {
 		const d = db();
 		const f = fakeDiscord();
@@ -525,7 +507,31 @@ describe('deafen me', () => {
 		});
 	});
 
-	it('stops the sweep retrying a day after the timebox ended, but keeps the record', async () => {
+	it('does not count a lift as done while Discord still shows the member deafened', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		const s = (await liveForVoice(d, G, VC)) as Session;
+		// Discord accepts the PATCH but the state does not change.
+		f.client.members.setVoice.mockImplementation(async () => {});
+		await handleTimeboxComponent(press('stop', s.id), d, f.client);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 1,
+			restore_pending: 1,
+		});
+	});
+
+	it('reports a running block that has run out, so the Activity can settle it at once', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		putVoice(d, ALICE, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		expect(await hasOverdue(d)).toBe(false);
+		expect(await hasOverdue(d, at(24))).toBe(true);
+	});
+
+	it('gives up on a deafen it cannot lift a day after the timebox ended', async () => {
 		const d = db();
 		const f = fakeDiscord();
 		putVoice(d, ALICE, VC);

@@ -7,7 +7,7 @@
  * The cache is stored per-user and has a configurable TTL.
  */
 
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '../db/logger.js';
 
 // Cache TTL in seconds (15 minutes - longer to reduce API calls over tunnel)

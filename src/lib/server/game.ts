@@ -27,6 +27,7 @@
 
 import { openActivityButton } from '$lib/discord/activity-button.js';
 import { log } from '../log.js';
+import { getGameDisplay } from './game-display.js';
 import { getCommandByName } from '../db/commands.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { ADMINISTRATOR, parsePermissionBits } from '../discord/command-permissions.js';
@@ -851,13 +852,24 @@ async function post(discord, round: Round, message: Record<string, any>) {
 	}
 }
 
+/**
+ * The card's heading. A server that renamed the game (or gave it an icon) sees
+ * its own name; otherwise it is "Hidden <role name>", as it always was.
+ */
+export async function gameTitle(db, round: Round) {
+	const d = await getGameDisplay(db, round.guild_id, 'agent');
+	if (!d.custom.name && !d.custom.icon) return `**Hidden ${round.agent_name}`;
+	return `${d.icon} **${d.custom.name ? d.name : `Hidden ${round.agent_name}`}`;
+}
+
 export async function lobbyMessage(db, round: Round) {
 	const players = await getPlayers(db, round.id);
+	const title = await gameTitle(db, round);
 	const names = players.map((p) => `<@${p.user_id}>`).join(', ') || '_nobody yet_';
 	let content: string;
 	let components: any[] = [];
 	if (round.status === 'lobby') {
-		content = `**Hidden ${round.agent_name} — lobby**\nPlayers (${players.length}): ${names}\nNeeds ${round.min_players} to start. Everyone but one is told a secret word; one is the ${round.agent_name} and is not. Play it in the **SpaceBot Activity** in this voice channel: your role, the word and the voting are there.`;
+		content = `${title} — lobby**\nPlayers (${players.length}): ${names}\nNeeds ${round.min_players} to start. Everyone but one is told a secret word; one is the ${round.agent_name} and is not. Play it in the **SpaceBot Activity** in this voice channel: your role, the word and the voting are there.`;
 		components = [
 			{
 				type: 1,
@@ -871,10 +883,10 @@ export async function lobbyMessage(db, round: Round) {
 			},
 		];
 	} else if (round.status === 'running') {
-		content = `**Hidden ${round.agent_name} — round running**\nPlayers (${players.length}): ${names}\nEnds <t:${unix(round.ends_at!)}:R>. Open the **SpaceBot Activity** to see your role and to vote.`;
+		content = `${title} — round running**\nPlayers (${players.length}): ${names}\nEnds <t:${unix(round.ends_at!)}:R>. Open the **SpaceBot Activity** to see your role and to vote.`;
 		components = [{ type: 1, components: [openActivityButton()] }];
 	} else {
-		content = `**Hidden ${round.agent_name} — over**\n${resultText(round)}`;
+		content = `${title} — over**\n${resultText(round)}`;
 	}
 	return { content, components, allowed_mentions: { parse: [] } };
 }
@@ -1036,7 +1048,7 @@ export async function handleGameCommand(body: Interaction, db, discord): Promise
 	const user = userOf(body);
 	if (!guildId || !user.id) return { response: ephemeral('Game only works inside a server.') };
 	if (!db) return { response: ephemeral('The database is not available right now.') };
-	if (!(await getCommandByName(db, 'play', guildId))) {
+	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
 

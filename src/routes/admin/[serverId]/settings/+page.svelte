@@ -735,7 +735,7 @@
 		</section>
 
 		<!-- Public server browser listing -->
-		<section class="settings-section">
+		<section class="settings-section" id="listing">
 			<h2>
 				<span class="section-icon">🪐</span>
 				{tr('listing.sectionTitle')}

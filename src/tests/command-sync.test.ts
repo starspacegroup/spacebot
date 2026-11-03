@@ -13,11 +13,23 @@ vi.mock('../lib/db/commands.js', () => ({
 	markCommandRegistered: async () => {},
 	toDiscordCommand: (cmd: any) => ({ name: cmd.name, options: cmd.options ?? [] }),
 }));
-vi.mock('../lib/db/integrations.js', () => ({ getEnabledGuildIntegrations: async () => [] }));
-vi.mock('../lib/integrations/registry.js', () => ({ getIntegrationCommands: () => [] }));
+let integrationCmds: any[] = [];
+vi.mock('../lib/db/integrations.js', () => ({
+	getEnabledGuildIntegrations: async () =>
+		integrationCmds.length ? [{ slug: 'starspace-game' }] : [],
+}));
+vi.mock('../lib/integrations/registry.js', () => ({
+	getIntegrationCommands: () => integrationCmds,
+}));
 
-const { COMMAND_SYNC_BATCH, hashCommandPayload, buildGuildCommandPayload, sweepCommandSync } =
-	await import('../lib/discord/commands.js');
+const {
+	COMMAND_SYNC_BATCH,
+	hashCommandPayload,
+	buildGuildCommandPayload,
+	sweepCommandSync,
+	getCommandSyncStatus,
+	syncGuildCommandsNow,
+} = await import('../lib/discord/commands.js');
 
 const SCHEMA = `
 CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT);
@@ -111,5 +123,95 @@ describe('sweepCommandSync', () => {
 		const { allCommands } = await buildGuildCommandPayload(setup([]), 'g');
 		// `/start` rides along, built from the timebox command the server has.
 		expect(allCommands.map((c) => c.name)).toEqual(['timebox', 'start']);
+	});
+});
+
+describe('syncGuildCommandsNow + getCommandSyncStatus', () => {
+	let status: number;
+	beforeEach(() => {
+		builtIn = [{ name: 'game', enabled: 1, options: [] }];
+		status = 200;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(status === 200 ? '[]' : 'Missing Access', { status }))
+		);
+	});
+
+	it('is null before the first sync, and without a db', async () => {
+		const db = setup(['g1']);
+		expect(await getCommandSyncStatus(db, 'g1')).toBeNull();
+		expect(await getCommandSyncStatus(null, 'g1')).toBeNull();
+	});
+
+	it('records a success with its time and no error', async () => {
+		const db = setup(['g1']);
+		expect(await syncGuildCommandsNow(db, 'g1', ENV)).toMatchObject({ success: true });
+		const s = await getCommandSyncStatus(db, 'g1');
+		expect(s?.syncedAt).toBeTruthy();
+		expect(s?.lastError).toBeNull();
+	});
+
+	it('records a failure so the page shows it', async () => {
+		const db = setup(['g1']);
+		status = 403;
+		expect(await syncGuildCommandsNow(db, 'g1', ENV)).toMatchObject({ success: false });
+		const s = await getCommandSyncStatus(db, 'g1');
+		expect(s?.lastError).toContain('Missing Access');
+		expect(s?.syncedAt).toBeNull();
+	});
+
+	it('survives a broken table on read and on the error write', async () => {
+		const broken = {
+			prepare: () => {
+				throw new Error('no table');
+			},
+		};
+		expect(await getCommandSyncStatus(broken, 'g1')).toBeNull();
+		status = 500;
+		expect(await syncGuildCommandsNow(broken, 'g1', ENV)).toMatchObject({ success: false });
+	});
+});
+
+describe('buildGuildCommandPayload and /game', () => {
+	beforeEach(() => {
+		integrationCmds = [];
+	});
+
+	it('sends one /game with the integration subcommands, and /play identical to it', async () => {
+		builtIn = [{ name: 'game', enabled: 1, options: [{ name: 'shiritori', type: 1 }] }];
+		integrationCmds = [{ name: 'game', type: 1, options: [{ name: 'stats', type: 1 }] }];
+		const { allCommands, integrationCommands } = await buildGuildCommandPayload(
+			setup([]),
+			'g1'
+		);
+		const game = allCommands.filter((c: any) => c.name === 'game');
+		const play = allCommands.filter((c: any) => c.name === 'play');
+		expect(game).toHaveLength(1);
+		expect(play).toHaveLength(1);
+		expect(game[0].options.map((o: any) => o.name)).toEqual(['shiritori', 'stats']);
+		expect(play[0].options).toEqual(game[0].options);
+		expect(play[0].description).toBe('Same as /game');
+		expect(integrationCommands).toEqual([]);
+	});
+
+	it('changes the hash when a subcommand is added, so the sweep resyncs', async () => {
+		builtIn = [{ name: 'game', enabled: 1, options: [{ name: 'start', type: 1 }] }];
+		const a = await hashCommandPayload(
+			(await buildGuildCommandPayload(setup([]), 'g1')).allCommands
+		);
+		builtIn = [
+			{
+				name: 'game',
+				enabled: 1,
+				options: [
+					{ name: 'start', type: 1 },
+					{ name: 'shiritori', type: 1 },
+				],
+			},
+		];
+		const b = await hashCommandPayload(
+			(await buildGuildCommandPayload(setup([]), 'g1')).allCommands
+		);
+		expect(a).not.toBe(b);
 	});
 });
