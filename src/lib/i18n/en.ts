@@ -1416,6 +1416,7 @@ export const en: Record<string, string> = {
 	'browse.statusUnlisted': 'Not listed',
 	'browse.view': 'View',
 	'browse.manageListing': 'Manage',
+	'browse.editListing': 'Edit',
 	'browse.listThisServer': 'List this server',
 	'browse.manageThisListing': 'Manage listing',
 	'browse.backToBrowser': 'Back to server browser',

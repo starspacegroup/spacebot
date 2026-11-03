@@ -138,6 +138,18 @@
 		<ul class="server-grid">
 			{#each data.listings as listing (listing.guild_id)}
 				<li class="server-card">
+					{#await data.manageable then yours}
+						{#if yours.some((guild) => guild.id === listing.guild_id)}
+							<a
+								class="card-edit"
+								href="/admin/{listing.guild_id}/listing"
+								title={tr('browse.manageThisListing')}
+								>✎ {tr('browse.editListing')}</a
+							>
+						{/if}
+					{:catch}
+						<!-- Discord did not answer: no edit link, the card still works. -->
+					{/await}
 					<a class="card-media" href="/servers/{listing.guild_id}">
 						{#if listing.banner_url}
 							<img src={listing.banner_url} alt="" loading="lazy" />
@@ -467,6 +479,7 @@
 	}
 
 	.server-card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		background: var(--color-surface);
@@ -483,6 +496,28 @@
 		border-color: var(--color-primary);
 		box-shadow: var(--shadow-md);
 		transform: translateY(-2px);
+	}
+
+	.card-edit {
+		position: absolute;
+		top: 0.5rem;
+		right: 0.5rem;
+		z-index: 1;
+		padding: 0.25rem 0.6rem;
+		border-radius: 999px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		text-decoration: none;
+		color: var(--color-text);
+		background: var(--color-surface);
+		border: 1px solid var(--color-border);
+		box-shadow: var(--shadow-sm);
+	}
+
+	.card-edit:hover,
+	.card-edit:focus-visible {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
 	}
 
 	.card-media {
