@@ -18,7 +18,7 @@ const quorum = {
 	type: 1,
 	options: [{ type: 1, name: 'ask', options: [{ type: 3, name: 'question' }] }],
 };
-const play = { name: 'play', type: 1, options: [{ type: 1, name: 'start' }] };
+const play = { name: 'game', type: 1, options: [{ type: 1, name: 'start' }] };
 
 describe('buildStartCommand', () => {
 	it('is absent when no activity is on', () => {
@@ -45,7 +45,7 @@ describe('buildStartCommand', () => {
 	});
 
 	it('ignores context-menu commands of the same name', () => {
-		expect(buildStartCommand([{ name: 'play', type: 2 }])).toBeNull();
+		expect(buildStartCommand([{ name: 'game', type: 2 }])).toBeNull();
 	});
 
 	it('names every activity once', () => {
@@ -75,12 +75,12 @@ describe('resolveStartInteraction', () => {
 		});
 	});
 
-	it('turns /start agent into /play start', () => {
+	it('turns /start agent into /game start', () => {
 		const out = resolveStartInteraction({
 			name: 'start',
 			options: [{ type: 1, name: 'agent' }],
 		});
-		expect(out.name).toBe('play');
+		expect(out.name).toBe('game');
 		expect(out.options).toEqual([{ type: 1, name: 'start', options: [] }]);
 	});
 

@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { LISTING_CATEGORIES, getPublicListing } from '$lib/db/server-listings.js';
+import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
 
 /**
  * Public detail page for one listed server.
@@ -8,7 +9,7 @@ import { LISTING_CATEGORIES, getPublicListing } from '$lib/db/server-listings.js
  * a guild that doesn't exist — the response must not confirm that an unlisted
  * server is using SpaceBot.
  */
-export async function load({ platform, params }) {
+export async function load({ platform, params, cookies }) {
 	const db = (platform as any)?.env?.DB;
 	const listing = await getPublicListing(db, params.guildId);
 
@@ -18,6 +19,10 @@ export async function load({ platform, params }) {
 
 	return {
 		listing,
+		// Streamed. True only when the visitor manages this server.
+		canManage: getManageableGuilds(cookies, platform).then((guilds) =>
+			guilds.some((guild) => guild.id === params.guildId)
+		),
 		categoryLabel:
 			LISTING_CATEGORIES.find((c) => c.value === listing.category)?.label || listing.category,
 	};

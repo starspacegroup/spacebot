@@ -547,6 +547,26 @@ export const ACTION_TYPES = {
 			},
 		},
 	},
+	SET_CHANNEL_TOPIC: {
+		name: 'Set Channel Topic',
+		description: "Change a channel's topic (the line under its name)",
+		icon: '📌',
+		configSchema: {
+			channel_id: {
+				type: 'channel',
+				required: false,
+				label: 'Channel',
+				description: 'Leave empty to use the channel the command was run in',
+			},
+			topic: {
+				type: 'text',
+				required: true,
+				label: 'Topic',
+				description: 'Up to 1024 characters. Leave the text empty to clear the topic.',
+				supportsVariables: true,
+			},
+		},
+	},
 	CREATE_MANAGED_CHANNEL: {
 		name: 'Create Member Room',
 		description: 'Create a member-owned channel from a room preset',

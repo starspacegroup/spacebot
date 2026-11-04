@@ -3,6 +3,7 @@
  * Register these commands using the Discord API
  */
 
+import { applyDisplaysToCommands, getGameDisplays } from '../server/game-display.js';
 import { log } from '../log.js';
 import {
 	BUILT_IN_GUILD_ID,
@@ -15,6 +16,7 @@ import {
 import { getEnabledGuildIntegrations } from '../db/integrations.js';
 import { getIntegrationCommands } from '../integrations/registry.js';
 import { buildStartCommand } from './start-command.js';
+import { unifyGameCommands } from './game-command.js';
 
 /**
  * Hardcoded built-in command definitions for initial registration (before DB is available).
@@ -169,7 +171,11 @@ export async function registerCommands(clientId, botToken, guildId = null) {
 export async function collectGuildCommands(db, guildId) {
 	await ensureBuiltInCommands(db);
 
-	const builtIn = (await getBuiltInCommandsForGuild(db, guildId)).filter((cmd) => cmd.enabled);
+	// Game names are per server, and so are these descriptions (docs/activity.md).
+	const builtIn = applyDisplaysToCommands(
+		(await getBuiltInCommandsForGuild(db, guildId)).filter((cmd) => cmd.enabled),
+		await getGameDisplays(db, guildId)
+	);
 	const custom = await getGuildCommands(db, guildId, { enabledOnly: true });
 
 	const integration = [];
@@ -268,10 +274,17 @@ export async function buildGuildCommandPayload(db, guildId) {
 	const {
 		builtIn: builtInCommands,
 		custom: customCommands,
-		integration: integrationCommands,
+		integration: collectedIntegration,
 	} = await collectGuildCommands(db, guildId);
 
-	const builtInDiscord = builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat();
+	// One /game: the integration's /game subcommands join the built-in one,
+	// and /play is sent as its synonym (game-command.ts).
+	const unified = unifyGameCommands(
+		builtInCommands.map((cmd) => toDiscordCommand(cmd)).flat(),
+		collectedIntegration
+	);
+	const builtInDiscord = unified.builtIn;
+	const integrationCommands = unified.integration;
 	// `/start` is built from the activity commands this server has on.
 	const start = buildStartCommand(builtInDiscord);
 	if (start) builtInDiscord.push(start);
@@ -327,10 +340,69 @@ async function recordCommandSync(db, guildId, hash) {
 	}
 }
 
+async function recordCommandSyncError(db, guildId, error) {
+	await db
+		.prepare(
+			`INSERT INTO guild_command_sync (guild_id, checked_at, attempted_at, last_error)
+         VALUES (?, datetime('now'), datetime('now'), ?)
+         ON CONFLICT(guild_id) DO UPDATE SET
+           checked_at = excluded.checked_at,
+           attempted_at = excluded.attempted_at,
+           last_error = excluded.last_error`
+		)
+		.bind(guildId, String(error || 'unknown').slice(0, 500))
+		.run();
+}
+
+/**
+ * The last sync of one server, for the Commands page: when it last reached
+ * Discord and the error of the last failed try. Null when it never synced.
+ */
+export async function getCommandSyncStatus(db, guildId) {
+	if (!db) return null;
+	try {
+		const row = await db
+			.prepare(
+				'SELECT synced_at, attempted_at, last_error FROM guild_command_sync WHERE guild_id = ?'
+			)
+			.bind(guildId)
+			.first();
+		return row
+			? {
+					syncedAt: row.synced_at ?? null,
+					attemptedAt: row.attempted_at ?? null,
+					lastError: row.last_error ?? null,
+				}
+			: null;
+	} catch (error) {
+		log.warn('getCommandSyncStatus: could not read the sync record:', error);
+		return null;
+	}
+}
+
+/**
+ * Sync one server now (the Commands page button), and store a failure the
+ * same way the sweep does so the page and the backoff both see it.
+ */
+export async function syncGuildCommandsNow(db, guildId, env) {
+	const result = await syncGuildCommands(db, guildId, env);
+	if (!result.success && db) {
+		try {
+			await recordCommandSyncError(db, guildId, result.error);
+		} catch (error) {
+			log.warn('syncGuildCommandsNow: could not save the error:', error);
+		}
+	}
+	return result;
+}
+
 /** How long a failed sync waits before the sweep tries that server again. */
 export const COMMAND_SYNC_RETRY_MINUTES = 30;
 /** Servers the sweep looks at per run. Each look is a few reads, a sync is one Discord call. */
 export const COMMAND_SYNC_BATCH = 10;
+
+/** The most servers one POST /api/cron sync_commands call may ask for. */
+export const COMMAND_SYNC_MAX_BATCH = 50;
 
 /**
  * Keep every server's slash commands in step with the code, without anyone
@@ -393,17 +465,7 @@ export async function sweepCommandSync(db, env, { limit = COMMAND_SYNC_BATCH } =
 				result.synced++;
 			} else {
 				result.failed++;
-				await db
-					.prepare(
-						`INSERT INTO guild_command_sync (guild_id, checked_at, attempted_at, last_error)
-             VALUES (?, datetime('now'), datetime('now'), ?)
-             ON CONFLICT(guild_id) DO UPDATE SET
-               checked_at = excluded.checked_at,
-               attempted_at = excluded.attempted_at,
-               last_error = excluded.last_error`
-					)
-					.bind(guildId, String(synced.error || 'unknown').slice(0, 500))
-					.run();
+				await recordCommandSyncError(db, guildId, synced.error);
 			}
 		} catch (error) {
 			result.failed++;

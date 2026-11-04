@@ -1,4 +1,4 @@
-import { redirect } from "@sveltejs/kit";
+import { redirect } from '@sveltejs/kit';
 
 /**
  * Discord Linked Roles Verification URL
@@ -25,7 +25,11 @@ function getOrigin(request, url) {
 	const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
 	const forwardedProto = request.headers.get('x-forwarded-proto') || 'https';
 
-	if (forwardedHost && !forwardedHost.startsWith('localhost') && !forwardedHost.startsWith('127.')) {
+	if (
+		forwardedHost &&
+		!forwardedHost.startsWith('localhost') &&
+		!forwardedHost.startsWith('127.')
+	) {
 		return `${forwardedProto}://${forwardedHost}`;
 	}
 
@@ -44,32 +48,34 @@ export async function GET({ request, url, cookies, platform }) {
 
 	// Generate CSRF state
 	const state = crypto.randomUUID();
-	cookies.set("oauth_state", state, {
-		path: "/",
+	cookies.set('oauth_state', state, {
+		path: '/',
 		httpOnly: true,
 		secure: true,
-		sameSite: "lax",
+		sameSite: 'lax',
 		maxAge: 60 * 10, // 10 minutes
 	});
 
 	// Store flow info
-	cookies.set("oauth_flow", JSON.stringify({ flow: "linked-role" }), {
-		path: "/",
+	cookies.set('oauth_flow', JSON.stringify({ flow: 'linked-role' }), {
+		path: '/',
 		httpOnly: true,
 		secure: true,
-		sameSite: "lax",
+		sameSite: 'lax',
 		maxAge: 60 * 10,
 	});
 
 	const params = new URLSearchParams({
 		client_id: CLIENT_ID,
 		redirect_uri: REDIRECT_URI,
-		response_type: "code",
+		response_type: 'code',
 		state: state,
-		scope: "role_connections.write identify",
-		prompt: "consent",
+		scope: 'role_connections.write identify',
+		prompt: 'consent',
 	});
 
 	console.log('[LinkedRole] Redirecting to Discord OAuth2, redirect_uri:', REDIRECT_URI);
-	throw redirect(302, `https://discord.com/api/oauth2/authorize?${params}`);
+	throw redirect(302, `https://discord.com/api/oauth2/authorize?${params}`, {
+		external: ['https://discord.com'],
+	});
 }

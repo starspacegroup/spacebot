@@ -13,6 +13,7 @@ import { loadSecrets } from '../secrets.js';
 import { escapeDiscordMarkdown, findGuildMatches } from './markdown.js';
 await loadSecrets();
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -28,6 +29,16 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
+import { couldBeAMove } from '../server/shiritori.js';
+
+/**
+ * discord.js retries a send that times out (15s default), and Discord may have
+ * created the first message already. A nonce with enforceNonce makes Discord
+ * drop the retried duplicate; the retry reuses the same body, so the same nonce.
+ */
+function sendNonce() {
+	return { nonce: randomUUID().replaceAll('-', '').slice(0, 25), enforceNonce: true };
+}
 import { buildLiveVoiceSnapshot } from '../db/live-voice.js';
 import { generateChatResponse, isAIEnabled } from '../ai/chat.js';
 import { resolveTargetUser } from '../automation/engine.js';
@@ -1820,6 +1831,150 @@ function stopVoiceSessionPolling() {
 	}
 }
 
+// --- Shiritori ------------------------------------------------------------------
+// The game lives on the site (it is D1 and the REST client); the gateway only
+// forwards the words. It asks the site which channels to listen to, and keeps the
+// cost of asking close to nothing:
+//
+//  - idle (no lobby or round anywhere): one cheap read a minute. That is all it
+//    takes to notice a server turning Shiritori on.
+//  - a lobby or round is open: every 5 seconds, which is also the round clock. The
+//    bot's own lobby card appearing wakes the poll at once, so a new round is seen
+//    straight away rather than up to a minute late.
+//  - only a Chain channel or a *running* round's channel is listened to, and only
+//    for a message that could be a move (one word of letters). Chat costs nothing.
+
+const SHIRITORI_IDLE_POLL_MS = 60_000;
+const SHIRITORI_ACTIVE_POLL_MS = 5_000;
+const SHIRITORI_TICK_SLACK_MS = 2_500;
+let shiritoriPollTimer: ReturnType<typeof setTimeout> | null = null;
+let shiritoriStopped = true;
+let shiritoriChannels = new Set<string>();
+let shiritoriTicking = false;
+
+const botHeaders = () => ({
+	'Content-Type': 'application/json',
+	Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+});
+
+/** Poll once. Returns how long to wait before the next one. */
+async function pollShiritoriState(): Promise<number> {
+	try {
+		const res = await fetch(`${API_BASE}/api/shiritori/state`, {
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!res.ok) return SHIRITORI_IDLE_POLL_MS;
+		const state = await res.json();
+		shiritoriChannels = new Set([
+			...state.chains.map((c) => c.channelId),
+			...state.rounds.filter((r) => r.status === 'running').map((r) => r.channelId),
+		]);
+		// A voice round is ticked every poll, so someone leaving the call is noticed; any
+		// other round only when its turn is overdue.
+		const overdue = state.rounds.some(
+			(r) =>
+				r.status === 'running' &&
+				(r.voice ||
+					(r.turnEndsAt &&
+						Date.now() > Date.parse(r.turnEndsAt) + SHIRITORI_TICK_SLACK_MS))
+		);
+		if (overdue && !shiritoriTicking) {
+			shiritoriTicking = true;
+			try {
+				await fetch(`${API_BASE}/api/shiritori/tick`, {
+					method: 'POST',
+					headers: botHeaders(),
+					signal: AbortSignal.timeout(15_000),
+				});
+			} finally {
+				shiritoriTicking = false;
+			}
+		}
+		return state.rounds.length > 0 ? SHIRITORI_ACTIVE_POLL_MS : SHIRITORI_IDLE_POLL_MS;
+	} catch (error) {
+		log.debug(`[Shiritori] State poll failed: ${error.message}`);
+		return SHIRITORI_IDLE_POLL_MS;
+	}
+}
+
+function scheduleShiritoriPoll(delayMs: number) {
+	if (shiritoriStopped) return;
+	if (shiritoriPollTimer) clearTimeout(shiritoriPollTimer);
+	shiritoriPollTimer = setTimeout(async () => {
+		scheduleShiritoriPoll(await pollShiritoriState());
+	}, delayMs);
+}
+
+function startShiritoriPolling() {
+	if (!shiritoriStopped) return;
+	shiritoriStopped = false;
+	scheduleShiritoriPoll(0);
+	log.info(
+		`[Shiritori] State poll started (${SHIRITORI_IDLE_POLL_MS / 1000}s idle, ${SHIRITORI_ACTIVE_POLL_MS / 1000}s while a round is open)`
+	);
+}
+
+/** Poll now: something just showed that a round is starting. */
+function wakeShiritoriPolling() {
+	if (!shiritoriStopped) scheduleShiritoriPoll(0);
+}
+
+function stopShiritoriPolling() {
+	shiritoriStopped = true;
+	if (shiritoriPollTimer) {
+		clearTimeout(shiritoriPollTimer);
+		shiritoriPollTimer = null;
+	}
+}
+
+/** The bot's own lobby card: buttons whose ids start with `shiritori:`. */
+function isShiritoriCard(message, botUserId: string) {
+	if (message.author?.id !== botUserId) return false;
+	return message.components?.some((row) =>
+		row.components?.some((c) => String(c.customId ?? '').startsWith('shiritori:'))
+	);
+}
+
+/**
+ * One request at a time per channel, in the order the words were sent. Two words
+ * posted a second apart would otherwise race on the site, and the second one could
+ * be judged against the word before the first: a spurious break. A request that
+ * hangs is cut off, so it cannot hold the channel's queue for good.
+ */
+const shiritoriQueues = new Map<string, Promise<void>>();
+
+function forwardShiritoriMessage(message) {
+	const channelId = message.channelId;
+	const previous = shiritoriQueues.get(channelId) ?? Promise.resolve();
+	const next = previous.then(() => postShiritoriMessage(message));
+	shiritoriQueues.set(channelId, next);
+	void next.then(() => {
+		if (shiritoriQueues.get(channelId) === next) shiritoriQueues.delete(channelId);
+	});
+}
+
+async function postShiritoriMessage(message) {
+	try {
+		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
+			method: 'POST',
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+			body: JSON.stringify({
+				channelId: message.channelId,
+				messageId: message.id,
+				userId: message.author.id,
+				userName: message.member?.displayName || message.author.username,
+				content: message.content,
+				sentAt: message.createdAt.toISOString(),
+			}),
+		});
+		if (!res.ok) log.error(`[Shiritori] Message API returned ${res.status}`);
+	} catch (error) {
+		log.error('[Shiritori] Could not forward a message:', error.message);
+	}
+}
+
 function startVoiceSessionPolling(client) {
 	if (voiceSessionPollTimer) {
 		return;
@@ -2224,6 +2379,7 @@ async function executeAutomationAction(automation, event) {
 
 			if (action_config.embed) {
 				const msg = await channel.send({
+					...sendNonce(),
 					embeds: [
 						{
 							description: content,
@@ -2240,7 +2396,7 @@ async function executeAutomationAction(automation, event) {
 				});
 				return { messageId: msg.id, channelId, embed: true };
 			} else {
-				const msg = await channel.send(content);
+				const msg = await channel.send({ content, ...sendNonce() });
 				return { messageId: msg.id, channelId };
 			}
 		}
@@ -2346,7 +2502,7 @@ async function executeAutomationAction(automation, event) {
 				messagePayload.content = content;
 			}
 
-			const msg = await channel.send(messagePayload);
+			const msg = await channel.send({ ...messagePayload, ...sendNonce() });
 			return { messageId: msg.id, channelId, buttonsAttached: buttonComponents.length };
 		}
 
@@ -2641,6 +2797,22 @@ async function executeAutomationAction(automation, event) {
 				autoArchiveDuration: autoArchive,
 			});
 			return { threadId: thread.id, threadName: threadName.substring(0, 100) };
+		}
+
+		case 'SET_CHANNEL_TOPIC': {
+			const channelId = action_config.channel_id || event.channel_id;
+			if (!channelId) throw new Error('No channel to set the topic on');
+			const channel = await client.channels.fetch(channelId);
+			if (!channel) throw new Error('Channel not found');
+			// A stored channel id must belong to the guild that owns the automation.
+			if (String(channel.guildId ?? channel.guild_id) !== String(event.guild_id)) {
+				throw new Error('Channel not found');
+			}
+			const topic = String(action_config.topic ?? '')
+				.trim()
+				.substring(0, 1024);
+			await channel.edit({ topic }, 'Topic set by an automation');
+			return { channelId, topic };
 		}
 
 		case 'ADD_REACTION': {
@@ -3170,6 +3342,17 @@ function setupEventHandlers(client, logFn) {
 				log.error('[DM] Error handling DM:', error.message);
 			}
 			return;
+		}
+
+		// Shiritori: a word in the Chain channel, or a turn in a running round.
+		if (
+			!message.author?.bot &&
+			shiritoriChannels.has(message.channelId) &&
+			couldBeAMove(message.content)
+		) {
+			forwardShiritoriMessage(message);
+		} else if (isShiritoriCard(message, client.user?.id)) {
+			wakeShiritoriPolling();
 		}
 
 		log.debug(`[DEBUG] Logging message event for guild ${message.guild.id}`);
@@ -4638,6 +4821,7 @@ function setupEventHandlers(client, logFn) {
 		});
 
 		startVoiceSessionPolling(c);
+		startShiritoriPolling();
 
 		// Start gateway benchmark reporting (every 60 seconds)
 		startBenchmarkReporting(c);
@@ -4806,6 +4990,7 @@ async function recoverGatewayClient(reason) {
 	benchmarkLastRecoveryAt = Date.now();
 	stopBenchmarkReporting();
 	stopVoiceSessionPolling();
+	stopShiritoriPolling();
 
 	const previousClient = discordClient;
 	log.error(`[BenchmarkWatchdog] ${reason}. Recycling Discord client.`);
@@ -5052,6 +5237,7 @@ function gracefulShutdown(signal) {
 	clearGatewayLogFlushTimer();
 	stopBenchmarkReporting();
 	stopVoiceSessionPolling();
+	stopShiritoriPolling();
 	if (gatewayLogConfigPoll) clearInterval(gatewayLogConfigPoll);
 	if (httpServer) httpServer.close();
 	if (discordClient) {

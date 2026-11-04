@@ -36,7 +36,13 @@ import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
+import { isBuiltInGameInteraction, resolveGameAlias } from '$lib/discord/game-command.js';
 import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
+import {
+	handleShiritoriCommand,
+	handleShiritoriComponent,
+	isShiritoriCommand,
+} from '$lib/server/shiritori-game.js';
 import { log } from '$lib/db/logger.js';
 import { getEnabledGuildIntegrations } from '$lib/db/integrations.js';
 import { getIntegrationCommands } from '$lib/integrations/registry.js';
@@ -285,7 +291,8 @@ export async function POST({ request, platform: rawPlatform }) {
 				data: { content: "That isn't something I can start here.", flags: 64 },
 			});
 		}
-		body.data = resolved;
+		// `/play` is a synonym of `/game`: the same command under a second name.
+		body.data = resolveGameAlias(resolved);
 		const { data } = body;
 		const guildId = body.guild_id;
 
@@ -377,16 +384,35 @@ export async function POST({ request, platform: rawPlatform }) {
 			return json(reply.response);
 		}
 
-		// `/play`: a round is state the bot keeps, so it is handled here, not by
-		// the action pipeline.
-		if (data.name === 'play' && guildId) {
+		// `/game` (and `/play`): a round is state the bot keeps, so it is handled
+		// here, not by the action pipeline. Subcommands that are not ours
+		// (`stats`, `leaderboard`, `play`) belong to the *Space Game integration
+		// and fall through to its handler below.
+		if (data.name === 'game' && guildId && isBuiltInGameInteraction(data)) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			if (isShiritoriCommand(body)) {
+				const reply = await handleShiritoriCommand(
+					body,
+					db,
+					token ? createDiscordRestClient(token) : null
+				);
+				return json(reply.response);
+			}
 			const reply = await handleGameCommand(
 				body,
 				db,
 				token ? createDiscordRestClient(token) : null
 			);
 			return json(reply.response);
+		}
+
+		if (data.name === 'game' && guildId && db && !isBuiltInGameInteraction(data)) {
+			const handled = await handleIntegrationCommand(data, body, db, guildId);
+			if (handled) return handled;
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: { content: "That game isn't on in this server.", flags: 64 },
+			});
 		}
 
 		// Handle /stats built-in command (generates chart image)
@@ -491,6 +517,15 @@ export async function POST({ request, platform: rawPlatform }) {
 		if (String(body.data?.custom_id || '').startsWith('quorum:')) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
 			const reply = await handleQuorumComponent(
+				body,
+				db,
+				token ? createDiscordRestClient(token) : null
+			);
+			return json(reply.response);
+		}
+		if (String(body.data?.custom_id || '').startsWith('shiritori:')) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			const reply = await handleShiritoriComponent(
 				body,
 				db,
 				token ? createDiscordRestClient(token) : null

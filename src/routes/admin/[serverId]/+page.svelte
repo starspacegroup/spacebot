@@ -315,6 +315,14 @@
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
+				<a href="/admin/{data.serverId}/listing" class="quick-link-card">
+					<div class="quick-link-icon">🪐</div>
+					<div class="quick-link-info">
+						<span class="quick-link-title">{tr('adash.links.listing')}</span>
+						<span class="quick-link-desc">{tr('adash.links.listingDesc')}</span>
+					</div>
+					<span class="quick-link-arrow">→</span>
+				</a>
 				<a href="/admin/{data.serverId}/integrations" class="quick-link-card">
 					<div class="quick-link-icon">🔌</div>
 					<div class="quick-link-info">
