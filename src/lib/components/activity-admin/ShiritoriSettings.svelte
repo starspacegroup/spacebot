@@ -27,8 +27,9 @@
 	</p>
 {/if}
 <p class="sb-note">
-	Pick a Chain channel for an always-on chain. A word that ends in the dead letter ends the chain,
-	or puts a player out of a round.
+	Pick a Chain channel for an always-on chain, or run <code>/game shiritori channel:#name</code> in
+	Discord (managers only). A word that ends in the dead letter ends the chain, or puts a player out
+	of a round.
 </p>
 <form method="POST" action="?/saveShiritori" use:enhance={keepValues} class="sb-settings-form">
 	<label class="wide">

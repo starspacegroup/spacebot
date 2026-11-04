@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { createSqliteD1 } from './helpers/sqlite-d1.js';
 
 let playEnabled = true;
-vi.mock('../lib/db/commands.js', () => ({
+vi.mock('../lib/db/commands.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../lib/db/commands.js')>()),
 	getCommandByName: vi.fn(async () => (playEnabled ? { name: 'play' } : null)),
 }));
 
@@ -799,6 +800,83 @@ describe('/play shiritori', () => {
 			(await handleShiritoriCommand(body({ guild_id: undefined }), db, discord)).response.data
 				.content
 		).toContain('inside a server');
+	});
+
+	describe('channel option (set the always-on chain)', () => {
+		const pick = (member: Record<string, any>, channel = CHAIN_CH) =>
+			body({
+				member: { user: { id: 'u1', username: 'one' }, ...member },
+				data: {
+					name: 'game',
+					options: [
+						{
+							name: 'shiritori',
+							type: 1,
+							options: [{ name: 'channel', type: 7, value: channel }],
+						},
+					],
+				},
+			});
+		const MANAGE_SERVER = '32';
+		const withRule = (rule: Record<string, any>) =>
+			db.exec(`CREATE TABLE guild_settings (guild_id TEXT PRIMARY KEY, permission_settings TEXT);
+				INSERT INTO guild_settings VALUES ('${GUILD}', '${JSON.stringify({
+					manageCommands: rule,
+				})}');`);
+
+		it('lets a Manage Server member set the chain channel and turns Shiritori on', async () => {
+			const out = await handleShiritoriCommand(
+				pick({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain(`<#${CHAIN_CH}>`);
+			expect(out.response.data.flags).toBe(64);
+			expect(await getSettings(db, GUILD)).toMatchObject({
+				enabled: true,
+				chainChannelId: CHAIN_CH,
+			});
+			expect(await liveRoundIn(db, GUILD, ROUND_CH)).toBeNull(); // no lobby opened
+		});
+
+		it('refuses an ordinary member and changes nothing', async () => {
+			const out = await handleShiritoriCommand(pick({ permissions: '0' }), db, discord);
+			expect(out.response.data.content).toContain('Only people who can manage');
+			expect(await getSettings(db, GUILD)).toMatchObject({
+				enabled: false,
+				chainChannelId: null,
+			});
+			// No permissions at all fails closed, too.
+			const bare = await handleShiritoriCommand(pick({}), db, discord);
+			expect(bare.response.data.content).toContain('Only people who can manage');
+		});
+
+		it('honours a role the server added to the manage-commands permission', async () => {
+			withRule({ permission: 'MANAGE_GUILD', roles: ['role-mod'] });
+			const denied = await handleShiritoriCommand(
+				pick({ permissions: '0', roles: ['other'] }),
+				db,
+				discord
+			);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			const allowed = await handleShiritoriCommand(
+				pick({ permissions: '0', roles: ['role-mod'] }),
+				db,
+				discord
+			);
+			expect(allowed.response.data.content).toContain(`<#${CHAIN_CH}>`);
+		});
+
+		it('refuses a channel that is known to be a voice channel', async () => {
+			db.exec(`INSERT INTO guild_channels VALUES ('${GUILD}', '${CHAIN_CH}', 'vc', 2);`);
+			const out = await handleShiritoriCommand(
+				pick({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain('text channel');
+			expect((await getSettings(db, GUILD)).chainChannelId).toBeNull();
+		});
 	});
 
 	it('runs the lobby buttons: join, start, and stop by the starter', async () => {

@@ -53,6 +53,15 @@ changes. The last prompt is deleted when the round ends.
 
 A channel the server picks. Anyone posts the next word.
 
+Pick it in the dashboard (Activity, "Chain channel"), or from Discord with
+`/game shiritori channel:#name`. The slash option turns Shiritori on and sets the channel in
+one step. It opens no round. It works only for people who hold the dashboard's **manage
+commands** permission: Manage Server by default, plus any roles the server added under
+Settings. Administrators always pass. Everyone else gets a private refusal and nothing
+changes. Only text and announcement channels are accepted. Migration `0086` adds the option
+to the command; the handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
+To turn the chain off, use the dashboard.
+
 - ✅ on a word that fits. The chain grows.
 - ❌ on a word that does not, with the reason. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random

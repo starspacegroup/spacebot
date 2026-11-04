@@ -17,7 +17,9 @@
 
 import { log } from '../log.js';
 import { getGameDisplay } from './game-display.js';
-import { getCommandByName } from '../db/commands.js';
+import { PERMISSION_FLAGS, getCommandByName } from '../db/commands.js';
+import { getGuildSettings } from '../db/settings.js';
+import { memberHasCommandPermission } from '../discord/command-permissions.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
 import { voiceChannelOf } from './timebox.js';
@@ -1614,6 +1616,56 @@ async function isVoiceChannel(db: Db, guildId: string, channelId: string) {
 	return row?.type === 2 || row?.type === 13;
 }
 
+/**
+ * Who may point the chain at a channel with `/game shiritori channel:`. It is the
+ * dashboard's "manage commands" permission: Manage Server by default, plus any
+ * roles the server added under Settings. Administrators always pass. A member
+ * object with no permissions fails closed.
+ */
+export async function maySetChainChannel(
+	db: Db,
+	guildId: string,
+	member: { permissions?: unknown; roles?: unknown } | null | undefined
+) {
+	const rule = (await getGuildSettings(db, guildId))?.permission_settings?.manageCommands;
+	const name = String(rule?.permission || 'MANAGE_GUILD');
+	const required = (PERMISSION_FLAGS as Record<string, { value: string }>)[name]?.value ?? '32';
+	if (memberHasCommandPermission(member?.permissions, required)) return true;
+	const held = new Set(Array.isArray(member?.roles) ? member!.roles.map(String) : []);
+	return (Array.isArray(rule?.roles) ? rule.roles : []).some((id: unknown) =>
+		held.has(String(id))
+	);
+}
+
+/** `/game shiritori channel:#name`: make that channel the always-on chain. */
+async function setChainChannel(body: Interaction, db: Db, guildId: string, channelId: string) {
+	if (!(await maySetChainChannel(db, guildId, body.member))) {
+		return {
+			response: ephemeral(
+				'Only people who can manage this bot’s commands can set the chain channel. Ask a server manager.'
+			),
+		};
+	}
+	const known: any = await safely('channel', () =>
+		db
+			.prepare(`SELECT type FROM guild_channels WHERE guild_id = ? AND channel_id = ?`)
+			.bind(guildId, channelId)
+			.first()
+	);
+	if (known && known.type !== 0 && known.type !== 5) {
+		return { response: ephemeral('Pick a text channel for the chain.') };
+	}
+	const settings = await getSettings(db, guildId);
+	await upsertSettings(db, guildId, { ...settings, enabled: true, chainChannelId: channelId });
+	log.info(`[Shiritori] chain channel set to ${channelId} in ${guildId} by ${userOf(body).id}`);
+	return {
+		response: ephemeral(
+			`Done. <#${channelId}> is now the Shiritori chain: anyone can post a word there. ` +
+				'Change the rules or turn it off under Activity in the dashboard.'
+		),
+	};
+}
+
 export async function handleShiritoriCommand(body: Interaction, db: Db, discord: Discord) {
 	const guildId = body.guild_id;
 	const channelId = body.channel_id;
@@ -1625,6 +1677,8 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
+	const picked = flattenInteractionOptions(body.data).leaves.find((o) => o.name === 'channel');
+	if (picked?.value) return setChainChannel(body, db, guildId, String(picked.value));
 	discord = watched(db, guildId, discord);
 	const inCall = (await voiceChannelOf(db, guildId, user.id)) === channelId;
 	const live = await liveRoundIn(db, guildId, channelId);

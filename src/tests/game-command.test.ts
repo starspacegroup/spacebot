@@ -224,3 +224,45 @@ describe('migration 0085 (repair for a skipped 0083)', () => {
 		).toBe(1);
 	});
 });
+
+describe('migration 0086 (channel option on /game shiritori)', () => {
+	const OPTIONS =
+		'[{"name":"start","type":1},{"name":"shiritori","description":"Open a Shiritori word-chain round in this channel","type":1}]';
+
+	async function run(options: string, times = 1) {
+		const { readFileSync } = await import('node:fs');
+		const { createSqliteD1 } = await import('./helpers/sqlite-d1.js');
+		const sql = readFileSync(
+			new URL('../../migrations/0086_shiritori_channel_option.sql', import.meta.url),
+			'utf8'
+		);
+		const db: any = createSqliteD1();
+		db.exec(`CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT, name TEXT,
+			description TEXT, options TEXT, is_built_in INTEGER);`);
+		await db
+			.prepare(`INSERT INTO commands VALUES (1, '__built_in__', 'game', 'x', ?, 1)`)
+			.bind(options)
+			.run();
+		for (let i = 0; i < times; i++) db.exec(sql);
+		const row: any = await db.prepare('SELECT options FROM commands').first();
+		return JSON.parse(row.options);
+	}
+
+	it('adds an optional text-channel option to shiritori, once', async () => {
+		const options = await run(OPTIONS, 2);
+		const shiritori = options.find((o: any) => o.name === 'shiritori');
+		expect(shiritori.options).toHaveLength(1);
+		expect(shiritori.options[0]).toMatchObject({
+			name: 'channel',
+			type: 7,
+			channel_types: [0, 5],
+			required: false,
+		});
+		expect(options.find((o: any) => o.name === 'start').options).toBeUndefined();
+	});
+
+	it('leaves a /game without shiritori alone', async () => {
+		const options = await run('[{"name":"start","type":1}]');
+		expect(options).toEqual([{ name: 'start', type: 1 }]);
+	});
+});
