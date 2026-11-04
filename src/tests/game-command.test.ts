@@ -159,3 +159,68 @@ describe('migration 0083', () => {
 		]);
 	});
 });
+
+describe('migration 0085 (repair for a skipped 0083)', () => {
+	async function setup(rows: string) {
+		const { readFileSync } = await import('node:fs');
+		const { createSqliteD1 } = await import('./helpers/sqlite-d1.js');
+		const sql = readFileSync(
+			new URL('../../migrations/0085_game_command_repair.sql', import.meta.url),
+			'utf8'
+		);
+		const db: any = createSqliteD1();
+		db.exec(`CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT, name TEXT,
+			description TEXT, options TEXT, is_built_in INTEGER);
+			CREATE TABLE built_in_command_overrides (id INTEGER PRIMARY KEY AUTOINCREMENT,
+			guild_id TEXT NOT NULL, command_id INTEGER NOT NULL, enabled INTEGER,
+			default_member_permissions TEXT, access_rules TEXT, UNIQUE(guild_id, command_id));
+			${rows}`);
+		return { db, sql };
+	}
+
+	it('gives /game Shiritori and carries the stale /play row’s overrides over', async () => {
+		// Production on 2026-11-04: an old /game without shiritori, a stale /play with it.
+		const { db, sql } = await setup(`
+			INSERT INTO commands VALUES (447, '__built_in__', 'game', 'old',
+				'[{"name":"start","type":1}]', 1);
+			INSERT INTO commands VALUES (411, '__built_in__', 'play', 'old', '[]', 1);
+			INSERT INTO built_in_command_overrides (guild_id, command_id, enabled) VALUES ('a', 411, 1);
+			INSERT INTO built_in_command_overrides (guild_id, command_id, enabled) VALUES ('b', 411, 1);
+			INSERT INTO built_in_command_overrides (guild_id, command_id, enabled) VALUES ('b', 447, 0);`);
+		db.exec(sql);
+		db.exec(sql);
+		const rows = (await db.prepare('SELECT * FROM commands').all()).results;
+		expect(rows.map((r: any) => r.name)).toEqual(['game']);
+		expect(JSON.parse(rows[0].options).map((o: any) => o.name)).toEqual([
+			'start',
+			'stop',
+			'status',
+			'shiritori',
+		]);
+		const overrides = (
+			await db
+				.prepare(
+					'SELECT guild_id, command_id, enabled FROM built_in_command_overrides ORDER BY guild_id'
+				)
+				.all()
+		).results;
+		// a: moved onto /game. b: its own /game override wins over the stale one.
+		expect(overrides).toEqual([
+			{ guild_id: 'a', command_id: 447, enabled: 1 },
+			{ guild_id: 'b', command_id: 447, enabled: 0 },
+		]);
+	});
+
+	it('changes nothing where 0083 already worked', async () => {
+		const { db, sql } = await setup(`
+			INSERT INTO commands VALUES (7, '__built_in__', 'game', 'x',
+				'[{"name":"shiritori","type":1}]', 1);
+			INSERT INTO built_in_command_overrides (guild_id, command_id, enabled) VALUES ('a', 7, 1);`);
+		db.exec(sql);
+		const row = await db.prepare('SELECT * FROM commands').first();
+		expect(row.description).toBe('x');
+		expect(
+			(await db.prepare('SELECT COUNT(*) c FROM built_in_command_overrides').first()).c
+		).toBe(1);
+	});
+});
