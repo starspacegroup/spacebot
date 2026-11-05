@@ -1301,6 +1301,10 @@ export const es: Record<string, string> = {
 		'Opcional. Un ID de usuario de Discord por línea. Déjalo vacío para permitir a cualquier gestor de este servidor.',
 	'settings.logging': 'Registro',
 	'settings.loggingChannelDesc': 'Canal donde se enviarán los registros de actividad del bot',
+	'settings.announcements': 'Anuncios',
+	'settings.announcementChannel': 'Canal de anuncios',
+	'settings.announcementChannelDesc':
+		'Donde SpaceBot publica cambios globales y otras alertas importantes. Si lo dejas vacío, SpaceBot no publica nada.',
 	'settings.selectChannel': 'Selecciona un canal…',
 	'settings.eventCategories': 'Categorías de eventos',
 	'settings.eventCategoriesDesc':

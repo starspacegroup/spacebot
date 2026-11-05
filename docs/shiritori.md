@@ -56,8 +56,9 @@ A channel the server picks. Anyone posts the next word.
 Pick it in the dashboard (Activity, "Chain channel"), or from Discord with
 `/game shiritori channel:#name`. The slash option turns Shiritori on and sets the channel in
 one step. It opens no round. It works only for people who hold the dashboard's **manage
-commands** permission: Manage Server by default, plus any roles the server added under
-Settings. Administrators always pass. Everyone else gets a private refusal and nothing
+commands** permission: Manage Server by default, or whatever level the server set for it on the
+Settings page. Administrators always pass. (The Settings page sets a level, not roles; a role
+list saved in the database is honoured, but nothing in the dashboard writes one.) Everyone else gets a private refusal and nothing
 changes. Only text and announcement channels are accepted. The handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
 To turn the chain off, run `/game shiritori off:True` (same permission, and it keeps
 rounds working), or clear the channel in the dashboard. Giving `channel` and `off`
