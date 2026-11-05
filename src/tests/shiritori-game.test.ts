@@ -406,6 +406,7 @@ describe('Chain mode', () => {
 		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
 		const out = await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'tax'), T0);
 		expect(out).toEqual({ action: 'ended', reason: 'dead_letter' });
+		expect(discord.reactions.at(-1)?.emoji).toBe('☠️');
 		const summary = discord.sent.at(-1)!.payload.content;
 		expect(summary).toContain('dead letter **x**');
 		expect(summary).toContain('**3** words');

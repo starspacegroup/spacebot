@@ -596,7 +596,10 @@ async function handleChainMessage(
 	await bumpStats(db, msg.guildId, msg.userId, { wordsAdded: 1, longestWord: move.word });
 	// No ✅ without Add Reactions. Say it in words, so a permission slip does not look like
 	// the game ignoring people. (A dead-letter word posts its own summary below.)
-	if (!(await react(discord, msg.channelId, msg.messageId, '✅')) && !move.endsDead) {
+	if (
+		!(await react(discord, msg.channelId, msg.messageId, move.endsDead ? '☠️' : '✅')) &&
+		!move.endsDead
+	) {
 		await reply(
 			discord,
 			msg.channelId,
@@ -1596,7 +1599,7 @@ async function handleRoundMessage(
 		.bind(round.id, msg.userId)
 		.run();
 	await bumpStats(db, msg.guildId, msg.userId, { wordsAdded: 1, longestWord: move.word });
-	await react(discord, msg.channelId, msg.messageId, '✅');
+	await react(discord, msg.channelId, msg.messageId, move.endsDead ? '☠️' : '✅');
 
 	// The word lands first, so a word that ends in the dead letter still counts.
 	await db
