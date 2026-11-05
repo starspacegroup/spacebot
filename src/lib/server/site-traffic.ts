@@ -233,6 +233,7 @@ export async function pruneSiteTraffic(db: Db, now = new Date()): Promise<void> 
 			'site_country_daily',
 			'site_dimension_daily',
 			'site_event_daily',
+			'site_listing_daily',
 		].map((table) => db.prepare(`DELETE FROM ${table} WHERE day < ?`).bind(before))
 	);
 }
