@@ -33,6 +33,20 @@ export function wordToken(content: string): string | null {
 }
 
 /**
+ * In a Chain channel a word counts only when the message starts by mentioning the
+ * bot ("@SpaceBot apple"), so the channel can also be used for talking. Returns the
+ * text without that mention, and whether it was there. A mention anywhere else in the
+ * message is left alone and makes it more than one word, so it is not a move.
+ */
+export function stripBotMention(content: string, botId: string | null | undefined) {
+	if (!botId || !/^\d+$/.test(botId)) return { content, addressed: false };
+	const lead = new RegExp(`^\\s*<@!?${botId}>\\s*`);
+	return lead.test(content)
+		? { content: content.replace(lead, ''), addressed: true }
+		: { content, addressed: false };
+}
+
+/**
  * Whether a message could be a move at all. The gateway asks this before it
  * forwards anything, so chat in a Chain channel costs no request.
  */

@@ -41,9 +41,9 @@
 			{/each}
 		</select>
 		<span class="hint">
-			A word that fits gets a ✅. A word that was already used gets a ❌ and breaks the chain.
-			Chat is ignored: several words, a word that is not in the dictionary or does not start
-			with the right letter, and anything that starts with <code>//</code>.
+			To play, mention the bot with the word: <code>@SpaceBot eagle</code>. A word that fits
+			gets a ✅, a bad one gets a ❌ and breaks the chain. Everything without the mention is
+			chat and is ignored.
 		</span>
 	</label>
 	<label>

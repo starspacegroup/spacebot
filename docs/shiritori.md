@@ -64,24 +64,24 @@ rounds working), or clear the channel in the dashboard. Giving `channel` and `of
 together is refused. Migrations `0086` and `0087` add the two options.
 
 - ✅ on a word that fits. The chain grows.
-- ❌ on a **word that was already used**. The **chain breaks**: SpaceBot posts the
+- ❌ on a word that does not. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random
   seed word.
-- **Chat is not a move.** The channel is also for talking. One word that is not in the
-  dictionary ("lol", a name), or a real word that does not start with the letter needed
-  ("thanks"), gets no reaction, no reply and no break. It does not use anyone's turn, and
-  it does not trigger the "let someone else go" reminder. Only a word that fits, a repeat,
-  a blocked word or a dead-letter word is treated as a move.
+- **Mention the bot to play.** A word counts only when the message starts with a mention of
+  the bot: `@SpaceBot eagle`. Everything else in the channel is chat. It gets no reaction
+  and no reply, it never breaks the chain, and it does not use a turn. The gateway strips the
+  mention and sends the word with an `addressed` flag; the site ignores a Chain message
+  without it. Round mode (`/game shiritori`) does not need a mention.
 - A word on the server's block list gets a ❌ and a reason, and **nothing else**: the chain
   does not break. A block list matches stems, so it can catch an innocent word, and one
   member must not be able to end a chain on purpose with a word the filter refuses.
 - A word that ends in the dead letter is counted and ends the chain. It does not count
   as a break for the member.
 - The same member twice in a row gets a ❌ and a reminder, and the chain does **not** break.
-- Anything that is not one word of letters is ignored: several words, links, emoji, a
-  number. So is a message that starts with `//`, and a word under three letters.
+- After the mention, anything that is not one word of letters is ignored: several words,
+  links, emoji, a number. So is a message that starts with `//`, and a word under three letters.
 - There is no timer. A chain can run for days.
-- The first word posted after the feature is turned on opens the first chain and shows its
+- The first mentioned word posted after the feature is turned on opens the first chain and shows its
   seed word. That post is not counted.
 
 Crew can reset the chain from the dashboard.

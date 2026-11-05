@@ -29,7 +29,7 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
-import { couldBeAMove } from '../server/shiritori.js';
+import { couldBeAMove, stripBotMention } from '../server/shiritori.js';
 
 /**
  * discord.js retries a send that times out (15s default), and Discord may have
@@ -1944,17 +1944,17 @@ function isShiritoriCard(message, botUserId: string) {
  */
 const shiritoriQueues = new Map<string, Promise<void>>();
 
-function forwardShiritoriMessage(message) {
+function forwardShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	const channelId = message.channelId;
 	const previous = shiritoriQueues.get(channelId) ?? Promise.resolve();
-	const next = previous.then(() => postShiritoriMessage(message));
+	const next = previous.then(() => postShiritoriMessage(message, text));
 	shiritoriQueues.set(channelId, next);
 	void next.then(() => {
 		if (shiritoriQueues.get(channelId) === next) shiritoriQueues.delete(channelId);
 	});
 }
 
-async function postShiritoriMessage(message) {
+async function postShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	try {
 		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
 			method: 'POST',
@@ -1965,7 +1965,8 @@ async function postShiritoriMessage(message) {
 				messageId: message.id,
 				userId: message.author.id,
 				userName: message.member?.displayName || message.author.username,
-				content: message.content,
+				content: text.content,
+				addressed: text.addressed,
 				sentAt: message.createdAt.toISOString(),
 			}),
 		});
@@ -3345,12 +3346,13 @@ function setupEventHandlers(client, logFn) {
 		}
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
+		const shiritoriText = stripBotMention(message.content, client.user?.id);
 		if (
 			!message.author?.bot &&
 			shiritoriChannels.has(message.channelId) &&
-			couldBeAMove(message.content)
+			couldBeAMove(shiritoriText.content)
 		) {
-			forwardShiritoriMessage(message);
+			forwardShiritoriMessage(message, shiritoriText);
 		} else if (isShiritoriCard(message, client.user?.id)) {
 			wakeShiritoriPolling();
 		}

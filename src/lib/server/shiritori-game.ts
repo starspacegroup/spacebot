@@ -5,7 +5,8 @@
  * Two modes share one dictionary and one judge:
  *
  *  - **Chain**: a channel a server marks as the Shiritori channel. Anyone posts
- *    the next word; a good word gets a ✅, a repeat gets a ❌ and breaks the chain, and chat is ignored.
+ *    the next word; a good word gets a ✅ and a bad one a ❌ and breaks the chain. A word counts only when
+ *    the message mentions the bot ("@SpaceBot apple"), so the channel can also hold chat.
  *  - **Round**: `/game shiritori` opens a lobby in the channel; players take
  *    turns against a clock, and a miss puts you out. The last one in wins.
  *
@@ -427,6 +428,7 @@ function startAnnouncement(c: Chain) {
 	return (
 		`🔗 **New chain.** The word is **${c.seed_word}**.\n` +
 		`The next word starts with **${need}**. Dead letter: **${c.dead_letter}**.\n` +
+		`Mention me with your word to play: **@SpaceBot ${need}…**. Anything else is just chat.\n` +
 		`One word at a time, and no one goes twice in a row.`
 	);
 }
@@ -475,6 +477,8 @@ export interface ChannelMessage {
 	userId: string;
 	userName?: string;
 	content: string;
+	/** The message started by mentioning the bot (the gateway strips the mention). A Chain word needs it. */
+	addressed?: boolean;
 	isBot?: boolean;
 	/** When the member sent it; a late-processed word still counts if it was in time. */
 	sentAt?: string;
@@ -498,6 +502,8 @@ async function handleChainMessage(
 	now: Date,
 	rand: () => number
 ): Promise<Outcome> {
+	// The channel is also for talking: only a message that mentions the bot is a move.
+	if (!msg.addressed) return IGNORE;
 	const token = wordToken(msg.content);
 	if (!token || token.length < MIN_WORD_LENGTH) return IGNORE;
 
@@ -534,14 +540,6 @@ async function handleChainMessage(
 		isBlocked: dict.isBlocked,
 	});
 
-	// A channel is also for talking. One word of chat ("lol", "thanks", a name) is not a
-	// move: it is not a dictionary word, or it does not start with the letter that is
-	// needed. Say nothing and break nothing. A word that fits but was already used still
-	// counts, and so does the dead letter.
-	if (move.ok === false && ['too_short', 'not_a_word', 'bad_start'].includes(move.code)) {
-		return IGNORE;
-	}
-
 	if (chain.last_user_id === msg.userId) {
 		await react(discord, msg.channelId, msg.messageId, '❌');
 		await reply(discord, msg.channelId, msg.messageId, 'Let someone else add a word first.');
@@ -549,6 +547,7 @@ async function handleChainMessage(
 	}
 
 	if (move.ok === false) {
+		if (move.code === 'too_short') return IGNORE;
 		if (move.code === 'blocked') return refuseWord(discord, msg, move.message);
 		return breakChain(db, discord, chain, msg, move.code, move.message, now, rand, s);
 	}
