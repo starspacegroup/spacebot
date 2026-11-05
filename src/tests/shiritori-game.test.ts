@@ -56,7 +56,8 @@ const SCHEMA =
 	migration('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	'CREATE TABLE guild_channels (guild_id TEXT, channel_id TEXT, name TEXT, type INTEGER);\n' +
-	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0];
+	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0] +
+	migration('0090_shiritori_rules_message.sql');
 
 const GUILD = '100000000000000001';
 const CHAIN_CH = '200000000000000001';
@@ -311,6 +312,27 @@ describe('Chain mode', () => {
 			action: 'broken',
 			reason: 'bad_start',
 		});
+	});
+
+	it('says the word was accepted in text when it cannot react', async () => {
+		await enable();
+		await chainFrom('apple');
+		discord.channels.react = async () => {
+			throw Object.assign(new Error('Missing Permissions'), { status: 403 });
+		};
+		const before = discord.sent.length;
+		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0)).toEqual({
+			action: 'accepted',
+		});
+		const said = discord.sent.slice(before);
+		expect(said).toHaveLength(1);
+		expect(said[0].payload.content).toContain('**eagle**');
+		expect(said[0].payload.content).toContain('starts with **e**');
+		// With reactions working, nothing extra is posted.
+		discord.channels.react = async () => {};
+		const quiet = discord.sent.length;
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
+		expect(discord.sent.length).toBe(quiet);
 	});
 
 	it('breaks on a word that starts with the wrong letter, and starts a new chain', async () => {
@@ -991,6 +1013,86 @@ describe('/play shiritori', () => {
 			expect(discord.sent[0].payload.content).toContain('last **two** letters');
 			expect(discord.sent[0].payload.content).toContain('20 seconds');
 			expect(discord.pins).toEqual([{ channelId: ROUND_CH, messageId: 'bot-1' }]);
+		});
+
+		it('keeps the rules message up to date as the chain moves', async () => {
+			const ask = () =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				});
+			await enable();
+			await handleShiritoriCommand(ask(), db, discord);
+			expect(discord.sent).toHaveLength(1);
+			expect(discord.sent[0].payload.content).toContain('No chain is running');
+
+			await chainFrom('apple');
+			await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+			const last = discord.edits.at(-1)!;
+			expect(last.messageId).toBe('bot-1');
+			expect(last.channelId).toBe(ROUND_CH);
+			expect(last.payload.content).toContain('**1** word');
+			expect(last.payload.content).toContain('Last word: **eagle**');
+			expect(last.payload.content).toContain('starts with **e**');
+
+			// A chat message or a refused word does not edit it.
+			const edits = discord.edits.length;
+			await handleMessage(
+				db,
+				discord,
+				{ ...say(CHAIN_CH, 'u2', 'lol'), addressed: false },
+				T0
+			);
+			expect(discord.edits.length).toBe(edits);
+
+			// Asking again refreshes the same message instead of posting a second one
+			// (chainFrom cleared the sent list, so any rules post now would show up in it).
+			const again = await handleShiritoriCommand(ask(), db, discord);
+			expect(again.response.data.content).toContain('up to date');
+			expect(
+				discord.sent.filter((m) => m.payload.content.includes('the word chain'))
+			).toHaveLength(0);
+		});
+
+		it('stops tracking the rules message when it was deleted', async () => {
+			await enable();
+			await handleShiritoriCommand(
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				}),
+				db,
+				discord
+			);
+			discord.channels.editMessage = async () => {
+				throw Object.assign(new Error('Unknown Message'), { status: 404 });
+			};
+			await chainFrom('apple');
+			await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0); // still plays on
+			const row: any = await db
+				.prepare('SELECT rules_message_id FROM shiritori_settings WHERE guild_id = ?')
+				.bind(GUILD)
+				.first();
+			expect(row.rules_message_id).toBeNull();
+			expect((await getHealth(db, GUILD))?.status ?? null).toBeNull(); // not a health problem
 		});
 
 		it('still posts the rules when pinning is not allowed', async () => {

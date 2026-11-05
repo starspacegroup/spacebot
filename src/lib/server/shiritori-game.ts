@@ -184,7 +184,10 @@ async function safely<T>(label: string, work: () => Promise<T>): Promise<T | nul
 
 const react = (discord: Discord, channelId: string, messageId: string, emoji: string) =>
 	discord && messageId
-		? safely('react', () => discord.channels.react(channelId, messageId, emoji))
+		? safely('react', async () => {
+				await discord.channels.react(channelId, messageId, emoji);
+				return true;
+			})
 		: null;
 
 const reply = (discord: Discord, channelId: string, messageId: string | null, content: string) =>
@@ -589,7 +592,16 @@ async function handleChainMessage(
 		.bind(seq, move.word, msg.userId, chain.id, seq)
 		.run();
 	await bumpStats(db, msg.guildId, msg.userId, { wordsAdded: 1, longestWord: move.word });
-	await react(discord, msg.channelId, msg.messageId, '✅');
+	// No ✅ without Add Reactions. Say it in words, so a permission slip does not look like
+	// the game ignoring people. (A dead-letter word posts its own summary below.)
+	if (!(await react(discord, msg.channelId, msg.messageId, '✅')) && !move.endsDead) {
+		await reply(
+			discord,
+			msg.channelId,
+			msg.messageId,
+			`✅ **${move.word}**. The next word starts with **${requiredStart(move.word, Boolean(chain.hard_mode))}**.`
+		);
+	}
 
 	if (move.endsDead) {
 		const ended = { ...chain, length: seq, last_word: move.word };
@@ -667,6 +679,7 @@ export async function resetChain(
 ): Promise<boolean> {
 	const s = await getSettings(db, guildId);
 	if (!s.chainChannelId) return false;
+	const plainClient = discord;
 	discord = watched(db, guildId, discord);
 	const open = await getOpenChain(db, guildId, s.chainChannelId);
 	if (open) await endChain(db, open, 'reset', null, now);
@@ -678,6 +691,7 @@ export async function resetChain(
 				allowed_mentions: { parse: [] },
 			})
 		);
+		await refreshRules(db, plainClient, guildId, now);
 	}
 	return true;
 }
@@ -1480,9 +1494,15 @@ export async function handleMessage(
 	if (msg.isBot) return IGNORE;
 	const s = await getSettings(db, msg.guildId);
 	if (!s.enabled) return IGNORE;
+	const plain = discord;
 	discord = watched(db, msg.guildId, discord);
 	if (s.chainChannelId === msg.channelId) {
-		return handleChainMessage(db, discord, s, msg, now, rand);
+		const out = await handleChainMessage(db, discord, s, msg, now, rand);
+		// A word landed, the chain broke or ended: bring the kept rules message up to date.
+		if (out.action !== 'ignore' && out.action !== 'refused') {
+			await refreshRules(db, plain, msg.guildId, now);
+		}
+		return out;
 	}
 	const round = await liveRoundIn(db, msg.guildId, msg.channelId);
 	if (!round) return IGNORE;
@@ -1623,7 +1643,7 @@ async function isVoiceChannel(db: Db, guildId: string, channelId: string) {
 }
 
 /** The rules message, from the server's own settings. */
-export function rulesText(s: Settings) {
+export function rulesText(s: Settings, status = '') {
 	const dead = [...new Set(s.deadLetters.toUpperCase().split(''))].join(', ');
 	const start = s.hardMode ? 'the last **two** letters' : 'the last letter';
 	return (
@@ -1635,8 +1655,93 @@ export function rulesText(s: Settings) {
 		'• No one goes twice in a row.\n' +
 		`• Each chain has a dead letter (one of ${dead}). A word that ends in it ends the chain.\n` +
 		'• A word on this server’s block list gets a ❌ and nothing else.\n\n' +
-		`For a timed game with turns (${s.turnSeconds} seconds each), run **/game shiritori** in any other text channel.`
+		`For a timed game with turns (${s.turnSeconds} seconds each), run **/game shiritori** in any other text channel.` +
+		(status ? `\n\n${status}` : '')
 	);
+}
+
+/** Where the rules message the bot keeps up to date is, or null. */
+async function getRulesMessage(db: Db, guildId: string) {
+	const row: any = await safely('rules message', () =>
+		db
+			.prepare(
+				`SELECT rules_channel_id AS channelId, rules_message_id AS messageId
+				   FROM shiritori_settings WHERE guild_id = ?`
+			)
+			.bind(guildId)
+			.first()
+	);
+	return row?.channelId && row?.messageId
+		? { channelId: String(row.channelId), messageId: String(row.messageId) }
+		: null;
+}
+
+async function setRulesMessage(
+	db: Db,
+	guildId: string,
+	channelId: string | null,
+	messageId: string | null
+) {
+	await db
+		.prepare(
+			`INSERT INTO shiritori_settings (guild_id, rules_channel_id, rules_message_id) VALUES (?, ?, ?)
+			 ON CONFLICT(guild_id) DO UPDATE SET
+			   rules_channel_id = excluded.rules_channel_id, rules_message_id = excluded.rules_message_id`
+		)
+		.bind(guildId, channelId, messageId)
+		.run();
+}
+
+/** The "Right now" section of the rules message: the chain as it stands. */
+export async function rulesStatus(db: Db, guildId: string, s: Settings, now = new Date()) {
+	const stamp = `<t:${Math.floor(now.getTime() / 1000)}:R>`;
+	if (!s.enabled || !s.chainChannelId) {
+		return `**Right now** (updated ${stamp})\nThe always-on chain is off.`;
+	}
+	const chain = await getOpenChain(db, guildId, s.chainChannelId);
+	const record = await chainRecord(db, guildId, chain?.id ?? 0);
+	const best = record ? `\nLongest chain so far: **${record}** words.` : '';
+	if (!chain) {
+		return (
+			`**Right now** (updated ${stamp})\nNo chain is running in <#${s.chainChannelId}>. ` +
+			`Mention me with a word to start one.${best}`
+		);
+	}
+	const need = requiredStart(chain.last_word, Boolean(chain.hard_mode));
+	const by = chain.length > 0 && chain.last_user_id ? ` by <@${chain.last_user_id}>` : '';
+	return (
+		`**Right now** (updated ${stamp})\n` +
+		`Chain in <#${s.chainChannelId}>: **${chain.length}** ${chain.length === 1 ? 'word' : 'words'}. ` +
+		`Last word: **${chain.last_word}**${by}.\n` +
+		`The next word starts with **${need}**. Dead letter: **${chain.dead_letter}**.${best}`
+	);
+}
+
+/**
+ * Edit the kept rules message so its status matches the chain. Failures are quiet: the game
+ * does not depend on it, and a message that was deleted just stops being tracked. Pass the
+ * plain client, not the watched one, so this never lands in the dashboard's health notice.
+ */
+export async function refreshRules(db: Db, discord: Discord, guildId: string, now = new Date()) {
+	if (!discord?.channels?.editMessage) return false;
+	const where = await getRulesMessage(db, guildId);
+	if (!where) return false;
+	const s = await getSettings(db, guildId);
+	try {
+		await discord.channels.editMessage(where.channelId, where.messageId, {
+			content: rulesText(s, await rulesStatus(db, guildId, s, now)),
+			allowed_mentions: { parse: [] },
+		});
+		return true;
+	} catch (err: any) {
+		if (err?.status === 404)
+			await safely('forget rules', () => setRulesMessage(db, guildId, null, null));
+		else
+			log.warn(
+				`[Shiritori] Could not update the rules message in ${guildId}: ${err?.message}`
+			);
+		return false;
+	}
 }
 
 /** `/game shiritori rules:True`: post the rules here and pin them. Managers only. */
@@ -1655,7 +1760,18 @@ async function postRules(
 		};
 	}
 	if (!discord?.channels?.send) return { response: ephemeral('I can’t post right now.') };
-	const text = rulesText(await getSettings(db, guildId));
+	const settings = await getSettings(db, guildId);
+	const text = rulesText(settings, await rulesStatus(db, guildId, settings));
+	// Already posted and kept up to date: refresh that message instead of posting a second.
+	const kept = await getRulesMessage(db, guildId);
+	if (kept && (await refreshRules(db, discord, guildId))) {
+		return {
+			response: ephemeral(
+				`The rules message in <#${kept.channelId}> is up to date. ` +
+					'It keeps its "Right now" section current as the chain moves.'
+			),
+		};
+	}
 	const posted: any = await safely('rules', () =>
 		discord.channels.send(channelId, { content: text, allowed_mentions: { parse: [] } })
 	);
@@ -1666,14 +1782,15 @@ async function postRules(
 			),
 		};
 	}
+	await safely('track rules', () => setRulesMessage(db, guildId, channelId, String(posted.id)));
 	const pinned = discord.channels.pin
 		? await safely('pin rules', () => discord.channels.pin(channelId, posted.id))
 		: null;
 	return {
 		response: ephemeral(
 			pinned !== null
-				? 'Posted and pinned the rules.'
-				: 'Posted the rules, but I couldn’t pin them. Give me the Pin Messages permission, or pin the message yourself.'
+				? 'Posted and pinned the rules. Its "Right now" section updates as the chain moves.'
+				: 'Posted the rules, but I couldn’t pin them. Give me the Pin Messages permission, or pin the message yourself. Its "Right now" section still updates.'
 		),
 	};
 }
@@ -1708,7 +1825,8 @@ async function setChainChannel(
 	body: Interaction,
 	db: Db,
 	guildId: string,
-	channelId: string | null
+	channelId: string | null,
+	discord: Discord
 ) {
 	if (!(await maySetChainChannel(db, guildId, body.member))) {
 		return {
@@ -1724,6 +1842,7 @@ async function setChainChannel(
 		}
 		await upsertSettings(db, guildId, { ...settings, chainChannelId: null });
 		log.info(`[Shiritori] chain channel cleared in ${guildId} by ${userOf(body).id}`);
+		await refreshRules(db, discord, guildId);
 		return {
 			response: ephemeral(
 				'The always-on chain is off. `/game shiritori` rounds still work. ' +
@@ -1741,6 +1860,7 @@ async function setChainChannel(
 		return { response: ephemeral('Pick a text channel for the chain.') };
 	}
 	await upsertSettings(db, guildId, { ...settings, enabled: true, chainChannelId: channelId });
+	await refreshRules(db, discord, guildId);
 	log.info(`[Shiritori] chain channel set to ${channelId} in ${guildId} by ${userOf(body).id}`);
 	return {
 		response: ephemeral(
@@ -1769,8 +1889,8 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 		return { response: ephemeral('Use one of channel, off or rules at a time.') };
 	}
 	if (rules) return postRules(body, db, guildId, channelId, watched(db, guildId, discord));
-	if (picked) return setChainChannel(body, db, guildId, String(picked));
-	if (off) return setChainChannel(body, db, guildId, null);
+	if (picked) return setChainChannel(body, db, guildId, String(picked), discord);
+	if (off) return setChainChannel(body, db, guildId, null, discord);
 	discord = watched(db, guildId, discord);
 	const inCall = (await voiceChannelOf(db, guildId, user.id)) === channelId;
 	const live = await liveRoundIn(db, guildId, channelId);

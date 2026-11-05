@@ -69,7 +69,20 @@ rules message built from the server's settings (hard mode, dead letters, turn cl
 it; if the bot cannot pin, it says so and the message still stands. One of `channel`, `off` and
 `rules` per command. Migrations `0086`, `0087` and `0088` add the three options.
 
-- ✅ on a word that fits. The chain grows.
+**The rules message stays current.** The bot remembers which message it posted (migration `0090`:
+`rules_channel_id`, `rules_message_id`) and keeps a "Right now" section at its foot: the chain's
+length, the last word and who played it, the letter the next word starts with, the dead letter,
+and the longest chain so far. It is edited after every word that lands, every break or end, a
+dashboard reset, and when the chain channel is set or turned off. A chat message or a refused
+word does not edit it. Run `rules:True` again and the bot refreshes that message instead of
+posting a second. If someone deletes it, the bot stops tracking it and carries on; run
+`rules:True` to post a new one. A message posted before 0090 is not tracked: delete it and run
+the command once more. The edit uses the plain client, so a failed edit never shows up as a
+Shiritori health notice.
+
+- ✅ on a word that fits. The chain grows. If the bot cannot add reactions (Add Reactions
+  missing in the channel), it replies in words instead: "✅ **word**. The next word starts with
+  **x**."
 - ❌ on a word that does not. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random
   seed word.
