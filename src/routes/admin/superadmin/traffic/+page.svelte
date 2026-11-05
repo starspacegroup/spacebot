@@ -462,7 +462,6 @@
 		gap: 1rem;
 		margin-top: 1rem;
 		min-width: 0;
-		max-width: 1500px;
 	}
 	.head {
 		display: flex;
@@ -514,6 +513,7 @@
 		gap: 0.25rem;
 		border-bottom: 1px solid var(--color-border);
 		overflow-x: auto;
+		overflow-y: hidden;
 	}
 	.page .tabs a {
 		padding: 0.6rem 1rem;
@@ -521,7 +521,6 @@
 		color: var(--color-text-secondary);
 		font-weight: 500;
 		border-bottom: 2px solid transparent;
-		margin-bottom: -1px;
 		white-space: nowrap;
 	}
 	.page .tabs a.active {
