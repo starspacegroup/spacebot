@@ -39,6 +39,9 @@ export const BOT_UA =
 /** Days of counters kept. A year and a bit, so year-on-year reads work. */
 export const RETENTION_DAYS = 400;
 
+/** Hourly totals only back the 24-bucket "1 day" window, so they need far less. */
+export const HOURLY_RETENTION_DAYS = 30;
+
 export type ViewDimension = 'os' | 'browser' | 'device' | 'language';
 export type SiteEvent = 'login_start' | 'install_start' | 'install_done';
 export const SITE_EVENTS: SiteEvent[] = ['login_start', 'install_start', 'install_done'];
@@ -225,16 +228,17 @@ export async function recordSiteEvent(db: Db, event: SiteEvent, now = new Date()
 /** Delete counters older than the retention window. */
 export async function pruneSiteTraffic(db: Db, now = new Date()): Promise<void> {
 	const before = utcDay(new Date(now.getTime() - RETENTION_DAYS * 86_400_000));
-	await db.batch(
-		[
+	const hourlyBefore = utcDay(new Date(now.getTime() - HOURLY_RETENTION_DAYS * 86_400_000));
+	await db.batch([
+		db.prepare(`DELETE FROM site_view_hourly WHERE day < ?`).bind(hourlyBefore),
+		...[
 			'site_view_daily',
-			'site_view_hourly',
 			'site_referrer_daily',
 			'site_country_daily',
 			'site_dimension_daily',
 			'site_event_daily',
-		].map((table) => db.prepare(`DELETE FROM ${table} WHERE day < ?`).bind(before))
-	);
+		].map((table) => db.prepare(`DELETE FROM ${table} WHERE day < ?`).bind(before)),
+	]);
 }
 
 // --- reads ----------------------------------------------------------------------------------

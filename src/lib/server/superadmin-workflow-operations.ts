@@ -35,6 +35,7 @@ import {
 	resolveEventLogRetentionEnv,
 } from '$lib/db/event-log-retention.js';
 import { pruneOldStats } from '$lib/db/server-stats.js';
+import { pruneAppendOnlyLogs } from '$lib/db/log-retention.js';
 import { processScheduledMessages, getPendingMessages } from '$lib/db/scheduled-messages.js';
 import { processAnniversaryTimelines } from '$lib/db/anniversary-timeline.js';
 import { sweepAllTimedOutRunnerJobs, createRunnerJob } from '$lib/db/local-runners.js';
@@ -316,6 +317,8 @@ const OPERATIONS = {
 				ctx.db,
 				resolveEventLogRetentionEnv(ctx.platform)
 			),
+			// Same reasoning: the remaining append-only tables ride on this node.
+			logRetention: await pruneAppendOnlyLogs(ctx.db, ctx.platform),
 		}),
 	},
 	deleteAggregatedStats: {

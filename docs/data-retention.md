@@ -25,6 +25,30 @@ pruned at 90 days
 | `voice_sessions`              | 90 days                              | Pre-existing (`cleanupOldData`).                                                                           |
 | `server_stats`                | 90 days                              | Pre-existing (`pruneOldStats`).                                                                            |
 
+### Append-only logs (`src/lib/db/log-retention.ts`, added 2026-11-05)
+
+Each table has its own nightly budget, so one table's backlog cannot starve
+another. Override per table with `LOG_RETENTION_<KEY>_DAYS` and
+`LOG_RETENTION_<KEY>_MAX_ROWS` (`0` = off for that table).
+
+| Table (KEY)                                                 | Keep    | Budget/run | Note                                                             |
+| ----------------------------------------------------------- | ------- | ---------- | ---------------------------------------------------------------- |
+| `command_logs` (`COMMAND_LOGS`)                             | 90 days | 10,000     | profile `command_count` becomes a 90-day count                   |
+| `automation_logs` (`AUTOMATION_LOGS`)                       | 90 days | 10,000     | automation success totals become 90-day totals                   |
+| `button_click_logs` (`BUTTON_CLICK_LOGS`)                   | 90 days | 10,000     |                                                                  |
+| `user_activity_logs` (`USER_ACTIVITY_LOGS`)                 | 90 days | 10,000     | holds IPs + user agents                                          |
+| `ai_jobs` + `ai_job_events` (`AI_JOBS`)                     | 30 days | 5,000      | terminal jobs only; events deleted first                         |
+| `cron_job_history` (`CRON_JOB_HISTORY`)                     | 90 days | 5,000      | not `running`                                                    |
+| `superadmin_workflow_runs` + `_run_steps` (`WORKFLOW_RUNS`) | 90 days | 5,000      | terminal runs only; steps deleted first                          |
+| `superadmin_workflow_cron_claims` (`WORKFLOW_CRON_CLAIMS`)  | 1 day   | 20,000     | only the current minute matters                                  |
+| `site_view_hourly`                                          | 30 days | (tiny)     | only the 24-hour chart reads it; daily site tables keep 400 days |
+
+The walk reads the table in primary-key windows, not by timestamp, so it never
+scans a table that has nothing to delete (most of these have no `created_at`
+index). Each run logs the oldest remaining row's age; if that grows night
+over night, raise the budget. It runs in both nightly paths (`runDailyRefresh`
+and the `cleanupOldData` workflow operation).
+
 **What you lose by pruning raw events:** the log viewer can only go back 90
 days. **What you keep:** every chart, trend and aggregate, permanently.
 
