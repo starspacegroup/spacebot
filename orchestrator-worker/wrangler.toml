@@ -8,6 +8,11 @@ compatibility_date = "2025-06-01"
 queue = "spacebot-ai-autopilot"
 max_batch_size = 10
 max_batch_timeout = 5
+# A message that fails max_retries times goes to the DLQ instead of being
+# dropped. CREATE THE DLQ BEFORE THE NEXT DEPLOY or the deploy fails:
+#   bunx wrangler queues create spacebot-orchestrator-dlq
+max_retries = 5
+dead_letter_queue = "spacebot-orchestrator-dlq"
 
 # Superadmin workflow runs: Pages enqueues run starts / approval wake-ups;
 # this worker creates or signals the SuperadminRunWorkflow instances.
@@ -16,6 +21,11 @@ max_batch_timeout = 5
 queue = "spacebot-workflow-runs"
 max_batch_size = 10
 max_batch_timeout = 5
+# A message that fails max_retries times goes to the DLQ instead of being
+# dropped. CREATE THE DLQ BEFORE THE NEXT DEPLOY or the deploy fails:
+#   bunx wrangler queues create spacebot-orchestrator-dlq
+max_retries = 5
+dead_letter_queue = "spacebot-orchestrator-dlq"
 
 # Producer binding so this worker can also enqueue watchdog-sweep messages
 # onto the same queue it consumes from.
