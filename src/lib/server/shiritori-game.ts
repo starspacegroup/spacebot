@@ -5,7 +5,7 @@
  * Two modes share one dictionary and one judge:
  *
  *  - **Chain**: a channel a server marks as the Shiritori channel. Anyone posts
- *    the next word; a good word gets a ✅ and a bad one a ❌ and breaks the chain.
+ *    the next word; a good word gets a ✅, a repeat gets a ❌ and breaks the chain, and chat is ignored.
  *  - **Round**: `/game shiritori` opens a lobby in the channel; players take
  *    turns against a clock, and a miss puts you out. The last one in wins.
  *
@@ -515,12 +515,6 @@ async function handleChainMessage(
 		return { action: 'started' };
 	}
 
-	if (chain.last_user_id === msg.userId) {
-		await react(discord, msg.channelId, msg.messageId, '❌');
-		await reply(discord, msg.channelId, msg.messageId, 'Let someone else add a word first.');
-		return { action: 'refused' };
-	}
-
 	const dict = guildDictionary(s);
 	const lemma = dict.lemma(token);
 	const seen = await db
@@ -540,8 +534,21 @@ async function handleChainMessage(
 		isBlocked: dict.isBlocked,
 	});
 
+	// A channel is also for talking. One word of chat ("lol", "thanks", a name) is not a
+	// move: it is not a dictionary word, or it does not start with the letter that is
+	// needed. Say nothing and break nothing. A word that fits but was already used still
+	// counts, and so does the dead letter.
+	if (move.ok === false && ['too_short', 'not_a_word', 'bad_start'].includes(move.code)) {
+		return IGNORE;
+	}
+
+	if (chain.last_user_id === msg.userId) {
+		await react(discord, msg.channelId, msg.messageId, '❌');
+		await reply(discord, msg.channelId, msg.messageId, 'Let someone else add a word first.');
+		return { action: 'refused' };
+	}
+
 	if (move.ok === false) {
-		if (move.code === 'too_short') return IGNORE;
 		if (move.code === 'blocked') return refuseWord(discord, msg, move.message);
 		return breakChain(db, discord, chain, msg, move.code, move.message, now, rand, s);
 	}
@@ -1637,12 +1644,34 @@ export async function maySetChainChannel(
 	);
 }
 
-/** `/game shiritori channel:#name`: make that channel the always-on chain. */
-async function setChainChannel(body: Interaction, db: Db, guildId: string, channelId: string) {
+/**
+ * `/game shiritori channel:#name` makes that channel the always-on chain;
+ * `/game shiritori off:True` stops it. Managers only (see `maySetChainChannel`).
+ */
+async function setChainChannel(
+	body: Interaction,
+	db: Db,
+	guildId: string,
+	channelId: string | null
+) {
 	if (!(await maySetChainChannel(db, guildId, body.member))) {
 		return {
 			response: ephemeral(
-				'Only people who can manage this bot’s commands can set the chain channel. Ask a server manager.'
+				'Only people who can manage this bot’s commands can change the chain channel. Ask a server manager.'
+			),
+		};
+	}
+	const settings = await getSettings(db, guildId);
+	if (channelId === null) {
+		if (!settings.chainChannelId) {
+			return { response: ephemeral('There is no always-on chain to turn off.') };
+		}
+		await upsertSettings(db, guildId, { ...settings, chainChannelId: null });
+		log.info(`[Shiritori] chain channel cleared in ${guildId} by ${userOf(body).id}`);
+		return {
+			response: ephemeral(
+				'The always-on chain is off. `/game shiritori` rounds still work. ' +
+					'Set a channel again any time.'
 			),
 		};
 	}
@@ -1655,13 +1684,12 @@ async function setChainChannel(body: Interaction, db: Db, guildId: string, chann
 	if (known && known.type !== 0 && known.type !== 5) {
 		return { response: ephemeral('Pick a text channel for the chain.') };
 	}
-	const settings = await getSettings(db, guildId);
 	await upsertSettings(db, guildId, { ...settings, enabled: true, chainChannelId: channelId });
 	log.info(`[Shiritori] chain channel set to ${channelId} in ${guildId} by ${userOf(body).id}`);
 	return {
 		response: ephemeral(
 			`Done. <#${channelId}> is now the Shiritori chain: anyone can post a word there. ` +
-				'Change the rules or turn it off under Activity in the dashboard.'
+				'Change the rules or turn it off under Activity in the dashboard, or with `off:True`.'
 		),
 	};
 }
@@ -1677,8 +1705,14 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
-	const picked = flattenInteractionOptions(body.data).leaves.find((o) => o.name === 'channel');
-	if (picked?.value) return setChainChannel(body, db, guildId, String(picked.value));
+	const leaves = flattenInteractionOptions(body.data).leaves;
+	const picked = leaves.find((o) => o.name === 'channel')?.value;
+	const off = leaves.find((o) => o.name === 'off')?.value === true;
+	if (picked && off) {
+		return { response: ephemeral('Pick a channel or turn the chain off, not both.') };
+	}
+	if (picked) return setChainChannel(body, db, guildId, String(picked));
+	if (off) return setChainChannel(body, db, guildId, null);
 	discord = watched(db, guildId, discord);
 	const inCall = (await voiceChannelOf(db, guildId, user.id)) === channelId;
 	const live = await liveRoundIn(db, guildId, channelId);

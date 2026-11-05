@@ -275,13 +275,13 @@ describe('Chain mode', () => {
 		expect(discord.reactions.at(-1)?.emoji).toBe('❌');
 	});
 
-	it('breaks on a word that starts with the wrong letter, and starts a new chain', async () => {
+	it('breaks on a repeat, and starts a new chain', async () => {
 		await enable();
 		await chainFrom('apple');
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
 		const old = await getOpenChain(db, GUILD, CHAIN_CH);
-		const out = await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'banana'), T0);
-		expect(out).toEqual({ action: 'broken', reason: 'bad_start' });
+		const out = await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'eagle'), T0);
+		expect(out).toEqual({ action: 'broken', reason: 'repeat' });
 		expect(discord.reactions.at(-1)?.emoji).toBe('❌');
 		const summary = discord.sent.at(-1)!.payload.content;
 		expect(summary).toContain('<@u2> broke the chain');
@@ -295,22 +295,44 @@ describe('Chain mode', () => {
 		).toBe(1);
 	});
 
-	it('breaks on a word that is not in the dictionary, and a repeat; refuses a blocked word', async () => {
-		await enable({ blockWords: 'elbow' });
+	it('treats one word of chat as chat: no reaction, no break, no turn, not even twice in a row', async () => {
+		await enable();
 		await chainFrom('apple');
-		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'ezzzq'), T0)).toEqual({
-			action: 'broken',
-			reason: 'not_a_word',
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		const chain = await getOpenChain(db, GUILD, CHAIN_CH);
+		const reactions = discord.reactions.length;
+		const sent = discord.sent.length;
+		// Not a dictionary word, a real word with the wrong first letter, and from the
+		// member who just played (who would otherwise be told to wait).
+		for (const [user, text] of [
+			['u2', 'lolzz'],
+			['u2', 'banana'],
+			['u1', 'thanksss'],
+			['u1', 'banana'],
+		]) {
+			expect(await handleMessage(db, discord, say(CHAIN_CH, user, text), T0)).toEqual({
+				action: 'ignore',
+			});
+		}
+		expect(discord.reactions.length).toBe(reactions);
+		expect(discord.sent.length).toBe(sent);
+		const same = await getOpenChain(db, GUILD, CHAIN_CH);
+		expect(same).toMatchObject({ id: chain?.id, length: chain?.length, last_word: 'eagle' });
+		// The chain carries on from the last real word.
+		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0)).toEqual({
+			action: 'accepted',
 		});
+	});
 
+	it('breaks on a repeat; refuses a blocked word', async () => {
+		await enable({ blockWords: 'elbow' });
 		await chainFrom('apple');
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
 		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'tiger'), T0);
-		// 'tigers' is the same word as 'tiger', and 'r' no longer follows; use a legal start
 		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'rabbit'), T0);
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'tigers'), T0).then((o) =>
-			expect(o).toMatchObject({ action: 'broken' })
+			expect(o).toEqual({ action: 'broken', reason: 'repeat' })
 		);
 
 		await chainFrom('apple');
@@ -358,9 +380,12 @@ describe('Chain mode', () => {
 				`UPDATE shiritori_chains SET seed_word = 'apple', last_word = 'apple', dead_letter = 'x'`
 			)
 			.run();
+		// Hard mode needs "le"; "eagle" starts with only "e", so it reads as chat.
 		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0)).toEqual({
-			action: 'broken',
-			reason: 'bad_start',
+			action: 'ignore',
+		});
+		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'leaf'), T0)).toEqual({
+			action: 'accepted',
 		});
 	});
 
@@ -380,9 +405,10 @@ describe('Chain mode', () => {
 	it('does not post twice when two breaks race', async () => {
 		await enable();
 		await chainFrom('apple');
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
 		await Promise.all([
-			handleMessage(db, discord, say(CHAIN_CH, 'u1', 'banana'), T0),
-			handleMessage(db, discord, say(CHAIN_CH, 'u2', 'cherry'), T0),
+			handleMessage(db, discord, say(CHAIN_CH, 'u2', 'eagle'), T0),
+			handleMessage(db, discord, say(CHAIN_CH, 'u3', 'eagle'), T0),
 		]);
 		expect(
 			discord.sent.filter((s) => s.payload.content.includes('broke the chain'))
@@ -669,7 +695,7 @@ describe('Round mode', () => {
 		await enable();
 		await chainFrom('apple');
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
-		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'banana'), T0); // breaks it
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'eagle'), T0); // breaks it
 		const old = new Date(T0.getTime() + 91 * 86_400_000);
 		await sweepShiritori(db, discord, old);
 		const rows = await db.prepare(`SELECT COUNT(*) AS n FROM shiritori_words`).first();
@@ -718,7 +744,7 @@ describe('cost', () => {
 		await enable();
 		await chainFrom('apple');
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
-		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'banana'), T0); // breaks it
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'eagle'), T0); // breaks it
 		const late = new Date(T0.getTime() + 91 * 86_400_000 + 30 * 60_000);
 		await sweepShiritori(db, discord, late); // minute 30: no prune
 		expect((await db.prepare(`SELECT COUNT(*) AS n FROM shiritori_words`).first())?.n).toBe(1);
@@ -865,6 +891,53 @@ describe('/play shiritori', () => {
 				discord
 			);
 			expect(allowed.response.data.content).toContain(`<#${CHAIN_CH}>`);
+		});
+
+		it('turns the chain off for a manager, and refuses everyone else', async () => {
+			const off = (member: Record<string, any>, extra: any[] = []) =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, ...member },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'off', type: 5, value: true }, ...extra],
+							},
+						],
+					},
+				});
+			await enable();
+			const denied = await handleShiritoriCommand(off({ permissions: '0' }), db, discord);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			expect((await getSettings(db, GUILD)).chainChannelId).toBe(CHAIN_CH);
+
+			const both = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }, [
+					{ name: 'channel', type: 7, value: CHAIN_CH },
+				]),
+				db,
+				discord
+			);
+			expect(both.response.data.content).toContain('not both');
+
+			const done = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(done.response.data.content).toContain('is off');
+			const after = await getSettings(db, GUILD);
+			expect(after.chainChannelId).toBeNull();
+			expect(after.enabled).toBe(true); // rounds still work
+
+			const again = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(again.response.data.content).toContain('no always-on chain');
 		});
 
 		it('refuses a channel that is known to be a voice channel', async () => {

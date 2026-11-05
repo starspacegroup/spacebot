@@ -58,14 +58,20 @@ Pick it in the dashboard (Activity, "Chain channel"), or from Discord with
 one step. It opens no round. It works only for people who hold the dashboard's **manage
 commands** permission: Manage Server by default, plus any roles the server added under
 Settings. Administrators always pass. Everyone else gets a private refusal and nothing
-changes. Only text and announcement channels are accepted. Migration `0086` adds the option
-to the command; the handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
-To turn the chain off, use the dashboard.
+changes. Only text and announcement channels are accepted. The handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
+To turn the chain off, run `/game shiritori off:True` (same permission, and it keeps
+rounds working), or clear the channel in the dashboard. Giving `channel` and `off`
+together is refused. Migrations `0086` and `0087` add the two options.
 
 - ✅ on a word that fits. The chain grows.
-- ❌ on a word that does not, with the reason. The **chain breaks**: SpaceBot posts the
+- ❌ on a **word that was already used**. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random
   seed word.
+- **Chat is not a move.** The channel is also for talking. One word that is not in the
+  dictionary ("lol", a name), or a real word that does not start with the letter needed
+  ("thanks"), gets no reaction, no reply and no break. It does not use anyone's turn, and
+  it does not trigger the "let someone else go" reminder. Only a word that fits, a repeat,
+  a blocked word or a dead-letter word is treated as a move.
 - A word on the server's block list gets a ❌ and a reason, and **nothing else**: the chain
   does not break. A block list matches stems, so it can catch an innocent word, and one
   member must not be able to end a chain on purpose with a word the filter refuses.
