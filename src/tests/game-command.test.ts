@@ -296,3 +296,31 @@ describe('migration 0087 (off option on /game shiritori)', () => {
 		]);
 	});
 });
+
+describe('migration 0088 (rules option on /game shiritori)', () => {
+	it('adds a boolean rules option after off, once', async () => {
+		const { readFileSync } = await import('node:fs');
+		const { createSqliteD1 } = await import('./helpers/sqlite-d1.js');
+		const file = (n: string) =>
+			readFileSync(new URL(`../../migrations/${n}`, import.meta.url), 'utf8');
+		const db: any = createSqliteD1();
+		db.exec(`CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT, name TEXT,
+			description TEXT, options TEXT, is_built_in INTEGER);`);
+		await db
+			.prepare(`INSERT INTO commands VALUES (1, '__built_in__', 'game', 'x', ?, 1)`)
+			.bind(
+				'[{"name":"shiritori","description":"Open a Shiritori word-chain round in this channel","type":1}]'
+			)
+			.run();
+		for (const n of ['0086_shiritori_channel_option.sql', '0087_shiritori_off_option.sql'])
+			db.exec(file(n));
+		for (let i = 0; i < 2; i++) db.exec(file('0088_shiritori_rules_option.sql'));
+		const row: any = await db.prepare('SELECT options FROM commands').first();
+		const [shiritori] = JSON.parse(row.options);
+		expect(shiritori.options.map((o: any) => [o.name, o.type])).toEqual([
+			['channel', 7],
+			['off', 5],
+			['rules', 5],
+		]);
+	});
+});

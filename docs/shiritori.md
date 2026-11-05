@@ -61,7 +61,12 @@ Settings. Administrators always pass. Everyone else gets a private refusal and n
 changes. Only text and announcement channels are accepted. The handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
 To turn the chain off, run `/game shiritori off:True` (same permission, and it keeps
 rounds working), or clear the channel in the dashboard. Giving `channel` and `off`
-together is refused. Migrations `0086` and `0087` add the two options.
+together is refused.
+
+To post the rules, run `/game shiritori rules:True` in the channel (same permission). It posts a
+rules message built from the server's settings (hard mode, dead letters, turn clock) and pins
+it; if the bot cannot pin, it says so and the message still stands. One of `channel`, `off` and
+`rules` per command. Migrations `0086`, `0087` and `0088` add the three options.
 
 - ✅ on a word that fits. The chain grows.
 - ❌ on a word that does not. The **chain breaks**: SpaceBot posts the

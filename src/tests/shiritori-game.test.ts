@@ -36,6 +36,7 @@ import {
 	openRound,
 	parseWordList,
 	resetChain,
+	rulesText,
 	roundStats,
 	sentTime,
 	shuffle,
@@ -69,7 +70,9 @@ function fakeDiscord() {
 	const edits: { channelId: string; messageId: string; payload: any }[] = [];
 	const reactions: { messageId: string; emoji: string }[] = [];
 	const deleted: string[] = [];
+	const pins: { channelId: string; messageId: string }[] = [];
 	return {
+		pins,
 		sent,
 		edits,
 		reactions,
@@ -81,6 +84,9 @@ function fakeDiscord() {
 			send: async (channelId: string, payload: any) => {
 				sent.push({ channelId, payload });
 				return { id: `bot-${sent.length}` };
+			},
+			pin: async (channelId: string, messageId: string) => {
+				pins.push({ channelId, messageId });
 			},
 			editMessage: async (channelId: string, messageId: string, payload: any) => {
 				edits.push({ channelId, messageId, payload });
@@ -926,7 +932,7 @@ describe('/play shiritori', () => {
 				db,
 				discord
 			);
-			expect(both.response.data.content).toContain('not both');
+			expect(both.response.data.content).toContain('one of channel, off or rules');
 
 			const done = await handleShiritoriCommand(
 				off({ permissions: MANAGE_SERVER }),
@@ -944,6 +950,79 @@ describe('/play shiritori', () => {
 				discord
 			);
 			expect(again.response.data.content).toContain('no always-on chain');
+		});
+
+		it('posts the rules and pins them, for managers only', async () => {
+			const ask = (member: Record<string, any>, extra: any[] = []) =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, ...member },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }, ...extra],
+							},
+						],
+					},
+				});
+			await enable({ hardMode: true, turnSeconds: 20 });
+			const denied = await handleShiritoriCommand(ask({ permissions: '0' }), db, discord);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			expect(discord.sent).toHaveLength(0);
+
+			const two = await handleShiritoriCommand(
+				ask({ permissions: MANAGE_SERVER }, [{ name: 'off', type: 5, value: true }]),
+				db,
+				discord
+			);
+			expect(two.response.data.content).toContain('one of channel, off or rules');
+
+			const done = await handleShiritoriCommand(
+				ask({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(done.response.data.content).toContain('pinned');
+			expect(discord.sent).toHaveLength(1);
+			expect(discord.sent[0].channelId).toBe(ROUND_CH);
+			expect(discord.sent[0].payload.content).toContain('@SpaceBot eagle');
+			expect(discord.sent[0].payload.content).toContain('last **two** letters');
+			expect(discord.sent[0].payload.content).toContain('20 seconds');
+			expect(discord.pins).toEqual([{ channelId: ROUND_CH, messageId: 'bot-1' }]);
+		});
+
+		it('still posts the rules when pinning is not allowed', async () => {
+			await enable();
+			(discord.channels as any).pin = async () => {
+				throw Object.assign(new Error('Missing Permissions'), { status: 403 });
+			};
+			const out = await handleShiritoriCommand(
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				}),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain('couldn’t pin');
+			expect(discord.sent).toHaveLength(1);
+		});
+
+		it('writes rules that follow the settings', () => {
+			const text = rulesText({ ...DEFAULTS, deadLetters: 'xq' });
+			expect(text).toContain('X, Q');
+			expect(text).toContain('the last letter');
 		});
 
 		it('refuses a channel that is known to be a voice channel', async () => {

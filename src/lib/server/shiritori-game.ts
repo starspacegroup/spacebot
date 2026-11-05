@@ -1622,6 +1622,62 @@ async function isVoiceChannel(db: Db, guildId: string, channelId: string) {
 	return row?.type === 2 || row?.type === 13;
 }
 
+/** The rules message, from the server's own settings. */
+export function rulesText(s: Settings) {
+	const dead = [...new Set(s.deadLetters.toUpperCase().split(''))].join(', ');
+	const start = s.hardMode ? 'the last **two** letters' : 'the last letter';
+	return (
+		'🔗 **Shiritori: the word chain**\n' +
+		`To play, mention me with one word: **@SpaceBot eagle**. Anything without the mention is just chat.\n\n` +
+		`• Each word starts with ${start} of the word before it.\n` +
+		'• Real English words only, at least 3 letters. Plurals and other forms of a used word count as used.\n' +
+		'• A word that was already used, or does not fit, **breaks the chain** and a new one starts.\n' +
+		'• No one goes twice in a row.\n' +
+		`• Each chain has a dead letter (one of ${dead}). A word that ends in it ends the chain.\n` +
+		'• A word on this server’s block list gets a ❌ and nothing else.\n\n' +
+		`For a timed game with turns (${s.turnSeconds} seconds each), run **/game shiritori** in any other text channel.`
+	);
+}
+
+/** `/game shiritori rules:True`: post the rules here and pin them. Managers only. */
+async function postRules(
+	body: Interaction,
+	db: Db,
+	guildId: string,
+	channelId: string,
+	discord: Discord
+) {
+	if (!(await maySetChainChannel(db, guildId, body.member))) {
+		return {
+			response: ephemeral(
+				'Only people who can manage this bot’s commands can post the rules. Ask a server manager.'
+			),
+		};
+	}
+	if (!discord?.channels?.send) return { response: ephemeral('I can’t post right now.') };
+	const text = rulesText(await getSettings(db, guildId));
+	const posted: any = await safely('rules', () =>
+		discord.channels.send(channelId, { content: text, allowed_mentions: { parse: [] } })
+	);
+	if (!posted?.id) {
+		return {
+			response: ephemeral(
+				'I couldn’t post here. Check that I can send messages in this channel.'
+			),
+		};
+	}
+	const pinned = discord.channels.pin
+		? await safely('pin rules', () => discord.channels.pin(channelId, posted.id))
+		: null;
+	return {
+		response: ephemeral(
+			pinned !== null
+				? 'Posted and pinned the rules.'
+				: 'Posted the rules, but I couldn’t pin them. Give me the Pin Messages permission, or pin the message yourself.'
+		),
+	};
+}
+
 /**
  * Who may point the chain at a channel with `/game shiritori channel:`. It is the
  * dashboard's "manage commands" permission: Manage Server by default, plus any
@@ -1707,9 +1763,11 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	const leaves = flattenInteractionOptions(body.data).leaves;
 	const picked = leaves.find((o) => o.name === 'channel')?.value;
 	const off = leaves.find((o) => o.name === 'off')?.value === true;
-	if (picked && off) {
-		return { response: ephemeral('Pick a channel or turn the chain off, not both.') };
+	const rules = leaves.find((o) => o.name === 'rules')?.value === true;
+	if ([Boolean(picked), off, rules].filter(Boolean).length > 1) {
+		return { response: ephemeral('Use one of channel, off or rules at a time.') };
 	}
+	if (rules) return postRules(body, db, guildId, channelId, watched(db, guildId, discord));
 	if (picked) return setChainChannel(body, db, guildId, String(picked));
 	if (off) return setChainChannel(body, db, guildId, null);
 	discord = watched(db, guildId, discord);
