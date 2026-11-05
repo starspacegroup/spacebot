@@ -33,6 +33,7 @@ import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
+import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
 import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
@@ -352,6 +353,12 @@ export async function POST({ request, platform: rawPlatform }) {
 					reply.after.catch((err) => log.error('[Quorum] after-reply work failed:', err));
 			}
 			return json(reply.response);
+		}
+
+		// `/define` and `/synonym`: a live lookup from a free word service, answered at once.
+		// Off until a server turns them on; the handler checks that itself.
+		if (isWordCommand(data.name) && guildId) {
+			return json(await handleWordCommand(data.name, body, db));
 		}
 
 		// `/oldest`: a read over the member cache, answered at once.

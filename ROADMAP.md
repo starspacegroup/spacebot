@@ -86,6 +86,15 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       look to installed. Daily aggregates, nothing per visitor, no cookies or IP addresses;
       ported from NebulaKit's stats stack (`docs/site-traffic.md`, migration 0084). Open:
       viewport sizes, a per-page conversion view
+      Reworked 2026-11-05 into Overview, Server browser and Audience tabs; the Server browser tab
+      counts cards seen, listing pages opened and Join presses per listing per day (migration
+      0091; the Join button goes through `/servers/{id}/join`)
+- [x] Word commands — `/define` (Wiktionary) and `/synonym` (Datamuse), built-in and off until a
+      server turns them on from the Commands page; a lookup per member per minute limit; nothing
+      stored (`docs/word-commands.md`, migration 0092)
+- [x] Announcement channel — a per-server channel, set on the Settings page, where SpaceBot posts
+      global changes and important alerts; nothing posts to it yet (`docs/announcements.md`,
+      migration 0089)
 - [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
       server's command list, hashes it, and re-registers the server when it changed, so a
       deploy never needs `register-commands` (`docs/command-sync.md`, migration 0074)
