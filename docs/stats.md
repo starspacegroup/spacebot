@@ -49,3 +49,18 @@ server's time zone, because a daily row covers a whole UTC day.
 `?preview=1` fills every tab with canned data from `src/lib/stats/preview-fixture.ts`,
 so the page can be looked at without a populated server. It is loaded behind
 `import.meta.env.DEV` and is not in a production build.
+
+## When the database is overloaded (2026-11-05)
+
+D1 refuses queries with error 7429 ("overloaded, too many resources consumed within a 10 second
+window") when a request reads too many rows too fast. Each stats query catches its own error and
+returns an empty value, so an overloaded page used to show zeros that looked real, and the page
+cached them. Two things now prevent that:
+
+- The event counts (totals, today, week, month, bot and non-bot, categories, top types) come from
+  **one** grouped query, `getEventStatistics`, instead of ten. Five of the ten each read every
+  event the server had ever logged. The numbers are unchanged.
+- If the main statistics query fails, the loader does not cache the result and the endpoint answers 502. The page then shows a "could not be loaded" notice with a Try again button.
+
+Other queries on the page (top users, top channels, the heatmap) still scan a server's events and
+are the next place to look if overload comes back.
