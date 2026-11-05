@@ -21,15 +21,24 @@ export function isRateLimitExempt(request: Request, pathname: string): boolean {
 	return false;
 }
 
+/**
+ * Who a request is counted against.
+ *
+ * Security review 2026-11-05: this used to read the `discord_user_id` cookie,
+ * which the client sets, so rotating it bought a fresh bucket per request. It
+ * now uses only the user id the hook verified from the signed `sb_session`
+ * cookie (`locals.userId`, set by `establishSession` before the limiter runs),
+ * then the edge-supplied client IP. Bearer keys keep their prefix bucket.
+ */
 export function rateLimitIdentity(event: any): string {
 	const auth = event.request.headers.get('authorization');
 	if (auth?.startsWith('Bearer ')) return `bearer:${auth.slice(7, 23)}`;
-	return (
-		event.cookies.get('discord_user_id') ||
+	const userId = event.locals?.userId;
+	if (typeof userId === 'string' && userId) return `user:${userId}`;
+	const ip =
 		event.request.headers.get('cf-connecting-ip') ||
-		event.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-		'anonymous'
-	);
+		event.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+	return ip ? `ip:${ip}` : 'anonymous';
 }
 
 /**
