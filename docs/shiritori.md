@@ -41,24 +41,37 @@ round is a **voice round**. It plays the same, with these differences:
   mid-round that table is rebuilt, and the 20 seconds is what keeps a restart from skipping
   people.
 
-## ❓ for a definition
+## ❓ for a definition, or what was meant
 
-React ❓ (or ❔) to a word in the game and the bot replies to that message with its
-definition, from the same Wiktionary lookup `/define` uses (see
-[word-commands.md](word-commands.md)). It works on any word the game accepted, in the Chain
-channel or in a round, and it works whether or not the server has turned `/define` on. A
-message is answered once per ten minutes, and one person gets at most eight lookups a
-minute, so a pile of ❓ cannot spam the channel. If Wiktionary has no entry the bot says so,
-trying the base word first ("tigers" then "tiger"); if the service is down it stays quiet,
-so a later ❓ can try again.
+React ❓ (or ❔) to a word that was part of the game and the bot replies to that message:
 
-How it travels: the gateway sees the reaction (a bot's own reactions are ignored), checks the
-emoji and that the channel is one the game listens to, and posts to
-`/api/shiritori/{guild}/reaction`. The site finds the word by its Discord message id
-(`shiritori_words.message_id`, and `shiritori_round_words.message_id` from migration `0093`),
-so rounds played before 0093 are not looked up. A round's channel is only listened to while the
-round runs, so a ❓ on a word after the round has ended does nothing; a Chain channel is always
-listened to. This needs the gateway restarted to take effect.
+- **A word:** its definition, from the same Wiktionary lookup `/define` uses (see
+  [word-commands.md](word-commands.md)). If there is no entry it says so, trying the base word first
+  ("tigers", then "tiger"). It works on a word the game accepted and on a real word it turned
+  away (the wrong first letter, a repeat), and whether or not the server has `/define` on.
+- **Not in the dictionary:** "**eagel** is not in the dictionary. Maybe this was meant: **eagle**?"
+  The close spellings come from Datamuse and are filtered to words the game would accept (the
+  server's own allow and block lists included). If nothing is close, it says that.
+
+What counts as "part of the game": in the Chain channel, a word addressed to the bot (chat is
+ignored); in a channel that has hosted a round, a one-word message from someone who played in it,
+**including after the round has ended**. A message is answered once per ten minutes, and one person
+gets at most eight lookups a minute. If a word service is down the bot stays quiet, so a later ❓
+can try again. Reactions from bots are ignored.
+
+How it travels: the gateway sees every ❓, fetches the message if it was not cached, strips the
+bot mention, and posts the text, its author and whether it was addressed to
+`/api/shiritori/{guild}/reaction`. The site decides whether it was a game word: first by the
+message id of an accepted word (`shiritori_words.message_id`; `shiritori_round_words.message_id`
+from migration `0093`), then by the rules above. This needs the gateway restarted to take effect.
+
+## /game help
+
+`/game help` (or `/play help`) is for anyone: a private message with the rules, built from this
+server's settings and including the chain as it stands (length, last word, next letter, dead
+letter), how the ❓ works, and a line about the hidden-agent game. It is the same text a manager
+pins with `rules:True`. If Shiritori is off in the server it says so and still shows the rules.
+Migration `0094` adds the subcommand.
 
 ## The turn prompt
 

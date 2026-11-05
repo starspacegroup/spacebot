@@ -112,6 +112,7 @@ describe('routing helpers', () => {
 
 	it('tells built-in game subcommands from the integration ones', () => {
 		expect(isBuiltInGameInteraction({ options: [sub('shiritori')] })).toBe(true);
+		expect(isBuiltInGameInteraction({ options: [sub('help')] })).toBe(true);
 		expect(isBuiltInGameInteraction({ options: [sub('stats')] })).toBe(false);
 		expect(isBuiltInGameInteraction({ options: [] })).toBe(false);
 		expect(gameSubcommand({ options: [{ name: 'g', type: 2 }] })).toBe('g');
@@ -321,6 +322,39 @@ describe('migration 0088 (rules option on /game shiritori)', () => {
 			['channel', 7],
 			['off', 5],
 			['rules', 5],
+		]);
+	});
+});
+
+describe('migration 0094 (help subcommand on /game)', () => {
+	async function run(options: string, times = 1) {
+		const { readFileSync } = await import('node:fs');
+		const { createSqliteD1 } = await import('./helpers/sqlite-d1.js');
+		const sql = readFileSync(
+			new URL('../../migrations/0094_game_help_subcommand.sql', import.meta.url),
+			'utf8'
+		);
+		const db: any = createSqliteD1();
+		db.exec(`CREATE TABLE commands (id INTEGER PRIMARY KEY, guild_id TEXT, name TEXT,
+			description TEXT, options TEXT, is_built_in INTEGER);`);
+		await db
+			.prepare(`INSERT INTO commands VALUES (1, '__built_in__', 'game', 'x', ?, 1)`)
+			.bind(options)
+			.run();
+		for (let i = 0; i < times; i++) db.exec(sql);
+		const row: any = await db.prepare('SELECT options FROM commands').first();
+		return JSON.parse(row.options);
+	}
+
+	it('adds a help subcommand at the end, once', async () => {
+		const options = await run('[{"name":"start","type":1},{"name":"shiritori","type":1}]', 2);
+		expect(options.map((o: any) => o.name)).toEqual(['start', 'shiritori', 'help']);
+		expect(options.at(-1).type).toBe(1);
+	});
+
+	it('leaves a /game without shiritori alone', async () => {
+		expect((await run('[{"name":"start","type":1}]')).map((o: any) => o.name)).toEqual([
+			'start',
 		]);
 	});
 });

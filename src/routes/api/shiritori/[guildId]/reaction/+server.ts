@@ -13,7 +13,7 @@ export async function POST({ request, platform, params }) {
 	if (!db) return json({ error: 'Database not available' }, { status: 500 });
 
 	const body = await request.json().catch(() => null);
-	const { channelId, messageId, userId } = body ?? {};
+	const { channelId, messageId, userId, authorId, content, addressed } = body ?? {};
 	if (
 		typeof channelId !== 'string' ||
 		typeof messageId !== 'string' ||
@@ -26,6 +26,9 @@ export async function POST({ request, platform, params }) {
 		channelId,
 		messageId,
 		userId,
+		authorId: typeof authorId === 'string' ? authorId : undefined,
+		content: typeof content === 'string' ? content.slice(0, 200) : undefined,
+		addressed: addressed === true,
 	});
 	return json(outcome);
 }

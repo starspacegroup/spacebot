@@ -42,6 +42,8 @@ import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
 import {
 	handleShiritoriCommand,
 	handleShiritoriComponent,
+	handleGameHelp,
+	isGameHelpCommand,
 	isShiritoriCommand,
 } from '$lib/server/shiritori-game.js';
 import { log } from '$lib/db/logger.js';
@@ -397,6 +399,9 @@ export async function POST({ request, platform: rawPlatform }) {
 		// and fall through to its handler below.
 		if (data.name === 'game' && guildId && isBuiltInGameInteraction(data)) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			if (isGameHelpCommand(body)) {
+				return json(await handleGameHelp(body, db));
+			}
 			if (isShiritoriCommand(body)) {
 				const reply = await handleShiritoriCommand(
 					body,

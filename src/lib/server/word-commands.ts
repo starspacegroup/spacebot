@@ -217,6 +217,26 @@ export async function lookupDefinition(
 	}
 }
 
+/**
+ * Words spelled like `word`, best first, from Datamuse (`sp=`). Null when the service is down.
+ * The caller filters them: for Shiritori only words the game accepts are worth suggesting.
+ */
+export async function lookupSimilar(
+	word: string,
+	fetcher: Fetcher = fetch,
+	limit = 12
+): Promise<string[] | null> {
+	try {
+		const { status, body } = await getJson(
+			fetcher,
+			`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&max=${limit * 2}`
+		);
+		return status >= 400 ? null : parseDatamuse(body, word, limit);
+	} catch {
+		return null;
+	}
+}
+
 // --- the handler ----------------------------------------------------------------------------
 
 /** The word option's value. */

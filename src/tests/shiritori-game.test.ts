@@ -23,6 +23,8 @@ import {
 	getSettings,
 	guildDictionary,
 	handleDefineReaction,
+	handleGameHelp,
+	isGameHelpCommand,
 	handleMessage,
 	handleShiritoriCommand,
 	handleShiritoriComponent,
@@ -862,6 +864,55 @@ describe('when SpaceBot cannot post', () => {
 	});
 });
 
+describe('/game help', () => {
+	const ask = (over: Record<string, any> = {}) => ({
+		guild_id: GUILD,
+		channel_id: ROUND_CH,
+		member: { user: { id: 'u1', username: 'one' }, permissions: '0' },
+		data: { name: 'game', options: [{ name: 'help', type: 1 }] },
+		...over,
+	});
+
+	it('is recognised', () => {
+		expect(isGameHelpCommand(ask())).toBe(true);
+		expect(
+			isGameHelpCommand(
+				ask({ data: { name: 'game', options: [{ name: 'start', type: 1 }] } })
+			)
+		).toBe(false);
+	});
+
+	it('shows anyone the rules, this server’s settings and the chain as it stands, privately', async () => {
+		await enable({ turnSeconds: 20 });
+		await chainFrom('apple');
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		const out: any = await handleGameHelp(ask(), db);
+		const text = out.data.content;
+		expect(out.data.flags).toBe(64);
+		expect(out.data.allowed_mentions).toEqual({ parse: [] });
+		expect(text).toContain('Shiritori: the word chain');
+		expect(text).toContain('@SpaceBot eagle');
+		expect(text).toContain('20 seconds');
+		expect(text).toContain('React ❓');
+		expect(text).toContain('Last word: **eagle**');
+		expect(text).toContain('Hidden agent');
+		expect(text).toContain('/game start');
+		expect(text.length).toBeLessThanOrEqual(2000);
+	});
+
+	it('says when Shiritori is not turned on, and still shows the rules', async () => {
+		const out: any = await handleGameHelp(ask(), db);
+		expect(out.data.content).toContain('not turned on in this server yet');
+		expect(out.data.content).toContain('Shiritori: the word chain');
+		expect(out.data.content).not.toContain('Right now');
+	});
+
+	it('refuses outside a server', async () => {
+		const out: any = await handleGameHelp(ask({ guild_id: undefined }), db);
+		expect(out.data.content).toContain('inside a server');
+	});
+});
+
 describe('❓ on a word', () => {
 	const wiktionary = (word: string) =>
 		new Response(
@@ -942,6 +993,115 @@ describe('❓ on a word', () => {
 			.run();
 		expect(await handleDefineReaction(db, discord, asked(word.messageId), get)).toEqual({
 			action: 'ignore',
+		});
+	});
+
+	describe('a word the game rejected, or from a round that has ended', () => {
+		const services = (near: unknown[] | number) =>
+			vi.fn((url: string) =>
+				Promise.resolve(
+					url.includes('datamuse')
+						? typeof near === 'number'
+							? new Response('{}', { status: near })
+							: new Response(JSON.stringify(near))
+						: wiktionary('x')
+				)
+			);
+		const typed = (content: string, over: Record<string, any> = {}) => ({
+			guildId: GUILD,
+			channelId: CHAIN_CH,
+			messageId: `typed-${++n}`,
+			userId: 'u9',
+			authorId: 'u1',
+			content,
+			addressed: true,
+			...over,
+		});
+
+		it('says what was probably meant for a word that is not in the dictionary', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([{ word: 'eagle' }, { word: 'qwxzq' }, { word: 'eagel' }]);
+			const out = await handleDefineReaction(db, discord, typed('eagel'), get);
+			expect(out).toEqual({ action: 'accepted' });
+			expect(get.mock.calls[0][0]).toContain('datamuse');
+			const said = discord.sent.at(-1)!.payload;
+			expect(said.content).toContain('**eagel** is not in the dictionary');
+			expect(said.content).toContain('Maybe this was meant: **eagle**?');
+			expect(said.content).not.toContain('qwxzq'); // only words the game would accept
+			expect(said.message_reference.fail_if_not_exists).toBe(false);
+		});
+
+		it('says so when nothing close is known, and stays quiet when the service is down', async () => {
+			await enable();
+			await chainFrom('apple');
+			await handleDefineReaction(db, discord, typed('zzqxj'), services([]));
+			expect(discord.sent.at(-1)!.payload.content).toContain('could not find a close word');
+			const before = discord.sent.length;
+			await handleDefineReaction(db, discord, typed('zzqxk'), services(502));
+			expect(discord.sent).toHaveLength(before);
+		});
+
+		it('defines a real word the game turned away, such as one with the wrong first letter', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([]);
+			await handleDefineReaction(db, discord, typed('banana'), get);
+			expect(get.mock.calls[0][0]).toContain('wiktionary');
+			expect(discord.sent.at(-1)!.payload.embeds).toBeTruthy();
+		});
+
+		it('ignores chat in the Chain channel, however the word looks', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([]);
+			expect(
+				await handleDefineReaction(db, discord, typed('banana', { addressed: false }), get)
+			).toEqual({ action: 'ignore' });
+			expect(await handleDefineReaction(db, discord, typed('two words'), get)).toEqual({
+				action: 'ignore',
+			});
+			expect(get).not.toHaveBeenCalled();
+		});
+
+		it('works in a channel whose round is over, for the players, and only for them', async () => {
+			await enable();
+			const round = await openRound(db, discord, {
+				guildId: GUILD,
+				channelId: ROUND_CH,
+				starterId: 'u1',
+				starterName: 'One',
+			});
+			if (isFail(round)) throw new Error(round.error);
+			await joinRound(db, discord, round.id, { id: 'u2', name: 'Two' });
+			// The round is over, but the channel keeps its history and its players.
+			await db
+				.prepare(
+					`UPDATE shiritori_rounds SET status = 'ended', result = 'cancelled' WHERE id = ?`
+				)
+				.bind(round.id)
+				.run();
+			expect(await liveRoundIn(db, GUILD, ROUND_CH)).toBeNull();
+
+			const get = services([]);
+			const base = { channelId: ROUND_CH, addressed: false };
+			expect(
+				await handleDefineReaction(
+					db,
+					discord,
+					typed('apple', { ...base, authorId: 'stranger' }),
+					get
+				)
+			).toEqual({ action: 'ignore' });
+			expect(get).not.toHaveBeenCalled();
+			await handleDefineReaction(
+				db,
+				discord,
+				typed('apple', { ...base, authorId: 'u2' }),
+				get
+			);
+			expect(discord.sent.at(-1)!.channelId).toBe(ROUND_CH);
+			expect(discord.sent.at(-1)!.payload.embeds).toBeTruthy();
 		});
 	});
 

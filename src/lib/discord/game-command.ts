@@ -2,7 +2,7 @@
  * `/game` is one command for every game, and `/play` is its synonym.
  *
  * The built-in Game command row (migration 0083) holds the hidden-agent round
- * (`start`, `stop`, `status`) and Shiritori (`shiritori`). Where a server has
+ * (`start`, `stop`, `status`), Shiritori (`shiritori`) and `help` (the games' rules for anyone). Where a server has
  * the *Space Game integration on, its manifest also declares a `/game`;
  * Discord allows one command per name, so its subcommands (`stats`,
  * `leaderboard`, `play`) are merged into the built-in one and routed back to
@@ -17,7 +17,7 @@ export const GAME_COMMAND = 'game';
 export const GAME_ALIAS = 'play';
 export const GAME_ALIAS_DESCRIPTION = 'Same as /game';
 /** Subcommands the built-in handlers own; anything else under /game is the integration's. */
-export const BUILT_IN_GAME_SUBCOMMANDS = ['start', 'stop', 'status', 'shiritori'];
+export const BUILT_IN_GAME_SUBCOMMANDS = ['start', 'stop', 'status', 'shiritori', 'help'];
 
 const isChatInput = (c: DiscordCommand) => (c?.type ?? 1) === 1;
 

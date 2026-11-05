@@ -24,7 +24,7 @@ import { memberHasCommandPermission } from '../discord/command-permissions.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
 import { consumeQuota } from './rate-limit.js';
-import { lookupDefinition } from './word-commands.js';
+import { lookupDefinition, lookupSimilar } from './word-commands.js';
 import { voiceChannelOf } from './timebox.js';
 import {
 	DEAD_LETTERS,
@@ -671,20 +671,25 @@ async function postNewChain(
 	);
 }
 
-// --- ❓ on a word: its definition -------------------------------------------------------
+// --- ❓ on a word: its definition, or what was probably meant ------------------------------
 
 export interface ReactionInput {
 	guildId: string;
 	channelId: string;
 	messageId: string;
+	/** Who reacted. */
 	userId: string;
+	/** Who wrote the message the reaction is on, and what it said (the bot mention stripped). */
+	authorId?: string;
+	content?: string;
+	addressed?: boolean;
 }
 
 /** The accepted word that came in on this message, in a chain or a round. */
 async function wordOfMessage(db: Db, guildId: string, messageId: string) {
 	const chain: any = await db
 		.prepare(
-			`SELECT w.word AS word, w.lemma AS lemma FROM shiritori_words w
+			`SELECT w.word AS word FROM shiritori_words w
 			   JOIN shiritori_chains c ON c.id = w.chain_id
 			  WHERE c.guild_id = ? AND w.message_id = ?`
 		)
@@ -693,7 +698,7 @@ async function wordOfMessage(db: Db, guildId: string, messageId: string) {
 	if (chain) return chain;
 	return await db
 		.prepare(
-			`SELECT w.word AS word, w.lemma AS lemma FROM shiritori_round_words w
+			`SELECT w.word AS word FROM shiritori_round_words w
 			   JOIN shiritori_rounds r ON r.id = w.round_id
 			  WHERE r.guild_id = ? AND w.message_id = ?`
 		)
@@ -702,10 +707,32 @@ async function wordOfMessage(db: Db, guildId: string, messageId: string) {
 }
 
 /**
- * Someone reacted ❓ to a message in a Shiritori channel (the gateway checked the emoji and
- * the channel). If it is a word the game accepted, reply to it with the definition.
- * A message is answered once per ten minutes, and a person gets a handful a minute, so a
- * pile of ❓ cannot make the bot spam or hammer Wiktionary.
+ * Whether this message was part of the game. In the Chain channel, a word addressed to the
+ * bot. In a channel that has hosted a round, a word from someone who played in it (the round
+ * may be over: the game's messages stay game messages).
+ */
+async function isGameMessage(db: Db, s: Settings, input: ReactionInput) {
+	if (s.chainChannelId && s.chainChannelId === input.channelId) return Boolean(input.addressed);
+	if (!input.authorId) return false;
+	const row = await db
+		.prepare(
+			`SELECT 1 AS hit FROM shiritori_players p
+			   JOIN shiritori_rounds r ON r.id = p.round_id
+			  WHERE r.guild_id = ? AND r.channel_id = ? AND p.user_id = ? LIMIT 1`
+		)
+		.bind(input.guildId, input.channelId, input.authorId)
+		.first();
+	return Boolean(row);
+}
+
+/**
+ * Someone reacted ❓ to a message. If it is a word that belonged to the game, reply to it:
+ * the definition when it is a word, or "maybe this was meant" with close spellings when it
+ * is not in the dictionary. A message is answered once per ten minutes, and a person gets a
+ * handful a minute, so a pile of ❓ cannot make the bot spam or hammer the word services.
+ *
+ * The gateway sends every ❓ it sees, so the cheap checks come first and a reaction on
+ * anything that was not a game word returns before any request goes out.
  */
 export async function handleDefineReaction(
 	db: Db,
@@ -715,10 +742,19 @@ export async function handleDefineReaction(
 ): Promise<Outcome> {
 	const s = await getSettings(db, input.guildId);
 	if (!s.enabled || !discord?.channels?.send) return IGNORE;
-	const row = await safely('word of message', () =>
+
+	// What word is this? The game's own record of an accepted word, else what was typed.
+	const stored = await safely('word of message', () =>
 		wordOfMessage(db, input.guildId, input.messageId)
 	);
-	if (!row?.word) return IGNORE;
+	let word: string | null = stored?.word ? String(stored.word) : null;
+	if (!word) {
+		const typed = wordToken(input.content ?? '');
+		if (!typed || typed.length < MIN_WORD_LENGTH) return IGNORE;
+		if (!(await safely('game message', () => isGameMessage(db, s, input)))) return IGNORE;
+		word = typed;
+	}
+
 	if (
 		!(await consumeQuota(db, 'shiritori-define-user', input.userId, {
 			max: 8,
@@ -736,23 +772,39 @@ export async function handleDefineReaction(
 		return IGNORE;
 	}
 
-	let found = await lookupDefinition(String(row.word), fetcher);
-	// "tigers" may have no page of its own to a reader's eye; try the base word too.
-	if (found.kind === 'none' && row.lemma && row.lemma !== row.word) {
-		found = await lookupDefinition(String(row.lemma), fetcher);
-	}
-	if (found.kind === 'down') return IGNORE;
-
+	const dict = guildDictionary(s);
 	const send = watched(db, input.guildId, discord).channels.send;
-	const reference = { message_id: input.messageId, fail_if_not_exists: false };
-	await safely('definition', () =>
-		send(input.channelId, {
-			...(found.kind === 'found'
-				? { embeds: [found.embed] }
-				: { content: `No definition found for **${row.word}**.` }),
-			message_reference: reference,
-			allowed_mentions: { parse: [], replied_user: false },
-		})
+	const reply = (payload: Record<string, unknown>) =>
+		safely('definition', () =>
+			send(input.channelId, {
+				...payload,
+				message_reference: { message_id: input.messageId, fail_if_not_exists: false },
+				allowed_mentions: { parse: [], replied_user: false },
+			})
+		);
+
+	// Not a word the game knows: say what was probably meant.
+	if (!stored?.word && !dict.isWord(word)) {
+		const near = await lookupSimilar(word, fetcher);
+		if (near === null) return IGNORE;
+		const maybe = near.filter((w) => dict.isWord(w) && !dict.isBlocked(w)).slice(0, 5);
+		await reply({
+			content: maybe.length
+				? `**${word}** is not in the dictionary. Maybe this was meant: ${maybe.map((w) => `**${w}**`).join(', ')}?`
+				: `**${word}** is not in the dictionary, and I could not find a close word.`,
+		});
+		return { action: 'accepted' };
+	}
+
+	let found = await lookupDefinition(word, fetcher);
+	// "tigers" may have no page of its own; try the base word too.
+	const base = dict.lemma(word);
+	if (found.kind === 'none' && base !== word) found = await lookupDefinition(base, fetcher);
+	if (found.kind === 'down') return IGNORE;
+	await reply(
+		found.kind === 'found'
+			? { embeds: [found.embed] }
+			: { content: `No definition found for **${word}**.` }
 	);
 	return { action: 'accepted' };
 }
@@ -1723,6 +1775,39 @@ function userOf(body: Interaction) {
 	};
 }
 
+/** True when `/game help` was invoked. */
+export const isGameHelpCommand = (body: Interaction) =>
+	flattenInteractionOptions(body.data).subcommand === 'help';
+
+/**
+ * `/game help`: the games' rules, for anyone, private to whoever asked. Shiritori's rules are
+ * the same text the manager pins (with this server's settings and the chain as it stands),
+ * plus how to start a round and the hidden-agent game in a line.
+ */
+export async function handleGameHelp(body: Interaction, db: Db) {
+	const guildId = body.guild_id;
+	if (!guildId) return ephemeral('/game only works inside a server.');
+	if (!db) return ephemeral('The database is not available right now.');
+	const s = await getSettings(db, guildId);
+	const note = s.enabled
+		? ''
+		: '*Shiritori is not turned on in this server yet. A server manager can switch it on under Activity in the dashboard.*\n\n';
+	const rules = rulesText(s, s.enabled ? await rulesStatus(db, guildId, s) : '');
+	// Discord allows 2000 characters. The rules and the status come first; the extras are
+	// dropped, last one first, until it fits.
+	const extras = [
+		'🕵️ **Hidden agent** (voice): join a voice channel and run **/game start**. All but one player get a secret word; the agent does not. Talk, vote, eject who you think it is. Played in the Activity.',
+		'`/game stop` ends a round, `/game status` shows it. `/define` and `/synonym` look words up where a server has them on.',
+	];
+	const head = `${note}${rules}`;
+	let text = [head, ...extras].join('\n\n');
+	while (text.length > 2000 && extras.length > 0) {
+		extras.pop();
+		text = [head, ...extras].join('\n\n');
+	}
+	return ephemeral(text.slice(0, 2000));
+}
+
 /** True when `/game shiritori` was invoked, so the route can send it here. */
 export const isShiritoriCommand = (body: Interaction) =>
 	flattenInteractionOptions(body.data).subcommand === 'shiritori';
@@ -1750,7 +1835,8 @@ export function rulesText(s: Settings, status = '') {
 		'• A word that was already used, or does not fit, **breaks the chain** and a new one starts.\n' +
 		'• No one goes twice in a row.\n' +
 		`• Each chain has a dead letter (one of ${dead}). A word that ends in it ends the chain.\n` +
-		'• A word on this server’s block list gets a ❌ and nothing else.\n\n' +
+		'• A word on this server’s block list gets a ❌ and nothing else.\n' +
+		'• React ❓ to a word and I will post its definition. On a word that is not in the dictionary I will suggest what was meant.\n\n' +
 		`For a timed game with turns (${s.turnSeconds} seconds each), run **/game shiritori** in any other text channel.` +
 		(status ? `\n\n${status}` : '')
 	);

@@ -1976,16 +1976,23 @@ async function postShiritoriMessage(message, text: { content: string; addressed:
 	}
 }
 
-async function postShiritoriReaction(message, userId: string) {
+async function postShiritoriReaction(message, userId: string, botId?: string) {
 	try {
-		const res = await fetch(`${API_BASE}/api/shiritori/${message.guildId}/reaction`, {
+		// The reaction may be on a message that was not in cache: fetch it for its text and author.
+		const full = message.partial ? await message.fetch().catch(() => null) : message;
+		if (!full || !full.guildId || full.author?.bot) return;
+		const text = stripBotMention(full.content ?? '', botId);
+		const res = await fetch(`${API_BASE}/api/shiritori/${full.guildId}/reaction`, {
 			method: 'POST',
 			headers: botHeaders(),
 			signal: AbortSignal.timeout(15_000),
 			body: JSON.stringify({
-				channelId: message.channelId,
-				messageId: message.id,
+				channelId: full.channelId,
+				messageId: full.id,
 				userId,
+				authorId: full.author?.id,
+				content: text.content,
+				addressed: text.addressed,
 			}),
 		});
 		if (!res.ok) log.error(`[Shiritori] Reaction API returned ${res.status}`);
@@ -4266,12 +4273,11 @@ function setupEventHandlers(client, logFn) {
 		if (!reaction.message.guild) return;
 		if (user.bot) return;
 
-		// Shiritori: a ❓ on a word in a game channel asks for its definition.
-		if (
-			isDefineReaction(reaction.emoji.name) &&
-			shiritoriChannels.has(reaction.message.channelId)
-		) {
-			void postShiritoriReaction(reaction.message, user.id);
+		// Shiritori: a ❓ on a word that was part of the game asks for its definition. Every ❓
+		// is sent on (they are rare); the site decides whether the message was a game word, which
+		// is how a word from a round that has ended still works.
+		if (isDefineReaction(reaction.emoji.name)) {
+			void postShiritoriReaction(reaction.message, user.id, client.user?.id);
 		}
 
 		const userInfo = getUserLogInfo(user);
