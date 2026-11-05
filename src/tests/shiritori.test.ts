@@ -52,6 +52,10 @@ describe('dictionary', () => {
 		expect(isWord('zzzqq')).toBe(false);
 	});
 
+	it('has the words added by hand on top of SCOWL', () => {
+		for (const w of ['yack', 'yacked', 'yacking', 'yacks']) expect(isWord(w)).toBe(true);
+	});
+
 	it('holds no proper nouns or contractions', () => {
 		expect(isWord('london')).toBe(false);
 		expect(isWord("don't")).toBe(false);

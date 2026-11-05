@@ -213,6 +213,8 @@ bun scripts/build-shiritori-words.ts <scowl-dir>/final
 
 The generated file is committed, so a normal build never needs the download.
 
+Words SCOWL lacks go in `EXTRA_WORDS` at the top of `scripts/build-shiritori-words.ts`, so a rebuild keeps them. Add the word and its forms there, and add the same lines to the generated file in sorted order (or rebuild). Today: yack, yacked, yacking, yacks.
+
 ## Name on this server
 
 A server can rename Shiritori and give it an icon (dashboard → Activity →
