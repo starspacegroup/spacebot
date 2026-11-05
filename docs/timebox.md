@@ -26,8 +26,9 @@ the command in that server, and the handler refuses it anyway.
 - `/timebox start` — with options `focus`, `break`, `long_break`, `rounds`,
   `deafen`, and `solo`.
     - **Shared.** Used while you are in a voice channel: one public card for the
-      channel with Pause, Skip, Stop and **Deafen me** buttons. Everyone in the
-      channel is pinged at each change. One shared timebox per voice channel; a
+      channel with Pause, Skip, Stop and **Deafen me** buttons. The person who started
+      it and everyone who took part (set a goal or a deafen mode) is pinged at each
+      change; others in the channel are not. One shared timebox per voice channel; a
       second `/timebox start` there points at the running card.
     - **Solo.** Used outside voice, or with `solo:True`. Your card is private, and
       each change is a fresh message in the channel pinging you, with the buttons.

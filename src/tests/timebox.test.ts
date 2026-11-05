@@ -30,6 +30,7 @@ import {
 	liveSoloFor,
 	nextStep,
 	phaseMs,
+	setGoal,
 	sweepTimebox,
 	hasOverdue,
 	upsertSettings,
@@ -735,13 +736,16 @@ describe('the sweep', () => {
 		expect(f.log).toHaveLength(0);
 	});
 
-	it('moves a due shared session on, edits the card, and pings the people in the channel once', async () => {
+	it('moves a due shared session on, edits the card, and pings the starter and the people who took part, once', async () => {
 		const d = db();
 		const f = fakeDiscord();
+		const CAROL = '400000000000000004';
 		putVoice(d, ALICE, VC);
 		putVoice(d, BOB, VC);
+		putVoice(d, CAROL, VC); // in the channel, but never joined the timebox: not pinged
 		putVoice(d, '400000000000000003', VC, 1); // a bot is not pinged
 		const s = await shared(d);
+		await setGoal(d, s.id, BOB, 'write the intro');
 		await d
 			.prepare(`UPDATE timebox_sessions SET message_id = 'card' WHERE id = ?`)
 			.bind(s.id)

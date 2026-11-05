@@ -769,13 +769,20 @@ async function deafenedCount(db, sessionId: number): Promise<number> {
 	return Number(row?.n ?? 0);
 }
 
-/** Who to ping at a change. */
+/**
+ * Who to ping at a change: the person who started it and everyone who took part (set a
+ * goal or a deafen mode on the card). Not whoever else is in the voice channel: they
+ * never joined the timebox and did not ask to be pinged.
+ */
 async function audience(db, s: Session): Promise<string[]> {
 	if (s.kind === 'solo') return [s.starter_id];
-	const here = s.voice_channel_id
-		? await humansInChannel(db, s.guild_id, s.voice_channel_id)
-		: [];
-	return here.length ? here : [s.starter_id];
+	const { results } = await db
+		.prepare(
+			`SELECT user_id FROM timebox_participants WHERE session_id = ? ORDER BY updated_at, user_id`
+		)
+		.bind(s.id)
+		.all();
+	return [...new Set<string>([s.starter_id, ...(results ?? []).map((r: any) => r.user_id)])];
 }
 
 function phaseAnnouncement(s: Session): string {
