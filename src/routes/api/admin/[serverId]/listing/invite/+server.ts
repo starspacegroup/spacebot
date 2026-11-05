@@ -35,7 +35,7 @@ export async function POST({ params, cookies, platform }) {
 		);
 	}
 
-	const allowance = await consumeQuota(db, 'listing-invite', serverId, QUOTA);
+	const allowance = await consumeQuota(db, 'listing-invite', serverId, QUOTA, platform);
 	if (!allowance) {
 		return json(
 			{

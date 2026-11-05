@@ -66,3 +66,13 @@ queue = "spacebot-ai-autopilot"
 [[queues.producers]]
 binding = "WORKFLOW_RUNS_QUEUE"
 queue = "spacebot-workflow-runs"
+# RateLimiter Durable Object (scale phase 1, docs/SCALE_ARCHITECTURE.md).
+# Pages cannot host DO classes; the class lives in orchestrator-worker
+# (spacebot-ai-orchestrator). Leave this commented until that worker has been
+# deployed with its `RateLimiter` migration, or this Pages deploy binds to a
+# class that does not exist yet. Without the binding the limiter uses D1, as
+# before (src/lib/server/rate-limit.ts).
+# [[durable_objects.bindings]]
+# name = "RATE_LIMITER"
+# class_name = "RateLimiter"
+# script_name = "spacebot-ai-orchestrator"
