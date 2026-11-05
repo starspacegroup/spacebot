@@ -22,6 +22,7 @@ import {
 	getRound,
 	getSettings,
 	guildDictionary,
+	handleDefineReaction,
 	handleMessage,
 	handleShiritoriCommand,
 	handleShiritoriComponent,
@@ -49,6 +50,7 @@ import {
 	type Round,
 } from '../lib/server/shiritori-game.js';
 import { isWord } from '../lib/server/shiritori-dict.js';
+import { isDefineReaction } from '../lib/server/shiritori.js';
 
 const migration = (file: string) =>
 	readFileSync(new URL(`../../migrations/${file}`, import.meta.url), 'utf8');
@@ -57,7 +59,9 @@ const SCHEMA =
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	'CREATE TABLE guild_channels (guild_id TEXT, channel_id TEXT, name TEXT, type INTEGER);\n' +
 	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0] +
-	migration('0090_shiritori_rules_message.sql');
+	migration('0090_shiritori_rules_message.sql') +
+	migration('0093_shiritori_word_messages.sql') +
+	migration('0054_roadmap_completion.sql');
 
 const GUILD = '100000000000000001';
 const CHAIN_CH = '200000000000000001';
@@ -576,6 +580,36 @@ describe('Round mode', () => {
 		expect(discord.reactions.at(-1)?.emoji).toBe('✅');
 	});
 
+	it('answers a ❓ on a round word with its definition', async () => {
+		await start();
+		const word = say(ROUND_CH, 'u1', 'apple', at(2));
+		expect(await handleMessage(db, discord, word, at(2))).toEqual({ action: 'accepted' });
+		discord.sent.length = 0;
+		const get = vi.fn((_url: string) =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						en: [
+							{
+								partOfSpeech: 'Noun',
+								definitions: [{ definition: 'A round fruit.' }],
+							},
+						],
+					})
+				)
+			)
+		);
+		await handleDefineReaction(
+			db,
+			discord,
+			{ guildId: GUILD, channelId: ROUND_CH, messageId: word.messageId, userId: 'u9' },
+			get
+		);
+		expect(discord.sent).toHaveLength(1);
+		expect(discord.sent[0].channelId).toBe(ROUND_CH);
+		expect(discord.sent[0].payload.embeds[0].fields[0].value).toContain('A round fruit.');
+	});
+
 	it('ignores chat from the current player', async () => {
 		const round = await start();
 		expect(
@@ -825,6 +859,139 @@ describe('when SpaceBot cannot post', () => {
 		};
 		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'apple'), T0); // opens a chain: posts
 		expect((await getHealth(db, GUILD))?.status).toBe(403);
+	});
+});
+
+describe('❓ on a word', () => {
+	const wiktionary = (word: string) =>
+		new Response(
+			JSON.stringify({
+				en: [
+					{
+						partOfSpeech: 'Noun',
+						definitions: [{ definition: `A thing called ${word}.` }],
+					},
+				],
+			})
+		);
+	const fetcher = (answer: (url: string) => Response) =>
+		vi.fn((url: string) => Promise.resolve(answer(url)));
+	const asked = (messageId: string, userId = 'u9') => ({
+		guildId: GUILD,
+		channelId: CHAIN_CH,
+		messageId,
+		userId,
+	});
+
+	it('knows the two question marks', () => {
+		expect(isDefineReaction('\u2753')).toBe(true);
+		expect(isDefineReaction('\u2754')).toBe(true);
+		expect(isDefineReaction('👍')).toBe(false);
+		expect(isDefineReaction(null)).toBe(false);
+	});
+
+	it('replies to a chain word with its definition, once per message', async () => {
+		await enable();
+		await chainFrom('apple');
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		discord.sent.length = 0;
+
+		const get = fetcher((url) => wiktionary(url.split('/').pop()!));
+		const out = await handleDefineReaction(db, discord, asked(word.messageId), get);
+		expect(out).toEqual({ action: 'accepted' });
+		expect(get.mock.calls[0][0]).toContain('/definition/eagle');
+		expect(discord.sent).toHaveLength(1);
+		const posted = discord.sent[0].payload;
+		expect(posted.embeds[0].fields[0].value).toContain('A thing called eagle.');
+		expect(posted.message_reference).toEqual({
+			message_id: word.messageId,
+			fail_if_not_exists: false,
+		});
+		expect(posted.allowed_mentions).toEqual({ parse: [], replied_user: false });
+
+		// A second ❓ on the same word, from anyone, adds nothing.
+		expect(await handleDefineReaction(db, discord, asked(word.messageId, 'u8'), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(discord.sent).toHaveLength(1);
+		expect(get).toHaveBeenCalledTimes(1);
+	});
+
+	it('does nothing for a message that is not an accepted word, or when Shiritori is off', async () => {
+		await enable();
+		await chainFrom('apple');
+		const get = fetcher(() => wiktionary('x'));
+		const chat = { ...say(CHAIN_CH, 'u2', 'lol'), addressed: false };
+		await handleMessage(db, discord, chat, T0);
+		discord.sent.length = 0;
+		expect(await handleDefineReaction(db, discord, asked(chat.messageId), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(await handleDefineReaction(db, discord, asked('nope'), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(get).not.toHaveBeenCalled();
+		expect(discord.sent).toHaveLength(0);
+
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		await db
+			.prepare('UPDATE shiritori_settings SET enabled = 0 WHERE guild_id = ?')
+			.bind(GUILD)
+			.run();
+		expect(await handleDefineReaction(db, discord, asked(word.messageId), get)).toEqual({
+			action: 'ignore',
+		});
+	});
+
+	it('says there is no definition, tries the base word, and stays quiet when the service is down', async () => {
+		await enable();
+		await chainFrom('apple');
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		discord.sent.length = 0;
+		const none = fetcher(() => new Response('{}', { status: 404 }));
+		await handleDefineReaction(db, discord, asked(word.messageId), none);
+		expect(discord.sent[0].payload.content).toContain('No definition found for **eagle**');
+
+		const second = say(CHAIN_CH, 'u2', 'elephant');
+		await handleMessage(db, discord, second, T0);
+		discord.sent.length = 0;
+		const down = fetcher(() => new Response('{}', { status: 502 }));
+		await handleDefineReaction(db, discord, asked(second.messageId), down);
+		expect(discord.sent).toHaveLength(0);
+	});
+
+	it('limits one person to a handful of ❓ a minute', async () => {
+		await enable();
+		await chainFrom('apple');
+		const get = fetcher(() => wiktionary('w'));
+		const words = [
+			'eagle',
+			'elephant',
+			'tiger',
+			'rabbit',
+			'tea',
+			'apple',
+			'eel',
+			'lemon',
+			'noun',
+			'night',
+		];
+		const sent: any[] = [];
+		let prevUser = 'u1';
+		for (const w of words) {
+			const m = say(CHAIN_CH, prevUser === 'u1' ? 'u2' : 'u1', w);
+			prevUser = m.userId;
+			const out = await handleMessage(db, discord, m, T0);
+			if (out.action === 'accepted') sent.push(m);
+		}
+		discord.sent.length = 0;
+		for (const m of sent)
+			await handleDefineReaction(db, discord, asked(m.messageId, 'spammer'), get);
+		expect(discord.sent.length).toBeLessThanOrEqual(8);
+		expect(discord.sent.length).toBeGreaterThan(0);
 	});
 });
 

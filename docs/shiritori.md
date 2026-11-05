@@ -41,6 +41,25 @@ round is a **voice round**. It plays the same, with these differences:
   mid-round that table is rebuilt, and the 20 seconds is what keeps a restart from skipping
   people.
 
+## ❓ for a definition
+
+React ❓ (or ❔) to a word in the game and the bot replies to that message with its
+definition, from the same Wiktionary lookup `/define` uses (see
+[word-commands.md](word-commands.md)). It works on any word the game accepted, in the Chain
+channel or in a round, and it works whether or not the server has turned `/define` on. A
+message is answered once per ten minutes, and one person gets at most eight lookups a
+minute, so a pile of ❓ cannot spam the channel. If Wiktionary has no entry the bot says so,
+trying the base word first ("tigers" then "tiger"); if the service is down it stays quiet,
+so a later ❓ can try again.
+
+How it travels: the gateway sees the reaction (a bot's own reactions are ignored), checks the
+emoji and that the channel is one the game listens to, and posts to
+`/api/shiritori/{guild}/reaction`. The site finds the word by its Discord message id
+(`shiritori_words.message_id`, and `shiritori_round_words.message_id` from migration `0093`),
+so rounds played before 0093 are not looked up. A round's channel is only listened to while the
+round runs, so a ❓ on a word after the round has ended does nothing; a Chain channel is always
+listened to. This needs the gateway restarted to take effect.
+
 ## The turn prompt
 
 Every round, text or voice, keeps **one short message at the bottom of the chat** for whoever

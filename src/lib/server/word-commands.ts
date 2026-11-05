@@ -188,6 +188,35 @@ export function synonymEmbed(word: string, words: string[], similar: boolean) {
 	});
 }
 
+export type Definition =
+	| { kind: 'found'; embed: Record<string, unknown> }
+	/** Wiktionary has nothing: `english` is false when the page exists with no English entry. */
+	| { kind: 'none'; english: boolean }
+	/** The service is down, slow or refused. */
+	| { kind: 'down' };
+
+/** One /define lookup, shared with the Shiritori ❓ reaction. Never throws. */
+export async function lookupDefinition(
+	word: string,
+	fetcher: Fetcher = fetch
+): Promise<Definition> {
+	try {
+		const title = encodeURIComponent(word.replace(/ /g, '_'));
+		const { status, body } = await getJson(
+			fetcher,
+			`https://en.wiktionary.org/api/rest_v1/page/definition/${title}`
+		);
+		if (status === 404) return { kind: 'none', english: true };
+		if (status >= 400) return { kind: 'down' };
+		const meanings = parseWiktionary(body);
+		return meanings.length
+			? { kind: 'found', embed: defineEmbed(word, meanings).data.embeds[0] }
+			: { kind: 'none', english: false };
+	} catch {
+		return { kind: 'down' };
+	}
+}
+
 // --- the handler ----------------------------------------------------------------------------
 
 /** The word option's value. */
@@ -217,19 +246,15 @@ export async function handleWordCommand(
 
 	try {
 		if (kind === 'define') {
-			const title = encodeURIComponent(word.replace(/ /g, '_'));
-			const { status, body: json } = await getJson(
-				fetcher,
-				`https://en.wiktionary.org/api/rest_v1/page/definition/${title}`
-			);
-			if (status === 404)
-				return say(`No definition found for **${word}**. Check the spelling.`);
-			if (status >= 400)
+			const found = await lookupDefinition(word, fetcher);
+			if (found.kind === 'found') return embed(found.embed);
+			if (found.kind === 'down')
 				return say('The dictionary is having trouble. Try again in a moment.');
-			const meanings = parseWiktionary(json);
-			return meanings.length
-				? defineEmbed(word, meanings)
-				: say(`No English definition found for **${word}**.`);
+			return say(
+				found.english
+					? `No definition found for **${word}**. Check the spelling.`
+					: `No English definition found for **${word}**.`
+			);
 		}
 
 		const q = encodeURIComponent(word);

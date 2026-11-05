@@ -141,3 +141,8 @@ export function judgeMove(raw: string, ctx: MoveContext): Move {
 	}
 	return { ok: true, word, lemma, endsDead: word.endsWith(ctx.deadLetter) };
 }
+
+/** The reactions that ask for a word's definition: ❓ and ❔. */
+export const DEFINE_EMOJIS = ['\u2753', '\u2754'];
+export const isDefineReaction = (emoji: string | null | undefined) =>
+	DEFINE_EMOJIS.includes(String(emoji ?? ''));

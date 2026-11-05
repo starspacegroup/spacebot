@@ -195,7 +195,7 @@ describe('/define', () => {
 		const slow: any = await handleWordCommand('define', body('word'), db, () =>
 			Promise.reject(new DOMException('timed out', 'TimeoutError'))
 		);
-		expect(slow.data.content).toContain('did not answer');
+		expect(slow.data.content).toContain('having trouble');
 	});
 });
 

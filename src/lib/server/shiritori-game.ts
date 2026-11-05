@@ -23,6 +23,8 @@ import { getGuildSettings } from '../db/settings.js';
 import { memberHasCommandPermission } from '../discord/command-permissions.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
+import { consumeQuota } from './rate-limit.js';
+import { lookupDefinition } from './word-commands.js';
 import { voiceChannelOf } from './timebox.js';
 import {
 	DEAD_LETTERS,
@@ -667,6 +669,92 @@ async function postNewChain(
 			allowed_mentions: { parse: [] },
 		})
 	);
+}
+
+// --- ❓ on a word: its definition -------------------------------------------------------
+
+export interface ReactionInput {
+	guildId: string;
+	channelId: string;
+	messageId: string;
+	userId: string;
+}
+
+/** The accepted word that came in on this message, in a chain or a round. */
+async function wordOfMessage(db: Db, guildId: string, messageId: string) {
+	const chain: any = await db
+		.prepare(
+			`SELECT w.word AS word, w.lemma AS lemma FROM shiritori_words w
+			   JOIN shiritori_chains c ON c.id = w.chain_id
+			  WHERE c.guild_id = ? AND w.message_id = ?`
+		)
+		.bind(guildId, messageId)
+		.first();
+	if (chain) return chain;
+	return await db
+		.prepare(
+			`SELECT w.word AS word, w.lemma AS lemma FROM shiritori_round_words w
+			   JOIN shiritori_rounds r ON r.id = w.round_id
+			  WHERE r.guild_id = ? AND w.message_id = ?`
+		)
+		.bind(guildId, messageId)
+		.first();
+}
+
+/**
+ * Someone reacted ❓ to a message in a Shiritori channel (the gateway checked the emoji and
+ * the channel). If it is a word the game accepted, reply to it with the definition.
+ * A message is answered once per ten minutes, and a person gets a handful a minute, so a
+ * pile of ❓ cannot make the bot spam or hammer Wiktionary.
+ */
+export async function handleDefineReaction(
+	db: Db,
+	discord: Discord,
+	input: ReactionInput,
+	fetcher?: Parameters<typeof lookupDefinition>[1]
+): Promise<Outcome> {
+	const s = await getSettings(db, input.guildId);
+	if (!s.enabled || !discord?.channels?.send) return IGNORE;
+	const row = await safely('word of message', () =>
+		wordOfMessage(db, input.guildId, input.messageId)
+	);
+	if (!row?.word) return IGNORE;
+	if (
+		!(await consumeQuota(db, 'shiritori-define-user', input.userId, {
+			max: 8,
+			windowSeconds: 60,
+		}))
+	) {
+		return IGNORE;
+	}
+	if (
+		!(await consumeQuota(db, 'shiritori-define-msg', input.messageId, {
+			max: 1,
+			windowSeconds: 600,
+		}))
+	) {
+		return IGNORE;
+	}
+
+	let found = await lookupDefinition(String(row.word), fetcher);
+	// "tigers" may have no page of its own to a reader's eye; try the base word too.
+	if (found.kind === 'none' && row.lemma && row.lemma !== row.word) {
+		found = await lookupDefinition(String(row.lemma), fetcher);
+	}
+	if (found.kind === 'down') return IGNORE;
+
+	const send = watched(db, input.guildId, discord).channels.send;
+	const reference = { message_id: input.messageId, fail_if_not_exists: false };
+	await safely('definition', () =>
+		send(input.channelId, {
+			...(found.kind === 'found'
+				? { embeds: [found.embed] }
+				: { content: `No definition found for **${row.word}**.` }),
+			message_reference: reference,
+			allowed_mentions: { parse: [], replied_user: false },
+		})
+	);
+	return { action: 'accepted' };
 }
 
 /** Crew: end the open chain here and start a fresh one (the dashboard's reset). */
@@ -1433,9 +1521,17 @@ async function handleRoundMessage(
 	try {
 		await db
 			.prepare(
-				`INSERT INTO shiritori_round_words (round_id, seq, word, lemma, user_id, at) VALUES (?, ?, ?, ?, ?, ?)`
+				`INSERT INTO shiritori_round_words (round_id, seq, word, lemma, user_id, at, message_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
 			)
-			.bind(round.id, seq, move.word, move.lemma, msg.userId, now.toISOString())
+			.bind(
+				round.id,
+				seq,
+				move.word,
+				move.lemma,
+				msg.userId,
+				now.toISOString(),
+				msg.messageId
+			)
 			.run();
 	} catch (err: any) {
 		if (!isUnique(err)) throw err;

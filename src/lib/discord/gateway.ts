@@ -29,7 +29,7 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
-import { couldBeAMove, stripBotMention } from '../server/shiritori.js';
+import { couldBeAMove, isDefineReaction, stripBotMention } from '../server/shiritori.js';
 
 /**
  * discord.js retries a send that times out (15s default), and Discord may have
@@ -1973,6 +1973,24 @@ async function postShiritoriMessage(message, text: { content: string; addressed:
 		if (!res.ok) log.error(`[Shiritori] Message API returned ${res.status}`);
 	} catch (error) {
 		log.error('[Shiritori] Could not forward a message:', error.message);
+	}
+}
+
+async function postShiritoriReaction(message, userId: string) {
+	try {
+		const res = await fetch(`${API_BASE}/api/shiritori/${message.guildId}/reaction`, {
+			method: 'POST',
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+			body: JSON.stringify({
+				channelId: message.channelId,
+				messageId: message.id,
+				userId,
+			}),
+		});
+		if (!res.ok) log.error(`[Shiritori] Reaction API returned ${res.status}`);
+	} catch (error) {
+		log.error('[Shiritori] Could not forward a reaction:', error.message);
 	}
 }
 
@@ -4247,6 +4265,14 @@ function setupEventHandlers(client, logFn) {
 	client.on(Events.MessageReactionAdd, async (reaction, user) => {
 		if (!reaction.message.guild) return;
 		if (user.bot) return;
+
+		// Shiritori: a ❓ on a word in a game channel asks for its definition.
+		if (
+			isDefineReaction(reaction.emoji.name) &&
+			shiritoriChannels.has(reaction.message.channelId)
+		) {
+			void postShiritoriReaction(reaction.message, user.id);
+		}
 
 		const userInfo = getUserLogInfo(user);
 		await logFn({
