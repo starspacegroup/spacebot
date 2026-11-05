@@ -1981,7 +1981,9 @@ async function postShiritoriReaction(message, userId: string, botId?: string) {
 		// The reaction may be on a message that was not in cache: fetch it for its text and author.
 		const full = message.partial ? await message.fetch().catch(() => null) : message;
 		if (!full || !full.guildId || full.author?.bot) return;
-		const text = stripBotMention(full.content ?? '', botId);
+		const text = stripBotMention(full.content ?? '', botId, [
+			full.guild?.members?.me?.roles?.botRole?.id,
+		]);
 		const res = await fetch(`${API_BASE}/api/shiritori/${full.guildId}/reaction`, {
 			method: 'POST',
 			headers: botHeaders(),
@@ -3371,7 +3373,9 @@ function setupEventHandlers(client, logFn) {
 		}
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
-		const shiritoriText = stripBotMention(message.content, client.user?.id);
+		const shiritoriText = stripBotMention(message.content, client.user?.id, [
+			message.guild.members?.me?.roles?.botRole?.id,
+		]);
 		if (
 			!message.author?.bot &&
 			shiritoriChannels.has(message.channelId) &&

@@ -167,6 +167,14 @@ describe('stripBotMention', () => {
 			addressed: true,
 		});
 	});
+	it('counts the bot’s own role mention as addressing it', () => {
+		expect(stripBotMention('<@&555> evaluate', BOT, ['555'])).toEqual({
+			content: 'evaluate',
+			addressed: true,
+		});
+		expect(stripBotMention('<@&556> evaluate', BOT, ['555']).addressed).toBe(false);
+		expect(stripBotMention('<@&555> evaluate', BOT).addressed).toBe(false);
+	});
 	it('does not count chat, another user’s mention, or a mention that is not first', () => {
 		expect(stripBotMention('apple', BOT)).toEqual({ content: 'apple', addressed: false });
 		expect(stripBotMention('<@999> apple', BOT).addressed).toBe(false);

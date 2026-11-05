@@ -122,7 +122,8 @@ Shiritori health notice.
   the bot: `@SpaceBot eagle`. Everything else in the channel is chat. It gets no reaction
   and no reply, it never breaks the chain, and it does not use a turn. The gateway strips the
   mention and sends the word with an `addressed` flag; the site ignores a Chain message
-  without it. Round mode (`/game shiritori`) does not need a mention.
+  without it. Typing `@SpaceBot` offers two mentions, the bot and the bot's own role, and
+  either one counts. Round mode (`/game shiritori`) does not need a mention.
 - A word on the server's block list gets a ❌ and a reason, and **nothing else**: the chain
   does not break. A block list matches stems, so it can catch an innocent word, and one
   member must not be able to end a chain on purpose with a word the filter refuses.
