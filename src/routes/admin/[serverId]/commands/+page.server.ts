@@ -9,12 +9,14 @@ import {
 	getGuildCommands,
 	OPTION_TYPES,
 	RESPONSE_TYPES,
-	setBuiltInCommandOverride,
-	updateCommand,
 } from '$lib/db/commands.js';
-import { syncGuildCommands } from '$lib/discord/commands.js';
+import {
+	getCommandSyncStatus,
+	syncGuildCommands,
+	syncGuildCommandsNow,
+} from '$lib/discord/commands.js';
 import { log } from '$lib/db/logger.js';
-import { checkPlanLimit } from '$lib/db/server-plans.js';
+import { setCommandEnabled } from '$lib/server/control-actions.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ platform, parent, params }) {
@@ -36,6 +38,7 @@ export async function load({ platform, parent, params }) {
 	let commands = [];
 	let builtInCmds = [];
 	let recentLogs = [];
+	let commandSync = null;
 
 	if (db) {
 		try {
@@ -45,6 +48,7 @@ export async function load({ platform, parent, params }) {
 			// Get recent command logs
 			const logsResult = await getCommandLogs(db, guildId, { limit: 10 });
 			recentLogs = logsResult;
+			commandSync = await getCommandSyncStatus(db, guildId);
 		} catch (error) {
 			log.error('Failed to fetch commands:', error);
 		}
@@ -56,6 +60,7 @@ export async function load({ platform, parent, params }) {
 		isSuperAdmin: parentData.isSuperAdmin || false,
 		total: commands.length,
 		recentLogs,
+		commandSync,
 		// Meta info for the UI
 		actionTypes: ACTION_TYPES,
 		optionTypes: OPTION_TYPES,
@@ -67,6 +72,15 @@ export async function load({ platform, parent, params }) {
 
 /** @type {import('./$types').Actions} */
 export const actions = {
+	/** "Sync commands now": send this server's command list to Discord. */
+	sync: async ({ platform, params }) => {
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { error: 'Database not available' });
+		const result = await syncGuildCommandsNow(db, params.serverId, (platform as any)?.env);
+		if (!result.success) return fail(502, { error: result.error || 'Sync failed' });
+		return { success: true, synced: result.registered ?? 0 };
+	},
+
 	toggle: async ({ request, platform, params }) => {
 		const db = (platform as any)?.env?.DB;
 		if (!db) {
@@ -76,45 +90,25 @@ export const actions = {
 		const formData = await request.formData();
 		const id = formData.get('id');
 		const guildId = params.serverId;
-		const isBuiltIn = formData.get('is_built_in') === 'true';
 		const enabled = formData.get('enabled') === 'true';
 
 		if (!id || !guildId) {
 			return fail(400, { error: 'Command ID and Guild ID are required' });
 		}
 
-		// If enabling, check plan limits for custom commands only.
-		if (enabled && !isBuiltIn) {
-			try {
-				const activeCommands = await getGuildCommands(db, guildId, { enabledOnly: true });
-				const activeCount = activeCommands.length;
-				const planCheck = await checkPlanLimit(db, guildId, 'commands', activeCount);
-				if (!planCheck.allowed) {
-					return fail(403, {
-						error: `Command limit reached (${planCheck.current}/${planCheck.limit}). Upgrade your plan or disable another command first.`,
-					});
-				}
-			} catch (err) {
-				log.warn('Plan limit check failed, allowing toggle:', err);
-			}
-		}
-
 		try {
-			let result;
-			if (isBuiltIn) {
-				result = await setBuiltInCommandOverride(db, guildId, parseInt(id as string), {
-					enabled,
-				});
-			} else {
-				result = await updateCommand(db, parseInt(id as string), { enabled }, guildId);
+			// Built-ins toggle as a per-guild override. Which kind of command this is
+			// comes from the command row, not from the form's is_built_in field.
+			const result = await setCommandEnabled(
+				db,
+				(platform as any)?.env,
+				guildId,
+				parseInt(id as string),
+				enabled
+			);
+			if (!result.ok) {
+				return fail(result.status, { error: result.error });
 			}
-
-			if (!result.success) {
-				return fail(500, { error: result.error || 'Failed to toggle command' });
-			}
-
-			// Auto-sync to Discord
-			await syncGuildCommands(db, guildId, (platform as any)?.env);
 
 			return {
 				success: true,

@@ -81,6 +81,80 @@ export const openApiDocument = {
 				},
 			},
 		},
+		'/automations/{id}': {
+			patch: {
+				summary: 'Enable or disable one automation (scope automations:write)',
+				parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+				requestBody: {
+					required: true,
+					content: {
+						'application/json': {
+							schema: {
+								type: 'object',
+								required: ['enabled'],
+								properties: { enabled: { type: 'boolean' } },
+							},
+						},
+					},
+				},
+				responses: {
+					'200': { description: 'Updated' },
+					'400': { description: 'Bad body or id' },
+					'403': { description: 'Missing scope, or plan limit reached' },
+					'404': { description: 'Not found in the API key guild' },
+				},
+			},
+		},
+		'/commands/{id}': {
+			patch: {
+				summary: 'Enable or disable one custom slash command and sync to Discord (scope commands:write)',
+				parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+				requestBody: {
+					required: true,
+					content: {
+						'application/json': {
+							schema: {
+								type: 'object',
+								required: ['enabled'],
+								properties: { enabled: { type: 'boolean' } },
+							},
+						},
+					},
+				},
+				responses: {
+					'200': { description: 'Updated' },
+					'400': { description: 'Bad body or id' },
+					'403': { description: 'Missing scope, or plan limit reached' },
+					'404': { description: 'Not found in the API key guild' },
+				},
+			},
+		},
+		'/scheduled-messages': {
+			post: {
+				summary: 'Schedule a channel message (scope messages:write)',
+				requestBody: {
+					required: true,
+					content: {
+						'application/json': {
+							schema: {
+								type: 'object',
+								required: ['channel_id', 'content', 'send_at'],
+								properties: {
+									channel_id: { type: 'string' },
+									content: { type: 'string', maxLength: 2000 },
+									send_at: { type: 'string', format: 'date-time' },
+								},
+							},
+						},
+					},
+				},
+				responses: {
+					'201': { description: 'Scheduled; returns id and send_at' },
+					'400': { description: 'Bad body, or send_at not in the future' },
+					'403': { description: 'Missing scope, or channel not in the API key guild' },
+				},
+			},
+		},
 		'/automations': {
 			get: {
 				summary: 'List automations',

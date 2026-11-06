@@ -13,15 +13,8 @@ import {
 	saveGuildBranding,
 	validateBranding,
 } from '$lib/db/branding.js';
-import {
-	LISTING_CATEGORIES,
-	LISTING_FRESHNESS_DAYS,
-	getGuildListing,
-	getPublicListing,
-	mergeListing,
-	saveGuildListing,
-	validateListing,
-} from '$lib/db/server-listings.js';
+import { getAnnouncementChannel, setAnnouncementChannel } from '$lib/server/announcements.js';
+import { getGuildListing } from '$lib/db/server-listings.js';
 import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
@@ -94,22 +87,17 @@ export async function load({ cookies, platform, parent, params }) {
 	const db = (platform as any)?.env?.DB;
 	const dbSettings = db ? await getGuildSettings(db, serverId) : DEFAULT_SETTINGS;
 	const branding = db ? mergeBranding(await getGuildBranding(db, serverId)) : mergeBranding(null);
-	// Public server browser listing — absent row means "never opted in".
-	const listing = db ? mergeListing(await getGuildListing(db, serverId)) : mergeListing(null);
-
-	// Opting in is necessary but not sufficient: the listing is also hidden if an
-	// operator took it down, or if SpaceBot's guild metadata has gone stale
-	// (i.e. the bot is no longer in this server). Ask the real public query
-	// rather than re-deriving the rule, so this notice can't drift from what
-	// visitors actually see.
-	const listingVisible =
-		db && listing.listed ? Boolean(await getPublicListing(db, serverId)) : false;
+	// The public listing has its own page. Settings only needs to know whether it is live,
+	// for the link card.
+	const listingRow = db ? await getGuildListing(db, serverId) : null;
+	const listingLive = Boolean(listingRow?.listed) && listingRow?.review_status !== 'rejected';
 
 	// Map database settings to UI format
 	const settings = {
 		prefix: dbSettings.prefix || '!',
 		loggingChannelId: dbSettings.log_channel_id || null,
 		loggingChannelName: null, // Would need to fetch from Discord API
+		announcementChannelId: db ? await getAnnouncementChannel(db, serverId) : null,
 		moderationRoleId: dbSettings.moderation_role_id || null,
 		timezone: dbSettings.timezone || null,
 		logEmbedColors: dbSettings.log_embed_colors || {},
@@ -183,10 +171,7 @@ export async function load({ cookies, platform, parent, params }) {
 		webhooks,
 		httpMethods,
 		branding,
-		listing,
-		listingVisible,
-		listingCategories: LISTING_CATEGORIES,
-		listingFreshnessDays: LISTING_FRESHNESS_DAYS,
+		listingLive,
 	};
 }
 
@@ -223,28 +208,6 @@ export const actions = {
 				message:
 					Object.values(brandingValidation.errors)[0] || 'Branding settings are invalid.',
 				brandingErrors: brandingValidation.errors,
-			});
-		}
-
-		// Public server browser listing. Publishing is opt-in: the checkbox is
-		// absent from the form data unless the admin ticked it, so a missing
-		// field always means unlisted.
-		const listingValidation = validateListing({
-			listed: formData.get('listingPublished') === 'on',
-			headline: formData.get('listingHeadline'),
-			description: formData.get('listingDescription'),
-			category: formData.get('listingCategory'),
-			tags: formData.get('listingTags'),
-			invite_url: formData.get('listingInviteUrl'),
-			show_member_count: formData.get('listingShowMemberCount') === 'on',
-			nsfw: formData.get('listingNsfw') === 'on',
-		});
-
-		if (!listingValidation.ok) {
-			return fail(400, {
-				success: false,
-				message: Object.values(listingValidation.errors)[0] || 'Server listing is invalid.',
-				listingErrors: listingValidation.errors,
 			});
 		}
 
@@ -312,7 +275,7 @@ export const actions = {
 		}
 
 		try {
-			// saveGuildSettings and saveGuildListing catch their own errors and
+			// saveGuildSettings catches their own errors and
 			// report them in the return value rather than throwing, so discarding
 			// the result meant a failed write still answered "Settings updated
 			// successfully!". saveGuildBranding throws, so the outer catch covers it.
@@ -341,23 +304,14 @@ export const actions = {
 				return fail(500, { success: false, message: 'Failed to save settings' });
 			}
 
-			await saveGuildBranding(db, serverId, brandingValidation.value, userId);
-
-			const savedListing = await saveGuildListing(
-				db,
-				serverId,
-				listingValidation.value,
-				userId
-			);
-			if (savedListing && savedListing.success === false) {
-				log.error(
-					`[Settings] Failed to save server browser listing for ${serverId}: ${savedListing.error}`
-				);
-				return fail(500, {
-					success: false,
-					message: 'Settings saved, but the server browser listing could not be updated.',
-				});
+			// Own column, own query. A form without the field leaves it alone.
+			if (formData.has('announcementChannelId')) {
+				const wanted = String(formData.get('announcementChannelId') || '') || null;
+				const problem = await setAnnouncementChannel(db, serverId, wanted);
+				if (problem) return fail(400, { success: false, message: problem });
 			}
+
+			await saveGuildBranding(db, serverId, brandingValidation.value, userId);
 
 			return {
 				success: true,

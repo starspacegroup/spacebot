@@ -1,5 +1,5 @@
 import { json, redirect } from '@sveltejs/kit';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { log } from '$lib/log.js';
 import { upsertUser } from '$lib/db/users.js';
 import { trackUserActivity } from '$lib/db/user-activity.js';
@@ -30,6 +30,18 @@ import {
 	setAsyncLocalStorageAsyncContextStrategy,
 } from '@sentry/cloudflare';
 import { wrapRequestHandler } from '@sentry/cloudflare/request';
+import { restorePlatform } from '$lib/server/cloudflare-platform.js';
+import {
+	browserBucket,
+	deviceBucket,
+	languageBucket,
+	osBucket,
+	recordPageView,
+	referrerHostFrom,
+	shouldCount,
+	utcDay,
+	utcHour,
+} from '$lib/server/site-traffic.js';
 
 /**
  * Dev Auth Bypass
@@ -105,7 +117,7 @@ function shouldTrackPath(pathname) {
 		pathname === '/favicon.ico' ||
 		pathname === '/robots.txt' ||
 		pathname === '/sitemap.xml' ||
-		pathname === '/manifest.webmanifest'
+		pathname === '/site.webmanifest'
 	) {
 		return false;
 	}
@@ -681,5 +693,59 @@ export function initSentryHandle({ event, resolve }) {
 	);
 }
 
-export const handle = sequence(initSentryHandle, sentryHandle(), appHandle);
+/**
+ * Traffic counters for the public marketing pages (docs/site-traffic.md).
+ * Daily aggregates only: the User-Agent and hints are read here, mapped to a
+ * small fixed vocabulary and dropped. Runs after the request is answered and never
+ * delays or breaks it.
+ *
+ * @type {import('@sveltejs/kit').Handle}
+ */
+export async function siteTrafficHandle({ event, resolve }) {
+	const response = await resolve(event);
+	try {
+		const db = event.platform?.env?.DB;
+		const headers = event.request.headers;
+		const ua = headers.get('user-agent');
+		if (
+			db &&
+			shouldCount({
+				method: event.request.method,
+				status: response.status,
+				routeId: event.route?.id,
+				contentType: response.headers.get('content-type'),
+				userAgent: ua,
+			})
+		) {
+			const now = new Date();
+			const write = recordPageView(db, {
+				day: utcDay(now),
+				hour: utcHour(now),
+				pathKey: event.route.id,
+				signedIn: Boolean(event.cookies.get('sb_session')),
+				referrerHost:
+					referrerHostFrom(headers.get('referer'), event.url.hostname) ?? undefined,
+				// The edge's country code only; no IP is read or stored.
+				country: event.platform?.cf?.country,
+				os: osBucket(headers.get('sec-ch-ua-platform'), ua),
+				browser: browserBucket(headers.get('sec-ch-ua'), ua),
+				device: deviceBucket(headers.get('sec-ch-ua-mobile'), ua),
+				language: languageBucket(headers.get('accept-language')),
+			}).catch(() => {});
+			if (event.platform?.context?.waitUntil) event.platform.context.waitUntil(write);
+			else await write;
+		}
+	} catch {
+		// A stats failure never costs a visitor their page.
+	}
+	return response;
+}
+
+export const handle = sequence(
+	restorePlatform,
+	initSentryHandle,
+	sentryHandle(),
+	siteTrafficHandle,
+	appHandle
+);
 export const handleError = handleErrorWithSentry();

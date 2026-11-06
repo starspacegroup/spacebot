@@ -7,7 +7,11 @@ vi.mock('../lib/db/commands.js', () => ({
 	getCommandByName: vi.fn(async () => (enabled ? { name: 'timebox' } : null)),
 }));
 
-import { TimeboxAccessError, timeboxesForViewer } from '../lib/server/activity-timebox.js';
+import {
+	TimeboxAccessError,
+	othersForViewer,
+	timeboxesForViewer,
+} from '../lib/server/activity-timebox.js';
 import { createSession } from '../lib/server/timebox.js';
 import type { TokenClaims } from '../lib/server/activity.js';
 
@@ -18,7 +22,9 @@ const sql = (file: string, cut?: string) => {
 const SCHEMA =
 	sql('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
-	sql('0070_timebox.sql', '-- /timebox as a built-in command family');
+	sql('0070_timebox.sql', '-- /timebox as a built-in command family') +
+	sql('0071_timebox_goals.sql', '\nUPDATE commands') +
+	sql('0080_timebox_mute.sql');
 
 const G = '100000000000000001';
 const OTHER_G = '100000000000000002';
@@ -59,6 +65,31 @@ const inVoice = (d: any, user: string, channel: string) =>
 
 beforeEach(() => {
 	enabled = true;
+});
+
+describe("other members' timers", () => {
+	it("shows solo timers of people in the viewer's voice channel, with no ids", async () => {
+		const d = createSqliteD1(SCHEMA);
+		inVoice(d, ME, VC);
+		inVoice(d, FRIEND, VC);
+		d.exec(`UPDATE live_voice_states SET display_name = 'Riker' WHERE user_id = '${FRIEND}'`);
+		await make(d, { kind: 'solo', voice_channel_id: null });
+		const out = await othersForViewer(d, claims(), G);
+		expect(out).toHaveLength(1);
+		expect(out[0]).toMatchObject({ name: 'Riker', phase: 'focus', status: 'running' });
+		expect(JSON.stringify(out)).not.toContain(FRIEND);
+	});
+
+	it('leaves out the viewer, other channels and ended timers', async () => {
+		const d = createSqliteD1(SCHEMA);
+		inVoice(d, ME, VC);
+		inVoice(d, FRIEND, VC2);
+		await make(d, { kind: 'solo', voice_channel_id: null });
+		expect(await othersForViewer(d, claims(), G)).toEqual([]);
+		inVoice(d, FRIEND, VC);
+		d.exec(`UPDATE timebox_sessions SET status = 'done'`);
+		expect(await othersForViewer(d, claims(), G)).toEqual([]);
+	});
 });
 
 describe('the Timebox tab data', () => {
@@ -127,6 +158,20 @@ describe('the Timebox tab data', () => {
 		const [tb] = await timeboxesForViewer(d, claims(), G);
 		expect(tb.deafen).toBe('focus');
 		expect(JSON.stringify(tb)).not.toContain(FRIEND);
+	});
+
+	it("reports the viewer's own goal, and never anyone else's", async () => {
+		const d = createSqliteD1(SCHEMA);
+		const s = await make(d);
+		d.exec(
+			`INSERT INTO timebox_participants (session_id, user_id, goal) VALUES (${s.id}, '${ME}', 'write the intro')`
+		);
+		d.exec(
+			`INSERT INTO timebox_participants (session_id, user_id, goal) VALUES (${s.id}, '${FRIEND}', 'secret plan')`
+		);
+		const [tb] = await timeboxesForViewer(d, claims(), G);
+		expect(tb.goal).toBe('write the intro');
+		expect(JSON.stringify(tb)).not.toContain('secret plan');
 	});
 
 	it('leaves out finished timeboxes', async () => {

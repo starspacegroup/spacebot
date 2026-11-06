@@ -8,7 +8,10 @@ vi.mock('$lib/db/commands.js', () => ({
 	setBuiltInCommandOverride: vi.fn(),
 }));
 vi.mock('$lib/discord/commands.js', () => ({ syncGuildCommands: vi.fn() }));
-vi.mock('$lib/discord/guilds.js', () => ({ hasFullAdminPermission: () => true }));
+vi.mock('$lib/discord/guilds.js', () => ({
+	hasFullAdminPermission: () => true,
+	verifyGuildAdmin: async () => ({ authorized: true, guild: {} }),
+}));
 vi.mock('$lib/server/superadmin-guard.js', () => ({ checkIsSuperAdmin: () => false }));
 
 const { actions } = await import('../routes/admin/[serverId]/activity/+page.server.js');

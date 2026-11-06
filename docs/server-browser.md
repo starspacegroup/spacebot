@@ -11,8 +11,15 @@ their dashboard; nothing is published automatically.
 
 ## Opting in
 
-**Admin → Server settings → Public server browser.** Requires the same full-administrator
-permission as the rest of the settings page.
+**Admin → Public listing** (`/admin/[serverId]/listing`; Settings has a card that links to it).
+Requires a full Administrator or a superadmin. A member with only Manage Server sees an
+explanation instead of being sent away.
+
+The page is built around three things: a **status card** (Draft, Ready, Live, Needs
+attention, Not showing, Removed) with a completeness checklist, the **form**, and a **live
+preview** beside it that switches between the browser card and the public server page.
+It has its own save, separate from Settings, so a bad invite link can no longer fail an
+unrelated settings save.
 
 | Field                         | Notes                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------- |
@@ -25,9 +32,12 @@ permission as the rest of the settings page.
 | **Show member counts**        | On by default. Off drops member/online counts from the public payload. |
 | **Mark as 18+**               | Hidden from the browser unless a visitor opts into 18+ listings.       |
 
-Settings auto-save. If the publish switch is on while the headline or invite is missing,
-the client holds the save and shows what's outstanding — the server rejects the same
-combination, so the two agree.
+Edits auto-save after a short pause, and the page says whether it is saved. **Publish** and
+**Unpublish** save immediately. Publish stays disabled until the headline and a working
+invite are filled in. If a published listing loses one of them, edits pause (the last saved
+version stays live) and the status card says why — the server rejects the same combination,
+so the two agree. Tags are a chip input with per-category ideas; the invite field checks
+its shape as you type and has a **Test it** link.
 
 ### Draft it with AI
 
@@ -38,7 +48,7 @@ what a server is actually for.
 
 Two properties matter here:
 
-- **It cannot publish.** The endpoint never writes `listed`; only the settings form does.
+- **It cannot publish.** The endpoint never writes `listed`; only the listing form does.
 - **It does not save.** The draft fills the form and shows a review bar with **Keep
   draft** / **Discard**, and Discard restores a snapshot taken before the fill. On an
   already-published server, auto-saving would put machine-written copy live before anyone
@@ -149,7 +159,7 @@ SpaceBot.
 
 - `approved` (default) — live.
 - `rejected` — hidden from the browser. The admin's own opt-in switch is untouched, and
-  the settings page shows a takedown notice with `review_note`.
+  the listing page shows a takedown notice with `review_note`.
 
 `saveGuildListing` never writes `review_status`, so an admin editing their listing cannot
 clear a takedown. Flipping it is currently a direct D1 operation:
@@ -202,5 +212,7 @@ so "recently listed" ordering doesn't reshuffle every time an admin fixes a typo
 | `src/routes/admin/superadmin/+page.*`          | Operator health panel                                       |
 | `src/routes/servers/+page.*`                   | Browse page (search/filter/sort/paginate)                   |
 | `src/routes/servers/[guildId]/+page.*`         | Public detail page                                          |
-| `src/routes/admin/[serverId]/settings/+page.*` | Admin opt-in section                                        |
+| `src/routes/admin/[serverId]/listing/+page.*`  | Admin listing editor (status, form, live preview, own save) |
+| `src/routes/admin/[serverId]/settings/+page.*` | Link card to the listing editor                             |
+| `src/tests/listing-page.test.ts`               | The editor's save action (validation, access, takedown)     |
 | `src/tests/server-listings.test.ts`            | Validation + visibility rule coverage                       |

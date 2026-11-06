@@ -198,6 +198,12 @@
 				Servicio funcione. No usamos cookies de rastreo, cookies publicitarias ni cookies de
 				analítica de terceros.
 			</p>
+			<p>
+				Contamos las visitas a nuestras páginas públicas con totales diarios solamente: qué
+				página, el sitio de origen, el país que indica Cloudflare y categorías generales del
+				navegador, el sistema, el dispositivo y el idioma. No se guarda ninguna dirección
+				IP, ningún identificador ni ningún registro por visita, y esto no usa cookies.
+			</p>
 
 			<h3>3.7 Claves de API</h3>
 			<p>
@@ -669,6 +675,12 @@
 				the refresh token cookie lasts 30 days. All of them are essential for the Service to
 				function. We do not use tracking cookies, advertising cookies, or third-party
 				analytics cookies.
+			</p>
+			<p>
+				We count visits to our public pages with daily totals only: which page, the site
+				that sent the visitor, the country Cloudflare reports, and broad categories of
+				browser, system, device and language. No IP address, identifier or per-visit record
+				is stored, and this uses no cookies. Pages inside the dashboard are not counted.
 			</p>
 
 			<h3>3.7 API Keys</h3>

@@ -20,7 +20,14 @@ import { reapManagedChannels } from '$lib/server/managed-channel-reaper.js';
 import { sweepQuorum } from '$lib/server/quorum.js';
 import { sweepTimebox } from '$lib/server/timebox.js';
 import { sweepGame } from '$lib/server/game.js';
-import { sweepCommandSync } from '$lib/discord/commands.js';
+import { sweepShiritori } from '$lib/server/shiritori-game.js';
+import { pruneSiteTraffic } from '$lib/server/site-traffic.js';
+import { createDiscordRestClient } from '$lib/discord/rest-client.js';
+import {
+	COMMAND_SYNC_BATCH,
+	COMMAND_SYNC_MAX_BATCH,
+	sweepCommandSync,
+} from '$lib/discord/commands.js';
 import { sweepAllTimedOutRunnerJobs } from '$lib/db/local-runners.js';
 import { syncWorkersAICatalog } from '$lib/server/workers-ai-models.js';
 import { log } from '$lib/log.js';
@@ -52,7 +59,8 @@ function getCronJobDefinitions() {
 		{
 			name: 'hourly_aggregation',
 			displayName: 'Hourly Stats Aggregation',
-			description: 'Aggregates event logs into hourly and daily statistics',
+			description:
+				'Aggregates event logs into hourly and daily statistics, and drops marketing-traffic counters past their retention.',
 			cronPattern: '0 * * * *',
 			schedule: 'Every hour at :00',
 		},
@@ -124,7 +132,7 @@ function getCronJobDefinitions() {
 			name: 'sweep_game',
 			displayName: 'Sweep Games',
 			description:
-				'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds.',
+				'Resolves hidden-agent rounds whose vote or clock ran out, closes lobbies nobody started, ends rounds in an emptied voice channel, and lifts any mute a round still holds. Also times out overdue Shiritori turns, closes idle Shiritori lobbies, and prunes old word rows.',
 			cronPattern: '* * * * *',
 			schedule: 'Every minute',
 		},
@@ -516,6 +524,10 @@ export async function POST({ request, cookies, platform }) {
 			// Also sweep any runner jobs that timed out since the last poll cycle.
 			const runnerSweep = await sweepAllTimedOutRunnerJobs(db);
 			result = { ...result, runnerSweep };
+			// Old marketing-traffic counters (the page's own failure must not fail this job).
+			await pruneSiteTraffic(db).catch((err: any) =>
+				log.warn('[Cron API] Failed to prune site traffic counters:', err)
+			);
 		} else if (jobName === 'daily_refresh') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
@@ -560,12 +572,24 @@ export async function POST({ request, cookies, platform }) {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
 			}
-			result = await sweepGame(db, botToken);
+			const gameResult = await sweepGame(db, botToken);
+			// Its own failure must not fail the Game sweep: that one lifts mutes.
+			const shiritori = await sweepShiritori(db, createDiscordRestClient(botToken)).catch(
+				(err: any) => ({ error: String(err?.message ?? err) })
+			);
+			result = { ...gameResult, shiritori };
 		} else if (jobName === 'sync_commands') {
 			if (!botToken) {
 				throw new Error('Bot token not configured');
 			}
-			result = await sweepCommandSync(db, (platform as any)?.env ?? process.env);
+			// A post-deploy run (scripts/sync-commands.ts) may ask for a bigger
+			// batch than the minute sweep's ten; it is capped so one request stays
+			// well inside the Worker subrequest budget.
+			const limit = Math.min(
+				Math.max(Number.parseInt(String(body.limit ?? ''), 10) || COMMAND_SYNC_BATCH, 1),
+				COMMAND_SYNC_MAX_BATCH
+			);
+			result = await sweepCommandSync(db, (platform as any)?.env ?? process.env, { limit });
 		} else if (jobName === 'sync_workers_ai_models') {
 			const synced = await syncWorkersAICatalog(db, platform);
 			result = {
