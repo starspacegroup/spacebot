@@ -92,6 +92,12 @@ export const DISCORD_EVENT_CATEGORIES = {
 		color: '#24292e',
 		icon: '🐙',
 	},
+	api: {
+		name: 'API',
+		description: 'Changes made through an API key',
+		color: '#1ABC9C',
+		icon: '🔑',
+	},
 };
 
 export const DISCORD_EVENT_TYPES = {
@@ -318,6 +324,21 @@ export const DISCORD_EVENT_TYPES = {
 		category: 'github',
 		description: 'A deployment status changed (e.g. Cloudflare Pages deploy)',
 		icon: '🚢',
+	},
+	API_AUTOMATION_TOGGLED: {
+		category: 'api',
+		description: 'An API key enabled or disabled an automation',
+		icon: '🔑',
+	},
+	API_COMMAND_TOGGLED: {
+		category: 'api',
+		description: 'An API key enabled or disabled a slash command',
+		icon: '🔑',
+	},
+	API_MESSAGE_SCHEDULED: {
+		category: 'api',
+		description: 'An API key scheduled a channel message',
+		icon: '🔑',
 	},
 };
 

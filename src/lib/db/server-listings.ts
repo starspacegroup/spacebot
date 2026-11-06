@@ -582,3 +582,25 @@ export async function getPublicListing(db: any, guildId: string) {
 		return null;
 	}
 }
+
+/**
+ * Which of these guilds are live in the public browser right now (opted in and not
+ * hidden by the operator). One query, however many servers someone manages.
+ */
+export async function getListedGuildIds(db: any, guildIds: string[]): Promise<Set<string>> {
+	const ids = guildIds.filter((id) => /^\d{17,20}$/.test(String(id || ''))).slice(0, 100);
+	if (!db || ids.length === 0) return new Set();
+	try {
+		const placeholders = ids.map(() => '?').join(',');
+		const result = await db
+			.prepare(
+				`SELECT guild_id FROM guild_listings
+				 WHERE listed = 1 AND review_status = 'approved' AND guild_id IN (${placeholders})`
+			)
+			.bind(...ids)
+			.all();
+		return new Set((result.results || []).map((row: any) => String(row.guild_id)));
+	} catch {
+		return new Set();
+	}
+}

@@ -22,6 +22,8 @@ database — see the architecture overview below.
 
 ## Features & subsystems
 
+- [Word commands](word-commands.md) — `/define` and `/synonym`, off until a server turns them on
+- [Announcement channel](announcements.md) — where SpaceBot posts global changes and important alerts
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
@@ -31,6 +33,11 @@ database — see the architecture overview below.
 - [Command access](command-access.md) — permission levels plus role rules for who can run a command
 - [The /help command](help-command.md) — what every member sees when they ask what the bot does
 - [Member Rooms](managed-channels.md) — self-service channels members create, run and outlive
+- [Statistics](stats.md) — the admin Statistics page: its four tabs, and the Voice tab that replaced the VC activity page
+- [Automation templates](automation-templates.md) — ready-made automations an admin can start from; created switched off
+- [Set channel topic](set-channel-topic.md) — the automation action that lets a command change a channel's topic
+- [Site traffic](site-traffic.md) — the superadmin page that counts views of the public pages, with nothing stored per visitor
+- [Shiritori](shiritori.md) — the word chain: an always-on channel, and `/play shiritori` rounds
 - [Timebox](timebox.md) — focus and break timers, alone or for a voice channel, with an optional self-deafen
 - [Activity](activity.md) — SpaceBot as a Discord Activity: sign-in, where it runs, and the module switch
 - [Quorum](quorum.md) — one-command yes/no decisions that close themselves and post an owned result

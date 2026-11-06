@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { intParam } from '$lib/server/query-params.js';
 import {
 	createSuperadminWorkflowTemplate,
 	listSuperadminWorkflowRuns,
@@ -16,9 +17,9 @@ export async function GET({ cookies, platform, url }) {
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
 	const includeArchived = url.searchParams.get('includeArchived') === 'true';
-	const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-	const runLimit = parseInt(url.searchParams.get('runLimit') || '25', 10);
-	const runOffset = parseInt(url.searchParams.get('runOffset') || '0', 10);
+	const limit = intParam(url, 'limit', 100, 1, 500);
+	const runLimit = intParam(url, 'runLimit', 25, 1, 200);
+	const runOffset = intParam(url, 'runOffset', 0, 0);
 
 	const [templates, runs] = await Promise.all([
 		listSuperadminWorkflowTemplates(db, { includeArchived, limit }),
@@ -37,7 +38,10 @@ export async function POST({ cookies, platform, request }) {
 	const db = (platform as any)?.env?.DB;
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
-	const body = await request.json();
+	const body = await request.json().catch(() => null);
+	if (!body || typeof body !== 'object') {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 	// is_builtin is reserved for the preset seeder.
 	const { is_builtin: _ignored, ...input } = body || {};
 	const result = await createSuperadminWorkflowTemplate(db, userId, input);

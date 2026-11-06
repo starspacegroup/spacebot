@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { listUsers } from '$lib/db/users.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
+import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ cookies, platform, url }) {
@@ -12,7 +13,7 @@ export async function load({ cookies, platform, url }) {
 	const db = (platform as any)?.env?.DB;
 
 	const search = url.searchParams.get('search') || undefined;
-	const page = parseInt(url.searchParams.get('page') || '1', 10);
+	const page = intParam(url, 'page', 1, 1);
 	const limit = 50;
 	const offset = (page - 1) * limit;
 

@@ -4,7 +4,10 @@ import {
 	PAGE_SIZE,
 	browsePublicListings,
 	getCategoryCounts,
+	getListedGuildIds,
 } from '$lib/db/server-listings.js';
+import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
+import { countableRequest, recordBrowseUse, recordImpressions } from '$lib/server/browser-stats.js';
 
 /**
  * Public server browser.
@@ -17,7 +20,7 @@ import {
  * inside the app shell, which contains the signed-in user's menu, so a shared
  * cache would serve one visitor's header to another.
  */
-export async function load({ platform, url }) {
+export async function load({ platform, url, cookies, request }) {
 	const db = (platform as any)?.env?.DB;
 
 	const q = (url.searchParams.get('q') || '').slice(0, 80);
@@ -37,8 +40,37 @@ export async function load({ platform, url }) {
 		getCategoryCounts(db, includeNsfw),
 	]);
 
+	// Counters for the superadmin's Server browser stats: the cards shown, and whether a
+	// category or a search was used (never the words). Off the request path, and a failure
+	// costs nobody a page.
+	if (db && countableRequest(request)) {
+		const write = Promise.all([
+			recordImpressions(
+				db,
+				result.listings.map((l: any) => l.guild_id)
+			),
+			recordBrowseUse(db, { category, searched: Boolean(q) }),
+		]).catch(() => {});
+		const ctx = (platform as any)?.context;
+		if (ctx?.waitUntil) ctx.waitUntil(write);
+		else await write;
+	}
+
 	return {
 		...result,
+		// Streamed: the page renders first, the manage button appears when Discord answers.
+		manageable: getManageableGuilds(cookies, platform).then(async (guilds) => {
+			const listed = await getListedGuildIds(
+				db,
+				guilds.map((guild) => guild.id)
+			);
+			// Live listings first, then the rest by name.
+			return guilds
+				.map((guild) => ({ ...guild, listed: listed.has(guild.id) }))
+				.sort(
+					(a, b) => Number(b.listed) - Number(a.listed) || a.name.localeCompare(b.name)
+				);
+		}),
 		q,
 		category,
 		sort,

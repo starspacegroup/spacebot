@@ -68,14 +68,23 @@
 						{/if}
 					</div>
 				</div>
-				{#if listing.invite_url}
-					<a
-						class="btn-join"
-						href={listing.invite_url}
-						target="_blank"
-						rel="noopener noreferrer nofollow ugc">{tr('browse.joinServer')}</a
-					>
-				{/if}
+				<div class="detail-actions">
+					{#await data.canManage then canManage}
+						{#if canManage}
+							<a class="btn-manage" href="/admin/{listing.guild_id}/listing"
+								>{tr('browse.manageThisListing')}</a
+							>
+						{/if}
+					{/await}
+					{#if listing.invite_url}
+						<a
+							class="btn-join"
+							href="/servers/{listing.guild_id}/join"
+							target="_blank"
+							rel="noopener noreferrer nofollow ugc">{tr('browse.joinServer')}</a
+						>
+					{/if}
+				</div>
 			</header>
 
 			{#if listing.headline}
@@ -263,6 +272,29 @@
 		white-space: nowrap;
 	}
 
+	.detail-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.btn-manage {
+		padding: 0.55rem 1.25rem;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+		background: var(--color-surface);
+		color: var(--color-text);
+		font-size: 0.88rem;
+		font-weight: 500;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+
+	.btn-manage:hover {
+		border-color: var(--color-primary);
+	}
+
 	.btn-join:hover {
 		filter: brightness(1.08);
 	}
@@ -361,7 +393,13 @@
 			align-items: flex-start;
 		}
 
-		.btn-join {
+		.detail-actions {
+			width: 100%;
+		}
+
+		.btn-join,
+		.btn-manage {
+			flex: 1;
 			width: 100%;
 			text-align: center;
 		}

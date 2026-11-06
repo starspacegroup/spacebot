@@ -40,6 +40,14 @@
 		});
 	}
 
+	// A stored avatar hash goes stale when the user changes or removes their picture.
+	// Fall back to their default Discord avatar instead of a broken image.
+	function avatarFallback(event, user) {
+		const img = event.currentTarget;
+		const fallback = getDiscordAvatarUrl(user?.id, null, user?.discriminator, 32);
+		if (fallback && img.src !== fallback) img.src = fallback;
+	}
+
 	function getAvatarUrl(user) {
 		return getDiscordAvatarUrl(user?.id, user?.avatar, user?.discriminator, 32);
 	}
@@ -264,7 +272,12 @@
 			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
 				<div class="modal-header">
 					<div class="modal-user-info">
-						<img src={getAvatarUrl(editingUser)} alt="" class="modal-avatar" />
+						<img
+							src={getAvatarUrl(editingUser)}
+							alt=""
+							class="modal-avatar"
+							onerror={(e) => avatarFallback(e, editingUser)}
+						/>
 						<div>
 							<h2>{editingUser.global_name || editingUser.username}</h2>
 							<span class="user-tag">@{editingUser.username}</span>
@@ -316,8 +329,7 @@
 							bind:value={editingUser.notes}
 							class="form-textarea"
 							rows="3"
-							placeholder="Internal notes about this user..."
-						></textarea>
+							placeholder="Internal notes about this user..."></textarea>
 					</div>
 				</div>
 				<div class="modal-footer">
@@ -349,13 +361,20 @@
 				<tbody>
 					{#each users as user (user.id)}
 						<tr class:banned={user.banned}>
-							<td class="user-cell">
-								<img src={getAvatarUrl(user)} alt="" class="user-avatar" />
-								<div class="user-info">
-									<span class="user-name"
-										>{user.global_name || user.username}</span
-									>
-									<span class="user-tag">@{user.username}</span>
+							<td>
+								<div class="user-cell">
+									<img
+										src={getAvatarUrl(user)}
+										alt=""
+										class="user-avatar"
+										onerror={(e) => avatarFallback(e, user)}
+									/>
+									<div class="user-info">
+										<span class="user-name"
+											>{user.global_name || user.username}</span
+										>
+										<span class="user-tag">@{user.username}</span>
+									</div>
 								</div>
 							</td>
 							<td class="mono id-cell">{user.id}</td>
@@ -373,32 +392,36 @@
 									{/if}
 								</div>
 							</td>
-							<td class="actions-cell">
-								<button
-									class="btn btn-sm btn-secondary"
-									onclick={() => startEditUser(user)}
-								>
-									Edit
-								</button>
-								<button
-									class="btn btn-sm btn-secondary"
-									onclick={() => openActivity(user)}
-								>
-									Activity
-								</button>
-								<button
-									class="btn btn-sm {user.banned ? 'btn-success' : 'btn-warning'}"
-									onclick={() => toggleBan(user)}
-									title={user.banned ? 'Unban' : 'Ban'}
-								>
-									{user.banned ? 'Unban' : 'Ban'}
-								</button>
-								<button
-									class="btn btn-sm btn-danger"
-									onclick={() => deleteUser(user)}
-								>
-									Delete
-								</button>
+							<td>
+								<div class="actions-cell">
+									<button
+										class="btn btn-sm btn-secondary"
+										onclick={() => startEditUser(user)}
+									>
+										Edit
+									</button>
+									<button
+										class="btn btn-sm btn-secondary"
+										onclick={() => openActivity(user)}
+									>
+										Activity
+									</button>
+									<button
+										class="btn btn-sm {user.banned
+											? 'btn-success'
+											: 'btn-warning'}"
+										onclick={() => toggleBan(user)}
+										title={user.banned ? 'Unban' : 'Ban'}
+									>
+										{user.banned ? 'Unban' : 'Ban'}
+									</button>
+									<button
+										class="btn btn-sm btn-danger"
+										onclick={() => deleteUser(user)}
+									>
+										Delete
+									</button>
+								</div>
 							</td>
 						</tr>
 					{/each}
@@ -449,7 +472,12 @@
 			>
 				<div class="modal-header">
 					<div class="modal-user-info">
-						<img src={getAvatarUrl(activityUser)} alt="" class="modal-avatar" />
+						<img
+							src={getAvatarUrl(activityUser)}
+							alt=""
+							class="modal-avatar"
+							onerror={(e) => avatarFallback(e, activityUser)}
+						/>
 						<div>
 							<h2>{activityUser.global_name || activityUser.username} Activity</h2>
 							<span class="user-tag">@{activityUser.username}</span>

@@ -46,7 +46,11 @@ export const DEFAULTS = {
 export const LONG_BREAK_EVERY = 4;
 /** A shared session whose voice channel has been empty this long ends. */
 export const EMPTY_GRACE_MS = 5 * 60 * 1000;
-/** A deafen the bot could not lift is retried this long, then given up on. */
+/**
+ * The sweep retries a deafen it could not lift for this long after the timebox
+ * ended. After that only the member's next voice join lifts it (liftOnVoiceJoin),
+ * so the record is kept, never dropped.
+ */
 export const RESTORE_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 /** Most people pinged at one change. */
 const MAX_MENTIONS = 20;
@@ -369,8 +373,10 @@ export interface Participant {
 	user_id: string;
 	deafen_mode: DeafenMode;
 	prev_deaf: number;
+	prev_mute: number;
 	applied: number;
 	restore_pending: number;
+	goal: string | null;
 }
 
 export async function getParticipant(db, sessionId: number, userId: string) {
@@ -470,7 +476,8 @@ export function wantsDeaf(mode: DeafenMode, phase: Phase): boolean {
 type DeafOutcome = 'applied' | 'not_in_voice' | 'no_permission' | 'already' | 'error';
 
 /**
- * Server-deafen a member for this session, remembering what it was before. Only a
+ * Server-deafen and server-mute a member for this session, remembering what both
+ * were before. Only a
  * member who is in a voice channel can be changed; anyone else is skipped and the
  * sweep tries again.
  */
@@ -481,19 +488,26 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 	try {
 		const member = await discord.members.fetch(s.guild_id, userId);
 		const prev = member?.deaf ? 1 : 0;
-		if (!prev)
-			await discord.members.setDeaf(
+		const prevMute = member?.mute ? 1 : 0;
+		const change: { deaf?: boolean; mute?: boolean } = {};
+		if (!prev) change.deaf = true;
+		if (!prevMute) change.mute = true;
+		if (change.deaf !== undefined || change.mute !== undefined)
+			await discord.members.setVoice(
 				s.guild_id,
 				userId,
-				true,
-				'Timebox: deafened at their request'
+				change,
+				'Timebox: deafened and muted at their request'
 			);
+		log.info(
+			`[Timebox] Held ${userId} in session ${s.id} (was deaf ${prev}, mute ${prevMute}; set ${JSON.stringify(change)})`
+		);
 		await db
 			.prepare(
-				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, updated_at = datetime('now')
+				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, prev_mute = ?, updated_at = datetime('now')
 				 WHERE session_id = ? AND user_id = ?`
 			)
-			.bind(prev, s.id, userId)
+			.bind(prev, prevMute, s.id, userId)
 			.run();
 		return 'applied';
 	} catch (err: any) {
@@ -505,8 +519,8 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 }
 
 /**
- * Put back what the member's deafen was before the bot touched it. If they were
- * already deafened (by a moderator), nothing is changed. If Discord will not
+ * Put back what the member's deafen and mute were before the bot touched them. If
+ * they were already deafened or muted (by a moderator), that part is left alone. If Discord will not
  * change them right now — they are not in a voice channel — the row stays marked
  * `restore_pending` and the sweep retries.
  */
@@ -527,12 +541,23 @@ export async function restoreDeafen(
 			)
 			.bind(sessionId, userId)
 			.run();
-	if (row.prev_deaf) {
+	const change: { deaf?: boolean; mute?: boolean } = {};
+	if (!row.prev_deaf) change.deaf = false;
+	if (!row.prev_mute) change.mute = false;
+	if (change.deaf === undefined && change.mute === undefined) {
 		await done();
 		return true;
 	}
 	try {
-		await discord.members.setDeaf(guildId, userId, false, 'Timebox: deafen lifted');
+		await discord.members.setVoice(guildId, userId, change, 'Timebox: deafen and mute lifted');
+		// Trust Discord's answer, not the PATCH: if the member still shows deafened or
+		// muted, the lift did not take, so keep the row pending and try again.
+		const after = await discord.members.fetch(guildId, userId).catch(() => null);
+		if ((change.deaf === false && after?.deaf) || (change.mute === false && after?.mute)) {
+			throw Object.assign(new Error('still deafened or muted after the lift'), {
+				status: 'stuck',
+			});
+		}
 		await done();
 		return true;
 	} catch (err: any) {
@@ -540,6 +565,9 @@ export async function restoreDeafen(
 			await done(); // left the server
 			return true;
 		}
+		log.warn(
+			`[Timebox] Could not lift deafen/mute for ${userId} (session ${sessionId}): ${err?.status ?? ''} ${err?.message}`
+		);
 		await db
 			.prepare(
 				`UPDATE timebox_participants SET restore_pending = 1, updated_at = datetime('now')
@@ -549,6 +577,30 @@ export async function restoreDeafen(
 			.run();
 		return false;
 	}
+}
+
+/**
+ * A member who left voice before the bot could lift their timebox deafen/mute
+ * has a record still marked `restore_pending`. Discord only lets us change a
+ * server mute or deafen while the member is connected, so when they join voice
+ * again and their session is over, lift it then. restoreDeafen puts back only
+ * what the timebox itself changed. Sessions still live are left to the sweep.
+ */
+export async function liftOnVoiceJoin(db, discord, guildId: string, userId: string) {
+	const { results } = await db
+		.prepare(
+			`SELECT p.session_id AS session_id FROM timebox_participants p
+			 JOIN timebox_sessions s ON s.id = p.session_id
+			 WHERE p.user_id = ? AND s.guild_id = ? AND p.restore_pending = 1
+			   AND s.status NOT IN ('running', 'paused')`
+		)
+		.bind(userId, guildId)
+		.all();
+	let lifted = 0;
+	for (const r of (results || []) as any[]) {
+		if (await restoreDeafen(db, discord, r.session_id, userId, guildId)) lifted++;
+	}
+	return lifted;
 }
 
 async function heldParticipants(db, sessionId: number): Promise<Participant[]> {
@@ -626,7 +678,7 @@ export function buildCard(s: Session, extra: CardExtra = {}) {
 	}
 	if (s.kind === 'shared' && live) lines.push(`Shared with <#${s.voice_channel_id}>`);
 	if (extra.deafened) {
-		lines.push(`${extra.deafened} deafened at their own request`);
+		lines.push(`${extra.deafened} deafened and muted at their own request`);
 	}
 	if (extra.goals?.length) {
 		const plural = extra.goals.length > 1 || s.kind === 'shared';
@@ -717,13 +769,20 @@ async function deafenedCount(db, sessionId: number): Promise<number> {
 	return Number(row?.n ?? 0);
 }
 
-/** Who to ping at a change. */
+/**
+ * Who to ping at a change: the person who started it and everyone who took part (set a
+ * goal or a deafen mode on the card). Not whoever else is in the voice channel: they
+ * never joined the timebox and did not ask to be pinged.
+ */
 async function audience(db, s: Session): Promise<string[]> {
 	if (s.kind === 'solo') return [s.starter_id];
-	const here = s.voice_channel_id
-		? await humansInChannel(db, s.guild_id, s.voice_channel_id)
-		: [];
-	return here.length ? here : [s.starter_id];
+	const { results } = await db
+		.prepare(
+			`SELECT user_id FROM timebox_participants WHERE session_id = ? ORDER BY updated_at, user_id`
+		)
+		.bind(s.id)
+		.all();
+	return [...new Set<string>([s.starter_id, ...(results ?? []).map((r: any) => r.user_id)])];
 }
 
 function phaseAnnouncement(s: Session): string {
@@ -846,6 +905,21 @@ export async function resumeSession(db, discord, s: Session, now = new Date()) {
 // --- the minute sweep ----------------------------------------------------------
 
 /**
+ * Whether any running session is past the end of its block. The Activity asks this
+ * on every poll so a block that has run out is settled at once, not up to a minute
+ * later when the sweep comes round.
+ */
+export async function hasOverdue(db, now = new Date()): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`SELECT 1 AS hit FROM timebox_sessions WHERE status = 'running' AND phase_ends_at <= ? LIMIT 1`
+		)
+		.bind(now.toISOString())
+		.first();
+	return Boolean(row);
+}
+
+/**
  * Moves due sessions to their next block, keeps deafens in step with the phase,
  * ends shared sessions whose voice channel stayed empty, and retries deafens that
  * could not be lifted. With nothing live and nothing pending it is two indexed reads.
@@ -857,7 +931,6 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 		ended_empty: 0,
 		deafened: 0,
 		restored: 0,
-		restore_failed: 0,
 	};
 	if (!db) return { ...summary, error: 'Database not available' };
 
@@ -867,8 +940,10 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 	const { results: pending } = await db
 		.prepare(
 			`SELECT p.*, s.guild_id AS guild_id, s.ended_at AS ended_at FROM timebox_participants p
-			 JOIN timebox_sessions s ON s.id = p.session_id WHERE p.restore_pending = 1`
+			 JOIN timebox_sessions s ON s.id = p.session_id
+			 WHERE p.restore_pending = 1 AND (s.ended_at IS NULL OR s.ended_at > ?)`
 		)
+		.bind(new Date(now.getTime() - RESTORE_GIVE_UP_MS).toISOString())
 		.all();
 	if (!live?.length && !pending?.length) return summary;
 
@@ -936,18 +1011,6 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 	}
 
 	for (const p of (pending || []) as any[]) {
-		const endedTooLong =
-			p.ended_at && now.getTime() - new Date(p.ended_at).getTime() > RESTORE_GIVE_UP_MS;
-		if (endedTooLong) {
-			await db
-				.prepare(
-					`UPDATE timebox_participants SET applied = 0, restore_pending = 0 WHERE session_id = ? AND user_id = ?`
-				)
-				.bind(p.session_id, p.user_id)
-				.run();
-			summary.restore_failed++;
-			continue;
-		}
 		if (await restoreDeafen(db, discord, p.session_id, p.user_id, p.guild_id))
 			summary.restored++;
 	}
@@ -1054,7 +1117,7 @@ export async function handleTimeboxCommand(body: Interaction, db, discord): Prom
 				return { response: ephemeral('Only the starter or Crew can stop this one.') };
 			}
 			await endSession(db, discord, s, 'stopped');
-			return { response: ephemeral('Stopped. Any deafen it held is lifted.') };
+			return { response: ephemeral('Stopped. Any deafen or mute it held is lifted.') };
 		}
 		case 'status': {
 			const vc = await voiceChannelOf(db, guildId, userId);
@@ -1192,11 +1255,11 @@ async function startCommand(
 		const out = await applyDeafen(db, discord, s, ctx.userId);
 		note =
 			out === 'applied'
-				? '\nYou are deafened. The **Deafen me** button lifts it any time.'
+				? '\nYou are deafened and muted. The **Deafen me** button lifts it any time.'
 				: out === 'not_in_voice'
-					? '\nJoin a voice channel and you will be deafened within a minute.'
+					? '\nJoin a voice channel and you will be deafened and muted within a minute.'
 					: out === 'no_permission'
-						? '\nI cannot deafen you here (I need Deafen Members and a role above yours), so I left it off.'
+						? '\nI cannot deafen you here (I need Deafen Members and Mute Members, and a role above yours), so I left it off.'
 						: '';
 		if (out === 'no_permission') await setDeafenMode(db, s.id, ctx.userId, 'none');
 	}
@@ -1295,13 +1358,13 @@ export async function handleTimeboxComponent(
 		if (mine && mine.deafen_mode !== 'none') {
 			await setDeafenMode(db, s.id, userId, 'none');
 			await restoreDeafen(db, discord, s.id, userId, s.guild_id);
-			return { response: ephemeral('Deafen off. You can hear again.') };
+			return { response: ephemeral('Deafen off. You can hear and talk again.') };
 		}
 		await setDeafenMode(db, s.id, userId, 'focus');
 		if (!wantsDeaf('focus', s.phase)) {
 			return {
 				response: ephemeral(
-					'You will be deafened during each focus block, starting with the next one.'
+					'You will be deafened and muted during each focus block, starting with the next one.'
 				),
 			};
 		}
@@ -1310,14 +1373,14 @@ export async function handleTimeboxComponent(
 			await setDeafenMode(db, s.id, userId, 'none');
 			return {
 				response: ephemeral(
-					'I cannot deafen you here: I need Deafen Members and a role above yours.'
+					'I cannot deafen you here: I need Deafen Members and Mute Members, and a role above yours.'
 				),
 			};
 		}
 		if (out === 'not_in_voice') {
 			return {
 				response: ephemeral(
-					'Join a voice channel and you will be deafened within a minute. Press again to turn it off.'
+					'Join a voice channel and you will be deafened and muted within a minute. Press again to turn it off.'
 				),
 			};
 		}

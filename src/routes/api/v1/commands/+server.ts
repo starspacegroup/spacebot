@@ -22,6 +22,7 @@ import { json } from '@sveltejs/kit';
 import { authenticateApiKey, hasScope } from '$lib/api-auth.js';
 import { getBuiltInCommandsForGuild, getGuildCommands } from '$lib/db/commands.js';
 import { log } from '$lib/db/logger.js';
+import { intParam } from '$lib/server/query-params.js';
 
 const byName = (a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? ''));
 
@@ -41,8 +42,8 @@ export async function GET({ request, platform, url }) {
 	}
 
 	try {
-		const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
-		const offset = parseInt(url.searchParams.get('offset') || '0');
+		const limit = intParam(url, 'limit', 50, 1, 100);
+		const offset = intParam(url, 'offset', 0, 0);
 		const builtIn = (url.searchParams.get('built_in') || '').trim().toLowerCase();
 
 		// Both sets are fetched whole and paginated together. Paginating them

@@ -10,9 +10,8 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import LanguageSelector from '$lib/components/LanguageSelector.svelte';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
-	import { page } from '$app/stores';
+	import { page, updated } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
-	import { updated } from '$app/stores';
 	import {
 		applyServerTheme,
 		clearServerTheme,
@@ -26,9 +25,9 @@
 	// Discord's proxy can put a prefix in front of the path (/.proxy/activity), and the
 	// iframe's own host is *.discordsays.com, so match on those as well as the plain path.
 	const isActivity = $derived(
-		/^(\/\.proxy)?\/activity(\/|$)/.test($page.url.pathname) ||
-			$page.url.hostname.endsWith('.discordsays.com') ||
-			$page.url.searchParams.has('frame_id')
+		/^(\/\.proxy)?\/activity(\/|$)/.test(page.url.pathname) ||
+			page.url.hostname.endsWith('.discordsays.com') ||
+			page.url.searchParams.has('frame_id')
 	);
 
 	// Detect the user's browser timezone and store it in a cookie so
@@ -64,7 +63,7 @@
 	// the wrong page component (e.g. showing logs page at /integrations).
 	// Critical when HMR is disabled (tunnel / production).
 	beforeNavigate(({ willUnload, to }) => {
-		if ($updated && !willUnload && to?.url) {
+		if (updated.current && !willUnload && to?.url) {
 			location.href = to.url.href;
 		}
 	});
@@ -81,15 +80,12 @@
 	// Use data prop for layout data
 	const isLoggedIn = $derived(data?.isLoggedIn ?? false);
 	const user = $derived(data?.user ?? null);
-	// Derive the selected guild from the live route first ($page is always current
+	// Derive the selected guild from the live route first (page is always current
 	// after navigation) so the server switcher label tracks the URL even if the
 	// layout's server `load` didn't re-run. Fall back to ?guild= and layout data
 	// (used on non-admin pages that surface the last-viewed server).
 	const selectedGuildId = $derived(
-		$page.params?.serverId ??
-			$page.url.searchParams.get('guild') ??
-			data?.selectedGuildId ??
-			null
+		page.params?.serverId ?? page.url.searchParams.get('guild') ?? data?.selectedGuildId ?? null
 	);
 	const isSuperAdmin = $derived(data?.isSuperAdmin ?? false);
 	const locale = $derived(data?.locale ?? 'en');
@@ -143,8 +139,8 @@
 	const showSelectorSkeleton = $derived(
 		guildsPending &&
 			adminGuilds.length === 0 &&
-			$page.url.pathname.startsWith('/admin') &&
-			!$page.url.pathname.startsWith('/admin/superadmin')
+			page.url.pathname.startsWith('/admin') &&
+			!page.url.pathname.startsWith('/admin/superadmin')
 	);
 
 	// Only show login button after initialization to prevent flash
@@ -162,13 +158,13 @@
 	// to tint the entire UI, giving each server a branded feel.
 	// Prefers stored guild metadata (from daily cron) over OAuth guild data.
 	$effect(() => {
-		const pathname = $page.url.pathname;
+		const pathname = page.url.pathname;
 		const match = pathname.match(/^\/admin\/(\d{17,20})/);
 
 		if (match) {
 			const serverId = match[1];
 			// Prefer guild metadata from page data (stored by cron, has richer info)
-			const metadata = $page.data?.guildMetadata;
+			const metadata = page.data?.guildMetadata;
 			const guild = adminGuilds.find((g) => g.id === serverId);
 			const iconHash = metadata?.icon || guild?.icon;
 
@@ -215,7 +211,7 @@
 {#if isActivity}
 	{@render children()}
 {:else}
-	<div class="app-layout" class:chat-page={$page.url.pathname.endsWith('/chat')}>
+	<div class="app-layout" class:chat-page={page.url.pathname.endsWith('/chat')}>
 		<header class="app-header">
 			<a href={isLoggedIn ? '/admin' : '/'} class="logo">
 				<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
@@ -249,7 +245,7 @@
 				>
 			</button>
 			<nav class="nav">
-				{#if $page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
+				{#if page.url.pathname.startsWith('/admin') && !page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
 					<ServerSelector guilds={adminGuilds} {selectedGuildId} />
 				{:else if showSelectorSkeleton}
 					<Skeleton width="11rem" height="2.25rem" radius="var(--radius-full)" />
@@ -282,7 +278,7 @@
 			{@render children()}
 		</main>
 
-		{#if !$page.url.pathname.endsWith('/chat')}
+		{#if !page.url.pathname.endsWith('/chat')}
 			<Footer />
 		{/if}
 
