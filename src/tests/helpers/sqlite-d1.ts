@@ -31,7 +31,7 @@ class Statement {
 
 	async run() {
 		const info = this.stmt.run(...this.args);
-		return { meta: { changes: info.changes } };
+		return { meta: { changes: info.changes, last_row_id: Number(info.lastInsertRowid) } };
 	}
 }
 

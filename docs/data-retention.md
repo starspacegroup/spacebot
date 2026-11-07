@@ -112,3 +112,9 @@ roughly 88% of D1's ~100k/day cap, leaving almost nothing for live logging:
 
 That leaves over half the day's writes for live event logging. Backlogs drain over
 successive nights, which is the intended trade-off.
+
+## Ideas
+
+`ideas` rows (the idea box, [ideas.md](ideas.md)) are kept until the sender asks for their name to
+be removed. The superadmin then clears the sender's ID and name from that idea and the text stays.
+The plan's automatic rule (12 months after shipped or declined) is not built yet.

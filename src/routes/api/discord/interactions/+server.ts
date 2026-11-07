@@ -34,6 +34,7 @@ import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-c
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
+import { handleIdeaCommand } from '$lib/server/idea-command.js';
 import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
@@ -361,6 +362,16 @@ export async function POST({ request, platform: rawPlatform }) {
 		// Off until a server turns them on; the handler checks that itself.
 		if (isWordCommand(data.name) && guildId) {
 			return json(await handleWordCommand(data.name, body, db));
+		}
+
+		// `/idea`: saved at once; the AI draft rides waitUntil so a slow model never delays the reply.
+		if (data.name === 'idea' && guildId) {
+			return json(
+				await handleIdeaCommand(body, db, platform?.env ?? {}, (work) => {
+					if (platform?.context?.waitUntil) platform.context.waitUntil(work);
+					else work.catch((err) => log.error('[Ideas] after-reply work failed:', err));
+				})
+			);
 		}
 
 		// `/oldest`: a read over the member cache, answered at once.

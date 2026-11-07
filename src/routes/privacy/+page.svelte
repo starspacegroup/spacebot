@@ -211,6 +211,15 @@
 				programático. Estas claves se almacenan de forma segura y se asocian con el servidor
 				y con el usuario que las creó.
 			</p>
+
+			<h3>3.8 Ideas que nos envías</h3>
+			<p>
+				Si envías una idea desde la página de ideas o con el comando /idea, guardamos el
+				texto, tu nombre e ID de Discord, el servidor en el que estabas (si usaste el
+				comando) y la hora. Solo el propietario del servicio puede verlas. Una parte del
+				texto puede enviarse al servicio de IA de Cloudflare Workers AI para estimar su
+				prioridad. Puedes pedir que se elimine tu nombre de una idea.
+			</p>
 		</section>
 
 		<section>
@@ -321,6 +330,10 @@
 				<li>
 					<strong>Datos de autenticación</strong> &mdash; Las cookies de sesión caducan a los
 					7 días. Los tokens OAuth2 no se almacenan en el servidor más allá de la cookie.
+				</li>
+				<li>
+					<strong>Ideas</strong> &mdash; Se conservan hasta que pidas que se elimine tu nombre;
+					entonces se borran tu nombre e ID y se conserva el texto de la idea.
 				</li>
 				<li>
 					<strong>Registros de eventos</strong> &mdash; Se conservan mientras el servidor permanezca
@@ -688,6 +701,15 @@
 				Server administrators may generate API keys for programmatic access. These keys are
 				stored securely and are associated with the server and the user who created them.
 			</p>
+
+			<h3>3.8 Ideas You Send Us</h3>
+			<p>
+				If you send an idea from the ideas page or with the /idea command, we store the
+				text, your Discord name and ID, the server you were in (when you used the command)
+				and the time. Only the owner of the service can read them. The text may be sent to
+				Cloudflare Workers AI to estimate its priority. You can ask us to remove your name
+				from an idea.
+			</p>
 		</section>
 
 		<section>
@@ -793,6 +815,10 @@
 				<li>
 					<strong>Authentication data</strong> &mdash; Session cookies expire after 7 days.
 					OAuth2 tokens are not stored server-side beyond the cookie.
+				</li>
+				<li>
+					<strong>Ideas</strong> &mdash; Kept until you ask for your name to be removed; then
+					your name and ID are deleted and the text of the idea stays.
 				</li>
 				<li>
 					<strong>Event logs</strong> &mdash; Retained for as long as the server remains active

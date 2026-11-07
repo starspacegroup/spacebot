@@ -89,6 +89,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       Reworked 2026-11-05 into Overview, Server browser and Audience tabs; the Server browser tab
       counts cards seen, listing pages opened and Join presses per listing per day (migration
       0091; the Join button goes through `/servers/{id}/join`)
+- [x] Idea box — `/ideas` page and built-in `/idea` command: anyone signed in with Discord sends
+      an idea; the superadmin reads them in one list ranked by impact × reach × confidence ÷
+      effort, with an AI draft score they confirm or override; senders see their ideas' status.
+      No votes yet (`docs/ideas.md`, migrations 0095 and 0096)
 - [x] Word commands — `/define` (Wiktionary) and `/synonym` (Datamuse), built-in and off until a
       server turns them on from the Commands page; a lookup per member per minute limit; nothing
       stored (`docs/word-commands.md`, migration 0092)

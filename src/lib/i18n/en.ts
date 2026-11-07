@@ -60,6 +60,38 @@ export const en: Record<string, string> = {
 	'support.pageTitle': 'SpaceBot Support',
 	'support.body': 'Join the SpaceBot Discord support server for setup help and release updates.',
 	'support.cta': 'Open support server',
+
+	// Idea box
+	'footer.ideas': 'Ideas',
+	'ideas.pageTitle': 'Send an idea - SpaceBot',
+	'ideas.title': 'Tell us how to make SpaceBot better',
+	'ideas.intro':
+		'A command you wish it had, something missing from the dashboard, a thing that annoys you. Write it down in your own words. We read every one.',
+	'ideas.signInNeeded': 'Sign in with Discord first, so we know who the idea is from.',
+	'ideas.signIn': 'Sign in with Discord',
+	'ideas.bodyLabel': 'Your idea',
+	'ideas.bodyPlaceholder': 'What would you like SpaceBot to do, and why would it help?',
+	'ideas.titleLabel': 'Short title (optional)',
+	'ideas.areaLabel': 'Which part is it about?',
+	'ideas.area.commands': 'Commands',
+	'ideas.area.dashboard': 'Dashboard',
+	'ideas.area.games': 'Games',
+	'ideas.area.automations': 'Automations',
+	'ideas.area.logging': 'Logging',
+	'ideas.area.server_browser': 'Server browser',
+	'ideas.area.other': 'Something else',
+	'ideas.disclosure':
+		'We save your Discord name and ID, the server you were in, and the time, so we can follow up.',
+	'ideas.submit': 'Send idea',
+	'ideas.saved': 'Saved. Thanks for the idea.',
+	'ideas.mineTitle': 'Your ideas',
+	'ideas.mineEmpty': 'You have not sent an idea yet.',
+	'ideas.status.new': 'Received',
+	'ideas.status.reviewing': 'Being looked at',
+	'ideas.status.planned': 'Planned',
+	'ideas.status.shipped': 'Shipped',
+	'ideas.status.declined': 'Not planned for now',
+	'ideas.status.duplicate': 'Already suggested',
 	'support.disabled': 'Set {envName} to show the support server link.',
 
 	// Vote page
