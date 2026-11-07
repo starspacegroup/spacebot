@@ -41,7 +41,10 @@ export async function GET({ cookies, platform, url }) {
 	}
 
 	const limit = intParam(url, 'limit', 50, 1, 100);
-	const before = url.searchParams.get('before') || '';
+	// `before` is a Discord snowflake. Anything else is dropped so it cannot
+	// add its own parameters to the Discord URL (e.g. `1&limit=100`).
+	const rawBefore = url.searchParams.get('before') || '';
+	const before = /^\d{1,25}$/.test(rawBefore) ? rawBefore : '';
 
 	try {
 		// Create/get DM channel with the user
