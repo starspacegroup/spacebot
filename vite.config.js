@@ -69,6 +69,13 @@ const underVitest = Boolean(process.env.VITEST);
 const kitPlugin = (/** @type {Parameters<typeof sveltekit>[0]} */ config) =>
 	underVitest ? [] : [sveltekit(config)];
 
+// Dev-server warmup compiles every .svelte file at startup. Vitest runs without the
+// svelte plugin, so warming there only floods the run with parse errors and makes
+// `bun run test` exit non-zero even when every test passes.
+const warmupFiles = underVitest
+	? []
+	: ['./src/routes/**/*.svelte', './src/lib/components/**/*.svelte'];
+
 export default defineConfig({
 	resolve: underVitest
 		? {
@@ -153,13 +160,13 @@ export default defineConfig({
 		// Without this, the first page load triggers on-demand transforms that
 		// can 504 through the cloudflared tunnel.
 		warmup: {
-			clientFiles: ['./src/routes/**/*.svelte', './src/lib/components/**/*.svelte'],
+			clientFiles: warmupFiles,
 			// clientFiles only pre-transforms the browser bundle — every full page
 			// navigation also does an SSR render, which is a separate compile pass.
 			// Without this, the first hit on a large page (e.g. the superadmin
 			// workflows graph editor, ~3800 lines) pays that cold-compile cost on
 			// the actual request instead of at startup.
-			ssrFiles: ['./src/routes/**/*.svelte', './src/lib/components/**/*.svelte'],
+			ssrFiles: warmupFiles,
 		},
 		port: 4269,
 		host: true, // Listen on all interfaces for tunnel access
