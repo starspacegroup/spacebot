@@ -197,6 +197,12 @@ Comprehensive logging of all Discord events with filtering and search.
 
 </details>
 
+## Related repositories
+
+Internal planning, design and research for SpaceBot live in a separate private
+repository, `starspacegroup/spacebot-umbrella`, which has this repository checked
+out at `spacebot/`. Nothing in it is needed to build or run SpaceBot.
+
 ## 🛠️ Tech Stack
 
 | Layer           | Technology                                                   |
