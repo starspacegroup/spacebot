@@ -95,7 +95,7 @@
 		"*.{js,ts,svelte,json,css,md,html,yaml,yml}": "prettier --write"
 	},
 	"optionalDependencies": {
-		"better-sqlite3": "^12.11.1"
+		"better-sqlite3": "^13.0.3"
 	},
 	"dependencies": {
 		"@discord/embedded-app-sdk": "^2.5.0",
