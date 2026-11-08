@@ -376,6 +376,7 @@ export interface Participant {
 	prev_mute: number;
 	applied: number;
 	restore_pending: number;
+	role_added: number;
 	goal: string | null;
 }
 
@@ -475,6 +476,100 @@ export function wantsDeaf(mode: DeafenMode, phase: Phase): boolean {
 
 type DeafOutcome = 'applied' | 'not_in_voice' | 'no_permission' | 'already' | 'error';
 
+export const FOCUS_ROLE_NAME = 'Timebox focus';
+
+/**
+ * The role the bot uses to mark a member it is holding. Created on first use and
+ * remembered per server. Returns null when the bot cannot make one (it lacks
+ * Manage Roles): the hold then works as it did before, from the ledger alone.
+ */
+async function ensureFocusRole(
+	db,
+	discord,
+	guildId: string,
+	fresh = false
+): Promise<string | null> {
+	if (!fresh) {
+		const row: any = await db
+			.prepare(`SELECT focus_role_id FROM timebox_settings WHERE guild_id = ?`)
+			.bind(guildId)
+			.first();
+		if (row?.focus_role_id) return String(row.focus_role_id);
+	}
+	if (!discord.roles?.create) return null;
+	try {
+		const role = await discord.roles.create(
+			guildId,
+			{ name: FOCUS_ROLE_NAME, permissions: '0', hoist: false, mentionable: false },
+			'Timebox: marks a member the bot is holding, so other automations can tell'
+		);
+		const id = String(role.id);
+		await db
+			.prepare(
+				`INSERT INTO timebox_settings (guild_id, focus_role_id) VALUES (?, ?)
+				 ON CONFLICT(guild_id) DO UPDATE SET focus_role_id = excluded.focus_role_id, updated_at = datetime('now')`
+			)
+			.bind(guildId, id)
+			.run();
+		return id;
+	} catch (err: any) {
+		log.warn(
+			`[Timebox] Could not create the focus role in ${guildId}: ${err?.status ?? ''} ${err?.message}`
+		);
+		return null;
+	}
+}
+
+/** Put the focus role on a member. True when it is on them afterwards. */
+async function addFocusRole(db, discord, guildId: string, userId: string): Promise<boolean> {
+	let roleId = await ensureFocusRole(db, discord, guildId);
+	for (let attempt = 0; roleId && attempt < 2; attempt++) {
+		try {
+			await discord.members.addRole(
+				guildId,
+				userId,
+				roleId,
+				'Timebox: holding at their request'
+			);
+			return true;
+		} catch (err: any) {
+			if (err?.status === 404 && attempt === 0) {
+				// The server deleted the role: make a new one once.
+				roleId = await ensureFocusRole(db, discord, guildId, true);
+				continue;
+			}
+			log.warn(
+				`[Timebox] Could not give ${userId} the focus role: ${err?.status ?? ''} ${err?.message}`
+			);
+			return false;
+		}
+	}
+	return false;
+}
+
+async function focusRoleOf(db, guildId: string): Promise<string | null> {
+	const row: any = await db
+		.prepare(`SELECT focus_role_id FROM timebox_settings WHERE guild_id = ?`)
+		.bind(guildId)
+		.first();
+	return row?.focus_role_id ? String(row.focus_role_id) : null;
+}
+
+/** Take the focus role off after a lift, if the bot put it on. A failure is only logged. */
+async function dropFocusRole(db, discord, guildId: string, userId: string, row: Participant) {
+	if (!row.role_added) return;
+	const roleId = await focusRoleOf(db, guildId);
+	if (!roleId) return;
+	try {
+		await discord.members.removeRole(guildId, userId, roleId, 'Timebox: hold lifted');
+	} catch (err: any) {
+		if (err?.status !== 404)
+			log.warn(
+				`[Timebox] Could not take the focus role off ${userId}: ${err?.status ?? ''} ${err?.message}`
+			);
+	}
+}
+
 /**
  * Server-deafen and server-mute a member for this session, remembering what both
  * were before. Only a
@@ -502,12 +597,13 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 		log.info(
 			`[Timebox] Held ${userId} in session ${s.id} (was deaf ${prev}, mute ${prevMute}; set ${JSON.stringify(change)})`
 		);
+		const roleAdded = (await addFocusRole(db, discord, s.guild_id, userId)) ? 1 : 0;
 		await db
 			.prepare(
-				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, prev_mute = ?, updated_at = datetime('now')
+				`UPDATE timebox_participants SET applied = 1, restore_pending = 0, prev_deaf = ?, prev_mute = ?, role_added = ?, updated_at = datetime('now')
 				 WHERE session_id = ? AND user_id = ?`
 			)
-			.bind(prev, prevMute, s.id, userId)
+			.bind(prev, prevMute, roleAdded, s.id, userId)
 			.run();
 		return 'applied';
 	} catch (err: any) {
@@ -541,10 +637,31 @@ export async function restoreDeafen(
 			)
 			.bind(sessionId, userId)
 			.run();
+	// The focus role is how the bot tells its own hold from anyone else's. If it put
+	// the role on this member and the role is gone, someone else (an automation or a
+	// moderator) took over the member, so their deafen and mute are no longer ours to lift.
+	if (row.role_added) {
+		const roleId = await focusRoleOf(db, guildId);
+		const now = roleId
+			? await discord.members.fetch(guildId, userId).catch((e: any) => e)
+			: null;
+		if (now?.status === 404) {
+			await done(); // left the server
+			return true;
+		}
+		if (roleId && Array.isArray(now?.roles) && !now.roles.map(String).includes(roleId)) {
+			log.info(
+				`[Timebox] Left ${userId} alone: the focus role is gone, so the hold is not ours (session ${sessionId})`
+			);
+			await done();
+			return true;
+		}
+	}
 	const change: { deaf?: boolean; mute?: boolean } = {};
 	if (!row.prev_deaf) change.deaf = false;
 	if (!row.prev_mute) change.mute = false;
 	if (change.deaf === undefined && change.mute === undefined) {
+		await dropFocusRole(db, discord, guildId, userId, row);
 		await done();
 		return true;
 	}
@@ -558,6 +675,7 @@ export async function restoreDeafen(
 				status: 'stuck',
 			});
 		}
+		await dropFocusRole(db, discord, guildId, userId, row);
 		await done();
 		return true;
 	} catch (err: any) {

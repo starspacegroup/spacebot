@@ -48,7 +48,8 @@ const SCHEMA =
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	schema('0070_timebox.sql', '-- /timebox as a built-in command family') +
 	schema('0071_timebox_goals.sql', 'UPDATE commands') +
-	schema('0080_timebox_mute.sql');
+	schema('0080_timebox_mute.sql') +
+	schema('0097_timebox_focus_role.sql');
 
 const G = '100000000000000001';
 const TEXT = '200000000000000001';
@@ -83,6 +84,10 @@ function fakeDiscord() {
 		deaf: new Map<string, boolean>(),
 		mute: new Map<string, boolean>(),
 		failSetDeaf: null as null | { status: number },
+		roles: new Map<string, Set<string>>(),
+		failCreateRole: null as null | { status: number },
+		deletedRoles: new Set<string>(),
+		made: 0,
 	};
 	const client = {
 		channels: {
@@ -95,11 +100,31 @@ function fakeDiscord() {
 				return {};
 			}),
 		},
+		roles: {
+			create: vi.fn(async () => {
+				if (state.failCreateRole)
+					throw Object.assign(new Error('no'), state.failCreateRole);
+				state.made++;
+				return { id: `role-${state.made}` };
+			}),
+		},
 		members: {
 			fetch: vi.fn(async (_g: string, userId: string) => ({
 				deaf: state.deaf.get(userId) ?? false,
 				mute: state.mute.get(userId) ?? false,
+				roles: [...(state.roles.get(userId) ?? [])],
 			})),
+			addRole: vi.fn(async (_g: string, userId: string, roleId: string) => {
+				if (state.deletedRoles.has(roleId))
+					throw Object.assign(new Error('gone'), { status: 404 });
+				if (!state.roles.has(userId)) state.roles.set(userId, new Set());
+				state.roles.get(userId)!.add(roleId);
+				log.push({ op: 'addRole', userId, roleId });
+			}),
+			removeRole: vi.fn(async (_g: string, userId: string, roleId: string) => {
+				state.roles.get(userId)?.delete(roleId);
+				log.push({ op: 'removeRole', userId, roleId });
+			}),
 			setVoice: vi.fn(
 				async (_g: string, userId: string, v: { deaf?: boolean; mute?: boolean }) => {
 					if (state.failSetDeaf)
@@ -951,5 +976,87 @@ describe('goals and percent done', () => {
 			f.client
 		);
 		expect(text(carol)).toMatch(/nothing to rate/);
+	});
+});
+
+describe('the focus role', () => {
+	const ROLE = 'role-1';
+	const hold = async (d: any, f: any, user = ALICE) => {
+		putVoice(d, user, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')], user), d, f.client);
+		return (await liveForVoice(d, G, VC)) as Session;
+	};
+
+	it('makes one role per server, puts it on the member, and takes it off at the lift', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(1);
+		expect(f.client.roles.create.mock.calls[0][1]).toMatchObject({
+			name: 'Timebox focus',
+			permissions: '0',
+			mentionable: false,
+		});
+		expect(f.state.roles.get(ALICE)?.has(ROLE)).toBe(true);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ applied: 1, role_added: 1 });
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.roles.get(ALICE)?.has(ROLE)).toBe(false);
+	});
+
+	it('reuses the role for the next member', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		putVoice(d, BOB, VC);
+		await handleTimeboxComponent(press('deafen', s.id, BOB), d, f.client);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves the voice state alone when the role was taken off, so the lift does not undo anyone else', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		f.state.roles.get(ALICE)!.delete(ROLE); // an automation or a moderator took over
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 0,
+			restore_pending: 0,
+		});
+	});
+
+	it('still holds and lifts as before when the bot cannot make a role', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		f.state.failCreateRole = { status: 403 };
+		const s = await hold(d, f);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ applied: 1, role_added: 0 });
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('makes a new role once if the server deleted the old one', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		f.state.deletedRoles.add(ROLE);
+		putVoice(d, BOB, VC);
+		await handleTimeboxComponent(press('deafen', s.id, BOB), d, f.client);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(2);
+		expect(f.state.roles.get(BOB)?.has('role-2')).toBe(true);
+		expect(await getParticipant(d, s.id, BOB)).toMatchObject({ role_added: 1 });
+	});
+
+	it('does not need the role for a hold from before it existed', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		d.exec(`UPDATE timebox_participants SET role_added = 0 WHERE session_id = ${s.id}`);
+		f.state.roles.get(ALICE)!.delete(ROLE);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
 	});
 });

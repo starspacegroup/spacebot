@@ -68,6 +68,19 @@ the member neither hears nor is heard.
 - **Restore, do not clear.** The bot records whether the member was already
   deafened and whether they were already muted (`prev_deaf`, `prev_mute`, migration 0080) and puts back exactly that. A member a moderator deafened or muted stays
   that way.
+- **The focus role.** The bot marks its own hold with a role, **Timebox focus**
+  (migration 0097). It makes the role the first time it holds someone in a server (no
+  permissions, not shown apart, not mentionable), remembers it in
+  `timebox_settings.focus_role_id`, adds it when it deafens or mutes a member, and
+  removes it when it lifts. This is so the bot and a server's own automations do not
+  step on each other. An automation can keep its own role for its own holds. The bot
+  lifts a member's deafen and mute only while its role is still on them: if the role
+  was taken off (an automation or a moderator took over), it leaves their voice state
+  alone and drops the hold. An automation can also read the role, for example to skip
+  members who are in a timebox. The bot needs **Manage Roles**, and its own role must
+  sit above Timebox focus. Without Manage Roles it still works as before, from the
+  ledger alone (`role_added` stays 0). If the server deletes the role, the bot makes a
+  new one on the next hold.
 - **Discord's limits.** The bot needs Deafen Members and Mute Members and a role above the member;
   it cannot change the server owner. It can only change a member who is in a
   voice channel. A member who is not yet in one is deafened within a minute of

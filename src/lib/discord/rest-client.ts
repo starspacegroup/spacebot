@@ -557,11 +557,37 @@ export function createDiscordRestClient(botToken) {
 					reason,
 				});
 			},
+			/** Give a member a role by id, without fetching the member first. */
+			async addRole(guildId, userId, roleId, reason?) {
+				return discordFetch(
+					botToken,
+					`/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+					{ method: 'PUT', reason }
+				);
+			},
+			/** Take a role off a member by id. */
+			async removeRole(guildId, userId, roleId, reason?) {
+				return discordFetch(
+					botToken,
+					`/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+					{ method: 'DELETE', reason }
+				);
+			},
 			/** Server-deafen or undeafen a member. Discord only allows it while they are in voice. */
 			async setDeaf(guildId, userId, deaf, reason?) {
 				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {
 					method: 'PATCH',
 					body: { deaf },
+					reason,
+				});
+			},
+		},
+		roles: {
+			/** Create a role. Needs Manage Roles. */
+			async create(guildId, body: Record<string, any>, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/roles`, {
+					method: 'POST',
+					body,
 					reason,
 				});
 			},
