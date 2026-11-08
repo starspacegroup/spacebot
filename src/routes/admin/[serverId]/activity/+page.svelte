@@ -2,10 +2,18 @@
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 	import Switch from '$lib/components/Switch.svelte';
+	import ChannelSelector from '$lib/components/ChannelSelector.svelte';
+	import RoleSelector from '$lib/components/RoleSelector.svelte';
 	import GameCard from '$lib/components/activity-admin/GameCard.svelte';
 	import '$lib/components/activity-admin/settings-form.css';
 
 	const { data, form } = $props();
+
+	// The pickers own these after the first paint; the page refreshes them on save.
+	// svelte-ignore state_referenced_locally
+	let noLiftChannels = $state((data.timebox.noLiftChannels ?? []).join(','));
+	// svelte-ignore state_referenced_locally
+	let noLiftRoles = $state((data.timebox.noLiftRoles ?? []).join(','));
 
 	// `use:enhance` resets a form after a successful save, and a reset puts every
 	// field back to its HTML default. These fields are set as properties, so the
@@ -172,6 +180,45 @@
 									<button type="submit" class="sb-btn-primary"
 										>Save defaults</button
 									>
+								</div>
+							</form>
+							<h4 class="sb-subhead">Places the server holds</h4>
+							<p class="sb-note">
+								If an automation of yours keeps everyone muted and deafened in a
+								voice channel, name it here. The timebox will never lift a mute or
+								deafen while a member is in one of these channels or has one of
+								these roles, even if they asked for the timebox deafen. It lifts its
+								own once they have left.
+							</p>
+							<form
+								method="POST"
+								action="?/saveTimeboxHolds"
+								use:enhance={keepValues}
+								class="sb-settings-form"
+							>
+								<div class="wide">
+									<span>Voice channels</span>
+									<ChannelSelector
+										guildId={data.serverId}
+										typeFilter="voice,stage"
+										name="noLiftChannels"
+										multiple
+										placeholder="Search voice channels..."
+										bind:value={noLiftChannels}
+									/>
+								</div>
+								<div class="wide">
+									<span>Roles that mean the server holds the member</span>
+									<RoleSelector
+										guildId={data.serverId}
+										name="noLiftRoles"
+										multiple
+										placeholder="Search roles..."
+										bind:value={noLiftRoles}
+									/>
+								</div>
+								<div class="actions">
+									<button type="submit" class="sb-btn-primary">Save</button>
 								</div>
 							</form>
 						</details>

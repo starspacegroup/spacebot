@@ -15,3 +15,11 @@
 
 ALTER TABLE timebox_settings ADD COLUMN focus_role_id TEXT;
 ALTER TABLE timebox_participants ADD COLUMN role_added INTEGER NOT NULL DEFAULT 0;
+
+-- Places where the server itself keeps members muted and deafened (a voice channel
+-- where everyone must always be, held by an automation). The timebox never lifts a
+-- member's deafen or mute while they are in one of these channels or have one of
+-- these roles, even if they asked for the timebox deafen. Both are JSON arrays of
+-- ids; NULL means none. Set from the dashboard, Activity page, Timebox.
+ALTER TABLE timebox_settings ADD COLUMN no_lift_channels TEXT;
+ALTER TABLE timebox_settings ADD COLUMN no_lift_roles TEXT;

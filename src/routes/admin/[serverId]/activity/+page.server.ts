@@ -93,7 +93,7 @@ export async function load({ cookies, platform, parent, params }) {
 		games,
 		timebox: db
 			? await getSettings(db, serverId)
-			: { ...DEFAULTS, longBreak: DEFAULTS.longBreak },
+			: { ...DEFAULTS, longBreak: DEFAULTS.longBreak, noLiftChannels: [], noLiftRoles: [] },
 		limits: TIMEBOX_LIMITS,
 		game: db ? await getGameSettings(db, serverId) : { ...GAME_DEFAULTS },
 		gameLimits: GAME_LIMITS,
@@ -276,6 +276,32 @@ export const actions = {
 			control,
 		});
 		return { success: true, message: 'Timebox defaults saved.' };
+	},
+
+	saveTimeboxHolds: async (event) => {
+		const { request, platform, params } = event;
+		const denied = await denyUnlessAdmin(event);
+		if (denied) return denied;
+		const db = (platform as any)?.env?.DB;
+		if (!db) return fail(500, { success: false, message: 'Database not available' });
+
+		const formData = await request.formData();
+		// Comma-separated ids from the pickers; anything that is not an id is dropped.
+		const ids = (name: string) =>
+			String(formData.get(name) ?? '')
+				.split(',')
+				.map((id) => id.trim())
+				.filter((id) => /^\d{5,25}$/.test(id))
+				.slice(0, 25);
+
+		await upsertSettings(db, params.serverId, {
+			noLiftChannels: ids('noLiftChannels'),
+			noLiftRoles: ids('noLiftRoles'),
+		});
+		return {
+			success: true,
+			message: 'Saved. The timebox will not lift a hold in these places.',
+		};
 	},
 
 	saveGame: async (event) => {

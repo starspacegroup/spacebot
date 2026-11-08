@@ -557,6 +557,10 @@ export function createDiscordRestClient(botToken) {
 					reason,
 				});
 			},
+			/** A member's live voice state (channel_id, deaf, mute). A 404 means they are not in voice. */
+			async voiceState(guildId, userId) {
+				return discordFetch(botToken, `/guilds/${guildId}/voice-states/${userId}`);
+			},
 			/** Give a member a role by id, without fetching the member first. */
 			async addRole(guildId, userId, roleId, reason?) {
 				return discordFetch(

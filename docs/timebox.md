@@ -81,6 +81,28 @@ the member neither hears nor is heard.
   sit above Timebox focus. Without Manage Roles it still works as before, from the
   ledger alone (`role_added` stays 0). If the server deletes the role, the bot makes a
   new one on the next hold.
+- **Places the server holds.** If an automation of the server keeps everyone muted
+  and deafened in a voice channel, an admin names that channel (and, if the
+  automation uses one, its role) under Activity, Timebox, "Places the server holds"
+  (`timebox_settings.no_lift_channels` and `no_lift_roles`, migration 0097). Then:
+    - The timebox never lifts a member's deafen or mute while they are in one of
+      those channels or have one of those roles, even if they asked for the timebox
+      deafen. Where they are is asked of Discord at the moment of the lift, not read
+      from the live table, which can be a few seconds stale.
+    - It does not start a hold there either: it says the server already holds them.
+    - Nothing is forgotten. A lift that was skipped stays pending, and runs when the
+      member leaves that place: the join or move event settles it at once, and the
+      minute sweep retries for a day.
+    - **Leaving voice mid-session:** the hold and the goal stay. A lift that cannot run
+      while they are out waits and runs on their next join. When they come back to a live
+      timebox, the bot checks that Discord kept the deafen and mute and sets them again
+      if it dropped them (not in a server-held place, and not if the focus role was
+      taken off).
+    - **Switching channels mid-session:** the hold is the member's, not the channel's,
+      so it follows them. They can still press **Deafen me** to lift it from any channel.
+      A move out of a server-held channel runs a pending lift.
+    - A lift that failed during a break is dropped once the next focus block has begun,
+      so it cannot undo that block's deafen.
 - **Discord's limits.** The bot needs Deafen Members and Mute Members and a role above the member;
   it cannot change the server owner. It can only change a member who is in a
   voice channel. A member who is not yet in one is deafened within a minute of

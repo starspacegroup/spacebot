@@ -201,6 +201,20 @@ export interface Settings {
 	longBreak: number;
 	rounds: number;
 	control: Control;
+	/** Voice channels where the server holds everyone muted and deafened: never lift there. */
+	noLiftChannels: string[];
+	/** Roles that mean the server holds the member: never lift while they have one. */
+	noLiftRoles: string[];
+}
+
+/** A stored JSON array of Discord ids, or none. Anything else is dropped. */
+function idList(value: unknown): string[] {
+	try {
+		const list = typeof value === 'string' ? JSON.parse(value) : [];
+		return Array.isArray(list) ? list.map(String).filter((id) => /^\d{5,25}$/.test(id)) : [];
+	} catch {
+		return [];
+	}
 }
 
 export async function getSettings(db, guildId: string): Promise<Settings> {
@@ -214,6 +228,8 @@ export async function getSettings(db, guildId: string): Promise<Settings> {
 		longBreak: row?.long_break_minutes ?? DEFAULTS.longBreak,
 		rounds: row?.rounds ?? DEFAULTS.rounds,
 		control: row?.control === 'anyone' ? 'anyone' : 'crew',
+		noLiftChannels: idList(row?.no_lift_channels),
+		noLiftRoles: idList(row?.no_lift_roles),
 	};
 }
 
@@ -226,18 +242,22 @@ export async function upsertSettings(
 		longBreak: number;
 		rounds: number;
 		control: Control;
+		noLiftChannels: string[];
+		noLiftRoles: string[];
 	}>
 ) {
 	await db
 		.prepare(
-			`INSERT INTO timebox_settings (guild_id, focus_minutes, break_minutes, long_break_minutes, rounds, control)
-			 VALUES (?, ?, ?, ?, ?, ?)
+			`INSERT INTO timebox_settings (guild_id, focus_minutes, break_minutes, long_break_minutes, rounds, control, no_lift_channels, no_lift_roles)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(guild_id) DO UPDATE SET
 			   focus_minutes = COALESCE(excluded.focus_minutes, focus_minutes),
 			   break_minutes = COALESCE(excluded.break_minutes, break_minutes),
 			   long_break_minutes = COALESCE(excluded.long_break_minutes, long_break_minutes),
 			   rounds = COALESCE(excluded.rounds, rounds),
 			   control = COALESCE(excluded.control, control),
+			   no_lift_channels = COALESCE(excluded.no_lift_channels, no_lift_channels),
+			   no_lift_roles = COALESCE(excluded.no_lift_roles, no_lift_roles),
 			   updated_at = datetime('now')`
 		)
 		.bind(
@@ -246,7 +266,11 @@ export async function upsertSettings(
 			patch.break ?? null,
 			patch.longBreak ?? null,
 			patch.rounds ?? null,
-			patch.control ?? null
+			patch.control ?? null,
+			patch.noLiftChannels
+				? JSON.stringify(idList(JSON.stringify(patch.noLiftChannels)))
+				: null,
+			patch.noLiftRoles ? JSON.stringify(idList(JSON.stringify(patch.noLiftRoles))) : null
 		)
 		.run();
 }
@@ -474,7 +498,51 @@ export function wantsDeaf(mode: DeafenMode, phase: Phase): boolean {
 	return mode === 'whole' || (mode === 'focus' && phase === 'focus');
 }
 
-type DeafOutcome = 'applied' | 'not_in_voice' | 'no_permission' | 'already' | 'error';
+type DeafOutcome =
+	'applied' | 'not_in_voice' | 'no_permission' | 'already' | 'server_held' | 'error';
+
+/**
+ * Whether the server itself holds this member muted and deafened right now: they
+ * are in a channel on the server's "never lift" list, or have a role on it. The
+ * timebox must not lift a hold like that, and has nothing to add to it.
+ *
+ * `channelId` is a channel the caller already knows (the gateway's join event).
+ * With `authoritative`, Discord is asked where the member is, because a lift is
+ * the one thing that must not act on a stale table; if Discord cannot be reached
+ * the live table and `channelId` are used. `member` saves a second fetch.
+ */
+async function heldByServer(
+	db,
+	discord,
+	guildId: string,
+	userId: string,
+	opts: { channelId?: string | null; authoritative?: boolean; member?: any } = {}
+): Promise<boolean> {
+	const rules = await getSettings(db, guildId);
+	if (!rules.noLiftChannels.length && !rules.noLiftRoles.length) return false;
+
+	if (rules.noLiftChannels.length) {
+		let channel: string | null | undefined;
+		if (opts.authoritative && discord.members?.voiceState) {
+			try {
+				channel = (await discord.members.voiceState(guildId, userId))?.channel_id ?? null;
+			} catch (err: any) {
+				if (err?.status === 404) channel = null; // not in voice
+			}
+		}
+		if (channel === undefined)
+			channel = opts.channelId ?? (await voiceChannelOf(db, guildId, userId));
+		if (channel && rules.noLiftChannels.includes(String(channel))) return true;
+	}
+
+	if (rules.noLiftRoles.length) {
+		const member =
+			opts.member ?? (await discord.members.fetch(guildId, userId).catch(() => null));
+		const roles = Array.isArray(member?.roles) ? member.roles.map(String) : [];
+		if (rules.noLiftRoles.some((id) => roles.includes(id))) return true;
+	}
+	return false;
+}
 
 export const FOCUS_ROLE_NAME = 'Timebox focus';
 
@@ -582,6 +650,7 @@ export async function applyDeafen(db, discord, s: Session, userId: string): Prom
 	if (!(await voiceChannelOf(db, s.guild_id, userId))) return 'not_in_voice';
 	try {
 		const member = await discord.members.fetch(s.guild_id, userId);
+		if (await heldByServer(db, discord, s.guild_id, userId, { member })) return 'server_held';
 		const prev = member?.deaf ? 1 : 0;
 		const prevMute = member?.mute ? 1 : 0;
 		const change: { deaf?: boolean; mute?: boolean } = {};
@@ -625,7 +694,8 @@ export async function restoreDeafen(
 	discord,
 	sessionId: number,
 	userId: string,
-	guildId: string
+	guildId: string,
+	channelId?: string | null
 ) {
 	const row = await getParticipant(db, sessionId, userId);
 	if (!row?.applied) return true;
@@ -637,6 +707,24 @@ export async function restoreDeafen(
 			)
 			.bind(sessionId, userId)
 			.run();
+	// In a channel where the server holds everyone muted and deafened (or with a role
+	// that means the same), the hold is the server's, whatever the member asked for.
+	// Leave it, drop our own marker, and let the server lift it when they leave.
+	if (await heldByServer(db, discord, guildId, userId, { channelId, authoritative: true })) {
+		log.info(
+			`[Timebox] Left ${userId} alone: the server holds them muted and deafened (session ${sessionId})`
+		);
+		// Not finished: when they are out of that place (the server lifted its hold, or they
+		// moved to another channel) the lift is still ours to do, so the row stays pending.
+		await db
+			.prepare(
+				`UPDATE timebox_participants SET restore_pending = 1, updated_at = datetime('now')
+				 WHERE session_id = ? AND user_id = ?`
+			)
+			.bind(sessionId, userId)
+			.run();
+		return false;
+	}
 	// The focus role is how the bot tells its own hold from anyone else's. If it put
 	// the role on this member and the role is gone, someone else (an automation or a
 	// moderator) took over the member, so their deafen and mute are no longer ours to lift.
@@ -698,27 +786,89 @@ export async function restoreDeafen(
 }
 
 /**
- * A member who left voice before the bot could lift their timebox deafen/mute
- * has a record still marked `restore_pending`. Discord only lets us change a
- * server mute or deafen while the member is connected, so when they join voice
- * again and their session is over, lift it then. restoreDeafen puts back only
- * what the timebox itself changed. Sessions still live are left to the sweep.
+ * Called when a member joins or moves between voice channels. Discord only lets us
+ * change a server mute or deafen while the member is in voice, so this is where the
+ * leftovers get settled:
+ *  - a lift that could not run (they had left voice, or were in a place the server
+ *    holds) runs now, using the channel from the event;
+ *  - a member the bot is holding, back from a disconnect, gets the hold put back if
+ *    Discord dropped it (not on a plain move, and never in a place the server holds);
+ *  - a member who asked for a deafen and was not in voice when it began gets it now.
+ * A lift that failed during a break is dropped if the next focus block has begun.
  */
-export async function liftOnVoiceJoin(db, discord, guildId: string, userId: string) {
+export async function liftOnVoiceJoin(
+	db,
+	discord,
+	guildId: string,
+	userId: string,
+	channelId?: string | null,
+	joined = true
+) {
 	const { results } = await db
 		.prepare(
-			`SELECT p.session_id AS session_id FROM timebox_participants p
+			`SELECT p.*, s.status AS s_status, s.phase AS s_phase, s.guild_id AS guild_id
+			 FROM timebox_participants p
 			 JOIN timebox_sessions s ON s.id = p.session_id
-			 WHERE p.user_id = ? AND s.guild_id = ? AND p.restore_pending = 1
-			   AND s.status NOT IN ('running', 'paused')`
+			 WHERE p.user_id = ? AND s.guild_id = ?
+			   AND (p.restore_pending = 1 OR (s.status = 'running' AND p.deafen_mode != 'none'))`
 		)
 		.bind(userId, guildId)
 		.all();
 	let lifted = 0;
 	for (const r of (results || []) as any[]) {
-		if (await restoreDeafen(db, discord, r.session_id, userId, guildId)) lifted++;
+		const live = r.s_status === 'running';
+		const want = live && wantsDeaf(r.deafen_mode, r.s_phase);
+		if (r.restore_pending && !want) {
+			if (await restoreDeafen(db, discord, r.session_id, userId, guildId, channelId))
+				lifted++;
+		} else if (want && !r.applied) {
+			const s = await getSession(db, r.session_id);
+			if (s) await applyDeafen(db, discord, s, userId);
+		} else if (want && r.applied) {
+			// A lift that failed during a break is moot now the next focus block has begun.
+			if (r.restore_pending) await clearPending(db, r.session_id, userId);
+			// Coming back from a disconnect: put the hold back if Discord dropped it.
+			if (joined) await reassertHold(db, discord, guildId, userId, r, channelId);
+		}
 	}
 	return lifted;
+}
+
+async function clearPending(db, sessionId: number, userId: string) {
+	await db
+		.prepare(
+			`UPDATE timebox_participants SET restore_pending = 0, updated_at = datetime('now')
+			 WHERE session_id = ? AND user_id = ?`
+		)
+		.bind(sessionId, userId)
+		.run();
+}
+
+/**
+ * The bot is holding this member and they just came back to voice. If Discord no
+ * longer shows the deafen or mute the bot set, set it again, but never in a place the
+ * server holds, and never if the focus role was taken off (someone else took over).
+ */
+async function reassertHold(db, discord, guildId, userId, row: Participant, channelId) {
+	try {
+		const member = await discord.members.fetch(guildId, userId);
+		if (await heldByServer(db, discord, guildId, userId, { channelId, member })) return;
+		if (row.role_added) {
+			const roleId = await focusRoleOf(db, guildId);
+			const roles = Array.isArray(member?.roles) ? member.roles.map(String) : [];
+			if (roleId && !roles.includes(roleId)) return;
+		}
+		const change: { deaf?: boolean; mute?: boolean } = {};
+		if (!row.prev_deaf && !member?.deaf) change.deaf = true;
+		if (!row.prev_mute && !member?.mute) change.mute = true;
+		if (change.deaf === undefined && change.mute === undefined) return;
+		await discord.members.setVoice(guildId, userId, change, 'Timebox: hold put back on return');
+	} catch (err: any) {
+		if (err?.status !== 400 && err?.status !== 404)
+			log.warn(
+				`[Timebox] Could not put the hold back for ${userId}: ${err?.status ?? ''} ${err?.message}`
+			);
+	}
 }
 
 async function heldParticipants(db, sessionId: number): Promise<Participant[]> {
@@ -1129,6 +1279,12 @@ export async function sweepTimebox(db, botTokenOrClient, now = new Date()) {
 	}
 
 	for (const p of (pending || []) as any[]) {
+		// A lift that failed during a break is moot once the next focus block has begun.
+		const owner = await getSession(db, p.session_id); // fresh: the loop above may have moved it on
+		if (owner?.status === 'running' && wantsDeaf(p.deafen_mode, owner.phase)) {
+			await clearPending(db, p.session_id, p.user_id);
+			continue;
+		}
 		if (await restoreDeafen(db, discord, p.session_id, p.user_id, p.guild_id))
 			summary.restored++;
 	}
@@ -1376,9 +1532,11 @@ async function startCommand(
 				? '\nYou are deafened and muted. The **Deafen me** button lifts it any time.'
 				: out === 'not_in_voice'
 					? '\nJoin a voice channel and you will be deafened and muted within a minute.'
-					: out === 'no_permission'
-						? '\nI cannot deafen you here (I need Deafen Members and Mute Members, and a role above yours), so I left it off.'
-						: '';
+					: out === 'server_held'
+						? '\nYou are in a place where the server already keeps everyone muted and deafened, so I left it to the server.'
+						: out === 'no_permission'
+							? '\nI cannot deafen you here (I need Deafen Members and Mute Members, and a role above yours), so I left it off.'
+							: '';
 		if (out === 'no_permission') await setDeafenMode(db, s.id, ctx.userId, 'none');
 	}
 
@@ -1464,19 +1622,31 @@ export async function handleTimeboxComponent(
 	if (action === 'deafen') {
 		// Anyone may toggle their own deafen if they are in the session: the starter of a
 		// solo one, or someone in the shared voice channel.
+		const mine = await getParticipant(db, s.id, userId);
+		// A member who is already part of it (they set a deafen mode) can always turn it
+		// off, even after they moved to another voice channel.
 		const inSession =
 			s.starter_id === userId ||
+			(mine && mine.deafen_mode !== 'none') ||
 			(s.kind === 'shared' &&
 				s.voice_channel_id &&
 				(await voiceChannelOf(db, s.guild_id, userId)) === s.voice_channel_id);
 		if (!inSession)
 			return { response: ephemeral('Join the voice channel this timebox is for first.') };
 
-		const mine = await getParticipant(db, s.id, userId);
 		if (mine && mine.deafen_mode !== 'none') {
 			await setDeafenMode(db, s.id, userId, 'none');
+			const theServers = await heldByServer(db, discord, s.guild_id, userId, {
+				authoritative: true,
+			});
 			await restoreDeafen(db, discord, s.id, userId, s.guild_id);
-			return { response: ephemeral('Deafen off. You can hear and talk again.') };
+			return {
+				response: ephemeral(
+					theServers
+						? 'Deafen off for the timebox. You are where the server keeps everyone muted and deafened, so that stays until you leave.'
+						: 'Deafen off. You can hear and talk again.'
+				),
+			};
 		}
 		await setDeafenMode(db, s.id, userId, 'focus');
 		if (!wantsDeaf('focus', s.phase)) {
@@ -1487,6 +1657,13 @@ export async function handleTimeboxComponent(
 			};
 		}
 		const out = await applyDeafen(db, discord, s, userId);
+		if (out === 'server_held') {
+			return {
+				response: ephemeral(
+					'You are where the server already keeps everyone muted and deafened, so I left it to the server. Your choice stays on for other channels.'
+				),
+			};
+		}
 		if (out === 'no_permission') {
 			await setDeafenMode(db, s.id, userId, 'none');
 			return {

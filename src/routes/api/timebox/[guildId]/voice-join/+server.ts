@@ -33,7 +33,9 @@ export async function POST({ request, params, platform }) {
 		db,
 		createDiscordRestClient(botToken),
 		params.guildId,
-		String(userId)
+		String(userId),
+		body?.channel_id ? String(body.channel_id) : null,
+		body?.joined !== false
 	);
 	return json({ lifted });
 }

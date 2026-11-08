@@ -1587,7 +1587,7 @@ async function createLobbyRoom(guild, member, lobbyChannelId) {
 	return response.json();
 }
 
-async function liftTimeboxOnJoin(guildId, userId) {
+async function liftTimeboxOnJoin(guildId, userId, channelId, joined = true) {
 	try {
 		await fetch(`${API_BASE}/api/timebox/${guildId}/voice-join`, {
 			method: 'POST',
@@ -1595,7 +1595,7 @@ async function liftTimeboxOnJoin(guildId, userId) {
 				'Content-Type': 'application/json',
 				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
 			},
-			body: JSON.stringify({ user_id: userId }),
+			body: JSON.stringify({ user_id: userId, channel_id: channelId, joined }),
 		});
 	} catch (error) {
 		log.warn(`[Timebox] Could not lift a held mute on join: ${error.message}`);
@@ -3754,7 +3754,8 @@ function setupEventHandlers(client, logFn) {
 			scheduleLiveVoiceSync();
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
 			// A timebox mute/deafen that outlived its session comes off now they are back.
-			if (actorId && !actorIsBot) void liftTimeboxOnJoin(guildId, actorId);
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id);
 			// A join-to-create lobby turns this join into a new room.
 			if (member) {
 				void handleLobbyJoin(guild, member, newState.channel.id);
@@ -3874,6 +3875,9 @@ function setupEventHandlers(client, logFn) {
 			});
 			await emitVoiceOccupancy(guild, oldState.channel, -1, actorIsBot);
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
+			// Moving out of a place the server holds, or between channels, settles a pending lift.
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id, false);
 		}
 
 		// ===== VOICE STATE CHANGES (while in a channel) =====
