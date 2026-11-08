@@ -7,6 +7,7 @@ import {
 	getListedGuildIds,
 } from '$lib/db/server-listings.js';
 import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
+import { countableRequest, recordBrowseUse, recordImpressions } from '$lib/server/browser-stats.js';
 
 /**
  * Public server browser.
@@ -19,7 +20,7 @@ import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
  * inside the app shell, which contains the signed-in user's menu, so a shared
  * cache would serve one visitor's header to another.
  */
-export async function load({ platform, url, cookies }) {
+export async function load({ platform, url, cookies, request }) {
 	const db = (platform as any)?.env?.DB;
 
 	const q = (url.searchParams.get('q') || '').slice(0, 80);
@@ -38,6 +39,22 @@ export async function load({ platform, url, cookies }) {
 		browsePublicListings(db, { q, category, sort, page, includeNsfw }),
 		getCategoryCounts(db, includeNsfw),
 	]);
+
+	// Counters for the superadmin's Server browser stats: the cards shown, and whether a
+	// category or a search was used (never the words). Off the request path, and a failure
+	// costs nobody a page.
+	if (db && countableRequest(request)) {
+		const write = Promise.all([
+			recordImpressions(
+				db,
+				result.listings.map((l: any) => l.guild_id)
+			),
+			recordBrowseUse(db, { category, searched: Boolean(q) }),
+		]).catch(() => {});
+		const ctx = (platform as any)?.context;
+		if (ctx?.waitUntil) ctx.waitUntil(write);
+		else await write;
+	}
 
 	return {
 		...result,

@@ -33,6 +33,27 @@ export function wordToken(content: string): string | null {
 }
 
 /**
+ * In a Chain channel a word counts only when the message starts by mentioning the
+ * bot ("@SpaceBot apple"), so the channel can also be used for talking. Returns the
+ * text without that mention, and whether it was there. A mention anywhere else in the
+ * message is left alone and makes it more than one word, so it is not a move.
+ */
+export function stripBotMention(
+	content: string,
+	botId: string | null | undefined,
+	roleIds: Array<string | null | undefined> = []
+) {
+	if (!botId || !/^\d+$/.test(botId)) return { content, addressed: false };
+	// Typing @SpaceBot offers the bot and the bot's own role; both are the bot being addressed.
+	const roles = roleIds.filter((id): id is string => !!id && /^\d+$/.test(id));
+	const ids = [`@!?${botId}`, ...roles.map((id) => `@&${id}`)].join('|');
+	const lead = new RegExp(`^\\s*<(?:${ids})>\\s*`);
+	return lead.test(content)
+		? { content: content.replace(lead, ''), addressed: true }
+		: { content, addressed: false };
+}
+
+/**
  * Whether a message could be a move at all. The gateway asks this before it
  * forwards anything, so chat in a Chain channel costs no request.
  */
@@ -127,3 +148,8 @@ export function judgeMove(raw: string, ctx: MoveContext): Move {
 	}
 	return { ok: true, word, lemma, endsDead: word.endsWith(ctx.deadLetter) };
 }
+
+/** The reactions that ask for a word's definition: ❓ and ❔. */
+export const DEFINE_EMOJIS = ['\u2753', '\u2754'];
+export const isDefineReaction = (emoji: string | null | undefined) =>
+	DEFINE_EMOJIS.includes(String(emoji ?? ''));

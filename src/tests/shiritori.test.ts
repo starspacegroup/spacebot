@@ -7,6 +7,7 @@ import {
 	normalizeWord,
 	requiredStart,
 	couldBeAMove,
+	stripBotMention,
 	wordToken,
 } from '../lib/server/shiritori.js';
 import {
@@ -49,6 +50,10 @@ describe('dictionary', () => {
 		expect(dictionarySize()).toBeGreaterThan(70000);
 		expect(isWord('galaxy')).toBe(true);
 		expect(isWord('zzzqq')).toBe(false);
+	});
+
+	it('has the words added by hand on top of SCOWL', () => {
+		for (const w of ['yack', 'yacked', 'yacking', 'yacks']) expect(isWord(w)).toBe(true);
 	});
 
 	it('holds no proper nouns or contractions', () => {
@@ -151,5 +156,39 @@ describe('wordToken and couldBeAMove', () => {
 		expect(couldBeAMove('hello there')).toBe(false);
 		expect(couldBeAMove('// eagle')).toBe(false);
 		expect(couldBeAMove('👍')).toBe(false);
+	});
+});
+
+describe('stripBotMention', () => {
+	const BOT = '123456789012345678';
+	it('takes a leading mention off and says it was there', () => {
+		expect(stripBotMention(`<@${BOT}> apple`, BOT)).toEqual({
+			content: 'apple',
+			addressed: true,
+		});
+		expect(stripBotMention(`  <@!${BOT}>apple `, BOT)).toEqual({
+			content: 'apple ',
+			addressed: true,
+		});
+	});
+	it('counts the bot’s own role mention as addressing it', () => {
+		expect(stripBotMention('<@&555> evaluate', BOT, ['555'])).toEqual({
+			content: 'evaluate',
+			addressed: true,
+		});
+		expect(stripBotMention('<@&556> evaluate', BOT, ['555']).addressed).toBe(false);
+		expect(stripBotMention('<@&555> evaluate', BOT).addressed).toBe(false);
+	});
+	it('does not count chat, another user’s mention, or a mention that is not first', () => {
+		expect(stripBotMention('apple', BOT)).toEqual({ content: 'apple', addressed: false });
+		expect(stripBotMention('<@999> apple', BOT).addressed).toBe(false);
+		expect(stripBotMention(`apple <@${BOT}>`, BOT).addressed).toBe(false);
+		expect(stripBotMention(`<@${BOT}> apple`, undefined).addressed).toBe(false);
+		expect(stripBotMention(`<@${BOT}> apple`, 'x.*').addressed).toBe(false);
+	});
+	it('leaves a mention-then-word readable as one move', () => {
+		const { content } = stripBotMention(`<@${BOT}> Apple`, BOT);
+		expect(wordToken(content)).toBe('apple');
+		expect(wordToken(`<@${BOT}> apple`)).toBeNull(); // unstripped it is not a word
 	});
 });

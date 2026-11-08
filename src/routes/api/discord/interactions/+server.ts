@@ -33,6 +33,7 @@ import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
+import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
 import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
@@ -41,6 +42,8 @@ import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
 import {
 	handleShiritoriCommand,
 	handleShiritoriComponent,
+	handleGameHelp,
+	isGameHelpCommand,
 	isShiritoriCommand,
 } from '$lib/server/shiritori-game.js';
 import { log } from '$lib/db/logger.js';
@@ -354,6 +357,12 @@ export async function POST({ request, platform: rawPlatform }) {
 			return json(reply.response);
 		}
 
+		// `/define` and `/synonym`: a live lookup from a free word service, answered at once.
+		// Off until a server turns them on; the handler checks that itself.
+		if (isWordCommand(data.name) && guildId) {
+			return json(await handleWordCommand(data.name, body, db));
+		}
+
 		// `/oldest`: a read over the member cache, answered at once.
 		if (data.name === 'oldest' && guildId) {
 			return json(await handleOldestCommand(body, db));
@@ -390,6 +399,9 @@ export async function POST({ request, platform: rawPlatform }) {
 		// and fall through to its handler below.
 		if (data.name === 'game' && guildId && isBuiltInGameInteraction(data)) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			if (isGameHelpCommand(body)) {
+				return json(await handleGameHelp(body, db));
+			}
 			if (isShiritoriCommand(body)) {
 				const reply = await handleShiritoriCommand(
 					body,

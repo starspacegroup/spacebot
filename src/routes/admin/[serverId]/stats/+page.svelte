@@ -29,6 +29,9 @@
 	let liveStats = $state(null);
 	let statsKey = $state(null);
 	let statsLoading = $state(false);
+	let statsFailed = $state(false);
+	let statsRetry = $state(0);
+	let handledRetry = 0;
 
 	const LIVE_FIELDS = [
 		'statistics',
@@ -54,9 +57,13 @@
 		const serverId = data.serverId;
 		const period = data.selectedPeriod;
 		const key = `${serverId}:${period}`;
-		if (preview || !data.loadMeta?.needsHotload || statsKey === key) return;
+		// Reading statsRetry re-runs this effect when someone presses Try again.
+		const forced = statsRetry !== handledRetry;
+		handledRetry = statsRetry;
+		if (preview || !data.loadMeta?.needsHotload || (statsKey === key && !forced)) return;
 
 		statsLoading = true;
+		statsFailed = false;
 		// Leaving the page (or changing the range) cancels the request, so the server
 		// stops queuing queries nobody is waiting for.
 		const controller = new AbortController();
@@ -70,11 +77,13 @@
 			.then((json) => {
 				liveStats = json;
 				statsKey = key;
+				statsFailed = false;
 			})
 			.catch((err) => {
 				if (err?.name === 'AbortError') return; // left the page; load again on return
 				console.error('[Stats] Failed to load live stats:', err);
 				statsKey = key; // stop retrying automatically; fall back to the shell defaults below
+				statsFailed = true;
 			})
 			.finally(() => {
 				statsLoading = false;
@@ -753,6 +762,14 @@
 			</label>
 		</div>
 	</header>
+
+	{#if statsFailed && !statsLoading}
+		<div class="sp-failed" role="alert">
+			<span>The statistics could not be loaded, so the zeros below are not real numbers.</span
+			>
+			<button type="button" onclick={() => (statsRetry += 1)}>Try again</button>
+		</div>
+	{/if}
 
 	<div class="sp-bar">
 		<div class="sp-tabs" role="tablist" aria-label="Statistics sections">
@@ -2171,6 +2188,26 @@
 	}
 
 	/* Header */
+	.sp-failed {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin: 0.75rem 0;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-danger, #ef4444);
+		border-radius: 0.5rem;
+		color: var(--color-text);
+	}
+	.sp-failed button {
+		padding: 0.35rem 0.85rem;
+		border: 1px solid currentColor;
+		border-radius: 999px;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
 	.sp-head {
 		display: flex;
 		align-items: flex-end;

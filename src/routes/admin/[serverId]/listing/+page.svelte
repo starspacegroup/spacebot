@@ -155,14 +155,44 @@
 		queueSave(true);
 	}
 
+	// Where the caret is, kept current as the admin types. A save round trip can take the
+	// focus away; this is how the caret goes back to where they actually are.
+	let caret: { el: HTMLInputElement | HTMLTextAreaElement; start: number; end: number } | null =
+		null;
+	function trackCaret(event: Event) {
+		const el = event.target as HTMLInputElement | HTMLTextAreaElement;
+		if (el && typeof el.selectionStart === 'number' && typeof el.selectionEnd === 'number') {
+			caret = { el, start: el.selectionStart, end: el.selectionEnd };
+		}
+	}
+
 	const submitEnhance = () => {
 		saveState = 'saving';
 		listedAtSubmit = listed;
+		// SvelteKit moves focus to the page body after a form action, which would kick the
+		// cursor out of whatever the admin is typing in. Remember it and put it back.
+		const active = document.activeElement as HTMLElement | null;
+		const typing = active && formEl?.contains(active) ? active : null;
 		return async ({ result, update }: { result: any; update: (o?: any) => Promise<void> }) => {
 			// Refresh page data only when going live or going private, since that is when
 			// "is it actually visible" can change. Ordinary edits stay put.
 			const changedVisibility = listedAtSubmit !== Boolean(data.listing?.listed);
 			await update({ reset: false, invalidateAll: changedVisibility });
+			if (typing) {
+				// SvelteKit resets the selection a tick after the action settles, so wait it out.
+				await new Promise((resolve) => setTimeout(resolve, 0));
+				await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+			}
+			if (typing && typing.isConnected) {
+				if (document.activeElement !== typing) typing.focus({ preventScroll: true });
+				if (caret && caret.el === typing && typing.isConnected) {
+					try {
+						(typing as HTMLTextAreaElement).setSelectionRange(caret.start, caret.end);
+					} catch {
+						// Not a text field: nothing to restore.
+					}
+				}
+			}
 			if (result.type === 'success') {
 				saveState = 'saved';
 				savedAt = Date.now();
@@ -381,11 +411,16 @@
 			<a class="btn-main" href="/admin/{data.serverId}">{tr('lst.deniedBack')}</a>
 		</section>
 	{:else}
+		<!-- Bubbled events only, to remember the caret; the form itself is not interactive. -->
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 		<form
 			bind:this={formEl}
 			method="POST"
 			action="?/save"
 			use:enhance={submitEnhance}
+			oninput={trackCaret}
+			onkeyup={trackCaret}
+			onclick={trackCaret}
 			class="lst-grid"
 		>
 			<!-- What the server stores. Everything the visitor sees is edited below. -->

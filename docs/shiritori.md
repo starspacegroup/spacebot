@@ -41,6 +41,38 @@ round is a **voice round**. It plays the same, with these differences:
   mid-round that table is rebuilt, and the 20 seconds is what keeps a restart from skipping
   people.
 
+## ❓ for a definition, or what was meant
+
+React ❓ (or ❔) to a word that was part of the game and the bot replies to that message:
+
+- **A word:** its definition, from the same Wiktionary lookup `/define` uses (see
+  [word-commands.md](word-commands.md)). If there is no entry it says so, trying the base word first
+  ("tigers", then "tiger"). It works on a word the game accepted and on a real word it turned
+  away (the wrong first letter, a repeat), and whether or not the server has `/define` on.
+- **Not in the dictionary:** "**eagel** is not in the dictionary. Maybe this was meant: **eagle**?"
+  The close spellings come from Datamuse and are filtered to words the game would accept (the
+  server's own allow and block lists included). If nothing is close, it says that.
+
+What counts as "part of the game": in the Chain channel, a word addressed to the bot (chat is
+ignored); in a channel that has hosted a round, a one-word message from someone who played in it,
+**including after the round has ended**. A message is answered once per ten minutes, and one person
+gets at most eight lookups a minute. If a word service is down the bot stays quiet, so a later ❓
+can try again. Reactions from bots are ignored.
+
+How it travels: the gateway sees every ❓, fetches the message if it was not cached, strips the
+bot mention, and posts the text, its author and whether it was addressed to
+`/api/shiritori/{guild}/reaction`. The site decides whether it was a game word: first by the
+message id of an accepted word (`shiritori_words.message_id`; `shiritori_round_words.message_id`
+from migration `0093`), then by the rules above. This needs the gateway restarted to take effect.
+
+## /game help
+
+`/game help` (or `/play help`) is for anyone: a private message with the rules, built from this
+server's settings and including the chain as it stands (length, last word, next letter, dead
+letter), how the ❓ works, and a line about the hidden-agent game. It is the same text a manager
+pins with `rules:True`. If Shiritori is off in the server it says so and still shows the rules.
+Migration `0094` adds the subcommand.
+
 ## The turn prompt
 
 Every round, text or voice, keeps **one short message at the bottom of the chat** for whoever
@@ -53,20 +85,55 @@ changes. The last prompt is deleted when the round ends.
 
 A channel the server picks. Anyone posts the next word.
 
-- ✅ on a word that fits. The chain grows.
-- ❌ on a word that does not, with the reason. The **chain breaks**: SpaceBot posts the
+Pick it in the dashboard (Activity, "Chain channel"), or from Discord with
+`/game shiritori channel:#name`. The slash option turns Shiritori on and sets the channel in
+one step. It opens no round. It works only for people who hold the dashboard's **manage
+commands** permission: Manage Server by default, or whatever level the server set for it on the
+Settings page. Administrators always pass. (The Settings page sets a level, not roles; a role
+list saved in the database is honoured, but nothing in the dashboard writes one.) Everyone else gets a private refusal and nothing
+changes. Only text and announcement channels are accepted. The handler is `setChainChannel` in `src/lib/server/shiritori-game.ts`.
+To turn the chain off, run `/game shiritori off:True` (same permission, and it keeps
+rounds working), or clear the channel in the dashboard. Giving `channel` and `off`
+together is refused.
+
+To post the rules, run `/game shiritori rules:True` in the channel (same permission). It posts a
+rules message built from the server's settings (hard mode, dead letters, turn clock) and pins
+it; if the bot cannot pin, it says so and the message still stands. One of `channel`, `off` and
+`rules` per command. Migrations `0086`, `0087` and `0088` add the three options.
+
+**The rules message stays current.** The bot remembers which message it posted (migration `0090`:
+`rules_channel_id`, `rules_message_id`) and keeps a "Right now" section at its foot: the chain's
+length, the last word and who played it, the letter the next word starts with, the dead letter,
+and the longest chain so far. It is edited after every word that lands, every break or end, a
+dashboard reset, and when the chain channel is set or turned off. A chat message or a refused
+word does not edit it. Run `rules:True` again and the bot refreshes that message instead of
+posting a second. If someone deletes it, the bot stops tracking it and carries on; run
+`rules:True` to post a new one. A message posted before 0090 is not tracked: delete it and run
+the command once more. The edit uses the plain client, so a failed edit never shows up as a
+Shiritori health notice.
+
+- ✅ on a word that fits. The chain grows. If the bot cannot add reactions (Add Reactions
+  missing in the channel), it replies in words instead: "✅ **word**. The next word starts with
+  **x**."
+- ❌ on a word that does not. The **chain breaks**: SpaceBot posts the
   length, the longest word and the server record, and starts a new chain from a random
   seed word.
+- **Mention the bot to play.** A word counts only when the message starts with a mention of
+  the bot: `@SpaceBot eagle`. Everything else in the channel is chat. It gets no reaction
+  and no reply, it never breaks the chain, and it does not use a turn. The gateway strips the
+  mention and sends the word with an `addressed` flag; the site ignores a Chain message
+  without it. Typing `@SpaceBot` offers two mentions, the bot and the bot's own role, and
+  either one counts. Round mode (`/game shiritori`) does not need a mention.
 - A word on the server's block list gets a ❌ and a reason, and **nothing else**: the chain
   does not break. A block list matches stems, so it can catch an innocent word, and one
   member must not be able to end a chain on purpose with a word the filter refuses.
 - A word that ends in the dead letter is counted and ends the chain. It does not count
   as a break for the member.
 - The same member twice in a row gets a ❌ and a reminder, and the chain does **not** break.
-- Anything that is not one word of letters is ignored: several words, links, emoji, a
-  number. So is a message that starts with `//`, and a word under three letters.
+- After the mention, anything that is not one word of letters is ignored: several words,
+  links, emoji, a number. So is a message that starts with `//`, and a word under three letters.
 - There is no timer. A chain can run for days.
-- The first word posted after the feature is turned on opens the first chain and shows its
+- The first mentioned word posted after the feature is turned on opens the first chain and shows its
   seed word. That post is not counted.
 
 Crew can reset the chain from the dashboard.
@@ -145,6 +212,8 @@ bun scripts/build-shiritori-words.ts <scowl-dir>/final
 ```
 
 The generated file is committed, so a normal build never needs the download.
+
+Words SCOWL lacks go in `EXTRA_WORDS` at the top of `scripts/build-shiritori-words.ts`, so a rebuild keeps them. Add the word and its forms there, and add the same lines to the generated file in sorted order (or rebuild). Today: yack, yacked, yacking, yacks.
 
 ## Name on this server
 

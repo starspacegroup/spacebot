@@ -15,6 +15,9 @@ import path from 'node:path';
 const LEVELS = [10, 20, 35, 40, 50, 55, 60];
 const FAMILIES = ['english-words', 'american-words'];
 
+// Words SCOWL size 60 lacks but players use. Kept here so a rebuild does not lose them.
+const EXTRA_WORDS = ['yack', 'yacked', 'yacking', 'yacks'];
+
 const dir = process.argv[2];
 if (!dir || !fs.existsSync(dir)) {
 	console.error('usage: bun scripts/build-shiritori-words.ts <scowl-dir>/final');
@@ -32,6 +35,7 @@ for (const family of FAMILIES) {
 	}
 }
 
+for (const w of EXTRA_WORDS) words.add(w);
 const sorted = [...words].sort();
 const out = path.resolve(import.meta.dirname, '../src/lib/server/shiritori-words.generated.ts');
 fs.writeFileSync(

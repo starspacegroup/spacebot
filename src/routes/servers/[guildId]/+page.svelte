@@ -79,7 +79,7 @@
 					{#if listing.invite_url}
 						<a
 							class="btn-join"
-							href={listing.invite_url}
+							href="/servers/{listing.guild_id}/join"
 							target="_blank"
 							rel="noopener noreferrer nofollow ugc">{tr('browse.joinServer')}</a
 						>

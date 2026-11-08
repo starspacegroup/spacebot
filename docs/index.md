@@ -22,6 +22,8 @@ database — see the architecture overview below.
 
 ## Features & subsystems
 
+- [Word commands](word-commands.md) — `/define` and `/synonym`, off until a server turns them on
+- [Announcement channel](announcements.md) — where SpaceBot posts global changes and important alerts
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch

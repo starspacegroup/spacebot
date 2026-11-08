@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { createSqliteD1 } from './helpers/sqlite-d1.js';
 
 let playEnabled = true;
-vi.mock('../lib/db/commands.js', () => ({
+vi.mock('../lib/db/commands.js', async (importOriginal) => ({
+	...(await importOriginal<typeof import('../lib/db/commands.js')>()),
 	getCommandByName: vi.fn(async () => (playEnabled ? { name: 'play' } : null)),
 }));
 
@@ -21,6 +22,9 @@ import {
 	getRound,
 	getSettings,
 	guildDictionary,
+	handleDefineReaction,
+	handleGameHelp,
+	isGameHelpCommand,
 	handleMessage,
 	handleShiritoriCommand,
 	handleShiritoriComponent,
@@ -35,6 +39,7 @@ import {
 	openRound,
 	parseWordList,
 	resetChain,
+	rulesText,
 	roundStats,
 	sentTime,
 	shuffle,
@@ -47,6 +52,7 @@ import {
 	type Round,
 } from '../lib/server/shiritori-game.js';
 import { isWord } from '../lib/server/shiritori-dict.js';
+import { isDefineReaction } from '../lib/server/shiritori.js';
 
 const migration = (file: string) =>
 	readFileSync(new URL(`../../migrations/${file}`, import.meta.url), 'utf8');
@@ -54,7 +60,10 @@ const SCHEMA =
 	migration('0041_live_voice_states.sql') +
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	'CREATE TABLE guild_channels (guild_id TEXT, channel_id TEXT, name TEXT, type INTEGER);\n' +
-	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0];
+	migration('0081_shiritori.sql').split('-- `/play shiritori` joins')[0] +
+	migration('0090_shiritori_rules_message.sql') +
+	migration('0093_shiritori_word_messages.sql') +
+	migration('0054_roadmap_completion.sql');
 
 const GUILD = '100000000000000001';
 const CHAIN_CH = '200000000000000001';
@@ -68,7 +77,9 @@ function fakeDiscord() {
 	const edits: { channelId: string; messageId: string; payload: any }[] = [];
 	const reactions: { messageId: string; emoji: string }[] = [];
 	const deleted: string[] = [];
+	const pins: { channelId: string; messageId: string }[] = [];
 	return {
+		pins,
 		sent,
 		edits,
 		reactions,
@@ -80,6 +91,9 @@ function fakeDiscord() {
 			send: async (channelId: string, payload: any) => {
 				sent.push({ channelId, payload });
 				return { id: `bot-${sent.length}` };
+			},
+			pin: async (channelId: string, messageId: string) => {
+				pins.push({ channelId, messageId });
 			},
 			editMessage: async (channelId: string, messageId: string, payload: any) => {
 				edits.push({ channelId, messageId, payload });
@@ -101,6 +115,7 @@ const say = (channelId: string, userId: string, content: string, when = T0) => (
 	messageId: `msg-${++n}`,
 	userId,
 	content,
+	addressed: true,
 	sentAt: when.toISOString(),
 });
 
@@ -274,6 +289,58 @@ describe('Chain mode', () => {
 		expect(discord.reactions.at(-1)?.emoji).toBe('❌');
 	});
 
+	it('ignores chat: a message that does not mention the bot is never a move', async () => {
+		await enable();
+		await chainFrom('apple');
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		const chain = await getOpenChain(db, GUILD, CHAIN_CH);
+		const reactions = discord.reactions.length;
+		const sent = discord.sent.length;
+		// A wrong word, a real word, and one from the member who just played: all chat.
+		for (const [user, text] of [
+			['u2', 'lolzz'],
+			['u2', 'banana'],
+			['u1', 'thanksss'],
+			['u1', 'elephant'],
+		]) {
+			const msg = { ...say(CHAIN_CH, user, text), addressed: false };
+			expect(await handleMessage(db, discord, msg, T0)).toEqual({ action: 'ignore' });
+		}
+		expect(discord.reactions.length).toBe(reactions);
+		expect(discord.sent.length).toBe(sent);
+		expect(await getOpenChain(db, GUILD, CHAIN_CH)).toMatchObject({
+			id: chain?.id,
+			length: chain?.length,
+			last_word: 'eagle',
+		});
+		// Mentioning the bot makes it a move, and a wrong one breaks the chain again.
+		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'banana'), T0)).toEqual({
+			action: 'broken',
+			reason: 'bad_start',
+		});
+	});
+
+	it('says the word was accepted in text when it cannot react', async () => {
+		await enable();
+		await chainFrom('apple');
+		discord.channels.react = async () => {
+			throw Object.assign(new Error('Missing Permissions'), { status: 403 });
+		};
+		const before = discord.sent.length;
+		expect(await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0)).toEqual({
+			action: 'accepted',
+		});
+		const said = discord.sent.slice(before);
+		expect(said).toHaveLength(1);
+		expect(said[0].payload.content).toContain('**eagle**');
+		expect(said[0].payload.content).toContain('starts with **e**');
+		// With reactions working, nothing extra is posted.
+		discord.channels.react = async () => {};
+		const quiet = discord.sent.length;
+		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
+		expect(discord.sent.length).toBe(quiet);
+	});
+
 	it('breaks on a word that starts with the wrong letter, and starts a new chain', async () => {
 		await enable();
 		await chainFrom('apple');
@@ -339,6 +406,7 @@ describe('Chain mode', () => {
 		await handleMessage(db, discord, say(CHAIN_CH, 'u2', 'elephant'), T0);
 		const out = await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'tax'), T0);
 		expect(out).toEqual({ action: 'ended', reason: 'dead_letter' });
+		expect(discord.reactions.at(-1)?.emoji).toBe('☠️');
 		const summary = discord.sent.at(-1)!.payload.content;
 		expect(summary).toContain('dead letter **x**');
 		expect(summary).toContain('**3** words');
@@ -513,6 +581,36 @@ describe('Round mode', () => {
 		expect(after).toMatchObject({ turn_no: 1, prev_word: 'apple', current_user_id: 'u2' });
 		expect(Date.parse(after!.turn_ends_at!) - at(2).getTime()).toBe(after!.turn_seconds * 1000);
 		expect(discord.reactions.at(-1)?.emoji).toBe('✅');
+	});
+
+	it('answers a ❓ on a round word with its definition', async () => {
+		await start();
+		const word = say(ROUND_CH, 'u1', 'apple', at(2));
+		expect(await handleMessage(db, discord, word, at(2))).toEqual({ action: 'accepted' });
+		discord.sent.length = 0;
+		const get = vi.fn((_url: string) =>
+			Promise.resolve(
+				new Response(
+					JSON.stringify({
+						en: [
+							{
+								partOfSpeech: 'Noun',
+								definitions: [{ definition: 'A round fruit.' }],
+							},
+						],
+					})
+				)
+			)
+		);
+		await handleDefineReaction(
+			db,
+			discord,
+			{ guildId: GUILD, channelId: ROUND_CH, messageId: word.messageId, userId: 'u9' },
+			get
+		);
+		expect(discord.sent).toHaveLength(1);
+		expect(discord.sent[0].channelId).toBe(ROUND_CH);
+		expect(discord.sent[0].payload.embeds[0].fields[0].value).toContain('A round fruit.');
 	});
 
 	it('ignores chat from the current player', async () => {
@@ -767,6 +865,297 @@ describe('when SpaceBot cannot post', () => {
 	});
 });
 
+describe('/game help', () => {
+	const ask = (over: Record<string, any> = {}) => ({
+		guild_id: GUILD,
+		channel_id: ROUND_CH,
+		member: { user: { id: 'u1', username: 'one' }, permissions: '0' },
+		data: { name: 'game', options: [{ name: 'help', type: 1 }] },
+		...over,
+	});
+
+	it('is recognised', () => {
+		expect(isGameHelpCommand(ask())).toBe(true);
+		expect(
+			isGameHelpCommand(
+				ask({ data: { name: 'game', options: [{ name: 'start', type: 1 }] } })
+			)
+		).toBe(false);
+	});
+
+	it('shows anyone the rules, this server’s settings and the chain as it stands, privately', async () => {
+		await enable({ turnSeconds: 20 });
+		await chainFrom('apple');
+		await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+		const out: any = await handleGameHelp(ask(), db);
+		const text = out.data.content;
+		expect(out.data.flags).toBe(64);
+		expect(out.data.allowed_mentions).toEqual({ parse: [] });
+		expect(text).toContain('Shiritori: the word chain');
+		expect(text).toContain('@SpaceBot eagle');
+		expect(text).toContain('20 seconds');
+		expect(text).toContain('React ❓');
+		expect(text).toContain('Last word: **eagle**');
+		expect(text).toContain('Hidden agent');
+		expect(text).toContain('/game start');
+		expect(text.length).toBeLessThanOrEqual(2000);
+	});
+
+	it('says when Shiritori is not turned on, and still shows the rules', async () => {
+		const out: any = await handleGameHelp(ask(), db);
+		expect(out.data.content).toContain('not turned on in this server yet');
+		expect(out.data.content).toContain('Shiritori: the word chain');
+		expect(out.data.content).not.toContain('Right now');
+	});
+
+	it('refuses outside a server', async () => {
+		const out: any = await handleGameHelp(ask({ guild_id: undefined }), db);
+		expect(out.data.content).toContain('inside a server');
+	});
+});
+
+describe('❓ on a word', () => {
+	const wiktionary = (word: string) =>
+		new Response(
+			JSON.stringify({
+				en: [
+					{
+						partOfSpeech: 'Noun',
+						definitions: [{ definition: `A thing called ${word}.` }],
+					},
+				],
+			})
+		);
+	const fetcher = (answer: (url: string) => Response) =>
+		vi.fn((url: string) => Promise.resolve(answer(url)));
+	const asked = (messageId: string, userId = 'u9') => ({
+		guildId: GUILD,
+		channelId: CHAIN_CH,
+		messageId,
+		userId,
+	});
+
+	it('knows the two question marks', () => {
+		expect(isDefineReaction('\u2753')).toBe(true);
+		expect(isDefineReaction('\u2754')).toBe(true);
+		expect(isDefineReaction('👍')).toBe(false);
+		expect(isDefineReaction(null)).toBe(false);
+	});
+
+	it('replies to a chain word with its definition, once per message', async () => {
+		await enable();
+		await chainFrom('apple');
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		discord.sent.length = 0;
+
+		const get = fetcher((url) => wiktionary(url.split('/').pop()!));
+		const out = await handleDefineReaction(db, discord, asked(word.messageId), get);
+		expect(out).toEqual({ action: 'accepted' });
+		expect(get.mock.calls[0][0]).toContain('/definition/eagle');
+		expect(discord.sent).toHaveLength(1);
+		const posted = discord.sent[0].payload;
+		expect(posted.embeds[0].fields[0].value).toContain('A thing called eagle.');
+		expect(posted.message_reference).toEqual({
+			message_id: word.messageId,
+			fail_if_not_exists: false,
+		});
+		expect(posted.allowed_mentions).toEqual({ parse: [], replied_user: false });
+
+		// A second ❓ on the same word, from anyone, adds nothing.
+		expect(await handleDefineReaction(db, discord, asked(word.messageId, 'u8'), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(discord.sent).toHaveLength(1);
+		expect(get).toHaveBeenCalledTimes(1);
+	});
+
+	it('does nothing for a message that is not an accepted word, or when Shiritori is off', async () => {
+		await enable();
+		await chainFrom('apple');
+		const get = fetcher(() => wiktionary('x'));
+		const chat = { ...say(CHAIN_CH, 'u2', 'lol'), addressed: false };
+		await handleMessage(db, discord, chat, T0);
+		discord.sent.length = 0;
+		expect(await handleDefineReaction(db, discord, asked(chat.messageId), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(await handleDefineReaction(db, discord, asked('nope'), get)).toEqual({
+			action: 'ignore',
+		});
+		expect(get).not.toHaveBeenCalled();
+		expect(discord.sent).toHaveLength(0);
+
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		await db
+			.prepare('UPDATE shiritori_settings SET enabled = 0 WHERE guild_id = ?')
+			.bind(GUILD)
+			.run();
+		expect(await handleDefineReaction(db, discord, asked(word.messageId), get)).toEqual({
+			action: 'ignore',
+		});
+	});
+
+	describe('a word the game rejected, or from a round that has ended', () => {
+		const services = (near: unknown[] | number) =>
+			vi.fn((url: string) =>
+				Promise.resolve(
+					url.includes('datamuse')
+						? typeof near === 'number'
+							? new Response('{}', { status: near })
+							: new Response(JSON.stringify(near))
+						: wiktionary('x')
+				)
+			);
+		const typed = (content: string, over: Record<string, any> = {}) => ({
+			guildId: GUILD,
+			channelId: CHAIN_CH,
+			messageId: `typed-${++n}`,
+			userId: 'u9',
+			authorId: 'u1',
+			content,
+			addressed: true,
+			...over,
+		});
+
+		it('says what was probably meant for a word that is not in the dictionary', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([{ word: 'eagle' }, { word: 'qwxzq' }, { word: 'eagel' }]);
+			const out = await handleDefineReaction(db, discord, typed('eagel'), get);
+			expect(out).toEqual({ action: 'accepted' });
+			expect(get.mock.calls[0][0]).toContain('datamuse');
+			const said = discord.sent.at(-1)!.payload;
+			expect(said.content).toContain('**eagel** is not in the dictionary');
+			expect(said.content).toContain('Maybe this was meant: **eagle**?');
+			expect(said.content).not.toContain('qwxzq'); // only words the game would accept
+			expect(said.message_reference.fail_if_not_exists).toBe(false);
+		});
+
+		it('says so when nothing close is known, and stays quiet when the service is down', async () => {
+			await enable();
+			await chainFrom('apple');
+			await handleDefineReaction(db, discord, typed('zzqxj'), services([]));
+			expect(discord.sent.at(-1)!.payload.content).toContain('could not find a close word');
+			const before = discord.sent.length;
+			await handleDefineReaction(db, discord, typed('zzqxk'), services(502));
+			expect(discord.sent).toHaveLength(before);
+		});
+
+		it('defines a real word the game turned away, such as one with the wrong first letter', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([]);
+			await handleDefineReaction(db, discord, typed('banana'), get);
+			expect(get.mock.calls[0][0]).toContain('wiktionary');
+			expect(discord.sent.at(-1)!.payload.embeds).toBeTruthy();
+		});
+
+		it('ignores chat in the Chain channel, however the word looks', async () => {
+			await enable();
+			await chainFrom('apple');
+			const get = services([]);
+			expect(
+				await handleDefineReaction(db, discord, typed('banana', { addressed: false }), get)
+			).toEqual({ action: 'ignore' });
+			expect(await handleDefineReaction(db, discord, typed('two words'), get)).toEqual({
+				action: 'ignore',
+			});
+			expect(get).not.toHaveBeenCalled();
+		});
+
+		it('works in a channel whose round is over, for the players, and only for them', async () => {
+			await enable();
+			const round = await openRound(db, discord, {
+				guildId: GUILD,
+				channelId: ROUND_CH,
+				starterId: 'u1',
+				starterName: 'One',
+			});
+			if (isFail(round)) throw new Error(round.error);
+			await joinRound(db, discord, round.id, { id: 'u2', name: 'Two' });
+			// The round is over, but the channel keeps its history and its players.
+			await db
+				.prepare(
+					`UPDATE shiritori_rounds SET status = 'ended', result = 'cancelled' WHERE id = ?`
+				)
+				.bind(round.id)
+				.run();
+			expect(await liveRoundIn(db, GUILD, ROUND_CH)).toBeNull();
+
+			const get = services([]);
+			const base = { channelId: ROUND_CH, addressed: false };
+			expect(
+				await handleDefineReaction(
+					db,
+					discord,
+					typed('apple', { ...base, authorId: 'stranger' }),
+					get
+				)
+			).toEqual({ action: 'ignore' });
+			expect(get).not.toHaveBeenCalled();
+			await handleDefineReaction(
+				db,
+				discord,
+				typed('apple', { ...base, authorId: 'u2' }),
+				get
+			);
+			expect(discord.sent.at(-1)!.channelId).toBe(ROUND_CH);
+			expect(discord.sent.at(-1)!.payload.embeds).toBeTruthy();
+		});
+	});
+
+	it('says there is no definition, tries the base word, and stays quiet when the service is down', async () => {
+		await enable();
+		await chainFrom('apple');
+		const word = say(CHAIN_CH, 'u1', 'eagle');
+		await handleMessage(db, discord, word, T0);
+		discord.sent.length = 0;
+		const none = fetcher(() => new Response('{}', { status: 404 }));
+		await handleDefineReaction(db, discord, asked(word.messageId), none);
+		expect(discord.sent[0].payload.content).toContain('No definition found for **eagle**');
+
+		const second = say(CHAIN_CH, 'u2', 'elephant');
+		await handleMessage(db, discord, second, T0);
+		discord.sent.length = 0;
+		const down = fetcher(() => new Response('{}', { status: 502 }));
+		await handleDefineReaction(db, discord, asked(second.messageId), down);
+		expect(discord.sent).toHaveLength(0);
+	});
+
+	it('limits one person to a handful of ❓ a minute', async () => {
+		await enable();
+		await chainFrom('apple');
+		const get = fetcher(() => wiktionary('w'));
+		const words = [
+			'eagle',
+			'elephant',
+			'tiger',
+			'rabbit',
+			'tea',
+			'apple',
+			'eel',
+			'lemon',
+			'noun',
+			'night',
+		];
+		const sent: any[] = [];
+		let prevUser = 'u1';
+		for (const w of words) {
+			const m = say(CHAIN_CH, prevUser === 'u1' ? 'u2' : 'u1', w);
+			prevUser = m.userId;
+			const out = await handleMessage(db, discord, m, T0);
+			if (out.action === 'accepted') sent.push(m);
+		}
+		discord.sent.length = 0;
+		for (const m of sent)
+			await handleDefineReaction(db, discord, asked(m.messageId, 'spammer'), get);
+		expect(discord.sent.length).toBeLessThanOrEqual(8);
+		expect(discord.sent.length).toBeGreaterThan(0);
+	});
+});
+
 describe('/play shiritori', () => {
 	const body = (over: Record<string, any> = {}) => ({
 		guild_id: GUILD,
@@ -799,6 +1188,283 @@ describe('/play shiritori', () => {
 			(await handleShiritoriCommand(body({ guild_id: undefined }), db, discord)).response.data
 				.content
 		).toContain('inside a server');
+	});
+
+	describe('channel option (set the always-on chain)', () => {
+		const pick = (member: Record<string, any>, channel = CHAIN_CH) =>
+			body({
+				member: { user: { id: 'u1', username: 'one' }, ...member },
+				data: {
+					name: 'game',
+					options: [
+						{
+							name: 'shiritori',
+							type: 1,
+							options: [{ name: 'channel', type: 7, value: channel }],
+						},
+					],
+				},
+			});
+		const MANAGE_SERVER = '32';
+		const withRule = (rule: Record<string, any>) =>
+			db.exec(`CREATE TABLE guild_settings (guild_id TEXT PRIMARY KEY, permission_settings TEXT);
+				INSERT INTO guild_settings VALUES ('${GUILD}', '${JSON.stringify({
+					manageCommands: rule,
+				})}');`);
+
+		it('lets a Manage Server member set the chain channel and turns Shiritori on', async () => {
+			const out = await handleShiritoriCommand(
+				pick({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain(`<#${CHAIN_CH}>`);
+			expect(out.response.data.flags).toBe(64);
+			expect(await getSettings(db, GUILD)).toMatchObject({
+				enabled: true,
+				chainChannelId: CHAIN_CH,
+			});
+			expect(await liveRoundIn(db, GUILD, ROUND_CH)).toBeNull(); // no lobby opened
+		});
+
+		it('refuses an ordinary member and changes nothing', async () => {
+			const out = await handleShiritoriCommand(pick({ permissions: '0' }), db, discord);
+			expect(out.response.data.content).toContain('Only people who can manage');
+			expect(await getSettings(db, GUILD)).toMatchObject({
+				enabled: false,
+				chainChannelId: null,
+			});
+			// No permissions at all fails closed, too.
+			const bare = await handleShiritoriCommand(pick({}), db, discord);
+			expect(bare.response.data.content).toContain('Only people who can manage');
+		});
+
+		it('honours a role the server added to the manage-commands permission', async () => {
+			withRule({ permission: 'MANAGE_GUILD', roles: ['role-mod'] });
+			const denied = await handleShiritoriCommand(
+				pick({ permissions: '0', roles: ['other'] }),
+				db,
+				discord
+			);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			const allowed = await handleShiritoriCommand(
+				pick({ permissions: '0', roles: ['role-mod'] }),
+				db,
+				discord
+			);
+			expect(allowed.response.data.content).toContain(`<#${CHAIN_CH}>`);
+		});
+
+		it('turns the chain off for a manager, and refuses everyone else', async () => {
+			const off = (member: Record<string, any>, extra: any[] = []) =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, ...member },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'off', type: 5, value: true }, ...extra],
+							},
+						],
+					},
+				});
+			await enable();
+			const denied = await handleShiritoriCommand(off({ permissions: '0' }), db, discord);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			expect((await getSettings(db, GUILD)).chainChannelId).toBe(CHAIN_CH);
+
+			const both = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }, [
+					{ name: 'channel', type: 7, value: CHAIN_CH },
+				]),
+				db,
+				discord
+			);
+			expect(both.response.data.content).toContain('one of channel, off or rules');
+
+			const done = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(done.response.data.content).toContain('is off');
+			const after = await getSettings(db, GUILD);
+			expect(after.chainChannelId).toBeNull();
+			expect(after.enabled).toBe(true); // rounds still work
+
+			const again = await handleShiritoriCommand(
+				off({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(again.response.data.content).toContain('no always-on chain');
+		});
+
+		it('posts the rules and pins them, for managers only', async () => {
+			const ask = (member: Record<string, any>, extra: any[] = []) =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, ...member },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }, ...extra],
+							},
+						],
+					},
+				});
+			await enable({ hardMode: true, turnSeconds: 20 });
+			const denied = await handleShiritoriCommand(ask({ permissions: '0' }), db, discord);
+			expect(denied.response.data.content).toContain('Only people who can manage');
+			expect(discord.sent).toHaveLength(0);
+
+			const two = await handleShiritoriCommand(
+				ask({ permissions: MANAGE_SERVER }, [{ name: 'off', type: 5, value: true }]),
+				db,
+				discord
+			);
+			expect(two.response.data.content).toContain('one of channel, off or rules');
+
+			const done = await handleShiritoriCommand(
+				ask({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(done.response.data.content).toContain('pinned');
+			expect(discord.sent).toHaveLength(1);
+			expect(discord.sent[0].channelId).toBe(ROUND_CH);
+			expect(discord.sent[0].payload.content).toContain('@SpaceBot eagle');
+			expect(discord.sent[0].payload.content).toContain('last **two** letters');
+			expect(discord.sent[0].payload.content).toContain('20 seconds');
+			expect(discord.pins).toEqual([{ channelId: ROUND_CH, messageId: 'bot-1' }]);
+		});
+
+		it('keeps the rules message up to date as the chain moves', async () => {
+			const ask = () =>
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				});
+			await enable();
+			await handleShiritoriCommand(ask(), db, discord);
+			expect(discord.sent).toHaveLength(1);
+			expect(discord.sent[0].payload.content).toContain('No chain is running');
+
+			await chainFrom('apple');
+			await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0);
+			const last = discord.edits.at(-1)!;
+			expect(last.messageId).toBe('bot-1');
+			expect(last.channelId).toBe(ROUND_CH);
+			expect(last.payload.content).toContain('**1** word');
+			expect(last.payload.content).toContain('Last word: **eagle**');
+			expect(last.payload.content).toContain('starts with **e**');
+
+			// A chat message or a refused word does not edit it.
+			const edits = discord.edits.length;
+			await handleMessage(
+				db,
+				discord,
+				{ ...say(CHAIN_CH, 'u2', 'lol'), addressed: false },
+				T0
+			);
+			expect(discord.edits.length).toBe(edits);
+
+			// Asking again refreshes the same message instead of posting a second one
+			// (chainFrom cleared the sent list, so any rules post now would show up in it).
+			const again = await handleShiritoriCommand(ask(), db, discord);
+			expect(again.response.data.content).toContain('up to date');
+			expect(
+				discord.sent.filter((m) => m.payload.content.includes('the word chain'))
+			).toHaveLength(0);
+		});
+
+		it('stops tracking the rules message when it was deleted', async () => {
+			await enable();
+			await handleShiritoriCommand(
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				}),
+				db,
+				discord
+			);
+			discord.channels.editMessage = async () => {
+				throw Object.assign(new Error('Unknown Message'), { status: 404 });
+			};
+			await chainFrom('apple');
+			await handleMessage(db, discord, say(CHAIN_CH, 'u1', 'eagle'), T0); // still plays on
+			const row: any = await db
+				.prepare('SELECT rules_message_id FROM shiritori_settings WHERE guild_id = ?')
+				.bind(GUILD)
+				.first();
+			expect(row.rules_message_id).toBeNull();
+			expect((await getHealth(db, GUILD))?.status ?? null).toBeNull(); // not a health problem
+		});
+
+		it('still posts the rules when pinning is not allowed', async () => {
+			await enable();
+			(discord.channels as any).pin = async () => {
+				throw Object.assign(new Error('Missing Permissions'), { status: 403 });
+			};
+			const out = await handleShiritoriCommand(
+				body({
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				}),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain('couldn’t pin');
+			expect(discord.sent).toHaveLength(1);
+		});
+
+		it('writes rules that follow the settings', () => {
+			const text = rulesText({ ...DEFAULTS, deadLetters: 'xq' });
+			expect(text).toContain('X, Q');
+			expect(text).toContain('the last letter');
+		});
+
+		it('refuses a channel that is known to be a voice channel', async () => {
+			db.exec(`INSERT INTO guild_channels VALUES ('${GUILD}', '${CHAIN_CH}', 'vc', 2);`);
+			const out = await handleShiritoriCommand(
+				pick({ permissions: MANAGE_SERVER }),
+				db,
+				discord
+			);
+			expect(out.response.data.content).toContain('text channel');
+			expect((await getSettings(db, GUILD)).chainChannelId).toBeNull();
+		});
 	});
 
 	it('runs the lobby buttons: join, start, and stop by the starter', async () => {

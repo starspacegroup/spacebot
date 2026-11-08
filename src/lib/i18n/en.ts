@@ -1277,6 +1277,10 @@ export const en: Record<string, string> = {
 		'Optional. One Discord user ID per line. Leave empty to allow any manager in this server.',
 	'settings.logging': 'Logging',
 	'settings.loggingChannelDesc': 'Channel where bot activity logs will be sent',
+	'settings.announcements': 'Announcements',
+	'settings.announcementChannel': 'Announcement channel',
+	'settings.announcementChannelDesc':
+		'Where SpaceBot posts about global changes and other important alerts. Leave it empty and SpaceBot posts nothing.',
 	'settings.selectChannel': 'Select a channel…',
 	'settings.eventCategories': 'Event Categories',
 	'settings.eventCategoriesDesc':

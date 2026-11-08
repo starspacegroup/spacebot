@@ -5,7 +5,8 @@
  * Two modes share one dictionary and one judge:
  *
  *  - **Chain**: a channel a server marks as the Shiritori channel. Anyone posts
- *    the next word; a good word gets a ✅ and a bad one a ❌ and breaks the chain.
+ *    the next word; a good word gets a ✅ and a bad one a ❌ and breaks the chain. A word counts only when
+ *    the message mentions the bot ("@SpaceBot apple"), so the channel can also hold chat.
  *  - **Round**: `/game shiritori` opens a lobby in the channel; players take
  *    turns against a clock, and a miss puts you out. The last one in wins.
  *
@@ -17,9 +18,13 @@
 
 import { log } from '../log.js';
 import { getGameDisplay } from './game-display.js';
-import { getCommandByName } from '../db/commands.js';
+import { PERMISSION_FLAGS, getCommandByName } from '../db/commands.js';
+import { getGuildSettings } from '../db/settings.js';
+import { memberHasCommandPermission } from '../discord/command-permissions.js';
 import { flattenInteractionOptions } from '../discord/interaction-options.js';
 import { RESPOND_MESSAGE, RESPOND_UPDATE, isCrew } from './game.js';
+import { consumeQuota } from './rate-limit.js';
+import { lookupDefinition, lookupSimilar } from './word-commands.js';
 import { voiceChannelOf } from './timebox.js';
 import {
 	DEAD_LETTERS,
@@ -181,7 +186,10 @@ async function safely<T>(label: string, work: () => Promise<T>): Promise<T | nul
 
 const react = (discord: Discord, channelId: string, messageId: string, emoji: string) =>
 	discord && messageId
-		? safely('react', () => discord.channels.react(channelId, messageId, emoji))
+		? safely('react', async () => {
+				await discord.channels.react(channelId, messageId, emoji);
+				return true;
+			})
 		: null;
 
 const reply = (discord: Discord, channelId: string, messageId: string | null, content: string) =>
@@ -425,6 +433,7 @@ function startAnnouncement(c: Chain) {
 	return (
 		`🔗 **New chain.** The word is **${c.seed_word}**.\n` +
 		`The next word starts with **${need}**. Dead letter: **${c.dead_letter}**.\n` +
+		`Mention me with your word to play: **@SpaceBot ${need}…**. Anything else is just chat.\n` +
 		`One word at a time, and no one goes twice in a row.`
 	);
 }
@@ -473,6 +482,8 @@ export interface ChannelMessage {
 	userId: string;
 	userName?: string;
 	content: string;
+	/** The message started by mentioning the bot (the gateway strips the mention). A Chain word needs it. */
+	addressed?: boolean;
 	isBot?: boolean;
 	/** When the member sent it; a late-processed word still counts if it was in time. */
 	sentAt?: string;
@@ -496,6 +507,8 @@ async function handleChainMessage(
 	now: Date,
 	rand: () => number
 ): Promise<Outcome> {
+	// The channel is also for talking: only a message that mentions the bot is a move.
+	if (!msg.addressed) return IGNORE;
 	const token = wordToken(msg.content);
 	if (!token || token.length < MIN_WORD_LENGTH) return IGNORE;
 
@@ -511,12 +524,6 @@ async function handleChainMessage(
 			})
 		);
 		return { action: 'started' };
-	}
-
-	if (chain.last_user_id === msg.userId) {
-		await react(discord, msg.channelId, msg.messageId, '❌');
-		await reply(discord, msg.channelId, msg.messageId, 'Let someone else add a word first.');
-		return { action: 'refused' };
 	}
 
 	const dict = guildDictionary(s);
@@ -537,6 +544,12 @@ async function handleChainMessage(
 		isWord: dict.isWord,
 		isBlocked: dict.isBlocked,
 	});
+
+	if (chain.last_user_id === msg.userId) {
+		await react(discord, msg.channelId, msg.messageId, '❌');
+		await reply(discord, msg.channelId, msg.messageId, 'Let someone else add a word first.');
+		return { action: 'refused' };
+	}
 
 	if (move.ok === false) {
 		if (move.code === 'too_short') return IGNORE;
@@ -581,7 +594,19 @@ async function handleChainMessage(
 		.bind(seq, move.word, msg.userId, chain.id, seq)
 		.run();
 	await bumpStats(db, msg.guildId, msg.userId, { wordsAdded: 1, longestWord: move.word });
-	await react(discord, msg.channelId, msg.messageId, '✅');
+	// No ✅ without Add Reactions. Say it in words, so a permission slip does not look like
+	// the game ignoring people. (A dead-letter word posts its own summary below.)
+	if (
+		!(await react(discord, msg.channelId, msg.messageId, move.endsDead ? '☠️' : '✅')) &&
+		!move.endsDead
+	) {
+		await reply(
+			discord,
+			msg.channelId,
+			msg.messageId,
+			`✅ **${move.word}**. The next word starts with **${requiredStart(move.word, Boolean(chain.hard_mode))}**.`
+		);
+	}
 
 	if (move.endsDead) {
 		const ended = { ...chain, length: seq, last_word: move.word };
@@ -649,6 +674,144 @@ async function postNewChain(
 	);
 }
 
+// --- ❓ on a word: its definition, or what was probably meant ------------------------------
+
+export interface ReactionInput {
+	guildId: string;
+	channelId: string;
+	messageId: string;
+	/** Who reacted. */
+	userId: string;
+	/** Who wrote the message the reaction is on, and what it said (the bot mention stripped). */
+	authorId?: string;
+	content?: string;
+	addressed?: boolean;
+}
+
+/** The accepted word that came in on this message, in a chain or a round. */
+async function wordOfMessage(db: Db, guildId: string, messageId: string) {
+	const chain: any = await db
+		.prepare(
+			`SELECT w.word AS word FROM shiritori_words w
+			   JOIN shiritori_chains c ON c.id = w.chain_id
+			  WHERE c.guild_id = ? AND w.message_id = ?`
+		)
+		.bind(guildId, messageId)
+		.first();
+	if (chain) return chain;
+	return await db
+		.prepare(
+			`SELECT w.word AS word FROM shiritori_round_words w
+			   JOIN shiritori_rounds r ON r.id = w.round_id
+			  WHERE r.guild_id = ? AND w.message_id = ?`
+		)
+		.bind(guildId, messageId)
+		.first();
+}
+
+/**
+ * Whether this message was part of the game. In the Chain channel, a word addressed to the
+ * bot. In a channel that has hosted a round, a word from someone who played in it (the round
+ * may be over: the game's messages stay game messages).
+ */
+async function isGameMessage(db: Db, s: Settings, input: ReactionInput) {
+	if (s.chainChannelId && s.chainChannelId === input.channelId) return Boolean(input.addressed);
+	if (!input.authorId) return false;
+	const row = await db
+		.prepare(
+			`SELECT 1 AS hit FROM shiritori_players p
+			   JOIN shiritori_rounds r ON r.id = p.round_id
+			  WHERE r.guild_id = ? AND r.channel_id = ? AND p.user_id = ? LIMIT 1`
+		)
+		.bind(input.guildId, input.channelId, input.authorId)
+		.first();
+	return Boolean(row);
+}
+
+/**
+ * Someone reacted ❓ to a message. If it is a word that belonged to the game, reply to it:
+ * the definition when it is a word, or "maybe this was meant" with close spellings when it
+ * is not in the dictionary. A message is answered once per ten minutes, and a person gets a
+ * handful a minute, so a pile of ❓ cannot make the bot spam or hammer the word services.
+ *
+ * The gateway sends every ❓ it sees, so the cheap checks come first and a reaction on
+ * anything that was not a game word returns before any request goes out.
+ */
+export async function handleDefineReaction(
+	db: Db,
+	discord: Discord,
+	input: ReactionInput,
+	fetcher?: Parameters<typeof lookupDefinition>[1]
+): Promise<Outcome> {
+	const s = await getSettings(db, input.guildId);
+	if (!s.enabled || !discord?.channels?.send) return IGNORE;
+
+	// What word is this? The game's own record of an accepted word, else what was typed.
+	const stored = await safely('word of message', () =>
+		wordOfMessage(db, input.guildId, input.messageId)
+	);
+	let word: string | null = stored?.word ? String(stored.word) : null;
+	if (!word) {
+		const typed = wordToken(input.content ?? '');
+		if (!typed || typed.length < MIN_WORD_LENGTH) return IGNORE;
+		if (!(await safely('game message', () => isGameMessage(db, s, input)))) return IGNORE;
+		word = typed;
+	}
+
+	if (
+		!(await consumeQuota(db, 'shiritori-define-user', input.userId, {
+			max: 8,
+			windowSeconds: 60,
+		}))
+	) {
+		return IGNORE;
+	}
+	if (
+		!(await consumeQuota(db, 'shiritori-define-msg', input.messageId, {
+			max: 1,
+			windowSeconds: 600,
+		}))
+	) {
+		return IGNORE;
+	}
+
+	const dict = guildDictionary(s);
+	const send = watched(db, input.guildId, discord).channels.send;
+	const reply = (payload: Record<string, unknown>) =>
+		safely('definition', () =>
+			send(input.channelId, {
+				...payload,
+				message_reference: { message_id: input.messageId, fail_if_not_exists: false },
+				allowed_mentions: { parse: [], replied_user: false },
+			})
+		);
+
+	// Not a word the game knows: say what was probably meant.
+	if (!stored?.word && !dict.isWord(word)) {
+		const near = await lookupSimilar(word, fetcher);
+		if (near === null) return IGNORE;
+		const maybe = near.filter((w) => dict.isWord(w) && !dict.isBlocked(w)).slice(0, 5);
+		await reply({
+			content: maybe.length
+				? `**${word}** is not in the dictionary. Maybe this was meant: ${maybe.map((w) => `**${w}**`).join(', ')}?`
+				: `**${word}** is not in the dictionary, and I could not find a close word.`,
+		});
+		return { action: 'accepted' };
+	}
+
+	let found = await lookupDefinition(word, fetcher);
+	// "tigers" may have no page of its own; try the base word too.
+	const base = dict.lemma(word);
+	if (found.kind === 'none' && base !== word) found = await lookupDefinition(base, fetcher);
+	if (found.kind === 'down') return IGNORE;
+	await reply(
+		found.kind === 'found'
+			? { embeds: [found.embed] }
+			: { content: `No definition found for **${word}**.` }
+	);
+	return { action: 'accepted' };
+}
+
 /** Crew: end the open chain here and start a fresh one (the dashboard's reset). */
 export async function resetChain(
 	db: Db,
@@ -659,6 +822,7 @@ export async function resetChain(
 ): Promise<boolean> {
 	const s = await getSettings(db, guildId);
 	if (!s.chainChannelId) return false;
+	const plainClient = discord;
 	discord = watched(db, guildId, discord);
 	const open = await getOpenChain(db, guildId, s.chainChannelId);
 	if (open) await endChain(db, open, 'reset', null, now);
@@ -670,6 +834,7 @@ export async function resetChain(
 				allowed_mentions: { parse: [] },
 			})
 		);
+		await refreshRules(db, plainClient, guildId, now);
 	}
 	return true;
 }
@@ -1411,9 +1576,17 @@ async function handleRoundMessage(
 	try {
 		await db
 			.prepare(
-				`INSERT INTO shiritori_round_words (round_id, seq, word, lemma, user_id, at) VALUES (?, ?, ?, ?, ?, ?)`
+				`INSERT INTO shiritori_round_words (round_id, seq, word, lemma, user_id, at, message_id) VALUES (?, ?, ?, ?, ?, ?, ?)`
 			)
-			.bind(round.id, seq, move.word, move.lemma, msg.userId, now.toISOString())
+			.bind(
+				round.id,
+				seq,
+				move.word,
+				move.lemma,
+				msg.userId,
+				now.toISOString(),
+				msg.messageId
+			)
 			.run();
 	} catch (err: any) {
 		if (!isUnique(err)) throw err;
@@ -1426,7 +1599,7 @@ async function handleRoundMessage(
 		.bind(round.id, msg.userId)
 		.run();
 	await bumpStats(db, msg.guildId, msg.userId, { wordsAdded: 1, longestWord: move.word });
-	await react(discord, msg.channelId, msg.messageId, '✅');
+	await react(discord, msg.channelId, msg.messageId, move.endsDead ? '☠️' : '✅');
 
 	// The word lands first, so a word that ends in the dead letter still counts.
 	await db
@@ -1472,9 +1645,15 @@ export async function handleMessage(
 	if (msg.isBot) return IGNORE;
 	const s = await getSettings(db, msg.guildId);
 	if (!s.enabled) return IGNORE;
+	const plain = discord;
 	discord = watched(db, msg.guildId, discord);
 	if (s.chainChannelId === msg.channelId) {
-		return handleChainMessage(db, discord, s, msg, now, rand);
+		const out = await handleChainMessage(db, discord, s, msg, now, rand);
+		// A word landed, the chain broke or ended: bring the kept rules message up to date.
+		if (out.action !== 'ignore' && out.action !== 'refused') {
+			await refreshRules(db, plain, msg.guildId, now);
+		}
+		return out;
 	}
 	const round = await liveRoundIn(db, msg.guildId, msg.channelId);
 	if (!round) return IGNORE;
@@ -1599,6 +1778,39 @@ function userOf(body: Interaction) {
 	};
 }
 
+/** True when `/game help` was invoked. */
+export const isGameHelpCommand = (body: Interaction) =>
+	flattenInteractionOptions(body.data).subcommand === 'help';
+
+/**
+ * `/game help`: the games' rules, for anyone, private to whoever asked. Shiritori's rules are
+ * the same text the manager pins (with this server's settings and the chain as it stands),
+ * plus how to start a round and the hidden-agent game in a line.
+ */
+export async function handleGameHelp(body: Interaction, db: Db) {
+	const guildId = body.guild_id;
+	if (!guildId) return ephemeral('/game only works inside a server.');
+	if (!db) return ephemeral('The database is not available right now.');
+	const s = await getSettings(db, guildId);
+	const note = s.enabled
+		? ''
+		: '*Shiritori is not turned on in this server yet. A server manager can switch it on under Activity in the dashboard.*\n\n';
+	const rules = rulesText(s, s.enabled ? await rulesStatus(db, guildId, s) : '');
+	// Discord allows 2000 characters. The rules and the status come first; the extras are
+	// dropped, last one first, until it fits.
+	const extras = [
+		'🕵️ **Hidden agent** (voice): join a voice channel and run **/game start**. All but one player get a secret word; the agent does not. Talk, vote, eject who you think it is. Played in the Activity.',
+		'`/game stop` ends a round, `/game status` shows it. `/define` and `/synonym` look words up where a server has them on.',
+	];
+	const head = `${note}${rules}`;
+	let text = [head, ...extras].join('\n\n');
+	while (text.length > 2000 && extras.length > 0) {
+		extras.pop();
+		text = [head, ...extras].join('\n\n');
+	}
+	return ephemeral(text.slice(0, 2000));
+}
+
 /** True when `/game shiritori` was invoked, so the route can send it here. */
 export const isShiritoriCommand = (body: Interaction) =>
 	flattenInteractionOptions(body.data).subcommand === 'shiritori';
@@ -1614,6 +1826,235 @@ async function isVoiceChannel(db: Db, guildId: string, channelId: string) {
 	return row?.type === 2 || row?.type === 13;
 }
 
+/** The rules message, from the server's own settings. */
+export function rulesText(s: Settings, status = '') {
+	const dead = [...new Set(s.deadLetters.toUpperCase().split(''))].join(', ');
+	const start = s.hardMode ? 'the last **two** letters' : 'the last letter';
+	return (
+		'🔗 **Shiritori: the word chain**\n' +
+		`To play, mention me with one word: **@SpaceBot eagle**. Anything without the mention is just chat.\n\n` +
+		`• Each word starts with ${start} of the word before it.\n` +
+		'• Real English words only, at least 3 letters. Plurals and other forms of a used word count as used.\n' +
+		'• A word that was already used, or does not fit, **breaks the chain** and a new one starts.\n' +
+		'• No one goes twice in a row.\n' +
+		`• Each chain has a dead letter (one of ${dead}). A word that ends in it ends the chain.\n` +
+		'• A word on this server’s block list gets a ❌ and nothing else.\n' +
+		'• React ❓ to a word and I will post its definition. On a word that is not in the dictionary I will suggest what was meant.\n\n' +
+		`For a timed game with turns (${s.turnSeconds} seconds each), run **/game shiritori** in any other text channel.` +
+		(status ? `\n\n${status}` : '')
+	);
+}
+
+/** Where the rules message the bot keeps up to date is, or null. */
+async function getRulesMessage(db: Db, guildId: string) {
+	const row: any = await safely('rules message', () =>
+		db
+			.prepare(
+				`SELECT rules_channel_id AS channelId, rules_message_id AS messageId
+				   FROM shiritori_settings WHERE guild_id = ?`
+			)
+			.bind(guildId)
+			.first()
+	);
+	return row?.channelId && row?.messageId
+		? { channelId: String(row.channelId), messageId: String(row.messageId) }
+		: null;
+}
+
+async function setRulesMessage(
+	db: Db,
+	guildId: string,
+	channelId: string | null,
+	messageId: string | null
+) {
+	await db
+		.prepare(
+			`INSERT INTO shiritori_settings (guild_id, rules_channel_id, rules_message_id) VALUES (?, ?, ?)
+			 ON CONFLICT(guild_id) DO UPDATE SET
+			   rules_channel_id = excluded.rules_channel_id, rules_message_id = excluded.rules_message_id`
+		)
+		.bind(guildId, channelId, messageId)
+		.run();
+}
+
+/** The "Right now" section of the rules message: the chain as it stands. */
+export async function rulesStatus(db: Db, guildId: string, s: Settings, now = new Date()) {
+	const stamp = `<t:${Math.floor(now.getTime() / 1000)}:R>`;
+	if (!s.enabled || !s.chainChannelId) {
+		return `**Right now** (updated ${stamp})\nThe always-on chain is off.`;
+	}
+	const chain = await getOpenChain(db, guildId, s.chainChannelId);
+	const record = await chainRecord(db, guildId, chain?.id ?? 0);
+	const best = record ? `\nLongest chain so far: **${record}** words.` : '';
+	if (!chain) {
+		return (
+			`**Right now** (updated ${stamp})\nNo chain is running in <#${s.chainChannelId}>. ` +
+			`Mention me with a word to start one.${best}`
+		);
+	}
+	const need = requiredStart(chain.last_word, Boolean(chain.hard_mode));
+	const by = chain.length > 0 && chain.last_user_id ? ` by <@${chain.last_user_id}>` : '';
+	return (
+		`**Right now** (updated ${stamp})\n` +
+		`Chain in <#${s.chainChannelId}>: **${chain.length}** ${chain.length === 1 ? 'word' : 'words'}. ` +
+		`Last word: **${chain.last_word}**${by}.\n` +
+		`The next word starts with **${need}**. Dead letter: **${chain.dead_letter}**.${best}`
+	);
+}
+
+/**
+ * Edit the kept rules message so its status matches the chain. Failures are quiet: the game
+ * does not depend on it, and a message that was deleted just stops being tracked. Pass the
+ * plain client, not the watched one, so this never lands in the dashboard's health notice.
+ */
+export async function refreshRules(db: Db, discord: Discord, guildId: string, now = new Date()) {
+	if (!discord?.channels?.editMessage) return false;
+	const where = await getRulesMessage(db, guildId);
+	if (!where) return false;
+	const s = await getSettings(db, guildId);
+	try {
+		await discord.channels.editMessage(where.channelId, where.messageId, {
+			content: rulesText(s, await rulesStatus(db, guildId, s, now)),
+			allowed_mentions: { parse: [] },
+		});
+		return true;
+	} catch (err: any) {
+		if (err?.status === 404)
+			await safely('forget rules', () => setRulesMessage(db, guildId, null, null));
+		else
+			log.warn(
+				`[Shiritori] Could not update the rules message in ${guildId}: ${err?.message}`
+			);
+		return false;
+	}
+}
+
+/** `/game shiritori rules:True`: post the rules here and pin them. Managers only. */
+async function postRules(
+	body: Interaction,
+	db: Db,
+	guildId: string,
+	channelId: string,
+	discord: Discord
+) {
+	if (!(await maySetChainChannel(db, guildId, body.member))) {
+		return {
+			response: ephemeral(
+				'Only people who can manage this bot’s commands can post the rules. Ask a server manager.'
+			),
+		};
+	}
+	if (!discord?.channels?.send) return { response: ephemeral('I can’t post right now.') };
+	const settings = await getSettings(db, guildId);
+	const text = rulesText(settings, await rulesStatus(db, guildId, settings));
+	// Already posted and kept up to date: refresh that message instead of posting a second.
+	const kept = await getRulesMessage(db, guildId);
+	if (kept && (await refreshRules(db, discord, guildId))) {
+		return {
+			response: ephemeral(
+				`The rules message in <#${kept.channelId}> is up to date. ` +
+					'It keeps its "Right now" section current as the chain moves.'
+			),
+		};
+	}
+	const posted: any = await safely('rules', () =>
+		discord.channels.send(channelId, { content: text, allowed_mentions: { parse: [] } })
+	);
+	if (!posted?.id) {
+		return {
+			response: ephemeral(
+				'I couldn’t post here. Check that I can send messages in this channel.'
+			),
+		};
+	}
+	await safely('track rules', () => setRulesMessage(db, guildId, channelId, String(posted.id)));
+	const pinned = discord.channels.pin
+		? await safely('pin rules', () => discord.channels.pin(channelId, posted.id))
+		: null;
+	return {
+		response: ephemeral(
+			pinned !== null
+				? 'Posted and pinned the rules. Its "Right now" section updates as the chain moves.'
+				: 'Posted the rules, but I couldn’t pin them. Give me the Pin Messages permission, or pin the message yourself. Its "Right now" section still updates.'
+		),
+	};
+}
+
+/**
+ * Who may point the chain at a channel with `/game shiritori channel:`. It is the
+ * dashboard's "manage commands" permission: Manage Server by default, or the level
+ * set on the Settings page (roles saved in the database count, but no dashboard form writes
+ * them). Administrators always pass. A member
+ * object with no permissions fails closed.
+ */
+export async function maySetChainChannel(
+	db: Db,
+	guildId: string,
+	member: { permissions?: unknown; roles?: unknown } | null | undefined
+) {
+	const rule = (await getGuildSettings(db, guildId))?.permission_settings?.manageCommands;
+	const name = String(rule?.permission || 'MANAGE_GUILD');
+	const required = (PERMISSION_FLAGS as Record<string, { value: string }>)[name]?.value ?? '32';
+	if (memberHasCommandPermission(member?.permissions, required)) return true;
+	const held = new Set(Array.isArray(member?.roles) ? member!.roles.map(String) : []);
+	return (Array.isArray(rule?.roles) ? rule.roles : []).some((id: unknown) =>
+		held.has(String(id))
+	);
+}
+
+/**
+ * `/game shiritori channel:#name` makes that channel the always-on chain;
+ * `/game shiritori off:True` stops it. Managers only (see `maySetChainChannel`).
+ */
+async function setChainChannel(
+	body: Interaction,
+	db: Db,
+	guildId: string,
+	channelId: string | null,
+	discord: Discord
+) {
+	if (!(await maySetChainChannel(db, guildId, body.member))) {
+		return {
+			response: ephemeral(
+				'Only people who can manage this bot’s commands can change the chain channel. Ask a server manager.'
+			),
+		};
+	}
+	const settings = await getSettings(db, guildId);
+	if (channelId === null) {
+		if (!settings.chainChannelId) {
+			return { response: ephemeral('There is no always-on chain to turn off.') };
+		}
+		await upsertSettings(db, guildId, { ...settings, chainChannelId: null });
+		log.info(`[Shiritori] chain channel cleared in ${guildId} by ${userOf(body).id}`);
+		await refreshRules(db, discord, guildId);
+		return {
+			response: ephemeral(
+				'The always-on chain is off. `/game shiritori` rounds still work. ' +
+					'Set a channel again any time.'
+			),
+		};
+	}
+	const known: any = await safely('channel', () =>
+		db
+			.prepare(`SELECT type FROM guild_channels WHERE guild_id = ? AND channel_id = ?`)
+			.bind(guildId, channelId)
+			.first()
+	);
+	if (known && known.type !== 0 && known.type !== 5) {
+		return { response: ephemeral('Pick a text channel for the chain.') };
+	}
+	await upsertSettings(db, guildId, { ...settings, enabled: true, chainChannelId: channelId });
+	await refreshRules(db, discord, guildId);
+	log.info(`[Shiritori] chain channel set to ${channelId} in ${guildId} by ${userOf(body).id}`);
+	return {
+		response: ephemeral(
+			`Done. <#${channelId}> is now the Shiritori chain: anyone can post a word there. ` +
+				'Change the rules or turn it off under Activity in the dashboard, or with `off:True`.'
+		),
+	};
+}
+
 export async function handleShiritoriCommand(body: Interaction, db: Db, discord: Discord) {
 	const guildId = body.guild_id;
 	const channelId = body.channel_id;
@@ -1625,6 +2066,16 @@ export async function handleShiritoriCommand(body: Interaction, db: Db, discord:
 	if (!(await getCommandByName(db, 'game', guildId))) {
 		return { response: ephemeral('Game is not turned on in this server.') };
 	}
+	const leaves = flattenInteractionOptions(body.data).leaves;
+	const picked = leaves.find((o) => o.name === 'channel')?.value;
+	const off = leaves.find((o) => o.name === 'off')?.value === true;
+	const rules = leaves.find((o) => o.name === 'rules')?.value === true;
+	if ([Boolean(picked), off, rules].filter(Boolean).length > 1) {
+		return { response: ephemeral('Use one of channel, off or rules at a time.') };
+	}
+	if (rules) return postRules(body, db, guildId, channelId, watched(db, guildId, discord));
+	if (picked) return setChainChannel(body, db, guildId, String(picked), discord);
+	if (off) return setChainChannel(body, db, guildId, null, discord);
 	discord = watched(db, guildId, discord);
 	const inCall = (await voiceChannelOf(db, guildId, user.id)) === channelId;
 	const live = await liveRoundIn(db, guildId, channelId);
