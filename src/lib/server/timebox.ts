@@ -1055,9 +1055,13 @@ async function audience(db, s: Session): Promise<string[]> {
 
 function phaseAnnouncement(s: Session): string {
 	if (s.status === 'done') {
-		// Discord shows `<t:…:t>` in each reader's own time zone.
-		const at = s.ended_at ? ` at <t:${unix(s.ended_at)}:t>` : '';
-		return `Timebox finished${at}: ${s.rounds} focus ${s.rounds === 1 ? 'block' : 'blocks'} done.`;
+		// What the timebox was for: all its focus blocks, not the breaks between.
+		const mins = s.focus_minutes * s.rounds;
+		const length =
+			mins >= 60
+				? `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}`
+				: `${mins} min`;
+		return `Timebox finished: ${length} of focus, ${s.rounds} ${s.rounds === 1 ? 'block' : 'blocks'} done.`;
 	}
 	const ends = s.phase_ends_at ? ` Ends <t:${unix(s.phase_ends_at)}:R>.` : '';
 	if (s.phase === 'focus')
