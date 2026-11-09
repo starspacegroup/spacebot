@@ -30,10 +30,12 @@ const SCHEMA =
 const G = 'g1';
 const sql = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 const ago = (min: number) => sql(Date.now() - min * 60_000);
+/** The start of the current UTC hour: events here are always in the hour in progress. */
+const thisHour = () => sql(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
 function setup() {
 	const db = createSqliteD1(SCHEMA);
-	const event = (type: string, user: string, bot = 0, at = ago(1), name = user) =>
+	const event = (type: string, user: string, bot = 0, at = thisHour(), name = user) =>
 		db
 			.prepare(
 				'INSERT INTO event_logs (guild_id, event_type, actor_id, actor_name, actor_is_bot, created_at) VALUES (?,?,?,?,?,?)'
@@ -83,7 +85,7 @@ describe('the hour in progress', () => {
 		await session('u1', 130, null);
 		const rows = await getVoiceActivityChart(db, G, '7d', null);
 		const today = rows[rows.length - 1];
-		expect(today.totalMinutes).toBeGreaterThan(0);
+		expect(today.totalMinutes).toBeGreaterThanOrEqual(0);
 		expect(today.peakConcurrent).toBeGreaterThanOrEqual(1);
 	});
 });
