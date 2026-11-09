@@ -141,3 +141,9 @@ A review on 2026-11-08 found numbers that did not mean what they said. These are
 - **Member count** changes from join and leave events are written by one statement that reads the
   latest row, so a raid cannot lose updates. They carry `source = 'event'` and do not count as a
   reading from Discord, so a busy server is still checked against Discord on schedule.
+
+### Access and cleanup notes (2026-11-09)
+
+- `GET /api/stats/:guildId` needs a `stats:read` key for that server, or a signed-in admin. See `docs/api.md`.
+- Daily voice seconds come from the sessions, cut at the day edges, not from the sum of the hourly rows. A visit that runs through an hour with no events has no hourly row, so the sum missed it.
+- One-time prod cleanup on 2026-11-09: 530 reconcile-made duplicate voice rows deleted (about 118 h, 3 servers, 90 days); hourly voice time and unique users for the 139 affected hours rebuilt from sessions; every daily row in the 90-day raw window got real unique users, human message and member counts, and voice seconds from the raw rows. Daily rows older than the raw window were left as they were.

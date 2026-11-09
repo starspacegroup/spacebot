@@ -897,7 +897,18 @@ export async function distinctPeopleForDay(db, guildId, from, to) {
 			)
 			.bind(guildId, from, to)
 			.first();
+		// Seconds in voice that day, straight from the sessions. Summing the hourly rows misses
+		// a visit that runs through an hour with no events (no hourly row is built for it).
+		const seconds = await db
+			.prepare(
+				`SELECT CAST(ROUND(SUM((julianday(MIN(COALESCE(left_at, ?), ?)) - julianday(MAX(joined_at, ?))) * 86400)) AS INTEGER) AS s
+FROM voice_sessions
+WHERE guild_id = ? AND joined_at < ? AND COALESCE(left_at, ?) > ?`
+			)
+			.bind(to, to, from, guildId, to, to, from)
+			.first();
 		return {
+			voiceSeconds: Math.max(seconds?.s || 0, 0),
 			voice: voice?.n || 0,
 			messages: messages?.n || 0,
 			humanMessages: messages?.human || 0,
@@ -1013,6 +1024,7 @@ AND period_start < ?
 			const distinct = await distinctPeopleForDay(db, guildId, day.day_start, day.day_end);
 			if (distinct) {
 				dayStats.voice_unique_users = distinct.voice;
+				dayStats.voice_total_seconds = distinct.voiceSeconds;
 				dayStats.message_unique_users = distinct.messages;
 			}
 

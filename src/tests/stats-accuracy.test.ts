@@ -113,7 +113,33 @@ describe('message chart', () => {
 		await event('MESSAGE_CREATE', 'c', 0, '2026-10-01 09:10:00');
 		await event('MESSAGE_CREATE', 'c', 1, '2026-10-01 10:10:00');
 		const d = await distinctPeopleForDay(db, G, '2026-10-01 00:00:00', '2026-10-02 00:00:00');
-		expect(d).toEqual({ voice: 0, messages: 3, humanMessages: 3 });
+		expect(d).toEqual({ voice: 0, messages: 3, humanMessages: 3, voiceSeconds: 0 });
+	});
+
+	it("counts a day's voice seconds from sessions, cut at the day edges", async () => {
+		const { db } = setup();
+		// 23:00 to 01:30 next day: one hour on the 1st, 1.5 h on the 2nd. No events, so no hourly rows.
+		await db
+			.prepare(
+				`INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, left_at, duration_seconds)
+				 VALUES (?, 'u', 'c', 'Chat', '2026-10-01 23:00:00', '2026-10-02 01:30:00', 9000)`
+			)
+			.bind(G)
+			.run();
+		const first = await distinctPeopleForDay(
+			db,
+			G,
+			'2026-10-01 00:00:00',
+			'2026-10-02 00:00:00'
+		);
+		const second = await distinctPeopleForDay(
+			db,
+			G,
+			'2026-10-02 00:00:00',
+			'2026-10-03 00:00:00'
+		);
+		expect(first.voiceSeconds).toBe(3600);
+		expect(second.voiceSeconds).toBe(5400);
 	});
 });
 
