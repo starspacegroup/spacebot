@@ -7,6 +7,8 @@
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
 	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
+	import VoicePresence from '$lib/components/stats/VoicePresence.svelte';
+	import TextConversations from '$lib/components/stats/TextConversations.svelte';
 
 	const { data } = $props();
 
@@ -143,6 +145,7 @@
 	const TABS = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'voice', label: 'Voice' },
+		{ id: 'text', label: 'Text' },
 		{ id: 'activity', label: 'Activity' },
 		{ id: 'automations', label: 'Automations' },
 	] as const;
@@ -821,6 +824,10 @@
 					preview={previewData?.members ?? null}
 				/>
 
+				{#if !preview}
+					<VoicePresence serverId={data.serverId} period={selectedPeriod} />
+				{/if}
+
 				<!-- Voice Activity Charts Section -->
 				<section class="chart-section">
 					<h2 class="section-title">
@@ -1148,6 +1155,8 @@
 				</section>
 			{/snippet}
 		</VoiceLive>
+	{:else if tab === 'text' && !preview}
+		<TextConversations serverId={data.serverId} period={selectedPeriod} />
 	{:else if !hasStatisticsData && !isStatisticsLoading}
 		<div class="empty-state">
 			<div class="empty-icon" aria-hidden="true">
