@@ -26,6 +26,7 @@ import {
 import { getBoostingMembersFromCache, getRolesFromCache } from '$lib/db/guild-cache.js';
 import { getLiveVoiceChannels } from '$lib/db/live-voice.js';
 import { runLimited } from '$lib/server/run-limited.js';
+import { didFail } from '$lib/db/load-failed.js';
 
 // Shared by the admin/[serverId]/stats page load (cache-read path) and the
 // /api/admin/[serverId]/stats-data endpoint (the client-side fetch that
@@ -185,6 +186,16 @@ export async function fetchStatsPageLiveData(
 			cachedRoles,
 			liveVoiceSnapshot,
 		};
+
+		// A part that could not read the database is empty, not zero. Say which ones, and keep
+		// the answer out of the cache so the next load tries again.
+		const failedParts = Object.entries(data)
+			.filter(([, value]) => didFail(value))
+			.map(([key]) => key);
+		if (failedParts.length > 0) {
+			log.warn(`[Stats] Not caching ${serverId}: could not load ${failedParts.join(', ')}`);
+			return { success: true, data: { ...data, failedParts } };
+		}
 
 		STATS_CACHE.set(statsCacheKey(serverId, selectedPeriod, timezone), {
 			cachedAt: Date.now(),

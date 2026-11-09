@@ -138,3 +138,32 @@ describe('top voice users', () => {
 		expect(Math.round(rows[0].total_seconds / 60)).toBe(60);
 	});
 });
+
+describe('a database that cannot be read', () => {
+	const broken = {
+		prepare() {
+			throw new Error('D1 is overloaded');
+		},
+	};
+
+	it('marks empty answers as failed, so they are not shown or cached as real zeros', async () => {
+		const { didFail } = await import('$lib/db/load-failed.js');
+		expect(didFail(await getVoiceActivityChart(broken, G, '7d', null))).toBe(true);
+		expect(didFail(await getMessageActivityChart(broken, G, '7d', null))).toBe(true);
+		expect(didFail(await getMemberGrowthChart(broken, G, '7d', null))).toBe(true);
+		expect(didFail(await getTopVoiceUsers(broken, G, 10, '7d'))).toBe(true);
+	});
+
+	it('does not mark a real, empty answer', async () => {
+		const { didFail } = await import('$lib/db/load-failed.js');
+		const { db } = setup();
+		expect(didFail(await getTopVoiceUsers(db, G, 10, '7d'))).toBe(false);
+		expect(didFail(await getMemberGrowthChart(db, G, '7d', null))).toBe(false);
+	});
+
+	it('the mark does not leak into JSON', async () => {
+		const { failed } = await import('$lib/db/load-failed.js');
+		expect(JSON.stringify(failed([1, 2]))).toBe('[1,2]');
+		expect(JSON.stringify(failed({ a: 1 }))).toBe('{"a":1}');
+	});
+});

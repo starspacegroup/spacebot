@@ -3,6 +3,7 @@
  * Provides comprehensive analytics and metrics for the dashboard
  */
 
+import { failed } from './load-failed.js';
 import { log } from '../log.js';
 import { getTimezoneOffsetSQL } from '../timezone.js';
 import { enrichRowsWithActorAvatars } from './avatar-enrichment.js';
@@ -507,7 +508,7 @@ export async function getAutomationExecutionHistory(db, guildId, timezone = null
 		return historyMap;
 	} catch (error) {
 		log.error('Failed to fetch automation execution history:', error);
-		return {};
+		return failed({});
 	}
 }
 
@@ -578,7 +579,7 @@ export async function getActivityHeatmap(db, guildId, timezone = null, period = 
 		return result.results || [];
 	} catch (error) {
 		log.error('Failed to fetch activity heatmap:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -614,7 +615,7 @@ export async function getCategoryTrends(db, guildId, timezone = null, period = '
 		return result.results || [];
 	} catch (error) {
 		log.error('Failed to fetch category trends:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -735,7 +736,7 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = '30d') 
 		return enrichRowsWithActorAvatars(db, guildId, result.results || []);
 	} catch (error) {
 		log.error('Failed to fetch top voice users:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -815,7 +816,7 @@ export async function getTopVideoUsers(db, guildId, limit = 20, period = '30d') 
 		return enrichRowsWithActorAvatars(db, guildId, result.results || []);
 	} catch (error) {
 		log.error('Failed to fetch top video users:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -895,6 +896,6 @@ export async function getTopScreenshareUsers(db, guildId, limit = 20, period = '
 		return enrichRowsWithActorAvatars(db, guildId, result.results || []);
 	} catch (error) {
 		log.error('Failed to fetch top screenshare users:', error);
-		return [];
+		return failed([]);
 	}
 }

@@ -3,6 +3,7 @@
  * Handles recording and retrieving historical server metrics
  */
 
+import { failed } from './load-failed.js';
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
 import { getTimezoneOffsetSQL } from '../timezone.js';
@@ -385,7 +386,7 @@ export async function getServerStatsHistory(db, guildId, options: Record<string,
 		return result.results || [];
 	} catch (error) {
 		log.error('Failed to get server stats history:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -594,7 +595,7 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
 		};
 	} catch (error) {
 		log.error('Failed to get member count changes:', error);
-		return {
+		return failed({
 			current: 0,
 			day: 0,
 			week: 0,
@@ -604,7 +605,7 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
 			weekHuman: null,
 			monthHuman: null,
 			botCount: null,
-		};
+		});
 	}
 }
 
@@ -640,7 +641,7 @@ export async function getPeakMemberCount(db, guildId, period = 'all') {
 		};
 	} catch (error) {
 		log.error('Failed to get peak member count:', error);
-		return { peak: 0, peakDate: null };
+		return failed({ peak: 0, peakDate: null });
 	}
 }
 

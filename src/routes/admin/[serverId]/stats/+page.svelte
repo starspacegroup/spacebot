@@ -79,7 +79,8 @@
 			.then((json) => {
 				liveStats = json;
 				statsKey = key;
-				statsFailed = false;
+				// Some parts could not be read; they show as empty, not as real zeros.
+				statsFailed = Array.isArray(json?.failedParts) && json.failedParts.length > 0;
 			})
 			.catch((err) => {
 				if (err?.name === 'AbortError') return; // left the page; load again on return
@@ -768,7 +769,8 @@
 
 	{#if statsFailed && !statsLoading}
 		<div class="sp-failed" role="alert">
-			<span>The statistics could not be loaded, so the zeros below are not real numbers.</span
+			<span
+				>Some statistics could not be loaded, so empty charts below are not real zeros.</span
 			>
 			<button type="button" onclick={() => (statsRetry += 1)}>Try again</button>
 		</div>

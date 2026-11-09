@@ -4,6 +4,7 @@
  * Smart enough to skip data that's already been processed
  */
 
+import { didFail, failed, failedIf } from './load-failed.js';
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
 import { getTimezoneOffsetSQL } from '../timezone.js';
@@ -1212,13 +1213,13 @@ export async function getVoiceActivitySummary(db, guildId, period = '7d') {
 		};
 	} catch (error) {
 		log.error('Failed to get voice activity summary:', error);
-		return {
+		return failed({
 			totalSeconds: 0,
 			totalMinutes: 0,
 			totalHours: 0,
 			uniqueUsers: 0,
 			avgSessionMinutes: 0,
-		};
+		});
 	}
 }
 
@@ -1262,7 +1263,7 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
 		};
 	} catch (error) {
 		log.error('Failed to get member growth summary:', error);
-		return { joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 };
+		return failed({ joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 });
 	}
 }
 
@@ -1723,7 +1724,7 @@ FROM running_count
 		};
 	} catch (error) {
 		log.error('Failed to get current hour partial stats:', error);
-		return empty;
+		return failed({ ...empty });
 	}
 }
 
@@ -1866,7 +1867,7 @@ export async function getMemberGrowthChart(db, guildId, period = '30d', timezone
 		);
 	} catch (error) {
 		log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -1997,15 +1998,18 @@ export async function getVoiceActivityChart(db, guildId, period = '30d', timezon
 		}
 
 		// Fill in missing dates with zero values so the chart is continuous
-		return fillDateGaps(
-			rawData,
-			days,
-			{ totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 },
-			timezone
+		return failedIf(
+			didFail(partial),
+			fillDateGaps(
+				rawData,
+				days,
+				{ totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 },
+				timezone
+			)
 		);
 	} catch (error) {
 		log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -2073,14 +2077,17 @@ FROM ${rollupRows('message_count, message_human_count, message_unique_users, mes
 			if (exact) row.messageUniqueUsers = exact.humanMessages;
 		}
 
-		return fillDateGaps(
-			rawData,
-			days,
-			{ messageCount: 0, botMessageCount: 0, messageUniqueUsers: 0 },
-			timezone
+		return failedIf(
+			didFail(partial),
+			fillDateGaps(
+				rawData,
+				days,
+				{ messageCount: 0, botMessageCount: 0, messageUniqueUsers: 0 },
+				timezone
+			)
 		);
 	} catch (error) {
 		log.error(`Failed to get message activity chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
 }
