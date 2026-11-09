@@ -118,7 +118,7 @@
 					<div>
 						<h3>Recent starts</h3>
 						<ul>
-							{#each data.starters.recent as s (s.id + s.joined_at)}
+							{#each data.starters.recent as s, i (`${s.id}|${s.joined_at}|${i}`)}
 								<li>
 									<strong>{s.name}</strong> in {s.channel_name ?? 'a channel'}, {when(
 										s.joined_at
@@ -135,7 +135,7 @@
 					<div>
 						<h3>Recent clear-outs</h3>
 						<ul>
-							{#each data.killers.recent as c (c.id + c.joined_at)}
+							{#each data.killers.recent as c, i (`${c.id}|${c.joined_at}|${i}`)}
 								<li>
 									<strong>{c.name}</strong> joined {c.channel_name ??
 										'a channel'}, {when(c.joined_at)}:

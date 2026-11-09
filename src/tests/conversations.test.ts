@@ -74,6 +74,12 @@ describe('voice: who starts chats, big chats, and kills them', () => {
 		expect(BIG_CHAT).toBe(4);
 	});
 
+	it('ignores a visit that ends before it begins, so one join is not listed twice', () => {
+		const out = analyse([v('a', 'c1', 0, 30), v('a', 'c1', 0, -5)], FROM, '30d');
+		expect(out.starters.total).toBe(1);
+		expect(out.starters.recent).toHaveLength(1);
+	});
+
 	it('does not call it a start when someone was already there, and ignores a stale session', () => {
 		const out = analyse([v('a', 'c1', -30, 100), v('b', 'c1', 0, 10)], FROM, '30d');
 		expect(out.starters.leaders.map((l) => l.id)).not.toContain('b');

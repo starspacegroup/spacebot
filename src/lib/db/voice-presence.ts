@@ -144,6 +144,8 @@ export function analyse(
 	const out = EMPTY(period);
 	const byChannel = new Map<string, Row[]>();
 	for (const r of rows) {
+		// A visit that ends before it begins is a leftover, not a visit.
+		if (r.closed && r.end < r.start) continue;
 		if (!byChannel.has(r.channel_id)) byChannel.set(r.channel_id, []);
 		byChannel.get(r.channel_id)!.push(r);
 	}

@@ -142,7 +142,7 @@
 			<div class="tc-card">
 				<h3>Recent conversations</h3>
 				<ul>
-					{#each data.starters.recent as c (c.channel_id + c.started_at)}
+					{#each data.starters.recent as c, i (`${c.channel_id}|${c.started_at}|${i}`)}
 						<li>
 							<strong>{c.starter.name}</strong> in #{c.channel_name ?? 'a channel'}, {when(
 								c.started_at

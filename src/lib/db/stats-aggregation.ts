@@ -167,7 +167,7 @@ async function closeVoiceSessions(db, sessions, closedAt, leaveEventId = null) {
 				`
       UPDATE voice_sessions
       SET
-        left_at = ?,
+        left_at = MAX(?, joined_at),
         leave_event_id = ?,
         duration_seconds = MAX(CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER), 0)
       WHERE id = ?
