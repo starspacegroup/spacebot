@@ -11,6 +11,8 @@ import { processVoiceSessions, reconcileVoiceSessions } from '$lib/db/stats-aggr
 
 const SCHEMA =
 	fs.readFileSync(path.resolve('migrations/0010_aggregated_stats.sql'), 'utf8') +
+	fs.readFileSync(path.resolve('migrations/0009_server_stats.sql'), 'utf8') +
+	fs.readFileSync(path.resolve('migrations/0013_server_stats_human_count.sql'), 'utf8') +
 	fs.readFileSync(path.resolve('migrations/0099_stats_accuracy.sql'), 'utf8') +
 	`CREATE TABLE event_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT, event_type TEXT,

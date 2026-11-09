@@ -16,6 +16,8 @@ import { getTopVoiceUsers } from '$lib/db/statistics.js';
 
 const SCHEMA =
 	fs.readFileSync(path.resolve('migrations/0010_aggregated_stats.sql'), 'utf8') +
+	fs.readFileSync(path.resolve('migrations/0009_server_stats.sql'), 'utf8') +
+	fs.readFileSync(path.resolve('migrations/0013_server_stats_human_count.sql'), 'utf8') +
 	fs.readFileSync(path.resolve('migrations/0099_stats_accuracy.sql'), 'utf8') +
 	`CREATE TABLE event_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT, event_type TEXT,
@@ -190,5 +192,37 @@ describe('period asked for in the URL', () => {
 		expect(normalizeStatsPeriod('13d', null)).toBe('30d');
 		expect(normalizeStatsPeriod('<script>', null)).toBe('30d');
 		expect(normalizeStatsPeriod(null, 7)).toBe('7d');
+	});
+});
+
+describe('member count nudges', () => {
+	it('a raid of joins loses none, and a nudge does not look like a fresh Discord reading', async () => {
+		const { updateMemberCount, getLastDiscordReadingAt, getLatestServerStats } =
+			await import('$lib/db/server-stats.js');
+		const { db } = setup();
+		await db
+			.prepare(
+				"INSERT INTO server_stats (guild_id, member_count, bot_count, human_count, recorded_at) VALUES (?, 100, 10, 90, '2026-01-01 00:00:00')"
+			)
+			.bind(G)
+			.run();
+		await Promise.all([
+			updateMemberCount(db, G, 'join'),
+			updateMemberCount(db, G, 'join'),
+			updateMemberCount(db, G, 'join', true),
+			updateMemberCount(db, G, 'leave'),
+		]);
+		const latest = await getLatestServerStats(db, G);
+		expect(latest.member_count).toBe(102);
+		expect(latest.bot_count).toBe(11);
+		expect(latest.human_count).toBe(91);
+		// Only the Discord reading counts as the last check.
+		expect(await getLastDiscordReadingAt(db, G)).toBe('2026-01-01 00:00:00');
+	});
+
+	it('refuses to guess when there is no baseline', async () => {
+		const { updateMemberCount } = await import('$lib/db/server-stats.js');
+		const { db } = setup();
+		expect((await updateMemberCount(db, G, 'join')).success).toBe(false);
 	});
 });
