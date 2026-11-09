@@ -64,9 +64,9 @@
 					{
 						id: 'v-kills',
 						title: 'Kills chats',
-						blurb: `Joined, and everyone left within ${data.thresholds.clear_seconds / 60} minutes.`,
+						blurb: `Joined a chat that had been going a while, and everyone left within ${data.thresholds.clear_seconds} seconds.`,
 						unit: 'chats emptied',
-						empty: 'No one emptied a chat in this range.',
+						empty: 'No one emptied a chat in this range. A leave only counts if it reads as a reaction.',
 						rows: data.killers.leaders.map((l: any) => ({
 							...l,
 							value: String(l.kills),

@@ -55,9 +55,13 @@ and add no storage: voice from `voice_sessions`, text from the `MESSAGE_CREATE` 
 - _Starts big chats_: a start that reached **4 people together at once**, the starter
   included, while the starter was still there. It is a true "at the same time" count: people
   dropping in one after another do not add up.
-- _Kills chats_: joined a channel that had **at least two other people** in it, and they all
-  left within **2 minutes**. Joins where only some left are counted as "other joins" under
-  the name. Often a coincidence once; look for the same name again and again.
+- _Kills chats_: joined a chat that had been going a while (at least two people, each there
+  **3+ minutes**) and they all left within **60 seconds**. A leave only counts when it reads as
+  a reaction: it came **5+ seconds** after the join (sooner is a coincidence), the leaver did
+  not move to another channel or come back within **5 minutes**, and the joiner was still there
+  **2+ minutes** after the last of them left (if the joiner left too, the call ended). Joins
+  where only some left are shown as "other joins" under the name, but only people with at least
+  one full kill are listed. Often a coincidence once; look for the same name again and again.
 - A session still open after 12 hours is taken as a missed leave. A session made by the
   repair pass has no join event, so it counts as a person and shows an unknown name until one
   is found.

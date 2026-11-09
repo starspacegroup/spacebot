@@ -124,9 +124,67 @@ describe('voice: who starts chats, big chats, and kills them', () => {
 			FROM,
 			'30d'
 		);
-		expect(partial.killers.leaders[0]).toMatchObject({ kills: 0, partial: 1, people_left: 1 });
+		// a partial clear is recorded, but it does not make anyone a killer
+		expect(partial.killers.leaders).toEqual([]);
+		expect(partial.killers.recent[0]).toMatchObject({ left: 1, emptied: false });
 		const lone = analyse([v('a', 'c1', -20, 31), v('k', 'c1', 30, 60)], FROM, '30d');
-		expect(lone.killers.leaders[0]).toMatchObject({ kills: 0, partial: 1 });
+		expect(lone.killers.leaders).toEqual([]);
+		expect(lone.killers.recent[0]).toMatchObject({ left: 1, present: 1 });
+	});
+
+	describe('what does not count as killing a chat', () => {
+		const S = (n: number) => n / 60; // seconds, as the minutes the helper takes
+		const kill = (rows: any[]) => analyse(rows, FROM, '30d').killers.leaders;
+
+		it('a leave more than a minute after the join is not held against the joiner', () => {
+			expect(
+				kill([
+					v('a', 'c1', -20, 30 + S(90)),
+					v('b', 'c1', -15, 30 + S(90)),
+					v('k', 'c1', 30, 60),
+				])
+			).toEqual([]);
+		});
+
+		it('a leave too fast to be a reaction is a coincidence', () => {
+			expect(
+				kill([
+					v('a', 'c1', -20, 30 + S(3)),
+					v('b', 'c1', -15, 30 + S(3)),
+					v('k', 'c1', 30, 60),
+				])
+			).toEqual([]);
+		});
+
+		it('people who had only just arrived are passing through, not a chat', () => {
+			expect(
+				kill([v('a', 'c1', 29, 30.5), v('b', 'c1', 29, 30.5), v('k', 'c1', 30, 60)])
+			).toEqual([]);
+		});
+
+		it('a call that ends with the joiner leaving too did not end because of them', () => {
+			expect(
+				kill([v('a', 'c1', -20, 30.5), v('b', 'c1', -15, 30.5), v('k', 'c1', 30, 31)])
+			).toEqual([]);
+		});
+
+		it('people who moved to another channel, or came back, did not leave', () => {
+			expect(
+				kill([
+					v('a', 'c1', -20, 30.5),
+					v('b', 'c1', -15, 30.5),
+					v('a', 'c2', 30.5, 60),
+					v('b', 'c2', 31, 60),
+					v('k', 'c1', 30, 60),
+				])
+			).toEqual([]);
+		});
+
+		it('still counts a real one: an established chat empties right after, and they stay', () => {
+			expect(
+				kill([v('a', 'c1', -20, 30.5), v('b', 'c1', -15, 30.5), v('k', 'c1', 30, 60)])[0]
+			).toMatchObject({ id: 'k', kills: 1 });
+		});
 	});
 
 	it('does not hold a later leave against the joiner', () => {

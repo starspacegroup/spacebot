@@ -8,10 +8,16 @@
  *  - STARTS BIG CHATS: a start that grew to BIG_CHAT people in the channel together at once
  *    (the starter included) while the starter was still there. The peak is a true "at the
  *    same time" count, not a count of everyone who ever dropped in.
- *  - KILLS CHATS: a member joined a channel that had at least two other people in it, and
- *    they all left within two minutes. Often a coincidence once; a member who does it again
- *    and again is the point. People who left within two minutes but not everyone are counted
- *    separately as "people who left".
+ *  - KILLS CHATS: a member joined a chat that had been going a while (at least two people, each
+ *    there 3+ minutes), and they all left within a minute. Leaving is held against the joiner
+ *    only when it looks like a reaction, not a coincidence:
+ *      - the leaver had been in the chat 3+ minutes (not someone passing through);
+ *      - they left 5 to 60 seconds after the join (sooner is too fast to be a reaction);
+ *      - they did not just move to another channel or come back within 5 minutes;
+ *      - the joiner was still there 2+ minutes after the last of them left (if the joiner left
+ *        too, the call ended, which kills nothing).
+ *    Often a coincidence once; a member who does it again and again is the point. People who
+ *    left on those terms but not everyone are counted separately as "people who left".
  *
  * Bots never count, either as the member or as another person. A bot is known from the event
  * that opened its session; a session made by the repair pass has no event and counts as a
@@ -23,7 +29,15 @@ type Db = any;
 /** People together in one channel, at once, for a start to count as a big chat. */
 export const BIG_CHAT = 4;
 /** How soon after someone joins another person's leaving is held against the joiner. */
-export const CLEAR_WINDOW_SECONDS = 120;
+export const CLEAR_WINDOW_SECONDS = 60;
+/** A leave sooner than this after a join is too fast to be a reaction to it. */
+export const REACTION_SECONDS = 5;
+/** Someone counts as part of a chat only after being there this long when the joiner arrives. */
+export const ESTABLISHED_SECONDS = 180;
+/** The joiner must still be there this long after the leavers, or the call just ended. */
+export const JOINER_STAYS_SECONDS = 120;
+/** A leaver who starts another visit within this long moved or reconnected; they did not leave. */
+export const RELOCATE_SECONDS = 300;
 /** A chat needs at least this many people there to be "killed" rather than just left. */
 export const KILL_MIN_PRESENT = 2;
 const STALE_MS = 12 * 3600_000;
@@ -150,6 +164,20 @@ export function analyse(
 		byChannel.get(r.channel_id)!.push(r);
 	}
 
+	const byUser = new Map<string, Row[]>();
+	for (const r of rows) {
+		if (r.closed && r.end < r.start) continue;
+		if (!byUser.has(r.user_id)) byUser.set(r.user_id, []);
+		byUser.get(r.user_id)!.push(r);
+	}
+	// Did this person start another visit soon after this one ended? Then they moved or
+	// reconnected rather than left.
+	const relocated = (o: Row) =>
+		(byUser.get(o.user_id) ?? []).some(
+			(p) =>
+				p !== o && p.start >= o.end - 10_000 && p.start <= o.end + RELOCATE_SECONDS * 1000
+		);
+
 	const starters = new Map<string, StarterLeader>();
 	const killers = new Map<string, KillerLeader>();
 	const starts: Start[] = [];
@@ -210,13 +238,27 @@ export function analyse(
 				continue;
 			}
 
-			// someone was there: did they leave soon after this join?
-			const left = new Set<string>();
-			const window = s.start + CLEAR_WINDOW_SECONDS * 1000;
+			// someone was there: did a chat that had been going a while empty out because of
+			// this join? Only people who had really been there count, and only a leave that
+			// reads as a reaction (see the header).
+			const presentRows: Row[] = [];
 			for (let j = i - 1; j >= 0 && list[j].start >= s.start - STALE_MS; j--) {
 				const o = list[j];
-				if (o.user_id === s.user_id || !o.closed) continue;
-				if (o.start < s.start && o.end > s.start && o.end <= window) left.add(o.user_id);
+				if (o.user_id !== s.user_id && o.end > s.start) presentRows.push(o);
+			}
+			const core = presentRows.filter(
+				(o) => o.start <= s.start - ESTABLISHED_SECONDS * 1000 && o.end > s.start
+			);
+			if (core.length === 0) continue;
+			const lo = s.start + REACTION_SECONDS * 1000;
+			const hi = s.start + CLEAR_WINDOW_SECONDS * 1000;
+			const left = new Set<string>();
+			for (const o of core) {
+				if (!o.closed || o.end < lo || o.end > hi) continue;
+				if (relocated(o)) continue;
+				// the joiner left right after them: the call ended, they did not end it
+				if (s.end - o.end < JOINER_STAYS_SECONDS * 1000) continue;
+				left.add(o.user_id);
 			}
 			if (left.size === 0) continue;
 			const emptied = left.size >= there.size;
@@ -225,13 +267,13 @@ export function analyse(
 				channel_name: s.channel_name,
 				joined_at: s.joined_at,
 				left: left.size,
-				present: there.size,
+				present: core.length,
 				emptied,
 			});
 			const k =
 				killers.get(s.user_id) ??
 				({ ...who(s), kills: 0, partial: 0, people_left: 0 } as KillerLeader);
-			if (emptied && there.size >= KILL_MIN_PRESENT) k.kills++;
+			if (emptied && core.length >= KILL_MIN_PRESENT) k.kills++;
 			else k.partial++;
 			k.people_left += left.size;
 			killers.set(s.user_id, k);
@@ -256,7 +298,7 @@ export function analyse(
 		.slice(0, leaderLimit);
 	out.killers = {
 		leaders: [...killers.values()]
-			.filter((k) => k.kills > 0 || k.partial > 0)
+			.filter((k) => k.kills > 0)
 			.sort((a, b) => b.kills - a.kills || b.people_left - a.people_left)
 			.slice(0, leaderLimit),
 		recent: clears.slice(0, recentLimit),
