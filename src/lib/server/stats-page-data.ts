@@ -129,9 +129,9 @@ export async function fetchStatsPageLiveData(
 				() => getMemberGrowthSummary(db, serverId, selectedPeriod),
 				() => getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
 				() => getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
-				() => getTopVoiceUsers(db, serverId, 10, selectedPeriod),
-				() => getTopVideoUsers(db, serverId, 10, selectedPeriod),
-				() => getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
+				() => getTopVoiceUsers(db, serverId, 25, selectedPeriod),
+				() => getTopVideoUsers(db, serverId, 25, selectedPeriod),
+				() => getTopScreenshareUsers(db, serverId, 25, selectedPeriod),
 				() => getBoostingMembersFromCache(db, serverId, 50),
 				() =>
 					getRolesFromCache(db, serverId).catch((rolesError) => {

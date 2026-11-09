@@ -104,6 +104,10 @@
 				: Object.fromEntries(LIVE_FIELDS.map((key) => [key, data[key]]))
 	);
 
+	// Raw events, voice sessions and member snapshots are deleted after 90 days.
+	const RAW_HISTORY_DAYS = 90;
+	const periodDays = $derived(Number.parseInt(String(data.selectedPeriod), 10) || 30);
+
 	const isStatisticsLoading = $derived(statsLoading);
 	const hasStatisticsData = $derived(Boolean(liveData.statistics));
 
@@ -767,6 +771,15 @@
 		</div>
 	</header>
 
+	{#if periodDays > RAW_HISTORY_DAYS}
+		<p class="sp-note" role="note">
+			Event-based numbers (the heatmap, member growth, top lists and event totals) are kept
+			for
+			{RAW_HISTORY_DAYS} days, so they cover the last {RAW_HISTORY_DAYS} days even on this range.
+			The message and voice charts use daily summaries and cover the whole range.
+		</p>
+	{/if}
+
 	{#if statsFailed && !statsLoading}
 		<div class="sp-failed" role="alert">
 			<span
@@ -1365,7 +1378,7 @@
 									: statistics.events.totalNonBot
 							)}</span
 						>
-						<span class="stat-label">Total Events</span>
+						<span class="stat-label">Events on record</span>
 					</div>
 					{#if eventSpark}
 						<svg
@@ -2199,6 +2212,14 @@
 	}
 
 	/* Header */
+	.sp-note {
+		margin: 0 0 var(--sp-gap, 12px);
+		padding: 8px 12px;
+		border-radius: 8px;
+		font-size: 0.85rem;
+		color: var(--text-secondary, inherit);
+		background: var(--bg-secondary, rgba(128, 128, 128, 0.1));
+	}
 	.sp-failed {
 		display: flex;
 		flex-wrap: wrap;

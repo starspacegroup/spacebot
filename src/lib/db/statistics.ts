@@ -46,8 +46,8 @@ export async function getGuildStatistics(db, guildId, timezone = null, period = 
 			getAutomationStatistics(db, guildId),
 			getCommandStatistics(db, guildId),
 			getTimeSeriesData(db, guildId, timezone, period),
-			getTopActors(db, guildId),
-			getTopChannels(db, guildId),
+			getTopActors(db, guildId, period),
+			getTopChannels(db, guildId, period),
 			getAutomationPerformance(db, guildId),
 			getCommandUsageStats(db, guildId),
 		]);
@@ -113,14 +113,9 @@ export async function getEventStatistics(db, guildId) {
 	// One pass over the server's events. This used to be ten separate queries, five of
 	// which each read every event the server has ever logged; together they could trip
 	// D1's "overloaded" limit and blank the whole Statistics page.
-	const NOT_BOT = `NOT (
-          actor_is_bot = 1
-          OR LOWER(actor_name) LIKE '%bot%'
-          OR LOWER(actor_name) LIKE '%disboard%'
-          OR LOWER(actor_name) LIKE '%github%'
-          OR LOWER(actor_name) LIKE '%mee6%'
-          OR LOWER(actor_name) LIKE '%dyno%'
-        )`;
+	// Bots are told apart by the flag Discord gives each account. Matching on names dropped
+	// people called Abbott or Robotnik and missed bots with ordinary names.
+	const NOT_BOT = `COALESCE(actor_is_bot, 0) = 0`;
 	const { results } = await db
 		.prepare(
 			`SELECT
@@ -361,7 +356,7 @@ async function getTimeSeriesData(db, guildId, timezone = null, period = '30d') {
 /**
  * Get top actors (users who triggered events)
  */
-async function getTopActors(db, guildId) {
+async function getTopActors(db, guildId, period = '30d') {
 	const result = await db
 		.prepare(
 			`
@@ -389,14 +384,15 @@ async function getTopActors(db, guildId) {
       COUNT(*) as event_count,
       COUNT(DISTINCT event_type) as event_types
     FROM event_logs 
-    WHERE guild_id = ? 
-      AND actor_id IS NOT NULL
-    GROUP BY actor_id
+WHERE guild_id = ?
+AND created_at >= datetime('now', ?)
+AND actor_id IS NOT NULL
+GROUP BY actor_id
     ORDER BY event_count DESC
     LIMIT 20
   `
 		)
-		.bind(guildId, guildId, guildId)
+		.bind(guildId, guildId, guildId, `-${parsePeriodDays(period, 30)} days`)
 		.all();
 
 	return enrichRowsWithActorAvatars(db, guildId, result.results || []);
@@ -405,7 +401,7 @@ async function getTopActors(db, guildId) {
 /**
  * Get top channels by activity
  */
-async function getTopChannels(db, guildId) {
+async function getTopChannels(db, guildId, period = '30d') {
 	const result = await db
 		.prepare(
 			`
@@ -413,24 +409,16 @@ async function getTopChannels(db, guildId) {
       channel_id,
       channel_name,
       COUNT(*) as event_count,
-      SUM(CASE 
-        WHEN actor_is_bot = 1 THEN 0
-        WHEN LOWER(actor_name) LIKE '%bot%' THEN 0
-        WHEN LOWER(actor_name) LIKE '%disboard%' THEN 0
-        WHEN LOWER(actor_name) LIKE '%github%' THEN 0
-        WHEN LOWER(actor_name) LIKE '%mee6%' THEN 0
-        WHEN LOWER(actor_name) LIKE '%dyno%' THEN 0
-        ELSE 1 
-      END) as non_bot_count,
+SUM(CASE WHEN COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as non_bot_count,
       COUNT(DISTINCT event_type) as event_types
     FROM event_logs 
-    WHERE guild_id = ? AND channel_id IS NOT NULL
+    WHERE guild_id = ? AND channel_id IS NOT NULL AND created_at >= datetime('now', ?)
     GROUP BY channel_id
     ORDER BY event_count DESC
     LIMIT 15
   `
 		)
-		.bind(guildId)
+		.bind(guildId, `-${parsePeriodDays(period, 30)} days`)
 		.all();
 
 	return result.results || [];

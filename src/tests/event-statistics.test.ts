@@ -17,8 +17,9 @@ describe('getEventStatistics', () => {
 				.run();
 		await ins('MESSAGE_CREATE', 'message', 'ann', 0, '-1 hour');
 		await ins('MESSAGE_CREATE', 'message', 'ann', 0, '-3 days');
-		await ins('MESSAGE_CREATE', 'message', 'helperbot', 0, '-3 days');
-		await ins('MEMBER_JOIN', 'member', 'bob', 0, '-20 days');
+		// A bot is the account's own bot flag, never its name: Abbott below is a person.
+		await ins('MESSAGE_CREATE', 'message', 'helper', 1, '-3 days');
+		await ins('MEMBER_JOIN', 'member', 'Abbott', 0, '-20 days');
 		await ins('MEMBER_JOIN', 'member', 'x', 1, '-60 days');
 		const e = await getEventStatistics(db, 'g');
 		expect(e.total).toBe(5);
