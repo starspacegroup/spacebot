@@ -295,6 +295,70 @@ export async function reconcileVoiceSessions(
 	return { closedSessions, createdSessions, duplicateSessionsClosed };
 }
 
+/** How far apart (in hours) an event and the minute-by-minute check may be and still be one visit. */
+const RECONCILE_ADOPT_HOURS = 6;
+
+/**
+ * The minute-by-minute check (reconcileVoiceSessions) records a visit it sees before the
+ * hourly event replay does. When the replay then reaches the real join, it must take over
+ * that row instead of adding a second one, or the visit is counted twice.
+ * Returns the row it adopted, or null.
+ */
+async function adoptReconciledSession(db, guildId, userId, channelId, event) {
+	const row = await db
+		.prepare(
+			`SELECT id, left_at FROM voice_sessions
+       WHERE guild_id = ? AND user_id = ? AND channel_id = ?
+         AND join_event_id IS NULL
+         AND joined_at >= ?
+         AND joined_at <= datetime(?, '+${RECONCILE_ADOPT_HOURS} hours')
+       ORDER BY joined_at ASC, id ASC LIMIT 1`
+		)
+		.bind(guildId, userId, channelId, event.created_at, event.created_at)
+		.first();
+	if (!row) return null;
+	await db
+		.prepare(
+			`UPDATE voice_sessions
+       SET joined_at = ?, join_event_id = ?,
+           duration_seconds = CASE WHEN left_at IS NULL THEN duration_seconds
+             ELSE MAX(CAST((julianday(left_at) - julianday(?)) * 86400 AS INTEGER), 0) END
+       WHERE id = ?`
+		)
+		.bind(event.created_at, event.id, event.created_at, row.id)
+		.run();
+	return row;
+}
+
+/**
+ * The reverse: the minute-by-minute check closed a visit a little after the user really
+ * left. The replayed leave (or move away) carries the true time, so trim that row to it.
+ */
+async function trimReconciledClose(db, guildId, userId, event) {
+	const row = await db
+		.prepare(
+			`SELECT id FROM voice_sessions
+       WHERE guild_id = ? AND user_id = ?
+         AND left_at IS NOT NULL AND leave_event_id IS NULL
+         AND joined_at <= ? AND left_at > ?
+         AND left_at <= datetime(?, '+${RECONCILE_ADOPT_HOURS} hours')
+       ORDER BY left_at ASC, id ASC LIMIT 1`
+		)
+		.bind(guildId, userId, event.created_at, event.created_at, event.created_at)
+		.first();
+	if (!row) return false;
+	await db
+		.prepare(
+			`UPDATE voice_sessions
+       SET left_at = ?, leave_event_id = ?,
+           duration_seconds = MAX(CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER), 0)
+       WHERE id = ?`
+		)
+		.bind(event.created_at, event.id, event.created_at, row.id)
+		.run();
+	return true;
+}
+
 /**
  * Process voice sessions from VOICE_JOIN/VOICE_LEAVE events
  * Creates session records for accurate time tracking
@@ -347,6 +411,17 @@ export async function processVoiceSessions(db, guildId) {
 			);
 
 			if (matchingSession) {
+				if (
+					matchingSession.join_event_id == null &&
+					event.created_at <= matchingSession.joined_at
+				) {
+					await db
+						.prepare(
+							'UPDATE voice_sessions SET joined_at = ?, join_event_id = ? WHERE id = ?'
+						)
+						.bind(event.created_at, event.id, matchingSession.id)
+						.run();
+				}
 				const staleSessions = openSessions.filter(
 					(session) => session.id !== matchingSession.id
 				);
@@ -370,12 +445,16 @@ export async function processVoiceSessions(db, guildId) {
 				);
 			}
 
+			if (await adoptReconciledSession(db, guildId, voiceUserId, event.channel_id, event)) {
+				continue;
+			}
+
 			await db
 				.prepare(
 					`
-        INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `
+INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
+VALUES (?, ?, ?, ?, ?, ?)
+`
 				)
 				.bind(
 					guildId,
@@ -390,6 +469,7 @@ export async function processVoiceSessions(db, guildId) {
 		} else if (event.event_type === 'VOICE_LEAVE') {
 			const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
 			if (!openSessions.length) {
+				if (await trimReconciledClose(db, guildId, voiceUserId, event)) continue;
 				log.warn(
 					`[VoiceSessions] Received VOICE_LEAVE with no open session for ${voiceUserId} in guild ${guildId}`
 				);
@@ -404,7 +484,32 @@ export async function processVoiceSessions(db, guildId) {
 			);
 		} else if (event.event_type === 'VOICE_MOVE') {
 			const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
-			sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
+			const alreadyThere = openSessions.find(
+				(session) => session.channel_id === event.channel_id
+			);
+			const leaving = openSessions.filter((session) => session !== alreadyThere);
+			sessionsClosed += await closeVoiceSessions(db, leaving, event.created_at);
+			if (!openSessions.length) {
+				// The minute-by-minute check may have closed the old channel a little late.
+				await trimReconciledClose(db, guildId, voiceUserId, event);
+			}
+			if (alreadyThere) {
+				if (
+					alreadyThere.join_event_id == null &&
+					event.created_at <= alreadyThere.joined_at
+				) {
+					await db
+						.prepare(
+							'UPDATE voice_sessions SET joined_at = ?, join_event_id = ? WHERE id = ?'
+						)
+						.bind(event.created_at, event.id, alreadyThere.id)
+						.run();
+				}
+				continue;
+			}
+			if (await adoptReconciledSession(db, guildId, voiceUserId, event.channel_id, event)) {
+				continue;
+			}
 
 			// Then create new session in new channel
 			await db

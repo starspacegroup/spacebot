@@ -81,32 +81,57 @@ class FakeVoiceSessionDb {
 			return { success: true };
 		}
 
-		if (sql.includes('SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at') && mode === 'all') {
+		if (
+			sql.includes(
+				'SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at'
+			) &&
+			mode === 'all'
+		) {
 			const [guildId, lastEventId] = args;
 			return {
 				results: this.events
 					.filter((event) => event.guild_id === guildId && event.id > lastEventId)
 					.sort((left, right) => left.id - right.id)
-					.map(({ id, event_type, actor_id, target_id, channel_id, channel_name, created_at }) => ({
-						id,
-						event_type,
-						actor_id,
-						target_id,
-						channel_id,
-						channel_name,
-						created_at,
-					})),
+					.map(
+						({
+							id,
+							event_type,
+							actor_id,
+							target_id,
+							channel_id,
+							channel_name,
+							created_at,
+						}) => ({
+							id,
+							event_type,
+							actor_id,
+							target_id,
+							channel_id,
+							channel_name,
+							created_at,
+						})
+					),
 			};
 		}
 
-		if (sql.includes('FROM voice_sessions') && sql.includes('left_at IS NULL') && mode === 'all') {
+		if (
+			sql.includes('FROM voice_sessions') &&
+			sql.includes('left_at IS NULL') &&
+			mode === 'all'
+		) {
 			if (sql.includes('AND user_id = ?')) {
 				const [guildId, userId] = args;
 				return {
 					results: this.sessions
-						.filter((session) => session.guild_id === guildId && session.user_id === userId && session.left_at == null)
+						.filter(
+							(session) =>
+								session.guild_id === guildId &&
+								session.user_id === userId &&
+								session.left_at == null
+						)
 						.sort((left, right) => {
-							if (left.joined_at !== right.joined_at) return left.joined_at.localeCompare(right.joined_at);
+							if (left.joined_at !== right.joined_at)
+								return left.joined_at.localeCompare(right.joined_at);
 							return left.id - right.id;
 						})
 						.map((session) => ({ ...session })),
@@ -118,15 +143,21 @@ class FakeVoiceSessionDb {
 				results: this.sessions
 					.filter((session) => session.guild_id === guildId && session.left_at == null)
 					.sort((left, right) => {
-						if (left.user_id !== right.user_id) return left.user_id.localeCompare(right.user_id);
-						if (left.joined_at !== right.joined_at) return left.joined_at.localeCompare(right.joined_at);
+						if (left.user_id !== right.user_id)
+							return left.user_id.localeCompare(right.user_id);
+						if (left.joined_at !== right.joined_at)
+							return left.joined_at.localeCompare(right.joined_at);
 						return left.id - right.id;
 					})
 					.map((session) => ({ ...session })),
 			};
 		}
 
-		if (sql.includes('UPDATE voice_sessions') && sql.includes('WHERE id = ?') && mode === 'run') {
+		if (
+			sql.includes('UPDATE voice_sessions') &&
+			sql.includes('WHERE id = ?') &&
+			mode === 'run'
+		) {
 			const [leftAt, leaveEventId, _leftAtAgain, id] = args;
 			const session = this.sessions.find((entry) => entry.id === id);
 			if (!session) {
@@ -137,9 +168,29 @@ class FakeVoiceSessionDb {
 			session.leave_event_id = leaveEventId;
 			session.duration_seconds = Math.max(
 				0,
-				Math.floor((new Date(leftAt.replace(' ', 'T') + 'Z').getTime() - new Date(session.joined_at.replace(' ', 'T') + 'Z').getTime()) / 1000),
+				Math.floor(
+					(new Date(leftAt.replace(' ', 'T') + 'Z').getTime() -
+						new Date(session.joined_at.replace(' ', 'T') + 'Z').getTime()) /
+						1000
+				)
 			);
 			return { success: true };
+		}
+
+		// The replay looks for a row the minute-by-minute check made; these tests have none.
+		if (
+			sql.includes('FROM voice_sessions') &&
+			sql.includes('join_event_id IS NULL') &&
+			mode === 'first'
+		) {
+			return null;
+		}
+		if (
+			sql.includes('FROM voice_sessions') &&
+			sql.includes('leave_event_id IS NULL') &&
+			mode === 'first'
+		) {
+			return null;
 		}
 
 		if (sql.includes('INSERT INTO voice_sessions') && mode === 'run') {
@@ -167,9 +218,33 @@ describe('processVoiceSessions', () => {
 	it('ignores duplicate joins and closes the remaining open session on leave', async () => {
 		const db = new FakeVoiceSessionDb();
 		db.seedEvents([
-			{ id: 1, guild_id: 'guild-1', event_type: 'VOICE_JOIN', actor_id: 'user-1', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 02:12:17' },
-			{ id: 2, guild_id: 'guild-1', event_type: 'VOICE_JOIN', actor_id: 'user-1', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 02:18:34' },
-			{ id: 3, guild_id: 'guild-1', event_type: 'VOICE_LEAVE', actor_id: 'user-1', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 04:07:27' },
+			{
+				id: 1,
+				guild_id: 'guild-1',
+				event_type: 'VOICE_JOIN',
+				actor_id: 'user-1',
+				channel_id: 'channel-1',
+				channel_name: 'General',
+				created_at: '2026-04-08 02:12:17',
+			},
+			{
+				id: 2,
+				guild_id: 'guild-1',
+				event_type: 'VOICE_JOIN',
+				actor_id: 'user-1',
+				channel_id: 'channel-1',
+				channel_name: 'General',
+				created_at: '2026-04-08 02:18:34',
+			},
+			{
+				id: 3,
+				guild_id: 'guild-1',
+				event_type: 'VOICE_LEAVE',
+				actor_id: 'user-1',
+				channel_id: 'channel-1',
+				channel_name: 'General',
+				created_at: '2026-04-08 04:07:27',
+			},
 		]);
 
 		const result = await processVoiceSessions(db, 'guild-1');
@@ -188,8 +263,26 @@ describe('processVoiceSessions', () => {
 	it('uses target_id fallback when actor_id is missing', async () => {
 		const db = new FakeVoiceSessionDb();
 		db.seedEvents([
-			{ id: 20, guild_id: 'guild-1', event_type: 'VOICE_JOIN', actor_id: null, target_id: 'user-fallback', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 05:00:00' },
-			{ id: 21, guild_id: 'guild-1', event_type: 'VOICE_LEAVE', actor_id: null, target_id: 'user-fallback', channel_id: 'channel-1', channel_name: 'General', created_at: '2026-04-08 05:10:00' },
+			{
+				id: 20,
+				guild_id: 'guild-1',
+				event_type: 'VOICE_JOIN',
+				actor_id: null,
+				target_id: 'user-fallback',
+				channel_id: 'channel-1',
+				channel_name: 'General',
+				created_at: '2026-04-08 05:00:00',
+			},
+			{
+				id: 21,
+				guild_id: 'guild-1',
+				event_type: 'VOICE_LEAVE',
+				actor_id: null,
+				target_id: 'user-fallback',
+				channel_id: 'channel-1',
+				channel_name: 'General',
+				created_at: '2026-04-08 05:10:00',
+			},
 		]);
 
 		const result = await processVoiceSessions(db, 'guild-1');
@@ -209,23 +302,80 @@ describe('reconcileVoiceSessions', () => {
 	it('closes stale sessions, collapses duplicates, and inserts missing active sessions', async () => {
 		const db = new FakeVoiceSessionDb();
 		db.seedSessions([
-			{ id: 10, guild_id: 'guild-1', user_id: 'user-stale', channel_id: 'channel-a', channel_name: 'Alpha', joined_at: '2026-04-08 01:00:00', left_at: null, duration_seconds: null, join_event_id: 10, leave_event_id: null },
-			{ id: 11, guild_id: 'guild-1', user_id: 'user-dup', channel_id: 'channel-b', channel_name: 'Beta', joined_at: '2026-04-08 02:00:00', left_at: null, duration_seconds: null, join_event_id: 11, leave_event_id: null },
-			{ id: 12, guild_id: 'guild-1', user_id: 'user-dup', channel_id: 'channel-b', channel_name: 'Beta', joined_at: '2026-04-08 02:05:00', left_at: null, duration_seconds: null, join_event_id: 12, leave_event_id: null },
-			{ id: 13, guild_id: 'guild-1', user_id: 'user-moved', channel_id: 'channel-c', channel_name: 'Gamma', joined_at: '2026-04-08 03:00:00', left_at: null, duration_seconds: null, join_event_id: 13, leave_event_id: null },
+			{
+				id: 10,
+				guild_id: 'guild-1',
+				user_id: 'user-stale',
+				channel_id: 'channel-a',
+				channel_name: 'Alpha',
+				joined_at: '2026-04-08 01:00:00',
+				left_at: null,
+				duration_seconds: null,
+				join_event_id: 10,
+				leave_event_id: null,
+			},
+			{
+				id: 11,
+				guild_id: 'guild-1',
+				user_id: 'user-dup',
+				channel_id: 'channel-b',
+				channel_name: 'Beta',
+				joined_at: '2026-04-08 02:00:00',
+				left_at: null,
+				duration_seconds: null,
+				join_event_id: 11,
+				leave_event_id: null,
+			},
+			{
+				id: 12,
+				guild_id: 'guild-1',
+				user_id: 'user-dup',
+				channel_id: 'channel-b',
+				channel_name: 'Beta',
+				joined_at: '2026-04-08 02:05:00',
+				left_at: null,
+				duration_seconds: null,
+				join_event_id: 12,
+				leave_event_id: null,
+			},
+			{
+				id: 13,
+				guild_id: 'guild-1',
+				user_id: 'user-moved',
+				channel_id: 'channel-c',
+				channel_name: 'Gamma',
+				joined_at: '2026-04-08 03:00:00',
+				left_at: null,
+				duration_seconds: null,
+				join_event_id: 13,
+				leave_event_id: null,
+			},
 		]);
 
-		const result = await reconcileVoiceSessions(db, 'guild-1', [
-			{ user_id: 'user-dup', channel_id: 'channel-b', channel_name: 'Beta' },
-			{ user_id: 'user-moved', channel_id: 'channel-d', channel_name: 'Delta' },
-			{ user_id: 'user-new', channel_id: 'channel-e', channel_name: 'Epsilon' },
-		], '2026-04-11 09:30:00' as unknown as Date);
+		const result = await reconcileVoiceSessions(
+			db,
+			'guild-1',
+			[
+				{ user_id: 'user-dup', channel_id: 'channel-b', channel_name: 'Beta' },
+				{ user_id: 'user-moved', channel_id: 'channel-d', channel_name: 'Delta' },
+				{ user_id: 'user-new', channel_id: 'channel-e', channel_name: 'Epsilon' },
+			],
+			'2026-04-11 09:30:00' as unknown as Date
+		);
 
-		expect(result).toMatchObject({ closedSessions: 2, createdSessions: 2, duplicateSessionsClosed: 1 });
+		expect(result).toMatchObject({
+			closedSessions: 2,
+			createdSessions: 2,
+			duplicateSessionsClosed: 1,
+		});
 
-		const openSessions = db.sessions.filter((session) => session.left_at == null).sort((left, right) => left.user_id.localeCompare(right.user_id));
+		const openSessions = db.sessions
+			.filter((session) => session.left_at == null)
+			.sort((left, right) => left.user_id.localeCompare(right.user_id));
 		expect(openSessions).toHaveLength(3);
-		expect(openSessions.map((session) => ({ user: session.user_id, channel: session.channel_id }))).toEqual([
+		expect(
+			openSessions.map((session) => ({ user: session.user_id, channel: session.channel_id }))
+		).toEqual([
 			{ user: 'user-dup', channel: 'channel-b' },
 			{ user: 'user-moved', channel: 'channel-d' },
 			{ user: 'user-new', channel: 'channel-e' },
