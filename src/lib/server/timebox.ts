@@ -1054,8 +1054,11 @@ async function audience(db, s: Session): Promise<string[]> {
 }
 
 function phaseAnnouncement(s: Session): string {
-	if (s.status === 'done')
-		return `Timebox finished: ${s.rounds} focus ${s.rounds === 1 ? 'block' : 'blocks'} done.`;
+	if (s.status === 'done') {
+		// Discord shows `<t:…:t>` in each reader's own time zone.
+		const at = s.ended_at ? ` at <t:${unix(s.ended_at)}:t>` : '';
+		return `Timebox finished${at}: ${s.rounds} focus ${s.rounds === 1 ? 'block' : 'blocks'} done.`;
+	}
 	const ends = s.phase_ends_at ? ` Ends <t:${unix(s.phase_ends_at)}:R>.` : '';
 	if (s.phase === 'focus')
 		return `Focus block ${s.block_number} of ${s.rounds} starts now.${ends}`;

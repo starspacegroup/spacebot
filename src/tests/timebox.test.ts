@@ -826,7 +826,12 @@ describe('the sweep', () => {
 		const sum = await sweepTimebox(d, f.client, at(26));
 		expect(sum.finished).toBe(1);
 		expect(await getSession(d, s.id)).toMatchObject({ status: 'done', end_reason: 'finished' });
-		expect(f.log.find((l) => l.op === 'send')?.payload.content).toContain('finished');
+		const said = f.log.find((l) => l.op === 'send')?.payload.content;
+		expect(said).toContain('finished');
+		// the time it ended, where Discord shows it in the reader's own time zone: the
+		// block's scheduled end (25 minutes after T0), not whenever the sweep noticed
+		const endUnix = Math.floor(at(25).getTime() / 1000);
+		expect(said).toContain(`Timebox finished at <t:${endUnix}:t>: 1 focus block done.`);
 	});
 
 	it('a solo timebox gets a fresh card message with buttons at each change', async () => {
