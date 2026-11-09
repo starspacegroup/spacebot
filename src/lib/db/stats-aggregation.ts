@@ -1242,10 +1242,12 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
 			.prepare(
 				`
       SELECT 
-        SUM(member_joins) as joins,
-        SUM(member_leaves) as leaves,
-        SUM(member_net_change) as net_change
-      FROM ${rollupRows('member_joins, member_leaves, member_net_change')}
+SUM(member_joins) as joins,
+SUM(member_leaves) as leaves,
+SUM(member_net_change) as net_change,
+SUM(COALESCE(member_human_joins, member_joins)) as joins_human,
+SUM(COALESCE(member_human_leaves, member_leaves)) as leaves_human
+FROM ${rollupRows('member_joins, member_leaves, member_net_change, member_human_joins, member_human_leaves')}
     `
 			)
 			.bind(guildId, timeRange, guildId, timeRange)
@@ -1255,10 +1257,16 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
 		const leaves = stats?.leaves || 0;
 		const netChange = stats?.net_change || joins - leaves;
 
+		const joinsHuman = stats?.joins_human || 0;
+		const leavesHuman = stats?.leaves_human || 0;
+
 		return {
 			joins,
 			leaves,
 			netChange,
+			joinsHuman,
+			leavesHuman,
+			netChangeHuman: joinsHuman - leavesHuman,
 			dailyAverage: Math.round((netChange / days) * 10) / 10,
 		};
 	} catch (error) {
@@ -1778,12 +1786,13 @@ export async function closeStaleVoiceSessions(db, guildId = null) {
 		const guildFilter = guildId ? 'AND guild_id = ?' : '';
 		const params = guildId ? [guildId] : [];
 
-		// Close sessions that joined more than 24 hours ago and have no leave_at
+		// Close sessions that joined more than 24 hours ago and have no leave_at. They are
+		// closed at 24 hours, not now: a missed leave three days ago is not 72 hours of voice.
 		const result = await db
 			.prepare(
 				`
       UPDATE voice_sessions
-      SET left_at = datetime('now'), duration_seconds = CAST((julianday('now') - julianday(joined_at)) * 86400 AS INTEGER)
+      SET left_at = datetime(joined_at, '+24 hours'), duration_seconds = 86400
       WHERE left_at IS NULL
         AND joined_at < datetime('now', '-24 hours')
         ${guildFilter}

@@ -37,6 +37,24 @@ import { didFail } from '$lib/db/load-failed.js';
  */
 const STATS_QUERY_CONCURRENCY = 3;
 
+/** The ranges the page offers. Anything else is not a range we serve (or cache). */
+export const STATS_PERIOD_DAYS = [1, 7, 30, 90, 180, 365];
+
+/**
+ * Turn what the URL asked for into a range the plan allows. An unknown value, or one longer
+ * than the plan keeps stats for, becomes 30d (or the longest allowed) instead of a new cache key.
+ * `retentionDays` null or undefined means no limit.
+ */
+export function normalizeStatsPeriod(requested, retentionDays) {
+	const allowed = STATS_PERIOD_DAYS.filter(
+		(days) => retentionDays === null || retentionDays === undefined || days <= retentionDays
+	);
+	const days = Number.parseInt(String(requested ?? '').replace(/d$/, ''), 10);
+	if (/^\d+d$/.test(String(requested)) && allowed.includes(days)) return `${days}d`;
+	if (allowed.includes(30)) return '30d';
+	return `${allowed[allowed.length - 1] ?? 1}d`;
+}
+
 export const STATS_CACHE_FRESH_MS = 30 * 1000;
 export const STATS_CACHE_STALE_MS = 15 * 60 * 1000;
 export const STATS_CACHE = ((globalThis as any).__spacebotStatsPageCache ||= new Map());

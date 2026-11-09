@@ -518,8 +518,16 @@
 			label: formatChartDate(p.date, data.timezone),
 			hasData: p.hasData !== false,
 			values: [
-				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
-				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
+				{
+					label: 'Joined',
+					value: (showBotsInMemberChart ? p.joins : (p.joinsHuman ?? p.joins)) || 0,
+					color: '#22c55e',
+				},
+				{
+					label: 'Left',
+					value: (showBotsInMemberChart ? p.leaves : (p.leavesHuman ?? p.leaves)) || 0,
+					color: '#ef4444',
+				},
 			],
 		}));
 	});
@@ -529,8 +537,11 @@
 		const points = liveData.memberGrowthChartData || [];
 		if (!points || points.length === 0) return null;
 
-		const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
-		const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
+		const joinsOf = (p) => (showBotsInMemberChart ? p.joins : (p.joinsHuman ?? p.joins)) || 0;
+		const leavesOf = (p) =>
+			(showBotsInMemberChart ? p.leaves : (p.leavesHuman ?? p.leaves)) || 0;
+		const totalJoins = points.reduce((sum, p) => sum + joinsOf(p), 0);
+		const totalLeaves = points.reduce((sum, p) => sum + leavesOf(p), 0);
 		const netChange = totalJoins - totalLeaves;
 
 		return { totalJoins, totalLeaves, netChange };

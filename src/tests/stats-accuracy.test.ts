@@ -167,3 +167,28 @@ describe('a database that cannot be read', () => {
 		expect(JSON.stringify(failed({ a: 1 }))).toBe('{"a":1}');
 	});
 });
+
+describe('stale voice sessions', () => {
+	it('a missed leave is capped at 24 hours, not the full age', async () => {
+		const { closeStaleVoiceSessions } = await import('$lib/db/stats-aggregation.js');
+		const { db, session } = setup();
+		await session('u1', 3 * 24 * 60, null); // joined three days ago, never closed
+		await closeStaleVoiceSessions(db, G);
+		const row = await db
+			.prepare('SELECT duration_seconds, left_at FROM voice_sessions')
+			.first();
+		expect(row.duration_seconds).toBe(86400);
+	});
+});
+
+describe('period asked for in the URL', () => {
+	it('only serves ranges the page offers and the plan allows', async () => {
+		const { normalizeStatsPeriod } = await import('$lib/server/stats-page-data.js');
+		expect(normalizeStatsPeriod('7d', 30)).toBe('7d');
+		expect(normalizeStatsPeriod('365d', 30)).toBe('30d');
+		expect(normalizeStatsPeriod('365d', null)).toBe('365d');
+		expect(normalizeStatsPeriod('13d', null)).toBe('30d');
+		expect(normalizeStatsPeriod('<script>', null)).toBe('30d');
+		expect(normalizeStatsPeriod(null, 7)).toBe('7d');
+	});
+});
