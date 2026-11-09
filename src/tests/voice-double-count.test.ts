@@ -11,9 +11,11 @@ import { processVoiceSessions, reconcileVoiceSessions } from '$lib/db/stats-aggr
 
 const SCHEMA =
 	fs.readFileSync(path.resolve('migrations/0010_aggregated_stats.sql'), 'utf8') +
+	fs.readFileSync(path.resolve('migrations/0099_stats_accuracy.sql'), 'utf8') +
 	`CREATE TABLE event_logs (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT, event_type TEXT,
-		actor_id TEXT, target_id TEXT, channel_id TEXT, channel_name TEXT, created_at DATETIME
+		actor_id TEXT, target_id TEXT, channel_id TEXT, channel_name TEXT,
+		actor_is_bot INTEGER DEFAULT 0, created_at DATETIME
 	);`;
 
 const G = 'g1';

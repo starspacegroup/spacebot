@@ -673,33 +673,41 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = '30d') 
 	const timeRange = `-${days} days`;
 
 	try {
+		// Voice time comes from voice_sessions, the same place as the leaderboard, profiles and
+		// the charts, so every screen shows the same number. Time before the window is cut off.
 		const result = await db
 			.prepare(
 				`
-      WITH voice_events AS (
+      WITH clipped AS (
         SELECT
-          COALESCE(actor_id, target_id) as voice_user_id,
-          COALESCE(NULLIF(actor_name, ''), NULLIF(target_name, ''), 'Unknown member') as voice_user_name,
-          actor_is_bot,
-          event_type,
-          created_at,
-          LEAD(event_type) OVER (PARTITION BY COALESCE(actor_id, target_id) ORDER BY created_at) as next_event_type,
-          LEAD(created_at) OVER (PARTITION BY COALESCE(actor_id, target_id) ORDER BY created_at) as next_event_time
-        FROM event_logs
+          user_id,
+          is_bot,
+          join_event_id,
+          COALESCE(left_at, datetime('now')) AS ended,
+          MAX(CAST((julianday(MIN(COALESCE(left_at, datetime('now')), datetime('now')))
+                  - julianday(MAX(joined_at, datetime('now', ?)))) * 86400 AS INTEGER), 0) AS secs
+        FROM voice_sessions
         WHERE guild_id = ?
-          AND COALESCE(actor_id, target_id) IS NOT NULL
-          AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE')
-          AND created_at >= datetime('now', ?)
+          AND joined_at < datetime('now')
+          AND (left_at IS NULL OR left_at > datetime('now', ?))
       )
       SELECT
-        voice_user_id as actor_id,
-        MAX(voice_user_name) as actor_name,
-        MAX(COALESCE(actor_is_bot, 0)) as actor_is_bot,
+        user_id as actor_id,
+        (
+          SELECT COALESCE(NULLIF(l.actor_name, ''), NULLIF(l.target_name, ''), 'Unknown member')
+          FROM event_logs l
+          WHERE l.guild_id = ?
+            AND COALESCE(l.actor_id, l.target_id) = clipped.user_id
+            AND l.event_type IN ('VOICE_JOIN', 'VOICE_LEAVE', 'VOICE_MOVE')
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 1
+        ) as actor_name,
+        MAX(COALESCE(is_bot, (SELECT e.actor_is_bot FROM event_logs e WHERE e.id = clipped.join_event_id), 0)) as actor_is_bot,
         (
           SELECT COALESCE(l.actor_avatar, l.target_avatar)
           FROM event_logs l
           WHERE l.guild_id = ?
-            AND COALESCE(l.actor_id, l.target_id) = voice_events.voice_user_id
+            AND COALESCE(l.actor_id, l.target_id) = clipped.user_id
             AND COALESCE(l.actor_avatar, l.target_avatar) IS NOT NULL
           ORDER BY l.created_at DESC, l.id DESC
           LIMIT 1
@@ -708,28 +716,20 @@ export async function getTopVoiceUsers(db, guildId, limit = 20, period = '30d') 
           SELECT COALESCE(l.actor_discriminator, '0')
           FROM event_logs l
           WHERE l.guild_id = ?
-            AND COALESCE(l.actor_id, l.target_id) = voice_events.voice_user_id
+            AND COALESCE(l.actor_id, l.target_id) = clipped.user_id
           ORDER BY l.created_at DESC, l.id DESC
           LIMIT 1
         ) as actor_discriminator,
-        ROUND(SUM(
-          CASE
-            WHEN event_type = 'VOICE_JOIN' AND next_event_type = 'VOICE_LEAVE'
-            THEN (julianday(next_event_time) - julianday(created_at)) * 86400
-            WHEN event_type = 'VOICE_JOIN' AND next_event_type IS NULL
-            THEN MIN((julianday('now') - julianday(created_at)) * 86400, 86400)
-            ELSE 0
-          END
-        ), 0) as total_seconds,
-        MAX(created_at) as last_active
-      FROM voice_events
-      GROUP BY voice_user_id
+        SUM(secs) as total_seconds,
+        MAX(ended) as last_active
+      FROM clipped
+      GROUP BY user_id
       HAVING total_seconds > 0
       ORDER BY total_seconds DESC
       LIMIT ?
     `
 			)
-			.bind(guildId, timeRange, guildId, guildId, limit)
+			.bind(timeRange, guildId, timeRange, guildId, guildId, guildId, limit)
 			.all();
 
 		return enrichRowsWithActorAvatars(db, guildId, result.results || []);
