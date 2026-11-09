@@ -6,6 +6,7 @@
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
+	import MemberLink from '$lib/components/MemberLink.svelte';
 	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
 	import VoicePresence from '$lib/components/stats/VoicePresence.svelte';
 	import TextConversations from '$lib/components/stats/TextConversations.svelte';
@@ -1018,7 +1019,12 @@
 															}}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1083,7 +1089,12 @@
 															}}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1151,7 +1162,12 @@
 															}}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1974,7 +1990,11 @@
 												}}
 											/>
 										{/if}
-										{booster.display_name}
+										<MemberLink
+											id={booster.user_id}
+											label={booster.display_name}
+											>{booster.display_name}</MemberLink
+										>
 									</span>
 									<span class="list-meta"
 										>Boosting {formatRelativeTime(booster.premium_since)}</span

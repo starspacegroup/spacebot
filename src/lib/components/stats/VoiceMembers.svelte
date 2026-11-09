@@ -6,6 +6,7 @@
 	 */
 	import { parseUTCDate } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import MemberLink from '$lib/components/MemberLink.svelte';
 
 	type Member = {
 		id: string;
@@ -128,15 +129,19 @@
 		<ul class="vm-grid">
 			{#each visible as m (m.id)}
 				<li class="vm-item">
-					<img
-						class="vm-av"
-						src={getAvatarUrl(m.id, m.avatar, m.discriminator, 64)}
-						alt=""
-						width="32"
-						height="32"
-						loading="lazy"
-					/>
-					<span class="vm-name" title={m.name}>{m.name}</span>
+					<MemberLink id={m.id} {serverId} label={m.name}>
+						<img
+							class="vm-av"
+							src={getAvatarUrl(m.id, m.avatar, m.discriminator, 64)}
+							alt=""
+							width="32"
+							height="32"
+							loading="lazy"
+						/>
+					</MemberLink>
+					<span class="vm-name" title={m.name}
+						><MemberLink id={m.id} {serverId} label={m.name}>{m.name}</MemberLink></span
+					>
 					<span class="vm-time">{duration(m.seconds)}</span>
 					<span class="vm-last">{ago(m.last_active)}</span>
 				</li>

@@ -5,6 +5,7 @@
 	 * alike. Each row is a face, a name, one big number and a line of detail.
 	 */
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import MemberLink from '$lib/components/MemberLink.svelte';
 
 	export type BoardRow = {
 		id: string;
@@ -46,16 +47,20 @@
 					{#each b.rows as r, i (r.id)}
 						<li class="rb-row">
 							<span class="rb-rank">{i + 1}</span>
-							<img
-								class="rb-av"
-								src={getAvatarUrl(r.id, r.avatar, r.discriminator, 64)}
-								alt=""
-								width="32"
-								height="32"
-								loading="lazy"
-								onerror={(e) => useDefaultAvatar(e, r.id)}
-							/>
-							<span class="rb-name" title={r.name}>{r.name}</span>
+							<MemberLink id={r.id} label={r.name}>
+								<img
+									class="rb-av"
+									src={getAvatarUrl(r.id, r.avatar, r.discriminator, 64)}
+									alt=""
+									width="32"
+									height="32"
+									loading="lazy"
+									onerror={(e) => useDefaultAvatar(e, r.id)}
+								/>
+							</MemberLink>
+							<span class="rb-name" title={r.name}
+								><MemberLink id={r.id} label={r.name}>{r.name}</MemberLink></span
+							>
 							<span class="rb-detail">{r.detail}</span>
 							<span class="rb-value" title={b.unit}>{r.value}</span>
 						</li>

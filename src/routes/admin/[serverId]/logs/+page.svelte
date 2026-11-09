@@ -1,46 +1,50 @@
 <script lang="ts">
+	import MemberLink from '$lib/components/MemberLink.svelte';
 	import { onMount } from 'svelte';
 	import { log } from '$lib/log.js';
 	import { formatDate as tzFormatDate, getTimezoneAbbreviation } from '$lib/timezone.js';
-	import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
+	import {
+		getDiscordCategoryMeta,
+		getDiscordEventTypeMeta,
+	} from '$lib/discord/event-metadata.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
 	import { getTranslator } from '$lib/i18n.js';
 
 	const tr = getTranslator();
 	const { data } = $props();
-	
+
 	// State
 	let logs = $state([]);
 	let loading = $state(true);
 	let error = $state(null);
 	let stats = $state(null);
 	let total = $state(0);
-	
+
 	// Filters
 	let selectedCategory = $state('');
 	let selectedEventType = $state('');
 	let searchQuery = $state('');
 	let startDate = $state('');
 	let endDate = $state('');
-	
+
 	// Sorting
 	let sortOrder = $state('desc'); // 'desc' = newest first, 'asc' = oldest first
-	
+
 	// Pagination
 	let offset = $state(0);
 	let limit = $state(25);
 	let currentPage = $state(1);
 	const pageSizeOptions = [10, 25, 50, 100];
-	
+
 	// Metadata
 	let categories = $state({});
 	let eventTypes = $state({});
-	
+
 	// Auto-refresh
 	let autoRefresh = $state(true);
 	let refreshInterval = $state(null);
 	let visibilityHandler = null;
-	
+
 	/**
 	 * `lightweight` drops the two expensive parts of the response — the stats
 	 * block and the pagination COUNT — which each scan every event row for this
@@ -52,50 +56,50 @@
 		if (!append) {
 			loading = true;
 		}
-		
+
 		try {
 			const params = new URLSearchParams({
 				limit: limit.toString(),
 				offset: offset.toString(),
 				stats: (!append && !lightweight).toString(),
-				sortOrder: sortOrder
+				sortOrder: sortOrder,
 			});
-			
+
 			if (lightweight) params.set('count', 'false');
 			if (selectedCategory) params.set('category', selectedCategory);
 			if (selectedEventType) params.set('eventType', selectedEventType);
 			if (searchQuery) params.set('search', searchQuery);
 			if (startDate) params.set('startDate', startDate);
 			if (endDate) params.set('endDate', endDate);
-			
+
 			const url = `/api/logs/${data.serverId}?${params}`;
 			log.debug('[DEBUG] Fetching from:', url);
-			
+
 			// Add timeout to prevent hanging forever
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), 15000);
-			
+
 			let response;
 			try {
 				response = await fetch(url, { signal: controller.signal });
 			} finally {
 				clearTimeout(timeoutId);
 			}
-			
+
 			const result = await response.json();
 			log.debug('[DEBUG] API response:', result);
-			
+
 			// Check for error in response
 			if (result.error) {
 				throw new Error(result.error);
 			}
-			
+
 			if (!response.ok) {
 				throw new Error(tr('logs.toastFetchFailed'));
 			}
-			
+
 			if (append) {
-				logs = [...logs, ...result.logs || []];
+				logs = [...logs, ...(result.logs || [])];
 			} else {
 				logs = result.logs || [];
 				categories = result.categories || {};
@@ -104,7 +108,7 @@
 					stats = result.stats;
 				}
 			}
-			
+
 			// Absent means "not asked for" (lightweight refresh) — keep what we have
 			// rather than blanking the pagination readout.
 			if (result.total !== undefined && result.total !== null) {
@@ -127,37 +131,37 @@
 			loading = false;
 		}
 	}
-	
+
 	// Pagination computed values
 	const totalPages = $derived(Math.ceil(Number(total) / Number(limit)) || 1);
-	
+
 	function goToPage(page) {
 		if (page < 1 || page > totalPages) return;
 		currentPage = page;
 		offset = (page - 1) * limit;
 		fetchLogs();
 	}
-	
+
 	function changePageSize(newSize) {
 		limit = Number(newSize);
 		currentPage = 1;
 		offset = 0;
 		fetchLogs();
 	}
-	
+
 	function toggleSortOrder() {
 		sortOrder = sortOrder === 'desc' ? 'asc' : 'desc';
 		currentPage = 1;
 		offset = 0;
 		fetchLogs();
 	}
-	
+
 	function applyFilters() {
 		currentPage = 1;
 		offset = 0;
 		fetchLogs();
 	}
-	
+
 	function clearFilters() {
 		selectedCategory = '';
 		selectedEventType = '';
@@ -169,7 +173,7 @@
 		offset = 0;
 		fetchLogs();
 	}
-	
+
 	// Toggle category filter when clicking stat cards
 	function toggleCategoryFilter(category) {
 		if (selectedCategory === category) {
@@ -183,27 +187,27 @@
 		offset = 0;
 		fetchLogs();
 	}
-	
+
 	function formatDate(dateString) {
 		return tzFormatDate(dateString, data.timezone);
 	}
-	
+
 	function getEventIcon(category) {
 		return getDiscordCategoryMeta(category)?.icon || '📌';
 	}
-	
+
 	function getEventColor(category) {
 		return getDiscordCategoryMeta(category)?.color || '#888';
 	}
-	
+
 	function getCategoryName(category) {
 		return getDiscordCategoryMeta(category)?.name || category;
 	}
-	
+
 	function getEventMeta(eventType, eventCategory) {
 		return getDiscordEventTypeMeta(eventType, { fallbackCategory: eventCategory });
 	}
-	
+
 	function toggleAutoRefresh() {
 		autoRefresh = !autoRefresh;
 		if (autoRefresh) {
@@ -212,11 +216,12 @@
 			stopAutoRefresh();
 		}
 	}
-	
+
 	function startAutoRefresh() {
 		// A backgrounded tab must not keep polling: this endpoint reads the biggest
 		// table in the database, and nobody is looking at the result.
-		const isVisible = () => typeof document === 'undefined' || document.visibilityState === 'visible';
+		const isVisible = () =>
+			typeof document === 'undefined' || document.visibilityState === 'visible';
 
 		refreshInterval = setInterval(() => {
 			if (!loading && isVisible()) {
@@ -230,7 +235,7 @@
 		};
 		document.addEventListener('visibilitychange', visibilityHandler);
 	}
-	
+
 	function stopAutoRefresh() {
 		if (refreshInterval) {
 			clearInterval(refreshInterval);
@@ -241,7 +246,7 @@
 			visibilityHandler = null;
 		}
 	}
-	
+
 	onMount(() => {
 		log.debug('[DEBUG] onMount - botInGuild:', data.botInGuild, 'serverId:', data.serverId);
 		if (data.botInGuild) {
@@ -250,12 +255,12 @@
 				startAutoRefresh();
 			}
 		}
-		
+
 		return () => {
 			stopAutoRefresh();
 		};
 	});
-	
+
 	// Get event types for selected category
 	const filteredEventTypes = $derived(() => {
 		if (!selectedCategory) return Object.keys(eventTypes);
@@ -275,8 +280,8 @@
 			<a href="/admin/{data.serverId}" class="back-link">{tr('logs.backToAdmin')}</a>
 			<div class="guild-info">
 				{#if data.guild?.icon}
-					<img 
-						src="https://cdn.discordapp.com/icons/{data.serverId}/{data.guild.icon}.png" 
+					<img
+						src="https://cdn.discordapp.com/icons/{data.serverId}/{data.guild.icon}.png"
 						alt="{data.guild?.name} icon"
 						class="guild-icon"
 					/>
@@ -292,11 +297,7 @@
 			</div>
 		</div>
 		<div class="header-right">
-			<button
-				class="refresh-btn"
-				class:active={autoRefresh}
-				onclick={toggleAutoRefresh}
-			>
+			<button class="refresh-btn" class:active={autoRefresh} onclick={toggleAutoRefresh}>
 				{autoRefresh ? tr('logs.pause') : tr('logs.autoRefresh')}
 			</button>
 			<button class="refresh-btn" onclick={() => fetchLogs()} disabled={loading}>
@@ -315,10 +316,16 @@
 		<!-- Stats Section -->
 		{#if stats}
 			<div class="stats-grid">
-				<button 
+				<button
 					class="stat-card stat-card-total"
 					class:active={selectedCategory === ''}
-					onclick={() => { selectedCategory = ''; selectedEventType = ''; currentPage = 1; offset = 0; fetchLogs(); }}
+					onclick={() => {
+						selectedCategory = '';
+						selectedEventType = '';
+						currentPage = 1;
+						offset = 0;
+						fetchLogs();
+					}}
 					type="button"
 				>
 					<span class="stat-value">{stats.totalEvents.toLocaleString()}</span>
@@ -340,7 +347,7 @@
 				{/each}
 			</div>
 		{/if}
-		
+
 		<!-- Filters Section -->
 		<details class="filters-section" open>
 			<summary class="filters-header">
@@ -357,14 +364,20 @@
 						<select id="category" bind:value={selectedCategory} onchange={applyFilters}>
 							<option value="">{tr('logs.allCategories')}</option>
 							{#each Object.entries(categories) as [key, info]}
-								<option value={key}>{(info as any).icon} {(info as any).name}</option>
+								<option value={key}
+									>{(info as any).icon} {(info as any).name}</option
+								>
 							{/each}
 						</select>
 					</div>
 
 					<div class="filter-group">
 						<label for="eventType">{tr('logs.eventType')}</label>
-						<select id="eventType" bind:value={selectedEventType} onchange={applyFilters}>
+						<select
+							id="eventType"
+							bind:value={selectedEventType}
+							onchange={applyFilters}
+						>
 							<option value="">{tr('logs.allEvents')}</option>
 							{#each filteredEventTypes() as type}
 								{@const typeMeta = getEventMeta(type, selectedCategory)}
@@ -417,7 +430,7 @@
 				</div>
 			</div>
 		</details>
-		
+
 		<!-- Results Info & Pagination Controls -->
 		<div class="results-info">
 			<div class="results-left">
@@ -434,7 +447,12 @@
 			<div class="results-right">
 				<div class="page-size-selector">
 					<label for="pageSize">{tr('logs.show')}</label>
-					<select id="pageSize" value={limit} onchange={(e) => changePageSize(parseInt((e.target as HTMLSelectElement).value))}>
+					<select
+						id="pageSize"
+						value={limit}
+						onchange={(e) =>
+							changePageSize(parseInt((e.target as HTMLSelectElement).value))}
+					>
 						{#each pageSizeOptions as size}
 							<option value={size} selected={size === limit}>{size}</option>
 						{/each}
@@ -442,51 +460,51 @@
 				</div>
 			</div>
 		</div>
-		
+
 		<!-- Pagination Controls -->
 		{#if total > limit}
 			<div class="pagination-bar">
-				<button 
+				<button
 					type="button"
-					class="pagination-btn" 
-					onclick={() => goToPage(1)} 
+					class="pagination-btn"
+					onclick={() => goToPage(1)}
 					disabled={currentPage === 1 || loading}
 					title={tr('logs.firstPage')}
 				>
 					<span class="pagination-btn-icon">⏮</span>
 					<span class="pagination-btn-text">{tr('logs.first')}</span>
 				</button>
-				<button 
+				<button
 					type="button"
-					class="pagination-btn" 
-					onclick={() => goToPage(currentPage - 1)} 
+					class="pagination-btn"
+					onclick={() => goToPage(currentPage - 1)}
 					disabled={currentPage === 1 || loading}
 					title={tr('logs.prevPage')}
 				>
 					<span class="pagination-btn-icon">◀</span>
 					<span class="pagination-btn-text">{tr('logs.prev')}</span>
 				</button>
-				
+
 				<div class="page-indicator">
 					<span class="page-current">{currentPage}</span>
 					<span class="page-separator">/</span>
 					<span class="page-total">{totalPages}</span>
 				</div>
-				
-				<button 
+
+				<button
 					type="button"
-					class="pagination-btn" 
-					onclick={() => goToPage(currentPage + 1)} 
+					class="pagination-btn"
+					onclick={() => goToPage(currentPage + 1)}
 					disabled={currentPage >= totalPages || loading}
 					title={tr('logs.nextPage')}
 				>
 					<span class="pagination-btn-text">{tr('logs.next')}</span>
 					<span class="pagination-btn-icon">▶</span>
 				</button>
-				<button 
+				<button
 					type="button"
-					class="pagination-btn" 
-					onclick={() => goToPage(totalPages)} 
+					class="pagination-btn"
+					onclick={() => goToPage(totalPages)}
 					disabled={currentPage >= totalPages || loading}
 					title={tr('logs.lastPage')}
 				>
@@ -495,7 +513,7 @@
 				</button>
 			</div>
 		{/if}
-		
+
 		<!-- Logs Table -->
 		{#if loading && logs.length === 0}
 			<div class="loading-state">
@@ -519,8 +537,12 @@
 						<tr>
 							<th class="sortable" onclick={toggleSortOrder}>
 								{tr('logs.colTime')}
-								<span class="tz-label">({getTimezoneAbbreviation(data.timezone)})</span>
-								<span class="sort-indicator">{sortOrder === 'desc' ? '↓' : '↑'}</span>
+								<span class="tz-label"
+									>({getTimezoneAbbreviation(data.timezone)})</span
+								>
+								<span class="sort-indicator"
+									>{sortOrder === 'desc' ? '↓' : '↑'}</span
+								>
 								<span class="sort-hint"
 									>{sortOrder === 'desc'
 										? tr('logs.newestFirst')
@@ -542,8 +564,8 @@
 									{formatDate(log.created_at)}
 								</td>
 								<td class="event-cell">
-									<span 
-										class="event-badge" 
+									<span
+										class="event-badge"
 										style="--event-color: {getEventColor(log.event_category)}"
 									>
 										<span class="event-icon">{eventMeta.icon}</span>
@@ -554,15 +576,29 @@
 									{#if log.actor_name}
 										<div class="user-info">
 											{#if log.actor_id}
-												<img 
-													src={getAvatarUrl(log.actor_id, log.actor_avatar, log.actor_discriminator, 32)} 
+												<img
+													src={getAvatarUrl(
+														log.actor_id,
+														log.actor_avatar,
+														log.actor_discriminator,
+														32
+													)}
 													alt="{log.actor_name}'s avatar"
 													class="user-avatar"
-													onerror={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+													onerror={(e) => {
+														(e.target as HTMLElement).style.display =
+															'none';
+													}}
 												/>
 											{/if}
 											<div class="user-text">
-												<span class="user-tag">{log.actor_name}</span>
+												<span class="user-tag"
+													><MemberLink
+														id={log.actor_id}
+														label={log.actor_name}
+														>{log.actor_name}</MemberLink
+													></span
+												>
 												{#if log.actor_id}
 													<span class="user-id">{log.actor_id}</span>
 												{/if}
@@ -611,52 +647,52 @@
 					</tbody>
 				</table>
 			</div>
-			
+
 			<!-- Bottom Pagination -->
 			{#if total > limit}
 				<div class="bottom-pagination">
 					<div class="pagination-bar">
-						<button 
+						<button
 							type="button"
-							class="pagination-btn" 
-							onclick={() => goToPage(1)} 
+							class="pagination-btn"
+							onclick={() => goToPage(1)}
 							disabled={currentPage === 1 || loading}
 							title={tr('logs.firstPage')}
 						>
 							<span class="pagination-btn-icon">⏮</span>
 							<span class="pagination-btn-text">{tr('logs.first')}</span>
 						</button>
-						<button 
+						<button
 							type="button"
-							class="pagination-btn" 
-							onclick={() => goToPage(currentPage - 1)} 
+							class="pagination-btn"
+							onclick={() => goToPage(currentPage - 1)}
 							disabled={currentPage === 1 || loading}
 							title={tr('logs.prevPage')}
 						>
 							<span class="pagination-btn-icon">◀</span>
 							<span class="pagination-btn-text">{tr('logs.prev')}</span>
 						</button>
-						
+
 						<div class="page-indicator">
 							<span class="page-current">{currentPage}</span>
 							<span class="page-separator">/</span>
 							<span class="page-total">{totalPages}</span>
 						</div>
-						
-						<button 
+
+						<button
 							type="button"
-							class="pagination-btn" 
-							onclick={() => goToPage(currentPage + 1)} 
+							class="pagination-btn"
+							onclick={() => goToPage(currentPage + 1)}
 							disabled={currentPage >= totalPages || loading}
 							title={tr('logs.nextPage')}
 						>
 							<span class="pagination-btn-text">{tr('logs.next')}</span>
 							<span class="pagination-btn-icon">▶</span>
 						</button>
-						<button 
+						<button
 							type="button"
-							class="pagination-btn" 
-							onclick={() => goToPage(totalPages)} 
+							class="pagination-btn"
+							onclick={() => goToPage(totalPages)}
 							disabled={currentPage >= totalPages || loading}
 							title={tr('logs.lastPage')}
 						>
@@ -676,32 +712,32 @@
 		margin: 0 auto;
 		padding: 1rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.logs-container {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	@media (min-width: 1024px) {
 		.logs-container {
 			padding: 2rem 3rem;
 		}
 	}
-	
+
 	@media (min-width: 1536px) {
 		.logs-container {
 			padding: 2rem 4rem;
 		}
 	}
-	
+
 	.logs-header {
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 		margin-bottom: 1.5rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.logs-header {
 			flex-direction: row;
@@ -710,44 +746,46 @@
 			margin-bottom: 2rem;
 		}
 	}
-	
+
 	.header-left {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
 	}
-	
+
 	.back-link {
 		color: var(--color-text-muted);
 		text-decoration: none;
 		font-size: 0.875rem;
 	}
-	
+
 	.back-link:hover {
 		color: var(--color-text);
 	}
-	
+
 	.guild-info {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 	}
-	
-	.guild-icon, .guild-icon-placeholder {
+
+	.guild-icon,
+	.guild-icon-placeholder {
 		width: 48px;
 		height: 48px;
 		border-radius: 50%;
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	@media (min-width: 640px) {
-		.guild-icon, .guild-icon-placeholder {
+		.guild-icon,
+		.guild-icon-placeholder {
 			width: 64px;
 			height: 64px;
 		}
 	}
-	
+
 	.guild-icon-placeholder {
 		background: var(--color-surface-elevated);
 		display: flex;
@@ -757,30 +795,30 @@
 		font-weight: bold;
 		color: var(--color-text);
 	}
-	
+
 	.guild-text h1 {
 		margin: 0;
 		font-size: 1.25rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.guild-text h1 {
 			font-size: 1.5rem;
 		}
 	}
-	
+
 	.guild-id {
 		color: var(--color-text-muted);
 		font-size: 0.75rem;
 		font-family: monospace;
 	}
-	
+
 	.header-right {
 		display: flex;
 		gap: 0.5rem;
 		flex-wrap: wrap;
 	}
-	
+
 	.refresh-btn {
 		padding: 0.5rem 1rem;
 		border: 1px solid var(--color-border);
@@ -791,23 +829,23 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 	}
-	
+
 	.refresh-btn:hover {
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.refresh-btn.active {
 		background: var(--color-primary-button);
 		border-color: var(--color-primary-button);
 		color: var(--color-primary-button-text);
 		font-weight: 600;
 	}
-	
+
 	.refresh-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 	}
-	
+
 	/* Stats Grid */
 	.stats-grid {
 		display: grid;
@@ -815,25 +853,25 @@
 		gap: 1rem;
 		margin-bottom: 2rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.stats-grid {
 			grid-template-columns: repeat(3, 1fr);
 		}
 	}
-	
+
 	@media (min-width: 900px) {
 		.stats-grid {
 			grid-template-columns: repeat(4, 1fr);
 		}
 	}
-	
+
 	@media (min-width: 1200px) {
 		.stats-grid {
 			grid-template-columns: repeat(5, 1fr);
 		}
 	}
-	
+
 	.stat-card {
 		background: var(--color-surface);
 		border: 1px solid var(--color-border);
@@ -846,66 +884,71 @@
 		font-family: inherit;
 		color: inherit;
 	}
-	
+
 	.stat-card:hover {
 		background: var(--color-surface-elevated);
 		border-color: var(--cat-color, var(--color-primary));
 		transform: translateY(-2px);
 	}
-	
+
 	.stat-card.active {
-		background: color-mix(in srgb, var(--cat-color, var(--color-primary)) 15%, var(--color-surface));
+		background: color-mix(
+			in srgb,
+			var(--cat-color, var(--color-primary)) 15%,
+			var(--color-surface)
+		);
 		border-color: var(--cat-color, var(--color-primary));
-		box-shadow: 0 0 0 2px color-mix(in srgb, var(--cat-color, var(--color-primary)) 30%, transparent);
+		box-shadow: 0 0 0 2px
+			color-mix(in srgb, var(--cat-color, var(--color-primary)) 30%, transparent);
 	}
-	
+
 	.stat-card-total {
 		--cat-color: var(--color-primary);
 	}
-	
+
 	@media (min-width: 640px) {
 		.stat-card {
 			padding: 1.25rem 1rem;
 		}
 	}
-	
+
 	.stat-icon {
 		font-size: 1.25rem;
 		display: block;
 		margin-bottom: 0.25rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.stat-icon {
 			font-size: 1.5rem;
 		}
 	}
-	
+
 	.stat-value {
 		font-size: 1.25rem;
 		font-weight: bold;
 		display: block;
 	}
-	
+
 	@media (min-width: 640px) {
 		.stat-value {
 			font-size: 1.5rem;
 		}
 	}
-	
+
 	.stat-label {
 		font-size: 0.65rem;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
 		line-height: 1.2;
 	}
-	
+
 	@media (min-width: 640px) {
 		.stat-label {
 			font-size: 0.75rem;
 		}
 	}
-	
+
 	/* Filters */
 	.filters-section {
 		background: var(--color-surface);
@@ -914,11 +957,11 @@
 		margin-bottom: 1rem;
 		overflow: hidden;
 	}
-	
+
 	.filters-section[open] .filters-toggle {
 		transform: rotate(180deg);
 	}
-	
+
 	.filters-header {
 		display: flex;
 		align-items: center;
@@ -929,20 +972,20 @@
 		list-style: none;
 		background: var(--color-surface);
 	}
-	
+
 	.filters-header::-webkit-details-marker {
 		display: none;
 	}
-	
+
 	.filters-header:hover {
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.filters-title {
 		font-weight: 600;
 		font-size: 0.875rem;
 	}
-	
+
 	.filter-badge {
 		background: var(--color-primary);
 		color: var(--color-text-inverse);
@@ -952,14 +995,14 @@
 		font-weight: 600;
 		text-transform: uppercase;
 	}
-	
+
 	.filters-toggle {
 		margin-left: auto;
 		transition: transform 0.2s ease;
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.filters-content {
 		padding: 1rem;
 		border-top: 1px solid var(--color-border);
@@ -967,59 +1010,59 @@
 		flex-direction: column;
 		gap: 1rem;
 	}
-	
+
 	.filters-row {
 		display: grid;
 		grid-template-columns: 1fr;
 		gap: 0.75rem;
 	}
-	
+
 	@media (min-width: 480px) {
 		.filters-row {
 			grid-template-columns: repeat(2, 1fr);
 		}
 	}
-	
+
 	@media (min-width: 768px) {
 		.filters-row {
 			grid-template-columns: repeat(3, 1fr);
 			gap: 1rem;
 		}
 	}
-	
+
 	.filters-row-secondary {
 		align-items: flex-end;
 	}
-	
+
 	@media (min-width: 768px) {
 		.filters-row-secondary {
 			grid-template-columns: 1fr 1fr auto;
 		}
 	}
-	
+
 	.filter-group {
 		display: flex;
 		flex-direction: column;
 		gap: 0.35rem;
 	}
-	
+
 	.filter-group-search {
 		grid-column: 1 / -1;
 	}
-	
+
 	@media (min-width: 768px) {
 		.filter-group-search {
 			grid-column: auto;
 		}
 	}
-	
+
 	.filter-group label {
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
 		text-transform: uppercase;
 		font-weight: 500;
 	}
-	
+
 	.filter-group select,
 	.filter-group input {
 		padding: 0.6rem 0.75rem;
@@ -1030,23 +1073,23 @@
 		font-size: 0.875rem;
 		width: 100%;
 	}
-	
+
 	.filter-group select:focus,
 	.filter-group input:focus {
 		outline: none;
 		border-color: var(--color-primary);
 		box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
 	}
-	
+
 	.search-input-wrapper {
 		display: flex;
 		gap: 0.5rem;
 	}
-	
+
 	.search-input-wrapper input {
 		flex: 1;
 	}
-	
+
 	.search-btn {
 		padding: 0.6rem 1rem;
 		background: var(--color-primary);
@@ -1057,11 +1100,11 @@
 		cursor: pointer;
 		white-space: nowrap;
 	}
-	
+
 	.search-btn:hover {
 		background: var(--color-primary-hover);
 	}
-	
+
 	.clear-btn {
 		padding: 0.6rem 1rem;
 		background: transparent;
@@ -1073,13 +1116,13 @@
 		font-size: 0.875rem;
 		transition: all 0.2s;
 	}
-	
+
 	.clear-btn:hover {
 		color: var(--color-danger);
 		border-color: var(--color-danger);
 		background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 	}
-	
+
 	/* Results Info */
 	.results-info {
 		display: flex;
@@ -1092,7 +1135,7 @@
 		color: var(--color-text-muted);
 		font-size: 0.875rem;
 	}
-	
+
 	@media (min-width: 480px) {
 		.results-info {
 			flex-direction: row;
@@ -1100,21 +1143,26 @@
 			align-items: center;
 		}
 	}
-	
+
 	.results-count strong {
 		color: var(--color-text);
 	}
-	
+
 	.loading-indicator {
 		color: var(--color-primary);
 		animation: pulse 1s ease-in-out infinite;
 	}
-	
+
 	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.5; }
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
 	}
-	
+
 	/* Pagination Bar */
 	.pagination-bar {
 		display: flex;
@@ -1127,13 +1175,13 @@
 		border-radius: 8px;
 		flex-wrap: wrap;
 	}
-	
+
 	@media (min-width: 480px) {
 		.pagination-bar {
 			gap: 0.5rem;
 		}
 	}
-	
+
 	.page-indicator {
 		display: flex;
 		align-items: center;
@@ -1141,20 +1189,20 @@
 		padding: 0 0.75rem;
 		font-size: 0.875rem;
 	}
-	
+
 	.page-current {
 		font-weight: bold;
 		color: var(--color-primary);
 	}
-	
+
 	.page-separator {
 		color: var(--color-text-muted);
 	}
-	
+
 	.page-total {
 		color: var(--color-text-muted);
 	}
-	
+
 	/* Logs Table */
 	.logs-table-container {
 		overflow-x: auto;
@@ -1162,14 +1210,14 @@
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 	}
-	
+
 	.logs-table {
 		width: 100%;
 		border-collapse: separate;
 		border-spacing: 0;
 		font-size: 0.875rem;
 	}
-	
+
 	.logs-table th {
 		background: var(--color-surface);
 		padding: 0.75rem 1rem;
@@ -1180,28 +1228,28 @@
 		font-size: 0.75rem;
 		border-bottom: 1px solid var(--color-border);
 	}
-	
+
 	.logs-table td {
 		padding: 0.75rem 1rem;
 		border-bottom: 1px solid var(--color-border-light);
 		vertical-align: top;
 	}
-	
+
 	.logs-table tbody tr:last-child td {
 		border-bottom: none;
 	}
-	
+
 	.logs-table tr:hover td {
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.time-cell {
 		white-space: nowrap;
 		color: var(--color-text-muted);
 		font-family: monospace;
 		font-size: 0.8rem;
 	}
-	
+
 	.event-badge {
 		display: inline-flex;
 		align-items: center;
@@ -1212,30 +1260,33 @@
 		border-radius: 4px;
 		font-size: 0.75rem;
 	}
-	
+
 	.event-type {
 		font-weight: 500;
 	}
-	
-	.user-tag, .target-name, .channel-name {
+
+	.user-tag,
+	.target-name,
+	.channel-name {
 		display: block;
 		font-weight: 500;
 	}
-	
-	.user-id, .target-id {
+
+	.user-id,
+	.target-id {
 		display: block;
 		font-size: 0.7rem;
 		color: var(--color-text-muted);
 		font-family: monospace;
 	}
-	
+
 	/* User avatar display */
 	.user-info {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
+
 	.user-avatar {
 		width: 28px;
 		height: 28px;
@@ -1243,21 +1294,21 @@
 		object-fit: cover;
 		flex-shrink: 0;
 	}
-	
+
 	.user-text {
 		display: flex;
 		flex-direction: column;
 		gap: 0.1rem;
 	}
-	
+
 	.channel-name {
 		color: var(--color-primary);
 	}
-	
+
 	.na {
 		color: var(--color-text-light);
 	}
-	
+
 	.details-btn {
 		display: inline-block;
 		padding: 0.25rem 0.5rem;
@@ -1270,25 +1321,25 @@
 		text-decoration: none;
 		text-align: center;
 	}
-	
+
 	.details-btn:hover {
 		background: var(--color-surface-hover);
 	}
-	
+
 	.details-btn.secondary {
 		background: transparent;
 		color: var(--color-text-muted);
 	}
-	
+
 	.details-btn.secondary:hover {
 		color: var(--color-text);
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.details-cell {
 		white-space: nowrap;
 	}
-	
+
 	/* Empty State */
 	.empty-state {
 		text-align: center;
@@ -1297,21 +1348,21 @@
 		border: 1px solid var(--color-border);
 		border-radius: 8px;
 	}
-	
+
 	.empty-state h3 {
 		margin: 0 0 0.5rem;
 	}
-	
+
 	.empty-state p {
 		color: var(--color-text-muted);
 		margin: 0.5rem 0;
 	}
-	
+
 	.empty-state .hint {
 		font-size: 0.875rem;
 		font-style: italic;
 	}
-	
+
 	/* Error Card */
 	.error-card {
 		background: var(--color-danger-soft);
@@ -1320,36 +1371,34 @@
 		padding: 2rem;
 		text-align: center;
 	}
-	
+
 	.error-card h2 {
 		margin: 0 0 1rem;
 	}
-	
-
 
 	.results-left {
 		display: flex;
 		align-items: center;
 		gap: 1rem;
 	}
-	
+
 	.results-right {
 		display: flex;
 		align-items: center;
 		gap: 1.5rem;
 	}
-	
+
 	.page-size-selector {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
 	}
-	
+
 	.page-size-selector label {
 		font-size: 0.875rem;
 		color: var(--color-text-muted);
 	}
-	
+
 	.page-size-selector select {
 		padding: 0.35rem 0.5rem;
 		background: var(--color-surface-elevated);
@@ -1359,7 +1408,7 @@
 		font-size: 0.875rem;
 		cursor: pointer;
 	}
-	
+
 	.pagination-btn {
 		display: inline-flex;
 		align-items: center;
@@ -1373,66 +1422,66 @@
 		font-size: 0.8rem;
 		transition: all 0.2s;
 	}
-	
+
 	.pagination-btn:hover:not(:disabled) {
 		background: var(--color-primary);
 		color: var(--color-text-inverse);
 		border-color: var(--color-primary);
 	}
-	
+
 	.pagination-btn:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
-	
+
 	.pagination-btn-text {
 		display: none;
 	}
-	
+
 	@media (min-width: 480px) {
 		.pagination-btn-text {
 			display: inline;
 		}
-		
+
 		.pagination-btn {
 			padding: 0.5rem 0.85rem;
 		}
 	}
-	
+
 	.bottom-pagination {
 		display: flex;
 		justify-content: center;
 		padding: 1rem;
 	}
-	
+
 	@media (min-width: 640px) {
 		.bottom-pagination {
 			padding: 1.5rem;
 		}
 	}
-	
+
 	/* Sortable Table Headers */
 	th.sortable {
 		cursor: pointer;
 		user-select: none;
 		position: relative;
 	}
-	
+
 	th.sortable:hover {
 		background: var(--color-surface-elevated);
 	}
-	
+
 	.sort-indicator {
 		margin-left: 0.35rem;
 		font-weight: bold;
 	}
-	
+
 	.tz-label {
 		font-size: 0.75rem;
 		font-weight: normal;
 		opacity: 0.6;
 	}
-	
+
 	.sort-hint {
 		display: none;
 		position: absolute;
@@ -1447,11 +1496,11 @@
 		z-index: 10;
 		box-shadow: var(--shadow-md);
 	}
-	
+
 	th.sortable:hover .sort-hint {
 		display: block;
 	}
-	
+
 	/* Table Mobile Styles */
 	@media (max-width: 768px) {
 		.logs-table th:nth-child(4),
@@ -1461,7 +1510,7 @@
 			display: none;
 		}
 	}
-	
+
 	/* Loading State */
 	.loading-state {
 		display: flex;
@@ -1472,7 +1521,7 @@
 		color: var(--color-text-muted);
 		gap: 1rem;
 	}
-	
+
 	.loading-spinner {
 		width: 40px;
 		height: 40px;
@@ -1481,7 +1530,7 @@
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
-	
+
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
