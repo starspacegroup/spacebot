@@ -266,6 +266,14 @@
 					</p>
 					<p class="body">{selected.body}</p>
 
+					{#if selected.ai_exists}
+						<p class="exists">
+							The sender was told this may already exist: <strong
+								>{selected.ai_exists}</strong
+							>
+						</p>
+					{/if}
+
 					<div class="ai">
 						<h3>AI draft</h3>
 						{#if selected.ai_scored_at}
@@ -663,6 +671,12 @@
 	.body {
 		margin: 0;
 		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	.exists {
+		margin: 0;
+		padding: 0.5rem 0.75rem;
+		border-left: 3px solid var(--color-border);
 		overflow-wrap: anywhere;
 	}
 	.ai,

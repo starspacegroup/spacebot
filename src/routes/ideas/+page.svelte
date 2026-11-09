@@ -33,6 +33,14 @@
 		{#if form?.saved}
 			<div class="notice ok" role="status">{t(data.locale, 'ideas.saved')}</div>
 		{/if}
+		{#if form?.exists}
+			<div class="notice ok" role="status">
+				<p>{t(data.locale, 'ideas.exists')}</p>
+				<p><strong>{form.exists.text}</strong></p>
+				{#if form.exists.url}<p><a href={form.exists.url}>{form.exists.url}</a></p>{/if}
+				<p>{t(data.locale, 'ideas.existsNote')}</p>
+			</div>
+		{/if}
 		{#if form?.error}
 			<div class="notice bad" role="alert">{form.error}</div>
 		{/if}

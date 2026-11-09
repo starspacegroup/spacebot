@@ -90,6 +90,27 @@ Today an idea is kept until the sender asks for their name to be removed; then t
 uses **Remove their name**. **Not built:** the automatic rule from the plan (keep 12 months after
 shipped or declined, then clear the name). Add it as a sweep when ideas pile up.
 
+## Telling the sender it already exists
+
+Before the sender leaves, the idea is checked against what SpaceBot already does
+(`src/lib/server/idea-exists.ts`). The list it is checked against
+(`src/lib/server/feature-catalog.ts`) is the "Features & subsystems" part of
+`docs/index.md`, bundled at build time, plus every built-in command from the database,
+plus a few lines for custom commands, automations, logging and the AI assistant. So a new
+feature is on the list as soon as its doc is in the index; keep that index current.
+
+- The model may answer only with the id of one entry on that list and whether it is sure.
+  An id not on the list, or "not sure", means no finding. The sender is shown the entry's own
+  name, description and doc link, never the model's words.
+- It only speaks up when sure, and it ignores ideas that ask to improve or extend a feature.
+- **`/idea`:** the reply is deferred (still private) and edited when the check is in, up to 12
+  seconds. The reply is always edited, even if the check fails, so the sender is never left on
+  "thinking...". Without AI configured the reply is the plain "Saved" at once.
+- **`/ideas` page:** the form waits up to 8 seconds and shows the finding on the page.
+- The idea is **saved either way**, with the finding in `ideas.ai_exists` (migration 0098), and
+  the superadmin sees it in the detail panel ("The sender was told this may already exist").
+  The sender may mean something the feature does not do.
+
 ## Not built yet
 
 - Votes, a public "what people are asking for" page, and a "reviewer" role (David, 2026-11-07:

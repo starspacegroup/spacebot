@@ -84,6 +84,9 @@ export const en: Record<string, string> = {
 		'We save your Discord name and ID, the server you were in, and the time, so we can follow up.',
 	'ideas.submit': 'Send idea',
 	'ideas.saved': 'Saved. Thanks for the idea.',
+	'ideas.exists': 'Saved, but this may already exist in SpaceBot:',
+	'ideas.existsNote':
+		'If you meant something it does not do, your idea is saved and we will read it.',
 	'ideas.mineTitle': 'Your ideas',
 	'ideas.mineEmpty': 'You have not sent an idea yet.',
 	'ideas.status.new': 'Received',

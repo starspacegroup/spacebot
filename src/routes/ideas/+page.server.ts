@@ -1,5 +1,6 @@
 import { fail } from '@sveltejs/kit';
-import { ideasBy } from '$lib/db/ideas.js';
+import { getIdea, ideasBy, saveExists } from '$lib/db/ideas.js';
+import { describeFeature, findExisting } from '$lib/server/idea-exists.js';
 import { scoreIdea } from '$lib/server/idea-ai.js';
 import { submitIdea } from '$lib/server/idea-intake.js';
 
@@ -37,11 +38,18 @@ export const actions = {
 				values,
 			});
 		}
-		if (!result.copy) {
-			// After the reply: a slow or failing model never delays or loses the idea.
-			const work = scoreIdea(env.DB, env, result.id);
-			(platform as any)?.context?.waitUntil?.(work);
+		if (result.copy) return { saved: true };
+		// Ask whether SpaceBot already does this, for a few seconds at most, so the sender
+		// hears it on this page. Whatever happens, the idea is already saved.
+		let exists: { text: string; url: string | null } | null = null;
+		const idea = await getIdea(env.DB, result.id);
+		const found = idea ? await findExisting(env.DB, env, idea, undefined, 8000) : null;
+		if (found) {
+			await saveExists(env.DB, result.id, describeFeature(found));
+			exists = { text: describeFeature(found), url: found.url };
 		}
-		return { saved: true };
+		// After the reply: a slow or failing model never delays or loses the idea.
+		(platform as any)?.context?.waitUntil?.(scoreIdea(env.DB, env, result.id));
+		return { saved: true, exists };
 	},
 };

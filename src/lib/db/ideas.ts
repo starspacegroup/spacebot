@@ -31,6 +31,7 @@ export type IdeaRow = {
 	ai_risk: number;
 	ai_reasoning: string | null;
 	ai_duplicates: string | null;
+	ai_exists: string | null;
 	ai_scored_at: string | null;
 	impact: number | null;
 	reach: number | null;
@@ -322,4 +323,12 @@ export async function listBans(db: Db) {
 		)
 		.all();
 	return (results ?? []) as Array<{ user_id: string; reason: string | null; created_at: string }>;
+}
+
+/** Remember that the idea looks like something SpaceBot already does. */
+export async function saveExists(db: Db, id: number, text: string): Promise<void> {
+	await db
+		.prepare(`UPDATE ideas SET ai_exists = ? WHERE id = ?`)
+		.bind(text.slice(0, 400), id)
+		.run();
 }
