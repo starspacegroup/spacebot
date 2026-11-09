@@ -307,6 +307,13 @@ export async function getVoicePresence(
 	}
 	const out = analyse(rows, now - periodDays(period) * 86_400_000, period);
 	await fillNames(db, guildId, out);
+	await fillMissingAvatars(db, guildId, [
+		...out.starters.leaders,
+		...out.starters.recent,
+		...out.big,
+		...out.killers.leaders,
+		...out.killers.recent,
+	]);
 	return out;
 }
 
@@ -347,5 +354,46 @@ async function fillNames(db: Db, guildId: string, out: VoicePresence) {
 			p.avatar = f.avatar;
 			p.discriminator = f.d;
 		}
+	}
+}
+
+/**
+ * A person whose newest event carried no avatar would show as the grey Discord default even
+ * though they have a picture. Fill those from the member cache (server picture first).
+ */
+export async function fillMissingAvatars(
+	db: Db,
+	guildId: string,
+	people: Array<{ id: string; avatar: string | null }>
+) {
+	const missing = people.filter((p) => !p.avatar);
+	const ids = [...new Set(missing.map((p) => p.id))].slice(0, 80);
+	if (!ids.length) return;
+	try {
+		const res: any = await db
+			.prepare(
+				`SELECT user_id, avatar, guild_avatar FROM guild_members_cache
+				  WHERE guild_id = ? AND user_id IN (${ids.map(() => '?').join(', ')})`
+			)
+			.bind(guildId, ...ids)
+			.all();
+		const byId = new Map<string, string>();
+		for (const m of res?.results ?? []) {
+			if (m.guild_avatar) {
+				const ext = String(m.guild_avatar).startsWith('a_') ? 'gif' : 'png';
+				byId.set(
+					String(m.user_id),
+					`https://cdn.discordapp.com/guilds/${guildId}/users/${m.user_id}/avatars/${m.guild_avatar}.${ext}?size=64`
+				);
+			} else if (m.avatar) {
+				byId.set(String(m.user_id), String(m.avatar));
+			}
+		}
+		for (const p of missing) {
+			const found = byId.get(p.id);
+			if (found) p.avatar = found;
+		}
+	} catch {
+		// a picture is nice to have
 	}
 }

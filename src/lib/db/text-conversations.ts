@@ -20,6 +20,8 @@
  * is capped at MAX_MESSAGES of the newest messages in the window, and says so when it cut.
  */
 
+import { fillMissingAvatars } from './voice-presence.js';
+
 type Db = any;
 
 export const CONVO_GAP_MS = 10 * 60_000;
@@ -298,5 +300,12 @@ export async function getTextConversations(
 	// When the newest messages were cut, the window starts where the cut left off.
 	const oldest = msgs.length ? Math.min(...msgs.map((m) => m.at)) : Date.now();
 	const from = truncated ? oldest : Date.now() - days * 86_400_000;
-	return analyseText(msgs, from, period, truncated);
+	const out = analyseText(msgs, from, period, truncated);
+	await fillMissingAvatars(db, guildId, [
+		...out.starters.leaders,
+		...out.starters.recent.map((c) => c.starter),
+		...out.big,
+		...out.killers,
+	] as any[]);
+	return out;
 }

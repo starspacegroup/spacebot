@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createSqliteD1 } from './helpers/sqlite-d1.js';
-import { analyse, getVoicePresence, peakTogether, BIG_CHAT } from '$lib/db/voice-presence.js';
+import {
+	analyse,
+	fillMissingAvatars,
+	getVoicePresence,
+	peakTogether,
+	BIG_CHAT,
+} from '$lib/db/voice-presence.js';
 import {
 	analyseText,
 	getTextConversations,
@@ -278,5 +284,25 @@ describe('text: who starts conversations, big ones, and kills them', () => {
 		expect(out.starters.leaders).toHaveLength(1);
 		expect(out.starters.leaders[0]).toMatchObject({ name: 'Ann', starts: 1, answered: 1 });
 		expect(out.channels[0]).toMatchObject({ channel_name: 'general', messages: 2 });
+	});
+});
+
+describe('avatars the newest event did not carry', () => {
+	it('fills them from the member cache, server picture first, and keeps the ones it has', async () => {
+		const db = createSqliteD1(
+			`CREATE TABLE guild_members_cache (guild_id TEXT, user_id TEXT, avatar TEXT, guild_avatar TEXT);
+			 INSERT INTO guild_members_cache VALUES ('g','a','hashA',NULL), ('g','b','hashB','guildB'), ('g','c','hashC',NULL);`
+		);
+		const people = [
+			{ id: 'a', avatar: null as string | null },
+			{ id: 'b', avatar: null as string | null },
+			{ id: 'c', avatar: 'https://kept' as string | null },
+			{ id: 'z', avatar: null as string | null },
+		];
+		await fillMissingAvatars(db, 'g', people);
+		expect(people[0].avatar).toBe('hashA');
+		expect(people[1].avatar).toContain('/guilds/g/users/b/avatars/guildB.png');
+		expect(people[2].avatar).toBe('https://kept');
+		expect(people[3].avatar).toBeNull();
 	});
 });

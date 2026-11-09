@@ -24,6 +24,14 @@
 	};
 
 	const { boards }: { boards: Board[] } = $props();
+
+	/** The picture failed to load (Discord's CDN hiccups): show the default one, once. */
+	function useDefaultAvatar(event: Event, id: string) {
+		const img = event.currentTarget as HTMLImageElement;
+		if (img.dataset.fallback) return;
+		img.dataset.fallback = '1';
+		img.src = getAvatarUrl(id, null, '0', 64);
+	}
 </script>
 
 <div class="rb">
@@ -45,6 +53,7 @@
 								width="32"
 								height="32"
 								loading="lazy"
+								onerror={(e) => useDefaultAvatar(e, r.id)}
 							/>
 							<span class="rb-name" title={r.name}>{r.name}</span>
 							<span class="rb-detail">{r.detail}</span>
