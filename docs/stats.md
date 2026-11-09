@@ -103,6 +103,41 @@ cached them. Two things now prevent that:
   **one** grouped query, `getEventStatistics`, instead of ten. Five of the ten each read every
   event the server had ever logged. The numbers are unchanged.
 - If the main statistics query fails, the loader does not cache the result and the endpoint answers 502. The page then shows a "could not be loaded" notice with a Try again button.
+- Since 2026-11-09 every other part of the page does the same. A chart or list that cannot read
+  the database comes back marked as failed (`load-failed.ts`). The loader leaves it out of the
+  cache, the response lists it in `failedParts`, and the page says some numbers could not be
+  loaded. The dashboard cache is per server and time zone.
 
-Other queries on the page (top users, top channels, the heatmap) still scan a server's events and
-are the next place to look if overload comes back.
+Top actors and top channels now read only the chosen period instead of the whole history.
+
+## What the numbers mean (2026-11-09)
+
+A review on 2026-11-08 found numbers that did not mean what they said. These are the rules now.
+
+- **Voice time** comes from `voice_sessions` everywhere: the top lists, the leaderboard, profiles,
+  member and channel activity, and (through the hourly rollups) the charts. Time before the
+  chosen window is cut off. A visit is one row. The minute-by-minute check can see a visit before
+  the hourly replay of join/leave events does; the replay then takes over that row and trims its
+  close to the real leave time (`adoptReconciledSession`, `trimReconciledClose`), so the visit is
+  not counted twice. A session left open for more than 24 hours is closed at 24 hours, not at the
+  time the cleanup ran.
+- **Unique users** (voice and messages) are the number of different people in the period, counted
+  from the raw rows. A rollup used to store the busiest hour's count and call it unique users.
+  Days rolled up before 2026-11-09 still hold the old value until they are rebuilt.
+- **Messages** are people only. The chart reports bot messages separately (`botMessageCount`).
+  Rollups store `message_human_count`, `message_human_unique_users`, `member_human_joins` and
+  `member_human_leaves`; a row built before they existed has NULL there and falls back to the
+  old total.
+- **Bots** are told apart by the account's bot flag (`actor_is_bot`, `voice_sessions.is_bot`),
+  never by name. The member growth chart and card follow the bot toggle. The voice leaderboard
+  leaves bots out.
+- **Periods.** Raw events, voice sessions and member snapshots are deleted after 90 days. Charts
+  built from daily summaries (messages, voice) cover the whole range; the heatmap, member growth,
+  top lists and event totals cover at most the last 90 days. The page says so on ranges longer
+  than 90 days, and the totals are labelled "Events on record". The period in the URL must be one
+  the page offers and the plan allows, or it becomes 30d.
+- **The hour in progress** is added to the voice and message charts from raw rows. The member
+  growth chart reads raw events for the whole range, so it adds nothing on top.
+- **Member count** changes from join and leave events are written by one statement that reads the
+  latest row, so a raid cannot lose updates. They carry `source = 'event'` and do not count as a
+  reading from Discord, so a busy server is still checked against Discord on schedule.

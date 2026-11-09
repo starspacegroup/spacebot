@@ -1785,7 +1785,11 @@ async function handleStatsCommand(
 		});
 
 		if (isVoiceLeaderboard) {
-			const leaderboardRows = await getTopVoiceUsers(db, guildId, 10, period);
+			// Bots (a music bot can sit in a channel all day) are not people on a leaderboard.
+			// Ask for extra rows so hiding them still leaves a full ten.
+			const leaderboardRows = (await getTopVoiceUsers(db, guildId, 25, period))
+				.filter((row) => !row.actor_is_bot)
+				.slice(0, 10);
 
 			if (!leaderboardRows.length) {
 				await editOriginal({
