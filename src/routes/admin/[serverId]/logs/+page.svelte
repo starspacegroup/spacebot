@@ -7,7 +7,7 @@
 		getDiscordCategoryMeta,
 		getDiscordEventTypeMeta,
 	} from '$lib/discord/event-metadata.js';
-	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getAvatarUrl, useDefaultAvatar } from '$lib/utils/avatar.js';
 	import { getTranslator } from '$lib/i18n.js';
 
 	const tr = getTranslator();
@@ -585,10 +585,8 @@
 													)}
 													alt="{log.actor_name}'s avatar"
 													class="user-avatar"
-													onerror={(e) => {
-														(e.target as HTMLElement).style.display =
-															'none';
-													}}
+													onerror={(e) =>
+														useDefaultAvatar(e, log.actor_id)}
 												/>
 											{/if}
 											<div class="user-text">

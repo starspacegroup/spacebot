@@ -2,7 +2,7 @@
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
-	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getAvatarUrl, useDefaultAvatar } from '$lib/utils/avatar.js';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
@@ -1012,11 +1012,8 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
 													<MemberLink
@@ -1082,11 +1079,8 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
 													<MemberLink
@@ -1155,11 +1149,8 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
 													<MemberLink
@@ -1984,10 +1975,8 @@
 												)}
 												alt="{booster.display_name || 'User'} avatar"
 												class="inline-user-avatar"
-												onerror={(e) => {
-													(e.target as HTMLElement).style.display =
-														'none';
-												}}
+												onerror={(e) =>
+													useDefaultAvatar(e, booster.user_id)}
 											/>
 										{/if}
 										<MemberLink

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import MemberLink from '$lib/components/MemberLink.svelte';
 	import { formatDateFull, formatRelativeTime as tzFormatRelative } from '$lib/timezone.js';
-	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getAvatarUrl, useDefaultAvatar } from '$lib/utils/avatar.js';
 	import { getTranslator } from '$lib/i18n.js';
 
 	const tr = getTranslator();
@@ -94,9 +94,7 @@
 									)}
 									alt="{data.log.actor_name}'s avatar"
 									class="detail-avatar"
-									onerror={(e) => {
-										(e.target as HTMLElement).style.display = 'none';
-									}}
+									onerror={(e) => useDefaultAvatar(e, data.log.actor_id)}
 								/>
 								<div class="actor-text">
 									<span class="actor-name"
