@@ -789,7 +789,13 @@ export async function handleDefineReaction(
 	// Not a word the game knows: say what was probably meant.
 	if (!stored?.word && !dict.isWord(word)) {
 		const near = await lookupSimilar(word, fetcher);
-		if (near === null) return IGNORE;
+		if (near === null) {
+			// Say so in the log: from the outside this looks like the reaction was ignored.
+			log.warn(
+				`[Shiritori] Spelling service gave no answer for a ❓ on "${word}" in ${input.guildId}`
+			);
+			return IGNORE;
+		}
 		const maybe = near.filter((w) => dict.isWord(w) && !dict.isBlocked(w)).slice(0, 5);
 		await reply({
 			content: maybe.length
