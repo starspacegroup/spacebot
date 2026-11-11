@@ -6,6 +6,7 @@
  */
 
 import { log } from '../log.js';
+import { buildGuildAvatarUrl } from './avatar-enrichment.js';
 
 /**
  * @typedef {Object} CachedRole
@@ -460,7 +461,9 @@ export async function getBoostingMembersFromCache(db, guildId, limit = 100) {
 			global_name: member.global_name,
 			nickname: member.nickname,
 			avatar: member.avatar,
-			guild_avatar: member.guild_avatar,
+			// A server avatar is a hash that only works on the guild path, so hand over the URL:
+			// used as a global hash it is a 404 and the picture goes missing.
+			guild_avatar: buildGuildAvatarUrl(guildId, member.user_id, member.guild_avatar, 64),
 			discriminator: member.discriminator || '0',
 			premium_since: member.premium_since,
 			is_bot: Boolean(member.is_bot),
