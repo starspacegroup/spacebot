@@ -28,6 +28,7 @@ database — see the architecture overview below.
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
+- [Scale Architecture](scale-architecture.md) — the D1 size plan: retention, DO rate limiter, DLQ, later phases
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
 - [Game](game.md) — the hidden-agent round for a voice channel, played in the Activity
 - [Command sync](command-sync.md) — slash commands reach Discord by themselves after a deploy

@@ -8,6 +8,11 @@ compatibility_date = "2025-06-01"
 queue = "spacebot-ai-autopilot"
 max_batch_size = 10
 max_batch_timeout = 5
+# A message that fails max_retries times goes to the DLQ instead of being
+# dropped. CREATE THE DLQ BEFORE THE NEXT DEPLOY or the deploy fails:
+#   bunx wrangler queues create spacebot-orchestrator-dlq
+max_retries = 5
+dead_letter_queue = "spacebot-orchestrator-dlq"
 
 # Superadmin workflow runs: Pages enqueues run starts / approval wake-ups;
 # this worker creates or signals the SuperadminRunWorkflow instances.
@@ -16,6 +21,11 @@ max_batch_timeout = 5
 queue = "spacebot-workflow-runs"
 max_batch_size = 10
 max_batch_timeout = 5
+# A message that fails max_retries times goes to the DLQ instead of being
+# dropped. CREATE THE DLQ BEFORE THE NEXT DEPLOY or the deploy fails:
+#   bunx wrangler queues create spacebot-orchestrator-dlq
+max_retries = 5
+dead_letter_queue = "spacebot-orchestrator-dlq"
 
 # Producer binding so this worker can also enqueue watchdog-sweep messages
 # onto the same queue it consumes from.
@@ -26,6 +36,17 @@ queue = "spacebot-ai-autopilot"
 # Cron-driven dispatch workflow: durably calls the superadmin workflows
 # dispatch endpoint on a fixed minute tick, replacing the old GCP/PM2 tick
 # (scripts/cron.ts).
+# RateLimiter Durable Object: hosted here because Pages cannot host DO
+# classes. The Pages app binds it with script_name = "spacebot-ai-orchestrator"
+# (commented in ../wrangler.toml until this has deployed once).
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1-rate-limiter"
+new_sqlite_classes = ["RateLimiter"]
+
 [[workflows]]
 name = "spacebot-cron-dispatch"
 binding = "CRON_DISPATCH_WORKFLOW"
