@@ -20,14 +20,18 @@
 		if (m > 0) return `${m}m`;
 		return s > 0 ? `${s}s` : '0';
 	}
+	/** SQL times ("2026-11-10 22:25:50") are UTC; the members cache stores ISO ("...T...+00:00"). */
+	function parse(sql: string) {
+		return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(sql) ? sql : sql.replace(' ', 'T') + 'Z');
+	}
 	function date(sql: string | null) {
 		if (!sql) return 'unknown';
-		const d = new Date(sql.replace(' ', 'T') + 'Z');
+		const d = parse(sql);
 		return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 	}
 	function when(sql: string | null) {
 		if (!sql) return '';
-		const d = new Date(sql.replace(' ', 'T') + 'Z');
+		const d = parse(sql);
 		return d.toLocaleString(undefined, {
 			month: 'short',
 			day: 'numeric',
@@ -37,7 +41,7 @@
 	}
 	function ago(sql: string | null) {
 		if (!sql) return 'never';
-		const diff = Date.now() - new Date(sql.replace(' ', 'T') + 'Z').getTime();
+		const diff = Date.now() - parse(sql).getTime();
 		const mins = Math.round(diff / 60000);
 		if (mins < 1) return 'just now';
 		if (mins < 60) return `${mins}m ago`;

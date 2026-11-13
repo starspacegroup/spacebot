@@ -49,6 +49,17 @@ describe('member profile for admins', () => {
 		expect(accountCreatedAt('not a number')).toBeNull();
 	});
 
+	it('reads the ISO times the members cache stores (a timeout in the future still counts)', async () => {
+		const db: any = setup();
+		const future = new Date(Date.now() + 3600_000).toISOString().replace('Z', '+00:00');
+		db.exec(
+			`UPDATE guild_members_cache SET joined_at='2025-09-04T08:05:40.110000+00:00', communication_disabled_until='${future}' WHERE user_id='${U}'`
+		);
+		const p = await getMemberAdminProfile(db, G, U, 30);
+		expect(p.identity.joinedAt).toBe('2025-09-04T08:05:40.110000+00:00');
+		expect(p.identity.timeoutUntil).toBe(future);
+	});
+
 	it('gathers identity, voice, people, messages, commands and moderation', async () => {
 		const p = await getMemberAdminProfile(setup(), G, U, 30);
 		expect(p.identity).toMatchObject({

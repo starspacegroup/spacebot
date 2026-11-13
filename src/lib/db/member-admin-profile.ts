@@ -89,7 +89,9 @@ const MOD_EVENTS = [
 	'GUILD_BAN_REMOVE',
 ];
 
-const ms = (sql: string) => Date.parse(sql.replace(' ', 'T') + 'Z');
+/** SQL times are UTC without a zone; the members cache stores ISO strings that carry one. */
+const ms = (sql: string) =>
+	Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(sql) ? sql : sql.replace(' ', 'T') + 'Z');
 const sqlTime = (t: number) => new Date(t).toISOString().slice(0, 19).replace('T', ' ');
 
 export async function getMemberAdminProfile(
