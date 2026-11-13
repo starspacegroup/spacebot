@@ -1955,7 +1955,9 @@ async function postRules(
 	const text = rulesText(settings, await rulesStatus(db, guildId, settings));
 	// Already posted and kept up to date: refresh that message instead of posting a second.
 	const kept = await getRulesMessage(db, guildId);
-	if (kept && (await refreshRules(db, discord, guildId))) {
+	// Asked in another channel than the one the message is in (the chain moved): post a new one
+	// here, so the people playing in this channel have the rules.
+	if (kept && kept.channelId === channelId && (await refreshRules(db, discord, guildId))) {
 		return {
 			response: ephemeral(
 				`The rules message in <#${kept.channelId}> is up to date. ` +
@@ -1974,6 +1976,15 @@ async function postRules(
 		};
 	}
 	await safely('track rules', () => setRulesMessage(db, guildId, channelId, String(posted.id)));
+	// The old message stops updating, so say where the rules went rather than leave it stale.
+	if (kept && kept.channelId !== channelId && discord.channels.editMessage) {
+		await safely('retire old rules', () =>
+			discord.channels.editMessage(kept.channelId, kept.messageId, {
+				content: `The Shiritori rules moved to <#${channelId}>.`,
+				allowed_mentions: { parse: [] },
+			})
+		);
+	}
 	const pinned = discord.channels.pin
 		? await safely('pin rules', () => discord.channels.pin(channelId, posted.id))
 		: null;
@@ -2006,6 +2017,12 @@ export async function maySetChainChannel(
 	return (Array.isArray(rule?.roles) ? rule.roles : []).some((id: unknown) =>
 		held.has(String(id))
 	);
+}
+
+/** Whether a rules message exists in some channel other than this one. */
+async function rulesElsewhere(db: Db, guildId: string, channelId: string) {
+	const kept = await safely('rules message', () => getRulesMessage(db, guildId));
+	return Boolean(kept && kept.channelId !== channelId);
 }
 
 /**
@@ -2056,7 +2073,10 @@ async function setChainChannel(
 	return {
 		response: ephemeral(
 			`Done. <#${channelId}> is now the Shiritori chain: anyone can post a word there. ` +
-				'Change the rules or turn it off under Activity in the dashboard, or with `off:True`.'
+				'Change the rules or turn it off under Activity in the dashboard, or with `/game shiritori off:True`.' +
+				((await rulesElsewhere(db, guildId, channelId))
+					? ' The rules message is still in another channel: run `/game shiritori rules:True` in the chain channel to post it there.'
+					: '')
 		),
 	};
 }

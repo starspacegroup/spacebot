@@ -1391,6 +1391,35 @@ describe('/play shiritori', () => {
 			).toHaveLength(0);
 		});
 
+		it('posts the rules again in a new channel, and tells the old message where they went', async () => {
+			const ask = (channel: string) =>
+				body({
+					channel_id: channel,
+					member: { user: { id: 'u1', username: 'one' }, permissions: MANAGE_SERVER },
+					data: {
+						name: 'game',
+						options: [
+							{
+								name: 'shiritori',
+								type: 1,
+								options: [{ name: 'rules', type: 5, value: true }],
+							},
+						],
+					},
+				});
+			await enable();
+			await handleShiritoriCommand(ask(ROUND_CH), db, discord);
+			const moved = await handleShiritoriCommand(ask('other-ch'), db, discord);
+			expect(moved.response.data.content).toContain('Posted');
+			expect(discord.sent.at(-1)!.channelId).toBe('other-ch');
+			const retired = discord.edits.at(-1)!;
+			expect(retired.channelId).toBe(ROUND_CH);
+			expect(retired.payload.content).toContain('moved to <#other-ch>');
+			// From now on, asking in the new channel refreshes that message.
+			const again = await handleShiritoriCommand(ask('other-ch'), db, discord);
+			expect(again.response.data.content).toContain('up to date');
+		});
+
 		it('stops tracking the rules message when it was deleted', async () => {
 			await enable();
 			await handleShiritoriCommand(
