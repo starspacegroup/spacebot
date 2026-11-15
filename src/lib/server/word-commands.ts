@@ -135,7 +135,17 @@ export function parseWiktionary(body: any): Meaning[] {
 	return meanings;
 }
 
-/** The embed for a definition: up to three parts of speech, two senses each. */
+/** What one embed may hold (Discord's limits are 6000 characters in all and 1024 in a field). */
+const EMBED_BUDGET = 5200;
+const FIELD_MAX = 1000;
+const MAX_FIELDS = 20;
+
+/**
+ * The embed for a definition: every part of speech and every sense, as far as Discord's size
+ * limits allow. A part with many senses carries on in a second field. If it still does not
+ * fit, the rest is left out and the description says how many senses, with the title linking
+ * to the full page.
+ */
 export function defineEmbed(word: string, meanings: Meaning[]) {
 	// The everyday parts of speech first: Wiktionary lists "Symbol" (a language code) before the verb for "run".
 	const rank = (m: Meaning) => {
@@ -143,16 +153,48 @@ export function defineEmbed(word: string, meanings: Meaning[]) {
 		return i === -1 ? COMMON_PARTS.length : i;
 	};
 	const ordered = [...meanings].sort((a, b) => rank(a) - rank(b));
-	const fields = ordered.slice(0, 3).map((m) => {
-		const lines = m.definitions.slice(0, 2).map((d, i) => {
-			const example = d.example ? `\n   *“${cut(d.example, 160)}”*` : '';
-			return `${i + 1}. ${cut(d.definition, 300)}${example}`;
-		});
-		return { name: cut(m.partOfSpeech, 50), value: cut(lines.join('\n'), 1000) };
-	});
+	const fields: { name: string; value: string }[] = [];
+	let used = word.length + 80; // the title, footer and description
+	let shown = 0;
+	let total = 0;
+	for (const m of ordered) total += m.definitions.length;
+
+	outer: for (const m of ordered) {
+		let name = cut(m.partOfSpeech, 50);
+		let value = '';
+		const flush = () => {
+			if (!value) return;
+			fields.push({ name, value });
+			used += name.length + value.length;
+			name = `${cut(m.partOfSpeech, 40)} (continued)`;
+			value = '';
+		};
+		for (let i = 0; i < m.definitions.length; i++) {
+			const d = m.definitions[i];
+			const example = d.example ? `\n   *“${cut(d.example, 140)}”*` : '';
+			const line = `${i + 1}. ${cut(d.definition, 300)}${example}`;
+			if (value && value.length + 1 + line.length > FIELD_MAX) flush();
+			if (
+				fields.length >= MAX_FIELDS ||
+				used + name.length + value.length + line.length > EMBED_BUDGET
+			) {
+				flush();
+				break outer;
+			}
+			value = value ? `${value}\n${line}` : line;
+			shown++;
+		}
+		flush();
+	}
+	const more = total - shown;
 	return embed({
 		title: cut(word, 250),
 		url: `https://en.wiktionary.org/wiki/${encodeURIComponent(word.replace(/ /g, '_'))}`,
+		...(more > 0
+			? {
+					description: `${more} more ${more === 1 ? 'sense' : 'senses'} on the Wiktionary page.`,
+				}
+			: {}),
 		fields,
 		footer: { text: 'Definitions from Wiktionary, CC BY-SA' },
 	});

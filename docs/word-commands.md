@@ -3,7 +3,7 @@
 Two small built-in commands a server can switch on. Both are **off until the server turns them on**.
 
 ```
-/define word:serendipity      a definition: up to three parts of speech, two senses each, with an example
+/define word:serendipity      a definition: every part of speech and sense, with examples, up to what one Discord embed holds (the rest is counted and left to the Wiktionary page)
 /define word:ice cream        a short phrase works too
 /synonym word:happy           words that mean the same
 ```

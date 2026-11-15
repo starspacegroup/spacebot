@@ -34,7 +34,7 @@ const DEFINITION = {
 				},
 				{ definition: '' },
 				{ definition: '<span class="usage-label-sense">(rare)</span> A second sense.' },
-				{ definition: 'A third sense that is not shown.' },
+				{ definition: 'A third sense.' },
 			],
 		},
 		{
@@ -133,7 +133,7 @@ describe('parsing', () => {
 });
 
 describe('/define', () => {
-	it('answers with an embed, two senses per part of speech, and no pings', async () => {
+	it('answers with an embed, every sense of each part of speech, and no pings', async () => {
 		const fetcher = vi.fn((_url: string) => reply(DEFINITION));
 		const out: any = await handleWordCommand('define', body('Serendipity'), db, fetcher);
 		expect(fetcher.mock.calls[0][0]).toBe(
@@ -145,11 +145,38 @@ describe('/define', () => {
 		expect(e.fields.map((f: any) => f.name)).toEqual(['Noun', 'Adjective']);
 		expect(e.fields[0].value).toContain('1. The phenomenon of making');
 		expect(e.fields[0].value).toContain('2. (rare) A second sense.');
-		expect(e.fields[0].value).not.toContain('third sense');
+		expect(e.fields[0].value).toContain('3. ');
 		expect(e.fields[0].value).not.toContain('<'); // no markup reaches Discord
 		expect(e.footer.text).toContain('Wiktionary');
 		expect(out.data.allowed_mentions).toEqual({ parse: [] });
 		expect(out.data.flags).toBeUndefined(); // public
+	});
+
+	it('shows every sense, splits a long part across fields, and says what it left out', async () => {
+		const many = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({
+				definition: `Sense number ${i + 1} ${'x'.repeat(200)}`,
+			}));
+		const four: any = await handleWordCommand('define', body('windfall'), db, () =>
+			reply({ en: [{ partOfSpeech: 'Noun', definitions: many(4) }] })
+		);
+		expect(four.data.embeds[0].fields).toHaveLength(1);
+		expect(four.data.embeds[0].fields[0].value).toContain('4. Sense number 4');
+		expect(four.data.embeds[0].description).toBeUndefined();
+
+		const lots: any = await handleWordCommand('define', body('set'), db, () =>
+			reply({ en: [{ partOfSpeech: 'Verb', definitions: many(60) }] })
+		);
+		const e = lots.data.embeds[0];
+		expect(e.fields.length).toBeGreaterThan(1);
+		expect(e.fields[1].name).toBe('Verb (continued)');
+		for (const f of e.fields) expect(f.value.length).toBeLessThanOrEqual(1024);
+		const all =
+			e.title.length +
+			e.description.length +
+			e.fields.reduce((n: number, f: any) => n + f.name.length + f.value.length, 0);
+		expect(all).toBeLessThan(6000);
+		expect(e.description).toMatch(/\d+ more senses/);
 	});
 
 	it('shows the everyday parts of speech before odd ones like Symbol', async () => {
