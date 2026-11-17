@@ -19,6 +19,7 @@ export const es: Record<string, string> = {
 	'footer.tagline': 'SpaceBot por',
 	'footer.terms': 'Términos del servicio',
 	'footer.privacy': 'Política de privacidad',
+	'footer.status': 'Estado',
 	'footer.github': 'GitHub',
 
 	// --- Common ---

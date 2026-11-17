@@ -93,6 +93,7 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       an idea; the superadmin reads them in one list ranked by impact × reach × confidence ÷
       effort, with an AI draft score they confirm or override; senders see their ideas' status.
       No votes yet (`docs/ideas.md`, migrations 0095 and 0096)
+- [x] Public status page — `/status` and `/api/status`: website, database, bot host and Discord connection checked every minute from the orchestrator worker and the bot's heartbeat; incidents open and close by themselves and a superadmin posts their own at `/admin/superadmin/status` (see `docs/status.md`)
 - [x] Word commands — `/define` (Wiktionary) and `/synonym` (Datamuse), built-in and off until a
       server turns them on from the Commands page; a lookup per member per minute limit; nothing
       stored (`docs/word-commands.md`, migration 0092)

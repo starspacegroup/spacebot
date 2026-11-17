@@ -24,6 +24,7 @@ database — see the architecture overview below.
 
 - [Word commands](word-commands.md) — `/define` and `/synonym`, off until a server turns them on
 - [Idea box](ideas.md) — `/ideas` and `/idea`: anyone signed in sends an idea; the superadmin reads them ranked by merit and effort
+- [Status page](status.md) — `/status` and `/api/status`: what is measured, how incidents open and close, what it cannot see
 - [Announcement channel](announcements.md) — where SpaceBot posts global changes and important alerts
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
