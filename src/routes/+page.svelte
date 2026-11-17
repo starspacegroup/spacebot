@@ -9,6 +9,29 @@
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 
 	let billingInterval = $state('monthly');
+
+	// How wide the hero screenshot is drawn: the page column is 1100 px, less the gutters.
+	const HERO_SIZES = '(min-width: 1180px) 1100px, calc(100vw - 2rem)';
+
+	/**
+	 * The screenshot follows the site's theme, not the operating system's. The <source> above guesses
+	 * from the system setting so the right image is fetched before any script runs; this corrects it
+	 * for a visitor who picked the other theme, and again when they switch.
+	 */
+	function followTheme(img: HTMLImageElement) {
+		const dark = img.parentElement?.querySelector('source');
+		if (!dark) return;
+		const apply = () => {
+			dark.media = document.documentElement.dataset.theme === 'dark' ? 'all' : 'not all';
+		};
+		apply();
+		const watch = new MutationObserver(apply);
+		watch.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['data-theme'],
+		});
+		return { destroy: () => watch.disconnect() };
+	}
 </script>
 
 <svelte:head>
@@ -21,7 +44,13 @@
 	<section class="hero">
 		<div class="hero-content">
 			<h1 class="hero-identity">
-				<img src="/logo.webp" alt={tr('home.hero.logoAlt')} class="hero-logo" /> SpaceBot
+				<img
+					src="/logo-128.webp"
+					alt={tr('home.hero.logoAlt')}
+					class="hero-logo"
+					width="64"
+					height="64"
+				/> SpaceBot
 			</h1>
 			<p class="tagline">{tr('home.hero.tagline')}</p>
 			<p class="description">
@@ -48,16 +77,39 @@
 			</div>
 		</div>
 		<div class="hero-screenshot">
-			<img
-				src="/server-admin-light.webp"
-				alt={tr('home.hero.dashboardAlt')}
-				class="screenshot-light"
-			/>
-			<img
-				src="/server-admin-dark.webp"
-				alt={tr('home.hero.dashboardAlt')}
-				class="screenshot-dark"
-			/>
+			<!--
+				One picture, chosen by theme, so only one of the two screenshots is downloaded.
+				The <source> guesses from the operating system's setting before any script runs;
+				`followTheme` then lets the site's own theme setting decide. Three widths, because a
+				phone does not need the 1680 px original (288 KB).
+			-->
+			<picture>
+				<source
+					media="(prefers-color-scheme: dark)"
+					srcset="
+						/server-admin-dark-640.webp 640w,
+						/server-admin-dark-1100.webp 1100w,
+						/server-admin-dark.webp 1680w
+					"
+					sizes={HERO_SIZES}
+				/>
+				<img
+					use:followTheme
+					src="/server-admin-light-1100.webp"
+					srcset="
+						/server-admin-light-640.webp 640w,
+						/server-admin-light-1100.webp 1100w,
+						/server-admin-light.webp 1680w
+					"
+					sizes={HERO_SIZES}
+					alt={tr('home.hero.dashboardAlt')}
+					class="screenshot"
+					width="1680"
+					height="963"
+					fetchpriority="high"
+					decoding="async"
+				/>
+			</picture>
 		</div>
 	</section>
 
@@ -68,7 +120,13 @@
 		<div class="feature-grid">
 			<div class="feature-card">
 				<span class="feature-icon"
-					><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span
+					><img
+						src="/logo-64.webp"
+						alt=""
+						width="29"
+						height="29"
+						style="height:1.8rem;width:auto;"
+					/></span
 				>
 				<h3>{tr('home.features.commands.title')}</h3>
 				<p>{tr('home.features.commands.body')}</p>
@@ -371,24 +429,13 @@
 	}
 
 	.hero-screenshot img {
+		display: block;
 		width: 100%;
+		height: auto;
+		aspect-ratio: 1680 / 963;
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-lg);
 		border: 1px solid var(--color-border);
-	}
-
-	/* Theme-based screenshot visibility */
-	.screenshot-dark {
-		display: none;
-	}
-	.screenshot-light {
-		display: block;
-	}
-	:global([data-theme='dark']) .screenshot-dark {
-		display: block;
-	}
-	:global([data-theme='dark']) .screenshot-light {
-		display: none;
 	}
 
 	.btn-primary:hover {
@@ -583,8 +630,8 @@
 
 	.pricing-card-coming-soon {
 		border: 5px dashed var(--color-border);
-		opacity: 0.55;
-		filter: grayscale(0.5);
+		/* Dimmed by colour, not by opacity: opacity also thins the text and it fell below 4.5:1. */
+		filter: grayscale(0.6);
 		background: color-mix(in srgb, var(--color-surface) 60%, transparent);
 	}
 

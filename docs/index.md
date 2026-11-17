@@ -24,6 +24,7 @@ database — see the architecture overview below.
 
 - [Word commands](word-commands.md) — `/define` and `/synonym`, off until a server turns them on
 - [Idea box](ideas.md) — `/ideas` and `/idea`: anyone signed in sends an idea; the superadmin reads them ranked by merit and effort
+- [Web performance and security headers](web-performance.md) — Lighthouse and Observatory findings, what was changed, how to re-measure
 - [Share cards](share-cards.md) — what a shared link looks like: the route table, the prebuilt card images, how to add a page
 - [Status page](status.md) — `/status` and `/api/status`: what is measured, how incidents open and close, what it cannot see
 - [Announcement channel](announcements.md) — where SpaceBot posts global changes and important alerts

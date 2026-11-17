@@ -149,3 +149,25 @@ describe('the card template', () => {
 		expect(evil).toContain('&lt;b&gt;&quot;&amp;');
 	});
 });
+
+describe('who writes the meta description', () => {
+	it('the layout writes it only for pages that do not write their own', () => {
+		// These pages have a <meta name="description"> of their own (translated), so a second would duplicate it.
+		for (const p of ['/', '/servers', '/docs', '/docs/dev', '/privacy', '/terms']) {
+			expect(socialFor(p).ownDescription, p).toBe(true);
+		}
+		// These have none, so the layout writes one (Lighthouse flagged /support for lacking it).
+		for (const p of [
+			'/status',
+			'/support',
+			'/vote',
+			'/invite',
+			'/ideas',
+			'/leaderboards',
+			'/login',
+		]) {
+			expect(socialFor(p).ownDescription, p).toBe(false);
+			expect(socialFor(p).description.length, p).toBeGreaterThan(20);
+		}
+	});
+});

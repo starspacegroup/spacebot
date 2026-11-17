@@ -116,6 +116,8 @@ export interface Social {
 	 * The layout then adds none, so the page never has two sets.
 	 */
 	own: boolean;
+	/** The page writes its own <meta name="description">, so the layout must not add a second. */
+	ownDescription: boolean;
 }
 
 interface Route {
@@ -124,6 +126,7 @@ interface Route {
 	title: string;
 	description: string;
 	own?: boolean;
+	ownDescription?: boolean;
 }
 
 const DEFAULT_DESCRIPTION =
@@ -136,6 +139,7 @@ const ROUTES: Route[] = [
 		card: 'home',
 		title: 'SpaceBot – Discord Bot Platform',
 		description: DEFAULT_DESCRIPTION,
+		ownDescription: true,
 	},
 	{
 		test: /^\/status\/?$/,
@@ -150,6 +154,7 @@ const ROUTES: Route[] = [
 		title: 'Discord Server Browser — SpaceBot',
 		description: 'A Discord community that runs SpaceBot.',
 		own: true,
+		ownDescription: true,
 	},
 	{
 		test: /^\/servers\/?$/,
@@ -157,6 +162,7 @@ const ROUTES: Route[] = [
 		title: 'Discord Server Browser — SpaceBot',
 		description:
 			'Browse Discord communities that run on SpaceBot and chose to be listed publicly.',
+		ownDescription: true,
 	},
 	{
 		test: /^\/docs\/dev\/[^/]+\/?$/,
@@ -164,12 +170,14 @@ const ROUTES: Route[] = [
 		title: 'Developer Docs – SpaceBot',
 		description: 'SpaceBot developer documentation.',
 		own: true,
+		ownDescription: true,
 	},
 	{
 		test: /^\/docs\/dev\/?$/,
 		card: 'devdocs',
 		title: 'Developer Docs – SpaceBot',
 		description: 'The SpaceBot REST API and integrations, for people building on SpaceBot.',
+		ownDescription: true,
 	},
 	{
 		test: /^\/docs(\/|$)/,
@@ -177,18 +185,21 @@ const ROUTES: Route[] = [
 		title: 'Documentation – SpaceBot',
 		description:
 			'Learn how to set up and use custom commands, automations, integrations, the REST API, and more.',
+		ownDescription: true,
 	},
 	{
 		test: /^\/privacy\/?$/,
 		card: 'privacy',
 		title: 'Privacy Policy – SpaceBot',
 		description: 'How SpaceBot collects, uses and protects your data.',
+		ownDescription: true,
 	},
 	{
 		test: /^\/terms\/?$/,
 		card: 'terms',
 		title: 'Terms of Service – SpaceBot',
 		description: 'The rules and guidelines for using SpaceBot.',
+		ownDescription: true,
 	},
 	{
 		test: /^\/leaderboards\/?$/,
@@ -251,6 +262,7 @@ export function socialFor(pathname: string): Social {
 			title: hit.title,
 			description: hit.description,
 			own: hit.own === true,
+			ownDescription: hit.ownDescription === true,
 		};
 	}
 	// A page nobody has described yet still gets the SpaceBot card, not a bare logo.
@@ -259,5 +271,6 @@ export function socialFor(pathname: string): Social {
 		title: 'SpaceBot – Discord Bot Platform',
 		description: DEFAULT_DESCRIPTION,
 		own: false,
+		ownDescription: false,
 	};
 }

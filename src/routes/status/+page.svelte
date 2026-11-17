@@ -56,7 +56,6 @@
 
 <svelte:head>
 	<title>SpaceBot Status</title>
-	<meta name="description" content="Live status and incident history for SpaceBot." />
 	<link rel="alternate" type="application/json" href="/api/status" title="Status feed" />
 </svelte:head>
 
@@ -341,13 +340,13 @@
 		font-size: 0.8rem;
 	}
 	.state-operational {
-		color: var(--color-success);
+		color: var(--color-success-text);
 	}
 	.state-degraded {
-		color: var(--color-warning);
+		color: var(--color-warning-text);
 	}
 	.state-down {
-		color: var(--color-danger);
+		color: var(--color-danger-text);
 	}
 	.why {
 		margin: 0.6rem 0 0;

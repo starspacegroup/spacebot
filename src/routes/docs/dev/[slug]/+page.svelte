@@ -18,6 +18,7 @@
 	description={doc.description}
 	path="/docs/dev/{doc.slug}"
 	card="devdocs"
+	describe={false}
 />
 
 <div class="doc-layout">

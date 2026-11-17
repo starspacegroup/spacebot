@@ -73,15 +73,6 @@
 		}
 	});
 
-	// Track if we've received valid data to prevent flash during hydration
-	let hasInitialized = $state(false);
-
-	$effect(() => {
-		if (data && data.user !== undefined) {
-			hasInitialized = true;
-		}
-	});
-
 	// Use data prop for layout data
 	const isLoggedIn = $derived(data?.isLoggedIn ?? false);
 	const user = $derived(data?.user ?? null);
@@ -149,7 +140,10 @@
 	);
 
 	// Only show login button after initialization to prevent flash
-	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
+	// The Pricing link and Login button are part of the server-rendered header. They used to
+	// appear only after the page loaded in the browser, which made the header grow and pushed the
+	// whole page down (a layout shift of about 0.2 on every page).
+	const showLoginButton = $derived(data?.user !== undefined && !isLoggedIn);
 
 	// Pre-extract hues for all admin guilds so switching servers is instant.
 	$effect(() => {
@@ -199,6 +193,7 @@
 		description={social.description}
 		path={page.url.pathname}
 		card={social.card}
+		describe={!social.ownDescription}
 	/>
 {/if}
 
@@ -208,7 +203,7 @@
 	<div class="app-layout" class:chat-page={page.url.pathname.endsWith('/chat')}>
 		<header class="app-header">
 			<a href={isLoggedIn ? '/admin' : '/'} class="logo">
-				<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
+				<img src="/logo-64.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
 				<span class="logo-text">SpaceBot</span>
 			</a>
 			<button

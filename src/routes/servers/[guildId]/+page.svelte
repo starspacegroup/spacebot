@@ -38,6 +38,7 @@
 	description={listing.headline || tr('browse.metaDescription')}
 	path={page.url.pathname}
 	card="servers"
+	describe={false}
 	image={listing.icon_url || null}
 />
 

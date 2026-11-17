@@ -123,7 +123,7 @@
 						<g class="s2-pulse"><circle cx="110" cy="158" r="20" /></g>
 						<g class="s2-bot">
 							<image
-								href="/logo.webp"
+								href="/logo-128.webp"
 								x="88"
 								y="136"
 								width="44"
@@ -162,7 +162,7 @@
 
 						<g class="s3-reply">
 							<image
-								href="/logo.webp"
+								href="/logo-128.webp"
 								x="20"
 								y="52"
 								width="30"
@@ -206,7 +206,7 @@
 					<svg class="scene s4" viewBox="0 0 220 220" aria-hidden="true">
 						<rect class="win" x="10" y="12" width="200" height="196" rx="14" />
 						<image
-							href="/logo.webp"
+							href="/logo-128.webp"
 							x="22"
 							y="22"
 							width="18"
@@ -294,7 +294,7 @@
 
 							<g class="s6-embed">
 								<image
-									href="/logo.webp"
+									href="/logo-128.webp"
 									x="20"
 									y="52"
 									width="30"
@@ -362,7 +362,7 @@
 							<g class="node">
 								<circle class="cloud" cx="186" cy="97" r="26" />
 								<image
-									href="/logo.webp"
+									href="/logo-128.webp"
 									x="168"
 									y="79"
 									width="36"

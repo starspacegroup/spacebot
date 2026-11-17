@@ -19,6 +19,7 @@
 		path,
 		card,
 		image = null,
+		describe = true,
 	}: {
 		title: string;
 		description: string;
@@ -28,6 +29,8 @@
 		card: OgCardKey;
 		/** An absolute URL to a square picture (a server icon). Shown as a small card. */
 		image?: string | null;
+		/** Also write <meta name="description">. Off for pages that write their own. */
+		describe?: boolean;
 	} = $props();
 
 	const url = $derived(path === '/' ? SITE_URL : SITE_URL + path);
@@ -36,6 +39,9 @@
 </script>
 
 <svelte:head>
+	{#if describe}
+		<meta name="description" content={description} />
+	{/if}
 	<meta property="og:site_name" content="SpaceBot" />
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content={title} />

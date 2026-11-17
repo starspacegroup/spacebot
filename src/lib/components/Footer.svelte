@@ -52,7 +52,9 @@
 
 	.footer-copy a {
 		color: var(--color-text-secondary);
-		text-decoration: none;
+		/* A link inside a sentence must not rely on colour alone. */
+		text-decoration: underline;
+		text-underline-offset: 2px;
 		transition: color var(--transition-fast);
 	}
 
