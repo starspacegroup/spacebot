@@ -275,3 +275,32 @@ describe('incidents from a person', () => {
 		expect(snap.openIncidents.map((i) => i.id)).toEqual([made.id]);
 	});
 });
+
+describe('a bot that reports every 30 minutes', () => {
+	// Production sets benchmark_interval_seconds to 1800, so a quiet 20 minutes is normal.
+	beforeEach(() => {
+		db.exec(`CREATE TABLE IF NOT EXISTS global_settings (key TEXT PRIMARY KEY, value TEXT)`);
+		db.exec(
+			`INSERT INTO global_settings (key, value) VALUES ('benchmark_interval_seconds', '1800')`
+		);
+	});
+
+	it('is not called down between reports', async () => {
+		heartbeat(at(0));
+		for (let m = 0; m <= 25; m++)
+			await recordStatus(db, { website: { ok: true, ms: 120 } }, at(m));
+		const snap = await getStatusSnapshot(db, at(25));
+		expect(snap.components.find((c) => c.id === 'bot_host')!.status).toBe('operational');
+		expect(snap.components.find((c) => c.id === 'discord')!.status).toBe('operational');
+		expect(snap.openIncidents).toHaveLength(0);
+	});
+
+	it('is called down once two reports have been missed', async () => {
+		heartbeat(at(0));
+		for (let m = 0; m <= 75; m++)
+			await recordStatus(db, { website: { ok: true, ms: 120 } }, at(m));
+		const snap = await getStatusSnapshot(db, at(75));
+		expect(snap.components.find((c) => c.id === 'bot_host')!.status).toBe('down');
+		expect(snap.openIncidents.length).toBeGreaterThan(0);
+	});
+});

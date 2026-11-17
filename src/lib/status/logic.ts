@@ -39,7 +39,7 @@ export const COMPONENTS: ComponentInfo[] = [
 	{
 		id: 'bot_host',
 		name: 'Bot host',
-		description: 'The server the bot runs on. It reports in every minute.',
+		description: 'The server the bot runs on. It reports in on a regular schedule.',
 	},
 	{
 		id: 'discord',
@@ -63,8 +63,19 @@ export interface Reading {
 export const SLOW_WEBSITE_MS = 3000;
 export const SLOW_DATABASE_MS = 1500;
 export const SLOW_DISCORD_MS = 1500;
-/** The bot reports every 60 s. Silent for this long means the host is not reporting. */
+/** With the bot reporting every 60 s, silent for this long means the host is not reporting. */
 export const HEARTBEAT_STALE_SECONDS = 150;
+
+/**
+ * How long a report can be missing before the host counts as silent, given how often the bot is
+ * set to report (`benchmark_interval_seconds`; 1800 in production). Two missed reports plus slack.
+ * Never shorter than the one-minute default, and an unusable setting falls back to it.
+ */
+export function staleAfterSeconds(intervalSeconds: number | null | undefined) {
+	const n = Number(intervalSeconds);
+	if (!Number.isFinite(n) || n <= 0) return HEARTBEAT_STALE_SECONDS;
+	return Math.max(HEARTBEAT_STALE_SECONDS, Math.round(n) * 2 + 30);
+}
 
 export interface WebsiteProbe {
 	ok: boolean;
@@ -133,11 +144,15 @@ export function describeAge(seconds: number) {
 }
 
 /**
- * The bot reports a heartbeat row every minute. No row lately: the host is not reporting
+ * The bot reports a heartbeat row on a schedule (see `staleAfterSeconds`). No row lately: the host is not reporting
  * (down, or cut off), and the Discord connection cannot be vouched for either. Rows arriving
  * but not "connected": the host is fine and the bot has lost Discord.
  */
-export function readBot(hb: BotHeartbeat | null | undefined, now: Date) {
+export function readBot(
+	hb: BotHeartbeat | null | undefined,
+	now: Date,
+	staleAfter: number = HEARTBEAT_STALE_SECONDS
+) {
 	if (!hb || !hb.recordedAt) {
 		const detail = 'The bot host has not reported in.';
 		return {
@@ -150,7 +165,7 @@ export function readBot(hb: BotHeartbeat | null | undefined, now: Date) {
 		};
 	}
 	const age = ageSeconds(hb.recordedAt, now);
-	if (age > HEARTBEAT_STALE_SECONDS) {
+	if (age > staleAfter) {
 		return {
 			host: {
 				status: 'down',

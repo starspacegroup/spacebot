@@ -7,15 +7,20 @@ No sign-in. A superadmin posts and updates incidents at `/admin/superadmin/statu
 
 Only things that are really checked. Each is operational, slow (degraded) or down.
 
-| Component             | How it is checked                                                                | Down when                                                      | Slow when               |
-| --------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------- |
-| Website and dashboard | The orchestrator worker fetches `/_app/version.json` from outside, once a minute | No answer, or an error status                                  | 3 s or more             |
-| Database              | `SELECT 1` on D1, timed                                                          | The query fails                                                | 1.5 s or more           |
-| Bot host              | The newest `gateway_benchmarks` row (the bot adds one every minute)              | No row for 150 s                                               | never                   |
-| Discord connection    | The same row: its status and heartbeat latency                                   | Rows arrive but status is not `connected`, or the host is down | heartbeat 1.5 s or more |
+| Component             | How it is checked                                                                         | Down when                                                                                             | Slow when               |
+| --------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------- |
+| Website and dashboard | The orchestrator worker fetches `/_app/version.json` from outside, once a minute          | No answer, or an error status                                                                         | 3 s or more             |
+| Database              | `SELECT 1` on D1, timed                                                                   | The query fails                                                                                       | 1.5 s or more           |
+| Bot host              | The newest `gateway_benchmarks` row (the bot adds one every `benchmark_interval_seconds`) | No row for twice the interval plus 30 s (at least 150 s). Production sets 1800 s, so about 61 minutes | never                   |
+| Discord connection    | The same row: its status and heartbeat latency                                            | Rows arrive but status is not `connected`, or the host is down                                        | heartbeat 1.5 s or more |
 
 The two bot components tell the cases apart: the host not reporting means the machine or the
 process is gone; reports arriving without `connected` means the host is fine and Discord is not.
+
+The silence window follows the `benchmark_interval_seconds` global setting (`staleAfterSeconds` in
+`src/lib/status/logic.ts`). With the production value of 1800 s the page can take up to an hour to
+notice a dead host. Setting the interval to 60 makes it notice in about three minutes, at the cost
+of one `gateway_benchmarks` row per minute.
 
 ## How a status changes
 

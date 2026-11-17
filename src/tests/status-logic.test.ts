@@ -9,6 +9,7 @@ import {
 	lastDays,
 	overall,
 	readBot,
+	staleAfterSeconds,
 	readDatabase,
 	readWebsite,
 	uptimePercent,
@@ -210,5 +211,22 @@ describe('history', () => {
 		expect(overall([])).toBe('operational');
 		expect(overall(['operational', 'degraded'])).toBe('degraded');
 		expect(overall(['degraded', 'down', 'operational'])).toBe('down');
+	});
+});
+
+describe('how long the bot may stay quiet', () => {
+	it('follows the reporting interval and never goes below the one-minute default', () => {
+		expect(staleAfterSeconds(60)).toBe(HEARTBEAT_STALE_SECONDS);
+		expect(staleAfterSeconds(1800)).toBe(3630);
+		expect(staleAfterSeconds(10)).toBe(HEARTBEAT_STALE_SECONDS);
+		for (const bad of [null, undefined, 0, -5, NaN]) {
+			expect(staleAfterSeconds(bad as any)).toBe(HEARTBEAT_STALE_SECONDS);
+		}
+	});
+
+	it('readBot uses the window it is given', () => {
+		const hb = fresh({ recordedAt: ago(20 * 60) });
+		expect(readBot(hb, NOW).host.status).toBe('down');
+		expect(readBot(hb, NOW, staleAfterSeconds(1800)).host.status).toBe('operational');
 	});
 });

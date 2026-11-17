@@ -33,6 +33,7 @@ import {
 	type Reading,
 	type Status,
 	type WebsiteProbe,
+	staleAfterSeconds,
 } from '../status/logic.js';
 
 type Db = any;
@@ -65,13 +66,27 @@ async function latestHeartbeat(db: Db) {
 				   FROM gateway_benchmarks ORDER BY id DESC LIMIT 1`
 			)
 			.first();
-		return row
-			? {
-					recordedAt: row.recorded_at as string,
-					status: row.status as string,
-					latencyMs: (row.heartbeat_latency_ms ?? null) as number | null,
-				}
-			: null;
+		if (!row) return null;
+		// How often the bot is set to report. A missing or odd value means the one-minute default.
+		let intervalSeconds: number | null = null;
+		try {
+			const s: any = await db
+				.prepare(
+					`SELECT value FROM global_settings WHERE key = 'benchmark_interval_seconds'`
+				)
+				.first();
+			intervalSeconds = s ? parseInt(String(s.value), 10) || null : null;
+		} catch {
+			intervalSeconds = null;
+		}
+		return {
+			hb: {
+				recordedAt: row.recorded_at as string,
+				status: row.status as string,
+				latencyMs: (row.heartbeat_latency_ms ?? null) as number | null,
+			},
+			staleAfter: staleAfterSeconds(intervalSeconds),
+		};
 	} catch {
 		return null;
 	}
@@ -200,7 +215,7 @@ export async function recordStatus(
 ): Promise<RecordResult> {
 	const at = sqlTime(now);
 	const [dbProbe, heartbeat] = await Promise.all([probeDatabase(db), latestHeartbeat(db)]);
-	const bot = readBot(heartbeat, now);
+	const bot = readBot(heartbeat?.hb ?? null, now, heartbeat?.staleAfter);
 	const readings: Record<string, Reading> = {
 		website: readWebsite(input.website),
 		database: readDatabase(dbProbe),
