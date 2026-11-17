@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { readFileSync, existsSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
 import {
 	OG_CARDS,
 	SITE_URL,
@@ -7,14 +8,6 @@ import {
 	socialFor,
 	type OgCardKey,
 } from '../lib/seo/social.js';
-
-const svgSeen: string[] = [];
-vi.mock('$lib/svg-to-png.js', () => ({
-	svgToPng: async (svg: string) => {
-		svgSeen.push(svg);
-		return new Uint8Array([137, 80, 78, 71]);
-	},
-}));
 
 describe('share cards', () => {
 	it('every card has short text that fits the 1200 px image', () => {
@@ -31,7 +24,7 @@ describe('share cards', () => {
 		for (const bad of ['__proto__', 'constructor', 'toString', 'nope', '', null, 7]) {
 			expect(isOgCardKey(bad)).toBe(false);
 		}
-		expect(ogImageUrl('status')).toBe(`${SITE_URL}/api/og?page=status`);
+		expect(ogImageUrl('status')).toBe(`${SITE_URL}/og/status.png`);
 	});
 });
 
@@ -99,26 +92,32 @@ describe('which card a page gets', () => {
 	});
 });
 
-describe('/api/og', () => {
-	it('draws a table card for a known name and the home card for anything else', async () => {
-		const { GET } = await import('../routes/api/og/+server.js');
-		const draw = async (q: string) => {
-			svgSeen.length = 0;
-			const res = await GET({ url: new URL(`https://x.test/api/og${q}`) } as any);
-			expect(res.headers.get('content-type')).toBe('image/png');
-			return svgSeen[0];
-		};
-		expect(await draw('?page=status')).toContain('Service Status');
-		expect(await draw('?page=nope')).toContain('The powerful Discord bot platform');
-		expect(await draw('')).toContain('The powerful Discord bot platform');
+describe('the card images', () => {
+	it('every card has a 1200×630 PNG in static/og (run scripts/generate-og-cards.ts)', () => {
+		for (const key of Object.keys(OG_CARDS)) {
+			const file = `static/og/${key}.png`;
+			expect(existsSync(file), file).toBe(true);
+			const png = readFileSync(file);
+			expect(png.subarray(1, 4).toString(), file).toBe('PNG');
+			expect(png.readUInt32BE(16), `${file} width`).toBe(1200);
+			expect(png.readUInt32BE(20), `${file} height`).toBe(630);
+		}
 	});
 
-	it('never prints text taken from the request', async () => {
+	it('the old /api/og address redirects to a card, and never draws request text', async () => {
 		const { GET } = await import('../routes/api/og/+server.js');
-		svgSeen.length = 0;
-		await GET({
-			url: new URL('https://x.test/api/og?page=status&title=EVIL&description=EVIL%20TEXT'),
-		} as any);
-		expect(svgSeen[0]).not.toContain('EVIL');
+		const go = (q: string) => {
+			try {
+				GET({ url: new URL(`https://x.test/api/og${q}`) } as any);
+			} catch (e: any) {
+				return { status: e.status as number, to: e.location as string };
+			}
+			throw new Error('expected a redirect');
+		};
+		expect(go('?page=status')).toEqual({ status: 301, to: '/og/status.png' });
+		expect(go('?page=nope')).toEqual({ status: 301, to: '/og/home.png' });
+		expect(go('')).toEqual({ status: 301, to: '/og/home.png' });
+		expect(go('?page=status&title=EVIL').to).toBe('/og/status.png');
+		expect(go('?page=../../etc/passwd').to).toBe('/og/home.png');
 	});
 });

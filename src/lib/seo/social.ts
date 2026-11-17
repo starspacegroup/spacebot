@@ -105,7 +105,7 @@ export const isOgCardKey = (key: unknown): key is OgCardKey =>
 	typeof key === 'string' && Object.hasOwn(OG_CARDS, key);
 
 /** The absolute URL of a card image, for `og:image`. */
-export const ogImageUrl = (card: OgCardKey) => `${SITE_URL}/api/og?page=${card}`;
+export const ogImageUrl = (card: OgCardKey) => `${SITE_URL}/og/${card}.png`;
 
 export interface Social {
 	card: OgCardKey;
