@@ -13,13 +13,6 @@
 <svelte:head>
 	<title>{tr('home.meta.title')}</title>
 	<meta name="description" content={tr('home.meta.description')} />
-	<meta property="og:title" content={tr('home.meta.title')} />
-	<meta property="og:description" content={tr('home.meta.description')} />
-	<meta property="og:url" content="https://spacebot.starspace.group" />
-	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta name="twitter:title" content={tr('home.meta.title')} />
-	<meta name="twitter:description" content={tr('home.meta.description')} />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
 <div class="landing">

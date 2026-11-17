@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import { page } from '$app/state';
+	import SocialMeta from '$lib/components/SocialMeta.svelte';
 	import { serverHue, serverInitials } from '$lib/server-listing-display.js';
 
 	const tr = getTranslator();
@@ -29,12 +31,15 @@
 <svelte:head>
 	<title>{listing.name} — {tr('browse.title')}</title>
 	<meta name="description" content={listing.headline || tr('browse.metaDescription')} />
-	<meta property="og:title" content={listing.name} />
-	<meta property="og:description" content={listing.headline || tr('browse.metaDescription')} />
-	{#if listing.icon_url}
-		<meta property="og:image" content={listing.icon_url} />
-	{/if}
 </svelte:head>
+
+<SocialMeta
+	title={listing.name}
+	description={listing.headline || tr('browse.metaDescription')}
+	path={page.url.pathname}
+	card="servers"
+	image={listing.icon_url || null}
+/>
 
 <div class="detail-page">
 	<a class="back-link" href="/servers">← {tr('browse.backToBrowser')}</a>

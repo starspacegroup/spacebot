@@ -55,9 +55,6 @@
 <svelte:head>
 	<title>{tr('browse.metaTitle')}</title>
 	<meta name="description" content={tr('browse.metaDescription')} />
-	<meta property="og:title" content={tr('browse.metaTitle')} />
-	<meta property="og:description" content={tr('browse.metaDescription')} />
-	<meta property="og:url" content="https://spacebot.starspace.group/servers" />
 </svelte:head>
 
 <div class="browse-page">

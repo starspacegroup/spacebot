@@ -8,13 +8,6 @@
 <svelte:head>
 	<title>{tr('docs.meta.title')}</title>
 	<meta name="description" content={tr('docs.meta.description')} />
-	<meta property="og:title" content={tr('docs.meta.title')} />
-	<meta property="og:description" content={tr('docs.meta.description')} />
-	<meta property="og:url" content="https://spacebot.starspace.group/docs" />
-	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta name="twitter:title" content={tr('docs.meta.title')} />
-	<meta name="twitter:description" content={tr('docs.meta.description')} />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
 <div class="docs-page">

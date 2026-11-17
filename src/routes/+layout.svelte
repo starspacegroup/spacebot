@@ -9,6 +9,8 @@
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import LanguageSelector from '$lib/components/LanguageSelector.svelte';
+	import SocialMeta from '$lib/components/SocialMeta.svelte';
+	import { socialFor } from '$lib/seo/social.js';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page, updated } from '$app/state';
 	import { beforeNavigate } from '$app/navigation';
@@ -20,6 +22,9 @@
 	import { setLocaleContext, t } from '$lib/i18n.js';
 
 	const { children, data } = $props();
+
+	// What a shared link to this page looks like. Pages built from data write their own (`own`).
+	const social = $derived(socialFor(page.url.pathname));
 
 	// The Activity runs inside Discord's iframe: no site header, footer or palette.
 	// Discord's proxy can put a prefix in front of the path (/.proxy/activity), and the
@@ -185,28 +190,17 @@
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<link rel="manifest" href="/site.webmanifest" />
 
-	<!-- Open Graph defaults (overridden per-page via svelte:head) -->
-	<meta property="og:site_name" content="SpaceBot" />
-	<meta property="og:type" content="website" />
-	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		property="og:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations."
-	/>
-	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta property="og:url" content="https://spacebot.starspace.group" />
-
-	<!-- Twitter Card -->
-	<meta name="twitter:card" content="summary" />
-	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		name="twitter:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations."
-	/>
-	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
-
 	<meta name="theme-color" content="#0D0B1A" />
 </svelte:head>
+
+{#if !social.own}
+	<SocialMeta
+		title={social.title}
+		description={social.description}
+		path={page.url.pathname}
+		card={social.card}
+	/>
+{/if}
 
 {#if isActivity}
 	{@render children()}
