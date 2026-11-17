@@ -121,3 +121,31 @@ describe('the card images', () => {
 		expect(go('?page=../../etc/passwd').to).toBe('/og/home.png');
 	});
 });
+
+describe('the card template', () => {
+	it('wraps text evenly and never ends on a lone short word', async () => {
+		const { wrap } = await import('../lib/seo/og-svg.js');
+		expect(wrap('How we collect, use, and protect your data.', 40)).toEqual([
+			'How we collect, use,',
+			'and protect your data.',
+		]);
+		expect(wrap('Terms of Service', 16)).toEqual(['Terms of Service']);
+		expect(wrap('Vote for SpaceBot', 15)).toEqual(['Vote for', 'SpaceBot']);
+		expect(wrap('', 20)).toEqual([]);
+		for (const line of wrap('a '.repeat(60), 30)) expect(line.length).toBeLessThanOrEqual(30);
+	});
+
+	it('draws every card with its words and a drawing, and escapes the text', async () => {
+		const { ogSvg } = await import('../lib/seo/og-svg.js');
+		for (const [key, card] of Object.entries(OG_CARDS)) {
+			const svg = ogSvg(key as OgCardKey, card, 'data:image/png;base64,AAAA');
+			expect(svg.startsWith('<svg'), key).toBe(true);
+			expect(svg, key).toContain('spacebot.starspace.group');
+			expect(svg, key).not.toContain('undefined');
+			expect(svg, key).not.toContain('NaN');
+		}
+		const evil = ogSvg('home', { title: '<b>"&', subtitle: 'x', description: 'y' }, 'data:,');
+		expect(evil).not.toContain('<b>');
+		expect(evil).toContain('&lt;b&gt;&quot;&amp;');
+	});
+});
