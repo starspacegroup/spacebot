@@ -1,8 +1,9 @@
 import { CronDispatchWorkflow } from './cron-dispatch-workflow';
 import { SuperadminRunWorkflow } from './superadmin-run-workflow';
 import { MessagePurgeWorkflow } from './message-purge-workflow';
+import { RateLimiter } from './rate-limiter';
 
-export { CronDispatchWorkflow, SuperadminRunWorkflow, MessagePurgeWorkflow };
+export { CronDispatchWorkflow, SuperadminRunWorkflow, MessagePurgeWorkflow, RateLimiter };
 
 export interface Env {
 	SPACEBOT_API_BASE?: string;

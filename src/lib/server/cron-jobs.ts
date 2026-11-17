@@ -21,6 +21,7 @@ import {
 	pruneAggregatedEventLogs,
 	resolveEventLogRetentionEnv,
 } from '$lib/db/event-log-retention.js';
+import { pruneAppendOnlyLogs } from '$lib/db/log-retention.js';
 
 /**
  * Get all guilds that have event logs in the last 7 days.
@@ -206,6 +207,7 @@ export async function runDailyRefresh(db, botToken) {
 		cleanup?: any;
 		statsRepair?: any;
 		eventLogRetention?: any;
+		logRetention?: any;
 		metadata?: { processed: number; failed: number };
 	} = {
 		stats: {
@@ -315,6 +317,8 @@ export async function runDailyRefresh(db, botToken) {
 	// nightly workflow path — a hardcoded 5000 here outlived the drop to 2,500
 	// and quietly blew the shared write allowance this job is sized against.
 	results.eventLogRetention = await pruneAggregatedEventLogs(db, resolveEventLogRetentionEnv());
+	// Every other append-only table, each on its own budget (log-retention.ts).
+	results.logRetention = await pruneAppendOnlyLogs(db);
 	results.metadata = metadataResults;
 
 	log.info(

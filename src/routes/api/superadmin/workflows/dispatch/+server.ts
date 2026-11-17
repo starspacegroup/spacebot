@@ -60,22 +60,6 @@ function listCronTemplates(templates) {
 }
 
 /**
- * A template already dispatched for this minute must not fire again — ticks
- * may overlap and cron granularity is 1 minute.
- */
-async function hasRunThisMinute(db, templateId, minuteSql) {
-	const row = await db
-		.prepare(
-			`SELECT id FROM superadmin_workflow_runs
-     WHERE template_id = ? AND trigger_source = 'cron' AND created_at >= ?
-     LIMIT 1`
-		)
-		.bind(templateId, minuteSql)
-		.first();
-	return Boolean(row);
-}
-
-/**
  * Atomic per-minute claim (security review 2026-10-20, #9): the primary key
  * on (template_id, scheduled_minute) lets exactly one overlapping tick win.
  */
@@ -239,10 +223,9 @@ export async function POST({ request, cookies, platform, fetch }) {
 			continue;
 		}
 		if (!cronMatches(template.cron_expression, now)) continue;
-		if (await hasRunThisMinute(db, template.id, minuteSql)) {
-			skipped.push({ id: template.id, slug: template.slug, reason: 'already_dispatched' });
-			continue;
-		}
+		// No read-before-claim here: claimCronMinute's INSERT OR IGNORE is the
+		// one source of truth for "already dispatched this minute", and the read
+		// it replaced cost one D1 query per due template per tick.
 		due.push(template);
 	}
 

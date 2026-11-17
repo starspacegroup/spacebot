@@ -54,7 +54,7 @@ export async function POST({ params, cookies, platform }) {
 		);
 	}
 
-	const allowance = await consumeQuota(db, 'listing-ai', serverId, QUOTA);
+	const allowance = await consumeQuota(db, 'listing-ai', serverId, QUOTA, platform);
 	if (!allowance) {
 		return json(
 			{ error: 'Too many drafts for this server just now. Try again in a few minutes.' },
