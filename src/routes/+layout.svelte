@@ -13,7 +13,7 @@
 	import { socialFor } from '$lib/seo/social.js';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page, updated } from '$app/state';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, onNavigate } from '$app/navigation';
 	import {
 		applyServerTheme,
 		clearServerTheme,
@@ -67,6 +67,25 @@
 	// This prevents stale client-side route manifests from loading
 	// the wrong page component (e.g. showing logs page at /integrations).
 	// Critical when HMR is disabled (tunnel / production).
+	// Moving between pages (and paging through a list) blends the old content into the new, instead
+	// of the old items vanishing and the new ones appearing. Only the page content blends; the header
+	// stays put. It is skipped for visitors who ask for less motion, and in browsers without view
+	// transitions (they navigate as before). The names are on only while the transition runs, because
+	// a named element becomes a containing block for fixed-position children.
+	onNavigate((navigation) => {
+		if (!document.startViewTransition) return;
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const root = document.documentElement;
+		root.classList.add('page-transition');
+		return new Promise((resolve) => {
+			const transition = document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+			transition.finished.finally(() => root.classList.remove('page-transition'));
+		});
+	});
+
 	beforeNavigate(({ willUnload, to }) => {
 		if (updated.current && !willUnload && to?.url) {
 			location.href = to.url.href;

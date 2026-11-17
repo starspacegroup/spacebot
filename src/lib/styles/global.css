@@ -521,3 +521,26 @@ optgroup {
 	background-color: var(--color-surface-elevated);
 	color: var(--color-text);
 }
+
+/* Page changes blend (see onNavigate in the root layout): the content cross-fades, the header stays. */
+.page-transition .app-main {
+	view-transition-name: app-main;
+}
+.page-transition .app-header {
+	view-transition-name: app-header;
+}
+::view-transition-group(app-header) {
+	animation-duration: 0s;
+}
+::view-transition-old(app-main),
+::view-transition-new(app-main) {
+	animation-duration: 260ms;
+	animation-timing-function: ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
+}
