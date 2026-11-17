@@ -1,6 +1,29 @@
 <script lang="ts">
+	import { onMount, untrack } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { ageSeconds, describeAgo } from '$lib/status/logic.js';
+
 	const { data } = $props();
 	const snap = $derived(data.snapshot);
+
+	// "Now" starts as the moment the server built the page, so the server-rendered text and the first
+	// browser render agree. It then follows the clock, and the data is fetched again every minute while
+	// the tab is visible: a "last checked" that only ever grows would say the checks stopped when they had not.
+	const sqlToDate = (sql: string) => new Date(sql.replace(' ', 'T') + 'Z');
+	let now = $state(untrack(() => (snap?.generatedAt ? sqlToDate(snap.generatedAt) : new Date())));
+	onMount(() => {
+		now = new Date();
+		const tick = setInterval(() => (now = new Date()), 15_000);
+		const refresh = setInterval(() => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		}, 60_000);
+		return () => {
+			clearInterval(tick);
+			clearInterval(refresh);
+		};
+	});
+
+	const ago = (sql: string | null | undefined) => (sql ? describeAgo(ageSeconds(sql, now)) : '');
 
 	const LABEL: Record<string, string> = {
 		operational: 'Operational',
@@ -88,11 +111,20 @@
 				{#if snap.stale}
 					<p>
 						The newest check is
-						{#if snap.lastChecked}from {when(snap.lastChecked)}{:else}missing{/if}. We
-						will not say all is well until checks resume.
+						{#if snap.lastChecked}from <time
+								datetime={snap.lastChecked.replace(' ', 'T') + 'Z'}
+								title={when(snap.lastChecked)}>{ago(snap.lastChecked)}</time
+							>{:else}missing{/if}. We will not say all is well until checks resume.
 					</p>
 				{:else}
-					<p>Last checked {when(snap.lastChecked)}.</p>
+					<p>
+						Last checked <time
+							datetime={snap.lastChecked
+								? snap.lastChecked.replace(' ', 'T') + 'Z'
+								: undefined}
+							title={when(snap.lastChecked)}>{ago(snap.lastChecked)}</time
+						>.
+					</p>
 				{/if}
 			</div>
 		</section>

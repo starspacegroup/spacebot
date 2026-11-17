@@ -8,6 +8,7 @@ import {
 	dayLevel,
 	lastDays,
 	overall,
+	describeAgo,
 	readBot,
 	staleAfterSeconds,
 	readDatabase,
@@ -228,5 +229,21 @@ describe('how long the bot may stay quiet', () => {
 		const hb = fresh({ recordedAt: ago(20 * 60) });
 		expect(readBot(hb, NOW).host.status).toBe('down');
 		expect(readBot(hb, NOW, staleAfterSeconds(1800)).host.status).toBe('operational');
+	});
+});
+
+describe('how long ago', () => {
+	it('says just now, then minutes, then hours', () => {
+		expect(describeAgo(0)).toBe('just now');
+		expect(describeAgo(44)).toBe('just now');
+		expect(describeAgo(45)).toBe('1 minute ago');
+		expect(describeAgo(90)).toBe('2 minutes ago');
+		expect(describeAgo(5 * 60)).toBe('5 minutes ago');
+		expect(describeAgo(119 * 60)).toBe('119 minutes ago');
+		expect(describeAgo(3 * 3600)).toBe('3 hours ago');
+	});
+	it('does not claim just now when the age is unknown', () => {
+		expect(describeAgo(Infinity)).toBe('a while ago');
+		expect(describeAgo(NaN)).toBe('a while ago');
 	});
 });

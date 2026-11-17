@@ -143,6 +143,12 @@ export function describeAge(seconds: number) {
 	return `${hours} hours`;
 }
 
+/** How long ago something happened, for the page: "just now", "3 minutes ago", "2 hours ago". */
+export function describeAgo(seconds: number) {
+	if (Number.isFinite(seconds) && seconds < 45) return 'just now';
+	return `${describeAge(seconds)} ago`;
+}
+
 /**
  * The bot reports a heartbeat row on a schedule (see `staleAfterSeconds`). No row lately: the host is not reporting
  * (down, or cut off), and the Discord connection cannot be vouched for either. Rows arriving
