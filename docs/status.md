@@ -73,3 +73,13 @@ of the site, so a full Pages outage takes it down too.
 No email or Discord alerts to subscribers, no per-server status, no check of individual slash
 commands or automations. The bot components show whether the bot is connected, not whether every
 feature works.
+
+## `/status` in Discord
+
+Every server, and DMs with the bot, has a built-in `/status` command. It reads the same snapshot as
+the page (`getStatusSnapshot`) and replies with an embed: the headline, one field per component with
+its 90-day uptime, any open incidents, and how long ago the last check ran. The colour is green,
+yellow or red from the overall state, and grey when the checks are stale or unreadable, so it never
+shows an all-clear without data. The reply is public in the channel. A server cannot turn the command
+off (`ALWAYS_ENABLED_BUILT_INS`), and the name is reserved so a server cannot make a custom command
+called `status`. The embed is built in `src/lib/status/discord.ts`.

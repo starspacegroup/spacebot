@@ -28,6 +28,8 @@ import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberMayUseCommand } from '$lib/discord/command-access.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
+import { getStatusSnapshot } from '$lib/db/status.js';
+import { buildStatusEmbed } from '$lib/status/discord.js';
 import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
 import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
@@ -305,7 +307,7 @@ export async function POST({ request, platform: rawPlatform }) {
 		// Discord's own gate is advisory, and the built-ins below (`/quorum`,
 		// `/timebox`, `/room`, ...) are handled before the generic path, so the
 		// check lives here and not down there. `/help` answers for itself.
-		if (db && guildId && data.name !== 'help') {
+		if (db && guildId && data.name !== 'help' && data.name !== 'status') {
 			const gated = await getCommandByName(db, data.name, guildId);
 			if (
 				gated &&
@@ -336,6 +338,22 @@ export async function POST({ request, platform: rawPlatform }) {
 					embeds: [await buildHelpResponse(db, guildId, body)],
 					flags: 64, // EPHEMERAL
 				},
+			});
+		}
+
+		// `/status`: the public status page, in Discord. Read live from the same checks as the
+		// website, public to the channel (it is not private, and "is the bot down?" helps everyone
+		// watching), and the same in every server and in DMs.
+		if (data.name === 'status') {
+			let snapshot = null;
+			try {
+				if (db) snapshot = await getStatusSnapshot(db);
+			} catch (error) {
+				log.error('[Status] /status could not read the snapshot:', error);
+			}
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: { embeds: [buildStatusEmbed(snapshot)] },
 			});
 		}
 
