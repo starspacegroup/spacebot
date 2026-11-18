@@ -146,17 +146,24 @@ export const TOPICS: Record<TopicKind, string[]> = {
 };
 
 /**
- * A random topic, never the one shown last when there is a choice. `random` is injectable so a
- * test can pin the pick.
+ * A random topic, never the one shown last when there is a choice. `own` is the server's own
+ * list: it joins the built-in topics, or replaces them when `customOnly` is on and it is not
+ * empty. `random` is injectable so a test can pin the pick.
  */
 export function pickTopic(
 	kind: string | null | undefined,
 	last: string | null = null,
-	random: () => number = Math.random
+	random: () => number = Math.random,
+	own: string[] = [],
+	customOnly = false
 ): string {
-	const pool = (TOPIC_KINDS as readonly string[]).includes(kind ?? '')
+	const builtIn = (TOPIC_KINDS as readonly string[]).includes(kind ?? '')
 		? TOPICS[kind as TopicKind]
 		: Object.values(TOPICS).flat();
+	// A kind is a built-in category, so asking for one means the built-in list.
+	const kindAsked = (TOPIC_KINDS as readonly string[]).includes(kind ?? '');
+	let pool = builtIn;
+	if (own.length && !kindAsked) pool = customOnly ? own : [...builtIn, ...own];
 	const choices = pool.length > 1 ? pool.filter((t) => t !== last) : pool;
 	const i = Math.min(choices.length - 1, Math.floor(random() * choices.length));
 	return choices[i];
