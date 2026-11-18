@@ -3,6 +3,9 @@
  *
  *   /topic new [kind]                      a random topic, posted for the channel
  *   /topic settings set_voice_status:true custom_only:true   (Manage Server)
+
+ *   /topic set channel:<voice> [text:...]   /topic clear channel:<voice>   (Manage Server)
+ *       set or clear any voice channel's status by hand, whether or not the caller is in it
  *   /topic add text:...   /topic remove number:3   /topic list   (Manage Server): the server's own list
  *
  * When the server has turned `set_voice_status` on, and the command is used in a voice channel's
@@ -109,12 +112,52 @@ async function voiceChannelOf(db: Db, guildId: string, userId: string) {
 	return row?.channel_id ? String(row.channel_id) : null;
 }
 
+/**
+ * A manager sets or clears a voice channel's status by hand. Not tied to the `set_voice_status`
+ * option or to being in the channel: it is an explicit act by someone with Manage Server. The
+ * channel comes from Discord's own picker, and we check it is a voice or stage channel.
+ */
+async function setByHand(name: string, opts: Map<string, any>, ctx: any) {
+	const { db, guildId, discord, body, random } = ctx;
+	const channelId = String(opts.get('channel') ?? '');
+	const picked = body.data?.resolved?.channels?.[channelId];
+	if (!picked || ![2, 13].includes(picked.type)) return say('Pick a voice or stage channel.');
+	if (!discord?.channels?.setVoiceStatus) return say('I cannot reach Discord right now.');
+
+	let text = '';
+	if (name === 'set') {
+		text = cleanTopic(opts.get('text'));
+		if (!text) {
+			const settings = await getTopicSettings(db, guildId);
+			const own = (await ownTopics(db, guildId)).map((t) => t.text);
+			text = pickTopic(null, settings.lastTopic, random, own, settings.customOnly);
+			await save(db, guildId, { last: text });
+		}
+	}
+	try {
+		await discord.channels.setVoiceStatus(channelId, text, `Set by /topic ${name}`);
+	} catch (error: any) {
+		log.warn(`[Topic] Could not ${name} the voice status: ${error?.message}`);
+		return say(
+			error?.status === 403
+				? 'I could not do that: I need the **Set Voice Channel Status** permission in that channel.'
+				: 'I could not do that just now. Try again in a moment.'
+		);
+	}
+	return say(
+		name === 'set'
+			? `Set <#${channelId}>’s topic to: ${text}`
+			: `Cleared <#${channelId}>’s topic.`
+	);
+}
+
 async function manage(
 	name: string,
 	opts: Map<string, any>,
-	ctx: { db: Db; guildId: string; userId: string }
+	ctx: { db: Db; guildId: string; userId: string; discord: any; body: any; random: () => number }
 ) {
 	const { db, guildId, userId } = ctx;
+	if (name === 'set' || name === 'clear') return setByHand(name, opts, ctx);
 	if (name === 'settings') {
 		const patch: { setVoiceStatus?: boolean; customOnly?: boolean } = {};
 		if (typeof opts.get('set_voice_status') === 'boolean')
@@ -193,11 +236,11 @@ export async function handleTopicCommand(
 	const sub = (body.data?.options ?? [])[0];
 	const opts = new Map<string, any>((sub?.options ?? []).map((o: any) => [o.name, o.value]));
 
-	if (['settings', 'add', 'remove', 'list'].includes(sub?.name)) {
+	if (['settings', 'add', 'remove', 'list', 'set', 'clear'].includes(sub?.name)) {
 		if (!mayManage(body.member?.permissions)) {
 			return say('Only people with Manage Server can change /topic.');
 		}
-		return manage(sub.name, opts, { db, guildId, userId });
+		return manage(sub.name, opts, { db, guildId, userId, discord, body, random });
 	}
 
 	const settings = await getTopicSettings(db, guildId);

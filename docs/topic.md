@@ -10,7 +10,17 @@ and everyday questions. It is **off until a server turns it on** (Commands page,
 /topic add text:Is a Pop-Tart a ravioli?                  the server's own list (Manage Server)
 /topic list                                               numbered, so you can remove one
 /topic remove number:3
+/topic set channel:#Lounge text:Movie night   set any voice channel's topic by hand (Manage Server)
+/topic clear channel:#Lounge              reset it to nothing
 ```
+
+## Setting or resetting a voice channel by hand
+
+`/topic set` and `/topic clear` (Manage Server) change a voice or stage channel's status directly. The
+manager does not need to be in the channel, and the `set_voice_status` option does not matter: this is
+an explicit act. Leave `text` blank and `/topic set` picks a topic from the server's list; `clear`
+resets the status to nothing. The channel comes from Discord's own picker, and the bot checks it is a
+voice or stage channel. The reply is private.
 
 ## The server's own list
 

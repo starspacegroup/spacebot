@@ -128,6 +128,64 @@ describe('/topic', () => {
 		}
 	});
 
+	describe('setting a voice channel by hand', () => {
+		const owner = { user: { id: 'owner' }, permissions: MANAGE };
+		const run = (sub: string, options: any[], type = 2, member: any = owner) =>
+			handleTopicCommand(
+				body(sub, options, {
+					member,
+					data: {
+						name: 'topic',
+						options: [{ name: sub, type: 1, options }],
+						resolved: { channels: { vc9: { id: 'vc9', type } } },
+					},
+				}),
+				db,
+				discord,
+				() => 0
+			) as Promise<any>;
+		const ch = { name: 'channel', value: 'vc9' };
+
+		it('a manager sets any voice channel without being in it', async () => {
+			const r = await run('set', [ch, { name: 'text', value: 'Movie night talk' }]);
+			expect(setVoiceStatus).toHaveBeenCalledWith(
+				'vc9',
+				'Movie night talk',
+				'Set by /topic set'
+			);
+			expect(r.data.content).toContain('<#vc9>');
+			expect(r.data.flags).toBe(64);
+		});
+
+		it('works with the voice status option off, and picks a topic when none is given', async () => {
+			await run('set', [ch]);
+			const [, text] = setVoiceStatus.mock.calls[0];
+			expect(Object.values(TOPICS).flat()).toContain(text);
+		});
+
+		it('clears it with an empty status', async () => {
+			const r = await run('clear', [ch]);
+			expect(setVoiceStatus).toHaveBeenCalledWith('vc9', '', 'Set by /topic clear');
+			expect(r.data.content).toMatch(/Cleared/);
+		});
+
+		it('is for managers only, and only for voice or stage channels', async () => {
+			const nobody = { user: { id: 'u1' }, permissions: '0' };
+			expect((await run('set', [ch], 2, nobody)).data.content).toMatch(/Manage Server/);
+			expect((await run('set', [ch], 0)).data.content).toMatch(/voice or stage/);
+			expect((await run('set', [{ name: 'channel', value: 'zzz' }])).data.content).toMatch(
+				/voice or stage/
+			);
+			expect(setVoiceStatus).not.toHaveBeenCalled();
+		});
+
+		it('explains a missing permission', async () => {
+			setVoiceStatus.mockRejectedValue({ status: 403 });
+			const r = await run('set', [ch, { name: 'text', value: 'x' }]);
+			expect(r.data.content).toMatch(/Set Voice Channel Status/);
+		});
+	});
+
 	describe("a server's own list", () => {
 		const owner = { user: { id: 'owner' }, permissions: MANAGE };
 		const run = (sub: string, options: any[] = [], member: any = owner) =>
