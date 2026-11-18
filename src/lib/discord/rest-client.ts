@@ -491,6 +491,17 @@ export function createDiscordRestClient(botToken) {
 			permissions(channelId) {
 				return buildPermissionOverwrites(botToken, channelId);
 			},
+			/**
+			 * Set a voice channel's status (the line shown under its name). The bot needs Set Voice
+			 * Channel Status. Discord allows 500 characters; an empty string clears it.
+			 */
+			async setVoiceStatus(channelId, status, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}/voice-status`, {
+					method: 'PUT',
+					body: { status: String(status ?? '').slice(0, 500) },
+					reason,
+				});
+			},
 			/** Post a message by channel id, without the GET that `fetch().send()` costs. */
 			async send(channelId, payload) {
 				const body = typeof payload === 'string' ? { content: payload } : payload;

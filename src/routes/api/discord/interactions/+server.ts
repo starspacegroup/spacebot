@@ -34,6 +34,7 @@ import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
 import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
+import { handleTopicCommand } from '$lib/server/topic-command.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
 import { handleIdeaCommand } from '$lib/server/idea-command.js';
@@ -389,6 +390,14 @@ export async function POST({ request, platform: rawPlatform }) {
 					if (platform?.context?.waitUntil) platform.context.waitUntil(work);
 					else work.catch((err) => log.error('[Ideas] after-reply work failed:', err));
 				})
+			);
+		}
+
+		// `/topic`: a random conversation starter (off until a server turns it on).
+		if (data.name === 'topic' && guildId) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			return json(
+				await handleTopicCommand(body, db, token ? createDiscordRestClient(token) : null)
 			);
 		}
 
