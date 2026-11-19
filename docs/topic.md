@@ -51,8 +51,17 @@ refuses, the topic still posts and a small note says the permission is missing.
 the bot never repeats text someone chose. It remembers the last topic per server and does not show
 the same one twice in a row. Add topics to the list; keep them safe for any server.
 
+## Dashboard
+
+`/admin/<server>/topics` (linked from the server dashboard) does all of it without slash commands: turn
+`/topic` on or off (the usual command toggle, which also registers or removes it in Discord), the two
+options, the server's own list (add, remove), and a voice channel picker to set or clear a topic by
+hand. Every write is checked against Discord for Manage Server on that server, not only for a sign-in.
+The picker lists only this server's voice and stage channels from the synced channel list, and the
+posted id is matched against that list. If no voice channels are cached the page says to open the
+server dashboard once to sync them.
+
 Code: `src/lib/server/topic-command.ts`, wired in the interactions route. `setVoiceStatus` is in
 `src/lib/discord/rest-client.ts`.
 
-Not built: a dashboard page for the options and the list (today they are slash subcommands), a daily
-topic on a schedule.
+Not built: a daily topic on a schedule.

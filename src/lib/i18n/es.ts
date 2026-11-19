@@ -961,6 +961,9 @@ export const es: Record<string, string> = {
 	'adash.links.automationsDesc': 'Configura acciones automáticas en eventos',
 	'adash.links.observances': 'Conmemoraciones',
 	'adash.links.observancesDesc': 'Publica un día histórico tal como ocurrió, en su aniversario',
+	'adash.links.topics': 'Temas',
+	'adash.links.topicsDesc':
+		'Temas de conversación al azar, tu propia lista y temas de canales de voz',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
 	'adash.links.activity': 'Actividad',

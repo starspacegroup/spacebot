@@ -59,7 +59,7 @@ export async function getTopicSettings(db: Db, guildId: string) {
 
 const flag = (v: boolean | undefined) => (v === undefined ? null : v ? 1 : 0);
 
-async function save(
+export async function saveTopicSettings(
 	db: Db,
 	guildId: string,
 	patch: { setVoiceStatus?: boolean; customOnly?: boolean; last?: string }
@@ -86,7 +86,10 @@ async function save(
 		.run();
 }
 
-async function ownTopics(db: Db, guildId: string): Promise<{ id: number; text: string }[]> {
+export async function listOwnTopics(
+	db: Db,
+	guildId: string
+): Promise<{ id: number; text: string }[]> {
 	const { results } = await db
 		.prepare(`SELECT id, text FROM topic_custom WHERE guild_id = ? ORDER BY id LIMIT ?`)
 		.bind(guildId, MAX_CUSTOM_TOPICS)
@@ -112,41 +115,107 @@ async function voiceChannelOf(db: Db, guildId: string, userId: string) {
 	return row?.channel_id ? String(row.channel_id) : null;
 }
 
+export type Outcome<T = {}> = { ok: boolean; error?: string } & Partial<T>;
+
+/** Add a topic to a server's own list. Shared by the slash command and the dashboard. */
+export async function addOwnTopic(
+	db: Db,
+	guildId: string,
+	userId: string,
+	raw: unknown
+): Promise<Outcome<{ id: number; text: string; count: number }>> {
+	const text = cleanTopic(raw);
+	if (!text) return { ok: false, error: 'Give me some text for the topic.' };
+	const have = await listOwnTopics(db, guildId);
+	if (have.length >= MAX_CUSTOM_TOPICS) {
+		return {
+			ok: false,
+			error: `A server can keep ${MAX_CUSTOM_TOPICS} topics. Remove one first.`,
+		};
+	}
+	if (have.some((t) => t.text.toLowerCase() === text.toLowerCase())) {
+		return { ok: false, error: 'That topic is already on your list.' };
+	}
+	const added: any = await db
+		.prepare(`INSERT INTO topic_custom (guild_id, text, added_by) VALUES (?, ?, ?)`)
+		.bind(guildId, text, userId)
+		.run();
+	return { ok: true, id: Number(added?.meta?.last_row_id), text, count: have.length + 1 };
+}
+
+/** Remove one of a server's own topics. Never touches another server's. */
+export async function removeOwnTopic(db: Db, guildId: string, id: number): Promise<boolean> {
+	const gone: any = await db
+		.prepare(`DELETE FROM topic_custom WHERE id = ? AND guild_id = ?`)
+		.bind(id, guildId)
+		.run();
+	return Boolean(gone?.meta?.changes);
+}
+
 /**
- * A manager sets or clears a voice channel's status by hand. Not tied to the `set_voice_status`
- * option or to being in the channel: it is an explicit act by someone with Manage Server. The
- * channel comes from Discord's own picker, and we check it is a voice or stage channel.
+ * Set (or, with mode 'clear', empty) a voice or stage channel's status by hand. Not tied to the
+ * `set_voice_status` option or to the caller being in the channel: it is an explicit act by
+ * someone with Manage Server. `channelType` comes from Discord (the slash picker's resolved
+ * data, or the synced channel list) and must be a voice or stage channel. Blank text on 'set'
+ * picks a topic.
  */
+export async function setVoiceStatusByHand(
+	db: Db,
+	discord: any,
+	guildId: string,
+	channel: { id: string; type: number | undefined },
+	mode: 'set' | 'clear',
+	rawText: unknown,
+	random: () => number = Math.random
+): Promise<Outcome<{ text: string }>> {
+	if (!channel.id || ![2, 13].includes(Number(channel.type))) {
+		return { ok: false, error: 'Pick a voice or stage channel.' };
+	}
+	if (!discord?.channels?.setVoiceStatus) {
+		return { ok: false, error: 'I cannot reach Discord right now.' };
+	}
+	let text = '';
+	if (mode === 'set') {
+		text = cleanTopic(rawText);
+		if (!text) {
+			const settings = await getTopicSettings(db, guildId);
+			const own = (await listOwnTopics(db, guildId)).map((t) => t.text);
+			text = pickTopic(null, settings.lastTopic, random, own, settings.customOnly);
+			await saveTopicSettings(db, guildId, { last: text });
+		}
+	}
+	try {
+		await discord.channels.setVoiceStatus(channel.id, text, `Set by /topic ${mode}`);
+	} catch (error: any) {
+		log.warn(`[Topic] Could not ${mode} the voice status: ${error?.message}`);
+		return {
+			ok: false,
+			error:
+				error?.status === 403
+					? 'I could not do that: I need the **Set Voice Channel Status** permission in that channel.'
+					: 'I could not do that just now. Try again in a moment.',
+		};
+	}
+	return { ok: true, text };
+}
+
 async function setByHand(name: string, opts: Map<string, any>, ctx: any) {
 	const { db, guildId, discord, body, random } = ctx;
 	const channelId = String(opts.get('channel') ?? '');
 	const picked = body.data?.resolved?.channels?.[channelId];
-	if (!picked || ![2, 13].includes(picked.type)) return say('Pick a voice or stage channel.');
-	if (!discord?.channels?.setVoiceStatus) return say('I cannot reach Discord right now.');
-
-	let text = '';
-	if (name === 'set') {
-		text = cleanTopic(opts.get('text'));
-		if (!text) {
-			const settings = await getTopicSettings(db, guildId);
-			const own = (await ownTopics(db, guildId)).map((t) => t.text);
-			text = pickTopic(null, settings.lastTopic, random, own, settings.customOnly);
-			await save(db, guildId, { last: text });
-		}
-	}
-	try {
-		await discord.channels.setVoiceStatus(channelId, text, `Set by /topic ${name}`);
-	} catch (error: any) {
-		log.warn(`[Topic] Could not ${name} the voice status: ${error?.message}`);
-		return say(
-			error?.status === 403
-				? 'I could not do that: I need the **Set Voice Channel Status** permission in that channel.'
-				: 'I could not do that just now. Try again in a moment.'
-		);
-	}
+	const r = await setVoiceStatusByHand(
+		db,
+		discord,
+		guildId,
+		{ id: channelId, type: picked?.type },
+		name as 'set' | 'clear',
+		opts.get('text'),
+		random
+	);
+	if (!r.ok) return say(r.error ?? 'That did not work.');
 	return say(
 		name === 'set'
-			? `Set <#${channelId}>’s topic to: ${text}`
+			? `Set <#${channelId}>’s topic to: ${r.text}`
 			: `Cleared <#${channelId}>’s topic.`
 	);
 }
@@ -164,9 +233,9 @@ async function manage(
 			patch.setVoiceStatus = opts.get('set_voice_status');
 		if (typeof opts.get('custom_only') === 'boolean')
 			patch.customOnly = opts.get('custom_only');
-		if (Object.keys(patch).length) await save(db, guildId, patch);
+		if (Object.keys(patch).length) await saveTopicSettings(db, guildId, patch);
 		const now = await getTopicSettings(db, guildId);
-		const count = (await ownTopics(db, guildId)).length;
+		const count = (await listOwnTopics(db, guildId)).length;
 		return say(
 			`Voice channel status: **${now.setVoiceStatus ? 'on' : 'off'}**` +
 				(now.setVoiceStatus
@@ -176,33 +245,19 @@ async function manage(
 		);
 	}
 	if (name === 'add') {
-		const text = cleanTopic(opts.get('text'));
-		if (!text) return say('Give me some text for the topic.');
-		const have = await ownTopics(db, guildId);
-		if (have.length >= MAX_CUSTOM_TOPICS) {
-			return say(`A server can keep ${MAX_CUSTOM_TOPICS} topics. Remove one first.`);
-		}
-		if (have.some((t) => t.text.toLowerCase() === text.toLowerCase())) {
-			return say('That topic is already on your list.');
-		}
-		const added: any = await db
-			.prepare(`INSERT INTO topic_custom (guild_id, text, added_by) VALUES (?, ?, ?)`)
-			.bind(guildId, text, userId)
-			.run();
-		return say(`Added #${added?.meta?.last_row_id}: ${text}\nYou have ${have.length + 1}.`);
+		const r = await addOwnTopic(db, guildId, userId, opts.get('text'));
+		return say(r.ok ? `Added #${r.id}: ${r.text}\nYou have ${r.count}.` : (r.error ?? ''));
 	}
 	if (name === 'remove') {
 		const id = Number(opts.get('number'));
-		const gone: any = await db
-			.prepare(`DELETE FROM topic_custom WHERE id = ? AND guild_id = ?`)
-			.bind(id, guildId)
-			.run();
 		return say(
-			gone?.meta?.changes ? `Removed #${id}.` : `There is no topic #${id} on your list.`
+			(await removeOwnTopic(db, guildId, id))
+				? `Removed #${id}.`
+				: `There is no topic #${id} on your list.`
 		);
 	}
 	// list
-	const rows = await ownTopics(db, guildId);
+	const rows = await listOwnTopics(db, guildId);
 	if (!rows.length)
 		return say('Your server has no topics of its own yet. Add one with `/topic add`.');
 	const lines = rows.map((t) => `#${t.id} ${t.text}`);
@@ -244,9 +299,9 @@ export async function handleTopicCommand(
 	}
 
 	const settings = await getTopicSettings(db, guildId);
-	const own = (await ownTopics(db, guildId)).map((t) => t.text);
+	const own = (await listOwnTopics(db, guildId)).map((t) => t.text);
 	const topic = pickTopic(opts.get('kind'), settings.lastTopic, random, own, settings.customOnly);
-	await save(db, guildId, { last: topic });
+	await saveTopicSettings(db, guildId, { last: topic });
 
 	// A voice channel's chat has the same id as the voice channel, so "used in the chat of the
 	// voice channel I am in" is: my voice channel is this channel.

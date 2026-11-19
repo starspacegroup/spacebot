@@ -945,6 +945,9 @@ export const en: Record<string, string> = {
 	'adash.links.automationsDesc': 'Set up automatic actions on events',
 	'adash.links.observances': 'Observances',
 	'adash.links.observancesDesc': 'Post a historical day as it happened, on its anniversary',
+	'adash.links.topics': 'Topics',
+	'adash.links.topicsDesc':
+		'Random conversation starters, your own list, and voice channel topics',
 	'adash.links.rooms': 'Member Rooms',
 	'adash.links.roomsDesc': 'Self-service channels with their own lifetime',
 	'adash.links.activity': 'Activity',
