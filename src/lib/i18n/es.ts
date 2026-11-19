@@ -1329,6 +1329,7 @@ export const es: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Crear, editar y eliminar acciones automatizadas',
 	'settings.manageCommands': 'Gestionar comandos',
 	'settings.manageCommandsDesc': 'Crear y configurar comandos de barra personalizados',
+	'settings.alsoRoles': 'Permitir también estos roles',
 	'settings.serverSettingsPermDesc': 'Acceder a esta página de ajustes (no se puede cambiar)',
 	'settings.adminOnlyLocked': 'Solo administradores',
 	'settings.localRunner': 'Asistencia de Local Runner',

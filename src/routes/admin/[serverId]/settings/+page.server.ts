@@ -1,3 +1,4 @@
+import { parseRoleIds } from '$lib/server/role-ids';
 import { fail, redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
 import {
@@ -274,6 +275,14 @@ export const actions = {
 			return fail(500, { success: false, message: 'Database not available' });
 		}
 
+		// Role lists are not on every form. Keep what is saved unless this form sends them.
+		const savedRoles = (await getGuildSettings(db, serverId))?.permission_settings ?? {};
+		const keep = (key: string): string[] =>
+			Array.isArray(savedRoles?.[key]?.roles) ? savedRoles[key].roles : [];
+		const manageCommandsRoles = formData.has('manageCommandsRoles')
+			? parseRoleIds(formData.get('manageCommandsRoles'))
+			: keep('manageCommands');
+
 		try {
 			// saveGuildSettings catches their own errors and
 			// report them in the return value rather than throwing, so discarding
@@ -286,10 +295,13 @@ export const actions = {
 				excluded_categories: excludedCategories,
 				timezone: timezone,
 				permission_settings: {
-					viewDashboard: { permission: viewDashboardPerm, roles: [] },
-					viewLogs: { permission: viewLogsPerm, roles: [] },
-					manageAutomations: { permission: manageAutomationsPerm, roles: [] },
-					manageCommands: { permission: manageCommandsPerm, roles: [] },
+					viewDashboard: { permission: viewDashboardPerm, roles: keep('viewDashboard') },
+					viewLogs: { permission: viewLogsPerm, roles: keep('viewLogs') },
+					manageAutomations: {
+						permission: manageAutomationsPerm,
+						roles: keep('manageAutomations'),
+					},
+					manageCommands: { permission: manageCommandsPerm, roles: manageCommandsRoles },
 					manageSettings: { permission: 'ADMINISTRATOR', roles: [] },
 					localRunnerAssist: {
 						enabled: localRunnerEnabled,

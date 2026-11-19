@@ -52,3 +52,13 @@ in the same object, not more migrations.
 
 Not yet: the command export and import files do not carry role rules, since role ids
 belong to one server.
+
+## Roles on the Settings page
+
+Under Settings, Permissions, "Manage commands" has a role picker next to its permission level.
+Members with a picked role count as managers for the things that use this setting, which today
+is choosing the Shiritori channel. Saving the page keeps the role lists of the other three rows.
+
+The "View dashboard", "View event logs" and "Manage automations" rows are stored but not
+enforced yet: dashboard access is always Administrator or Manage Server. They have no role
+picker for that reason.

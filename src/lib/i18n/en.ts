@@ -1306,6 +1306,7 @@ export const en: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Create, edit, and delete automated actions',
 	'settings.manageCommands': 'Manage Commands',
 	'settings.manageCommandsDesc': 'Create and configure custom slash commands',
+	'settings.alsoRoles': 'Also let these roles manage commands',
 	'settings.serverSettingsPermDesc': 'Access this settings page (cannot be changed)',
 	'settings.adminOnlyLocked': 'Administrator Only',
 	'settings.localRunner': 'Local Runner Assist',

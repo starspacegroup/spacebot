@@ -6,6 +6,7 @@
 	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
 	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
+	import RoleSelector from '$lib/components/RoleSelector.svelte';
 
 	const tr = getTranslator();
 	const { data, form } = $props();
@@ -149,6 +150,10 @@
 		data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD'
 	);
 	// svelte-ignore state_referenced_locally
+	let manageCommandsRoles = $state(
+		(data.permissionSettings?.manageCommands?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
 	let localRunnerEnabled = $state(Boolean(data.permissionSettings?.localRunnerAssist?.enabled));
 	// svelte-ignore state_referenced_locally
 	let localRunnerAllowedUsers = $state(
@@ -220,6 +225,7 @@
 		manageAutomationsPerm =
 			data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
 		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
+		manageCommandsRoles = (data.permissionSettings?.manageCommands?.roles || []).join(',');
 		localRunnerEnabled = Boolean(data.permissionSettings?.localRunnerAssist?.enabled);
 		localRunnerAllowedUsers = (
 			data.permissionSettings?.localRunnerAssist?.allowedUserIds || []
@@ -344,6 +350,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="manageCommandsRoles"
+								multiple={true}
+								bind:value={manageCommandsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -1088,6 +1103,10 @@
 		display: block;
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
+	}
+
+	.permission-roles {
+		margin-top: 0.5rem;
 	}
 
 	.permission-control {
