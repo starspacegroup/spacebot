@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { EVENT_CATEGORIES, EVENT_TYPES, getLogs, getLogStats, log } from '$lib/db/logger.js';
 import { verifyGuildAccess } from '$lib/discord/guilds.js';
+import { mayUseFeature } from '$lib/server/feature-access.js';
 import { intParam } from '$lib/server/query-params.js';
 
 /**
@@ -54,6 +55,10 @@ export async function GET({ params, url, cookies, platform }) {
 		);
 		hasAccess = accessResult.hasAccess;
 		reason = accessResult.reason;
+		// A role the server saved for View event logs also gets in.
+		if (!hasAccess) {
+			hasAccess = await mayUseFeature({ guildId, cookies, platform }, 'logs');
+		}
 	}
 
 	if (!hasAccess) {

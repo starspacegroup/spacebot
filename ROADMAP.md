@@ -108,6 +108,11 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       deny by role, one gate for every command, `/help` shows only what a member can run
       (`docs/command-access.md`, migration 0073). Open: members, channels, categories,
       time windows
+- [x] Dashboard access by role — the four dashboard rows on Settings take roles: a role opens
+      Event logs, Automations or Commands (and a short "Your access" page) without Manage
+      Server; everything else stays admin. Proved Dafny rule, central guard on form actions
+      (`docs/command-access.md`). Open: roles for Settings, topics and the other pages; deny
+      roles; enforcing the permission-level dropdowns
 - [x] Oldest (#58) — `/oldest` ranks the top ten oldest Discord accounts in a server, read
       from the account's creation time inside its id; `show:` switches to the newest
       accounts or the longest-serving members. Bots left out; the reply says how old the

@@ -55,10 +55,29 @@ belong to one server.
 
 ## Roles on the Settings page
 
-Under Settings, Permissions, "Manage commands" has a role picker next to its permission level.
-Members with a picked role count as managers for the things that use this setting, which today
-is choosing the Shiritori channel. Saving the page keeps the role lists of the other three rows.
+Settings, Permissions, has four rows: View dashboard, View event logs, Manage automations and
+Manage commands. Each has a role picker. A member who holds a picked role can open that part of
+the dashboard without Manage Server.
 
-The "View dashboard", "View event logs" and "Manage automations" rows are stored but not
-enforced yet: dashboard access is always Administrator or Manage Server. They have no role
-picker for that reason.
+- A role opens its own section and nothing else. A role on Event logs opens the logs page and
+  the logs API. It does not open Automations, Commands, Settings, billing, API keys, integrations,
+  import/export, the listing, topics, members or any other page. Those stay Manage Server.
+- Any role opens "Your access" at `/admin/<server>`: a short page that lists the sections the
+  member may open. They do not see the full dashboard (stats, bot controls, every link). A role
+  on View dashboard alone lands there with no sections to open.
+- The server picker lists these servers next to the member's admin servers.
+- Administrators, Manage Server holders, the owner and SpaceBot superadmins keep everything.
+- The permission level dropdown in each row does not change who gets in. Only roles do. (Two
+  live servers had levels saved that never took effect, and honoring them now would surprise
+  both.)
+- Roles are read from Discord with the bot token on each request and kept 30 seconds. If Discord
+  cannot answer, the member gets no access. Removing a role takes effect within half a minute.
+- Saving Settings keeps the role lists. Before 2026-11-19 it wiped them.
+
+How it works: the rule is `dafny/FeatureAccess.dfy`, proved and compiled to
+`src/lib/server/generated/feature-access-core.js` (`bun run dafny:build`, needs `dafny` 4.11).
+`src/lib/server/feature-access.ts` reads the member, their roles and the saved rules and asks it.
+Form actions are guarded centrally in `src/lib/server/action-guard.ts` (only the logs, automations
+and commands sections accept a role). Pages and APIs call `mayUseFeature` or `verifyGuildFeature`.
+Role-only members are never put in the layout's `adminGuilds`, which many pages read as "is an
+admin"; they get a separate `memberGuilds` list, so any page not changed stays closed.

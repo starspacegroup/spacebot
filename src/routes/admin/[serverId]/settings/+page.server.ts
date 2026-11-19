@@ -279,9 +279,12 @@ export const actions = {
 		const savedRoles = (await getGuildSettings(db, serverId))?.permission_settings ?? {};
 		const keep = (key: string): string[] =>
 			Array.isArray(savedRoles?.[key]?.roles) ? savedRoles[key].roles : [];
-		const manageCommandsRoles = formData.has('manageCommandsRoles')
-			? parseRoleIds(formData.get('manageCommandsRoles'))
-			: keep('manageCommands');
+		const rolesFor = (key: string, field: string): string[] =>
+			formData.has(field) ? parseRoleIds(formData.get(field)) : keep(key);
+		const viewDashboardRoles = rolesFor('viewDashboard', 'viewDashboardRoles');
+		const viewLogsRoles = rolesFor('viewLogs', 'viewLogsRoles');
+		const manageAutomationsRoles = rolesFor('manageAutomations', 'manageAutomationsRoles');
+		const manageCommandsRoles = rolesFor('manageCommands', 'manageCommandsRoles');
 
 		try {
 			// saveGuildSettings catches their own errors and
@@ -295,11 +298,11 @@ export const actions = {
 				excluded_categories: excludedCategories,
 				timezone: timezone,
 				permission_settings: {
-					viewDashboard: { permission: viewDashboardPerm, roles: keep('viewDashboard') },
-					viewLogs: { permission: viewLogsPerm, roles: keep('viewLogs') },
+					viewDashboard: { permission: viewDashboardPerm, roles: viewDashboardRoles },
+					viewLogs: { permission: viewLogsPerm, roles: viewLogsRoles },
 					manageAutomations: {
 						permission: manageAutomationsPerm,
-						roles: keep('manageAutomations'),
+						roles: manageAutomationsRoles,
 					},
 					manageCommands: { permission: manageCommandsPerm, roles: manageCommandsRoles },
 					manageSettings: { permission: 'ADMINISTRATOR', roles: [] },

@@ -3,6 +3,7 @@ import { dev } from '$app/env';
 import { log } from '$lib/db/logger.js';
 import { filterAdminGuilds, getBotGuildIds, getUserGuilds } from '$lib/discord/guilds.js';
 import { resolveLocale } from '$lib/i18n.js';
+import { buildMemberGuilds } from '$lib/server/feature-access.js';
 
 // Timeout for guild fetching to prevent layout hangs (10 seconds)
 const GUILD_FETCH_TIMEOUT = 10000;
@@ -33,6 +34,42 @@ async function buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies
 
 	adminGuilds.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 	return adminGuilds;
+}
+
+/**
+ * Servers this member can open only through a role saved on Settings. Kept apart from
+ * `adminGuilds` on purpose: many pages read that list as "is an admin", so a role-only member
+ * must never appear in it. Guild and bot lists are cached, so this adds one database read and
+ * a member lookup per server that saved a role.
+ */
+async function buildMemberList(
+	accessToken,
+	botToken,
+	userId,
+	adminGuilds,
+	isSuperAdmin,
+	cookies,
+	platform
+) {
+	if (isSuperAdmin || !accessToken) return [];
+	try {
+		const [userGuilds, botGuildIds] = await withTimeout(
+			Promise.all([getUserGuilds(accessToken, cookies), getBotGuildIds(botToken, cookies)]),
+			GUILD_FETCH_TIMEOUT,
+			[[], new Set()]
+		);
+		return await buildMemberGuilds({
+			userGuilds,
+			botGuildIds,
+			adminGuildIds: new Set(adminGuilds.map((g) => g.id)),
+			userId,
+			botToken,
+			db: platform?.env?.DB,
+		});
+	} catch (error) {
+		log.warn('[Layout] Could not build the role-access server list:', error);
+		return [];
+	}
 }
 
 /**
@@ -257,7 +294,17 @@ export async function load({ cookies, platform, url }) {
 			}
 			// No cookie (first-ever visit): must fetch guilds to find somewhere to land.
 			const guilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
-			const firstGuild = guilds.find((g) => g.botIsInServer !== false) || guilds[0];
+			const members = await buildMemberList(
+				accessToken,
+				botToken,
+				userId,
+				guilds,
+				isSuperAdmin,
+				cookies,
+				platform
+			);
+			const firstGuild =
+				guilds.find((g) => g.botIsInServer !== false) || guilds[0] || members[0];
 			if (firstGuild) {
 				cookies.set('last_viewed_guild', firstGuild.id, {
 					path: '/',
@@ -274,6 +321,7 @@ export async function load({ cookies, platform, url }) {
 				isSuperAdmin,
 				user,
 				adminGuilds: guilds,
+				memberGuilds: members,
 				selectedGuildId: null,
 				locale,
 			};
@@ -294,6 +342,15 @@ export async function load({ cookies, platform, url }) {
 		// Returning a Promise here can surface as runtime TypeErrors in routes that call
 		// array helpers such as .filter/.some/.find on parentData.adminGuilds.
 		adminGuilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+		const memberGuilds = await buildMemberList(
+			accessToken,
+			botToken,
+			userId,
+			adminGuilds,
+			isSuperAdmin,
+			cookies,
+			platform
+		);
 
 		return {
 			isLoggedIn: true,
@@ -301,6 +358,7 @@ export async function load({ cookies, platform, url }) {
 			isSuperAdmin,
 			user,
 			adminGuilds,
+			memberGuilds,
 			selectedGuildId,
 			locale,
 		};

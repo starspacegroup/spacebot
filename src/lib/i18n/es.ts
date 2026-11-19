@@ -1319,7 +1319,7 @@ export const es: Record<string, string> = {
 	'settings.permissionsTitle': 'Permisos de acceso al panel',
 	'settings.important': 'Importante',
 	'settings.permissionsDesc':
-		'Controla quién puede acceder a las distintas funciones de este panel web según sus permisos de Discord. Los usuarios con permiso de <strong>Administrador</strong> siempre tienen acceso completo.',
+		'Elige los roles que pueden abrir partes de este panel. Los miembros con <strong>Administrador</strong> o <strong>Gestionar servidor</strong> siempre tienen acceso completo. Un rol elegido aquí abre solo esa sección y una página breve que la enumera. Los ajustes, la facturación y lo demás siguen siendo de los administradores. El nivel de permiso de cada fila no cambia hoy quién entra; los roles sí.',
 	'settings.viewDashboard': 'Ver el panel',
 	'settings.viewDashboardDesc': 'Acceder al panel del servidor y ver información básica',
 	'settings.viewLogs': 'Ver registros de eventos',

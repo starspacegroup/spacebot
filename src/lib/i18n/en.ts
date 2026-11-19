@@ -1297,7 +1297,7 @@ export const en: Record<string, string> = {
 	'settings.permissionsTitle': 'Dashboard Access Permissions',
 	'settings.important': 'Important',
 	'settings.permissionsDesc':
-		'Control who can access different features in this web dashboard based on their Discord permissions. Users with <strong>Administrator</strong> permission always have full access.',
+		'Choose roles that can open parts of this dashboard. Members with <strong>Administrator</strong> or <strong>Manage Server</strong> always have full access. A role picked here opens that section only, plus a short page that lists it. Settings, billing and the rest stay with admins. The permission level in each row does not change who gets in today; the roles do.',
 	'settings.viewDashboard': 'View Dashboard',
 	'settings.viewDashboardDesc': 'Access the server dashboard and view basic information',
 	'settings.viewLogs': 'View Event Logs',
@@ -1306,7 +1306,7 @@ export const en: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Create, edit, and delete automated actions',
 	'settings.manageCommands': 'Manage Commands',
 	'settings.manageCommandsDesc': 'Create and configure custom slash commands',
-	'settings.alsoRoles': 'Also let these roles manage commands',
+	'settings.alsoRoles': 'Also let these roles in',
 	'settings.serverSettingsPermDesc': 'Access this settings page (cannot be changed)',
 	'settings.adminOnlyLocked': 'Administrator Only',
 	'settings.localRunner': 'Local Runner Assist',

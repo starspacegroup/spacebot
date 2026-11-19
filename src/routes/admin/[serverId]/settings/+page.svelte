@@ -150,6 +150,16 @@
 		data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD'
 	);
 	// svelte-ignore state_referenced_locally
+	let viewDashboardRoles = $state(
+		(data.permissionSettings?.viewDashboard?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
+	let viewLogsRoles = $state((data.permissionSettings?.viewLogs?.roles || []).join(','));
+	// svelte-ignore state_referenced_locally
+	let manageAutomationsRoles = $state(
+		(data.permissionSettings?.manageAutomations?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
 	let manageCommandsRoles = $state(
 		(data.permissionSettings?.manageCommands?.roles || []).join(',')
 	);
@@ -225,6 +235,11 @@
 		manageAutomationsPerm =
 			data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
 		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
+		viewDashboardRoles = (data.permissionSettings?.viewDashboard?.roles || []).join(',');
+		viewLogsRoles = (data.permissionSettings?.viewLogs?.roles || []).join(',');
+		manageAutomationsRoles = (data.permissionSettings?.manageAutomations?.roles || []).join(
+			','
+		);
 		manageCommandsRoles = (data.permissionSettings?.manageCommands?.roles || []).join(',');
 		localRunnerEnabled = Boolean(data.permissionSettings?.localRunnerAssist?.enabled);
 		localRunnerAllowedUsers = (
@@ -290,6 +305,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="viewDashboardRoles"
+								multiple={true}
+								bind:value={viewDashboardRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -310,6 +334,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="viewLogsRoles"
+								multiple={true}
+								bind:value={viewLogsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -330,6 +363,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="manageAutomationsRoles"
+								multiple={true}
+								bind:value={manageAutomationsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 

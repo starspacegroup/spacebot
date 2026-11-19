@@ -21,6 +21,7 @@ export default ts.config(
 	{
 		ignores: [
 			'.svelte-kit/',
+			'src/lib/server/generated/',
 			'build/',
 			'dist/',
 			'coverage/',
