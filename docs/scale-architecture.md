@@ -77,7 +77,8 @@ No D1 migration is needed: every change is code or worker config.
 
 ## Still open
 
-- Queue batches are handled serially (`orchestrator-worker/src/index.ts`).
+- ~~Queue batches are handled serially~~ — done: `handleMessage` runs the
+  messages of a batch together (`orchestrator-worker/src/index.ts`).
 - 140 `SELECT *` queries.
 - `spacebot-computer-control` shares the production D1 id but stops at
   migration 0080; deploying it would run old code against the new schema.

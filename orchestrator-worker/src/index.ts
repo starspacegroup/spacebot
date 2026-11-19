@@ -144,66 +144,71 @@ async function wakeSuperadminRun(
 	}
 }
 
+/** Handles one queue message and settles it itself (ack or retry); never throws. */
+async function handleMessage(message: Message<QueueMessage>, env: Env): Promise<void> {
+	const payload: QueueMessage = message.body || {};
+	const type = payload.type;
+
+	try {
+		if (type === 'ai_job_created' || type === 'ai_job_due') {
+			await executeJob(payload.jobId, env);
+			message.ack();
+			return;
+		}
+
+		if (type === 'ai_watchdog_sweep') {
+			// Ack even on failure: the sweep is periodic and idempotent, so a
+			// failed one is superseded by the next tick — retrying it only
+			// burns extra queue operations (2026-07-24 Queues-limit incident).
+			try {
+				await runWatchdogSweep(env);
+			} catch (error) {
+				console.error(
+					'[AI Orchestrator] Watchdog sweep failed (not retried):',
+					error instanceof Error ? error.message : error
+				);
+			}
+			message.ack();
+			return;
+		}
+
+		if (type === 'superadmin_run_start') {
+			await startSuperadminRun(payload.runId, env);
+			message.ack();
+			return;
+		}
+
+		if (type === 'superadmin_run_approval') {
+			// Best-effort wake-up; the dispatch watchdog is the safety net.
+			await wakeSuperadminRun(payload.runId, payload.stepKey, env);
+			message.ack();
+			return;
+		}
+
+		if (type === 'message_purge_start') {
+			await startMessagePurge(payload, env);
+			message.ack();
+			return;
+		}
+
+		// Unknown messages are acknowledged to avoid poison-looping.
+		message.ack();
+	} catch (error) {
+		// Let Queue retry according to its configured retry policy.
+		console.error(
+			'[AI Orchestrator] Message failed:',
+			error instanceof Error ? error.message : error,
+			payload
+		);
+		message.retry();
+	}
+}
+
 const handler: ExportedHandler<Env, QueueMessage> = {
 	async queue(batch, env, _ctx) {
-		for (const message of batch.messages) {
-			const payload: QueueMessage = message.body || {};
-			const type = payload.type;
-
-			try {
-				if (type === 'ai_job_created' || type === 'ai_job_due') {
-					await executeJob(payload.jobId, env);
-					message.ack();
-					continue;
-				}
-
-				if (type === 'ai_watchdog_sweep') {
-					// Ack even on failure: the sweep is periodic and idempotent, so a
-					// failed one is superseded by the next tick — retrying it only
-					// burns extra queue operations (2026-07-24 Queues-limit incident).
-					try {
-						await runWatchdogSweep(env);
-					} catch (error) {
-						console.error(
-							'[AI Orchestrator] Watchdog sweep failed (not retried):',
-							error instanceof Error ? error.message : error
-						);
-					}
-					message.ack();
-					continue;
-				}
-
-				if (type === 'superadmin_run_start') {
-					await startSuperadminRun(payload.runId, env);
-					message.ack();
-					continue;
-				}
-
-				if (type === 'superadmin_run_approval') {
-					// Best-effort wake-up; the dispatch watchdog is the safety net.
-					await wakeSuperadminRun(payload.runId, payload.stepKey, env);
-					message.ack();
-					continue;
-				}
-
-				if (type === 'message_purge_start') {
-					await startMessagePurge(payload, env);
-					message.ack();
-					continue;
-				}
-
-				// Unknown messages are acknowledged to avoid poison-looping.
-				message.ack();
-			} catch (error) {
-				// Let Queue retry according to its configured retry policy.
-				console.error(
-					'[AI Orchestrator] Message failed:',
-					error instanceof Error ? error.message : error,
-					payload
-				);
-				message.retry();
-			}
-		}
+		// Messages are independent and handleMessage settles each one itself, so
+		// run them together: one slow AI job no longer holds up the rest.
+		await Promise.all(batch.messages.map((message) => handleMessage(message, env)));
 	},
 
 	async scheduled(event, env, _ctx) {
