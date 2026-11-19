@@ -964,6 +964,8 @@ export const es: Record<string, string> = {
 	'adash.links.topics': 'Temas',
 	'adash.links.topicsDesc':
 		'Temas de conversación al azar, tu propia lista y temas de canales de voz',
+	'adash.links.personality': 'Tests de personalidad',
+	'adash.links.personalityDesc': 'Enlaces a tests de personalidad gratuitos, los que elijas',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
 	'adash.links.activity': 'Actividad',

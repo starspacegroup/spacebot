@@ -948,6 +948,8 @@ export const en: Record<string, string> = {
 	'adash.links.topics': 'Topics',
 	'adash.links.topicsDesc':
 		'Random conversation starters, your own list, and voice channel topics',
+	'adash.links.personality': 'Personality tests',
+	'adash.links.personalityDesc': 'Links to free online personality tests, with the ones you pick',
 	'adash.links.rooms': 'Member Rooms',
 	'adash.links.roomsDesc': 'Self-service channels with their own lifetime',
 	'adash.links.activity': 'Activity',

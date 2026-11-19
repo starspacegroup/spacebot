@@ -50,6 +50,7 @@ database — see the architecture overview below.
 - [Voice channel threshold trigger](automation-voice-threshold.md) — fire an automation once when a voice channel reaches N people
 - [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
 - [Topic](topic.md) — `/topic`: random conversation starters; optionally sets the voice channel status
+- [Personality tests](personality.md) — `/personality`: links to free online personality tests, with the ones a server picks
 - [Member content](member-content.md) — `/about`: a role-gated piece of content each member sets and clears, read by the bot and `GET /api/v1/member-content`
 
 - [Observances](observances.md) — a historical day posted as it happened, on its anniversary

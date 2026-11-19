@@ -108,6 +108,10 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       deny by role, one gate for every command, `/help` shows only what a member can run
       (`docs/command-access.md`, migration 0073). Open: members, channels, categories,
       time windows
+- [x] Personality tests — `/personality` links to free online personality tests (Myers-Briggs
+      style, Big Five, autism, BDSM, attachment and about thirty more), off until a server
+      turns it on; every test shows by default, a server hides some or adds its own links;
+      dashboard page and link checker (`docs/personality.md`, migration 0102)
 - [x] Dashboard access by role — the four dashboard rows on Settings take roles: a role opens
       Event logs, Automations or Commands (and a short "Your access" page) without Manage
       Server; everything else stays admin. Proved Dafny rule, central guard on form actions

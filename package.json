@@ -5,6 +5,7 @@
 	"packageManager": "bun@1.3.13",
 	"type": "module",
 	"scripts": {
+		"check:personality-links": "bun scripts/check-personality-links.ts",
 		"dafny:build": "node scripts/build-dafny.mjs",
 		"dev": "VITE_HMR=true vite dev",
 		"dev:hmr": "VITE_HMR=true vite dev",
