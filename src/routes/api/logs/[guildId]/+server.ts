@@ -1,5 +1,4 @@
 import { json } from '@sveltejs/kit';
-import { dev } from '$app/env';
 import { EVENT_CATEGORIES, EVENT_TYPES, getLogs, getLogStats, log } from '$lib/db/logger.js';
 import { verifyGuildAccess } from '$lib/discord/guilds.js';
 import { intParam } from '$lib/server/query-params.js';
@@ -22,7 +21,7 @@ function getEnv(name, platform) {
 export async function GET({ params, url, cookies, platform }) {
 	const { guildId } = params;
 
-	const devAuthEnabled = dev && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
+	const devAuthEnabled = import.meta.env.DEV && getEnv('DEV_AUTH_BYPASS', platform) === 'true';
 
 	if (!guildId) {
 		return json({ error: 'Guild ID required' }, { status: 400 });

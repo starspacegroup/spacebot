@@ -1070,9 +1070,10 @@ export async function getBuiltInCommand(db, id) {
  *
  * `/help` is how a member finds out what this bot does in this server. A guild
  * that disabled it left its members with a bot and no way to ask it anything,
- * so the override is accepted and then ignored for these.
+ * so the override is accepted and then ignored for these. `/status` is the same
+ * for "is the bot down, or is it just me?": it reads the public status page.
  */
-export const ALWAYS_ENABLED_BUILT_INS = ['help'];
+export const ALWAYS_ENABLED_BUILT_INS = ['help', 'status'];
 
 /** Whether this built-in ignores a guild's attempt to disable it. */
 export function isAlwaysEnabledBuiltIn(command) {
@@ -1420,6 +1421,16 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
 		},
 	},
 	{
+		// Answered in code from the live status checks (interactions route); this row only
+		// registers the name. Same data as /status on the website.
+		name: 'status',
+		description: 'Check whether SpaceBot is up: website, database, bot host and Discord',
+		dm_permission: true,
+		response_type: 'message',
+		response_content: 'https://spacebot.starspace.group/status',
+		response_embed: null,
+	},
+	{
 		name: 'help',
 		description: 'List the commands you can use here',
 		dm_permission: true,
@@ -1538,8 +1549,8 @@ export async function ensureBuiltInCommands(db) {
 						existing.id
 					)
 					.run();
-			} else if (cmd.name === 'help') {
-				// Keep /help available in DMs for existing databases.
+			} else if (cmd.name === 'help' || cmd.name === 'status') {
+				// Keep /help and /status available in DMs for existing databases.
 				await db
 					.prepare(
 						`

@@ -9,9 +9,6 @@
 <svelte:head>
 	<title>{tr('docs.dev.meta.title')}</title>
 	<meta name="description" content={tr('docs.dev.meta.description')} />
-	<meta property="og:title" content={tr('docs.dev.meta.title')} />
-	<meta property="og:description" content={tr('docs.dev.meta.ogDescription')} />
-	<meta property="og:url" content="https://spacebot.starspace.group/docs/dev" />
 </svelte:head>
 
 <div class="dev-index">

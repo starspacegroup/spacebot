@@ -13,6 +13,7 @@ import {
 	saveGuildBranding,
 	validateBranding,
 } from '$lib/db/branding.js';
+import { getAnnouncementChannel, setAnnouncementChannel } from '$lib/server/announcements.js';
 import { getGuildListing } from '$lib/db/server-listings.js';
 import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
@@ -96,6 +97,7 @@ export async function load({ cookies, platform, parent, params }) {
 		prefix: dbSettings.prefix || '!',
 		loggingChannelId: dbSettings.log_channel_id || null,
 		loggingChannelName: null, // Would need to fetch from Discord API
+		announcementChannelId: db ? await getAnnouncementChannel(db, serverId) : null,
 		moderationRoleId: dbSettings.moderation_role_id || null,
 		timezone: dbSettings.timezone || null,
 		logEmbedColors: dbSettings.log_embed_colors || {},
@@ -300,6 +302,13 @@ export const actions = {
 					`[Settings] Failed to save settings for server ${serverId}: ${savedSettings.error}`
 				);
 				return fail(500, { success: false, message: 'Failed to save settings' });
+			}
+
+			// Own column, own query. A form without the field leaves it alone.
+			if (formData.has('announcementChannelId')) {
+				const wanted = String(formData.get('announcementChannelId') || '') || null;
+				const problem = await setAnnouncementChannel(db, serverId, wanted);
+				if (problem) return fail(400, { success: false, message: problem });
 			}
 
 			await saveGuildBranding(db, serverId, brandingValidation.value, userId);

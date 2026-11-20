@@ -375,6 +375,18 @@ export const actions = {
 				return fail(500, { error: result.error });
 			}
 
+			// A superadmin's edit above changes the built-in for every server, and role ids belong to
+			// one server. So the role rules on this form are saved as THIS server's override (its
+			// permission and enabled settings are left as they were).
+			if (isBuiltIn && isSuperAdmin && formData.has('allow_roles')) {
+				const saved = await setBuiltInCommandOverride(db, params.serverId, parseInt(id), {
+					access_rules: accessRulesFrom(formData),
+				});
+				if (!saved.success) {
+					return fail(500, { error: saved.error || 'Failed to save the role rules' });
+				}
+			}
+
 			// Auto-sync to Discord (use the actual serverId for sync, not __built_in__)
 			const syncGuildId = isBuiltIn ? params.serverId : guildId;
 			await syncGuildCommands(db, syncGuildId, (platform as any)?.env);

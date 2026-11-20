@@ -25,6 +25,10 @@ So "Moderators, plus the Helper role, but never Muted" is: level Moderators, all
 Helper, deny Muted. It works on custom commands, and on built-ins like `/timebox`
 and `/quorum` through their per-server permission override.
 
+A superadmin editing a built-in command changes it for every server, so its permission level is
+global. Role ids belong to one server, so the role rules on that form are saved as the open server's
+own override and the page says so. A server admin's edit of a built-in saves both as their override.
+
 ## How it is enforced
 
 One check, `memberMayUseCommand` in `src/lib/discord/command-access.ts`, runs at the

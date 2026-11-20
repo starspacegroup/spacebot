@@ -40,6 +40,8 @@
 	// These are mutable form values that the user edits, so they must be $state, not $derived.
 	// svelte-ignore state_referenced_locally
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
+	// svelte-ignore state_referenced_locally
+	let announcementChannelId = $state(data.settings?.announcementChannelId || '');
 
 	// Log embed color settings per category
 	const defaultEmbedColors = {
@@ -204,6 +206,7 @@
 
 		// Always sync from data - the form enhance uses invalidateAll which reloads data
 		loggingChannelId = data.settings?.loggingChannelId || '';
+		announcementChannelId = data.settings?.announcementChannelId || '';
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		excludedCategories = data.settings?.excludedCategories || [];
 		timezone = data.settings?.timezone || '';
@@ -393,6 +396,32 @@
 							bind:value={localRunnerAllowedUsers}
 							onchange={autoSave}
 							placeholder="123456789012345678\n234567890123456789"></textarea>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Announcements -->
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">📣</span>
+				{tr('settings.announcements')}
+			</h2>
+
+			<div class="settings-card">
+				<div class="setting-row">
+					<div class="setting-info">
+						<span class="setting-label">{tr('settings.announcementChannel')}</span>
+						<span class="setting-desc">{tr('settings.announcementChannelDesc')}</span>
+					</div>
+					<div class="setting-control">
+						<ChannelSelector
+							guildId={data.serverId}
+							bind:value={announcementChannelId}
+							name="announcementChannelId"
+							placeholder={tr('settings.selectChannel')}
+							onchange={autoSave}
+						/>
 					</div>
 				</div>
 			</div>

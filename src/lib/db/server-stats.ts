@@ -3,6 +3,7 @@
  * Handles recording and retrieving historical server metrics
  */
 
+import { failed } from './load-failed.js';
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
 import { getTimezoneOffsetSQL } from '../timezone.js';
@@ -127,60 +128,73 @@ export async function updateMemberCount(db, guildId, eventType, isBot = false) {
 	}
 
 	try {
-		// Get the latest stats
-		const latest = await getLatestServerStats(db, guildId);
+		const delta = eventType === 'join' ? 1 : -1;
+		const botDelta = isBot ? delta : 0;
 
-		if (!latest) {
+		// One statement reads the latest row and writes the new one. Reading first and writing
+		// after lets two joins in a raid both start from the same count and lose one of them.
+		// source = 'event' marks this as a nudge, not a reading from Discord, so it does not
+		// make the next Discord check look recent.
+		const inserted = await db
+			.prepare(
+				`
+      INSERT INTO server_stats (
+        guild_id, member_count, online_count, bot_count, human_count,
+        channel_count, role_count, emoji_count, boost_count, boost_level, source
+      )
+      SELECT
+        guild_id,
+        MAX(0, COALESCE(member_count, 0) + ?),
+        NULL,
+        CASE WHEN bot_count IS NULL THEN NULL ELSE MAX(0, bot_count + ?) END,
+        CASE WHEN bot_count IS NULL THEN human_count
+             ELSE MAX(0, MAX(0, COALESCE(member_count, 0) + ?) - MAX(0, bot_count + ?)) END,
+        channel_count, role_count, emoji_count, boost_count, boost_level, 'event'
+      FROM server_stats
+      WHERE guild_id = ?
+      ORDER BY recorded_at DESC, id DESC
+      LIMIT 1
+    `
+			)
+			.bind(delta, botDelta, delta, botDelta, guildId)
+			.run();
+
+		if (!inserted.meta?.changes) {
 			// No existing stats - we can't update without a baseline
 			// The page load will fetch from Discord if needed
 			return { success: false, error: 'No baseline stats exist' };
 		}
 
-		// Calculate new counts
-		const delta = eventType === 'join' ? 1 : -1;
-		const newCount = Math.max(0, (latest.member_count || 0) + delta);
-
-		// Update bot count if the member is a bot
-		let newBotCount = latest.bot_count;
-		if (isBot && latest.bot_count !== null) {
-			newBotCount = Math.max(0, latest.bot_count + delta);
-		}
-
-		// Calculate human count
-		const newHumanCount =
-			newBotCount !== null ? Math.max(0, newCount - newBotCount) : latest.human_count;
-
-		// Record the new stats
-		await db
-			.prepare(
-				`
-      INSERT INTO server_stats (
-        guild_id, member_count, online_count, bot_count, human_count,
-        channel_count, role_count, emoji_count, boost_count, boost_level
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-			)
-			.bind(
-				guildId,
-				newCount,
-				null, // online_count not updated on events
-				newBotCount,
-				newHumanCount,
-				latest.channel_count,
-				latest.role_count,
-				latest.emoji_count,
-				latest.boost_count,
-				latest.boost_level
-			)
-			.run();
-
+		const latest = await getLatestServerStats(db, guildId);
 		log.debug(
-			`[Stats] Updated member count for ${guildId}: ${latest.member_count} -> ${newCount} (${eventType}${isBot ? ', bot' : ''})`
+			`[Stats] Updated member count for ${guildId}: -> ${latest?.member_count} (${eventType}${isBot ? ', bot' : ''})`
 		);
-		return { success: true, newCount };
+		return { success: true, newCount: latest?.member_count };
 	} catch (error) {
 		log.error('Failed to update member count:', error);
 		return { success: false, error: error.message || String(error) };
+	}
+}
+
+/**
+ * When the member count was last read from Discord (not nudged by a join or leave).
+ * Join and leave events add rows too; counting those as fresh meant a busy server was
+ * never checked against Discord again and its count could drift.
+ * @returns {Promise<string|null>}
+ */
+export async function getLastDiscordReadingAt(db, guildId) {
+	if (!db) return null;
+	try {
+		const row = await db
+			.prepare(
+				`SELECT MAX(recorded_at) AS at FROM server_stats
+         WHERE guild_id = ? AND (source IS NULL OR source != 'event')`
+			)
+			.bind(guildId)
+			.first();
+		return row?.at || null;
+	} catch {
+		return null;
 	}
 }
 
@@ -199,7 +213,7 @@ export async function getLatestServerStats(db, guildId) {
 				`
       SELECT * FROM server_stats 
       WHERE guild_id = ?
-      ORDER BY recorded_at DESC
+      ORDER BY recorded_at DESC, id DESC
       LIMIT 1
     `
 			)
@@ -253,8 +267,14 @@ export async function syncServerStatsIfStale(
 	const { existingStats = null, maxAgeMinutes = DEFAULT_STATS_REFRESH_MINUTES } = options;
 
 	const latest = existingStats ?? (await getLatestServerStats(db, guildId));
+	const lastReading = latest ? await getLastDiscordReadingAt(db, guildId) : null;
 	const shouldRefresh =
-		!latest || latest.member_count === 0 || isServerStatsStale(latest, maxAgeMinutes);
+		!latest ||
+		latest.member_count === 0 ||
+		isServerStatsStale(
+			{ ...latest, recorded_at: lastReading ?? latest.recorded_at },
+			maxAgeMinutes
+		);
 
 	if (!shouldRefresh || !botToken) {
 		return { latest, refreshed: false };
@@ -385,7 +405,7 @@ export async function getServerStatsHistory(db, guildId, options: Record<string,
 		return result.results || [];
 	} catch (error) {
 		log.error('Failed to get server stats history:', error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -594,7 +614,7 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
 		};
 	} catch (error) {
 		log.error('Failed to get member count changes:', error);
-		return {
+		return failed({
 			current: 0,
 			day: 0,
 			week: 0,
@@ -604,7 +624,7 @@ export async function getMemberCountChanges(db, guildId, timezone = null) {
 			weekHuman: null,
 			monthHuman: null,
 			botCount: null,
-		};
+		});
 	}
 }
 
@@ -640,7 +660,7 @@ export async function getPeakMemberCount(db, guildId, period = 'all') {
 		};
 	} catch (error) {
 		log.error('Failed to get peak member count:', error);
-		return { peak: 0, peakDate: null };
+		return failed({ peak: 0, peakDate: null });
 	}
 }
 
