@@ -56,7 +56,7 @@ describe('role rules on a built-in command', () => {
 			deny_roles: '222222222222222222',
 		});
 		expect(r.status).toBe(302);
-		expect(updateCommand.mock.calls[0][3]).toBe('__built_in__');
+		expect((updateCommand.mock.calls[0] as any[])[3]).toBe('__built_in__');
 		// the global row never carries role ids
 		expect((updateCommand.mock.calls[0] as any[])[2].access_rules).toBeUndefined();
 		expect(setOverride).toHaveBeenCalledTimes(1);
