@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import { page } from '$app/state';
+	import SocialMeta from '$lib/components/SocialMeta.svelte';
+	import { OG_CARDS } from '$lib/seo/social.js';
 
 	const { data } = $props();
 	const profile = $derived(data.profile);
@@ -7,6 +10,13 @@
 </script>
 
 <svelte:head><title>{tr('profile.metaTitle', { name: profile.display_name })}</title></svelte:head>
+
+<SocialMeta
+	title={tr('profile.metaTitle', { name: profile.display_name })}
+	description={(profile.bio || '').slice(0, 200) || OG_CARDS.profile.description}
+	path={page.url.pathname}
+	card="profile"
+/>
 
 <section class="profile-page">
 	<h1>{profile.display_name}</h1>

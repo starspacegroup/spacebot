@@ -28,7 +28,11 @@ const SCHEMA = `
 		voice_unique_users INTEGER DEFAULT 0,
 		voice_peak_concurrent INTEGER DEFAULT 0,
 		message_count INTEGER DEFAULT 0,
-		message_unique_users INTEGER DEFAULT 0
+		message_unique_users INTEGER DEFAULT 0,
+		message_human_count INTEGER,
+		message_human_unique_users INTEGER,
+		member_human_joins INTEGER,
+		member_human_leaves INTEGER
 	);
 	CREATE TABLE voice_sessions (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

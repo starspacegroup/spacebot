@@ -20,6 +20,14 @@
 			<span class="nav-icon">📈</span>
 			Site traffic
 		</a>
+		<a href="/admin/superadmin/ideas" class="nav-link">
+			<span class="nav-icon">💡</span>
+			Ideas
+		</a>
+		<a href="/admin/superadmin/status" class="nav-link">
+			<span class="nav-icon">🚦</span>
+			Status page
+		</a>
 		<a href="/admin/superadmin/gateway" class="nav-link">
 			<span class="nav-icon">📡</span>
 			Gateway

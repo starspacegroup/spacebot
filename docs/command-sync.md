@@ -37,6 +37,17 @@ failed with "Unknown workflow operation" and nothing synced: `/play shiritori`
 `workflow-sweep-operations.test.ts` now fails if a preset names an operation the
 registry does not have. A failed run shows in Superadmin → Workflows → runs.
 
+## The skipped rename (bug found 2026-11-04)
+
+Migration 0083 renames the built-in `play` row to `game` only when no built-in
+`game` row exists. Production already had an old hidden-agent `game` row, so the
+rename was skipped: `game` kept `start`, `stop` and `status`, and a stale `play`
+row kept `shiritori`. The sync sends `/play` as a copy of `/game`, so Discord
+never received Shiritori, though the dashboard showed it on and the sweep
+reported every server current. Migration 0085 gives the `game` row the unified
+options, moves the stale row's per-server overrides onto it and drops the stale
+row. After a deploy the sweep sees a new payload hash and syncs the servers.
+
 ## After a deploy
 
 `.github/workflows/sync-commands-after-deploy.yml` runs on every push to

@@ -151,7 +151,10 @@ export async function load({ cookies, platform, parent, params }) {
 	// /api/admin/[serverId]/dashboard-stats endpoint) is served directly; a cold
 	// cache renders a shell immediately and the client fetches that endpoint
 	// itself, showing loading skeletons in the meantime — see +page.svelte.
-	const { cachedEntry, hasFreshCache, hasStaleCache } = getDashboardCacheEntry(serverId);
+	const { cachedEntry, hasFreshCache, hasStaleCache } = getDashboardCacheEntry(
+		serverId,
+		cookies.get('user_timezone') || null
+	);
 	if (hasStaleCache && cachedEntry?.data) {
 		logStats = cachedEntry.data.logStats;
 		basicStats = cachedEntry.data.basicStats;

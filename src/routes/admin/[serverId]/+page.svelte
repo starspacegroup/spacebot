@@ -299,6 +299,14 @@
 					</div>
 					<span class="quick-link-arrow">→</span>
 				</a>
+				<a href="/admin/{data.serverId}/topics" class="quick-link-card">
+					<div class="quick-link-icon">💬</div>
+					<div class="quick-link-info">
+						<span class="quick-link-title">{tr('adash.links.topics')}</span>
+						<span class="quick-link-desc">{tr('adash.links.topicsDesc')}</span>
+					</div>
+					<span class="quick-link-arrow">→</span>
+				</a>
 				<a href="/admin/{data.serverId}/observances" class="quick-link-card">
 					<div class="quick-link-icon">🕯️</div>
 					<div class="quick-link-info">

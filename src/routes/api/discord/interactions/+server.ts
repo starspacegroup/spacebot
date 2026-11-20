@@ -28,11 +28,16 @@ import type { PurgeDescriptor, PurgeMode } from '$lib/server/message-purge.js';
 import { memberMayUseCommand } from '$lib/discord/command-access.js';
 import { applyContextMenuTargetToEvent } from '$lib/discord/context-menu.js';
 import { applyInteractionOptionsToEvent } from '$lib/discord/interaction-options.js';
+import { getStatusSnapshot } from '$lib/db/status.js';
+import { buildStatusEmbed } from '$lib/status/discord.js';
 import { buildHelpEmbed, buildHelpEntries } from '$lib/discord/help.js';
 import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
+import { handleTopicCommand } from '$lib/server/topic-command.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
+import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
+import { handleIdeaCommand } from '$lib/server/idea-command.js';
 import { handleAboutCommand } from '$lib/server/member-content.js';
 import { handleTimeboxCommand, handleTimeboxComponent } from '$lib/server/timebox.js';
 import { resolveStartInteraction } from '$lib/discord/start-command.js';
@@ -41,6 +46,8 @@ import { handleGameCommand, handleGameComponent } from '$lib/server/game.js';
 import {
 	handleShiritoriCommand,
 	handleShiritoriComponent,
+	handleGameHelp,
+	isGameHelpCommand,
 	isShiritoriCommand,
 } from '$lib/server/shiritori-game.js';
 import { log } from '$lib/db/logger.js';
@@ -301,7 +308,7 @@ export async function POST({ request, platform: rawPlatform }) {
 		// Discord's own gate is advisory, and the built-ins below (`/quorum`,
 		// `/timebox`, `/room`, ...) are handled before the generic path, so the
 		// check lives here and not down there. `/help` answers for itself.
-		if (db && guildId && data.name !== 'help') {
+		if (db && guildId && data.name !== 'help' && data.name !== 'status') {
 			const gated = await getCommandByName(db, data.name, guildId);
 			if (
 				gated &&
@@ -335,6 +342,22 @@ export async function POST({ request, platform: rawPlatform }) {
 			});
 		}
 
+		// `/status`: the public status page, in Discord. Read live from the same checks as the
+		// website, public to the channel (it is not private, and "is the bot down?" helps everyone
+		// watching), and the same in every server and in DMs.
+		if (data.name === 'status') {
+			let snapshot = null;
+			try {
+				if (db) snapshot = await getStatusSnapshot(db);
+			} catch (error) {
+				log.error('[Status] /status could not read the snapshot:', error);
+			}
+			return json({
+				type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+				data: { embeds: [buildStatusEmbed(snapshot)] },
+			});
+		}
+
 		// `/quorum`: a vote is state the bot keeps, not a one-shot action, so it
 		// is handled here rather than by the action pipeline. The reply goes back
 		// at once; `after` (storing the card's message id and pinning it) rides
@@ -352,6 +375,30 @@ export async function POST({ request, platform: rawPlatform }) {
 					reply.after.catch((err) => log.error('[Quorum] after-reply work failed:', err));
 			}
 			return json(reply.response);
+		}
+
+		// `/define` and `/synonym`: a live lookup from a free word service, answered at once.
+		// Off until a server turns them on; the handler checks that itself.
+		if (isWordCommand(data.name) && guildId) {
+			return json(await handleWordCommand(data.name, body, db));
+		}
+
+		// `/idea`: saved at once; the AI draft rides waitUntil so a slow model never delays the reply.
+		if (data.name === 'idea' && guildId) {
+			return json(
+				await handleIdeaCommand(body, db, platform?.env ?? {}, (work) => {
+					if (platform?.context?.waitUntil) platform.context.waitUntil(work);
+					else work.catch((err) => log.error('[Ideas] after-reply work failed:', err));
+				})
+			);
+		}
+
+		// `/topic`: a random conversation starter (off until a server turns it on).
+		if (data.name === 'topic' && guildId) {
+			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			return json(
+				await handleTopicCommand(body, db, token ? createDiscordRestClient(token) : null)
+			);
 		}
 
 		// `/oldest`: a read over the member cache, answered at once.
@@ -390,6 +437,9 @@ export async function POST({ request, platform: rawPlatform }) {
 		// and fall through to its handler below.
 		if (data.name === 'game' && guildId && isBuiltInGameInteraction(data)) {
 			const token = getEnv(platform, 'DISCORD_BOT_TOKEN');
+			if (isGameHelpCommand(body)) {
+				return json(await handleGameHelp(body, db));
+			}
 			if (isShiritoriCommand(body)) {
 				const reply = await handleShiritoriCommand(
 					body,
@@ -1762,7 +1812,11 @@ async function handleStatsCommand(
 		});
 
 		if (isVoiceLeaderboard) {
-			const leaderboardRows = await getTopVoiceUsers(db, guildId, 10, period);
+			// Bots (a music bot can sit in a channel all day) are not people on a leaderboard.
+			// Ask for extra rows so hiding them still leaves a full ten.
+			const leaderboardRows = (await getTopVoiceUsers(db, guildId, 25, period))
+				.filter((row) => !row.actor_is_bot)
+				.slice(0, 10);
 
 			if (!leaderboardRows.length) {
 				await editOriginal({
