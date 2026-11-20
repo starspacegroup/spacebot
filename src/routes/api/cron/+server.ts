@@ -36,6 +36,19 @@ import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 const STALE_RUNNING_JOB_TIMEOUT_MINUTES = 30;
 
 /**
+ * Read a JSON object body. A missing, malformed or non-object body reads as
+ * `null`, so the caller answers 400 instead of throwing a 500.
+ */
+async function readJsonBody(request: Request): Promise<Record<string, any> | null> {
+	try {
+		const body = await request.json();
+		return body && typeof body === 'object' ? body : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Check if the request has a valid cron secret or internal API key
  */
 function checkBearerAuth(request, platform) {
@@ -405,8 +418,8 @@ export async function POST({ request, cookies, platform }) {
 		return json({ error: 'Unauthorized' }, { status: 403 });
 	}
 
-	const body = await request.json();
-	const { jobName } = body;
+	const body = await readJsonBody(request);
+	const jobName = body?.jobName;
 
 	if (!jobName) {
 		return json({ error: 'Job name is required' }, { status: 400 });
@@ -651,8 +664,8 @@ export async function DELETE({ request, cookies, platform }) {
 		return json({ error: 'Unauthorized' }, { status: 403 });
 	}
 
-	const body = await request.json();
-	const { jobId } = body;
+	const body = await readJsonBody(request);
+	const jobId = body?.jobId;
 
 	if (!jobId) {
 		return json({ error: 'Job ID is required' }, { status: 400 });
