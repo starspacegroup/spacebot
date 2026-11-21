@@ -109,7 +109,7 @@
 			<h2>Which tests show</h2>
 			<p class="muted">
 				{shown.length} of {data.catalog.length} tests are ticked. Untick any you do not want in
-				this server. Tests marked 🔞 are adult; (paid) ones cost money for the full result.
+				this server. Tests marked 🔞 are adult.
 			</p>
 			<form method="POST" action="?/selection" use:enhance={run('selection')}>
 				<div class="groups">
@@ -151,8 +151,6 @@
 												<span class="pick-name"
 													>{t.name}{#if t.adult}<span class="tag"
 															>🔞 18+</span
-														>{/if}{#if t.paid}<span class="tag"
-															>paid</span
 														>{/if}</span
 												>
 												<span class="pick-blurb">{t.blurb}</span>

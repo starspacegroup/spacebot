@@ -3,7 +3,7 @@
  *
  * SpaceBot only links. It does not run the tests, see anyone's answers or vouch for what a test
  * claims. Every URL here was opened and its page title checked on 2026-11-19. Add one only after
- * doing the same, and say if it is paid or adult. Quizzes are for curiosity: the neurodiversity
+ * doing the same, and say if it is adult. Paid tests are not listed. Quizzes are for curiosity: the neurodiversity
  * ones are screening aids, not a diagnosis, and the replies say so.
  *
  * Pure: no database, no Discord. The command and the dashboard both build on this.
@@ -21,8 +21,6 @@ export interface PersonalityTest {
 	category: string;
 	url: string;
 	blurb: string;
-	/** Needs payment for the main result. */
-	paid?: boolean;
 	/** Adult content (18+). */
 	adult?: boolean;
 	keywords: string[];
@@ -62,15 +60,6 @@ export const TESTS: PersonalityTest[] = [
 		keywords: ['mbti', 'myers briggs', '16 types', 'truity'],
 	},
 	{
-		id: 'mbti-official',
-		name: 'Official MBTI',
-		category: 'type',
-		url: 'https://www.mbtionline.com/',
-		blurb: 'The official Myers-Briggs assessment.',
-		paid: true,
-		keywords: ['mbti', 'myers briggs', 'official'],
-	},
-	{
 		id: 'oejts',
 		name: 'Open Extended Jungian Type Scales',
 		category: 'type',
@@ -101,15 +90,6 @@ export const TESTS: PersonalityTest[] = [
 		url: 'https://www.truity.com/test/enneagram-personality-test',
 		blurb: 'A free Enneagram test for your type of nine.',
 		keywords: ['enneagram', 'nine types', 'truity'],
-	},
-	{
-		id: 'rheti',
-		name: 'RHETI (Enneagram Institute)',
-		category: 'type',
-		url: 'https://www.enneagraminstitute.com/rheti',
-		blurb: 'The Riso-Hudson Enneagram Type Indicator.',
-		paid: true,
-		keywords: ['enneagram', 'riso hudson', 'rheti'],
 	},
 	{
 		id: 'sociotype',
@@ -386,7 +366,6 @@ export interface Listed {
 	url: string;
 	category: string;
 	blurb: string;
-	paid?: boolean;
 	adult?: boolean;
 	keywords: string[];
 	own?: boolean;
@@ -399,7 +378,6 @@ export function listed(hidden: ReadonlySet<string>, custom: readonly CustomTest[
 		url: t.url,
 		category: t.category,
 		blurb: t.blurb,
-		paid: t.paid,
 		adult: t.adult,
 		keywords: t.keywords,
 	}));
@@ -510,7 +488,7 @@ export const DISCLAIMER =
 const FIELD_MAX = 1000;
 const EMBED_BUDGET = 5200;
 
-const tags = (i: Listed) => `${i.adult ? ' 🔞' : ''}${i.paid ? ' (paid)' : ''}`;
+const tags = (i: Listed) => `${i.adult ? ' 🔞' : ''}`;
 
 /** One line with the blurb: used when a single category or a few results are shown. */
 export function detailedLine(i: Listed): string {

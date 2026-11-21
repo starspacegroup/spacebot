@@ -19,7 +19,7 @@ socionics), Big Five & traits (including HEXACO), autism & neurodiversity (AQ, R
 Aspie Tests), relationships & intimacy (BDSM test, attachment style, love languages), dark
 traits, career & strengths, values & politics, just for fun, and hubs with many more.
 
-**Every test shows by default.** The BDSM test is marked 🔞, and paid ones say (paid). The list
+**Every test shows by default.** The BDSM test is marked 🔞. Paid tests are not listed. The list
 is in `src/lib/server/personality-tests.ts`. Every link was opened and its title checked on
 2026-11-19. Before adding one, or after a long gap, run `bun run check:personality-links`.
 

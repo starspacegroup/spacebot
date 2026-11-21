@@ -32,7 +32,6 @@ const CATALOG = TESTS.map((t) => ({
 	category: t.category,
 	url: t.url,
 	blurb: t.blurb,
-	paid: Boolean(t.paid),
 	adult: Boolean(t.adult),
 }));
 
