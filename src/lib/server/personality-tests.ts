@@ -210,7 +210,16 @@ export const TESTS: PersonalityTest[] = [
 		category: 'dark',
 		url: 'https://openpsychometrics.org/tests/SD3/',
 		blurb: 'Machiavellianism, narcissism and psychopathy traits.',
-		keywords: ['dark triad', 'narcissism', 'machiavellian', 'psychopathy', 'sd3'],
+		keywords: [
+			'dark triad',
+			'narcissism',
+			'machiavellian',
+			'psychopathy',
+			'psychopath',
+			'sociopath',
+			'sociopathy',
+			'sd3',
+		],
 	},
 	{
 		id: 'npi',

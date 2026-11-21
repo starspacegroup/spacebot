@@ -263,7 +263,9 @@ export async function handlePersonalityCommand(body: any, db: Db) {
 	if (items.length === 0) return embedReply(emptyEmbed());
 
 	if (sub?.name === 'find') {
-		const query = String(opts.get('search') ?? '');
+		// The first option is the search text even if Discord names it differently.
+		const query = String(opts.get('search') ?? (sub?.options ?? [])[0]?.value ?? '').trim();
+		if (!query) return say('Type a name or topic to look for, like `autism` or `enneagram`.');
 		const results = search(items, query);
 		if (results.length === 0) {
 			return say(

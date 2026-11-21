@@ -155,6 +155,18 @@ describe('/personality (everyone)', () => {
 		).toMatch(/Nothing matches/);
 	});
 
+	it('finds sociopath, takes the search text under any option name, and asks when it is empty', async () => {
+		const dark = embed(
+			await handlePersonalityCommand(body('find', [opt('search', 'sociopath')]), db)
+		);
+		expect(dark.description).toContain('Dark Triad');
+		const renamed = embed(
+			await handlePersonalityCommand(body('find', [opt('query', 'enneagram')]), db)
+		);
+		expect(renamed.description).toContain('Enneagram');
+		expect(text(await handlePersonalityCommand(body('find', []), db))).toMatch(/Type a name/);
+	});
+
 	it('never pings anyone', async () => {
 		const r: any = await handlePersonalityCommand(body('list'), db);
 		expect(r.data.allowed_mentions).toEqual({ parse: [] });
