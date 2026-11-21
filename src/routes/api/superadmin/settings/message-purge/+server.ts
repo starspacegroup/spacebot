@@ -35,6 +35,9 @@ export async function PATCH({ cookies, platform, request }) {
 	} catch {
 		return json({ error: 'Invalid request body' }, { status: 400 });
 	}
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 
 	const updates: { maxBatches?: number; checkpointContinue?: boolean } = {};
 
