@@ -80,7 +80,11 @@ export async function POST({ request, platform, fetch }) {
 	const botToken = envValue(platform, 'DISCORD_BOT_TOKEN');
 	if (!botToken) return json({ error: 'Bot token unavailable' }, { status: 503 });
 
-	const body = (await request.json().catch(() => ({}))) as {
+	const parsed = await request.json().catch(() => null);
+	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
+	const body = parsed as {
 		state?: PurgeState;
 		meta?: Partial<PurgeMeta>;
 		continuation?: number;
