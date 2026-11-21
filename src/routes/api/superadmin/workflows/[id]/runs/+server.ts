@@ -51,7 +51,21 @@ export async function POST({ cookies, platform, params, request, fetch }) {
 	const db = (platform as { env?: { DB?: unknown } })?.env?.DB;
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
-	const body = await request.json();
+	// The body is optional (every field has a default), but a malformed or
+	// non-object one is the caller's mistake: 400, not 500.
+	let body: Record<string, any> = {};
+	try {
+		const text = await request.text();
+		if (text.trim()) {
+			const parsed = JSON.parse(text);
+			if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+				return json({ error: 'Body must be a JSON object' }, { status: 400 });
+			}
+			body = parsed;
+		}
+	} catch {
+		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	}
 	const result = await createSuperadminWorkflowRun(db, templateId, userId, {
 		...(body || {}),
 		status: 'queued',
