@@ -4,6 +4,7 @@ import { log } from '$lib/db/logger.js';
 import { filterAdminGuilds, getBotGuildIds, getUserGuilds } from '$lib/discord/guilds.js';
 import { resolveLocale } from '$lib/i18n.js';
 import { buildMemberGuilds } from '$lib/server/feature-access.js';
+import { recordUserGuilds } from '$lib/server/user-guilds.js';
 
 // Timeout for guild fetching to prevent layout hangs (10 seconds)
 const GUILD_FETCH_TIMEOUT = 10000;
@@ -12,12 +13,14 @@ const GUILD_FETCH_TIMEOUT = 10000;
  * Fetch and process the admin guild list for a user.
  * Returns a sorted array of guilds with botIsInServer flags.
  */
-async function buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies) {
+async function buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies, record = null) {
 	const [allUserGuilds, botGuildIds] = await withTimeout(
 		Promise.all([getUserGuilds(accessToken, cookies), getBotGuildIds(botToken, cookies)]),
 		GUILD_FETCH_TIMEOUT,
 		[[], new Set()]
 	);
+	// Remember who is in which server (hourly per person, never blocks the page).
+	if (record) await record(allUserGuilds, botGuildIds).catch(() => {});
 
 	let adminGuilds = [];
 
@@ -293,7 +296,14 @@ export async function load({ cookies, platform, url }) {
 				throw redirect(302, `/admin/${lastViewedGuildId}`);
 			}
 			// No cookie (first-ever visit): must fetch guilds to find somewhere to land.
-			const guilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+			const guilds = await buildAdminGuildsList(
+				accessToken,
+				botToken,
+				isSuperAdmin,
+				cookies,
+				(guilds, botIds) =>
+					recordUserGuilds((platform as any)?.env?.DB, userId, guilds, botIds)
+			);
 			const members = await buildMemberList(
 				accessToken,
 				botToken,
@@ -341,7 +351,13 @@ export async function load({ cookies, platform, url }) {
 		// Resolve guilds before returning so child server loaders always receive an array.
 		// Returning a Promise here can surface as runtime TypeErrors in routes that call
 		// array helpers such as .filter/.some/.find on parentData.adminGuilds.
-		adminGuilds = await buildAdminGuildsList(accessToken, botToken, isSuperAdmin, cookies);
+		adminGuilds = await buildAdminGuildsList(
+			accessToken,
+			botToken,
+			isSuperAdmin,
+			cookies,
+			(guilds, botIds) => recordUserGuilds((platform as any)?.env?.DB, userId, guilds, botIds)
+		);
 		const memberGuilds = await buildMemberList(
 			accessToken,
 			botToken,

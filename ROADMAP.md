@@ -108,6 +108,11 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       deny by role, one gate for every command, `/help` shows only what a member can run
       (`docs/command-access.md`, migration 0073). Open: members, channels, categories,
       time windows
+- [x] Superadmin: users and servers related, and logs — each person's servers (with owner,
+      Administrator, Manage Server or member standing) and each server's people, saved as people
+      open the dashboard (migration 0104); detail pages for both; a Logs page with an audit
+      trail, a cross-server activity feed and an error feed, plus a per-person timeline
+      (`docs/superadmin-logs.md`)
 - [x] Personality tests — `/personality` links to free online personality tests (Myers-Briggs
       style, Big Five, autism, BDSM, attachment and about thirty more), off until a server
       turns it on; every test shows by default, a server hides some or adds its own links;
