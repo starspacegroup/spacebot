@@ -696,6 +696,26 @@
 			</a>
 		</section>
 
+		<!-- Danger zone: delete the server and its data, on its own page -->
+		{#if data.hasFullAdminAccess}
+			<section class="settings-section" id="delete-server">
+				<h2>
+					<span class="section-icon">⚠️</span>
+					Delete this server
+				</h2>
+				<a class="listing-link-card danger-link" href="/admin/{data.serverId}/delete">
+					<div class="listing-link-text">
+						<strong>Delete the server and all its data</strong>
+						<span
+							>Removes everything SpaceBot holds about this server, and SpaceBot
+							leaves it.</span
+						>
+					</div>
+					<span class="listing-link-go">Open →</span>
+				</a>
+			</section>
+		{/if}
+
 		<!-- Timezone Settings -->
 		<section class="settings-section">
 			<h2>
@@ -1891,6 +1911,10 @@
 
 	.listing-dot.live {
 		background: var(--color-success);
+	}
+
+	.danger-link {
+		border-color: var(--color-danger);
 	}
 
 	.listing-link-go {

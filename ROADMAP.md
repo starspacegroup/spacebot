@@ -113,6 +113,9 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       open the dashboard (migration 0104); detail pages for both; a Logs page with an audit
       trail, a cross-server activity feed and an error feed, plus a per-person timeline
       (`docs/superadmin-logs.md`)
+- [x] Delete a server — Settings → Delete this server removes every row about a server, its
+      slash commands and the bot, after the owner or an Administrator types its name; keeps one
+      row of who and when (migration 0105, `docs/server-deletion.md`)
 - [x] Personality tests — `/personality` links to free online personality tests (Myers-Briggs
       style, Big Five, autism, BDSM, attachment and about thirty more), off until a server
       turns it on; every test shows by default, a server hides some or adds its own links;

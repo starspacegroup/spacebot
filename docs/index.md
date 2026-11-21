@@ -32,6 +32,7 @@ database — see the architecture overview below.
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
 - [Superadmin logs and relations](superadmin-logs.md) — which servers a person is in, who is in a server, and the audit, activity and error logs
+- [Delete a server](server-deletion.md) — one page that removes a server's data, its commands, and the bot
 - [Scale Architecture](scale-architecture.md) — the D1 size plan: retention, DO rate limiter, DLQ, later phases
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
 - [Game](game.md) — the hidden-agent round for a voice channel, played in the Activity
