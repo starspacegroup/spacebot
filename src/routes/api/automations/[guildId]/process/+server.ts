@@ -44,7 +44,11 @@ export async function POST({ params, request, platform }) {
 	}
 
 	try {
-		const { event } = await request.json();
+		const parsed = await request.json().catch(() => null);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+		}
+		const { event } = parsed;
 
 		log.debug(`[Automation Process] Received event: ${event?.event_type} for guild ${guildId}`);
 
