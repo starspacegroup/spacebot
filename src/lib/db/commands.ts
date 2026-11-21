@@ -8,6 +8,7 @@ import { ApplicationCommandType } from 'discord-api-types/v10';
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from './automations.js';
 import { applyInteractionOptionsToContext } from '../discord/interaction-options.js';
 import { log } from '../log.js';
+import { hasSubcommands, parseStoredOptions } from './command-options.js';
 import {
 	parseAccessRules,
 	serializeAccessRules,
@@ -403,7 +404,7 @@ export async function updateCommand(
 		const existingRow = await db
 			.prepare(
 				`
-      SELECT id, guild_id, name, context_menu_user
+      SELECT id, guild_id, name, context_menu_user, options
       FROM commands
       WHERE id = ?
       LIMIT 1
@@ -414,6 +415,18 @@ export async function updateCommand(
 
 		if (!existingRow || (scopeGuildId !== null && existingRow.guild_id !== scopeGuildId)) {
 			return { success: false, error: 'Command not found' };
+		}
+
+		// The editor form has no subcommands, so saving it over a built-in that has them (/topic,
+		// /personality) would flatten them into text boxes. Keep the stored options in that case.
+		if (
+			updates.options !== undefined &&
+			existingRow.guild_id === BUILT_IN_GUILD_ID &&
+			hasSubcommands(parseStoredOptions(existingRow.options)) &&
+			!hasSubcommands(updates.options)
+		) {
+			updates = { ...updates };
+			delete updates.options;
 		}
 
 		const existingIsContextMenu = !!existingRow.context_menu_user;
