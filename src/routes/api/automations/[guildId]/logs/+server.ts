@@ -5,7 +5,7 @@
 
 import { json } from '@sveltejs/kit';
 import { getAutomationLogs } from '$lib/db/automations.js';
-import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { verifyGuildFeature } from '$lib/server/feature-access.js';
 import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').RequestHandler} */
@@ -13,7 +13,7 @@ export async function GET({ params, url, cookies, platform }) {
 	const { guildId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}

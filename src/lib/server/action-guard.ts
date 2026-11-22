@@ -16,9 +16,22 @@
 
 import { checkIsSuperAdmin } from './superadmin-guard.js';
 import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { mayUseFeature, type Feature } from './feature-access.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const GUILD_PATH = /^\/admin\/(\d{17,20})(?:\/|$)/;
+
+/**
+ * The only admin sections a role saved on Settings can reach. Everything else under
+ * /admin/<guildId>/ stays Manage Server. Matches the section name, so /logs and /logs/123
+ * count but /logs-export does not.
+ */
+const ROLE_SECTIONS: Record<string, Feature> = {
+	logs: 'logs',
+	automations: 'automations',
+	commands: 'commands',
+};
+const SECTION_PATH = /^\/admin\/\d{17,20}\/([a-z-]+)(?:\/|$)/;
 
 function deny(status: number, message: string): Response {
 	return new Response(JSON.stringify({ type: 'error', error: { message } }), {
@@ -55,9 +68,15 @@ export async function authorizePageMutation({
 			cookies.get('discord_access_token'),
 			cookies
 		);
-		if (!verification?.authorized)
-			return deny(403, 'You do not have permission to manage this server');
-		return null;
+		if (verification?.authorized) return null;
+		const feature = ROLE_SECTIONS[SECTION_PATH.exec(pathname)?.[1] ?? ''];
+		if (
+			feature &&
+			(await mayUseFeature({ guildId: guildMatch[1], cookies, platform }, feature))
+		) {
+			return null;
+		}
+		return deny(403, 'You do not have permission to manage this server');
 	}
 
 	if (pathname === '/admin') return null;
