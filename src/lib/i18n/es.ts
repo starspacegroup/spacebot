@@ -964,6 +964,8 @@ export const es: Record<string, string> = {
 	'adash.links.topics': 'Temas',
 	'adash.links.topicsDesc':
 		'Temas de conversación al azar, tu propia lista y temas de canales de voz',
+	'adash.links.personality': 'Tests de personalidad',
+	'adash.links.personalityDesc': 'Enlaces a tests de personalidad gratuitos, los que elijas',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
 	'adash.links.activity': 'Actividad',
@@ -1319,7 +1321,7 @@ export const es: Record<string, string> = {
 	'settings.permissionsTitle': 'Permisos de acceso al panel',
 	'settings.important': 'Importante',
 	'settings.permissionsDesc':
-		'Controla quién puede acceder a las distintas funciones de este panel web según sus permisos de Discord. Los usuarios con permiso de <strong>Administrador</strong> siempre tienen acceso completo.',
+		'Elige los roles que pueden abrir partes de este panel. Los miembros con <strong>Administrador</strong> o <strong>Gestionar servidor</strong> siempre tienen acceso completo. Un rol elegido aquí abre solo esa sección y una página breve que la enumera. Los ajustes, la facturación y lo demás siguen siendo de los administradores. El nivel de permiso de cada fila no cambia hoy quién entra; los roles sí.',
 	'settings.viewDashboard': 'Ver el panel',
 	'settings.viewDashboardDesc': 'Acceder al panel del servidor y ver información básica',
 	'settings.viewLogs': 'Ver registros de eventos',
@@ -1329,6 +1331,7 @@ export const es: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Crear, editar y eliminar acciones automatizadas',
 	'settings.manageCommands': 'Gestionar comandos',
 	'settings.manageCommandsDesc': 'Crear y configurar comandos de barra personalizados',
+	'settings.alsoRoles': 'Permitir también estos roles',
 	'settings.serverSettingsPermDesc': 'Acceder a esta página de ajustes (no se puede cambiar)',
 	'settings.adminOnlyLocked': 'Solo administradores',
 	'settings.localRunner': 'Asistencia de Local Runner',

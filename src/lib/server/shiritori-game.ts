@@ -2000,8 +2000,7 @@ async function postRules(
 /**
  * Who may point the chain at a channel with `/game shiritori channel:`. It is the
  * dashboard's "manage commands" permission: Manage Server by default, or the level
- * set on the Settings page (roles saved in the database count, but no dashboard form writes
- * them). Administrators always pass. A member
+ * set on the Settings page, plus any roles picked there under Manage commands. Administrators always pass. A member
  * object with no permissions fails closed.
  */
 export async function maySetChainChannel(
