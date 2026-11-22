@@ -204,6 +204,47 @@ async function handleMessage(message: Message<QueueMessage>, env: Env): Promise<
 	}
 }
 
+/**
+ * Once a minute: look at the website from outside, then hand the result to the status recorder,
+ * which adds the database and the bot's own heartbeat and keeps the history. If the recorder
+ * cannot be reached the minute simply goes unrecorded, and the public page then says its
+ * checks are delayed instead of showing a green all-clear.
+ */
+async function probeAndRecordStatus(env: Env): Promise<void> {
+	const base = String(env.SPACEBOT_API_BASE || '').replace(/\/$/, '');
+	if (!base || !env.CRON_SECRET) return;
+
+	const started = Date.now();
+	let website: { ok: boolean; ms: number | null; httpStatus: number | null };
+	try {
+		const res = await fetch(`${base}/_app/version.json`, {
+			signal: AbortSignal.timeout(8000),
+			headers: { 'user-agent': 'SpaceBot status probe' },
+		});
+		website = { ok: res.ok, ms: Date.now() - started, httpStatus: res.status };
+	} catch {
+		website = { ok: false, ms: null, httpStatus: null };
+	}
+
+	try {
+		const res = await fetch(`${base}/api/status/record`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${env.CRON_SECRET}`,
+			},
+			body: JSON.stringify({ website }),
+			signal: AbortSignal.timeout(15000),
+		});
+		if (!res.ok) console.error('[Status] Recorder answered', res.status);
+	} catch (error) {
+		console.error(
+			'[Status] Could not reach the recorder:',
+			error instanceof Error ? error.message : error
+		);
+	}
+}
+
 const handler: ExportedHandler<Env, QueueMessage> = {
 	async queue(batch, env, _ctx) {
 		// Messages are independent and handleMessage settles each one itself, so
@@ -211,8 +252,9 @@ const handler: ExportedHandler<Env, QueueMessage> = {
 		await Promise.all(batch.messages.map((message) => handleMessage(message, env)));
 	},
 
-	async scheduled(event, env, _ctx) {
+	async scheduled(event, env, ctx) {
 		if (event.cron === '* * * * *') {
+			ctx.waitUntil(probeAndRecordStatus(env));
 			try {
 				await env.CRON_DISPATCH_WORKFLOW.create({
 					params: { firedAt: event.scheduledTime },

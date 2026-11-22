@@ -20,6 +20,7 @@ export const en: Record<string, string> = {
 	'footer.tagline': 'SpaceBot by',
 	'footer.terms': 'Terms of Service',
 	'footer.privacy': 'Privacy Policy',
+	'footer.status': 'Status',
 	'footer.github': 'GitHub',
 
 	// --- Common ---
@@ -60,6 +61,41 @@ export const en: Record<string, string> = {
 	'support.pageTitle': 'SpaceBot Support',
 	'support.body': 'Join the SpaceBot Discord support server for setup help and release updates.',
 	'support.cta': 'Open support server',
+
+	// Idea box
+	'footer.ideas': 'Ideas',
+	'ideas.pageTitle': 'Send an idea - SpaceBot',
+	'ideas.title': 'Tell us how to make SpaceBot better',
+	'ideas.intro':
+		'A command you wish it had, something missing from the dashboard, a thing that annoys you. Write it down in your own words. We read every one.',
+	'ideas.signInNeeded': 'Sign in with Discord first, so we know who the idea is from.',
+	'ideas.signIn': 'Sign in with Discord',
+	'ideas.bodyLabel': 'Your idea',
+	'ideas.bodyPlaceholder': 'What would you like SpaceBot to do, and why would it help?',
+	'ideas.titleLabel': 'Short title (optional)',
+	'ideas.areaLabel': 'Which part is it about?',
+	'ideas.area.commands': 'Commands',
+	'ideas.area.dashboard': 'Dashboard',
+	'ideas.area.games': 'Games',
+	'ideas.area.automations': 'Automations',
+	'ideas.area.logging': 'Logging',
+	'ideas.area.server_browser': 'Server browser',
+	'ideas.area.other': 'Something else',
+	'ideas.disclosure':
+		'We save your Discord name and ID, the server you were in, and the time, so we can follow up.',
+	'ideas.submit': 'Send idea',
+	'ideas.saved': 'Saved. Thanks for the idea.',
+	'ideas.exists': 'Saved, but this may already exist in SpaceBot:',
+	'ideas.existsNote':
+		'If you meant something it does not do, your idea is saved and we will read it.',
+	'ideas.mineTitle': 'Your ideas',
+	'ideas.mineEmpty': 'You have not sent an idea yet.',
+	'ideas.status.new': 'Received',
+	'ideas.status.reviewing': 'Being looked at',
+	'ideas.status.planned': 'Planned',
+	'ideas.status.shipped': 'Shipped',
+	'ideas.status.declined': 'Not planned for now',
+	'ideas.status.duplicate': 'Already suggested',
 	'support.disabled': 'Set {envName} to show the support server link.',
 
 	// Vote page
@@ -909,6 +945,11 @@ export const en: Record<string, string> = {
 	'adash.links.automationsDesc': 'Set up automatic actions on events',
 	'adash.links.observances': 'Observances',
 	'adash.links.observancesDesc': 'Post a historical day as it happened, on its anniversary',
+	'adash.links.topics': 'Topics',
+	'adash.links.topicsDesc':
+		'Random conversation starters, your own list, and voice channel topics',
+	'adash.links.personality': 'Personality tests',
+	'adash.links.personalityDesc': 'Links to free online personality tests, with the ones you pick',
 	'adash.links.rooms': 'Member Rooms',
 	'adash.links.roomsDesc': 'Self-service channels with their own lifetime',
 	'adash.links.activity': 'Activity',
@@ -1258,7 +1299,7 @@ export const en: Record<string, string> = {
 	'settings.permissionsTitle': 'Dashboard Access Permissions',
 	'settings.important': 'Important',
 	'settings.permissionsDesc':
-		'Control who can access different features in this web dashboard based on their Discord permissions. Users with <strong>Administrator</strong> permission always have full access.',
+		'Choose roles that can open parts of this dashboard. Members with <strong>Administrator</strong> or <strong>Manage Server</strong> always have full access. A role picked here opens that section only, plus a short page that lists it. Settings, billing and the rest stay with admins. The permission level in each row does not change who gets in today; the roles do.',
 	'settings.viewDashboard': 'View Dashboard',
 	'settings.viewDashboardDesc': 'Access the server dashboard and view basic information',
 	'settings.viewLogs': 'View Event Logs',
@@ -1267,6 +1308,7 @@ export const en: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Create, edit, and delete automated actions',
 	'settings.manageCommands': 'Manage Commands',
 	'settings.manageCommandsDesc': 'Create and configure custom slash commands',
+	'settings.alsoRoles': 'Also let these roles in',
 	'settings.serverSettingsPermDesc': 'Access this settings page (cannot be changed)',
 	'settings.adminOnlyLocked': 'Administrator Only',
 	'settings.localRunner': 'Local Runner Assist',
@@ -1277,6 +1319,10 @@ export const en: Record<string, string> = {
 		'Optional. One Discord user ID per line. Leave empty to allow any manager in this server.',
 	'settings.logging': 'Logging',
 	'settings.loggingChannelDesc': 'Channel where bot activity logs will be sent',
+	'settings.announcements': 'Announcements',
+	'settings.announcementChannel': 'Announcement channel',
+	'settings.announcementChannelDesc':
+		'Where SpaceBot posts about global changes and other important alerts. Leave it empty and SpaceBot posts nothing.',
 	'settings.selectChannel': 'Select a channel…',
 	'settings.eventCategories': 'Event Categories',
 	'settings.eventCategoriesDesc':

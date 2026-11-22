@@ -1,31 +1,32 @@
-import { log } from "$lib/db/logger.js";
+import { log } from '$lib/db/logger.js';
 import {
-  getGuildStatistics,
-  getActivityHeatmap,
-  getCategoryTrends,
-  getRecentAutomationExecutions,
-  getAutomationExecutionHistory,
-  getTopVoiceUsers,
-  getTopVideoUsers,
-  getTopScreenshareUsers,
-} from "$lib/db/statistics.js";
+	getGuildStatistics,
+	getActivityHeatmap,
+	getCategoryTrends,
+	getRecentAutomationExecutions,
+	getAutomationExecutionHistory,
+	getTopVoiceUsers,
+	getTopVideoUsers,
+	getTopScreenshareUsers,
+} from '$lib/db/statistics.js';
 import {
-  getServerStatsHistory,
-  getMemberCountChanges,
-  getPeakMemberCount,
-  getLatestServerStats,
-  syncServerStatsIfStale,
-} from "$lib/db/server-stats.js";
+	getServerStatsHistory,
+	getMemberCountChanges,
+	getPeakMemberCount,
+	getLatestServerStats,
+	syncServerStatsIfStale,
+} from '$lib/db/server-stats.js';
 import {
-  getVoiceActivitySummary,
-  getMemberGrowthSummary,
-  getMemberGrowthChart,
-  getVoiceActivityChart,
-  runStatsAggregation,
-} from "$lib/db/stats-aggregation.js";
-import { getBoostingMembersFromCache, getRolesFromCache } from "$lib/db/guild-cache.js";
-import { getLiveVoiceChannels } from "$lib/db/live-voice.js";
-import { runLimited } from "$lib/server/run-limited.js";
+	getVoiceActivitySummary,
+	getMemberGrowthSummary,
+	getMemberGrowthChart,
+	getVoiceActivityChart,
+	runStatsAggregation,
+} from '$lib/db/stats-aggregation.js';
+import { getBoostingMembersFromCache, getRolesFromCache } from '$lib/db/guild-cache.js';
+import { getLiveVoiceChannels } from '$lib/db/live-voice.js';
+import { runLimited } from '$lib/server/run-limited.js';
+import { didFail } from '$lib/db/load-failed.js';
 
 // Shared by the admin/[serverId]/stats page load (cache-read path) and the
 // /api/admin/[serverId]/stats-data endpoint (the client-side fetch that
@@ -36,22 +37,40 @@ import { runLimited } from "$lib/server/run-limited.js";
  */
 const STATS_QUERY_CONCURRENCY = 3;
 
+/** The ranges the page offers. Anything else is not a range we serve (or cache). */
+export const STATS_PERIOD_DAYS = [1, 7, 30, 90, 180, 365];
+
+/**
+ * Turn what the URL asked for into a range the plan allows. An unknown value, or one longer
+ * than the plan keeps stats for, becomes 30d (or the longest allowed) instead of a new cache key.
+ * `retentionDays` null or undefined means no limit.
+ */
+export function normalizeStatsPeriod(requested, retentionDays) {
+	const allowed = STATS_PERIOD_DAYS.filter(
+		(days) => retentionDays === null || retentionDays === undefined || days <= retentionDays
+	);
+	const days = Number.parseInt(String(requested ?? '').replace(/d$/, ''), 10);
+	if (/^\d+d$/.test(String(requested)) && allowed.includes(days)) return `${days}d`;
+	if (allowed.includes(30)) return '30d';
+	return `${allowed[allowed.length - 1] ?? 1}d`;
+}
+
 export const STATS_CACHE_FRESH_MS = 30 * 1000;
 export const STATS_CACHE_STALE_MS = 15 * 60 * 1000;
-export const STATS_CACHE = (globalThis as any).__spacebotStatsPageCache ||= new Map();
+export const STATS_CACHE = ((globalThis as any).__spacebotStatsPageCache ||= new Map());
 
 export function statsCacheKey(serverId, selectedPeriod, timezone) {
-  return `${serverId}:${selectedPeriod}:${timezone || "utc"}`;
+	return `${serverId}:${selectedPeriod}:${timezone || 'utc'}`;
 }
 
 export function getStatsCacheEntry(cacheKey) {
-  const cachedEntry = STATS_CACHE.get(cacheKey);
-  const cacheAgeMs = cachedEntry ? Date.now() - cachedEntry.cachedAt : Number.POSITIVE_INFINITY;
-  return {
-    cachedEntry,
-    hasFreshCache: cacheAgeMs <= STATS_CACHE_FRESH_MS,
-    hasStaleCache: cacheAgeMs <= STATS_CACHE_STALE_MS,
-  };
+	const cachedEntry = STATS_CACHE.get(cacheKey);
+	const cacheAgeMs = cachedEntry ? Date.now() - cachedEntry.cachedAt : Number.POSITIVE_INFINITY;
+	return {
+		cachedEntry,
+		hasFreshCache: cacheAgeMs <= STATS_CACHE_FRESH_MS,
+		hasStaleCache: cacheAgeMs <= STATS_CACHE_STALE_MS,
+	};
 }
 
 /**
@@ -61,107 +80,149 @@ export function getStatsCacheEntry(cacheKey) {
  * interactive-load-path optimization; the background cron keeps it fully
  * accurate over time.
  */
-export async function fetchStatsPageLiveData(db, serverId, botToken, timezone, selectedPeriod, signal?: AbortSignal) {
-  try {
-    const existingStats = await getLatestServerStats(db, serverId);
-    const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
+export async function fetchStatsPageLiveData(
+	db,
+	serverId,
+	botToken,
+	timezone,
+	selectedPeriod,
+	signal?: AbortSignal
+) {
+	try {
+		const existingStats = await getLatestServerStats(db, serverId);
+		const syncedStats = await syncServerStatsIfStale(db, serverId, botToken, { existingStats });
 
-    try {
-      const aggregationResult = await runStatsAggregation(db, serverId, { repair: false });
-      if (aggregationResult.hourly.periodsProcessed > 0 || aggregationResult.daily.periodsProcessed > 0) {
-        log.info(`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`);
-      }
-    } catch (aggError) {
-      log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
-    }
+		try {
+			const aggregationResult = await runStatsAggregation(db, serverId, { repair: false });
+			if (
+				aggregationResult.hourly.periodsProcessed > 0 ||
+				aggregationResult.daily.periodsProcessed > 0
+			) {
+				log.info(
+					`[Stats] On-demand aggregation for ${serverId}: ${aggregationResult.hourly.periodsProcessed} hourly, ${aggregationResult.daily.periodsProcessed} daily periods`
+				);
+			}
+		} catch (aggError) {
+			log.warn(`[Stats] On-demand aggregation failed for ${serverId}:`, aggError);
+		}
 
-    const [
-      statistics,
-      heatmapData,
-      categoryTrends,
-      recentExecutions,
-      automationHistory,
-      memberStats,
-      memberHistory,
-      voiceActivity,
-      memberGrowth,
-      memberGrowthChartData,
-      voiceActivityChartData,
-      topVoiceUsers,
-      topVideoUsers,
-      topScreenshareUsers,
-      topBoosters,
-      cachedRoles,
-      liveVoiceSnapshot,
-    ] = await runLimited<any>(
-      [
-      () => getGuildStatistics(db, serverId, timezone, selectedPeriod),
-      () => getActivityHeatmap(db, serverId, timezone, selectedPeriod),
-      () => getCategoryTrends(db, serverId, timezone, selectedPeriod),
-      () => getRecentAutomationExecutions(db, serverId, 15),
-      () => getAutomationExecutionHistory(db, serverId, timezone),
-      () =>
-        Promise.all([
-        Promise.resolve(syncedStats.latest ?? existingStats),
-        getMemberCountChanges(db, serverId, timezone),
-        getPeakMemberCount(db, serverId, selectedPeriod),
-      ]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
-      () => getServerStatsHistory(db, serverId, { period: selectedPeriod, granularity: "daily", timezone }),
-      () => getVoiceActivitySummary(db, serverId, selectedPeriod),
-      () => getMemberGrowthSummary(db, serverId, selectedPeriod),
-      () => getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
-      () => getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
-      () => getTopVoiceUsers(db, serverId, 10, selectedPeriod),
-      () => getTopVideoUsers(db, serverId, 10, selectedPeriod),
-      () => getTopScreenshareUsers(db, serverId, 10, selectedPeriod),
-      () => getBoostingMembersFromCache(db, serverId, 50),
-      () =>
-        getRolesFromCache(db, serverId).catch((rolesError) => {
-        log.warn(`[Stats] Failed to fetch cached roles for ${serverId}:`, rolesError);
-        return [];
-      }),
-      () =>
-        getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
-        log.warn(`[Stats] Failed to fetch live voice snapshot for ${serverId}:`, liveVoiceError);
-        return {
-          channels: [],
-          totalUsers: 0,
-          totalChannels: 0,
-          activeCameras: 0,
-          activeStreams: 0,
-          updatedAt: null,
-        };
-      }),
-      ],
-      STATS_QUERY_CONCURRENCY,
-      signal
-    );
+		const [
+			statistics,
+			heatmapData,
+			categoryTrends,
+			recentExecutions,
+			automationHistory,
+			memberStats,
+			memberHistory,
+			voiceActivity,
+			memberGrowth,
+			memberGrowthChartData,
+			voiceActivityChartData,
+			topVoiceUsers,
+			topVideoUsers,
+			topScreenshareUsers,
+			topBoosters,
+			cachedRoles,
+			liveVoiceSnapshot,
+		] = await runLimited<any>(
+			[
+				() => getGuildStatistics(db, serverId, timezone, selectedPeriod),
+				() => getActivityHeatmap(db, serverId, timezone, selectedPeriod),
+				() => getCategoryTrends(db, serverId, timezone, selectedPeriod),
+				() => getRecentAutomationExecutions(db, serverId, 15),
+				() => getAutomationExecutionHistory(db, serverId, timezone),
+				() =>
+					Promise.all([
+						Promise.resolve(syncedStats.latest ?? existingStats),
+						getMemberCountChanges(db, serverId, timezone),
+						getPeakMemberCount(db, serverId, selectedPeriod),
+					]).then(([latest, changes, peak]) => ({ latest, changes, peak })),
+				() =>
+					getServerStatsHistory(db, serverId, {
+						period: selectedPeriod,
+						granularity: 'daily',
+						timezone,
+					}),
+				() => getVoiceActivitySummary(db, serverId, selectedPeriod),
+				() => getMemberGrowthSummary(db, serverId, selectedPeriod),
+				() => getMemberGrowthChart(db, serverId, selectedPeriod, timezone),
+				() => getVoiceActivityChart(db, serverId, selectedPeriod, timezone),
+				() => getTopVoiceUsers(db, serverId, 25, selectedPeriod),
+				() => getTopVideoUsers(db, serverId, 25, selectedPeriod),
+				() => getTopScreenshareUsers(db, serverId, 25, selectedPeriod),
+				() => getBoostingMembersFromCache(db, serverId, 50),
+				() =>
+					getRolesFromCache(db, serverId).catch((rolesError) => {
+						log.warn(
+							`[Stats] Failed to fetch cached roles for ${serverId}:`,
+							rolesError
+						);
+						return [];
+					}),
+				() =>
+					getLiveVoiceChannels(db, serverId).catch((liveVoiceError) => {
+						log.warn(
+							`[Stats] Failed to fetch live voice snapshot for ${serverId}:`,
+							liveVoiceError
+						);
+						return {
+							channels: [],
+							totalUsers: 0,
+							totalChannels: 0,
+							activeCameras: 0,
+							activeStreams: 0,
+							updatedAt: null,
+						};
+					}),
+			],
+			STATS_QUERY_CONCURRENCY,
+			signal
+		);
 
-    const data = {
-      statistics,
-      heatmapData,
-      categoryTrends,
-      recentExecutions,
-      automationHistory,
-      memberStats,
-      memberHistory,
-      voiceActivity,
-      memberGrowth,
-      memberGrowthChartData,
-      voiceActivityChartData,
-      topVoiceUsers,
-      topVideoUsers,
-      topScreenshareUsers,
-      topBoosters,
-      cachedRoles,
-      liveVoiceSnapshot,
-    };
+		// The database refused the main statistics query (for example "D1 is overloaded").
+		// Do not cache that as if it were the answer; let the page say it could not load.
+		if ((statistics as any)?.loadFailed) {
+			return { success: false, error: new Error('statistics query failed') };
+		}
 
-    STATS_CACHE.set(statsCacheKey(serverId, selectedPeriod, timezone), { cachedAt: Date.now(), data });
+		const data = {
+			statistics,
+			heatmapData,
+			categoryTrends,
+			recentExecutions,
+			automationHistory,
+			memberStats,
+			memberHistory,
+			voiceActivity,
+			memberGrowth,
+			memberGrowthChartData,
+			voiceActivityChartData,
+			topVoiceUsers,
+			topVideoUsers,
+			topScreenshareUsers,
+			topBoosters,
+			cachedRoles,
+			liveVoiceSnapshot,
+		};
 
-    return { success: true, data };
-  } catch (error) {
-    log.error("Failed to fetch statistics:", error);
-    return { success: false, error };
-  }
+		// A part that could not read the database is empty, not zero. Say which ones, and keep
+		// the answer out of the cache so the next load tries again.
+		const failedParts = Object.entries(data)
+			.filter(([, value]) => didFail(value))
+			.map(([key]) => key);
+		if (failedParts.length > 0) {
+			log.warn(`[Stats] Not caching ${serverId}: could not load ${failedParts.join(', ')}`);
+			return { success: true, data: { ...data, failedParts } };
+		}
+
+		STATS_CACHE.set(statsCacheKey(serverId, selectedPeriod, timezone), {
+			cachedAt: Date.now(),
+			data,
+		});
+
+		return { success: true, data };
+	} catch (error) {
+		log.error('Failed to fetch statistics:', error);
+		return { success: false, error };
+	}
 }
