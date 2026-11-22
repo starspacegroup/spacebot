@@ -68,6 +68,12 @@ export async function load({ cookies, platform, parent, params }) {
 	// Check if user has access to this specific server
 	const hasAccessToServer = isSuperAdmin || adminGuilds.some((g) => g.id === serverId);
 
+	// A member who is let in only by a role saved on Settings does not get this page (stats,
+	// bot controls, every quick link). They get a short page that lists what they may open.
+	if (!hasAccessToServer && (parentData.memberGuilds || []).some((g) => g.id === serverId)) {
+		throw redirect(302, `/admin/${serverId}/access`);
+	}
+
 	if (!hasAccessToServer) {
 		// Prevent redirect loops when a stale last_viewed_guild cookie points to
 		// a server the user can no longer access.
@@ -151,7 +157,10 @@ export async function load({ cookies, platform, parent, params }) {
 	// /api/admin/[serverId]/dashboard-stats endpoint) is served directly; a cold
 	// cache renders a shell immediately and the client fetches that endpoint
 	// itself, showing loading skeletons in the meantime — see +page.svelte.
-	const { cachedEntry, hasFreshCache, hasStaleCache } = getDashboardCacheEntry(serverId);
+	const { cachedEntry, hasFreshCache, hasStaleCache } = getDashboardCacheEntry(
+		serverId,
+		cookies.get('user_timezone') || null
+	);
 	if (hasStaleCache && cachedEntry?.data) {
 		logStats = cachedEntry.data.logStats;
 		basicStats = cachedEntry.data.basicStats;

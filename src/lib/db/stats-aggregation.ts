@@ -4,6 +4,7 @@
  * Smart enough to skip data that's already been processed
  */
 
+import { didFail, failed, failedIf } from './load-failed.js';
 import { log } from '../log.js';
 import { deleteInBatches } from './bounded-delete.js';
 import { getTimezoneOffsetSQL } from '../timezone.js';
@@ -166,7 +167,7 @@ async function closeVoiceSessions(db, sessions, closedAt, leaveEventId = null) {
 				`
       UPDATE voice_sessions
       SET
-        left_at = ?,
+        left_at = MAX(?, joined_at),
         leave_event_id = ?,
         duration_seconds = MAX(CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER), 0)
       WHERE id = ?
@@ -192,6 +193,7 @@ function buildActiveVoiceStateMap(activeVoiceStates = []) {
 				user_id: state.user_id,
 				channel_id: state.channel_id,
 				channel_name: state.channel_name || null,
+				is_bot: state.is_bot ? 1 : 0,
 			});
 		}
 	}
@@ -212,7 +214,7 @@ export async function reconcileVoiceSessions(
 	db,
 	guildId,
 	activeVoiceStates = [],
-	observedAt = new Date()
+	observedAt: string | Date = new Date()
 ) {
 	if (!db || !guildId) {
 		return { closedSessions: 0, createdSessions: 0, duplicateSessionsClosed: 0 };
@@ -257,16 +259,17 @@ export async function reconcileVoiceSessions(
 		await db
 			.prepare(
 				`
-      INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
-      VALUES (?, ?, ?, ?, ?, NULL)
-    `
+INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id, is_bot)
+VALUES (?, ?, ?, ?, ?, NULL, ?)
+`
 			)
 			.bind(
 				guildId,
 				activeState.user_id,
 				activeState.channel_id,
 				activeState.channel_name,
-				observedAtSql
+				observedAtSql,
+				activeState.is_bot
 			)
 			.run();
 		createdSessions++;
@@ -277,22 +280,87 @@ export async function reconcileVoiceSessions(
 		await db
 			.prepare(
 				`
-      INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
-      VALUES (?, ?, ?, ?, ?, NULL)
-    `
+INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id, is_bot)
+VALUES (?, ?, ?, ?, ?, NULL, ?)
+`
 			)
 			.bind(
 				guildId,
 				activeState.user_id,
 				activeState.channel_id,
 				activeState.channel_name,
-				observedAtSql
+				observedAtSql,
+				activeState.is_bot
 			)
 			.run();
 		createdSessions++;
 	}
 
 	return { closedSessions, createdSessions, duplicateSessionsClosed };
+}
+
+/** How far apart (in hours) an event and the minute-by-minute check may be and still be one visit. */
+const RECONCILE_ADOPT_HOURS = 6;
+
+/**
+ * The minute-by-minute check (reconcileVoiceSessions) records a visit it sees before the
+ * hourly event replay does. When the replay then reaches the real join, it must take over
+ * that row instead of adding a second one, or the visit is counted twice.
+ * Returns the row it adopted, or null.
+ */
+async function adoptReconciledSession(db, guildId, userId, channelId, event) {
+	const row = await db
+		.prepare(
+			`SELECT id, left_at FROM voice_sessions
+       WHERE guild_id = ? AND user_id = ? AND channel_id = ?
+         AND join_event_id IS NULL
+         AND joined_at >= ?
+         AND joined_at <= datetime(?, '+${RECONCILE_ADOPT_HOURS} hours')
+       ORDER BY joined_at ASC, id ASC LIMIT 1`
+		)
+		.bind(guildId, userId, channelId, event.created_at, event.created_at)
+		.first();
+	if (!row) return null;
+	await db
+		.prepare(
+			`UPDATE voice_sessions
+SET joined_at = ?, join_event_id = ?, is_bot = COALESCE(is_bot, ?),
+duration_seconds = CASE WHEN left_at IS NULL THEN duration_seconds
+             ELSE MAX(CAST((julianday(left_at) - julianday(?)) * 86400 AS INTEGER), 0) END
+       WHERE id = ?`
+		)
+		.bind(event.created_at, event.id, event.actor_is_bot ? 1 : 0, event.created_at, row.id)
+		.run();
+	return row;
+}
+
+/**
+ * The reverse: the minute-by-minute check closed a visit a little after the user really
+ * left. The replayed leave (or move away) carries the true time, so trim that row to it.
+ */
+async function trimReconciledClose(db, guildId, userId, event) {
+	const row = await db
+		.prepare(
+			`SELECT id FROM voice_sessions
+       WHERE guild_id = ? AND user_id = ?
+         AND left_at IS NOT NULL AND leave_event_id IS NULL
+         AND joined_at <= ? AND left_at > ?
+         AND left_at <= datetime(?, '+${RECONCILE_ADOPT_HOURS} hours')
+       ORDER BY left_at ASC, id ASC LIMIT 1`
+		)
+		.bind(guildId, userId, event.created_at, event.created_at, event.created_at)
+		.first();
+	if (!row) return false;
+	await db
+		.prepare(
+			`UPDATE voice_sessions
+       SET left_at = ?, leave_event_id = ?,
+           duration_seconds = MAX(CAST((julianday(?) - julianday(joined_at)) * 86400 AS INTEGER), 0)
+       WHERE id = ?`
+		)
+		.bind(event.created_at, event.id, event.created_at, row.id)
+		.run();
+	return true;
 }
 
 /**
@@ -309,8 +377,8 @@ export async function processVoiceSessions(db, guildId) {
 	const events = await db
 		.prepare(
 			`
-    SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at
-    FROM event_logs
+SELECT id, event_type, actor_id, target_id, channel_id, channel_name, created_at, actor_is_bot
+FROM event_logs
     WHERE guild_id = ? 
       AND id > ?
       AND event_type IN ('VOICE_JOIN', 'VOICE_LEAVE', 'VOICE_MOVE')
@@ -347,6 +415,17 @@ export async function processVoiceSessions(db, guildId) {
 			);
 
 			if (matchingSession) {
+				if (
+					matchingSession.join_event_id == null &&
+					event.created_at <= matchingSession.joined_at
+				) {
+					await db
+						.prepare(
+							'UPDATE voice_sessions SET joined_at = ?, join_event_id = ? WHERE id = ?'
+						)
+						.bind(event.created_at, event.id, matchingSession.id)
+						.run();
+				}
 				const staleSessions = openSessions.filter(
 					(session) => session.id !== matchingSession.id
 				);
@@ -370,12 +449,16 @@ export async function processVoiceSessions(db, guildId) {
 				);
 			}
 
+			if (await adoptReconciledSession(db, guildId, voiceUserId, event.channel_id, event)) {
+				continue;
+			}
+
 			await db
 				.prepare(
 					`
-        INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `
+INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id, is_bot)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`
 				)
 				.bind(
 					guildId,
@@ -383,13 +466,15 @@ export async function processVoiceSessions(db, guildId) {
 					event.channel_id,
 					event.channel_name,
 					event.created_at,
-					event.id
+					event.id,
+					event.actor_is_bot ? 1 : 0
 				)
 				.run();
 			sessionsCreated++;
 		} else if (event.event_type === 'VOICE_LEAVE') {
 			const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
 			if (!openSessions.length) {
+				if (await trimReconciledClose(db, guildId, voiceUserId, event)) continue;
 				log.warn(
 					`[VoiceSessions] Received VOICE_LEAVE with no open session for ${voiceUserId} in guild ${guildId}`
 				);
@@ -404,15 +489,40 @@ export async function processVoiceSessions(db, guildId) {
 			);
 		} else if (event.event_type === 'VOICE_MOVE') {
 			const openSessions = await getOpenVoiceSessions(db, guildId, voiceUserId);
-			sessionsClosed += await closeVoiceSessions(db, openSessions, event.created_at);
+			const alreadyThere = openSessions.find(
+				(session) => session.channel_id === event.channel_id
+			);
+			const leaving = openSessions.filter((session) => session !== alreadyThere);
+			sessionsClosed += await closeVoiceSessions(db, leaving, event.created_at);
+			if (!openSessions.length) {
+				// The minute-by-minute check may have closed the old channel a little late.
+				await trimReconciledClose(db, guildId, voiceUserId, event);
+			}
+			if (alreadyThere) {
+				if (
+					alreadyThere.join_event_id == null &&
+					event.created_at <= alreadyThere.joined_at
+				) {
+					await db
+						.prepare(
+							'UPDATE voice_sessions SET joined_at = ?, join_event_id = ? WHERE id = ?'
+						)
+						.bind(event.created_at, event.id, alreadyThere.id)
+						.run();
+				}
+				continue;
+			}
+			if (await adoptReconciledSession(db, guildId, voiceUserId, event.channel_id, event)) {
+				continue;
+			}
 
 			// Then create new session in new channel
 			await db
 				.prepare(
 					`
-        INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `
+INSERT INTO voice_sessions (guild_id, user_id, channel_id, channel_name, joined_at, join_event_id, is_bot)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`
 				)
 				.bind(
 					guildId,
@@ -420,7 +530,8 @@ export async function processVoiceSessions(db, guildId) {
 					event.channel_id,
 					event.channel_name,
 					event.created_at,
-					event.id
+					event.id,
+					event.actor_is_bot ? 1 : 0
 				)
 				.run();
 			sessionsCreated++;
@@ -549,9 +660,11 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
 				.prepare(
 					`
         SELECT 
-          SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END) as joins,
-          SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END) as leaves
-        FROM event_logs
+SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END) as joins,
+SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END) as leaves,
+SUM(CASE WHEN event_type = 'MEMBER_JOIN' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as human_joins,
+SUM(CASE WHEN event_type = 'MEMBER_LEAVE' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as human_leaves
+FROM event_logs
         WHERE guild_id = ? 
           AND created_at >= ? 
           AND created_at < ?
@@ -664,9 +777,11 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
 				.prepare(
 					`
         SELECT 
-          COUNT(*) as count,
-          COUNT(DISTINCT actor_id) as unique_users
-        FROM event_logs
+COUNT(*) as count,
+COUNT(DISTINCT actor_id) as unique_users,
+SUM(CASE WHEN COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END) as human_count,
+COUNT(DISTINCT CASE WHEN COALESCE(actor_is_bot, 0) = 0 THEN actor_id END) as human_unique_users
+FROM event_logs
         WHERE guild_id = ? 
           AND created_at >= ? 
           AND created_at < ?
@@ -698,9 +813,10 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
           voice_total_seconds, voice_unique_users, voice_peak_concurrent,
-          message_count, message_unique_users,
-          total_events, last_event_id
-        ) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+message_count, message_unique_users,
+total_events, last_event_id,
+message_human_count, message_human_unique_users, member_human_joins, member_human_leaves
+) VALUES (?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(guild_id, period_type, period_start)
         DO UPDATE SET
           period_end = excluded.period_end,
@@ -712,10 +828,14 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
           voice_peak_concurrent = excluded.voice_peak_concurrent,
           message_count = excluded.message_count,
           message_unique_users = excluded.message_unique_users,
-          total_events = excluded.total_events,
-          last_event_id = excluded.last_event_id,
-          processed_at = CURRENT_TIMESTAMP
-      `
+total_events = excluded.total_events,
+last_event_id = excluded.last_event_id,
+message_human_count = excluded.message_human_count,
+message_human_unique_users = excluded.message_human_unique_users,
+member_human_joins = excluded.member_human_joins,
+member_human_leaves = excluded.member_human_leaves,
+processed_at = CURRENT_TIMESTAMP
+`
 				)
 				.bind(
 					guildId,
@@ -730,7 +850,11 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
 					messageStats?.count || 0,
 					messageStats?.unique_users || 0,
 					totalEvents?.count || 0,
-					totalEvents?.last_id || null
+					totalEvents?.last_id || null,
+					messageStats?.human_count || 0,
+					messageStats?.human_unique_users || 0,
+					memberStats?.human_joins || 0,
+					memberStats?.human_leaves || 0
 				)
 				.run();
 
@@ -747,6 +871,51 @@ export async function buildHourlyStats(db, guildId, options: Record<string, any>
 			eventsProcessed: 0,
 			error: error.message || String(error),
 		};
+	}
+}
+
+/**
+ * How many different people were in voice, and posted, between two times.
+ * Replaces the busiest-hour count the rollups used to store as "unique users".
+ * Returns null if the raw rows cannot be read (the caller keeps what it had).
+ */
+export async function distinctPeopleForDay(db, guildId, from, to) {
+	try {
+		const voice = await db
+			.prepare(
+				`SELECT COUNT(DISTINCT user_id) AS n FROM voice_sessions
+         WHERE guild_id = ? AND joined_at < ? AND (left_at IS NULL OR left_at > ?)`
+			)
+			.bind(guildId, to, from)
+			.first();
+		const messages = await db
+			.prepare(
+				`SELECT COUNT(DISTINCT actor_id) AS n,
+                COUNT(DISTINCT CASE WHEN COALESCE(actor_is_bot, 0) = 0 THEN actor_id END) AS human
+         FROM event_logs
+         WHERE guild_id = ? AND event_type = 'MESSAGE_CREATE' AND created_at >= ? AND created_at < ?`
+			)
+			.bind(guildId, from, to)
+			.first();
+		// Seconds in voice that day, straight from the sessions. Summing the hourly rows misses
+		// a visit that runs through an hour with no events (no hourly row is built for it).
+		const seconds = await db
+			.prepare(
+				`SELECT CAST(ROUND(SUM((julianday(MIN(COALESCE(left_at, ?), ?)) - julianday(MAX(joined_at, ?))) * 86400)) AS INTEGER) AS s
+FROM voice_sessions
+WHERE guild_id = ? AND joined_at < ? AND COALESCE(left_at, ?) > ?`
+			)
+			.bind(to, to, from, guildId, to, to, from)
+			.first();
+		return {
+			voiceSeconds: Math.max(seconds?.s || 0, 0),
+			voice: voice?.n || 0,
+			messages: messages?.n || 0,
+			humanMessages: messages?.human || 0,
+		};
+	} catch (error) {
+		log.warn(`[Stats] Could not count distinct people for ${guildId} ${from}:`, error);
+		return null;
 	}
 }
 
@@ -835,16 +1004,29 @@ export async function buildDailyStats(db, guildId, options: Record<string, any> 
           SUM(message_count) as message_count,
           MAX(message_unique_users) as message_unique_users,
           SUM(total_events) as total_events,
-          MAX(last_event_id) as last_event_id
-        FROM aggregated_stats
-        WHERE guild_id = ? 
-          AND period_type = 'hourly'
-          AND period_start >= ?
-          AND period_start < ?
+MAX(last_event_id) as last_event_id,
+SUM(message_human_count) as message_human_count,
+SUM(member_human_joins) as member_human_joins,
+SUM(member_human_leaves) as member_human_leaves,
+COUNT(message_human_count) as human_hours
+FROM aggregated_stats
+WHERE guild_id = ?
+AND period_type = 'hourly'
+AND period_start >= ?
+AND period_start < ?
       `
 				)
 				.bind(guildId, day.day_start, day.day_end)
 				.first();
+
+			// "Unique users" for a day is the number of different people, not the busiest hour's
+			// count. Count them from the raw rows (sessions and events are kept 90 days).
+			const distinct = await distinctPeopleForDay(db, guildId, day.day_start, day.day_end);
+			if (distinct) {
+				dayStats.voice_unique_users = distinct.voice;
+				dayStats.voice_total_seconds = distinct.voiceSeconds;
+				dayStats.message_unique_users = distinct.messages;
+			}
 
 			// Insert daily aggregation
 			await db
@@ -854,9 +1036,10 @@ export async function buildDailyStats(db, guildId, options: Record<string, any> 
           guild_id, period_type, period_start, period_end,
           member_joins, member_leaves, member_net_change,
           voice_total_seconds, voice_unique_users, voice_peak_concurrent,
-          message_count, message_unique_users,
-          total_events, last_event_id
-        ) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+message_count, message_unique_users,
+total_events, last_event_id,
+message_human_count, message_human_unique_users, member_human_joins, member_human_leaves
+) VALUES (?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(guild_id, period_type, period_start)
         DO UPDATE SET
           period_end = excluded.period_end,
@@ -868,10 +1051,14 @@ export async function buildDailyStats(db, guildId, options: Record<string, any> 
           voice_peak_concurrent = excluded.voice_peak_concurrent,
           message_count = excluded.message_count,
           message_unique_users = excluded.message_unique_users,
-          total_events = excluded.total_events,
-          last_event_id = excluded.last_event_id,
-          processed_at = CURRENT_TIMESTAMP
-      `
+total_events = excluded.total_events,
+last_event_id = excluded.last_event_id,
+message_human_count = excluded.message_human_count,
+message_human_unique_users = excluded.message_human_unique_users,
+member_human_joins = excluded.member_human_joins,
+member_human_leaves = excluded.member_human_leaves,
+processed_at = CURRENT_TIMESTAMP
+`
 				)
 				.bind(
 					guildId,
@@ -886,7 +1073,11 @@ export async function buildDailyStats(db, guildId, options: Record<string, any> 
 					dayStats?.message_count || 0,
 					dayStats?.message_unique_users || 0,
 					dayStats?.total_events || 0,
-					dayStats?.last_event_id || null
+					dayStats?.last_event_id || null,
+					dayStats?.human_hours ? dayStats.message_human_count || 0 : null,
+					distinct ? distinct.humanMessages : null,
+					dayStats?.human_hours ? dayStats.member_human_joins || 0 : null,
+					dayStats?.human_hours ? dayStats.member_human_leaves || 0 : null
 				)
 				.run();
 
@@ -1034,13 +1225,13 @@ export async function getVoiceActivitySummary(db, guildId, period = '7d') {
 		};
 	} catch (error) {
 		log.error('Failed to get voice activity summary:', error);
-		return {
+		return failed({
 			totalSeconds: 0,
 			totalMinutes: 0,
 			totalHours: 0,
 			uniqueUsers: 0,
 			avgSessionMinutes: 0,
-		};
+		});
 	}
 }
 
@@ -1063,10 +1254,12 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
 			.prepare(
 				`
       SELECT 
-        SUM(member_joins) as joins,
-        SUM(member_leaves) as leaves,
-        SUM(member_net_change) as net_change
-      FROM ${rollupRows('member_joins, member_leaves, member_net_change')}
+SUM(member_joins) as joins,
+SUM(member_leaves) as leaves,
+SUM(member_net_change) as net_change,
+SUM(COALESCE(member_human_joins, member_joins)) as joins_human,
+SUM(COALESCE(member_human_leaves, member_leaves)) as leaves_human
+FROM ${rollupRows('member_joins, member_leaves, member_net_change, member_human_joins, member_human_leaves')}
     `
 			)
 			.bind(guildId, timeRange, guildId, timeRange)
@@ -1076,15 +1269,21 @@ export async function getMemberGrowthSummary(db, guildId, period = '7d') {
 		const leaves = stats?.leaves || 0;
 		const netChange = stats?.net_change || joins - leaves;
 
+		const joinsHuman = stats?.joins_human || 0;
+		const leavesHuman = stats?.leaves_human || 0;
+
 		return {
 			joins,
 			leaves,
 			netChange,
+			joinsHuman,
+			leavesHuman,
+			netChangeHuman: joinsHuman - leavesHuman,
 			dailyAverage: Math.round((netChange / days) * 10) / 10,
 		};
 	} catch (error) {
 		log.error('Failed to get member growth summary:', error);
-		return { joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 };
+		return failed({ joins: 0, leaves: 0, netChange: 0, dailyAverage: 0 });
 	}
 }
 
@@ -1426,6 +1625,7 @@ async function getCurrentHourPartialStats(db, guildId = null) {
 		member_leaves: 0,
 		member_net_change: 0,
 		message_count: 0,
+		message_human_count: 0,
 		message_unique_users: 0,
 		total_events: 0,
 	};
@@ -1441,18 +1641,19 @@ async function getCurrentHourPartialStats(db, guildId = null) {
       SELECT 
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_JOIN' THEN 1 ELSE 0 END), 0) as member_joins,
         COALESCE(SUM(CASE WHEN event_type = 'MEMBER_LEAVE' THEN 1 ELSE 0 END), 0) as member_leaves,
-        COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
-        COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'MESSAGE_CREATE' THEN actor_id END), 0) as message_unique_users,
-        COUNT(*) as total_events
-      FROM event_logs
-      WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
-        ${guildFilter}
-    `
+COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' THEN 1 ELSE 0 END), 0) as message_count,
+COALESCE(SUM(CASE WHEN event_type = 'MESSAGE_CREATE' AND COALESCE(actor_is_bot, 0) = 0 THEN 1 ELSE 0 END), 0) as message_human_count,
+COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'MESSAGE_CREATE' THEN actor_id END), 0) as message_unique_users,
+COUNT(*) as total_events
+FROM event_logs
+WHERE created_at >= strftime('%Y-%m-%d %H:00:00', 'now')
+${guildFilter}
+`
 			)
 			.bind(...params)
 			.first();
 
-		// Voice time from sessions overlapping the current hour.
+		// Voice time from sessionsoverlapping the current hour.
 		// Include sessions that started in previous hours and continued into this one,
 		// while still capping to a 24h lookback to avoid stale orphaned sessions.
 		const voiceStats = await db
@@ -1514,11 +1715,12 @@ async function getCurrentHourPartialStats(db, guildId = null) {
           ) as concurrent
         FROM voice_events
       )
-      SELECT COALESCE(MAX(concurrent), (SELECT base_count FROM baseline), 0) as peak
-      FROM running_count
-    `
+SELECT COALESCE(MAX(concurrent), (SELECT base_count FROM baseline), 0) as peak
+FROM running_count
+`
 			)
-			.bind(...params)
+			// The guild filter appears twice (baseline and events), so it is bound twice.
+			.bind(...params, ...params)
 			.first();
 
 		const partialUniqueUsers = Math.max(voiceStats?.unique_users || 0, 0);
@@ -1536,12 +1738,13 @@ async function getCurrentHourPartialStats(db, guildId = null) {
 			member_leaves: currentHour?.member_leaves || 0,
 			member_net_change: (currentHour?.member_joins || 0) - (currentHour?.member_leaves || 0),
 			message_count: currentHour?.message_count || 0,
+			message_human_count: currentHour?.message_human_count || 0,
 			message_unique_users: currentHour?.message_unique_users || 0,
 			total_events: currentHour?.total_events || 0,
 		};
 	} catch (error) {
 		log.error('Failed to get current hour partial stats:', error);
-		return empty;
+		return failed({ ...empty });
 	}
 }
 
@@ -1595,12 +1798,13 @@ export async function closeStaleVoiceSessions(db, guildId = null) {
 		const guildFilter = guildId ? 'AND guild_id = ?' : '';
 		const params = guildId ? [guildId] : [];
 
-		// Close sessions that joined more than 24 hours ago and have no leave_at
+		// Close sessions that joined more than 24 hours ago and have no leave_at. They are
+		// closed at 24 hours, not now: a missed leave three days ago is not 72 hours of voice.
 		const result = await db
 			.prepare(
 				`
       UPDATE voice_sessions
-      SET left_at = datetime('now'), duration_seconds = CAST((julianday('now') - julianday(joined_at)) * 86400 AS INTEGER)
+      SET left_at = datetime(joined_at, '+24 hours'), duration_seconds = 86400
       WHERE left_at IS NULL
         AND joined_at < datetime('now', '-24 hours')
         ${guildFilter}
@@ -1672,26 +1876,8 @@ export async function getMemberGrowthChart(db, guildId, period = '30d', timezone
 
 		const rawByDate = new Map<any, any>(rawData.map((row) => [row.date, row]));
 
-		// Add the current (incomplete) hour's data to today's local date
-		const today = getTodayDateString(timezone);
-		const partial = await getCurrentHourPartialStats(db, guildId);
-		const existingToday = rawByDate.get(today);
-		if (existingToday) {
-			existingToday.joins += partial.member_joins;
-			existingToday.leaves += partial.member_leaves;
-			existingToday.netChange = existingToday.joins - existingToday.leaves;
-		} else {
-			rawByDate.set(today, {
-				date: today,
-				joins: partial.member_joins,
-				leaves: partial.member_leaves,
-				netChange: partial.member_net_change,
-				joinsHuman: 0,
-				leavesHuman: 0,
-				netChangeHuman: 0,
-				hasData: true,
-			});
-		}
+		// No current-hour top-up here: the query above reads raw events, which already
+		// include the hour in progress. Adding it again would double count "today".
 
 		// Fill in missing dates with zero values so the chart is continuous
 		return fillDateGaps(
@@ -1702,8 +1888,58 @@ export async function getMemberGrowthChart(db, guildId, period = '30d', timezone
 		);
 	} catch (error) {
 		log.error(`Failed to get member growth chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
+}
+
+/**
+ * Different people per local day, from the raw rows, for the days the hourly rollups
+ * cover. A rollup can only give the busiest hour's count, which is not the same thing.
+ * Returns an empty map if the raw rows cannot be read; the chart then keeps the rollup value.
+ */
+async function distinctPeopleByLocalDate(db, guildId, days, tzOffset) {
+	const out = new Map<string, { voice: number; messages: number; humanMessages: number }>();
+	const span = Math.max(1, Math.min(Math.floor(days) || 1, HOURLY_FULL_DAYS));
+	try {
+		const voice = await db
+			.prepare(
+				`SELECT d, COUNT(DISTINCT user_id) AS n FROM (
+           SELECT date(datetime(joined_at, '${tzOffset}')) AS d, user_id FROM voice_sessions
+           WHERE guild_id = ? AND joined_at >= datetime('now', '-${span + 1} days')
+           UNION ALL
+           SELECT date(datetime(COALESCE(left_at, datetime('now')), '${tzOffset}')) AS d, user_id
+           FROM voice_sessions
+           WHERE guild_id = ? AND joined_at >= datetime('now', '-${span + 1} days')
+         ) GROUP BY d`
+			)
+			.bind(guildId, guildId)
+			.all();
+		for (const row of voice.results || []) {
+			out.set(row.d, { voice: row.n || 0, messages: 0, humanMessages: 0 });
+		}
+		const messages = await db
+			.prepare(
+				`SELECT date(datetime(created_at, '${tzOffset}')) AS d,
+                COUNT(DISTINCT actor_id) AS n,
+                COUNT(DISTINCT CASE WHEN COALESCE(actor_is_bot, 0) = 0 THEN actor_id END) AS human
+         FROM event_logs
+         WHERE guild_id = ? AND event_type = 'MESSAGE_CREATE'
+           AND created_at >= datetime('now', '-${span + 1} days')
+         GROUP BY d`
+			)
+			.bind(guildId)
+			.all();
+		for (const row of messages.results || []) {
+			const cur = out.get(row.d) || { voice: 0, messages: 0, humanMessages: 0 };
+			cur.messages = row.n || 0;
+			cur.humanMessages = row.human || 0;
+			out.set(row.d, cur);
+		}
+	} catch (error) {
+		log.warn(`[Stats] Could not count distinct people per day for ${guildId}:`, error);
+		out.clear();
+	}
+	return out;
 }
 
 /**
@@ -1775,16 +2011,26 @@ export async function getVoiceActivityChart(db, guildId, period = '30d', timezon
 			});
 		}
 
+		// Replace the busiest-hour counts with the real number of different people.
+		const people = await distinctPeopleByLocalDate(db, guildId, days, tzOffset);
+		for (const row of rawData) {
+			const exact = people.get(row.date);
+			if (exact) row.uniqueUsers = exact.voice;
+		}
+
 		// Fill in missing dates with zero values so the chart is continuous
-		return fillDateGaps(
-			rawData,
-			days,
-			{ totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 },
-			timezone
+		return failedIf(
+			didFail(partial),
+			fillDateGaps(
+				rawData,
+				days,
+				{ totalMinutes: 0, totalHours: 0, uniqueUsers: 0, peakConcurrent: 0 },
+				timezone
+			)
 		);
 	} catch (error) {
 		log.error(`Failed to get voice activity chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
 }
 
@@ -1805,11 +2051,12 @@ export async function getMessageActivityChart(db, guildId, period = '30d', timez
 		const result = await db
 			.prepare(
 				`
-      SELECT
-        date,
-        SUM(message_count) as message_count,
-        MAX(message_unique_users) as message_unique_users
-      FROM ${rollupRows('message_count, message_unique_users', tzOffset)}
+SELECT
+date,
+SUM(message_count) as message_count,
+SUM(COALESCE(message_human_count, message_count)) as human_count,
+MAX(COALESCE(message_human_unique_users, message_unique_users)) as message_unique_users
+FROM ${rollupRows('message_count, message_human_count, message_unique_users, message_human_unique_users', tzOffset)}
       GROUP BY date
       ORDER BY date ASC
     `
@@ -1817,9 +2064,11 @@ export async function getMessageActivityChart(db, guildId, period = '30d', timez
 			.bind(guildId, timeRange, guildId, timeRange)
 			.all();
 
+		// messageCount is people only. Bot messages are reported separately.
 		const rawData = (result.results || []).map((row) => ({
 			date: row.date,
-			messageCount: row.message_count || 0,
+			messageCount: row.human_count || 0,
+			botMessageCount: Math.max((row.message_count || 0) - (row.human_count || 0), 0),
 			messageUniqueUsers: row.message_unique_users || 0,
 			hasData: true,
 		}));
@@ -1827,24 +2076,39 @@ export async function getMessageActivityChart(db, guildId, period = '30d', timez
 		const today = getTodayDateString(timezone);
 		const partial = await getCurrentHourPartialStats(db, guildId);
 		const existingToday = rawData.find((r) => r.date === today);
+		const partialHuman = partial.message_human_count || 0;
+		const partialBots = Math.max((partial.message_count || 0) - partialHuman, 0);
 		if (existingToday) {
-			existingToday.messageCount += partial.message_count || 0;
-			existingToday.messageUniqueUsers = Math.max(
-				existingToday.messageUniqueUsers || 0,
-				partial.message_unique_users || 0
-			);
+			existingToday.messageCount += partialHuman;
+			existingToday.botMessageCount += partialBots;
 		} else {
 			rawData.push({
 				date: today,
-				messageCount: partial.message_count || 0,
-				messageUniqueUsers: partial.message_unique_users || 0,
+				messageCount: partialHuman,
+				botMessageCount: partialBots,
+				messageUniqueUsers: 0,
 				hasData: true,
 			});
 		}
 
-		return fillDateGaps(rawData, days, { messageCount: 0, messageUniqueUsers: 0 }, timezone);
+		// Replace the busiest-hour counts with the real number of different people.
+		const people = await distinctPeopleByLocalDate(db, guildId, days, tzOffset);
+		for (const row of rawData) {
+			const exact = people.get(row.date);
+			if (exact) row.messageUniqueUsers = exact.humanMessages;
+		}
+
+		return failedIf(
+			didFail(partial),
+			fillDateGaps(
+				rawData,
+				days,
+				{ messageCount: 0, botMessageCount: 0, messageUniqueUsers: 0 },
+				timezone
+			)
+		);
 	} catch (error) {
 		log.error(`Failed to get message activity chart for guild ${guildId}:`, error);
-		return [];
+		return failed([]);
 	}
 }

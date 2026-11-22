@@ -9,9 +9,11 @@
 	import ToastContainer from '$lib/components/ToastContainer.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import LanguageSelector from '$lib/components/LanguageSelector.svelte';
+	import SocialMeta from '$lib/components/SocialMeta.svelte';
+	import { socialFor } from '$lib/seo/social.js';
 	import { commandPalette } from '$lib/command-palette.svelte.js';
 	import { page, updated } from '$app/state';
-	import { beforeNavigate } from '$app/navigation';
+	import { beforeNavigate, onNavigate } from '$app/navigation';
 	import {
 		applyServerTheme,
 		clearServerTheme,
@@ -20,6 +22,9 @@
 	import { setLocaleContext, t } from '$lib/i18n.js';
 
 	const { children, data } = $props();
+
+	// What a shared link to this page looks like. Pages built from data write their own (`own`).
+	const social = $derived(socialFor(page.url.pathname));
 
 	// The Activity runs inside Discord's iframe: no site header, footer or palette.
 	// Discord's proxy can put a prefix in front of the path (/.proxy/activity), and the
@@ -62,18 +67,28 @@
 	// This prevents stale client-side route manifests from loading
 	// the wrong page component (e.g. showing logs page at /integrations).
 	// Critical when HMR is disabled (tunnel / production).
+	// Moving between pages (and paging through a list) blends the old content into the new, instead
+	// of the old items vanishing and the new ones appearing. Only the page content blends; the header
+	// stays put. It is skipped for visitors who ask for less motion, and in browsers without view
+	// transitions (they navigate as before). The names are on only while the transition runs, because
+	// a named element becomes a containing block for fixed-position children.
+	onNavigate((navigation) => {
+		if (!document.startViewTransition) return;
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const root = document.documentElement;
+		root.classList.add('page-transition');
+		return new Promise((resolve) => {
+			const transition = document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+			transition.finished.finally(() => root.classList.remove('page-transition'));
+		});
+	});
+
 	beforeNavigate(({ willUnload, to }) => {
 		if (updated.current && !willUnload && to?.url) {
 			location.href = to.url.href;
-		}
-	});
-
-	// Track if we've received valid data to prevent flash during hydration
-	let hasInitialized = $state(false);
-
-	$effect(() => {
-		if (data && data.user !== undefined) {
-			hasInitialized = true;
 		}
 	});
 
@@ -107,6 +122,9 @@
 	// `guildsPending` distinguishes "still streaming" from "resolved but empty" so the
 	// loading skeleton never sticks for users who genuinely have no admin guilds.
 	let adminGuilds = $state([]);
+	// Servers this member can open only through a role saved on Settings (never admin pages).
+	const memberGuilds = $derived(data?.memberGuilds ?? []);
+	const selectorGuilds = $derived([...adminGuilds, ...memberGuilds]);
 	let guildsPending = $state(false);
 	$effect(() => {
 		const raw: any = data?.adminGuilds;
@@ -144,7 +162,10 @@
 	);
 
 	// Only show login button after initialization to prevent flash
-	const showLoginButton = $derived(hasInitialized && !isLoggedIn);
+	// The Pricing link and Login button are part of the server-rendered header. They used to
+	// appear only after the page loaded in the browser, which made the header grow and pushed the
+	// whole page down (a layout shift of about 0.2 on every page).
+	const showLoginButton = $derived(data?.user !== undefined && !isLoggedIn);
 
 	// Pre-extract hues for all admin guilds so switching servers is instant.
 	$effect(() => {
@@ -185,28 +206,18 @@
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	<link rel="manifest" href="/site.webmanifest" />
 
-	<!-- Open Graph defaults (overridden per-page via svelte:head) -->
-	<meta property="og:site_name" content="SpaceBot" />
-	<meta property="og:type" content="website" />
-	<meta property="og:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		property="og:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations."
-	/>
-	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta property="og:url" content="https://spacebot.starspace.group" />
-
-	<!-- Twitter Card -->
-	<meta name="twitter:card" content="summary" />
-	<meta name="twitter:title" content="SpaceBot – Discord Bot Platform" />
-	<meta
-		name="twitter:description"
-		content="A powerful Discord bot platform with custom commands, automations, AI assistant, server analytics, and integrations."
-	/>
-	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
-
 	<meta name="theme-color" content="#0D0B1A" />
 </svelte:head>
+
+{#if !social.own}
+	<SocialMeta
+		title={social.title}
+		description={social.description}
+		path={page.url.pathname}
+		card={social.card}
+		describe={!social.ownDescription}
+	/>
+{/if}
 
 {#if isActivity}
 	{@render children()}
@@ -214,7 +225,7 @@
 	<div class="app-layout" class:chat-page={page.url.pathname.endsWith('/chat')}>
 		<header class="app-header">
 			<a href={isLoggedIn ? '/admin' : '/'} class="logo">
-				<img src="/logo.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
+				<img src="/logo-64.webp" alt="SpaceBot" class="logo-img" width="28" height="28" />
 				<span class="logo-text">SpaceBot</span>
 			</a>
 			<button
@@ -245,8 +256,8 @@
 				>
 			</button>
 			<nav class="nav">
-				{#if page.url.pathname.startsWith('/admin') && !page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
-					<ServerSelector guilds={adminGuilds} {selectedGuildId} />
+				{#if page.url.pathname.startsWith('/admin') && !page.url.pathname.startsWith('/admin/superadmin') && selectorGuilds.length > 0}
+					<ServerSelector guilds={selectorGuilds} {selectedGuildId} />
 				{:else if showSelectorSkeleton}
 					<Skeleton width="11rem" height="2.25rem" radius="var(--radius-full)" />
 				{/if}

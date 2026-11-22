@@ -1,3 +1,4 @@
+import { parseRoleIds } from '$lib/server/role-ids';
 import { fail, redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
 import {
@@ -13,6 +14,7 @@ import {
 	saveGuildBranding,
 	validateBranding,
 } from '$lib/db/branding.js';
+import { getAnnouncementChannel, setAnnouncementChannel } from '$lib/server/announcements.js';
 import { getGuildListing } from '$lib/db/server-listings.js';
 import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
@@ -96,6 +98,7 @@ export async function load({ cookies, platform, parent, params }) {
 		prefix: dbSettings.prefix || '!',
 		loggingChannelId: dbSettings.log_channel_id || null,
 		loggingChannelName: null, // Would need to fetch from Discord API
+		announcementChannelId: db ? await getAnnouncementChannel(db, serverId) : null,
 		moderationRoleId: dbSettings.moderation_role_id || null,
 		timezone: dbSettings.timezone || null,
 		logEmbedColors: dbSettings.log_embed_colors || {},
@@ -272,6 +275,17 @@ export const actions = {
 			return fail(500, { success: false, message: 'Database not available' });
 		}
 
+		// Role lists are not on every form. Keep what is saved unless this form sends them.
+		const savedRoles = (await getGuildSettings(db, serverId))?.permission_settings ?? {};
+		const keep = (key: string): string[] =>
+			Array.isArray(savedRoles?.[key]?.roles) ? savedRoles[key].roles : [];
+		const rolesFor = (key: string, field: string): string[] =>
+			formData.has(field) ? parseRoleIds(formData.get(field)) : keep(key);
+		const viewDashboardRoles = rolesFor('viewDashboard', 'viewDashboardRoles');
+		const viewLogsRoles = rolesFor('viewLogs', 'viewLogsRoles');
+		const manageAutomationsRoles = rolesFor('manageAutomations', 'manageAutomationsRoles');
+		const manageCommandsRoles = rolesFor('manageCommands', 'manageCommandsRoles');
+
 		try {
 			// saveGuildSettings catches their own errors and
 			// report them in the return value rather than throwing, so discarding
@@ -284,10 +298,13 @@ export const actions = {
 				excluded_categories: excludedCategories,
 				timezone: timezone,
 				permission_settings: {
-					viewDashboard: { permission: viewDashboardPerm, roles: [] },
-					viewLogs: { permission: viewLogsPerm, roles: [] },
-					manageAutomations: { permission: manageAutomationsPerm, roles: [] },
-					manageCommands: { permission: manageCommandsPerm, roles: [] },
+					viewDashboard: { permission: viewDashboardPerm, roles: viewDashboardRoles },
+					viewLogs: { permission: viewLogsPerm, roles: viewLogsRoles },
+					manageAutomations: {
+						permission: manageAutomationsPerm,
+						roles: manageAutomationsRoles,
+					},
+					manageCommands: { permission: manageCommandsPerm, roles: manageCommandsRoles },
 					manageSettings: { permission: 'ADMINISTRATOR', roles: [] },
 					localRunnerAssist: {
 						enabled: localRunnerEnabled,
@@ -300,6 +317,13 @@ export const actions = {
 					`[Settings] Failed to save settings for server ${serverId}: ${savedSettings.error}`
 				);
 				return fail(500, { success: false, message: 'Failed to save settings' });
+			}
+
+			// Own column, own query. A form without the field leaves it alone.
+			if (formData.has('announcementChannelId')) {
+				const wanted = String(formData.get('announcementChannelId') || '') || null;
+				const problem = await setAnnouncementChannel(db, serverId, wanted);
+				if (problem) return fail(400, { success: false, message: problem });
 			}
 
 			await saveGuildBranding(db, serverId, brandingValidation.value, userId);

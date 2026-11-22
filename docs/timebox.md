@@ -26,8 +26,9 @@ the command in that server, and the handler refuses it anyway.
 - `/timebox start` — with options `focus`, `break`, `long_break`, `rounds`,
   `deafen`, and `solo`.
     - **Shared.** Used while you are in a voice channel: one public card for the
-      channel with Pause, Skip, Stop and **Deafen me** buttons. Everyone in the
-      channel is pinged at each change. One shared timebox per voice channel; a
+      channel with Pause, Skip, Stop and **Deafen me** buttons. The person who started
+      it and everyone who took part (set a goal or a deafen mode) is pinged at each
+      change; others in the channel are not. One shared timebox per voice channel; a
       second `/timebox start` there points at the running card.
     - **Solo.** Used outside voice, or with `solo:True`. Your card is private, and
       each change is a fresh message in the channel pinging you, with the buttons.
@@ -67,6 +68,41 @@ the member neither hears nor is heard.
 - **Restore, do not clear.** The bot records whether the member was already
   deafened and whether they were already muted (`prev_deaf`, `prev_mute`, migration 0080) and puts back exactly that. A member a moderator deafened or muted stays
   that way.
+- **The focus role.** The bot marks its own hold with a role, **Timebox focus**
+  (migration 0097). It makes the role the first time it holds someone in a server (no
+  permissions, not shown apart, not mentionable), remembers it in
+  `timebox_settings.focus_role_id`, adds it when it deafens or mutes a member, and
+  removes it when it lifts. This is so the bot and a server's own automations do not
+  step on each other. An automation can keep its own role for its own holds. The bot
+  lifts a member's deafen and mute only while its role is still on them: if the role
+  was taken off (an automation or a moderator took over), it leaves their voice state
+  alone and drops the hold. An automation can also read the role, for example to skip
+  members who are in a timebox. The bot needs **Manage Roles**, and its own role must
+  sit above Timebox focus. Without Manage Roles it still works as before, from the
+  ledger alone (`role_added` stays 0). If the server deletes the role, the bot makes a
+  new one on the next hold.
+- **Places the server holds.** If an automation of the server keeps everyone muted
+  and deafened in a voice channel, an admin names that channel (and, if the
+  automation uses one, its role) under Activity, Timebox, "Places the server holds"
+  (`timebox_settings.no_lift_channels` and `no_lift_roles`, migration 0097). Then:
+    - The timebox never lifts a member's deafen or mute while they are in one of
+      those channels or have one of those roles, even if they asked for the timebox
+      deafen. Where they are is asked of Discord at the moment of the lift, not read
+      from the live table, which can be a few seconds stale.
+    - It does not start a hold there either: it says the server already holds them.
+    - Nothing is forgotten. A lift that was skipped stays pending, and runs when the
+      member leaves that place: the join or move event settles it at once, and the
+      minute sweep retries for a day.
+    - **Leaving voice mid-session:** the hold and the goal stay. A lift that cannot run
+      while they are out waits and runs on their next join. When they come back to a live
+      timebox, the bot checks that Discord kept the deafen and mute and sets them again
+      if it dropped them (not in a server-held place, and not if the focus role was
+      taken off).
+    - **Switching channels mid-session:** the hold is the member's, not the channel's,
+      so it follows them. They can still press **Deafen me** to lift it from any channel.
+      A move out of a server-held channel runs a pending lift.
+    - A lift that failed during a break is dropped once the next focus block has begun,
+      so it cannot undo that block's deafen.
 - **Discord's limits.** The bot needs Deafen Members and Mute Members and a role above the member;
   it cannot change the server owner. It can only change a member who is in a
   voice channel. A member who is not yet in one is deafened within a minute of

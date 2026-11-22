@@ -1585,13 +1585,19 @@
 				</div>
 			{/if}
 
-			{#if selectedGuildId && !(data.command.is_built_in && data.isSuperAdmin)}
+			{#if selectedGuildId}
 				<CommandAccessRules
 					guildId={selectedGuildId}
 					allow={data.command.access_rules?.allow_roles ?? []}
 					deny={data.command.access_rules?.deny_roles ?? []}
 					permissionLevelSet={selectedPermissionPreset !== 'everyone'}
 				/>
+				{#if data.command.is_built_in && data.isSuperAdmin}
+					<p class="field-hint">
+						Role rules apply to this server only. The permission level above applies to
+						every server.
+					</p>
+				{/if}
 			{/if}
 
 			<!-- Hidden field to pass the computed permission value -->
