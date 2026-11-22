@@ -41,7 +41,7 @@
 		onclick={toggleMenu}
 		aria-expanded={isOpen}
 		aria-haspopup="menu"
-		aria-label={t(current, 'language.label')}
+		aria-label="{t(current, 'language.label')}: {LOCALE_SHORT_NAMES[current]}"
 		title={t(current, 'language.label')}
 	>
 		<!-- Globe icon signals language selection -->

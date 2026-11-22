@@ -6,15 +6,10 @@
  */
 
 import { json } from '@sveltejs/kit';
-import {
-	ACTION_TYPES,
-	deleteCommand,
-	getCommand,
-	updateCommand,
-} from '$lib/db/commands.js';
+import { ACTION_TYPES, deleteCommand, getCommand, updateCommand } from '$lib/db/commands.js';
 import { syncGuildCommands } from '$lib/discord/commands.js';
 import { log } from '$lib/db/logger.js';
-import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { verifyGuildFeature } from '$lib/server/feature-access.js';
 import { setCommandEnabled } from '$lib/server/control-actions.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 
@@ -23,7 +18,7 @@ export async function GET({ params, cookies, platform }) {
 	const { guildId, commandId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'commands');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
@@ -47,7 +42,7 @@ export async function PATCH({ params, request, cookies, platform }) {
 	const { guildId, commandId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'commands');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
@@ -139,7 +134,7 @@ export async function DELETE({ params, cookies, platform }) {
 	const { guildId, commandId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'commands');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
