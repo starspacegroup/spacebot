@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { filterAdminGuilds, getBotGuildIds, getUserGuilds } from '$lib/discord/guilds.js';
 import { getGuildTimezone } from '$lib/db/settings.js';
+import { getServerPlan, PLAN_TIERS } from '$lib/db/server-plans.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import {
 	fetchStatsPageLiveData,
 	getStatsCacheEntry,
+	normalizeStatsPeriod,
 	statsCacheKey,
 } from '$lib/server/stats-page-data.js';
 
@@ -48,7 +50,11 @@ export async function GET({ params, cookies, platform, url, request }) {
 		}
 	}
 
-	const selectedPeriod = url.searchParams.get('period') || '30d';
+	const plan = await getServerPlan(db, serverId);
+	const selectedPeriod = normalizeStatsPeriod(
+		url.searchParams.get('period'),
+		plan?.stats_retention_days ?? PLAN_TIERS.free.stats_retention_days
+	);
 	const userTimezone = cookies.get('user_timezone') || null;
 	const serverTimezone = await getGuildTimezone(db, serverId);
 	const timezone = userTimezone || serverTimezone || null;

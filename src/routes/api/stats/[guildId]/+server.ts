@@ -1,7 +1,9 @@
 /**
  * API endpoint for recording and retrieving server statistics
  *
- * GET /api/stats/[guildId] - Get server stats history
+ * GET /api/stats/[guildId] - Get server stats history. Needs either an API key with the
+ *   stats:read scope that belongs to THIS guild (Authorization: Bearer sb_live_...), or a
+ *   signed-in admin of the guild. It used to be open to anyone.
  * POST /api/stats/[guildId] - Record new stats snapshot (requires bot token or cron secret)
  */
 
@@ -15,6 +17,37 @@ import {
 	fetchGuildStatsFromDiscord,
 } from '$lib/db/server-stats.js';
 import { log } from '$lib/log.js';
+import { authenticateApiKey, hasScope } from '$lib/api-auth.js';
+import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+
+const PERIOD = /^(24h|1y|all|\d{1,4}d)$/;
+const GRANULARITIES = new Set(['auto', 'hourly', 'daily', 'weekly']);
+
+/**
+ * Who may read a guild's stats: a key for that guild with stats:read, or a guild admin.
+ * A key for another guild is refused, so one server's key cannot read another's numbers.
+ */
+async function canReadStats(request, cookies, platform, guildId) {
+	if (request.headers.get('Authorization')) {
+		const auth = await authenticateApiKey(request, platform);
+		if (!auth.authenticated)
+			return { ok: false, status: auth.status || 401, error: auth.error };
+		if (!hasScope(auth, 'stats:read')) {
+			return { ok: false, status: 403, error: 'Insufficient scope. Required: stats:read' };
+		}
+		if (auth.guildId !== guildId) {
+			return { ok: false, status: 403, error: 'This API key belongs to a different server' };
+		}
+		return { ok: true };
+	}
+	const admin = await verifyGuildAdmin(guildId, cookies?.get('discord_access_token'), cookies);
+	if (admin.authorized) return { ok: true };
+	return {
+		ok: false,
+		status: 401,
+		error: 'Authentication required. Use an API key with stats:read.',
+	};
+}
 
 /**
  * Verify the request has proper authorization
@@ -38,11 +71,16 @@ function verifyAuth(request, platform) {
 }
 
 /** @type {import('./$types').RequestHandler} */
-export async function GET({ params, url, platform }) {
+export async function GET({ params, url, platform, request, cookies }) {
 	const { guildId } = params;
 
 	if (!guildId) {
 		return json({ error: 'Guild ID required' }, { status: 400 });
+	}
+
+	const access = await canReadStats(request, cookies, platform, guildId);
+	if (!access.ok) {
+		return json({ error: access.error }, { status: access.status });
 	}
 
 	const db = (platform as any)?.env?.DB;
@@ -53,6 +91,15 @@ export async function GET({ params, url, platform }) {
 	// Get query parameters
 	const period = url.searchParams.get('period') || '7d';
 	const granularity = url.searchParams.get('granularity') || 'auto';
+	if (!PERIOD.test(period)) {
+		return json({ error: 'Invalid period. Use 24h, <N>d, 1y or all' }, { status: 400 });
+	}
+	if (!GRANULARITIES.has(granularity)) {
+		return json(
+			{ error: 'Invalid granularity. Use auto, hourly, daily or weekly' },
+			{ status: 400 }
+		);
+	}
 
 	try {
 		const [history, changes, peak, latest] = await Promise.all([

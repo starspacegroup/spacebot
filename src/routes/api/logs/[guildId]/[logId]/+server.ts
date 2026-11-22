@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { dev } from '$app/env';
 import { getLogById } from '$lib/db/logger.js';
 import { verifyGuildAccess } from '$lib/discord/guilds.js';
+import { mayUseFeature } from '$lib/server/feature-access.js';
 import { getDiscordCategoryMeta, getDiscordEventTypeMeta } from '$lib/discord/event-metadata.js';
 
 /**
@@ -47,7 +48,7 @@ export async function GET({ params, cookies, platform }) {
 			cookies
 		);
 
-		if (!hasAccess) {
+		if (!hasAccess && !(await mayUseFeature({ guildId, cookies, platform }, 'logs'))) {
 			return json({ error: 'Unauthorized' }, { status: 403 });
 		}
 	}

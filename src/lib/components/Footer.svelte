@@ -14,6 +14,8 @@
 		>
 		<nav class="footer-links">
 			<a href="/servers">{tr('nav.browseServers')}</a>
+			<a href="/ideas">{tr('footer.ideas')}</a>
+			<a href="/status">{tr('footer.status')}</a>
 			<a href="/terms">{tr('footer.terms')}</a>
 			<a href="/privacy">{tr('footer.privacy')}</a>
 			<a
@@ -50,7 +52,9 @@
 
 	.footer-copy a {
 		color: var(--color-text-secondary);
-		text-decoration: none;
+		/* A link inside a sentence must not rely on colour alone. */
+		text-decoration: underline;
+		text-underline-offset: 2px;
 		transition: color var(--transition-fast);
 	}
 
