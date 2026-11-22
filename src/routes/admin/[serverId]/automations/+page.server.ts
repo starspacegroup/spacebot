@@ -1,3 +1,4 @@
+import { mayUseFeature } from '$lib/server/feature-access.js';
 import { fail, redirect } from '@sveltejs/kit';
 import {
 	ACTION_TYPES,
@@ -15,7 +16,7 @@ import { checkPlanLimit } from '$lib/db/server-plans.js';
 import { intParam } from '$lib/server/query-params.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ platform, parent, url, params }) {
+export async function load({ cookies, platform, parent, url, params }) {
 	// Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
 	if (!/^\d{17,20}$/.test(params.serverId)) {
 		throw redirect(302, '/admin');
@@ -25,7 +26,11 @@ export async function load({ platform, parent, url, params }) {
 	const guildId = params.serverId;
 
 	// Require admin access - check that user has access to this guild
-	if (!parentData.adminGuilds?.some((g) => g.id === guildId) && !parentData.isSuperAdmin) {
+	if (
+		!parentData.adminGuilds?.some((g) => g.id === guildId) &&
+		!parentData.isSuperAdmin &&
+		!(await mayUseFeature({ guildId, cookies, platform }, 'automations'))
+	) {
 		throw redirect(302, '/admin');
 	}
 

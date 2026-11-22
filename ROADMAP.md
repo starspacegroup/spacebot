@@ -86,6 +86,21 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       look to installed. Daily aggregates, nothing per visitor, no cookies or IP addresses;
       ported from NebulaKit's stats stack (`docs/site-traffic.md`, migration 0084). Open:
       viewport sizes, a per-page conversion view
+      Reworked 2026-11-05 into Overview, Server browser and Audience tabs; the Server browser tab
+      counts cards seen, listing pages opened and Join presses per listing per day (migration
+      0091; the Join button goes through `/servers/{id}/join`)
+- [x] Idea box — `/ideas` page and built-in `/idea` command: anyone signed in with Discord sends
+      an idea; the superadmin reads them in one list ranked by impact × reach × confidence ÷
+      effort, with an AI draft score they confirm or override; senders see their ideas' status.
+      No votes yet (`docs/ideas.md`, migrations 0095 and 0096)
+- [x] Public status page — `/status` and `/api/status`: website, database, bot host and Discord connection checked every minute from the orchestrator worker and the bot's heartbeat; incidents open and close by themselves and a superadmin posts their own at `/admin/superadmin/status` (see `docs/status.md`)
+- [x] Share cards — every public page gets Open Graph and Twitter tags with a 1200×630 card showing the SpaceBot astronaut, from one route table; listed servers, developer docs and profiles write their own (see `docs/share-cards.md`)
+- [x] Word commands — `/define` (Wiktionary) and `/synonym` (Datamuse), built-in and off until a
+      server turns them on from the Commands page; a lookup per member per minute limit; nothing
+      stored (`docs/word-commands.md`, migration 0092)
+- [x] Announcement channel — a per-server channel, set on the Settings page, where SpaceBot posts
+      global changes and important alerts; nothing posts to it yet (`docs/announcements.md`,
+      migration 0089)
 - [x] Command sync — slash commands reach Discord by themselves: a minute sweep rebuilds each
       server's command list, hashes it, and re-registers the server when it changed, so a
       deploy never needs `register-commands` (`docs/command-sync.md`, migration 0074)
@@ -93,6 +108,20 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
       deny by role, one gate for every command, `/help` shows only what a member can run
       (`docs/command-access.md`, migration 0073). Open: members, channels, categories,
       time windows
+- [x] Superadmin: users and servers related, and logs — each person's servers (with owner,
+      Administrator, Manage Server or member standing) and each server's people, saved as people
+      open the dashboard (migration 0104); detail pages for both; a Logs page with an audit
+      trail, a cross-server activity feed and an error feed, plus a per-person timeline
+      (`docs/superadmin-logs.md`)
+- [x] Personality tests — `/personality` links to free online personality tests (Myers-Briggs
+      style, Big Five, autism, BDSM, attachment and about thirty more), off until a server
+      turns it on; every test shows by default, a server hides some or adds its own links;
+      dashboard page and link checker (`docs/personality.md`, migration 0102)
+- [x] Dashboard access by role — the four dashboard rows on Settings take roles: a role opens
+      Event logs, Automations or Commands (and a short "Your access" page) without Manage
+      Server; everything else stays admin. Proved Dafny rule, central guard on form actions
+      (`docs/command-access.md`). Open: roles for Settings, topics and the other pages; deny
+      roles; enforcing the permission-level dropdowns
 - [x] Oldest (#58) — `/oldest` ranks the top ten oldest Discord accounts in a server, read
       from the account's creation time inside its id; `show:` switches to the newest
       accounts or the longest-serving members. Bots left out; the reply says how old the

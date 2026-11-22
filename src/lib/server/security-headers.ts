@@ -30,11 +30,57 @@ export function isFramablePath(pathname: string): boolean {
 	return pathname === '/activity' || pathname.startsWith('/activity/');
 }
 
+/** Where the two analytics scripts come from. Both are blocked if this list is wrong. */
+export const ANALYTICS_SCRIPT_HOSTS =
+	'https://www.googletagmanager.com https://static.cloudflareinsights.com';
+
+/**
+ * The public pages anyone can open without signing in. Their content is fixed and can be tested
+ * without a login, so the content-security policy is enforced here. Everything else (the
+ * dashboard, account pages, the Activity) keeps the report-only policy until it has been tried
+ * with a signed-in session.
+ */
+const PUBLIC_MARKETING = [
+	/^\/$/,
+	/^\/status\/?$/,
+	/^\/servers(\/[^/]+)?\/?$/,
+	/^\/docs(\/|$)/,
+	/^\/(support|vote|invite|privacy|terms|ideas|leaderboards)\/?$/,
+];
+
+export const isPublicMarketingPath = (pathname: string) =>
+	PUBLIC_MARKETING.some((re) => re.test(pathname));
+
+/**
+ * Cache-Control for a page response. Signed-in pages carry the visitor's own data, so they stay
+ * `no-store`. A public page for a signed-out visitor says `private, no-cache`: the browser must
+ * check with the server before reusing it, so it is never stale, but it may keep the page for the
+ * back and forward buttons. (`no-store` switches that off.)
+ */
+export function pageCacheControl(opts: {
+	method: string;
+	status: number;
+	pathname: string;
+	loggedIn: boolean;
+	html: boolean;
+}): string {
+	const publicPage =
+		opts.method === 'GET' &&
+		opts.status === 200 &&
+		opts.html &&
+		!opts.loggedIn &&
+		isPublicMarketingPath(opts.pathname);
+	return publicPage ? 'private, no-cache' : 'no-cache, no-store, must-revalidate';
+}
+
 /** Static security headers applied to HTML responses. */
 export const SECURITY_HEADERS: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
 	'X-Frame-Options': 'DENY',
 	'Referrer-Policy': 'strict-origin-when-cross-origin',
+	// Browsers must use https for this host for a year. Not sent with includeSubDomains or preload:
+	// nothing here needs them, and both are hard to take back.
+	'Strict-Transport-Security': 'max-age=31536000',
 	// Deny powerful features by default; opt back in per-feature if ever needed.
 	'Permissions-Policy':
 		'accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), midi=(), payment=(), usb=()',
@@ -54,7 +100,8 @@ export function buildContentSecurityPolicy(options: { framable?: boolean } = {})
 		"base-uri 'self'",
 		"object-src 'none'",
 		options.framable ? `frame-ancestors ${ACTIVITY_FRAME_ANCESTORS}` : "frame-ancestors 'none'",
-		"script-src 'self' 'unsafe-inline'",
+		// Google Analytics (loaded in app.html) and the Cloudflare analytics beacon Cloudflare adds.
+		`script-src 'self' 'unsafe-inline' ${ANALYTICS_SCRIPT_HOSTS}`,
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: https:",
 		"font-src 'self' data:",

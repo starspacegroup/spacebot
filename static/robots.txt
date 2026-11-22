@@ -7,5 +7,6 @@ Disallow: /connect
 Disallow: /deploy
 Disallow: /dev-login
 Disallow: /login
+Disallow: /servers/*/join
 
 Sitemap: https://spacebot.starspace.group/sitemap.xml
