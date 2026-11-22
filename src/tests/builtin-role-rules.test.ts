@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const sa = { yes: true };
 vi.mock('../lib/server/superadmin-guard.js', () => ({ checkIsSuperAdmin: () => sa.yes }));
 vi.mock('../lib/discord/commands.js', () => ({ syncGuildCommands: vi.fn(async () => ({})) }));
-const updateCommand = vi.fn(async () => ({ success: true }));
-const setOverride = vi.fn(async () => ({ success: true }));
+const updateCommand = vi.fn(async (..._args: any[]) => ({ success: true }));
+const setOverride = vi.fn(async (..._args: any[]) => ({ success: true }));
 vi.mock('../lib/db/commands.js', () => ({
 	ACTION_TYPES: {},
 	BUILT_IN_GUILD_ID: '__built_in__',
@@ -56,7 +56,7 @@ describe('role rules on a built-in command', () => {
 			deny_roles: '222222222222222222',
 		});
 		expect(r.status).toBe(302);
-		expect((updateCommand.mock.calls[0] as any[])[3]).toBe('__built_in__');
+		expect((updateCommand.mock.calls[0] as unknown[])[3]).toBe('__built_in__');
 		// the global row never carries role ids
 		expect((updateCommand.mock.calls[0] as any[])[2].access_rules).toBeUndefined();
 		expect(setOverride).toHaveBeenCalledTimes(1);

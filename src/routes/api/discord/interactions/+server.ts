@@ -35,6 +35,7 @@ import { collectGuildCommands } from '$lib/discord/commands.js';
 import { buildGuildChannels, createDiscordRestClient } from '$lib/discord/rest-client.js';
 import { handleQuorumCommand, handleQuorumComponent } from '$lib/server/quorum.js';
 import { handleTopicCommand } from '$lib/server/topic-command.js';
+import { handlePersonalityCommand } from '$lib/server/personality-command.js';
 import { handleOldestCommand } from '$lib/server/oldest.js';
 import { handleWordCommand, isWordCommand } from '$lib/server/word-commands.js';
 import { handleIdeaCommand } from '$lib/server/idea-command.js';
@@ -399,6 +400,11 @@ export async function POST({ request, platform: rawPlatform }) {
 			return json(
 				await handleTopicCommand(body, db, token ? createDiscordRestClient(token) : null)
 			);
+		}
+
+		// `/personality`: links to online personality tests (off until a server turns it on).
+		if (data.name === 'personality' && guildId) {
+			return json(await handlePersonalityCommand(body, db));
 		}
 
 		// `/oldest`: a read over the member cache, answered at once.

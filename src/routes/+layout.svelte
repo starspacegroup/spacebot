@@ -122,6 +122,9 @@
 	// `guildsPending` distinguishes "still streaming" from "resolved but empty" so the
 	// loading skeleton never sticks for users who genuinely have no admin guilds.
 	let adminGuilds = $state([]);
+	// Servers this member can open only through a role saved on Settings (never admin pages).
+	const memberGuilds = $derived(data?.memberGuilds ?? []);
+	const selectorGuilds = $derived([...adminGuilds, ...memberGuilds]);
 	let guildsPending = $state(false);
 	$effect(() => {
 		const raw: any = data?.adminGuilds;
@@ -253,8 +256,8 @@
 				>
 			</button>
 			<nav class="nav">
-				{#if page.url.pathname.startsWith('/admin') && !page.url.pathname.startsWith('/admin/superadmin') && adminGuilds.length > 0}
-					<ServerSelector guilds={adminGuilds} {selectedGuildId} />
+				{#if page.url.pathname.startsWith('/admin') && !page.url.pathname.startsWith('/admin/superadmin') && selectorGuilds.length > 0}
+					<ServerSelector guilds={selectorGuilds} {selectedGuildId} />
 				{:else if showSelectorSkeleton}
 					<Skeleton width="11rem" height="2.25rem" radius="var(--radius-full)" />
 				{/if}
