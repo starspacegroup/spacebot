@@ -60,8 +60,14 @@ and is logged to the guild's event log as an `api` event naming the key.
 The MCP endpoint (`POST /api/v1/mcp`) offers the same three as
 `set_automation_enabled`, `set_command_enabled` and `schedule_message`, listed
 only to keys holding the write scope.
+
 - `GET /api/v1/integrations/status` reads integration status.
 - `GET /api/stats/:guildId/export?format=json|csv` exports admin-authenticated report data.
+- `GET /api/stats/:guildId?period=7d&granularity=auto` returns member counts, changes, peak and
+  history for one server. It is **not public** (changed 2026-11-09). Send
+  `Authorization: Bearer sb_live_...` with a key that has `stats:read` and belongs to that same
+  server, or be signed in as an admin of the server. A key from another server gets 403. Make the
+  key in the server's admin page under API keys.
 
 ## Integrations
 

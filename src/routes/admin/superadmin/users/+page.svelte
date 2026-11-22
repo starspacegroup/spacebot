@@ -370,8 +370,10 @@
 										onerror={(e) => avatarFallback(e, user)}
 									/>
 									<div class="user-info">
-										<span class="user-name"
-											>{user.global_name || user.username}</span
+										<a
+											class="user-name"
+											href="/admin/superadmin/users/{user.id}"
+											>{user.global_name || user.username}</a
 										>
 										<span class="user-tag">@{user.username}</span>
 									</div>
@@ -822,6 +824,7 @@
 	}
 
 	.user-name {
+		text-decoration: none;
 		font-weight: 600;
 		color: var(--color-text);
 	}

@@ -34,6 +34,12 @@ export const commands = [
 		type: 1, // CHAT_INPUT
 	},
 	{
+		name: 'status',
+		description: 'Check whether SpaceBot is up: website, database, bot host and Discord',
+		type: 1, // CHAT_INPUT
+		dm_permission: true,
+	},
+	{
 		name: 'help',
 		description: 'List the commands you can use here',
 		type: 1, // CHAT_INPUT

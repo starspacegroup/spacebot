@@ -8,6 +8,7 @@ import { ApplicationCommandType } from 'discord-api-types/v10';
 import { ACTION_TYPES, COMMAND_USER_SOURCES } from './automations.js';
 import { applyInteractionOptionsToContext } from '../discord/interaction-options.js';
 import { log } from '../log.js';
+import { hasSubcommands, parseStoredOptions } from './command-options.js';
 import {
 	parseAccessRules,
 	serializeAccessRules,
@@ -403,7 +404,7 @@ export async function updateCommand(
 		const existingRow = await db
 			.prepare(
 				`
-      SELECT id, guild_id, name, context_menu_user
+      SELECT id, guild_id, name, context_menu_user, options
       FROM commands
       WHERE id = ?
       LIMIT 1
@@ -414,6 +415,18 @@ export async function updateCommand(
 
 		if (!existingRow || (scopeGuildId !== null && existingRow.guild_id !== scopeGuildId)) {
 			return { success: false, error: 'Command not found' };
+		}
+
+		// The editor form has no subcommands, so saving it over a built-in that has them (/topic,
+		// /personality) would flatten them into text boxes. Keep the stored options in that case.
+		if (
+			updates.options !== undefined &&
+			existingRow.guild_id === BUILT_IN_GUILD_ID &&
+			hasSubcommands(parseStoredOptions(existingRow.options)) &&
+			!hasSubcommands(updates.options)
+		) {
+			updates = { ...updates };
+			delete updates.options;
 		}
 
 		const existingIsContextMenu = !!existingRow.context_menu_user;
@@ -1070,9 +1083,10 @@ export async function getBuiltInCommand(db, id) {
  *
  * `/help` is how a member finds out what this bot does in this server. A guild
  * that disabled it left its members with a bot and no way to ask it anything,
- * so the override is accepted and then ignored for these.
+ * so the override is accepted and then ignored for these. `/status` is the same
+ * for "is the bot down, or is it just me?": it reads the public status page.
  */
-export const ALWAYS_ENABLED_BUILT_INS = ['help'];
+export const ALWAYS_ENABLED_BUILT_INS = ['help', 'status'];
 
 /** Whether this built-in ignores a guild's attempt to disable it. */
 export function isAlwaysEnabledBuiltIn(command) {
@@ -1420,6 +1434,16 @@ export const BUILT_IN_COMMAND_DEFAULTS = [
 		},
 	},
 	{
+		// Answered in code from the live status checks (interactions route); this row only
+		// registers the name. Same data as /status on the website.
+		name: 'status',
+		description: 'Check whether SpaceBot is up: website, database, bot host and Discord',
+		dm_permission: true,
+		response_type: 'message',
+		response_content: 'https://spacebot.starspace.group/status',
+		response_embed: null,
+	},
+	{
 		name: 'help',
 		description: 'List the commands you can use here',
 		dm_permission: true,
@@ -1538,8 +1562,8 @@ export async function ensureBuiltInCommands(db) {
 						existing.id
 					)
 					.run();
-			} else if (cmd.name === 'help') {
-				// Keep /help available in DMs for existing databases.
+			} else if (cmd.name === 'help' || cmd.name === 'status') {
+				// Keep /help and /status available in DMs for existing databases.
 				await db
 					.prepare(
 						`
