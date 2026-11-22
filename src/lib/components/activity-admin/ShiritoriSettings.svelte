@@ -27,8 +27,9 @@
 	</p>
 {/if}
 <p class="sb-note">
-	Pick a Chain channel for an always-on chain. A word that ends in the dead letter ends the chain,
-	or puts a player out of a round.
+	Pick a Chain channel for an always-on chain, or run <code>/game shiritori channel:#name</code>
+	in Discord (managers only; <code>off:True</code> turns it off). A word that ends in the dead letter
+	ends the chain, or puts a player out of a round.
 </p>
 <form method="POST" action="?/saveShiritori" use:enhance={keepValues} class="sb-settings-form">
 	<label class="wide">
@@ -40,8 +41,9 @@
 			{/each}
 		</select>
 		<span class="hint">
-			A valid word gets a ✅. A bad one gets a ❌ and breaks the chain. Anything that is not
-			one word is ignored, and a message that starts with <code>//</code> is too.
+			To play, mention the bot with the word: <code>@SpaceBot eagle</code>. A word that fits
+			gets a ✅, a bad one gets a ❌ and breaks the chain. Everything without the mention is
+			chat and is ignored.
 		</span>
 	</label>
 	<label>

@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { LISTING_CATEGORIES, getPublicListing } from '$lib/db/server-listings.js';
 import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
+import { countableRequest, recordListingView } from '$lib/server/browser-stats.js';
 
 /**
  * Public detail page for one listed server.
@@ -9,12 +10,20 @@ import { getManageableGuilds } from '$lib/server/manageable-guilds.js';
  * a guild that doesn't exist — the response must not confirm that an unlisted
  * server is using SpaceBot.
  */
-export async function load({ platform, params, cookies }) {
+export async function load({ platform, params, cookies, request }) {
 	const db = (platform as any)?.env?.DB;
 	const listing = await getPublicListing(db, params.guildId);
 
 	if (!listing) {
 		throw error(404, 'Server not found in the public browser');
+	}
+
+	// Counted for the superadmin's Server browser stats. Off the request path.
+	if (db && countableRequest(request)) {
+		const write = recordListingView(db, params.guildId).catch(() => {});
+		const ctx = (platform as any)?.context;
+		if (ctx?.waitUntil) ctx.waitUntil(write);
+		else await write;
 	}
 
 	return {

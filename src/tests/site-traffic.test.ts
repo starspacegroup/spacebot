@@ -25,10 +25,9 @@ import {
 } from '../lib/server/site-traffic.js';
 import { siteTrafficHandle } from '../hooks.server.js';
 
-const schema = readFileSync(
-	new URL('../../migrations/0084_site_traffic.sql', import.meta.url),
-	'utf8'
-);
+const schema =
+	readFileSync(new URL('../../migrations/0084_site_traffic.sql', import.meta.url), 'utf8') +
+	readFileSync(new URL('../../migrations/0091_site_listing_daily.sql', import.meta.url), 'utf8');
 const NOW = new Date('2026-11-02T15:30:00Z');
 
 const view = (over: any = {}) => ({

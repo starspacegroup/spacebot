@@ -12,50 +12,50 @@
  * @returns {string} Full avatar URL
  */
 export function getAvatarUrl(userId, avatar, discriminator = '0', size = 64) {
-  if (!userId) return '';
+	if (!userId) return '';
 
-  if (avatar) {
-    const avatarValue = String(avatar).trim();
+	if (avatar) {
+		const avatarValue = String(avatar).trim();
 
-    // Some records store a full URL (e.g. displayAvatarURL for guild-specific avatars).
-    // Return it directly and only adjust the size parameter for Discord CDN URLs.
-    if (avatarValue.startsWith('http://') || avatarValue.startsWith('https://')) {
-      try {
-        const url = new URL(avatarValue);
-        if (url.hostname === 'cdn.discordapp.com' && Number.isFinite(size) && size > 0) {
-          url.searchParams.set('size', String(size));
-        }
-        return url.toString();
-      } catch {
-        return avatarValue;
-      }
-    }
+		// Some records store a full URL (e.g. displayAvatarURL for guild-specific avatars).
+		// Return it directly and only adjust the size parameter for Discord CDN URLs.
+		if (avatarValue.startsWith('http://') || avatarValue.startsWith('https://')) {
+			try {
+				const url = new URL(avatarValue);
+				if (url.hostname === 'cdn.discordapp.com' && Number.isFinite(size) && size > 0) {
+					url.searchParams.set('size', String(size));
+				}
+				return url.toString();
+			} catch {
+				return avatarValue;
+			}
+		}
 
-    if (avatarValue.startsWith('data:')) {
-      return avatarValue;
-    }
+		if (avatarValue.startsWith('data:')) {
+			return avatarValue;
+		}
 
-    // Custom avatar hash
-    const ext = avatarValue.startsWith('a_') ? 'gif' : 'png';
-    return `https://cdn.discordapp.com/avatars/${userId}/${avatarValue}.${ext}?size=${size}`;
-  }
+		// Custom avatar hash
+		const ext = avatarValue.startsWith('a_') ? 'gif' : 'png';
+		return `https://cdn.discordapp.com/avatars/${userId}/${avatarValue}.${ext}?size=${size}`;
+	}
 
-  // Default avatar based on discriminator
-  let index = 0;
-  try {
-    if (discriminator === '0') {
-      // New system: use user ID to determine default avatar
-      index = Number((BigInt(userId) >> 22n) % 6n);
-    } else {
-      // Legacy system: use discriminator
-      index = parseInt(discriminator, 10) % 5;
-      if (Number.isNaN(index)) index = 0;
-    }
-  } catch {
-    index = 0;
-  }
+	// Default avatar based on discriminator
+	let index = 0;
+	try {
+		if (discriminator === '0') {
+			// New system: use user ID to determine default avatar
+			index = Number((BigInt(userId) >> 22n) % 6n);
+		} else {
+			// Legacy system: use discriminator
+			index = parseInt(discriminator, 10) % 5;
+			if (Number.isNaN(index)) index = 0;
+		}
+	} catch {
+		index = 0;
+	}
 
-  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+	return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
 }
 
 /**
@@ -64,6 +64,21 @@ export function getAvatarUrl(userId, avatar, discriminator = '0', size = 64) {
  * @returns {string} Single character for display
  */
 export function getAvatarInitial(name) {
-  if (!name) return '?';
-  return name.charAt(0).toUpperCase();
+	if (!name) return '?';
+	return name.charAt(0).toUpperCase();
+}
+
+/**
+ * An <img> onerror handler: when a member's picture fails to load (a stale hash, a deleted
+ * guild avatar, a CDN hiccup), show their default avatar instead of leaving a hole. Once only,
+ * so a failing default cannot loop.
+ * @param {Event} event
+ * @param {string} userId
+ * @param {string} [discriminator]
+ */
+export function useDefaultAvatar(event, userId, discriminator = '0') {
+	const img = /** @type {HTMLImageElement} */ event.currentTarget;
+	if (!img || img.dataset.fallback) return;
+	img.dataset.fallback = '1';
+	img.src = getAvatarUrl(userId, null, discriminator, 64);
 }
