@@ -4,7 +4,13 @@ import { log } from '$lib/log.js';
 import { upsertUser } from '$lib/db/users.js';
 import { trackUserActivity } from '$lib/db/user-activity.js';
 import { handleGatewayLogsApi } from '$lib/server/gateway-logs-api.js';
-import { applySecurityHeaders, isFramablePath } from '$lib/server/security-headers.js';
+import {
+	applySecurityHeaders,
+	isFramablePath,
+	isHtmlResponse,
+	isPublicMarketingPath,
+	pageCacheControl,
+} from '$lib/server/security-headers.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
 import {
 	clearDiscordSession,
@@ -591,6 +597,12 @@ async function appHandle({ event, resolve }) {
 			acceptLanguage: event.request.headers.get('accept-language'),
 		});
 
+		// Read from the request itself: an earlier step clears a stale session cookie, and a request
+		// that arrived with one must be treated as signed in either way.
+		const carriedSession = /(?:^|;\s*)discord_user_id=/.test(
+			event.request.headers.get('cookie') ?? ''
+		);
+
 		const response = await resolve(event, {
 			transformPageChunk: ({ html }) => html.replace('%lang%', locale),
 		});
@@ -600,15 +612,28 @@ async function appHandle({ event, resolve }) {
 		// /api/ routes manage their own cache headers
 		// All other routes (HTML pages + SvelteKit __data.json fetches) must not be cached
 		if (!url.pathname.startsWith('/_app/') && !url.pathname.startsWith('/api/')) {
-			response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-			response.headers.set('Pragma', 'no-cache');
-			response.headers.set('Expires', '0');
+			const cacheControl = pageCacheControl({
+				method: event.request.method,
+				status: response.status,
+				pathname: url.pathname,
+				loggedIn: carriedSession,
+				html: isHtmlResponse(response),
+			});
+			response.headers.set('Cache-Control', cacheControl);
+			if (cacheControl.includes('no-store')) {
+				response.headers.set('Pragma', 'no-cache');
+				response.headers.set('Expires', '0');
+			}
 		}
 
 		// Security headers (HTML responses only; no-op for API/assets/WebSocket).
 		// Safe to set after resolve() because this mutates the returned Response's
 		// own headers, unlike cookies (which SvelteKit serializes during resolve).
-		applySecurityHeaders(response, { framable: isFramablePath(url.pathname) });
+		applySecurityHeaders(response, {
+			framable: isFramablePath(url.pathname),
+			// Enforced on the public pages (tested without a login); report-only everywhere else.
+			cspReportOnly: !isPublicMarketingPath(url.pathname),
+		});
 
 		await trackAuthenticatedRequestActivity(event, response?.status || 200);
 		finishSpan(requestSpan, platform);

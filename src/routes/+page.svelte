@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
+	import HowItWorks from '$lib/components/HowItWorks.svelte';
 
 	const { data } = $props();
 	const tr = getTranslator();
@@ -8,18 +9,34 @@
 	const adminUrl = $derived(data.selectedGuildId ? `/admin/${data.selectedGuildId}` : '/admin');
 
 	let billingInterval = $state('monthly');
+
+	// How wide the hero screenshot is drawn: the page column is 1100 px, less the gutters.
+	const HERO_SIZES = '(min-width: 1180px) 1100px, calc(100vw - 2rem)';
+
+	/**
+	 * The screenshot follows the site's theme, not the operating system's. The <source> above guesses
+	 * from the system setting so the right image is fetched before any script runs; this corrects it
+	 * for a visitor who picked the other theme, and again when they switch.
+	 */
+	function followTheme(img: HTMLImageElement) {
+		const dark = img.parentElement?.querySelector('source');
+		if (!dark) return;
+		const apply = () => {
+			dark.media = document.documentElement.dataset.theme === 'dark' ? 'all' : 'not all';
+		};
+		apply();
+		const watch = new MutationObserver(apply);
+		watch.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['data-theme'],
+		});
+		return { destroy: () => watch.disconnect() };
+	}
 </script>
 
 <svelte:head>
 	<title>{tr('home.meta.title')}</title>
 	<meta name="description" content={tr('home.meta.description')} />
-	<meta property="og:title" content={tr('home.meta.title')} />
-	<meta property="og:description" content={tr('home.meta.description')} />
-	<meta property="og:url" content="https://spacebot.starspace.group" />
-	<meta property="og:image" content="https://spacebot.starspace.group/logo.jpg" />
-	<meta name="twitter:title" content={tr('home.meta.title')} />
-	<meta name="twitter:description" content={tr('home.meta.description')} />
-	<meta name="twitter:image" content="https://spacebot.starspace.group/logo.jpg" />
 </svelte:head>
 
 <div class="landing">
@@ -27,7 +44,13 @@
 	<section class="hero">
 		<div class="hero-content">
 			<h1 class="hero-identity">
-				<img src="/logo.webp" alt={tr('home.hero.logoAlt')} class="hero-logo" /> SpaceBot
+				<img
+					src="/logo-128.webp"
+					alt={tr('home.hero.logoAlt')}
+					class="hero-logo"
+					width="64"
+					height="64"
+				/> SpaceBot
 			</h1>
 			<p class="tagline">{tr('home.hero.tagline')}</p>
 			<p class="description">
@@ -54,16 +77,39 @@
 			</div>
 		</div>
 		<div class="hero-screenshot">
-			<img
-				src="/server-admin-light.webp"
-				alt={tr('home.hero.dashboardAlt')}
-				class="screenshot-light"
-			/>
-			<img
-				src="/server-admin-dark.webp"
-				alt={tr('home.hero.dashboardAlt')}
-				class="screenshot-dark"
-			/>
+			<!--
+				One picture, chosen by theme, so only one of the two screenshots is downloaded.
+				The <source> guesses from the operating system's setting before any script runs;
+				`followTheme` then lets the site's own theme setting decide. Three widths, because a
+				phone does not need the 1680 px original (288 KB).
+			-->
+			<picture>
+				<source
+					media="(prefers-color-scheme: dark)"
+					srcset="
+						/server-admin-dark-640.webp 640w,
+						/server-admin-dark-1100.webp 1100w,
+						/server-admin-dark.webp 1680w
+					"
+					sizes={HERO_SIZES}
+				/>
+				<img
+					use:followTheme
+					src="/server-admin-light-1100.webp"
+					srcset="
+						/server-admin-light-640.webp 640w,
+						/server-admin-light-1100.webp 1100w,
+						/server-admin-light.webp 1680w
+					"
+					sizes={HERO_SIZES}
+					alt={tr('home.hero.dashboardAlt')}
+					class="screenshot"
+					width="1680"
+					height="963"
+					fetchpriority="high"
+					decoding="async"
+				/>
+			</picture>
 		</div>
 	</section>
 
@@ -74,7 +120,13 @@
 		<div class="feature-grid">
 			<div class="feature-card">
 				<span class="feature-icon"
-					><img src="/logo.webp" alt="" style="height:1.8rem;width:auto;" /></span
+					><img
+						src="/logo-64.webp"
+						alt=""
+						width="29"
+						height="29"
+						style="height:1.8rem;width:auto;"
+					/></span
 				>
 				<h3>{tr('home.features.commands.title')}</h3>
 				<p>{tr('home.features.commands.body')}</p>
@@ -257,227 +309,8 @@
 		</div>
 	</section>
 
-	<!-- How It Works Section -->
-	<section class="how-it-works">
-		<h2>{tr('home.how.heading')}</h2>
-
-		<div class="steps">
-			<!-- Step 1: Login -->
-			<div class="step">
-				<div class="step-card">
-					<div class="mock-discord-btn">
-						<svg width="20" height="15" viewBox="0 0 71 55" fill="currentColor"
-							><path
-								d="M60.1 4.9A58.5 58.5 0 0 0 45.4.2a.2.2 0 0 0-.2.1 40.8 40.8 0 0 0-1.8 3.7 54 54 0 0 0-16.2 0A37.4 37.4 0 0 0 25.4.3a.2.2 0 0 0-.2-.1A58.4 58.4 0 0 0 10.5 4.9a.2.2 0 0 0-.1.1C1.5 18.7-.9 32.2.3 45.5v.2a58.9 58.9 0 0 0 17.7 9 .2.2 0 0 0 .3-.1 42.1 42.1 0 0 0 3.6-5.9.2.2 0 0 0-.1-.3 38.8 38.8 0 0 1-5.5-2.6.2.2 0 0 1 0-.4c.4-.3.7-.6 1.1-.9a.2.2 0 0 1 .2 0c11.6 5.3 24.2 5.3 35.7 0a.2.2 0 0 1 .2 0l1.1.9a.2.2 0 0 1 0 .4c-1.8 1-3.6 1.9-5.6 2.6a.2.2 0 0 0-.1.3 47.3 47.3 0 0 0 3.7 5.9.2.2 0 0 0 .2.1 58.7 58.7 0 0 0 17.7-9 .2.2 0 0 0 .1-.2c1.4-15-2.3-28.4-9.8-40.1a.2.2 0 0 0-.1-.1ZM23.7 37.3c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.8 7.1-6.3 7.1Zm23.3 0c-3.5 0-6.3-3.2-6.3-7.1s2.8-7.1 6.3-7.1 6.4 3.2 6.3 7.1c0 3.9-2.7 7.1-6.3 7.1Z"
-							/></svg
-						>
-						{tr('home.how.login')}
-					</div>
-				</div>
-				<span class="step-label">{tr('home.how.step1')}</span>
-			</div>
-
-			<div class="step-connector">
-				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-					><path
-						d="M0 12h36m0 0l-6-6m6 6l-6 6"
-						stroke="var(--color-primary-button)"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						opacity="0.5"
-					/></svg
-				>
-			</div>
-
-			<!-- Step 2: Add Bot -->
-			<div class="step">
-				<div class="step-card">
-					<div class="mock-server-list">
-						<div class="mock-server-icon placeholder"></div>
-						<div class="mock-server-icon placeholder"></div>
-						<div class="mock-server-divider"></div>
-						<div class="mock-server-icon bot-icon">
-							<img src="/logo.webp" alt="" width="32" height="32" />
-						</div>
-					</div>
-				</div>
-				<span class="step-label">{tr('home.how.step2')}</span>
-			</div>
-
-			<div class="step-connector">
-				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-					><path
-						d="M0 12h36m0 0l-6-6m6 6l-6 6"
-						stroke="var(--color-primary-button)"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						opacity="0.5"
-					/></svg
-				>
-			</div>
-
-			<!-- Step 3: Create Commands -->
-			<div class="step">
-				<div class="step-card">
-					<div class="mock-chat">
-						<div class="mock-message">
-							<div class="mock-msg-avatar">
-								<img src="/logo.webp" alt="" width="24" height="24" />
-							</div>
-							<div class="mock-msg-body">
-								<span class="mock-msg-name">SpaceBot</span>
-								<span class="mock-msg-text">
-									<span class="mock-slash">/</span>hello world
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
-				<span class="step-label">{tr('home.how.step3')}</span>
-			</div>
-
-			<div class="step-connector">
-				<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-					><path
-						d="M0 12h36m0 0l-6-6m6 6l-6 6"
-						stroke="var(--color-primary-button)"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						opacity="0.5"
-					/></svg
-				>
-			</div>
-
-			<!-- Step 4: Monitor -->
-			<div class="step">
-				<div class="step-card">
-					<div class="mock-dashboard">
-						<div class="mock-dash-header">
-							<img
-								src="/logo.webp"
-								alt=""
-								width="16"
-								height="16"
-								class="mock-dash-logo"
-							/>
-							<span>{tr('home.how.dashboard')}</span>
-						</div>
-						<div class="mock-bars">
-							<div class="mock-bar" style="height: 40%"></div>
-							<div class="mock-bar" style="height: 65%"></div>
-							<div class="mock-bar" style="height: 45%"></div>
-							<div class="mock-bar" style="height: 80%"></div>
-							<div class="mock-bar" style="height: 55%"></div>
-							<div class="mock-bar" style="height: 90%"></div>
-						</div>
-					</div>
-				</div>
-				<span class="step-label">{tr('home.how.step4')}</span>
-			</div>
-		</div>
-
-		<div class="how-it-works-subflow">
-			<h3>{tr('home.how.runner.heading')}</h3>
-			<p class="how-it-works-subtitle">{tr('home.how.runner.subtitle')}</p>
-
-			<div class="steps steps-local-runner">
-				<div class="step">
-					<div class="step-card">
-						<div class="mock-terminal">
-							<div class="mock-terminal-header">
-								<span></span><span></span><span></span>
-							</div>
-							<div class="mock-terminal-line">$ bun run runner:start</div>
-							<div class="mock-terminal-line ok">runner online</div>
-						</div>
-					</div>
-					<span class="step-label">{tr('home.how.runner.step1')}</span>
-				</div>
-
-				<div class="step-connector">
-					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-						><path
-							d="M0 12h36m0 0l-6-6m6 6l-6 6"
-							stroke="var(--color-primary-button)"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							opacity="0.5"
-						/></svg
-					>
-				</div>
-
-				<div class="step">
-					<div class="step-card">
-						<div class="mock-chat mock-chat-local">
-							<div class="mock-message">
-								<div class="mock-msg-avatar">
-									<img src="/logo.webp" alt="" width="24" height="24" />
-								</div>
-								<div class="mock-msg-body">
-									<span class="mock-msg-name">SpaceBot</span>
-									<span class="mock-msg-text"
-										><span class="mock-slash">/</span>runner connect</span
-									>
-								</div>
-							</div>
-						</div>
-					</div>
-					<span class="step-label">{tr('home.how.runner.step2')}</span>
-				</div>
-
-				<div class="step-connector">
-					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-						><path
-							d="M0 12h36m0 0l-6-6m6 6l-6 6"
-							stroke="var(--color-primary-button)"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							opacity="0.5"
-						/></svg
-					>
-				</div>
-
-				<div class="step">
-					<div class="step-card">
-						<div class="mock-bridge-status">
-							<div class="mock-status-dot"></div>
-							<span>{tr('home.how.runner.tunnelActive')}</span>
-							<small>localhost:3000</small>
-						</div>
-					</div>
-					<span class="step-label">{tr('home.how.runner.step3')}</span>
-				</div>
-
-				<div class="step-connector">
-					<svg width="40" height="24" viewBox="0 0 40 24" fill="none"
-						><path
-							d="M0 12h36m0 0l-6-6m6 6l-6 6"
-							stroke="var(--color-primary-button)"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							opacity="0.5"
-						/></svg
-					>
-				</div>
-
-				<div class="step">
-					<div class="step-card">
-						<div class="mock-browser-card">
-							<div class="mock-browser-url">http://localhost:3000</div>
-							<div class="mock-browser-window"></div>
-						</div>
-					</div>
-					<span class="step-label">{tr('home.how.runner.step4')}</span>
-				</div>
-			</div>
-		</div>
-	</section>
+	<!-- How It Works Section: animated SVG scenes -->
+	<HowItWorks />
 
 	<!-- CTA Section -->
 	<section class="cta-section">
@@ -596,24 +429,13 @@
 	}
 
 	.hero-screenshot img {
+		display: block;
 		width: 100%;
+		height: auto;
+		aspect-ratio: 1680 / 963;
 		border-radius: var(--radius-lg);
 		box-shadow: var(--shadow-lg);
 		border: 1px solid var(--color-border);
-	}
-
-	/* Theme-based screenshot visibility */
-	.screenshot-dark {
-		display: none;
-	}
-	.screenshot-light {
-		display: block;
-	}
-	:global([data-theme='dark']) .screenshot-dark {
-		display: block;
-	}
-	:global([data-theme='dark']) .screenshot-light {
-		display: none;
 	}
 
 	.btn-primary:hover {
@@ -808,8 +630,8 @@
 
 	.pricing-card-coming-soon {
 		border: 5px dashed var(--color-border);
-		opacity: 0.55;
-		filter: grayscale(0.5);
+		/* Dimmed by colour, not by opacity: opacity also thins the text and it fell below 4.5:1. */
+		filter: grayscale(0.6);
 		background: color-mix(in srgb, var(--color-surface) 60%, transparent);
 	}
 
@@ -901,360 +723,6 @@
 		text-align: center;
 	}
 
-	/* How It Works Section */
-	.how-it-works {
-		padding: 4rem 0;
-	}
-
-	.how-it-works h2 {
-		text-align: center;
-		font-size: 2rem;
-		margin-bottom: 3rem;
-		color: var(--color-text);
-	}
-
-	.how-it-works-subflow {
-		margin-top: 3rem;
-		padding-top: 2rem;
-		border-top: 1px solid var(--color-border);
-	}
-
-	.how-it-works-subflow h3 {
-		text-align: center;
-		font-size: 1.35rem;
-		margin-bottom: 0.5rem;
-		color: var(--color-text);
-	}
-
-	.how-it-works-subtitle {
-		text-align: center;
-		color: var(--color-text-muted);
-		max-width: 700px;
-		margin: 0 auto 2rem;
-		line-height: 1.5;
-	}
-
-	.steps {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		max-width: 1100px;
-		margin: 0 auto;
-	}
-
-	.step {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.75rem;
-		text-align: center;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.step-card {
-		width: 100%;
-		max-width: 180px;
-		aspect-ratio: 1;
-		background: var(--color-fixed-surface-discord-strong);
-		border-radius: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		overflow: hidden;
-		transition:
-			transform 0.2s ease,
-			box-shadow 0.2s ease;
-		border: 1px solid var(--color-fixed-border-subtle);
-	}
-
-	.step:hover .step-card {
-		transform: translateY(-4px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-	}
-
-	.step-label {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-	}
-
-	.step-connector {
-		display: flex;
-		align-items: center;
-		padding-bottom: 1.75rem;
-		flex-shrink: 0;
-	}
-
-	/* Mock Discord Button */
-	.mock-discord-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		background: #5865f2;
-		color: var(--color-fixed-text-bright);
-		padding: 0.6rem 1.2rem;
-		border-radius: 8px;
-		font-size: 0.8rem;
-		font-weight: 600;
-		white-space: nowrap;
-	}
-
-	/* Mock Server List */
-	.mock-server-list {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 6px;
-		padding: 10px 0;
-	}
-
-	.mock-server-icon {
-		width: 36px;
-		height: 36px;
-		border-radius: 50%;
-		overflow: hidden;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.mock-server-icon.placeholder {
-		background: var(--color-fixed-surface-discord);
-	}
-
-	.mock-server-icon.bot-icon {
-		background: var(--color-primary-button);
-		box-shadow: 0 0 0 2px var(--color-primary-button);
-		animation: nonepulse 2s ease-in-out infinite;
-	}
-
-	.mock-server-icon.bot-icon img {
-		border-radius: 50%;
-	}
-
-	.mock-server-divider {
-		width: 24px;
-		height: 2px;
-		background: var(--color-fixed-surface-discord);
-		border-radius: 1px;
-	}
-
-	/* Mock Chat Message */
-	.mock-chat {
-		width: 100%;
-		padding: 12px;
-	}
-
-	.mock-message {
-		display: flex;
-		gap: 8px;
-		align-items: flex-start;
-	}
-
-	.mock-msg-avatar {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		overflow: hidden;
-		flex-shrink: 0;
-	}
-
-	.mock-msg-avatar img {
-		width: 100%;
-		height: 100%;
-	}
-
-	.mock-msg-body {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-
-	.mock-msg-name {
-		font-size: 0.7rem;
-		font-weight: 600;
-		color: var(--color-primary-button);
-	}
-
-	.mock-msg-text {
-		font-size: 0.7rem;
-		color: var(--color-fixed-text-secondary);
-	}
-
-	.mock-slash {
-		color: #5865f2;
-		font-weight: 700;
-	}
-
-	/* Mock Dashboard */
-	.mock-dashboard {
-		width: 100%;
-		padding: 12px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		height: 100%;
-	}
-
-	.mock-dash-header {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 0.65rem;
-		font-weight: 600;
-		color: var(--color-fixed-text-muted);
-	}
-
-	.mock-dash-logo {
-		border-radius: 4px;
-	}
-
-	.mock-bars {
-		display: flex;
-		align-items: flex-end;
-		gap: 4px;
-		flex: 1;
-		padding-bottom: 4px;
-	}
-
-	.mock-bar {
-		flex: 1;
-		background: var(--color-primary-button);
-		border-radius: 3px 3px 0 0;
-		min-height: 6px;
-		opacity: 0.7;
-	}
-
-	.mock-bar:nth-child(even) {
-		opacity: 0.5;
-	}
-
-	/* Local runner subflow mocks */
-	.steps-local-runner .step-card {
-		max-width: 200px;
-	}
-
-	.mock-terminal {
-		width: 100%;
-		height: 100%;
-		display: flex;
-		flex-direction: column;
-		padding: 10px;
-		gap: 8px;
-	}
-
-	.mock-terminal-header {
-		display: flex;
-		gap: 5px;
-	}
-
-	.mock-terminal-header span {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: var(--color-fixed-surface-discord-muted);
-	}
-
-	.mock-terminal-line {
-		font-size: 0.67rem;
-		color: var(--color-fixed-text-muted);
-		font-family: var(
-			--font-mono,
-			ui-monospace,
-			SFMono-Regular,
-			Menlo,
-			Monaco,
-			Consolas,
-			'Liberation Mono',
-			'Courier New',
-			monospace
-		);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.mock-terminal-line.ok {
-		color: #57f287;
-	}
-
-	.mock-chat-local {
-		display: flex;
-		align-items: center;
-		height: 100%;
-	}
-
-	.mock-bridge-status {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.35rem;
-		font-size: 0.78rem;
-		color: var(--color-fixed-text-secondary);
-	}
-
-	.mock-status-dot {
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		background: #57f287;
-		box-shadow: 0 0 0 5px rgba(87, 242, 135, 0.2);
-	}
-
-	.mock-bridge-status small {
-		font-size: 0.65rem;
-		color: var(--color-fixed-text-muted);
-	}
-
-	.mock-browser-card {
-		width: 100%;
-		height: 100%;
-		padding: 10px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.mock-browser-url {
-		font-size: 0.62rem;
-		padding: 0.3rem 0.45rem;
-		background: var(--color-fixed-surface-discord);
-		border-radius: 6px;
-		color: var(--color-fixed-text-muted);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.mock-browser-window {
-		flex: 1;
-		border-radius: 8px;
-		background: linear-gradient(135deg, rgba(88, 101, 242, 0.28), rgba(87, 242, 135, 0.18));
-		border: 1px solid var(--color-fixed-border);
-	}
-
-	@media (max-width: 700px) {
-		.steps {
-			flex-direction: column;
-			gap: 0.5rem;
-		}
-
-		.step-connector {
-			padding-bottom: 0;
-		}
-
-		.step-connector svg {
-			transform: rotate(90deg);
-		}
-
-		.step-card {
-			max-width: 200px;
-		}
-	}
-
 	/* CTA Section */
 	.cta-section {
 		text-align: center;
@@ -1292,16 +760,11 @@
 		}
 
 		.features h2,
-		.how-it-works h2,
 		.cta-section h2 {
 			font-size: 1.5rem;
 		}
 
 		.feature-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.steps {
 			grid-template-columns: 1fr;
 		}
 	}
