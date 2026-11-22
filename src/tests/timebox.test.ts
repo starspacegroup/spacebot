@@ -30,6 +30,7 @@ import {
 	liveSoloFor,
 	nextStep,
 	phaseMs,
+	setGoal,
 	sweepTimebox,
 	hasOverdue,
 	upsertSettings,
@@ -47,7 +48,8 @@ const SCHEMA =
 	'ALTER TABLE live_voice_states ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0;\n' +
 	schema('0070_timebox.sql', '-- /timebox as a built-in command family') +
 	schema('0071_timebox_goals.sql', 'UPDATE commands') +
-	schema('0080_timebox_mute.sql');
+	schema('0080_timebox_mute.sql') +
+	schema('0097_timebox_focus_role.sql');
 
 const G = '100000000000000001';
 const TEXT = '200000000000000001';
@@ -82,6 +84,11 @@ function fakeDiscord() {
 		deaf: new Map<string, boolean>(),
 		mute: new Map<string, boolean>(),
 		failSetDeaf: null as null | { status: number },
+		roles: new Map<string, Set<string>>(),
+		live: new Map<string, string>(),
+		failCreateRole: null as null | { status: number },
+		deletedRoles: new Set<string>(),
+		made: 0,
 	};
 	const client = {
 		channels: {
@@ -94,11 +101,36 @@ function fakeDiscord() {
 				return {};
 			}),
 		},
+		roles: {
+			create: vi.fn(async () => {
+				if (state.failCreateRole)
+					throw Object.assign(new Error('no'), state.failCreateRole);
+				state.made++;
+				return { id: `role-${state.made}` };
+			}),
+		},
 		members: {
 			fetch: vi.fn(async (_g: string, userId: string) => ({
 				deaf: state.deaf.get(userId) ?? false,
 				mute: state.mute.get(userId) ?? false,
+				roles: [...(state.roles.get(userId) ?? [])],
 			})),
+			voiceState: vi.fn(async (_g: string, userId: string) => {
+				if (!state.live.has(userId))
+					throw Object.assign(new Error('Unknown Voice State'), { status: 404 });
+				return { channel_id: state.live.get(userId) };
+			}),
+			addRole: vi.fn(async (_g: string, userId: string, roleId: string) => {
+				if (state.deletedRoles.has(roleId))
+					throw Object.assign(new Error('gone'), { status: 404 });
+				if (!state.roles.has(userId)) state.roles.set(userId, new Set());
+				state.roles.get(userId)!.add(roleId);
+				log.push({ op: 'addRole', userId, roleId });
+			}),
+			removeRole: vi.fn(async (_g: string, userId: string, roleId: string) => {
+				state.roles.get(userId)?.delete(roleId);
+				log.push({ op: 'removeRole', userId, roleId });
+			}),
 			setVoice: vi.fn(
 				async (_g: string, userId: string, v: { deaf?: boolean; mute?: boolean }) => {
 					if (state.failSetDeaf)
@@ -252,6 +284,8 @@ describe('settings', () => {
 			longBreak: 15,
 			rounds: 1,
 			control: 'crew',
+			noLiftChannels: [],
+			noLiftRoles: [],
 		});
 		await upsertSettings(d, G, { focus: 40 });
 		await upsertSettings(d, G, { control: 'anyone', rounds: 6 });
@@ -261,6 +295,8 @@ describe('settings', () => {
 			longBreak: 15,
 			rounds: 6,
 			control: 'anyone',
+			noLiftChannels: [],
+			noLiftRoles: [],
 		});
 	});
 });
@@ -735,13 +771,16 @@ describe('the sweep', () => {
 		expect(f.log).toHaveLength(0);
 	});
 
-	it('moves a due shared session on, edits the card, and pings the people in the channel once', async () => {
+	it('moves a due shared session on, edits the card, and pings the starter and the people who took part, once', async () => {
 		const d = db();
 		const f = fakeDiscord();
+		const CAROL = '400000000000000004';
 		putVoice(d, ALICE, VC);
 		putVoice(d, BOB, VC);
+		putVoice(d, CAROL, VC); // in the channel, but never joined the timebox: not pinged
 		putVoice(d, '400000000000000003', VC, 1); // a bot is not pinged
 		const s = await shared(d);
+		await setGoal(d, s.id, BOB, 'write the intro');
 		await d
 			.prepare(`UPDATE timebox_sessions SET message_id = 'card' WHERE id = ?`)
 			.bind(s.id)
@@ -787,7 +826,10 @@ describe('the sweep', () => {
 		const sum = await sweepTimebox(d, f.client, at(26));
 		expect(sum.finished).toBe(1);
 		expect(await getSession(d, s.id)).toMatchObject({ status: 'done', end_reason: 'finished' });
-		expect(f.log.find((l) => l.op === 'send')?.payload.content).toContain('finished');
+		const said = f.log.find((l) => l.op === 'send')?.payload.content;
+		expect(said).toContain('finished');
+		// the length of what it was for, not the clock time
+		expect(said).toContain('Timebox finished: 25 min of focus, 1 block done.');
 	});
 
 	it('a solo timebox gets a fresh card message with buttons at each change', async () => {
@@ -947,5 +989,285 @@ describe('goals and percent done', () => {
 			f.client
 		);
 		expect(text(carol)).toMatch(/nothing to rate/);
+	});
+});
+
+describe('the focus role', () => {
+	const ROLE = 'role-1';
+	const hold = async (d: any, f: any, user = ALICE) => {
+		putVoice(d, user, VC);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')], user), d, f.client);
+		return (await liveForVoice(d, G, VC)) as Session;
+	};
+
+	it('makes one role per server, puts it on the member, and takes it off at the lift', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(1);
+		expect(f.client.roles.create.mock.calls[0][1]).toMatchObject({
+			name: 'Timebox focus',
+			permissions: '0',
+			mentionable: false,
+		});
+		expect(f.state.roles.get(ALICE)?.has(ROLE)).toBe(true);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ applied: 1, role_added: 1 });
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(f.state.roles.get(ALICE)?.has(ROLE)).toBe(false);
+	});
+
+	it('reuses the role for the next member', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		putVoice(d, BOB, VC);
+		await handleTimeboxComponent(press('deafen', s.id, BOB), d, f.client);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves the voice state alone when the role was taken off, so the lift does not undo anyone else', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		f.state.roles.get(ALICE)!.delete(ROLE); // an automation or a moderator took over
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 0,
+			restore_pending: 0,
+		});
+	});
+
+	it('still holds and lifts as before when the bot cannot make a role', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		f.state.failCreateRole = { status: 403 };
+		const s = await hold(d, f);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ applied: 1, role_added: 0 });
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('makes a new role once if the server deleted the old one', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		f.state.deletedRoles.add(ROLE);
+		putVoice(d, BOB, VC);
+		await handleTimeboxComponent(press('deafen', s.id, BOB), d, f.client);
+		expect(f.client.roles.create).toHaveBeenCalledTimes(2);
+		expect(f.state.roles.get(BOB)?.has('role-2')).toBe(true);
+		expect(await getParticipant(d, s.id, BOB)).toMatchObject({ role_added: 1 });
+	});
+
+	it('does not need the role for a hold from before it existed', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await hold(d, f);
+		d.exec(`UPDATE timebox_participants SET role_added = 0 WHERE session_id = ${s.id}`);
+		f.state.roles.get(ALICE)!.delete(ROLE);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+});
+
+const PROTECTED = '300000000000000099'; // a channel where the server holds everyone
+const AUTOMATION_ROLE = '500000000000000001';
+
+describe('places the server holds, leaving and switching', () => {
+	const goto = (d: any, f: any, user: string, channel: string | null) => {
+		if (channel) {
+			putVoice(d, user, channel);
+			f.state.live.set(user, channel);
+		} else {
+			leaveVoice(d, user);
+			f.state.live.delete(user);
+		}
+	};
+	const start = async (d: any, f: any, user = ALICE, over: any[] = [opt('deafen', 'focus')]) => {
+		goto(d, f, user, VC);
+		await handleTimeboxCommand(slash('start', over, user), d, f.client);
+		return (await liveForVoice(d, G, VC)) as Session;
+	};
+	const hold = (d: any) => upsertSettings(d, G, { noLiftChannels: [PROTECTED] });
+
+	it('never lifts in a channel the server holds, even when they asked for the timebox deafen', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		const s = await start(d, f);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		goto(d, f, ALICE, PROTECTED); // moves into the always-muted channel mid-session
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(f.state.mute.get(ALICE)).toBe(true);
+		// the stop button, the Deafen me button and the sweep all leave it alone too
+		await sweepTimebox(d, f.client, at(90));
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+	});
+
+	it('does not touch a member who starts a deafen timebox inside such a channel', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		goto(d, f, ALICE, PROTECTED);
+		f.state.deaf.set(ALICE, true);
+		f.state.mute.set(ALICE, true);
+		const r = await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		expect(text(r)).toMatch(/server already keeps everyone muted and deafened/);
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+	});
+
+	it('the Deafen me button says so instead of claiming it lifted', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		const s = await start(d, f);
+		goto(d, f, ALICE, PROTECTED);
+		const r = await handleTimeboxComponent(press('deafen', s.id), d, f.client);
+		expect(text(r)).toMatch(/server keeps everyone muted and deafened/);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+	});
+
+	it('lifts later, once they are out of that channel (a move settles the pending lift)', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		const s = await start(d, f);
+		goto(d, f, ALICE, PROTECTED);
+		await endSession(d, f.client, s, 'stopped');
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ restore_pending: 1 });
+		goto(d, f, ALICE, VC2); // the server lifts its hold on leaving, the bot lifts its own
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC2, false);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			applied: 0,
+			restore_pending: 0,
+		});
+	});
+
+	it('trusts Discord over a stale table about where the member is', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		const s = await start(d, f);
+		putVoice(d, ALICE, PROTECTED); // the table says protected
+		f.state.live.set(ALICE, VC); // Discord says they are in the normal channel
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('never lifts a member who has the role that marks the server hold', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await upsertSettings(d, G, { noLiftRoles: [AUTOMATION_ROLE] });
+		const s = await start(d, f);
+		f.state.roles.get(ALICE)!.add(AUTOMATION_ROLE);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		f.state.roles.get(ALICE)!.delete(AUTOMATION_ROLE);
+		await sweepTimebox(d, f.client, at(30));
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('leaving voice mid-session: the lift waits, and runs when they come back', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await start(d, f);
+		goto(d, f, ALICE, null);
+		f.state.failSetDeaf = { status: 400 }; // Discord refuses a change while not in voice
+		await endSession(d, f.client, s, 'stopped');
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({ restore_pending: 1 });
+		f.state.failSetDeaf = null;
+		goto(d, f, ALICE, VC2);
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC2, true);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('a failed lift in a break does not undo the next focus block', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await start(d, f, ALICE, [opt('deafen', 'focus'), opt('rounds', 2)]);
+		goto(d, f, ALICE, null);
+		f.state.failSetDeaf = { status: 400 };
+		await sweepTimebox(d, f.client, at(24)); // break begins; the lift cannot run
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			restore_pending: 1,
+			applied: 1,
+		});
+		f.state.failSetDeaf = null;
+		goto(d, f, ALICE, VC);
+		f.state.deaf.set(ALICE, true);
+		await sweepTimebox(d, f.client, at(29)); // the next focus block has begun
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(await getParticipant(d, s.id, ALICE)).toMatchObject({
+			restore_pending: 0,
+			applied: 1,
+		});
+	});
+
+	it('coming back from a disconnect puts the hold back if Discord dropped it', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await start(d, f);
+		goto(d, f, ALICE, null);
+		f.state.deaf.set(ALICE, false); // Discord cleared it on disconnect
+		f.state.mute.set(ALICE, false);
+		goto(d, f, ALICE, VC);
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC, true);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		expect(f.state.mute.get(ALICE)).toBe(true);
+	});
+
+	it('does not put the hold back in a server-held channel, or after the role was taken off', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		await start(d, f);
+		f.state.deaf.set(ALICE, false);
+		goto(d, f, ALICE, PROTECTED);
+		f.client.members.setVoice.mockClear();
+		await liftOnVoiceJoin(d, f.client, G, ALICE, PROTECTED, true);
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
+		goto(d, f, ALICE, VC);
+		f.state.roles.get(ALICE)!.delete('role-1');
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC, true);
+		expect(f.client.members.setVoice).not.toHaveBeenCalled();
+	});
+
+	it('switching channels mid-session keeps the hold, and the member can still lift it', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await start(d, f);
+		goto(d, f, ALICE, VC2);
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC2, false);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+		const r = await handleTimeboxComponent(press('deafen', s.id), d, f.client);
+		expect(text(r)).toMatch(/Deafen off/);
+		expect(f.state.deaf.get(ALICE)).toBe(false);
+	});
+
+	it('picks up a member who asked for the deafen before joining voice when they land in a normal channel', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		await hold(d);
+		goto(d, f, ALICE, PROTECTED);
+		await handleTimeboxCommand(slash('start', [opt('deafen', 'focus')]), d, f.client);
+		goto(d, f, ALICE, VC);
+		f.state.live.set(ALICE, VC);
+		await liftOnVoiceJoin(d, f.client, G, ALICE, VC, false);
+		expect(f.state.deaf.get(ALICE)).toBe(true);
+	});
+
+	it('an unmoderated server with no rules behaves as before', async () => {
+		const d = db();
+		const f = fakeDiscord();
+		const s = await start(d, f);
+		await endSession(d, f.client, s, 'stopped');
+		expect(f.state.deaf.get(ALICE)).toBe(false);
 	});
 });

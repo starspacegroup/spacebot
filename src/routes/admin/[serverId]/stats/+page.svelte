@@ -2,11 +2,14 @@
 	import { AreaChart, BarChart, ChartCard } from '$lib/components/charts';
 	import { getDiscordCategoryMeta } from '$lib/discord/event-metadata.js';
 	import { formatChartDate, parseUTCDate, getTodayLocal } from '$lib/timezone.js';
-	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import { getAvatarUrl, useDefaultAvatar } from '$lib/utils/avatar.js';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import VoiceLive from '$lib/components/stats/VoiceLive.svelte';
+	import MemberLink from '$lib/components/MemberLink.svelte';
 	import VoiceMembers from '$lib/components/stats/VoiceMembers.svelte';
+	import VoicePresence from '$lib/components/stats/VoicePresence.svelte';
+	import TextConversations from '$lib/components/stats/TextConversations.svelte';
 
 	const { data } = $props();
 
@@ -29,6 +32,9 @@
 	let liveStats = $state(null);
 	let statsKey = $state(null);
 	let statsLoading = $state(false);
+	let statsFailed = $state(false);
+	let statsRetry = $state(0);
+	let handledRetry = 0;
 
 	const LIVE_FIELDS = [
 		'statistics',
@@ -54,9 +60,13 @@
 		const serverId = data.serverId;
 		const period = data.selectedPeriod;
 		const key = `${serverId}:${period}`;
-		if (preview || !data.loadMeta?.needsHotload || statsKey === key) return;
+		// Reading statsRetry re-runs this effect when someone presses Try again.
+		const forced = statsRetry !== handledRetry;
+		handledRetry = statsRetry;
+		if (preview || !data.loadMeta?.needsHotload || (statsKey === key && !forced)) return;
 
 		statsLoading = true;
+		statsFailed = false;
 		// Leaving the page (or changing the range) cancels the request, so the server
 		// stops queuing queries nobody is waiting for.
 		const controller = new AbortController();
@@ -70,11 +80,14 @@
 			.then((json) => {
 				liveStats = json;
 				statsKey = key;
+				// Some parts could not be read; they show as empty, not as real zeros.
+				statsFailed = Array.isArray(json?.failedParts) && json.failedParts.length > 0;
 			})
 			.catch((err) => {
 				if (err?.name === 'AbortError') return; // left the page; load again on return
 				console.error('[Stats] Failed to load live stats:', err);
 				statsKey = key; // stop retrying automatically; fall back to the shell defaults below
+				statsFailed = true;
 			})
 			.finally(() => {
 				statsLoading = false;
@@ -91,6 +104,10 @@
 				? liveStats
 				: Object.fromEntries(LIVE_FIELDS.map((key) => [key, data[key]]))
 	);
+
+	// Raw events, voice sessions and member snapshots are deleted after 90 days.
+	const RAW_HISTORY_DAYS = 90;
+	const periodDays = $derived(Number.parseInt(String(data.selectedPeriod), 10) || 30);
 
 	const isStatisticsLoading = $derived(statsLoading);
 	const hasStatisticsData = $derived(Boolean(liveData.statistics));
@@ -134,6 +151,7 @@
 	const TABS = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'voice', label: 'Voice' },
+		{ id: 'text', label: 'Text' },
 		{ id: 'activity', label: 'Activity' },
 		{ id: 'automations', label: 'Automations' },
 	] as const;
@@ -501,8 +519,16 @@
 			label: formatChartDate(p.date, data.timezone),
 			hasData: p.hasData !== false,
 			values: [
-				{ label: 'Joined', value: p.joins || 0, color: '#22c55e' },
-				{ label: 'Left', value: p.leaves || 0, color: '#ef4444' },
+				{
+					label: 'Joined',
+					value: (showBotsInMemberChart ? p.joins : (p.joinsHuman ?? p.joins)) || 0,
+					color: '#22c55e',
+				},
+				{
+					label: 'Left',
+					value: (showBotsInMemberChart ? p.leaves : (p.leavesHuman ?? p.leaves)) || 0,
+					color: '#ef4444',
+				},
 			],
 		}));
 	});
@@ -512,8 +538,11 @@
 		const points = liveData.memberGrowthChartData || [];
 		if (!points || points.length === 0) return null;
 
-		const totalJoins = points.reduce((sum, p) => sum + (p.joins || 0), 0);
-		const totalLeaves = points.reduce((sum, p) => sum + (p.leaves || 0), 0);
+		const joinsOf = (p) => (showBotsInMemberChart ? p.joins : (p.joinsHuman ?? p.joins)) || 0;
+		const leavesOf = (p) =>
+			(showBotsInMemberChart ? p.leaves : (p.leavesHuman ?? p.leaves)) || 0;
+		const totalJoins = points.reduce((sum, p) => sum + joinsOf(p), 0);
+		const totalLeaves = points.reduce((sum, p) => sum + leavesOf(p), 0);
 		const netChange = totalJoins - totalLeaves;
 
 		return { totalJoins, totalLeaves, netChange };
@@ -754,6 +783,24 @@
 		</div>
 	</header>
 
+	{#if periodDays > RAW_HISTORY_DAYS}
+		<p class="sp-note" role="note">
+			Event-based numbers (the heatmap, member growth, top lists and event totals) are kept
+			for
+			{RAW_HISTORY_DAYS} days, so they cover the last {RAW_HISTORY_DAYS} days even on this range.
+			The message and voice charts use daily summaries and cover the whole range.
+		</p>
+	{/if}
+
+	{#if statsFailed && !statsLoading}
+		<div class="sp-failed" role="alert">
+			<span
+				>Some statistics could not be loaded, so empty charts below are not real zeros.</span
+			>
+			<button type="button" onclick={() => (statsRetry += 1)}>Try again</button>
+		</div>
+	{/if}
+
 	<div class="sp-bar">
 		<div class="sp-tabs" role="tablist" aria-label="Statistics sections">
 			{#each TABS as t (t.id)}
@@ -803,6 +850,10 @@
 					period={selectedPeriod}
 					preview={previewData?.members ?? null}
 				/>
+
+				{#if !preview}
+					<VoicePresence serverId={data.serverId} period={selectedPeriod} />
+				{/if}
 
 				<!-- Voice Activity Charts Section -->
 				<section class="chart-section">
@@ -961,14 +1012,16 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1026,14 +1079,16 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1094,14 +1149,16 @@
 															)}
 															alt="{user.actor_name || 'User'} avatar"
 															class="inline-user-avatar"
-															onerror={(e) => {
-																(
-																	e.target as HTMLElement
-																).style.display = 'none';
-															}}
+															onerror={(e) =>
+																useDefaultAvatar(e, user.actor_id)}
 														/>
 													{/if}
-													{user.actor_name || 'Unknown User'}
+													<MemberLink
+														id={user.actor_id}
+														label={user.actor_name}
+														>{user.actor_name ||
+															'Unknown User'}</MemberLink
+													>
 													{#if isBot(user)}<span class="bot-badge-sm"
 															>🤖</span
 														>{/if}
@@ -1131,6 +1188,8 @@
 				</section>
 			{/snippet}
 		</VoiceLive>
+	{:else if tab === 'text' && !preview}
+		<TextConversations serverId={data.serverId} period={selectedPeriod} />
 	{:else if !hasStatisticsData && !isStatisticsLoading}
 		<div class="empty-state">
 			<div class="empty-icon" aria-hidden="true">
@@ -1337,7 +1396,7 @@
 									: statistics.events.totalNonBot
 							)}</span
 						>
-						<span class="stat-label">Total Events</span>
+						<span class="stat-label">Events on record</span>
 					</div>
 					{#if eventSpark}
 						<svg
@@ -1916,13 +1975,15 @@
 												)}
 												alt="{booster.display_name || 'User'} avatar"
 												class="inline-user-avatar"
-												onerror={(e) => {
-													(e.target as HTMLElement).style.display =
-														'none';
-												}}
+												onerror={(e) =>
+													useDefaultAvatar(e, booster.user_id)}
 											/>
 										{/if}
-										{booster.display_name}
+										<MemberLink
+											id={booster.user_id}
+											label={booster.display_name}
+											>{booster.display_name}</MemberLink
+										>
 									</span>
 									<span class="list-meta"
 										>Boosting {formatRelativeTime(booster.premium_since)}</span
@@ -2171,6 +2232,34 @@
 	}
 
 	/* Header */
+	.sp-note {
+		margin: 0 0 var(--sp-gap, 12px);
+		padding: 8px 12px;
+		border-radius: 8px;
+		font-size: 0.85rem;
+		color: var(--text-secondary, inherit);
+		background: var(--bg-secondary, rgba(128, 128, 128, 0.1));
+	}
+	.sp-failed {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin: 0.75rem 0;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-danger, #ef4444);
+		border-radius: 0.5rem;
+		color: var(--color-text);
+	}
+	.sp-failed button {
+		padding: 0.35rem 0.85rem;
+		border: 1px solid currentColor;
+		border-radius: 999px;
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
 	.sp-head {
 		display: flex;
 		align-items: flex-end;

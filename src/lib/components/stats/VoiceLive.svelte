@@ -9,6 +9,7 @@
 	import { replaceState } from '$app/navigation';
 	import { parseUTCDate, formatChartDate } from '$lib/timezone.js';
 	import { getAvatarUrl } from '$lib/utils/avatar.js';
+	import MemberLink from '$lib/components/MemberLink.svelte';
 
 	type LogFilters = {
 		search: string;
@@ -516,7 +517,13 @@
 
 								<div class="vl-member-main">
 									<div class="vl-member-line">
-										<span class="vl-name">{member.displayName}</span>
+										<span class="vl-name"
+											><MemberLink
+												id={member.userId}
+												label={member.displayName}
+												>{member.displayName}</MemberLink
+											></span
+										>
 										{#if member.userName && member.userName !== member.displayName}
 											<span class="vl-handle">@{member.userName}</span>
 										{/if}
@@ -675,7 +682,11 @@
 							<span class="vl-row-avatar"></span>
 						{/if}
 						<span class="vl-row-text">
-							<strong>{entry.actorName}</strong>
+							<strong
+								><MemberLink id={entry.actorId} label={entry.actorName}
+									>{entry.actorName}</MemberLink
+								></strong
+							>
 							<span class="vl-row-action"
 								>{entry.actionIcon
 									? `${entry.actionIcon} `

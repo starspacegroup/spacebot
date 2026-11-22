@@ -29,7 +29,7 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
-import { couldBeAMove } from '../server/shiritori.js';
+import { couldBeAMove, isDefineReaction, stripBotMention } from '../server/shiritori.js';
 
 /**
  * discord.js retries a send that times out (15s default), and Discord may have
@@ -1587,7 +1587,7 @@ async function createLobbyRoom(guild, member, lobbyChannelId) {
 	return response.json();
 }
 
-async function liftTimeboxOnJoin(guildId, userId) {
+async function liftTimeboxOnJoin(guildId, userId, channelId, joined = true) {
 	try {
 		await fetch(`${API_BASE}/api/timebox/${guildId}/voice-join`, {
 			method: 'POST',
@@ -1595,7 +1595,7 @@ async function liftTimeboxOnJoin(guildId, userId) {
 				'Content-Type': 'application/json',
 				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
 			},
-			body: JSON.stringify({ user_id: userId }),
+			body: JSON.stringify({ user_id: userId, channel_id: channelId, joined }),
 		});
 	} catch (error) {
 		log.warn(`[Timebox] Could not lift a held mute on join: ${error.message}`);
@@ -1944,17 +1944,17 @@ function isShiritoriCard(message, botUserId: string) {
  */
 const shiritoriQueues = new Map<string, Promise<void>>();
 
-function forwardShiritoriMessage(message) {
+function forwardShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	const channelId = message.channelId;
 	const previous = shiritoriQueues.get(channelId) ?? Promise.resolve();
-	const next = previous.then(() => postShiritoriMessage(message));
+	const next = previous.then(() => postShiritoriMessage(message, text));
 	shiritoriQueues.set(channelId, next);
 	void next.then(() => {
 		if (shiritoriQueues.get(channelId) === next) shiritoriQueues.delete(channelId);
 	});
 }
 
-async function postShiritoriMessage(message) {
+async function postShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	try {
 		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
 			method: 'POST',
@@ -1965,13 +1965,41 @@ async function postShiritoriMessage(message) {
 				messageId: message.id,
 				userId: message.author.id,
 				userName: message.member?.displayName || message.author.username,
-				content: message.content,
+				content: text.content,
+				addressed: text.addressed,
 				sentAt: message.createdAt.toISOString(),
 			}),
 		});
 		if (!res.ok) log.error(`[Shiritori] Message API returned ${res.status}`);
 	} catch (error) {
 		log.error('[Shiritori] Could not forward a message:', error.message);
+	}
+}
+
+async function postShiritoriReaction(message, userId: string, botId?: string) {
+	try {
+		// The reaction may be on a message that was not in cache: fetch it for its text and author.
+		const full = message.partial ? await message.fetch().catch(() => null) : message;
+		if (!full || !full.guildId || full.author?.bot) return;
+		const text = stripBotMention(full.content ?? '', botId, [
+			full.guild?.members?.me?.roles?.botRole?.id,
+		]);
+		const res = await fetch(`${API_BASE}/api/shiritori/${full.guildId}/reaction`, {
+			method: 'POST',
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+			body: JSON.stringify({
+				channelId: full.channelId,
+				messageId: full.id,
+				userId,
+				authorId: full.author?.id,
+				content: text.content,
+				addressed: text.addressed,
+			}),
+		});
+		if (!res.ok) log.error(`[Shiritori] Reaction API returned ${res.status}`);
+	} catch (error) {
+		log.error('[Shiritori] Could not forward a reaction:', error.message);
 	}
 }
 
@@ -3345,12 +3373,15 @@ function setupEventHandlers(client, logFn) {
 		}
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
+		const shiritoriText = stripBotMention(message.content, client.user?.id, [
+			message.guild.members?.me?.roles?.botRole?.id,
+		]);
 		if (
 			!message.author?.bot &&
 			shiritoriChannels.has(message.channelId) &&
-			couldBeAMove(message.content)
+			couldBeAMove(shiritoriText.content)
 		) {
-			forwardShiritoriMessage(message);
+			forwardShiritoriMessage(message, shiritoriText);
 		} else if (isShiritoriCard(message, client.user?.id)) {
 			wakeShiritoriPolling();
 		}
@@ -3723,7 +3754,8 @@ function setupEventHandlers(client, logFn) {
 			scheduleLiveVoiceSync();
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
 			// A timebox mute/deafen that outlived its session comes off now they are back.
-			if (actorId && !actorIsBot) void liftTimeboxOnJoin(guildId, actorId);
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id);
 			// A join-to-create lobby turns this join into a new room.
 			if (member) {
 				void handleLobbyJoin(guild, member, newState.channel.id);
@@ -3843,6 +3875,9 @@ function setupEventHandlers(client, logFn) {
 			});
 			await emitVoiceOccupancy(guild, oldState.channel, -1, actorIsBot);
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
+			// Moving out of a place the server holds, or between channels, settles a pending lift.
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id, false);
 		}
 
 		// ===== VOICE STATE CHANGES (while in a channel) =====
@@ -4245,6 +4280,13 @@ function setupEventHandlers(client, logFn) {
 	client.on(Events.MessageReactionAdd, async (reaction, user) => {
 		if (!reaction.message.guild) return;
 		if (user.bot) return;
+
+		// Shiritori: a ❓ on a word that was part of the game asks for its definition. Every ❓
+		// is sent on (they are rare); the site decides whether the message was a game word, which
+		// is how a word from a round that has ended still works.
+		if (isDefineReaction(reaction.emoji.name)) {
+			void postShiritoriReaction(reaction.message, user.id, client.user?.id);
+		}
 
 		const userInfo = getUserLogInfo(user);
 		await logFn({
