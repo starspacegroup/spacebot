@@ -12,6 +12,7 @@ const STATIC_PATHS = [
 	'/docs',
 	'/docs/dev',
 	'/support',
+	'/status',
 	'/privacy',
 	'/terms',
 ];

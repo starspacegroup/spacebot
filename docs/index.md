@@ -22,9 +22,16 @@ database — see the architecture overview below.
 
 ## Features & subsystems
 
+- [Word commands](word-commands.md) — `/define` and `/synonym`, off until a server turns them on
+- [Idea box](ideas.md) — `/ideas` and `/idea`: anyone signed in sends an idea; the superadmin reads them ranked by merit and effort
+- [Web performance and security headers](web-performance.md) — Lighthouse and Observatory findings, what was changed, how to re-measure
+- [Share cards](share-cards.md) — what a shared link looks like: the route table, the prebuilt card images, how to add a page
+- [Status page](status.md) — `/status` and `/api/status`: what is measured, how incidents open and close, what it cannot see
+- [Announcement channel](announcements.md) — where SpaceBot posts global changes and important alerts
 - [AI Autopilot](ai-autopilot.md) — DM autopilot via Cloudflare Queues + the orchestrator worker
 - [Local Runner v2](local-runner-v2.md) — typed jobs, VS Code bridge, artifacts
 - [Superadmin Workflows](superadmin-workflows.md) — scheduled workflow engine + cron dispatch
+- [Superadmin logs and relations](superadmin-logs.md) — which servers a person is in, who is in a server, and the audit, activity and error logs
 - [Scale Architecture](scale-architecture.md) — the D1 size plan: retention, DO rate limiter, DLQ, later phases
 - [Server Browser](server-browser.md) — the opt-in public directory at `/servers`
 - [Game](game.md) — the hidden-agent round for a voice channel, played in the Activity
@@ -43,6 +50,8 @@ database — see the architecture overview below.
 - [Automation time windows](automation-time-windows.md) — fire an automation only inside (or outside) hours and weekdays
 - [Voice channel threshold trigger](automation-voice-threshold.md) — fire an automation once when a voice channel reaches N people
 - [Oldest](oldest.md) — `/oldest`: who has been on Discord, or in the server, the longest
+- [Topic](topic.md) — `/topic`: random conversation starters; optionally sets the voice channel status
+- [Personality tests](personality.md) — `/personality`: links to free online personality tests, with the ones a server picks
 - [Member content](member-content.md) — `/about`: a role-gated piece of content each member sets and clears, read by the bot and `GET /api/v1/member-content`
 
 - [Observances](observances.md) — a historical day posted as it happened, on its anniversary
