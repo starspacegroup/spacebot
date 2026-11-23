@@ -1,11 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
-import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { verifyGuildAdmin } from '$lib/discord/guilds.js';
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import {
 	clearServerCommands,
 	MIN_WAIT_SECONDS,
 	deleteServerData,
+	isServerOwner,
 	issueConfirmation,
 	namesMatch,
 	redeemConfirmation,
@@ -63,7 +64,8 @@ export async function load({ cookies, platform, parent, params }: any) {
 	return {
 		serverId: params.serverId,
 		confirmName: await confirmationName(db, params.serverId, guild?.name),
-		mayDelete: isSuperAdmin || hasFullAdminPermission(guild),
+		// Only the owner. Superadmins and Administrators can look at this page, not use it.
+		mayDelete: guild?.owner === true,
 		hasSubscription: await activeSubscription(db, params.serverId),
 		waitSeconds: MIN_WAIT_SECONDS,
 	};
@@ -76,23 +78,22 @@ async function gate({ cookies, platform, params }: any) {
 	if (!userId || !/^\d{17,20}$/.test(serverId))
 		return { error: fail(401, { message: 'Not signed in.' }) };
 
-	// Same bar as Settings: the owner or a full Administrator, or a SpaceBot superadmin.
-	let discordName: string | undefined;
-	if (!checkIsSuperAdmin(userId, platform)) {
-		const check = await verifyGuildAdmin(
+	// Only the server's owner. Not an Administrator, and not a SpaceBot superadmin.
+	const check = await verifyGuildAdmin(serverId, cookies.get('discord_access_token'), cookies);
+	const owner =
+		check?.authorized &&
+		(await isServerOwner(
+			env(platform, 'DISCORD_BOT_TOKEN'),
 			serverId,
-			cookies.get('discord_access_token'),
-			cookies
-		);
-		if (!check?.authorized || !hasFullAdminPermission(check.guild)) {
-			return {
-				error: fail(403, {
-					message: 'Only the server owner or an Administrator can delete a server.',
-				}),
-			};
-		}
-		discordName = (check.guild as { name?: string } | undefined)?.name;
+			userId,
+			(check.guild as { owner?: unknown } | undefined)?.owner
+		));
+	if (!owner) {
+		return {
+			error: fail(403, { message: 'Only the owner of the Discord server can delete it.' }),
+		};
 	}
+	const discordName = (check.guild as { name?: string } | undefined)?.name;
 	const db = platform?.env?.DB;
 	if (!db) return { error: fail(500, { message: 'The database is not available right now.' }) };
 	if (await activeSubscription(db, serverId)) {

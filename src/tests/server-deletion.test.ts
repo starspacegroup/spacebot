@@ -8,6 +8,7 @@ import {
 	MIN_WAIT_SECONDS,
 	SLICE,
 	deleteServerData,
+	isServerOwner,
 	issueConfirmation,
 	namesMatch,
 	recordDeletion,
@@ -204,5 +205,51 @@ describe('the two-step confirmation', () => {
 			)
 		);
 		expect(ok).toBeUndefined();
+	});
+});
+
+describe('only the owner may delete', () => {
+	const reply = (body: unknown, ok = true) =>
+		(async () => ({ ok, json: async () => body })) as any;
+	const OWNER = '333333333333333333';
+
+	it('says yes only when the login list and Discord both name this person', async () => {
+		expect(await isServerOwner('t', A, OWNER, true, reply({ owner_id: OWNER }))).toBe(true);
+	});
+
+	it('says no to an Administrator, a different owner, or a list that does not say owner', async () => {
+		expect(
+			await isServerOwner('t', A, OWNER, true, reply({ owner_id: '444444444444444444' }))
+		).toBe(false);
+		expect(await isServerOwner('t', A, OWNER, false, reply({ owner_id: OWNER }))).toBe(false);
+		expect(await isServerOwner('t', A, OWNER, undefined, reply({ owner_id: OWNER }))).toBe(
+			false
+		);
+		expect(await isServerOwner('t', A, OWNER, 'true', reply({ owner_id: OWNER }))).toBe(false);
+	});
+
+	it('fails closed when Discord cannot be asked', async () => {
+		expect(await isServerOwner('t', A, OWNER, true, reply({}, false))).toBe(false);
+		expect(await isServerOwner('t', A, OWNER, true, reply({ owner_id: 5 }))).toBe(false);
+		expect(await isServerOwner(undefined, A, OWNER, true, reply({ owner_id: OWNER }))).toBe(
+			false
+		);
+		expect(await isServerOwner('t', 'bad', OWNER, true, reply({ owner_id: OWNER }))).toBe(
+			false
+		);
+		const boom = (async () => {
+			throw new Error('network');
+		}) as any;
+		expect(await isServerOwner('t', A, OWNER, true, boom)).toBe(false);
+	});
+
+	it('never says yes unless the ids are equal (property)', async () => {
+		const ids = fc.stringMatching(/^\d{1,25}$/);
+		await fc.assert(
+			fc.asyncProperty(ids, ids, async (user, owner) => {
+				const got = await isServerOwner('t', A, user, true, reply({ owner_id: owner }));
+				return got === (user === owner);
+			})
+		);
 	});
 });

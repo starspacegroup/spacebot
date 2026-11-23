@@ -53,7 +53,10 @@
 	</section>
 
 	{#if !data.mayDelete}
-		<p class="notice">Only the server owner or an Administrator can delete a server.</p>
+		<p class="notice">
+			Only the owner of the Discord server can delete it. Administrators and SpaceBot staff
+			cannot.
+		</p>
 	{:else if data.hasSubscription}
 		<p class="notice">
 			This server has a paid plan, or its plan could not be checked.

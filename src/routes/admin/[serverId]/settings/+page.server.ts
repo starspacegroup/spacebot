@@ -169,6 +169,7 @@ export async function load({ cookies, platform, parent, params }) {
 		permissionSettings,
 		discordPermissions,
 		hasFullAdminAccess,
+		isServerOwner: guild?.owner === true,
 		webhooks,
 		httpMethods,
 		branding,

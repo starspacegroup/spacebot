@@ -311,3 +311,33 @@ export async function redeemConfirmation(
 	await db.prepare(`DELETE FROM server_deletion_requests WHERE token = ?`).bind(token).run();
 	return age > MAX_WAIT_SECONDS ? 'expired' : 'ok';
 }
+
+// ---- Only the owner ---------------------------------------------------------------------------
+
+/**
+ * True only when Discord says this person owns the server, twice over: the guild list for their
+ * own login marks them owner, and the server's record (read with the bot token) names them.
+ * Administrators, Manage Server, and SpaceBot superadmins do not count. Any failed lookup is no.
+ */
+export async function isServerOwner(
+	botToken: string | undefined,
+	guildId: string,
+	userId: string,
+	listedAsOwner: unknown,
+	f: typeof fetch = fetch
+): Promise<boolean> {
+	if (listedAsOwner !== true || !botToken || !ID.test(guildId) || !/^\d{1,25}$/.test(userId)) {
+		return false;
+	}
+	try {
+		const res = await f(`https://discord.com/api/v10/guilds/${guildId}`, {
+			headers: { Authorization: `Bot ${botToken}` },
+			signal: AbortSignal.timeout(5000),
+		});
+		if (!res.ok) return false;
+		const body = (await res.json()) as { owner_id?: unknown };
+		return typeof body?.owner_id === 'string' && body.owner_id === userId;
+	} catch {
+		return false;
+	}
+}

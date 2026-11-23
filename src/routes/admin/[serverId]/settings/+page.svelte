@@ -697,7 +697,7 @@
 		</section>
 
 		<!-- Danger zone: delete the server and its data, on its own page -->
-		{#if data.hasFullAdminAccess}
+		{#if data.isServerOwner}
 			<section class="settings-section" id="delete-server">
 				<h2>
 					<span class="section-icon">⚠️</span>

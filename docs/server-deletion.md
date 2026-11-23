@@ -5,7 +5,7 @@ layout: default
 
 # Delete a server and its data
 
-Settings → **Delete this server** opens `/admin/<server>/delete`. The owner, a full Administrator, or a SpaceBot superadmin can use it. Manage Server alone is not enough.
+Settings → **Delete this server** opens `/admin/<server>/delete`. **Only the owner of the Discord server can use it.** Administrators, Manage Server, and SpaceBot superadmins can not. Ownership is checked twice, in both steps: the person's own Discord guild list must mark them owner, and the server's record (read with the bot token) must name them. If either lookup fails, the answer is no.
 
 ## What the person sees
 
@@ -14,7 +14,7 @@ It takes two steps, so it cannot happen by accident.
 1. They read the list, can follow a link to download a backup first, type the server's name exactly, and tick "I understand this cannot be undone". Nothing is deleted yet.
 2. A "Last step" screen has a button that stays off for 10 seconds. The server checks the wait too: step one gives a one-use token tied to that person and that server, and the delete runs only if the token is 10 seconds to 10 minutes old. A new request replaces the old token. Cancel goes back to step one.
 
-Guards: only the owner, a full Administrator or a superadmin; a running paid plan blocks it, and so does a plan that cannot be read (fail closed); the check is repeated in both steps. Tokens live in `server_deletion_requests` (migration 0106).
+Guards: only the owner; a running paid plan blocks it, and so does a plan that cannot be read (fail closed); the check is repeated in both steps. Tokens live in `server_deletion_requests` (migration 0106).
 
 ## What happens
 
