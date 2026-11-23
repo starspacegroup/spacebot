@@ -9,7 +9,12 @@ Settings → **Delete this server** opens `/admin/<server>/delete`. The owner, a
 
 ## What the person sees
 
-The page lists what goes, asks them to type the server's name, and only then enables the button. A server with a running paid plan is blocked until the plan is cancelled on Billing.
+It takes two steps, so it cannot happen by accident.
+
+1. They read the list, can follow a link to download a backup first, type the server's name exactly, and tick "I understand this cannot be undone". Nothing is deleted yet.
+2. A "Last step" screen has a button that stays off for 10 seconds. The server checks the wait too: step one gives a one-use token tied to that person and that server, and the delete runs only if the token is 10 seconds to 10 minutes old. A new request replaces the old token. Cancel goes back to step one.
+
+Guards: only the owner, a full Administrator or a superadmin; a running paid plan blocks it, and so does a plan that cannot be read (fail closed); the check is repeated in both steps. Tokens live in `server_deletion_requests` (migration 0106).
 
 ## What happens
 

@@ -2,8 +2,22 @@
 	import { enhance } from '$app/forms';
 	const { data, form } = $props();
 	let typed = $state('');
+	let understood = $state(false);
 	let busy = $state(false);
-	const matches = $derived(typed.trim() === data.confirmName);
+	let left = $state(0);
+	const matches = $derived(typed.trim().normalize('NFC') === data.confirmName.normalize('NFC'));
+	const confirming = $derived(form?.step === 'confirm' && Boolean(form?.token));
+
+	// The final button stays off until the wait is over. The server checks the wait as well.
+	$effect(() => {
+		if (!confirming) return;
+		left = form?.waitSeconds ?? data.waitSeconds;
+		const timer = setInterval(() => {
+			left = Math.max(0, left - 1);
+			if (left === 0) clearInterval(timer);
+		}, 1000);
+		return () => clearInterval(timer);
+	});
 </script>
 
 <svelte:head><title>Delete this server · SpaceBot</title></svelte:head>
@@ -42,13 +56,48 @@
 		<p class="notice">Only the server owner or an Administrator can delete a server.</p>
 	{:else if data.hasSubscription}
 		<p class="notice">
-			This server has a paid plan. <a href="/admin/{data.serverId}/billing"
-				>Cancel it on Billing</a
-			> first.
+			This server has a paid plan, or its plan could not be checked.
+			<a href="/admin/{data.serverId}/billing">Check Billing</a> first.
 		</p>
-	{:else}
+	{:else if confirming}
 		<form
 			method="POST"
+			action="?/confirm"
+			class="card danger"
+			use:enhance={() => {
+				busy = true;
+				return async ({ update }) => {
+					await update({ reset: false });
+					busy = false;
+				};
+			}}
+		>
+			<h2>Last step</h2>
+			<p>
+				Everything about <strong>{data.confirmName}</strong> will be deleted now, and SpaceBot
+				will leave. There is no undo.
+			</p>
+			<input type="hidden" name="token" value={form?.token} />
+			{#if form?.message}<p class="notice" role="alert">{form.message}</p>{/if}
+			<button type="submit" disabled={left > 0 || busy}>
+				{#if busy}Deleting…{:else if left > 0}Wait {left}s…{:else}Yes, delete everything{/if}
+			</button>
+			<a class="cancel" href="/admin/{data.serverId}/delete" data-sveltekit-reload
+				>Cancel, keep my server</a
+			>
+		</form>
+	{:else}
+		<section class="card">
+			<h2>Before you go</h2>
+			<p>
+				This cannot be undone. If you might want your data, <a
+					href="/admin/{data.serverId}/import-export">download a backup</a
+				> first.
+			</p>
+		</section>
+		<form
+			method="POST"
+			action="?/prepare"
 			class="card danger"
 			use:enhance={() => {
 				busy = true;
@@ -68,10 +117,12 @@
 				autocomplete="off"
 				spellcheck="false"
 			/>
+			<label class="tick">
+				<input type="checkbox" name="understand" bind:checked={understood} />
+				I understand this deletes everything and cannot be undone.
+			</label>
 			{#if form?.message}<p class="notice" role="alert">{form.message}</p>{/if}
-			<button type="submit" disabled={!matches || busy}>
-				{busy ? 'Deleting…' : 'Delete this server and all its data'}
-			</button>
+			<button type="submit" disabled={!matches || !understood || busy}>Continue</button>
 		</form>
 	{/if}
 
@@ -126,6 +177,18 @@
 		color: var(--color-text);
 		font-weight: 700;
 		cursor: pointer;
+	}
+	.tick {
+		display: flex;
+		gap: 0.5rem;
+		align-items: flex-start;
+	}
+	.tick input {
+		width: auto;
+		margin-top: 0.2rem;
+	}
+	.cancel {
+		text-align: center;
 	}
 	button:disabled {
 		opacity: 0.45;

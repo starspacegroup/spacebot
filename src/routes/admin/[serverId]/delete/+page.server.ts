@@ -4,7 +4,11 @@ import { hasFullAdminPermission, verifyGuildAdmin } from '$lib/discord/guilds.js
 import { checkIsSuperAdmin } from '$lib/server/superadmin-guard.js';
 import {
 	clearServerCommands,
+	MIN_WAIT_SECONDS,
 	deleteServerData,
+	issueConfirmation,
+	namesMatch,
+	redeemConfirmation,
 	recordDeletion,
 	removeBotFromServer,
 } from '$lib/server/server-deletion.js';
@@ -40,7 +44,8 @@ async function activeSubscription(db: any, serverId: string) {
 			Boolean(row?.id) && ['active', 'trialing', 'past_due', 'unpaid'].includes(row?.status)
 		);
 	} catch {
-		return false;
+		// If the plan cannot be read, do not risk deleting a paid server.
+		return true;
 	}
 }
 
@@ -60,69 +65,111 @@ export async function load({ cookies, platform, parent, params }: any) {
 		confirmName: await confirmationName(db, params.serverId, guild?.name),
 		mayDelete: isSuperAdmin || hasFullAdminPermission(guild),
 		hasSubscription: await activeSubscription(db, params.serverId),
+		waitSeconds: MIN_WAIT_SECONDS,
 	};
 }
 
-export const actions = {
-	default: async ({ request, cookies, platform, params }: any) => {
-		const serverId = params.serverId;
-		const userId = cookies.get('discord_user_id');
-		if (!userId || !/^\d{17,20}$/.test(serverId))
-			return fail(401, { message: 'Not signed in.' });
+/** Who may delete, and the name they must type. Shared by both steps. */
+async function gate({ cookies, platform, params }: any) {
+	const serverId = params.serverId;
+	const userId = cookies.get('discord_user_id');
+	if (!userId || !/^\d{17,20}$/.test(serverId))
+		return { error: fail(401, { message: 'Not signed in.' }) };
 
-		// Same bar as Settings: the owner or a full Administrator, or a SpaceBot superadmin.
-		let discordName: string | undefined;
-		if (!checkIsSuperAdmin(userId, platform)) {
-			const check = await verifyGuildAdmin(
-				serverId,
-				cookies.get('discord_access_token'),
-				cookies
-			);
-			if (!check?.authorized || !hasFullAdminPermission(check.guild)) {
-				return fail(403, {
+	// Same bar as Settings: the owner or a full Administrator, or a SpaceBot superadmin.
+	let discordName: string | undefined;
+	if (!checkIsSuperAdmin(userId, platform)) {
+		const check = await verifyGuildAdmin(
+			serverId,
+			cookies.get('discord_access_token'),
+			cookies
+		);
+		if (!check?.authorized || !hasFullAdminPermission(check.guild)) {
+			return {
+				error: fail(403, {
 					message: 'Only the server owner or an Administrator can delete a server.',
-				});
-			}
-			discordName = (check.guild as { name?: string } | undefined)?.name;
+				}),
+			};
 		}
-
-		const db = platform?.env?.DB;
-		if (!db) return fail(500, { message: 'The database is not available right now.' });
-
-		const form = await request.formData();
-		const typed = String(form.get('confirm') ?? '').trim();
-		const expected = await confirmationName(db, serverId, discordName);
-		if (typed !== expected) {
-			return fail(400, { message: `Type ${expected} exactly to confirm.` });
-		}
-		if (await activeSubscription(db, serverId)) {
-			return fail(400, {
+		discordName = (check.guild as { name?: string } | undefined)?.name;
+	}
+	const db = platform?.env?.DB;
+	if (!db) return { error: fail(500, { message: 'The database is not available right now.' }) };
+	if (await activeSubscription(db, serverId)) {
+		return {
+			error: fail(400, {
 				message: 'This server has a paid plan. Cancel it on the Billing page first.',
+			}),
+		};
+	}
+	return { serverId, userId, db, expected: await confirmationName(db, serverId, discordName) };
+}
+
+export const actions = {
+	/** Step one: the name and the tick box. Hands back a token; deletes nothing. */
+	prepare: async (event: any) => {
+		const g = await gate(event);
+		if (g.error) return g.error;
+		const form = await event.request.formData();
+		if (!namesMatch(form.get('confirm'), g.expected!)) {
+			return fail(400, { message: `Type ${g.expected} exactly to continue.` });
+		}
+		if (form.get('understand') !== 'on') {
+			return fail(400, {
+				message: 'Tick the box to say you understand this cannot be undone.',
+			});
+		}
+		const token = await issueConfirmation(g.db, g.serverId!, g.userId!);
+		return { step: 'confirm', token, waitSeconds: MIN_WAIT_SECONDS };
+	},
+
+	/** Step two: the token, no sooner than the wait. This is the only thing that deletes. */
+	confirm: async (event: any) => {
+		const g = await gate(event);
+		if (g.error) return g.error;
+		const form = await event.request.formData();
+		const token = String(form.get('token') ?? '');
+		const verdict = await redeemConfirmation(g.db, g.serverId!, g.userId!, token);
+		if (verdict === 'too-soon') {
+			return fail(400, {
+				step: 'confirm',
+				token,
+				message: 'Wait for the timer, then press the button.',
+			});
+		}
+		if (verdict !== 'ok') {
+			return fail(400, {
+				message: 'That confirmation has expired. Start again and type the name.',
 			});
 		}
 
-		const botToken = env(platform, 'DISCORD_BOT_TOKEN');
-		await clearServerCommands(botToken, env(platform, 'DISCORD_CLIENT_ID'), serverId);
+		const botToken = env(event.platform, 'DISCORD_BOT_TOKEN');
+		await clearServerCommands(botToken, env(event.platform, 'DISCORD_CLIENT_ID'), g.serverId!);
 
 		let result;
 		try {
-			result = await deleteServerData(db, serverId);
+			result = await deleteServerData(g.db, g.serverId!);
 		} catch (error) {
 			log.error('[DeleteServer] failed:', error);
 			return fail(500, {
-				message: 'The delete stopped part way. Press the button again to finish it.',
+				message: 'The delete stopped part way. Start again to finish it.',
 			});
 		}
 		if (!result.done) {
-			return fail(202, {
+			// Not finished: hand back a fresh token so the next press carries on without retyping.
+			const next = await issueConfirmation(g.db, g.serverId!, g.userId!);
+			return {
+				step: 'confirm',
+				token: next,
+				waitSeconds: MIN_WAIT_SECONDS,
 				message: `Still deleting (${result.removed.toLocaleString()} rows so far). Press the button again to finish.`,
-			});
+			};
 		}
 
-		await recordDeletion(db, serverId, userId, result.removed, true).catch(() => {});
+		await recordDeletion(g.db, g.serverId!, g.userId!, result.removed, true).catch(() => {});
 		// The bot leaves last, so a delete that stopped early can still be finished from the dashboard.
-		await removeBotFromServer(botToken, serverId);
-		log.info(`[DeleteServer] ${serverId} deleted by ${userId}: ${result.removed} rows`);
+		await removeBotFromServer(botToken, g.serverId!);
+		log.info(`[DeleteServer] ${g.serverId} deleted by ${g.userId}: ${result.removed} rows`);
 		throw redirect(303, '/admin?deleted=1');
 	},
 };

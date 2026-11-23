@@ -254,3 +254,60 @@ export async function clearServerCommands(
 		return false;
 	}
 }
+
+// ---- Two steps, so it is never done by accident ------------------------------------------------
+
+/** The confirm button works no sooner than this after the name was typed… */
+export const MIN_WAIT_SECONDS = 10;
+/** …and no later than this. */
+export const MAX_WAIT_SECONDS = 600;
+
+/** Typed name against the real one: exact, but not fooled by how a character was composed. */
+export function namesMatch(typed: unknown, expected: string): boolean {
+	return typeof typed === 'string' && typed.trim().normalize('NFC') === expected.normalize('NFC');
+}
+
+/** Step one is done. Hand back a token that step two must present. */
+export async function issueConfirmation(db: Db, guildId: string, userId: string): Promise<string> {
+	const token = crypto.randomUUID();
+	// Old requests for this person and server, and anything stale, go first.
+	await db
+		.prepare(
+			`DELETE FROM server_deletion_requests
+			 WHERE (guild_id = ? AND user_id = ?) OR created_at < datetime('now', '-1 day')`
+		)
+		.bind(guildId, userId)
+		.run();
+	await db
+		.prepare(`INSERT INTO server_deletion_requests (token, guild_id, user_id) VALUES (?, ?, ?)`)
+		.bind(token, guildId, userId)
+		.run();
+	return token;
+}
+
+export type Redeem = 'ok' | 'missing' | 'too-soon' | 'expired';
+
+/**
+ * Step two. The token must be this person's, for this server, between MIN and MAX seconds old.
+ * Too soon keeps the token, so waiting and pressing again works. Everything else uses it up.
+ */
+export async function redeemConfirmation(
+	db: Db,
+	guildId: string,
+	userId: string,
+	token: unknown
+): Promise<Redeem> {
+	if (typeof token !== 'string' || !/^[0-9a-f-]{36}$/.test(token)) return 'missing';
+	const row: any = await db
+		.prepare(
+			`SELECT CAST((julianday('now') - julianday(created_at)) * 86400 AS INTEGER) AS age
+			 FROM server_deletion_requests WHERE token = ? AND guild_id = ? AND user_id = ?`
+		)
+		.bind(token, guildId, userId)
+		.first();
+	if (!row) return 'missing';
+	const age = Number(row.age);
+	if (age < MIN_WAIT_SECONDS) return 'too-soon';
+	await db.prepare(`DELETE FROM server_deletion_requests WHERE token = ?`).bind(token).run();
+	return age > MAX_WAIT_SECONDS ? 'expired' : 'ok';
+}

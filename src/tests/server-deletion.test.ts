@@ -4,9 +4,14 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createSqliteD1 } from './helpers/sqlite-d1';
 import {
 	SERVER_TARGETS,
+	MAX_WAIT_SECONDS,
+	MIN_WAIT_SECONDS,
 	SLICE,
 	deleteServerData,
+	issueConfirmation,
+	namesMatch,
 	recordDeletion,
+	redeemConfirmation,
 	remainingRows,
 } from '../lib/server/server-deletion';
 
@@ -139,5 +144,65 @@ describe('deleteServerData', () => {
 		const row: any = await db.prepare(`SELECT * FROM server_deletions`).first();
 		expect(row).toMatchObject({ guild_id: A, deleted_by: '9', rows_removed: 42, complete: 1 });
 		expect(row.finished_at).toBeTruthy();
+	});
+});
+
+describe('the two-step confirmation', () => {
+	const U = '9';
+	const age = (db: any, token: string, seconds: number) =>
+		db.exec(
+			`UPDATE server_deletion_requests SET created_at = datetime('now', '-${seconds} seconds') WHERE token = '${token}'`
+		);
+
+	it('refuses at once, accepts after the wait, and works only once', async () => {
+		const db: any = realDb();
+		const token = await issueConfirmation(db, A, U);
+		expect(await redeemConfirmation(db, A, U, token)).toBe('too-soon');
+		age(db, token, MIN_WAIT_SECONDS + 1);
+		expect(await redeemConfirmation(db, A, U, token)).toBe('ok');
+		expect(await redeemConfirmation(db, A, U, token)).toBe('missing');
+	});
+
+	it('expires, and is tied to one person and one server', async () => {
+		const db: any = realDb();
+		const t1 = await issueConfirmation(db, A, U);
+		age(db, t1, MAX_WAIT_SECONDS + 5);
+		expect(await redeemConfirmation(db, A, U, t1)).toBe('expired');
+		const t2 = await issueConfirmation(db, A, U);
+		age(db, t2, MIN_WAIT_SECONDS + 1);
+		expect(await redeemConfirmation(db, B, U, t2)).toBe('missing');
+		expect(await redeemConfirmation(db, A, '10', t2)).toBe('missing');
+		expect(await redeemConfirmation(db, A, U, t2)).toBe('ok');
+	});
+
+	it('a new request replaces the old one, and junk tokens never pass', async () => {
+		const db: any = realDb();
+		const old = await issueConfirmation(db, A, U);
+		const fresh = await issueConfirmation(db, A, U);
+		age(db, fresh, MIN_WAIT_SECONDS + 1);
+		expect(await redeemConfirmation(db, A, U, old)).toBe('missing');
+		for (const junk of [undefined, null, '', "' OR 1=1 --", 5, {}]) {
+			expect(await redeemConfirmation(db, A, U, junk)).toBe('missing');
+		}
+	});
+
+	it('matches the typed name exactly, not loosely', () => {
+		expect(namesMatch('My Server', 'My Server')).toBe(true);
+		expect(namesMatch('  My Server ', 'My Server')).toBe(true);
+		expect(namesMatch('my server', 'My Server')).toBe(false);
+		expect(namesMatch('My', 'My Server')).toBe(false);
+		expect(namesMatch('', 'x')).toBe(false);
+		expect(namesMatch(undefined, 'x')).toBe(false);
+		expect(namesMatch('é', 'é')).toBe(true);
+		const ok = fc.assert(
+			fc.property(
+				fc.string({ minLength: 1 }),
+				fc.string({ minLength: 1 }),
+				(typed, name) =>
+					namesMatch(typed, name) ===
+					(typed.trim().normalize('NFC') === name.normalize('NFC'))
+			)
+		);
+		expect(ok).toBeUndefined();
 	});
 });
