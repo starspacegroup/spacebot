@@ -50,7 +50,10 @@ export async function PATCH({ cookies, platform, params, request }) {
 	const db = (platform as any)?.env?.DB;
 	if (!db) return json({ error: 'Database unavailable' }, { status: 503 });
 
-	const body = await request.json();
+	const body = await request.json().catch(() => null);
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 
 	// Get the current plan before the change for audit trail
 	const planBefore = await getServerPlan(db, params.guildId);

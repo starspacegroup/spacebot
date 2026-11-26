@@ -156,7 +156,17 @@ export async function POST({ request, cookies, platform }) {
 		return json({ error: 'AI features are not enabled' }, { status: 503 });
 	}
 
-	const body = await request.json();
+	// A missing, malformed or non-object body is the caller's mistake: 400, not 500.
+	let body: Record<string, any> | null = null;
+	try {
+		const parsed = await request.json();
+		body = parsed && typeof parsed === 'object' ? parsed : null;
+	} catch {
+		body = null;
+	}
+	if (!body) {
+		return json({ error: 'A JSON object body is required' }, { status: 400 });
+	}
 	const { message, history, selectedGuildId, maxToolIterations } = body;
 
 	if (!message || typeof message !== 'string' || !message.trim()) {

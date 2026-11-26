@@ -169,7 +169,10 @@ export async function POST({ params, request, platform }) {
 		const contentType = request.headers.get('content-type');
 
 		if (contentType?.includes('application/json')) {
-			const body = await request.json();
+			const body = await request.json().catch(() => null);
+			if (!body || typeof body !== 'object' || Array.isArray(body)) {
+				return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+			}
 			if (body.member_count !== undefined) {
 				stats = body;
 			}
