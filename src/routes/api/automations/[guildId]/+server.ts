@@ -79,7 +79,11 @@ export async function POST({ params, request, cookies, platform }) {
 	}
 
 	try {
-		const body = await request.json();
+		const parsed = await request.json().catch(() => null);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+		}
+		const body = parsed;
 
 		// Support both trigger_event (single) and trigger_events (array)
 		const allTriggers = body.trigger_events || (body.trigger_event ? [body.trigger_event] : []);
