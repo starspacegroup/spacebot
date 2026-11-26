@@ -3207,6 +3207,16 @@ function setupEventHandlers(client, logFn) {
 			// working untouched; `via` records which one actually opened.
 			changes.rules_accepted = true;
 			changes.rules_accepted_via = screeningPassed ? 'membership_screening' : 'onboarding';
+			// What we saw when we decided, so a repeat welcome can be explained from the log.
+			changes.rules_accepted_seen = {
+				old_partial: oldMember.partial === true,
+				old_flags: oldMember.flags?.bitfield ?? null,
+				new_flags: newMember.flags?.bitfield ?? null,
+				old_pending: oldMember.pending ?? null,
+				new_pending: newMember.pending ?? null,
+				was_awaiting: wasAwaiting,
+				was_pending: wasPending,
+			};
 
 			// Either signal can arrive, then the other — without this the member
 			// gets welcomed twice.

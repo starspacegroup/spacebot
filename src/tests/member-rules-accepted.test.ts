@@ -169,4 +169,18 @@ describe('detecting that a member got through the door', () => {
 		);
 		expect(rulesEvents()).toHaveLength(2);
 	});
+
+	it('records what it saw when it decided, so a repeat can be explained', async () => {
+		await handlers[Events.GuildMemberAdd](member({ onboarded: false, id: 'why1' }));
+		await handlers[Events.GuildMemberUpdate](
+			member({ partial: true, id: 'why1' }),
+			member({ onboarded: true, id: 'why1' })
+		);
+
+		expect(rulesEvents()[0].details.rules_accepted_seen).toMatchObject({
+			old_partial: true,
+			old_flags: null,
+			was_awaiting: true,
+		});
+	});
 });
