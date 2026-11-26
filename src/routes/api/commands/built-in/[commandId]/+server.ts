@@ -29,7 +29,10 @@ export async function PATCH({ params, request, cookies, platform }) {
 			return json({ error: 'Built-in command not found' }, { status: 404 });
 		}
 
-		const body = await request.json();
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body !== 'object' || Array.isArray(body)) {
+			return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+		}
 		const result = await updateCommand(db, commandId, body);
 
 		if (!result.success) {
