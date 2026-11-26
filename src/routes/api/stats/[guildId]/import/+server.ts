@@ -60,7 +60,10 @@ export async function POST({ params, request, cookies, platform }) {
 	}
 
 	try {
-		const body = await request.json();
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body !== 'object' || Array.isArray(body)) {
+			return json({ error: 'Request body must be a JSON object.' }, { status: 400 });
+		}
 
 		// Validate format
 		if (body.format !== 'spacebot-stats') {
