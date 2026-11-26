@@ -242,7 +242,10 @@ export async function POST({ params, cookies, platform, request }) {
 	}
 
 	try {
-		const body = await request.json();
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body !== 'object' || Array.isArray(body)) {
+			return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+		}
 
 		// Build the event payload for Discord API
 		const eventPayload: Record<string, any> = {
@@ -382,7 +385,10 @@ export async function PATCH({ params, cookies, platform, request, url }) {
 			}
 		} else {
 			// Regular update from request body
-			const body = await request.json();
+			const body = await request.json().catch(() => null);
+			if (!body || typeof body !== 'object' || Array.isArray(body)) {
+				return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+			}
 
 			if (body.name !== undefined) updatePayload.name = body.name;
 			if (body.description !== undefined) updatePayload.description = body.description;
