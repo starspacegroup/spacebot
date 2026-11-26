@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Where this sits
+
+This repo is normally checked out at `spacebot/` inside the private umbrella repo
+`starspacegroup/spacebot-umbrella` (planning, brand, design, research). Workspace-only
+planning stays there; never copy it into this repo.
+
 ## What this is
 
 SpaceBot is a self-hosted Discord bot platform: a **SvelteKit 2 / Svelte 5** web dashboard + Discord

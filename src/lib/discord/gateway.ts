@@ -29,7 +29,7 @@ import {
 	PermissionFlagsBits,
 } from 'discord.js';
 import { log } from '../log.js';
-import { couldBeAMove } from '../server/shiritori.js';
+import { couldBeAMove, isDefineReaction, stripBotMention } from '../server/shiritori.js';
 
 /**
  * discord.js retries a send that times out (15s default), and Discord may have
@@ -1587,7 +1587,7 @@ async function createLobbyRoom(guild, member, lobbyChannelId) {
 	return response.json();
 }
 
-async function liftTimeboxOnJoin(guildId, userId) {
+async function liftTimeboxOnJoin(guildId, userId, channelId, joined = true) {
 	try {
 		await fetch(`${API_BASE}/api/timebox/${guildId}/voice-join`, {
 			method: 'POST',
@@ -1595,7 +1595,7 @@ async function liftTimeboxOnJoin(guildId, userId) {
 				'Content-Type': 'application/json',
 				Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
 			},
-			body: JSON.stringify({ user_id: userId }),
+			body: JSON.stringify({ user_id: userId, channel_id: channelId, joined }),
 		});
 	} catch (error) {
 		log.warn(`[Timebox] Could not lift a held mute on join: ${error.message}`);
@@ -1944,17 +1944,17 @@ function isShiritoriCard(message, botUserId: string) {
  */
 const shiritoriQueues = new Map<string, Promise<void>>();
 
-function forwardShiritoriMessage(message) {
+function forwardShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	const channelId = message.channelId;
 	const previous = shiritoriQueues.get(channelId) ?? Promise.resolve();
-	const next = previous.then(() => postShiritoriMessage(message));
+	const next = previous.then(() => postShiritoriMessage(message, text));
 	shiritoriQueues.set(channelId, next);
 	void next.then(() => {
 		if (shiritoriQueues.get(channelId) === next) shiritoriQueues.delete(channelId);
 	});
 }
 
-async function postShiritoriMessage(message) {
+async function postShiritoriMessage(message, text: { content: string; addressed: boolean }) {
 	try {
 		const res = await fetch(`${API_BASE}/api/shiritori/${message.guild.id}/message`, {
 			method: 'POST',
@@ -1965,13 +1965,41 @@ async function postShiritoriMessage(message) {
 				messageId: message.id,
 				userId: message.author.id,
 				userName: message.member?.displayName || message.author.username,
-				content: message.content,
+				content: text.content,
+				addressed: text.addressed,
 				sentAt: message.createdAt.toISOString(),
 			}),
 		});
 		if (!res.ok) log.error(`[Shiritori] Message API returned ${res.status}`);
 	} catch (error) {
 		log.error('[Shiritori] Could not forward a message:', error.message);
+	}
+}
+
+async function postShiritoriReaction(message, userId: string, botId?: string) {
+	try {
+		// The reaction may be on a message that was not in cache: fetch it for its text and author.
+		const full = message.partial ? await message.fetch().catch(() => null) : message;
+		if (!full || !full.guildId || full.author?.bot) return;
+		const text = stripBotMention(full.content ?? '', botId, [
+			full.guild?.members?.me?.roles?.botRole?.id,
+		]);
+		const res = await fetch(`${API_BASE}/api/shiritori/${full.guildId}/reaction`, {
+			method: 'POST',
+			headers: botHeaders(),
+			signal: AbortSignal.timeout(15_000),
+			body: JSON.stringify({
+				channelId: full.channelId,
+				messageId: full.id,
+				userId,
+				authorId: full.author?.id,
+				content: text.content,
+				addressed: text.addressed,
+			}),
+		});
+		if (!res.ok) log.error(`[Shiritori] Reaction API returned ${res.status}`);
+	} catch (error) {
+		log.error('[Shiritori] Could not forward a reaction:', error.message);
 	}
 }
 
@@ -3014,11 +3042,19 @@ function setupEventHandlers(client, logFn) {
 	 */
 	const pendingMembers = new Set<string>();
 	const rulesAccepted = new Set<string>();
+	/**
+	 * Members we have SEEN without Onboarding finished (at join, or in the cache at start-up).
+	 * Only these can be welcomed through the onboarding door when `oldMember` is a partial.
+	 * Without it a partial old member reads as "not onboarded", so any later change to a
+	 * long-standing member (avatar, nickname, timeout) looked like a fresh onboarding and
+	 * sent the welcome again.
+	 */
+	const awaitingOnboarding = new Set<string>();
 	const MAX_TRACKED_MEMBERS = 5000;
 
 	/** Bounded so a long-running gateway cannot grow these without limit. */
 	function pruneMemberTracking() {
-		for (const set of [pendingMembers, rulesAccepted]) {
+		for (const set of [pendingMembers, rulesAccepted, awaitingOnboarding]) {
 			while (set.size > MAX_TRACKED_MEMBERS) {
 				set.delete(set.values().next().value as string);
 			}
@@ -3043,8 +3079,11 @@ function setupEventHandlers(client, logFn) {
 	function trackPendingMember(member: any) {
 		if (member?.pending === true) {
 			pendingMembers.add(`${member.guild.id}:${member.user.id}`);
-			pruneMemberTracking();
 		}
+		if (member?.partial !== true && member?.flags != null && !hasCompletedOnboarding(member)) {
+			awaitingOnboarding.add(`${member.guild.id}:${member.user.id}`);
+		}
+		pruneMemberTracking();
 	}
 
 	/**
@@ -3111,6 +3150,7 @@ function setupEventHandlers(client, logFn) {
 		const key = `${member.guild.id}:${member.user.id}`;
 		pendingMembers.delete(key);
 		rulesAccepted.delete(key);
+		awaitingOnboarding.delete(key);
 
 		const userInfo = getUserLogInfo(member.user);
 		await logFn({
@@ -3153,19 +3193,36 @@ function setupEventHandlers(client, logFn) {
 		const wasPending = oldMember.pending === true || pendingMembers.has(memberKey);
 		const screeningPassed = wasPending && newMember.pending === false;
 
-		const completedOnboardingNow =
-			hasCompletedOnboarding(newMember) && !hasCompletedOnboarding(oldMember);
+		// Only a member we know had NOT finished Onboarding can have just finished it. A partial
+		// old member says nothing (its flags are missing), so there we rely on what we saw
+		// earlier. Guessing "not onboarded" here is what welcomed people again and again.
+		const oldKnown = oldMember.partial !== true && oldMember.flags != null;
+		const wasAwaiting = oldKnown
+			? !hasCompletedOnboarding(oldMember)
+			: awaitingOnboarding.has(memberKey);
+		const completedOnboardingNow = hasCompletedOnboarding(newMember) && wasAwaiting;
 
 		if ((screeningPassed || completedOnboardingNow) && !rulesAccepted.has(memberKey)) {
 			// Both doors report as `rules_accepted` so existing automations keep
 			// working untouched; `via` records which one actually opened.
 			changes.rules_accepted = true;
 			changes.rules_accepted_via = screeningPassed ? 'membership_screening' : 'onboarding';
+			// What we saw when we decided, so a repeat welcome can be explained from the log.
+			changes.rules_accepted_seen = {
+				old_partial: oldMember.partial === true,
+				old_flags: oldMember.flags?.bitfield ?? null,
+				new_flags: newMember.flags?.bitfield ?? null,
+				old_pending: oldMember.pending ?? null,
+				new_pending: newMember.pending ?? null,
+				was_awaiting: wasAwaiting,
+				was_pending: wasPending,
+			};
 
 			// Either signal can arrive, then the other — without this the member
 			// gets welcomed twice.
 			rulesAccepted.add(memberKey);
 			pendingMembers.delete(memberKey);
+			awaitingOnboarding.delete(memberKey);
 			pruneMemberTracking();
 		}
 
@@ -3345,12 +3402,15 @@ function setupEventHandlers(client, logFn) {
 		}
 
 		// Shiritori: a word in the Chain channel, or a turn in a running round.
+		const shiritoriText = stripBotMention(message.content, client.user?.id, [
+			message.guild.members?.me?.roles?.botRole?.id,
+		]);
 		if (
 			!message.author?.bot &&
 			shiritoriChannels.has(message.channelId) &&
-			couldBeAMove(message.content)
+			couldBeAMove(shiritoriText.content)
 		) {
-			forwardShiritoriMessage(message);
+			forwardShiritoriMessage(message, shiritoriText);
 		} else if (isShiritoriCard(message, client.user?.id)) {
 			wakeShiritoriPolling();
 		}
@@ -3723,7 +3783,8 @@ function setupEventHandlers(client, logFn) {
 			scheduleLiveVoiceSync();
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
 			// A timebox mute/deafen that outlived its session comes off now they are back.
-			if (actorId && !actorIsBot) void liftTimeboxOnJoin(guildId, actorId);
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id);
 			// A join-to-create lobby turns this join into a new room.
 			if (member) {
 				void handleLobbyJoin(guild, member, newState.channel.id);
@@ -3843,6 +3904,9 @@ function setupEventHandlers(client, logFn) {
 			});
 			await emitVoiceOccupancy(guild, oldState.channel, -1, actorIsBot);
 			await emitVoiceOccupancy(guild, newState.channel, 1, actorIsBot);
+			// Moving out of a place the server holds, or between channels, settles a pending lift.
+			if (actorId && !actorIsBot)
+				void liftTimeboxOnJoin(guildId, actorId, newState.channel.id, false);
 		}
 
 		// ===== VOICE STATE CHANGES (while in a channel) =====
@@ -4245,6 +4309,13 @@ function setupEventHandlers(client, logFn) {
 	client.on(Events.MessageReactionAdd, async (reaction, user) => {
 		if (!reaction.message.guild) return;
 		if (user.bot) return;
+
+		// Shiritori: a ❓ on a word that was part of the game asks for its definition. Every ❓
+		// is sent on (they are rare); the site decides whether the message was a game word, which
+		// is how a word from a round that has ended still works.
+		if (isDefineReaction(reaction.emoji.name)) {
+			void postShiritoriReaction(reaction.message, user.id, client.user?.id);
+		}
 
 		const userInfo = getUserLogInfo(user);
 		await logFn({
@@ -4791,6 +4862,13 @@ function setupEventHandlers(client, logFn) {
 				if (member.pending === true) {
 					pendingMembers.add(`${guild.id}:${member.user.id}`);
 					seeded++;
+				}
+				if (
+					member.partial !== true &&
+					member.flags != null &&
+					!hasCompletedOnboarding(member)
+				) {
+					awaitingOnboarding.add(`${guild.id}:${member.user.id}`);
 				}
 			}
 		}

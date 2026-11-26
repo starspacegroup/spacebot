@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getTranslator } from '$lib/i18n.js';
 	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
+	import SocialMeta from '$lib/components/SocialMeta.svelte';
 
 	const { data } = $props();
 	const doc = $derived(data.doc);
@@ -10,10 +11,15 @@
 <svelte:head>
 	<title>{doc.title} – SpaceBot Docs</title>
 	<meta name="description" content={doc.description} />
-	<meta property="og:title" content="{doc.title} – SpaceBot Docs" />
-	<meta property="og:description" content={doc.description} />
-	<meta property="og:url" content="https://spacebot.starspace.group/docs/dev/{doc.slug}" />
 </svelte:head>
+
+<SocialMeta
+	title="{doc.title} – SpaceBot Docs"
+	description={doc.description}
+	path="/docs/dev/{doc.slug}"
+	card="devdocs"
+	describe={false}
+/>
 
 <div class="doc-layout">
 	<aside class="doc-nav" aria-label={tr('docs.dev.navAria')}>

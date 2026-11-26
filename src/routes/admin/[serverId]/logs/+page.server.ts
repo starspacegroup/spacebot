@@ -1,3 +1,4 @@
+import { mayUseFeature } from '$lib/server/feature-access.js';
 import { redirect } from '@sveltejs/kit';
 import { log } from '$lib/db/logger.js';
 import { getUserGuilds } from '$lib/discord/guilds.js';
@@ -78,6 +79,11 @@ export async function load({ params, cookies, platform, parent }) {
 			userGuild.owner ||
 			(permissions & BigInt(ADMINISTRATOR)) !== 0n ||
 			(permissions & BigInt(MANAGE_GUILD)) !== 0n;
+	}
+
+	// A role the server saved for View event logs also gets in (see feature-access.ts).
+	if (!hasAccess) {
+		hasAccess = await mayUseFeature({ guildId: serverId, cookies, platform }, 'logs');
 	}
 
 	if (!hasAccess) {
