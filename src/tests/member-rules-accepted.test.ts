@@ -124,4 +124,49 @@ describe('detecting that a member got through the door', () => {
 
 		expect(rulesEvents()).toHaveLength(0);
 	});
+
+	it('does not welcome a long-standing member again when their old record is a partial', async () => {
+		// Kareem, 2026-11-14 and 11-25: a later update arrived after a restart, the old member
+		// was a partial (no flags), and the new one carried the onboarding flag.
+		await handlers[Events.GuildMemberUpdate](
+			member({ partial: true, id: 'old1' }),
+			member({ pending: false, onboarded: true, id: 'old1' })
+		);
+
+		expect(rulesEvents()).toHaveLength(0);
+	});
+
+	it('still welcomes someone seen joining, even when the old record is a partial later', async () => {
+		await handlers[Events.GuildMemberAdd](
+			member({ pending: false, onboarded: false, id: 'new1' })
+		);
+		await handlers[Events.GuildMemberUpdate](
+			member({ partial: true, id: 'new1' }),
+			member({ pending: false, onboarded: true, id: 'new1' })
+		);
+
+		expect(rulesEvents()).toHaveLength(1);
+		expect(rulesEvents()[0].details.rules_accepted_via).toBe('onboarding');
+	});
+
+	it('welcomes a returning member again only after they left and rejoined', async () => {
+		await handlers[Events.GuildMemberAdd](member({ onboarded: false, id: 'back' }));
+		await handlers[Events.GuildMemberUpdate](
+			member({ onboarded: false, id: 'back' }),
+			member({ onboarded: true, id: 'back' })
+		);
+		await handlers[Events.GuildMemberUpdate](
+			member({ partial: true, id: 'back' }),
+			member({ onboarded: true, id: 'back' })
+		);
+		expect(rulesEvents()).toHaveLength(1);
+
+		await handlers[Events.GuildMemberRemove](member({ id: 'back' }));
+		await handlers[Events.GuildMemberAdd](member({ onboarded: false, id: 'back' }));
+		await handlers[Events.GuildMemberUpdate](
+			member({ partial: true, id: 'back' }),
+			member({ onboarded: true, id: 'back' })
+		);
+		expect(rulesEvents()).toHaveLength(2);
+	});
 });

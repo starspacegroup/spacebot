@@ -3042,11 +3042,19 @@ function setupEventHandlers(client, logFn) {
 	 */
 	const pendingMembers = new Set<string>();
 	const rulesAccepted = new Set<string>();
+	/**
+	 * Members we have SEEN without Onboarding finished (at join, or in the cache at start-up).
+	 * Only these can be welcomed through the onboarding door when `oldMember` is a partial.
+	 * Without it a partial old member reads as "not onboarded", so any later change to a
+	 * long-standing member (avatar, nickname, timeout) looked like a fresh onboarding and
+	 * sent the welcome again.
+	 */
+	const awaitingOnboarding = new Set<string>();
 	const MAX_TRACKED_MEMBERS = 5000;
 
 	/** Bounded so a long-running gateway cannot grow these without limit. */
 	function pruneMemberTracking() {
-		for (const set of [pendingMembers, rulesAccepted]) {
+		for (const set of [pendingMembers, rulesAccepted, awaitingOnboarding]) {
 			while (set.size > MAX_TRACKED_MEMBERS) {
 				set.delete(set.values().next().value as string);
 			}
@@ -3071,8 +3079,11 @@ function setupEventHandlers(client, logFn) {
 	function trackPendingMember(member: any) {
 		if (member?.pending === true) {
 			pendingMembers.add(`${member.guild.id}:${member.user.id}`);
-			pruneMemberTracking();
 		}
+		if (member?.partial !== true && member?.flags != null && !hasCompletedOnboarding(member)) {
+			awaitingOnboarding.add(`${member.guild.id}:${member.user.id}`);
+		}
+		pruneMemberTracking();
 	}
 
 	/**
@@ -3139,6 +3150,7 @@ function setupEventHandlers(client, logFn) {
 		const key = `${member.guild.id}:${member.user.id}`;
 		pendingMembers.delete(key);
 		rulesAccepted.delete(key);
+		awaitingOnboarding.delete(key);
 
 		const userInfo = getUserLogInfo(member.user);
 		await logFn({
@@ -3181,8 +3193,14 @@ function setupEventHandlers(client, logFn) {
 		const wasPending = oldMember.pending === true || pendingMembers.has(memberKey);
 		const screeningPassed = wasPending && newMember.pending === false;
 
-		const completedOnboardingNow =
-			hasCompletedOnboarding(newMember) && !hasCompletedOnboarding(oldMember);
+		// Only a member we know had NOT finished Onboarding can have just finished it. A partial
+		// old member says nothing (its flags are missing), so there we rely on what we saw
+		// earlier. Guessing "not onboarded" here is what welcomed people again and again.
+		const oldKnown = oldMember.partial !== true && oldMember.flags != null;
+		const wasAwaiting = oldKnown
+			? !hasCompletedOnboarding(oldMember)
+			: awaitingOnboarding.has(memberKey);
+		const completedOnboardingNow = hasCompletedOnboarding(newMember) && wasAwaiting;
 
 		if ((screeningPassed || completedOnboardingNow) && !rulesAccepted.has(memberKey)) {
 			// Both doors report as `rules_accepted` so existing automations keep
@@ -3194,6 +3212,7 @@ function setupEventHandlers(client, logFn) {
 			// gets welcomed twice.
 			rulesAccepted.add(memberKey);
 			pendingMembers.delete(memberKey);
+			awaitingOnboarding.delete(memberKey);
 			pruneMemberTracking();
 		}
 
@@ -4833,6 +4852,13 @@ function setupEventHandlers(client, logFn) {
 				if (member.pending === true) {
 					pendingMembers.add(`${guild.id}:${member.user.id}`);
 					seeded++;
+				}
+				if (
+					member.partial !== true &&
+					member.flags != null &&
+					!hasCompletedOnboarding(member)
+				) {
+					awaitingOnboarding.add(`${guild.id}:${member.user.id}`);
 				}
 			}
 		}
