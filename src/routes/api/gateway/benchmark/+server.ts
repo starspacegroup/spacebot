@@ -41,9 +41,17 @@ export async function POST({ request, platform }) {
 		return json({ error: 'Database not available' }, { status: 503 });
 	}
 
+	let data;
 	try {
-		const data = await request.json();
+		data = await request.json();
+	} catch {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
+	if (!data || typeof data !== 'object' || Array.isArray(data)) {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
 
+	try {
 		const result = await recordGatewayBenchmark(db, {
 			heartbeat_latency_ms: data.heartbeat_latency_ms,
 			gateway_url: data.gateway_url,
@@ -68,7 +76,7 @@ export async function POST({ request, platform }) {
 		return json({ success: true, benchmark_interval_seconds: interval });
 	} catch (error) {
 		log.error('[GatewayBenchmark API] POST error:', error);
-		return json({ error: 'Invalid request body' }, { status: 400 });
+		return json({ error: 'Failed to record benchmark' }, { status: 500 });
 	}
 }
 
