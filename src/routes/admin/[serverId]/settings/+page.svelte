@@ -1013,6 +1013,20 @@
 	</a>
 </section>
 
+<section class="api-keys-section">
+	<h2>
+		<span class="section-icon">📨</span>
+		Incoming webhooks
+	</h2>
+	<p class="section-desc">
+		Give an outside service a URL that fires your automations. Make as many as you need.
+	</p>
+	<a href="/admin/{data.serverId}/webhooks" class="btn btn-secondary">
+		<span class="btn-icon">📨</span>
+		Manage incoming webhooks
+	</a>
+</section>
+
 <style>
 	.settings-page {
 		max-width: 800px;
