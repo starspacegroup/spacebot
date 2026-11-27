@@ -44,6 +44,9 @@ export async function POST({ request, cookies, platform, url }) {
 	} catch {
 		return json({ error: 'Invalid JSON body' }, { status: 400 });
 	}
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 
 	const { action, guildId, guildName, interval, returnUrl } = body;
 
