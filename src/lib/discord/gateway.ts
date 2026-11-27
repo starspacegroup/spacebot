@@ -4201,6 +4201,14 @@ function setupEventHandlers(client, logFn) {
 			changes.name = { old: oldGuild.name, new: newGuild.name };
 		}
 
+		// A bot identity that follows the defaults follows the server's name and icon.
+		if (oldGuild.name !== newGuild.name || oldGuild.icon !== newGuild.icon) {
+			void fetch(`${API_BASE}/api/gateway/bot-identity/${newGuild.id}`, {
+				method: 'POST',
+				headers: { Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}` },
+			}).catch((err) => log.warn(`[BotIdentity] resync failed: ${err.message}`));
+		}
+
 		if (Object.keys(changes).length > 0) {
 			await logFn({
 				guild_id: newGuild.id,

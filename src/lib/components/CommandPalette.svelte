@@ -147,6 +147,22 @@
 				keywords: ['api', 'tokens', 'keys', 'rest', 'access', 'claves'],
 			},
 			{
+				label: 'Bot name and image',
+				icon: '🪪',
+				path: '/bot-identity',
+				desc: 'Give the bot its own name and picture on this server',
+				keywords: [
+					'bot',
+					'name',
+					'nickname',
+					'avatar',
+					'image',
+					'icon',
+					'picture',
+					'identity',
+				],
+			},
+			{
 				label: 'Incoming webhooks',
 				icon: '📨',
 				path: '/webhooks',

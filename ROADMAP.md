@@ -116,6 +116,16 @@ feature inventory). Items marked _(partial)_ or checkbox `[~]` exist but are sca
 - [x] Delete a server — Settings → Delete this server removes every row about a server, its
       slash commands and the bot, after the owner or an Administrator types its name; keeps one
       row of who and when (migration 0105, `docs/server-deletion.md`)
+- [x] Incoming webhooks — a server makes as many incoming webhooks as its plan allows (Starter 3,
+      Pro 25); each has its own URL and a one-time bearer secret (stored as a hash) and fires
+      automations with the new "Webhook received" trigger; the JSON body reads as
+      `{webhook.<path>}`, mentions in sent text are defused. Proved Dafny gate, 60 calls a
+      minute and 64 KB per call. REST routes and MCP tools for owners behind `webhooks:read` and
+      `webhooks:write`, no delete (`docs/inbound-webhooks.md`, migration 0107)
+- [x] Bot name and image per server — an owner turns on a custom bot name (default
+      `<server name>Bot`) and image (default the server icon, or an upload) for that server only;
+      follows the server's name and icon; off restores the bot (`docs/bot-identity.md`,
+      migration 0108)
 - [x] Personality tests — `/personality` links to free online personality tests (Myers-Briggs
       style, Big Five, autism, BDSM, attachment and about thirty more), off until a server
       turns it on; every test shows by default, a server hides some or adds its own links;

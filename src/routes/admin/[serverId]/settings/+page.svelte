@@ -1007,6 +1007,21 @@
 	</a>
 </section>
 
+<section class="api-keys-section">
+	<h2>
+		<span class="section-icon">🪪</span>
+		Bot name and image
+	</h2>
+	<p class="section-desc">
+		Let the bot use its own name and picture on this server. Defaults to your server's name and
+		icon.
+	</p>
+	<a href="/admin/{data.serverId}/bot-identity" class="btn btn-secondary">
+		<span class="btn-icon">🪪</span>
+		Set the bot's name and image
+	</a>
+</section>
+
 <!-- Danger zone: delete the server and its data, on its own page -->
 {#if data.isServerOwner}
 	<section class="settings-section" id="delete-server">

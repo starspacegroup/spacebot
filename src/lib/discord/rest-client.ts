@@ -608,6 +608,17 @@ export function createDiscordRestClient(botToken) {
 			},
 		},
 		guilds: {
+			/**
+			 * Change the bot's own profile in one server (Modify Current Member): nick, avatar (a
+			 * data URI), or null to restore the default. The bot needs Change Nickname for `nick`.
+			 */
+			async editBotMember(guildId, patch, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/@me`, {
+					method: 'PATCH',
+					body: patch,
+					reason,
+				});
+			},
 			async fetch(guildId) {
 				const data = await discordFetch(botToken, `/guilds/${guildId}`);
 				return {
