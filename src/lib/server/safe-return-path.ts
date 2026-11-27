@@ -11,7 +11,11 @@ export function safeReturnPath(value: unknown, fallback = '/admin'): string {
 	try {
 		const parsed = new URL(value, 'http://spacebot.invalid');
 		if (parsed.origin !== 'http://spacebot.invalid') return fallback;
-		return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		// Check the RESULT too (backport B1, Arizona 2ddf6bb): dot segments are
+		// removed while resolving, so `/.//evil.example` or `/a/..//evil.example`
+		// come out as `//evil.example`, which a browser reads as another host.
+		const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+		return path.startsWith('//') ? fallback : path;
 	} catch {
 		return fallback;
 	}

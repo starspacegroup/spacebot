@@ -7,6 +7,7 @@ import { upsertUser } from '$lib/db/users.js';
 import { notifySuperAdminsOfFirstLogin } from '$lib/server/superadmin-notifications.js';
 import { getSessionTtlSeconds } from '$lib/server/session.js';
 import { getSessionSecret, issueSessionCookie } from '$lib/server/auth-session.js';
+import { fetchWithTimeout } from '$lib/server/outbound.js';
 import { dev } from '$app/env';
 
 /**
@@ -93,7 +94,7 @@ export async function GET({ request, url, cookies, platform }) {
 		// This is the critical step for OAuth2 Code Grant - we get the token
 		// BEFORE the bot is added to the server (for install flow)
 		console.log('[OAuth Callback] Exchanging code for token...');
-		const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+		const tokenResponse = await fetchWithTimeout('https://discord.com/api/oauth2/token', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/x-www-form-urlencoded',
@@ -118,7 +119,7 @@ export async function GET({ request, url, cookies, platform }) {
 		console.log('[OAuth Callback] Token received, fetching user info...');
 
 		// Get user info
-		const userResponse = await fetch('https://discord.com/api/users/@me', {
+		const userResponse = await fetchWithTimeout('https://discord.com/api/users/@me', {
 			headers: {
 				Authorization: `Bearer ${tokenData.access_token}`,
 			},
