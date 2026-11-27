@@ -19,8 +19,12 @@ export async function POST({ request, platform }) {
 		return json({ error: 'Database not available' }, { status: 503 });
 	}
 
+	const body = await request.json().catch(() => null);
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
+
 	try {
-		const body = await request.json();
 		const guildId = body?.guild_id;
 		const reason = body?.reason || 'unspecified';
 		const activeSessions = Array.isArray(body?.active_sessions)
@@ -72,6 +76,6 @@ export async function POST({ request, platform }) {
 		return json({ success: true, ...result, liveMembers: liveSnapshotResult.memberCount || 0 });
 	} catch (error) {
 		log.error('[VoiceSessions API] Reconciliation failed:', error);
-		return json({ error: 'Invalid request body' }, { status: 400 });
+		return json({ error: 'Internal server error' }, { status: 500 });
 	}
 }
