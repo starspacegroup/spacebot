@@ -57,9 +57,13 @@ and is logged to the guild's event log as an `api` event naming the key.
   requires `messages:write`. Returns 201 with `id` and `send_at`. Sent by the
   scheduled-messages cron, the same path as automation `send_later`.
 
+Incoming webhooks have their own routes and MCP tools (scopes `webhooks:read` and `webhooks:write`);
+see `docs/inbound-webhooks.md`.
+
 The MCP endpoint (`POST /api/v1/mcp`) offers the same three as
 `set_automation_enabled`, `set_command_enabled` and `schedule_message`, listed
 only to keys holding the write scope.
+
 - `GET /api/v1/integrations/status` reads integration status.
 - `GET /api/stats/:guildId/export?format=json|csv` exports admin-authenticated report data.
 

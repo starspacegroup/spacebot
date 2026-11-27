@@ -147,6 +147,13 @@
 				keywords: ['api', 'tokens', 'keys', 'rest', 'access', 'claves'],
 			},
 			{
+				label: 'Incoming webhooks',
+				icon: '📨',
+				path: '/webhooks',
+				desc: 'URLs that outside services call to fire automations',
+				keywords: ['webhook', 'webhooks', 'incoming', 'hook', 'callback', 'http'],
+			},
+			{
 				label: tr('cmd.settings.label'),
 				icon: '⚙️',
 				path: '/settings',
