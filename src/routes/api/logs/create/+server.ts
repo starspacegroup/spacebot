@@ -1,7 +1,7 @@
-import { json } from "@sveltejs/kit";
-import { log, logEvent } from "$lib/db/logger.js";
-import { getGuildSettings } from "$lib/db/settings.js";
-import { updateMemberCount } from "$lib/db/server-stats.js";
+import { json } from '@sveltejs/kit';
+import { log, logEvent } from '$lib/db/logger.js';
+import { getGuildSettings } from '$lib/db/settings.js';
+import { updateMemberCount } from '$lib/db/server-stats.js';
 
 /**
  * Format an event for Discord channel logging
@@ -10,97 +10,99 @@ import { updateMemberCount } from "$lib/db/server-stats.js";
  * @returns {Object} - Discord embed object
  */
 function formatEventEmbed(event, customColors = {}) {
-  const defaultColors = {
-    message: 0x3498db,    // Blue
-    member: 0x2ecc71,     // Green
-    guild: 0x9b59b6,      // Purple
-    channel: 0xe67e22,    // Orange
-    role: 0xf1c40f,       // Yellow
-    moderation: 0xe74c3c, // Red
-    voice: 0x1abc9c,      // Teal
-    reaction: 0xff6b6b,   // Coral
-    interaction: 0x5865F2,// Discord Blurple
-  };
+	const defaultColors = {
+		message: 0x3498db, // Blue
+		member: 0x2ecc71, // Green
+		guild: 0x9b59b6, // Purple
+		channel: 0xe67e22, // Orange
+		role: 0xf1c40f, // Yellow
+		moderation: 0xe74c3c, // Red
+		voice: 0x1abc9c, // Teal
+		reaction: 0xff6b6b, // Coral
+		interaction: 0x5865f2, // Discord Blurple
+	};
 
-  // Check if there's a custom color for this category
-  const customHex = customColors[event.event_category];
-  let color;
-  if (customHex && /^#[0-9a-fA-F]{6}$/.test(customHex)) {
-    color = parseInt(customHex.slice(1), 16);
-  } else {
-    color = defaultColors[event.event_category] || 0x95a5a6;
-  }
+	// Check if there's a custom color for this category
+	const customHex = customColors[event.event_category];
+	let color;
+	if (customHex && /^#[0-9a-fA-F]{6}$/.test(customHex)) {
+		color = parseInt(customHex.slice(1), 16);
+	} else {
+		color = defaultColors[event.event_category] || 0x95a5a6;
+	}
 
-  const icons = {
-    MESSAGE_CREATE: "💬",
-    MESSAGE_DELETE: "🗑️",
-    MESSAGE_UPDATE: "✏️",
-    MEMBER_JOIN: "📥",
-    MEMBER_LEAVE: "📤",
-    MEMBER_UPDATE: "👤",
-    MEMBER_BAN_ADD: "🔨",
-    MEMBER_BAN_REMOVE: "🔓",
-    CHANNEL_CREATE: "📁",
-    CHANNEL_DELETE: "📁",
-    CHANNEL_UPDATE: "📁",
-    ROLE_CREATE: "🏷️",
-    ROLE_DELETE: "🏷️",
-    ROLE_UPDATE: "🏷️",
-    VOICE_JOIN: "🔊",
-    VOICE_LEAVE: "🔇",
-    VOICE_MOVE: "🔀",
-    REACTION_ADD: "➕",
-    REACTION_REMOVE: "➖",
-    INTERACTION_CREATE: "⚡",
-  };
+	const icons = {
+		MESSAGE_CREATE: '💬',
+		MESSAGE_DELETE: '🗑️',
+		MESSAGE_UPDATE: '✏️',
+		MEMBER_JOIN: '📥',
+		MEMBER_LEAVE: '📤',
+		MEMBER_UPDATE: '👤',
+		MEMBER_BAN_ADD: '🔨',
+		MEMBER_BAN_REMOVE: '🔓',
+		CHANNEL_CREATE: '📁',
+		CHANNEL_DELETE: '📁',
+		CHANNEL_UPDATE: '📁',
+		ROLE_CREATE: '🏷️',
+		ROLE_DELETE: '🏷️',
+		ROLE_UPDATE: '🏷️',
+		VOICE_JOIN: '🔊',
+		VOICE_LEAVE: '🔇',
+		VOICE_MOVE: '🔀',
+		REACTION_ADD: '➕',
+		REACTION_REMOVE: '➖',
+		INTERACTION_CREATE: '⚡',
+	};
 
-  const icon = icons[event.event_type] || "📋";
-  
-  // Build description
-  let description = "";
-  if (event.actor_name) {
-    description += `**Actor:** ${event.actor_name}`;
-    if (event.actor_id) description += ` (<@${event.actor_id}>)`;
-    description += "\n";
-  }
-  if (event.target_name) {
-    description += `**Target:** ${event.target_name}`;
-    if (event.target_id) description += ` (<@${event.target_id}>)`;
-    description += "\n";
-  }
-  if (event.channel_name) {
-    description += `**Channel:** #${event.channel_name}`;
-    if (event.channel_id) description += ` (<#${event.channel_id}>)`;
-    description += "\n";
-  }
+	const icon = icons[event.event_type] || '📋';
 
-  // Add details if present
-  if (event.details) {
-    const details = typeof event.details === 'string' ? JSON.parse(event.details) : event.details;
-    if (details.roleName) {
-      const roleMention = details.roleId ? `<@&${details.roleId}>` : details.roleName;
-      description += `**Role:** ${roleMention} (${details.roleName})\n`;
-    }
-    if (details.content) {
-      const content = details.content.length > 200
-        ? details.content.substring(0, 200) + "..."
-        : details.content;
-      description += `\n**Content:**\n\`\`\`\n${content}\n\`\`\``;
-    }
-    if (details.reason) {
-      description += `\n**Reason:** ${details.reason}`;
-    }
-  }
+	// Build description
+	let description = '';
+	if (event.actor_name) {
+		description += `**Actor:** ${event.actor_name}`;
+		if (event.actor_id) description += ` (<@${event.actor_id}>)`;
+		description += '\n';
+	}
+	if (event.target_name) {
+		description += `**Target:** ${event.target_name}`;
+		if (event.target_id) description += ` (<@${event.target_id}>)`;
+		description += '\n';
+	}
+	if (event.channel_name) {
+		description += `**Channel:** #${event.channel_name}`;
+		if (event.channel_id) description += ` (<#${event.channel_id}>)`;
+		description += '\n';
+	}
 
-  return {
-    title: `${icon} ${event.event_type.replace(/_/g, " ")}`,
-    description: description || "No additional details",
-    color,
-    timestamp: new Date().toISOString(),
-    footer: {
-      text: `Category: ${event.event_category}`
-    }
-  };
+	// Add details if present
+	if (event.details) {
+		const details =
+			typeof event.details === 'string' ? JSON.parse(event.details) : event.details;
+		if (details.roleName) {
+			const roleMention = details.roleId ? `<@&${details.roleId}>` : details.roleName;
+			description += `**Role:** ${roleMention} (${details.roleName})\n`;
+		}
+		if (details.content) {
+			const content =
+				details.content.length > 200
+					? details.content.substring(0, 200) + '...'
+					: details.content;
+			description += `\n**Content:**\n\`\`\`\n${content}\n\`\`\``;
+		}
+		if (details.reason) {
+			description += `\n**Reason:** ${details.reason}`;
+		}
+	}
+
+	return {
+		title: `${icon} ${event.event_type.replace(/_/g, ' ')}`,
+		description: description || 'No additional details',
+		color,
+		timestamp: new Date().toISOString(),
+		footer: {
+			text: `Category: ${event.event_category}`,
+		},
+	};
 }
 
 /**
@@ -111,31 +113,33 @@ function formatEventEmbed(event, customColors = {}) {
  * @param {Object} [customColors] - Optional custom color overrides per category
  */
 async function sendLogToChannel(channelId, event, botToken, customColors = {}) {
-  if (!channelId || !botToken) return;
+	if (!channelId || !botToken) return;
 
-  try {
-    const embed = formatEventEmbed(event, customColors);
-    
-    const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bot ${botToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        embeds: [embed]
-      }),
-    });
+	try {
+		const embed = formatEventEmbed(event, customColors);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      log.warn(`[Discord Log] Failed to send log to channel ${channelId}: ${response.status} - ${errorText}`);
-    } else {
-      log.debug(`[Discord Log] Sent event ${event.event_type} to channel ${channelId}`);
-    }
-  } catch (error) {
-    log.error(`[Discord Log] Error sending to channel ${channelId}:`, error.message);
-  }
+		const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+			method: 'POST',
+			headers: {
+				Authorization: `Bot ${botToken}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				embeds: [embed],
+			}),
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			log.warn(
+				`[Discord Log] Failed to send log to channel ${channelId}: ${response.status} - ${errorText}`
+			);
+		} else {
+			log.debug(`[Discord Log] Sent event ${event.event_type} to channel ${channelId}`);
+		}
+	} catch (error) {
+		log.error(`[Discord Log] Error sending to channel ${channelId}:`, error.message);
+	}
 }
 
 /**
@@ -143,101 +147,109 @@ async function sendLogToChannel(channelId, event, botToken, customColors = {}) {
  * Protected by bot token authentication
  */
 export async function POST({ request, platform }) {
-  log.debug("[DEBUG] /api/logs/create called");
-  const authHeader = request.headers.get("Authorization");
-  const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN ||
-    process.env.DISCORD_BOT_TOKEN;
+	log.debug('[DEBUG] /api/logs/create called');
+	const authHeader = request.headers.get('Authorization');
+	const botToken = (platform as any)?.env?.DISCORD_BOT_TOKEN || process.env.DISCORD_BOT_TOKEN;
 
-  log.debug("[DEBUG] Auth header present:", !!authHeader);
-  log.debug("[DEBUG] Bot token present:", !!botToken);
+	log.debug('[DEBUG] Auth header present:', !!authHeader);
+	log.debug('[DEBUG] Bot token present:', !!botToken);
 
-  // Verify the request is from our gateway bot
-  if (!authHeader || authHeader !== `Bot ${botToken}`) {
-    log.debug(
-      "[DEBUG] Auth failed - header:",
-      authHeader?.substring(0, 20) + "...",
-    );
-    return json({ error: "Unauthorized" }, { status: 401 });
-  }
+	// Verify the request is from our gateway bot
+	if (!authHeader || authHeader !== `Bot ${botToken}`) {
+		log.debug('[DEBUG] Auth failed - header:', authHeader?.substring(0, 20) + '...');
+		return json({ error: 'Unauthorized' }, { status: 401 });
+	}
 
-  try {
-    const event = await request.json();
-    log.debug(
-      "[DEBUG] Event received:",
-      event.event_type,
-      "for guild",
-      event.guild_id,
-    );
+	const event = await request.json().catch(() => null);
+	if (!event || typeof event !== 'object' || Array.isArray(event)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
 
-    // Validate required fields
-    if (!event.guild_id || !event.event_type || !event.event_category) {
-      return json({ error: "Missing required fields" }, { status: 400 });
-    }
+	try {
+		log.debug('[DEBUG] Event received:', event.event_type, 'for guild', event.guild_id);
 
-    const db = (platform as any)?.env?.DB;
-    log.debug("[DEBUG] DB binding exists:", !!db);
+		// Validate required fields
+		if (!event.guild_id || !event.event_type || !event.event_category) {
+			return json({ error: 'Missing required fields' }, { status: 400 });
+		}
 
-    if (!db) {
-      log.error(
-        "D1 database binding not available. Make sure you're running with: bun run dev",
-      );
-      return json({ error: "Database not configured" }, { status: 503 });
-    }
+		const db = (platform as any)?.env?.DB;
+		log.debug('[DEBUG] DB binding exists:', !!db);
 
-    const result = await logEvent(db, event);
+		if (!db) {
+			log.error(
+				"D1 database binding not available. Make sure you're running with: bun run dev"
+			);
+			return json({ error: 'Database not configured' }, { status: 503 });
+		}
 
-    if (result.success) {
-      // Update member count on join/leave events
-      if (event.event_type === 'MEMBER_JOIN' || event.event_type === 'MEMBER_LEAVE') {
-        const eventType = event.event_type === 'MEMBER_JOIN' ? 'join' : 'leave';
-        // Pass whether the joining/leaving member is a bot
-        const isBot = event.actor_is_bot || event.details?.bot || false;
-        const statsResult = await updateMemberCount(db, event.guild_id, eventType, isBot);
-        if (statsResult.success) {
-          log.debug(`[Stats] Member count updated for ${event.guild_id}: ${statsResult.newCount}${isBot ? ' (bot)' : ''}`);
-        } else {
-          log.debug(`[Stats] Could not update member count: ${statsResult.error}`);
-        }
-      }
+		const result = await logEvent(db, event);
 
-      // Check if guild has a logging channel configured and send the log there
-      try {
-        const settings = await getGuildSettings(db, event.guild_id);
-        if (settings.logging_enabled && settings.log_channel_id) {
-          // Skip sending log messages for events that occurred in the log channel itself
-          // This prevents infinite loops when THIS bot sends log messages
-          const isLogChannelEvent = event.channel_id === settings.log_channel_id;
-          // Belt and braces: the gateway flags its own messages, but also match the
-          // actor against the bot's own id (application id == bot user id) so a
-          // handler that forgets the flag can't loop the log channel on itself.
-          const ownBotId = (platform as any)?.env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
-          const isOwnBotMessage =
-            event.details?.isOwnBot === true ||
-            (ownBotId != null && event.actor_id === ownBotId);
-          
-          if (isLogChannelEvent && isOwnBotMessage) {
-            log.debug("[Discord Log] Skipping log for own bot message in log channel to prevent loop");
-          } else {
-            // Use waitUntil to keep the worker alive until the Discord API call completes
-            const logPromise = sendLogToChannel(settings.log_channel_id, event, botToken, settings.log_embed_colors);
-            if ((platform as any)?.context?.waitUntil) {
-              (platform as any).context.waitUntil(logPromise);
-            }
-          }
-        }
-      } catch (settingsError) {
-        log.debug("[Discord Log] Could not check guild settings:", settingsError.message);
-      }
+		if (result.success) {
+			// Update member count on join/leave events
+			if (event.event_type === 'MEMBER_JOIN' || event.event_type === 'MEMBER_LEAVE') {
+				const eventType = event.event_type === 'MEMBER_JOIN' ? 'join' : 'leave';
+				// Pass whether the joining/leaving member is a bot
+				const isBot = event.actor_is_bot || event.details?.bot || false;
+				const statsResult = await updateMemberCount(db, event.guild_id, eventType, isBot);
+				if (statsResult.success) {
+					log.debug(
+						`[Stats] Member count updated for ${event.guild_id}: ${statsResult.newCount}${isBot ? ' (bot)' : ''}`
+					);
+				} else {
+					log.debug(`[Stats] Could not update member count: ${statsResult.error}`);
+				}
+			}
 
-      return json({ success: true });
-    } else {
-      log.error("Failed to log event:", result.error);
-      return json({ error: result.error || "Failed to log event" }, {
-        status: 500,
-      });
-    }
-  } catch (error) {
-    log.error("Error logging event:", error);
-    return json({ error: error.message || "Invalid request" }, { status: 400 });
-  }
+			// Check if guild has a logging channel configured and send the log there
+			try {
+				const settings = await getGuildSettings(db, event.guild_id);
+				if (settings.logging_enabled && settings.log_channel_id) {
+					// Skip sending log messages for events that occurred in the log channel itself
+					// This prevents infinite loops when THIS bot sends log messages
+					const isLogChannelEvent = event.channel_id === settings.log_channel_id;
+					// Belt and braces: the gateway flags its own messages, but also match the
+					// actor against the bot's own id (application id == bot user id) so a
+					// handler that forgets the flag can't loop the log channel on itself.
+					const ownBotId =
+						(platform as any)?.env?.DISCORD_CLIENT_ID || process.env.DISCORD_CLIENT_ID;
+					const isOwnBotMessage =
+						event.details?.isOwnBot === true ||
+						(ownBotId != null && event.actor_id === ownBotId);
+
+					if (isLogChannelEvent && isOwnBotMessage) {
+						log.debug(
+							'[Discord Log] Skipping log for own bot message in log channel to prevent loop'
+						);
+					} else {
+						// Use waitUntil to keep the worker alive until the Discord API call completes
+						const logPromise = sendLogToChannel(
+							settings.log_channel_id,
+							event,
+							botToken,
+							settings.log_embed_colors
+						);
+						if ((platform as any)?.context?.waitUntil) {
+							(platform as any).context.waitUntil(logPromise);
+						}
+					}
+				}
+			} catch (settingsError) {
+				log.debug('[Discord Log] Could not check guild settings:', settingsError.message);
+			}
+
+			return json({ success: true });
+		} else {
+			log.error('Failed to log event:', result.error);
+			return json(
+				{ error: result.error || 'Failed to log event' },
+				{
+					status: 500,
+				}
+			);
+		}
+	} catch (error) {
+		log.error('Error logging event:', error);
+		return json({ error: 'Internal server error' }, { status: 500 });
+	}
 }
