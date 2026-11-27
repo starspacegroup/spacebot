@@ -31,12 +31,20 @@ export async function PATCH({ cookies, platform, request }) {
 		return json({ error: 'Database unavailable' }, { status: 503 });
 	}
 
+	let body;
 	try {
-		const body = await request.json();
-		if (typeof body.enabled !== 'boolean') {
-			return json({ error: 'enabled must be a boolean' }, { status: 400 });
-		}
+		body = await request.json();
+	} catch {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
+	if (!body || typeof body !== 'object' || Array.isArray(body)) {
+		return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+	}
+	if (typeof body.enabled !== 'boolean') {
+		return json({ error: 'enabled must be a boolean' }, { status: 400 });
+	}
 
+	try {
 		const result = await setFirstLoginDmEnabled(db, body.enabled);
 		if (!result.success) {
 			return json({ error: result.error || 'Failed to update setting' }, { status: 500 });
@@ -44,6 +52,6 @@ export async function PATCH({ cookies, platform, request }) {
 
 		return json({ success: true, enabled: body.enabled });
 	} catch {
-		return json({ error: 'Invalid request body' }, { status: 400 });
+		return json({ error: 'Failed to update setting' }, { status: 500 });
 	}
 }
