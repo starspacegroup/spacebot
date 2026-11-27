@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 
-	let { data, form } = $props();
+	const { data, form } = $props();
 
 	// The form starts from what is saved; later edits are the owner's.
 	// svelte-ignore state_referenced_locally

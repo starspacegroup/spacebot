@@ -97,7 +97,7 @@ describe('names', () => {
 					const e = effectiveBotName(custom, guild);
 					expect([...e].length).toBeGreaterThanOrEqual(1);
 					expect([...e].length).toBeLessThanOrEqual(MAX_NICK);
-					expect(e).not.toMatch(/[\u0000-\u001f​-‏]/);
+					expect(e).not.toMatch(new RegExp('[\\u0000-\\u001f\\u200b-\\u200f]'));
 				}
 			)
 		);

@@ -2,7 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { toast } from '$lib/toast.svelte.js';
 
-	let { data, form } = $props();
+	const { data, form } = $props();
 	let showCreate = $state(false);
 	let name = $state('');
 	let description = $state('');
