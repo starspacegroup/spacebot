@@ -148,8 +148,17 @@ export async function PATCH({ request, cookies, platform }) {
 		return json({ error: 'Database not available' }, { status: 503 });
 	}
 
+	let data;
 	try {
-		const data = await request.json();
+		data = await request.json();
+	} catch {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
+	if (!data || typeof data !== 'object' || Array.isArray(data)) {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
+
+	try {
 		const validIntervals = [
 			30, 60, 120, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400,
 		];
@@ -178,6 +187,6 @@ export async function PATCH({ request, cookies, platform }) {
 		return json({ error: 'No valid settings provided' }, { status: 400 });
 	} catch (error) {
 		log.error('[GatewayBenchmark API] PATCH error:', error);
-		return json({ error: 'Invalid request body' }, { status: 400 });
+		return json({ error: 'Failed to update benchmark settings' }, { status: 500 });
 	}
 }
