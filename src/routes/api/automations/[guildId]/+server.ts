@@ -13,7 +13,7 @@ import {
 	TEMPLATE_VARIABLES,
 } from '$lib/db/automations.js';
 import { EVENT_CATEGORIES, EVENT_TYPES, log } from '$lib/db/logger.js';
-import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { verifyGuildFeature } from '$lib/server/feature-access.js';
 import { intParam } from '$lib/server/query-params.js';
 import { checkPlanLimit } from '$lib/db/server-plans.js';
 
@@ -22,7 +22,7 @@ export async function GET({ params, url, cookies, platform }) {
 	const { guildId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
@@ -68,7 +68,7 @@ export async function POST({ params, request, cookies, platform }) {
 	const { guildId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}

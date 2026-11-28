@@ -55,9 +55,6 @@
 <svelte:head>
 	<title>{tr('browse.metaTitle')}</title>
 	<meta name="description" content={tr('browse.metaDescription')} />
-	<meta property="og:title" content={tr('browse.metaTitle')} />
-	<meta property="og:description" content={tr('browse.metaDescription')} />
-	<meta property="og:url" content="https://spacebot.starspace.group/servers" />
 </svelte:head>
 
 <div class="browse-page">
@@ -238,11 +235,11 @@
 										>
 									{/if}
 									<div class="card-titles">
-										<h3>
+										<h2>
 											<a class="card-link" href="/servers/{listing.guild_id}"
 												>{listing.name}</a
 											>
-										</h3>
+										</h2>
 										<span class="card-category">
 											{categoryLabels[listing.category] || listing.category}
 											{#if listing.nsfw}
@@ -284,7 +281,7 @@
 									{#if listing.invite_url}
 										<a
 											class="btn-join"
-											href={listing.invite_url}
+											href="/servers/{listing.guild_id}/join"
 											target="_blank"
 											rel="noopener noreferrer nofollow ugc"
 											>{tr('browse.join')}</a
@@ -1000,7 +997,7 @@
 		padding-top: 2rem;
 	}
 
-	.card-titles h3 {
+	.card-titles h2 {
 		margin: 0;
 		font-size: 1.05rem;
 		line-height: 1.25;

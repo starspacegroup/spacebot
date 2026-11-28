@@ -1,3 +1,4 @@
+import { mayUseFeature } from '$lib/server/feature-access.js';
 import { error, fail, redirect } from '@sveltejs/kit';
 import {
 	ACTION_TYPES,
@@ -68,7 +69,7 @@ function accessRulesFrom(formData: FormData) {
 }
 
 /** @type {import('./$types').PageServerLoad} */
-export async function load({ platform, parent, params, url }) {
+export async function load({ cookies, platform, parent, params, url }) {
 	// Validate that serverId is a Discord snowflake (numeric string, 17-20 digits)
 	if (!/^\d{17,20}$/.test(params.serverId)) {
 		throw redirect(302, '/admin');
@@ -78,7 +79,11 @@ export async function load({ platform, parent, params, url }) {
 	const guildId = params.serverId;
 
 	// Require admin access - check that user has access to this guild
-	if (!parentData.adminGuilds?.some((g) => g.id === guildId) && !parentData.isSuperAdmin) {
+	if (
+		!parentData.adminGuilds?.some((g) => g.id === guildId) &&
+		!parentData.isSuperAdmin &&
+		!(await mayUseFeature({ guildId, cookies, platform }, 'commands'))
+	) {
 		throw redirect(302, '/admin');
 	}
 
@@ -373,6 +378,18 @@ export const actions = {
 
 			if (!result.success) {
 				return fail(500, { error: result.error });
+			}
+
+			// A superadmin's edit above changes the built-in for every server, and role ids belong to
+			// one server. So the role rules on this form are saved as THIS server's override (its
+			// permission and enabled settings are left as they were).
+			if (isBuiltIn && isSuperAdmin && formData.has('allow_roles')) {
+				const saved = await setBuiltInCommandOverride(db, params.serverId, parseInt(id), {
+					access_rules: accessRulesFrom(formData),
+				});
+				if (!saved.success) {
+					return fail(500, { error: saved.error || 'Failed to save the role rules' });
+				}
 			}
 
 			// Auto-sync to Discord (use the actual serverId for sync, not __built_in__)

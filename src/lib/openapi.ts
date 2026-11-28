@@ -84,7 +84,9 @@ export const openApiDocument = {
 		'/automations/{id}': {
 			patch: {
 				summary: 'Enable or disable one automation (scope automations:write)',
-				parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
+				parameters: [
+					{ name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+				],
 				requestBody: {
 					required: true,
 					content: {
@@ -107,8 +109,11 @@ export const openApiDocument = {
 		},
 		'/commands/{id}': {
 			patch: {
-				summary: 'Enable or disable one custom slash command and sync to Discord (scope commands:write)',
-				parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+				summary:
+					'Enable or disable one custom slash command and sync to Discord (scope commands:write)',
+				parameters: [
+					{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+				],
 				requestBody: {
 					required: true,
 					content: {
@@ -152,6 +157,76 @@ export const openApiDocument = {
 					'201': { description: 'Scheduled; returns id and send_at' },
 					'400': { description: 'Bad body, or send_at not in the future' },
 					'403': { description: 'Missing scope, or channel not in the API key guild' },
+				},
+			},
+		},
+		'/webhooks': {
+			get: {
+				summary: 'List incoming webhooks (scope webhooks:read). Never includes secrets.',
+				responses: {
+					'200': { description: 'Webhook list with URL, enabled, last received' },
+				},
+			},
+			post: {
+				summary:
+					'Create an incoming webhook (scope webhooks:write). The secret is returned once.',
+				requestBody: {
+					required: true,
+					content: {
+						'application/json': {
+							schema: {
+								type: 'object',
+								required: ['name'],
+								properties: {
+									name: { type: 'string', maxLength: 64 },
+									description: { type: 'string', maxLength: 300 },
+								},
+							},
+						},
+					},
+				},
+				responses: {
+					'201': { description: 'Created; returns the webhook and its one-time secret' },
+					'403': { description: 'Missing scope, or plan limit reached' },
+					'409': { description: 'A webhook with that name exists' },
+				},
+			},
+		},
+		'/webhooks/{id}': {
+			get: {
+				summary: 'One incoming webhook (scope webhooks:read)',
+				responses: {
+					'200': { description: 'The webhook' },
+					'404': { description: 'Not found' },
+				},
+			},
+			patch: {
+				summary: 'Enable or disable an incoming webhook (scope webhooks:write)',
+				requestBody: {
+					required: true,
+					content: {
+						'application/json': {
+							schema: {
+								type: 'object',
+								required: ['enabled'],
+								properties: { enabled: { type: 'boolean' } },
+							},
+						},
+					},
+				},
+				responses: {
+					'200': { description: 'Updated' },
+					'404': { description: 'Not found' },
+				},
+			},
+		},
+		'/webhooks/{id}/rotate': {
+			post: {
+				summary:
+					'Replace an incoming webhook secret (scope webhooks:write). The new secret is returned once.',
+				responses: {
+					'200': { description: 'Rotated' },
+					'404': { description: 'Not found' },
 				},
 			},
 		},

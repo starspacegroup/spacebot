@@ -491,6 +491,17 @@ export function createDiscordRestClient(botToken) {
 			permissions(channelId) {
 				return buildPermissionOverwrites(botToken, channelId);
 			},
+			/**
+			 * Set a voice channel's status (the line shown under its name). The bot needs Set Voice
+			 * Channel Status. Discord allows 500 characters; an empty string clears it.
+			 */
+			async setVoiceStatus(channelId, status, reason?) {
+				return discordFetch(botToken, `/channels/${channelId}/voice-status`, {
+					method: 'PUT',
+					body: { status: String(status ?? '').slice(0, 500) },
+					reason,
+				});
+			},
 			/** Post a message by channel id, without the GET that `fetch().send()` costs. */
 			async send(channelId, payload) {
 				const body = typeof payload === 'string' ? { content: payload } : payload;
@@ -557,6 +568,26 @@ export function createDiscordRestClient(botToken) {
 					reason,
 				});
 			},
+			/** A member's live voice state (channel_id, deaf, mute). A 404 means they are not in voice. */
+			async voiceState(guildId, userId) {
+				return discordFetch(botToken, `/guilds/${guildId}/voice-states/${userId}`);
+			},
+			/** Give a member a role by id, without fetching the member first. */
+			async addRole(guildId, userId, roleId, reason?) {
+				return discordFetch(
+					botToken,
+					`/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+					{ method: 'PUT', reason }
+				);
+			},
+			/** Take a role off a member by id. */
+			async removeRole(guildId, userId, roleId, reason?) {
+				return discordFetch(
+					botToken,
+					`/guilds/${guildId}/members/${userId}/roles/${roleId}`,
+					{ method: 'DELETE', reason }
+				);
+			},
 			/** Server-deafen or undeafen a member. Discord only allows it while they are in voice. */
 			async setDeaf(guildId, userId, deaf, reason?) {
 				return discordFetch(botToken, `/guilds/${guildId}/members/${userId}`, {
@@ -566,7 +597,28 @@ export function createDiscordRestClient(botToken) {
 				});
 			},
 		},
+		roles: {
+			/** Create a role. Needs Manage Roles. */
+			async create(guildId, body: Record<string, any>, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/roles`, {
+					method: 'POST',
+					body,
+					reason,
+				});
+			},
+		},
 		guilds: {
+			/**
+			 * Change the bot's own profile in one server (Modify Current Member): nick, avatar (a
+			 * data URI), or null to restore the default. The bot needs Change Nickname for `nick`.
+			 */
+			async editBotMember(guildId, patch, reason?) {
+				return discordFetch(botToken, `/guilds/${guildId}/members/@me`, {
+					method: 'PATCH',
+					body: patch,
+					reason,
+				});
+			},
 			async fetch(guildId) {
 				const data = await discordFetch(botToken, `/guilds/${guildId}`);
 				return {
