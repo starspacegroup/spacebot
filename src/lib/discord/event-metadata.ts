@@ -92,6 +92,12 @@ export const DISCORD_EVENT_CATEGORIES = {
 		color: '#24292e',
 		icon: '🐙',
 	},
+	webhook: {
+		name: 'Webhook',
+		description: 'Calls received on an incoming webhook',
+		color: '#E67E22',
+		icon: '📨',
+	},
 	api: {
 		name: 'API',
 		description: 'Changes made through an API key',
@@ -279,6 +285,12 @@ export const DISCORD_EVENT_TYPES = {
 		category: 'event',
 		description: 'User unsubscribed from scheduled event',
 		icon: '➖',
+	},
+
+	WEBHOOK_RECEIVED: {
+		category: 'webhook',
+		description: 'An incoming webhook was called',
+		icon: '📨',
 	},
 
 	GITHUB_PUSH: { category: 'github', description: 'Code was pushed to a repository', icon: '⬆️' },

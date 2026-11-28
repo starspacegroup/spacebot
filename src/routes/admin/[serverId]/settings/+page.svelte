@@ -6,6 +6,7 @@
 	import { TIMEZONE_OPTIONS } from '$lib/timezone.js';
 	import { getTranslator } from '$lib/i18n.js';
 	import TrustedHtml from '$lib/components/TrustedHtml.svelte';
+	import RoleSelector from '$lib/components/RoleSelector.svelte';
 
 	const tr = getTranslator();
 	const { data, form } = $props();
@@ -40,6 +41,8 @@
 	// These are mutable form values that the user edits, so they must be $state, not $derived.
 	// svelte-ignore state_referenced_locally
 	let loggingChannelId = $state(data.settings?.loggingChannelId || '');
+	// svelte-ignore state_referenced_locally
+	let announcementChannelId = $state(data.settings?.announcementChannelId || '');
 
 	// Log embed color settings per category
 	const defaultEmbedColors = {
@@ -147,6 +150,20 @@
 		data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD'
 	);
 	// svelte-ignore state_referenced_locally
+	let viewDashboardRoles = $state(
+		(data.permissionSettings?.viewDashboard?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
+	let viewLogsRoles = $state((data.permissionSettings?.viewLogs?.roles || []).join(','));
+	// svelte-ignore state_referenced_locally
+	let manageAutomationsRoles = $state(
+		(data.permissionSettings?.manageAutomations?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
+	let manageCommandsRoles = $state(
+		(data.permissionSettings?.manageCommands?.roles || []).join(',')
+	);
+	// svelte-ignore state_referenced_locally
 	let localRunnerEnabled = $state(Boolean(data.permissionSettings?.localRunnerAssist?.enabled));
 	// svelte-ignore state_referenced_locally
 	let localRunnerAllowedUsers = $state(
@@ -204,6 +221,7 @@
 
 		// Always sync from data - the form enhance uses invalidateAll which reloads data
 		loggingChannelId = data.settings?.loggingChannelId || '';
+		announcementChannelId = data.settings?.announcementChannelId || '';
 		logEmbedColors = { ...defaultEmbedColors, ...(data.settings?.logEmbedColors || {}) };
 		excludedCategories = data.settings?.excludedCategories || [];
 		timezone = data.settings?.timezone || '';
@@ -217,6 +235,12 @@
 		manageAutomationsPerm =
 			data.permissionSettings?.manageAutomations?.permission || 'MANAGE_GUILD';
 		manageCommandsPerm = data.permissionSettings?.manageCommands?.permission || 'MANAGE_GUILD';
+		viewDashboardRoles = (data.permissionSettings?.viewDashboard?.roles || []).join(',');
+		viewLogsRoles = (data.permissionSettings?.viewLogs?.roles || []).join(',');
+		manageAutomationsRoles = (data.permissionSettings?.manageAutomations?.roles || []).join(
+			','
+		);
+		manageCommandsRoles = (data.permissionSettings?.manageCommands?.roles || []).join(',');
 		localRunnerEnabled = Boolean(data.permissionSettings?.localRunnerAssist?.enabled);
 		localRunnerAllowedUsers = (
 			data.permissionSettings?.localRunnerAssist?.allowedUserIds || []
@@ -281,6 +305,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="viewDashboardRoles"
+								multiple={true}
+								bind:value={viewDashboardRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -301,6 +334,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="viewLogsRoles"
+								multiple={true}
+								bind:value={viewLogsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -321,6 +363,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="manageAutomationsRoles"
+								multiple={true}
+								bind:value={manageAutomationsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -341,6 +392,15 @@
 								<option value={perm.value}>{perm.label}</option>
 							{/each}
 						</select>
+						<div class="permission-roles" onchange={autoSave}>
+							<RoleSelector
+								guildId={data.serverId}
+								name="manageCommandsRoles"
+								multiple={true}
+								bind:value={manageCommandsRoles}
+								placeholder={tr('settings.alsoRoles')}
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -393,6 +453,32 @@
 							bind:value={localRunnerAllowedUsers}
 							onchange={autoSave}
 							placeholder="123456789012345678\n234567890123456789"></textarea>
+					</div>
+				</div>
+			</div>
+		</section>
+
+		<!-- Announcements -->
+		<section class="settings-section">
+			<h2>
+				<span class="section-icon">📣</span>
+				{tr('settings.announcements')}
+			</h2>
+
+			<div class="settings-card">
+				<div class="setting-row">
+					<div class="setting-info">
+						<span class="setting-label">{tr('settings.announcementChannel')}</span>
+						<span class="setting-desc">{tr('settings.announcementChannelDesc')}</span>
+					</div>
+					<div class="setting-control">
+						<ChannelSelector
+							guildId={data.serverId}
+							bind:value={announcementChannelId}
+							name="announcementChannelId"
+							placeholder={tr('settings.selectChannel')}
+							onchange={autoSave}
+						/>
 					</div>
 				</div>
 			</div>
@@ -907,6 +993,54 @@
 	</a>
 </section>
 
+<section class="api-keys-section">
+	<h2>
+		<span class="section-icon">📨</span>
+		Incoming webhooks
+	</h2>
+	<p class="section-desc">
+		Give an outside service a URL that fires your automations. Make as many as you need.
+	</p>
+	<a href="/admin/{data.serverId}/webhooks" class="btn btn-secondary">
+		<span class="btn-icon">📨</span>
+		Manage incoming webhooks
+	</a>
+</section>
+
+<section class="api-keys-section">
+	<h2>
+		<span class="section-icon">🪪</span>
+		Bot name and image
+	</h2>
+	<p class="section-desc">
+		Let the bot use its own name and picture on this server. Defaults to your server's name and
+		icon.
+	</p>
+	<a href="/admin/{data.serverId}/bot-identity" class="btn btn-secondary">
+		<span class="btn-icon">🪪</span>
+		Set the bot's name and image
+	</a>
+</section>
+
+<!-- Danger zone: delete the server and its data, on its own page -->
+{#if data.isServerOwner}
+	<section class="settings-section" id="delete-server">
+		<h2>
+			<span class="section-icon">⚠️</span>
+			Delete this server
+		</h2>
+		<a class="listing-link-card danger-link" href="/admin/{data.serverId}/delete">
+			<div class="listing-link-text">
+				<strong>Delete the server and all its data</strong>
+				<span
+					>Removes everything SpaceBot holds about this server, and SpaceBot leaves it.</span
+				>
+			</div>
+			<span class="listing-link-go">Open →</span>
+		</a>
+	</section>
+{/if}
+
 <style>
 	.settings-page {
 		max-width: 800px;
@@ -1059,6 +1193,10 @@
 		display: block;
 		font-size: 0.8rem;
 		color: var(--color-text-muted);
+	}
+
+	.permission-roles {
+		margin-top: 0.5rem;
 	}
 
 	.permission-control {
@@ -1801,6 +1939,10 @@
 
 	.listing-dot.live {
 		background: var(--color-success);
+	}
+
+	.danger-link {
+		border-color: var(--color-danger);
 	}
 
 	.listing-link-go {

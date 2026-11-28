@@ -4,8 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 
-		<!-- Google tag (gtag.js) -->
-		<script async src="https://www.googletagmanager.com/gtag/js?id=G-SNR54XEMV8"></script>
+		<!-- Google tag (gtag.js): queued now, downloaded once the page has loaded and the browser is idle -->
 		<script>
 			window.dataLayer = window.dataLayer || [];
 			function gtag() {
@@ -13,6 +12,16 @@
 			}
 			gtag('js', new Date());
 			gtag('config', 'G-SNR54XEMV8');
+			window.addEventListener('load', function () {
+				var load = function () {
+					var tag = document.createElement('script');
+					tag.async = true;
+					tag.src = 'https://www.googletagmanager.com/gtag/js?id=G-SNR54XEMV8';
+					document.head.appendChild(tag);
+				};
+				if ('requestIdleCallback' in window) requestIdleCallback(load, { timeout: 3000 });
+				else setTimeout(load, 1);
+			});
 		</script>
 		<meta name="color-scheme" content="light dark" />
 		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />

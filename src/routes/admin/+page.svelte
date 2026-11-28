@@ -1,10 +1,19 @@
 <script lang="ts">
 	import { toast } from '$lib/toast.svelte.js';
 	import { getTranslator } from '$lib/i18n.js';
+	import { page } from '$app/state';
 
 	const tr = getTranslator();
 
 	const { data, form } = $props();
+
+	let announcedDelete = false;
+	$effect(() => {
+		if (!announcedDelete && page.url.searchParams.get('deleted') === '1') {
+			announcedDelete = true;
+			toast.success('Server deleted. Its data is gone and SpaceBot has left.');
+		}
+	});
 
 	let lastFormResult;
 	$effect(() => {

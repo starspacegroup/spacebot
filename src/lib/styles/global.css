@@ -44,6 +44,10 @@
 
 	/* Semantic status colors (fixed hues — must stay consistent for UX) */
 	--color-success: #22c55e;
+	/* Text-safe versions of the status colours (the bright ones are for fills and marks). */
+	--color-success-text: #15803d;
+	--color-warning-text: #b45309;
+	--color-danger-text: #b91c1c;
 	--color-success-hover: #16a34a;
 	--color-success-soft: rgba(34, 197, 94, 0.15);
 
@@ -70,7 +74,8 @@
 	/* Text — dark, tinted with the hue */
 	--color-text: hsl(var(--hue), 25%, 14%);
 	--color-text-secondary: hsl(var(--hue), 22%, 33%);
-	--color-text-muted: hsl(var(--hue), 15%, 50%);
+	/* 42% lightness: at 50% muted text measured 4.4:1 on the tinted page and 3.9:1 on tinted cards. */
+	--color-text-muted: hsl(var(--hue), 15%, 42%);
 	--color-text-light: hsl(var(--hue), 12%, 66%);
 	--color-text-inverse: hsl(var(--hue), 25%, 95%);
 
@@ -158,6 +163,9 @@
 	--color-primary-button-text: white;
 
 	--color-success: #4ade80;
+	--color-success-text: #4ade80;
+	--color-warning-text: #fbbf24;
+	--color-danger-text: #f87171;
 	--color-success-hover: #22c55e;
 	--color-success-soft: rgba(74, 222, 128, 0.2);
 
@@ -512,4 +520,27 @@ option,
 optgroup {
 	background-color: var(--color-surface-elevated);
 	color: var(--color-text);
+}
+
+/* Page changes blend (see onNavigate in the root layout): the content cross-fades, the header stays. */
+.page-transition .app-main {
+	view-transition-name: app-main;
+}
+.page-transition .app-header {
+	view-transition-name: app-header;
+}
+::view-transition-group(app-header) {
+	animation-duration: 0s;
+}
+::view-transition-old(app-main),
+::view-transition-new(app-main) {
+	animation-duration: 260ms;
+	animation-timing-function: ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
+	}
 }

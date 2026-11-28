@@ -45,18 +45,18 @@ export async function GET({ params, cookies, platform }) {
 		}
 	}
 
-	const { cachedEntry, hasFreshCache } = getDashboardCacheEntry(serverId);
+	const userTimezone = cookies.get('user_timezone') || null;
+	const { cachedEntry, hasFreshCache } = getDashboardCacheEntry(serverId, userTimezone);
 	if (hasFreshCache && cachedEntry?.data) {
 		return json(cachedEntry.data, {
 			headers: { 'cache-control': 'no-store' },
 		});
 	}
 
-	const userTimezone = cookies.get('user_timezone') || null;
 	const serverTimezone = await getGuildTimezone(db, serverId);
 	const timezone = userTimezone || serverTimezone || null;
 
-	const result = await fetchDashboardLiveData(db, serverId, botToken, timezone);
+	const result = await fetchDashboardLiveData(db, serverId, botToken, timezone, userTimezone);
 
 	if (!result.success) {
 		return json({ error: 'Failed to load dashboard stats' }, { status: 502 });
