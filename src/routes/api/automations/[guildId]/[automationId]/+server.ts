@@ -9,14 +9,14 @@ import { json } from '@sveltejs/kit';
 import { deleteAutomation, getAutomation, updateAutomation } from '$lib/db/automations.js';
 import { setAutomationEnabled } from '$lib/server/control-actions.js';
 import { EVENT_TYPES, log } from '$lib/db/logger.js';
-import { verifyGuildAdmin } from '$lib/discord/guilds.js';
+import { verifyGuildFeature } from '$lib/server/feature-access.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, cookies, platform }) {
 	const { guildId, automationId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
@@ -41,7 +41,7 @@ export async function PATCH({ params, request, cookies, platform }) {
 	const { guildId, automationId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}
@@ -100,7 +100,7 @@ export async function DELETE({ params, cookies, platform }) {
 	const { guildId, automationId } = params;
 	const accessToken = cookies.get('discord_access_token');
 
-	const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
 	if (!auth.authorized) {
 		return json({ error: auth.error }, { status: 403 });
 	}

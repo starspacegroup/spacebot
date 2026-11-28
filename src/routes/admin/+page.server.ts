@@ -33,7 +33,11 @@ export async function load({ cookies, platform, parent }) {
 
 	// Redirect to default server if user has access to at least one server
 	// This is the primary redirect logic - layout redirect is a fallback
-	if (parentData.selectedGuildId && guildsWithBot.length > 0) {
+	const memberGuilds = parentData.memberGuilds || [];
+	if (
+		parentData.selectedGuildId &&
+		(guildsWithBot.length > 0 || memberGuilds.some((g) => g.id === parentData.selectedGuildId))
+	) {
 		log.debug('[Admin Page] Redirecting to default server:', parentData.selectedGuildId);
 		throw redirect(302, `/admin/${parentData.selectedGuildId}`);
 	}

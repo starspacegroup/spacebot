@@ -43,7 +43,8 @@ export const API_KEY_SCOPES = {
 	'members:read': "Read one member's own activity counts",
 	'voice:read': 'Read who is currently in voice channels',
 	'settings:read': 'Read server settings',
-	'webhooks:read': 'Read webhooks',
+	'webhooks:read': 'Read incoming webhooks (never their secrets)',
+	'webhooks:write': 'Create, rotate and enable/disable incoming webhooks',
 };
 
 /**

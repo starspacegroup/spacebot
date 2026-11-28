@@ -981,6 +981,13 @@ export const FILTER_TYPES = {
 			'GITHUB_CHECK_SUITE',
 		],
 	},
+	inbound_webhook: {
+		type: 'text',
+		label: 'Webhook name(s)',
+		description:
+			'Only calls on these incoming webhooks (comma-separated names). Empty means any.',
+		applicableEvents: ['WEBHOOK_RECEIVED'],
+	},
 	github_branch: {
 		type: 'text',
 		label: 'Branch',
@@ -1102,6 +1109,11 @@ export const TEMPLATE_VARIABLES = {
 	'trigger.category': 'Event category',
 	'trigger.icon': 'Event type emoji icon',
 	'trigger.time': 'When the event occurred',
+	// Incoming webhook variables (available for WEBHOOK_RECEIVED events)
+	'webhook.name': 'Name of the incoming webhook that was called',
+	'webhook.body': 'Raw request text (first 2,000 characters)',
+	'webhook.<path>':
+		'Any field of the JSON body, e.g. {webhook.data.user.name} or {webhook.items.0.id}',
 	// GitHub-specific variables (available for GITHUB_* events)
 	'github.repo': 'GitHub repository (owner/repo)',
 	'github.branch': 'Branch name',
