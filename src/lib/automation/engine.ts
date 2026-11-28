@@ -186,6 +186,12 @@ export function processTemplate(template, context) {
 			value = value[part];
 		}
 
+		// Sender-supplied data (the incoming webhook) renders empty when the path is missing,
+		// and objects never print as "[object Object]".
+		if (parts[0] === 'webhook' && context && context.webhook) {
+			return ['string', 'number', 'boolean'].includes(typeof value) ? String(value) : '';
+		}
+
 		// If path exists in context, return the value (even if null/undefined becomes empty string)
 		// If path doesn't exist at all, keep the original template placeholder
 		if (pathExists) {
@@ -620,6 +626,22 @@ export function matchesFilters(
 				}
 				break;
 
+			case 'inbound_webhook':
+				// WEBHOOK_RECEIVED only: comma-separated hook names; empty means any hook.
+				if (filterValue && event.event_type === 'WEBHOOK_RECEIVED') {
+					const wanted = String(filterValue)
+						.split(',')
+						.map((n) => n.trim().toLowerCase())
+						.filter(Boolean);
+					if (
+						wanted.length > 0 &&
+						!wanted.includes(String(event.details?.webhook_name || '').toLowerCase())
+					) {
+						return false;
+					}
+				}
+				break;
+
 			case 'button_custom_id':
 				// Filter BUTTON_CLICK events by button custom ID (comma-separated list)
 				if (filterValue) {
@@ -709,6 +731,9 @@ export function buildContext(event, guildInfo: Record<string, any> = {}) {
 			time: new Date().toISOString(),
 		},
 		github,
+		// Incoming webhook variables: a prototype-free, mention-defused tree built by the receiving
+		// route (webhook-payload.ts). Absent for every other event.
+		...(event._webhook_vars ? { webhook: event._webhook_vars } : {}),
 		details: event.details || {},
 		github_logo_url: 'https://avatars.githubusercontent.com/u/9919?v=4',
 		widget_signing_secret: event._widget_signing_secret,

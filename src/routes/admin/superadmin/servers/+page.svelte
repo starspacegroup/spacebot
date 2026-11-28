@@ -506,6 +506,12 @@
 										</button>
 									{/if}
 									<a
+										href="/admin/superadmin/servers/{server.guild_id}"
+										class="btn btn-sm btn-secondary"
+									>
+										Details
+									</a>
+									<a
 										href="/admin/{server.guild_id}"
 										class="btn btn-sm btn-secondary"
 									>

@@ -19,6 +19,7 @@ export const es: Record<string, string> = {
 	'footer.tagline': 'SpaceBot por',
 	'footer.terms': 'Términos del servicio',
 	'footer.privacy': 'Política de privacidad',
+	'footer.status': 'Estado',
 	'footer.github': 'GitHub',
 
 	// --- Common ---
@@ -60,6 +61,40 @@ export const es: Record<string, string> = {
 	'support.body':
 		'Únete al servidor de soporte de SpaceBot en Discord para recibir ayuda con la configuración y novedades de versiones.',
 	'support.cta': 'Abrir servidor de soporte',
+
+	// Buzón de ideas
+	'footer.ideas': 'Ideas',
+	'ideas.pageTitle': 'Envía una idea - SpaceBot',
+	'ideas.title': 'Cuéntanos cómo mejorar SpaceBot',
+	'ideas.intro':
+		'Un comando que te gustaría tener, algo que falta en el panel, algo que te molesta. Escríbelo con tus propias palabras. Leemos todas.',
+	'ideas.signInNeeded': 'Inicia sesión con Discord primero, para saber de quién es la idea.',
+	'ideas.signIn': 'Iniciar sesión con Discord',
+	'ideas.bodyLabel': 'Tu idea',
+	'ideas.bodyPlaceholder': '¿Qué te gustaría que hiciera SpaceBot y por qué ayudaría?',
+	'ideas.titleLabel': 'Título corto (opcional)',
+	'ideas.areaLabel': '¿De qué parte trata?',
+	'ideas.area.commands': 'Comandos',
+	'ideas.area.dashboard': 'Panel',
+	'ideas.area.games': 'Juegos',
+	'ideas.area.automations': 'Automatizaciones',
+	'ideas.area.logging': 'Registros',
+	'ideas.area.server_browser': 'Explorador de servidores',
+	'ideas.area.other': 'Otra cosa',
+	'ideas.disclosure':
+		'Guardamos tu nombre e ID de Discord, el servidor en el que estabas y la hora, para poder responderte.',
+	'ideas.submit': 'Enviar idea',
+	'ideas.saved': 'Guardada. Gracias por la idea.',
+	'ideas.exists': 'Guardada, pero puede que ya exista en SpaceBot:',
+	'ideas.existsNote': 'Si te referías a algo que no hace, tu idea está guardada y la leeremos.',
+	'ideas.mineTitle': 'Tus ideas',
+	'ideas.mineEmpty': 'Todavía no has enviado ninguna idea.',
+	'ideas.status.new': 'Recibida',
+	'ideas.status.reviewing': 'En revisión',
+	'ideas.status.planned': 'Planeada',
+	'ideas.status.shipped': 'Publicada',
+	'ideas.status.declined': 'Sin planes por ahora',
+	'ideas.status.duplicate': 'Ya sugerida',
 	'support.disabled': 'Define {envName} para mostrar el enlace del servidor de soporte.',
 
 	// Vote page
@@ -926,6 +961,11 @@ export const es: Record<string, string> = {
 	'adash.links.automationsDesc': 'Configura acciones automáticas en eventos',
 	'adash.links.observances': 'Conmemoraciones',
 	'adash.links.observancesDesc': 'Publica un día histórico tal como ocurrió, en su aniversario',
+	'adash.links.topics': 'Temas',
+	'adash.links.topicsDesc':
+		'Temas de conversación al azar, tu propia lista y temas de canales de voz',
+	'adash.links.personality': 'Tests de personalidad',
+	'adash.links.personalityDesc': 'Enlaces a tests de personalidad gratuitos, los que elijas',
 	'adash.links.rooms': 'Salas de miembros',
 	'adash.links.roomsDesc': 'Canales autogestionados con su propia duración',
 	'adash.links.activity': 'Actividad',
@@ -1281,7 +1321,7 @@ export const es: Record<string, string> = {
 	'settings.permissionsTitle': 'Permisos de acceso al panel',
 	'settings.important': 'Importante',
 	'settings.permissionsDesc':
-		'Controla quién puede acceder a las distintas funciones de este panel web según sus permisos de Discord. Los usuarios con permiso de <strong>Administrador</strong> siempre tienen acceso completo.',
+		'Elige los roles que pueden abrir partes de este panel. Los miembros con <strong>Administrador</strong> o <strong>Gestionar servidor</strong> siempre tienen acceso completo. Un rol elegido aquí abre solo esa sección y una página breve que la enumera. Los ajustes, la facturación y lo demás siguen siendo de los administradores. El nivel de permiso de cada fila no cambia hoy quién entra; los roles sí.',
 	'settings.viewDashboard': 'Ver el panel',
 	'settings.viewDashboardDesc': 'Acceder al panel del servidor y ver información básica',
 	'settings.viewLogs': 'Ver registros de eventos',
@@ -1291,6 +1331,7 @@ export const es: Record<string, string> = {
 	'settings.manageAutomationsDesc': 'Crear, editar y eliminar acciones automatizadas',
 	'settings.manageCommands': 'Gestionar comandos',
 	'settings.manageCommandsDesc': 'Crear y configurar comandos de barra personalizados',
+	'settings.alsoRoles': 'Permitir también estos roles',
 	'settings.serverSettingsPermDesc': 'Acceder a esta página de ajustes (no se puede cambiar)',
 	'settings.adminOnlyLocked': 'Solo administradores',
 	'settings.localRunner': 'Asistencia de Local Runner',
@@ -1301,6 +1342,10 @@ export const es: Record<string, string> = {
 		'Opcional. Un ID de usuario de Discord por línea. Déjalo vacío para permitir a cualquier gestor de este servidor.',
 	'settings.logging': 'Registro',
 	'settings.loggingChannelDesc': 'Canal donde se enviarán los registros de actividad del bot',
+	'settings.announcements': 'Anuncios',
+	'settings.announcementChannel': 'Canal de anuncios',
+	'settings.announcementChannelDesc':
+		'Donde SpaceBot publica cambios globales y otras alertas importantes. Si lo dejas vacío, SpaceBot no publica nada.',
 	'settings.selectChannel': 'Selecciona un canal…',
 	'settings.eventCategories': 'Categorías de eventos',
 	'settings.eventCategoriesDesc':

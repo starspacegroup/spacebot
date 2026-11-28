@@ -5,120 +5,122 @@
  * DELETE - Delete automation
  */
 
-import { json } from "@sveltejs/kit";
-import {
-  deleteAutomation,
-  getAutomation,
-  updateAutomation,
-} from "$lib/db/automations.js";
-import { setAutomationEnabled } from "$lib/server/control-actions.js";
-import { EVENT_TYPES, log } from "$lib/db/logger.js";
-import { verifyGuildAdmin } from "$lib/discord/guilds.js";
+import { json } from '@sveltejs/kit';
+import { deleteAutomation, getAutomation, updateAutomation } from '$lib/db/automations.js';
+import { setAutomationEnabled } from '$lib/server/control-actions.js';
+import { EVENT_TYPES, log } from '$lib/db/logger.js';
+import { verifyGuildFeature } from '$lib/server/feature-access.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ params, cookies, platform }) {
-  const { guildId, automationId } = params;
-  const accessToken = cookies.get("discord_access_token");
+	const { guildId, automationId } = params;
+	const accessToken = cookies.get('discord_access_token');
 
-  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
-  if (!auth.authorized) {
-    return json({ error: auth.error }, { status: 403 });
-  }
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
+	if (!auth.authorized) {
+		return json({ error: auth.error }, { status: 403 });
+	}
 
-  const db = (platform as any)?.env?.DB;
-  if (!db) {
-    return json({ error: "Database not available" }, { status: 500 });
-  }
+	const db = (platform as any)?.env?.DB;
+	if (!db) {
+		return json({ error: 'Database not available' }, { status: 500 });
+	}
 
-  // automationId can be either numeric ID or public_id hash
-  const automation = await getAutomation(db, automationId, guildId);
+	// automationId can be either numeric ID or public_id hash
+	const automation = await getAutomation(db, automationId, guildId);
 
-  if (!automation) {
-    return json({ error: "Automation not found" }, { status: 404 });
-  }
+	if (!automation) {
+		return json({ error: 'Automation not found' }, { status: 404 });
+	}
 
-  return json({ automation });
+	return json({ automation });
 }
 
 /** @type {import('./$types').RequestHandler} */
 export async function PATCH({ params, request, cookies, platform }) {
-  const { guildId, automationId } = params;
-  const accessToken = cookies.get("discord_access_token");
+	const { guildId, automationId } = params;
+	const accessToken = cookies.get('discord_access_token');
 
-  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
-  if (!auth.authorized) {
-    return json({ error: auth.error }, { status: 403 });
-  }
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
+	if (!auth.authorized) {
+		return json({ error: auth.error }, { status: 403 });
+	}
 
-  const db = (platform as any)?.env?.DB;
-  if (!db) {
-    return json({ error: "Database not available" }, { status: 500 });
-  }
+	const db = (platform as any)?.env?.DB;
+	if (!db) {
+		return json({ error: 'Database not available' }, { status: 500 });
+	}
 
-  try {
-    const body = await request.json();
+	try {
+		const body = await request.json().catch(() => null);
+		if (!body || typeof body !== 'object' || Array.isArray(body)) {
+			return json({ error: 'Request body must be a JSON object' }, { status: 400 });
+		}
 
-    // Check automation exists and belongs to guild (supports both numeric ID and public_id)
-    const existing = await getAutomation(db, automationId, guildId);
-    if (!existing) {
-      return json({ error: "Automation not found" }, { status: 404 });
-    }
+		// Check automation exists and belongs to guild (supports both numeric ID and public_id)
+		const existing = await getAutomation(db, automationId, guildId);
+		if (!existing) {
+			return json({ error: 'Automation not found' }, { status: 404 });
+		}
 
-    // Handle toggle action
-    if (body.action === "toggle") {
-      const result = await setAutomationEnabled(db, guildId, automationId, !!body.enabled);
-      if (!result.ok) {
-        return json({ error: result.error }, { status: result.status });
-      }
-      return json({ success: true, enabled: body.enabled });
-    }
+		// Handle toggle action
+		if (body.action === 'toggle') {
+			const result = await setAutomationEnabled(db, guildId, automationId, !!body.enabled);
+			if (!result.ok) {
+				return json({ error: result.error }, { status: result.status });
+			}
+			return json({ success: true, enabled: body.enabled });
+		}
 
-    // Validate trigger_event if provided
-    if (body.trigger_event && !EVENT_TYPES[body.trigger_event]) {
-      return json({ error: `Invalid trigger_event: ${body.trigger_event}` }, {
-        status: 400,
-      });
-    }
+		// Validate trigger_event if provided
+		if (body.trigger_event && !EVENT_TYPES[body.trigger_event]) {
+			return json(
+				{ error: `Invalid trigger_event: ${body.trigger_event}` },
+				{
+					status: 400,
+				}
+			);
+		}
 
-    const result = await updateAutomation(db, automationId, body, guildId);
+		const result = await updateAutomation(db, automationId, body, guildId);
 
-    if (!result.success) {
-      return json({ error: result.error }, { status: 500 });
-    }
+		if (!result.success) {
+			return json({ error: result.error }, { status: 500 });
+		}
 
-    return json({ success: true });
-  } catch (error) {
-    log.error("Update automation error:", error);
-    return json({ error: "Failed to update automation" }, { status: 500 });
-  }
+		return json({ success: true });
+	} catch (error) {
+		log.error('Update automation error:', error);
+		return json({ error: 'Failed to update automation' }, { status: 500 });
+	}
 }
 
 /** @type {import('./$types').RequestHandler} */
 export async function DELETE({ params, cookies, platform }) {
-  const { guildId, automationId } = params;
-  const accessToken = cookies.get("discord_access_token");
+	const { guildId, automationId } = params;
+	const accessToken = cookies.get('discord_access_token');
 
-  const auth = await verifyGuildAdmin(guildId, accessToken, cookies);
-  if (!auth.authorized) {
-    return json({ error: auth.error }, { status: 403 });
-  }
+	const auth = await verifyGuildFeature(guildId, accessToken, cookies, platform, 'automations');
+	if (!auth.authorized) {
+		return json({ error: auth.error }, { status: 403 });
+	}
 
-  const db = (platform as any)?.env?.DB;
-  if (!db) {
-    return json({ error: "Database not available" }, { status: 500 });
-  }
+	const db = (platform as any)?.env?.DB;
+	if (!db) {
+		return json({ error: 'Database not available' }, { status: 500 });
+	}
 
-  // Check automation exists and belongs to guild (supports both numeric ID and public_id)
-  const existing = await getAutomation(db, automationId, guildId);
-  if (!existing) {
-    return json({ error: "Automation not found" }, { status: 404 });
-  }
+	// Check automation exists and belongs to guild (supports both numeric ID and public_id)
+	const existing = await getAutomation(db, automationId, guildId);
+	if (!existing) {
+		return json({ error: 'Automation not found' }, { status: 404 });
+	}
 
-  const result = await deleteAutomation(db, automationId, guildId);
+	const result = await deleteAutomation(db, automationId, guildId);
 
-  if (!result.success) {
-    return json({ error: result.error }, { status: 500 });
-  }
+	if (!result.success) {
+		return json({ error: result.error }, { status: 500 });
+	}
 
-  return json({ success: true });
+	return json({ success: true });
 }
